@@ -2,28 +2,28 @@ CORE = rel/epoch/bin/epoch
 
 
 local-build: KIND=local
-local-build: build
+local-build: internal-build
 
 local-start: KIND=local
-local-start: start
+local-start: internal-start
 
 local-stop: KIND=local
-local-stop: stop
+local-stop: internal-stop
 
 local-attach: KIND=local
-local-attach: attach
+local-attach: internal-attach
 
 prod-build: KIND=prod
-prod-build: build
+prod-build: internal-build
 
 prod-start: KIND=prod
-prod-start: start
+prod-start: internal-start
 
 prod-stop: KIND=prod
-prod-stop: stop
+prod-stop: internal-stop
 
 prod-attach: KIND=prod
-prod-attach: attach
+prod-attach: internal-attach
 
 
 dialyzer:
@@ -48,16 +48,16 @@ killall:
 
 .SECONDEXPANSION:
 
-build: $$(KIND)
+internal-build: $$(KIND)
 	@./rebar3 as $(KIND) release
 
-start: $$(KIND)
+internal-start: $$(KIND)
 	@./_build/$(KIND)/$(CORE) start
 
-stop: $$(KIND)
+internal-stop: $$(KIND)
 	@./_build/$(KIND)/$(CORE) stop
 
-attach: $$(KIND)
+internal-attach: $$(KIND)
 	@./_build/$(KIND)/$(CORE) attach
 
 
