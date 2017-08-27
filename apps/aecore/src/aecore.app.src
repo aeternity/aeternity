@@ -1,0 +1,17 @@
+{application, aecore,
+ [{description, "Blockchain for aeapps"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { aecore_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    lager
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
