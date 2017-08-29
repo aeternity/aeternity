@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -ev # Ref https://docs.travis-ci.com/user/customizing-the-build/#Implementing-Complex-Build-Steps
+set -x
+
+case "${1:?}"-"${2:?}" in
+    before_install-tests)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make nose-env; )
+        ;;
+    before_install-*)
+        true
+        ;;
+    install-dialyzer)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 tree; )
+        ( cd "${BuildDir:?}" && ./rebar3 dialyzer -u true -s false; )
+        ;;
+    install-*)
+        true
+        ;;
+    script-test)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make test; )
+        ;;
+    script-dialyzer)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make dialyzer; )
+        ;;
+    script-xref)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 xref; )
+        ;;
+    after_failure-tests)
+        BuildDir="${3:?}"
+        ls -l "${BuildDir:?}"/_build/dev3/rel/ae_core/log/*
+        for F in "${BuildDir:?}"/_build/dev3/rel/ae_core/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ls -l "${BuildDir:?}"/_build/dev1/rel/ae_core/log/*
+        for F in "${BuildDir:?}"/_build/dev1/rel/ae_core/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ls -l "${BuildDir:?}"/_build/dev2/rel/ae_core/log/*
+        for F in "${BuildDir:?}"/_build/dev2/rel/ae_core/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ;;
+    after_failure-tester)
+        BuildDir="${3:?}"
+        ls -l "${BuildDir:?}"/_build/local/rel/ae_core/log/*
+        for F in "${BuildDir:?}"/_build/local/rel/ae_core/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ;;
+    after_failure-*)
+        true
+        ;;
+esac
