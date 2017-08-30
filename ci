@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -ev # Ref https://docs.travis-ci.com/user/customizing-the-build/#Implementing-Complex-Build-Steps
+set -x
+
+case "${1:?}"-"${2:?}" in
+    before_install-*)
+        true
+        ;;
+    install-dialyzer)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 tree; )
+        ( cd "${BuildDir:?}" && ./rebar3 dialyzer -u true -s false; )
+        ;;
+    install-*)
+        true
+        ;;
+    script-test)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make test; )
+        ;;
+    script-dialyzer)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make dialyzer; )
+        ;;
+    script-xref)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 xref; )
+        ;;
+    after_failure-*)
+        true
+        ;;
+esac

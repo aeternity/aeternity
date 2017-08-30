@@ -1,0 +1,23 @@
+language: erlang
+otp_release:
+  - 20.0.1
+before_install:
+  - ./ci before_install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+install:
+  - ./ci install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+script:
+  - ./ci script "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+after_failure:
+  - ./ci after_failure "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+matrix:
+  include:
+  allow_failures:
+    - env: JOB=xref
+  fast_finish: true
+env:
+  - JOB=test
+  - JOB=dialyzer
+  - JOB=xref
+cache:
+  directories:
+    - $HOME/.cache/rebar3
