@@ -2,6 +2,7 @@
 
 ### Pull Requests
 
+* [Squash your commits](https://stackoverflow.com/questions/5189560/squash-my-last-x-commits-together-using-git) to ensure each resulting commit is stable and can be tested.
 * Include issue numbers in the PR title, e.g. "GH-128. Resolves issue #123".
 * Follow the [Erlang mode for Emacs](http://erlang.org/doc/apps/tools/erlang_mode_chapter.html) indentation, e.g. provided by [EDTS](https://github.com/tjarvstrand/edts).
 * Add unit tests for self-contained modules.
