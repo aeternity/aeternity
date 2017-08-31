@@ -98,42 +98,13 @@ killall:
 clean:
 	@./rebar3 clean
 
-multi-build: config/dev1/sys.config config/dev2/sys.config config/dev3/sys.config dev1-build 
+multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
 	@for x in dev2 dev3; do \
 		cp -R _build/dev1 _build/$$x; \
 		cp config/$$x/sys.config _build/$$x/rel/epoch/releases/$(VER)/sys.config; \
 		cp config/$$x/vm.args _build/$$x/rel/epoch/releases/$(VER)/vm.args; \
 	done
-
-
-config/dev1/sys.config: config/sys.config.tmpl
-	sed -e "\
-	s:%% comment:\
-	%% dev1 conf\
-	:\
-    " $< > $@
-
-config/dev2/sys.config: config/sys.config.tmpl
-	sed -e "\
-	s:%% comment:\
-	%% dev2 conf\
-	:\
-    " $< > $@
-
-config/dev3/sys.config: config/sys.config.tmpl
-	sed -e "\
-	s:%% comment:\
-	%% dev3 conf\
-	:\
-    " $< > $@
-
-config/sys.config: config/sys.config.tmpl
-	sed -e "\
-	s:%% comment:\
-	%% conf\
-	:\
-	" $< > $@
 
 #
 # Build rules

@@ -9,6 +9,8 @@
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
+-define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
+
 
 %%====================================================================
 %% API functions
@@ -22,11 +24,7 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [
-                                 {peers,
-                                  {aec_peers, start_link, []},
-                                  permanent,
-                                  5000,
-                                  worker,
-                                  [aec_peers]}
-                                ]} }.
+    {ok, {{one_for_one, 5, 10}, [?CHILD(aec_peers, 5000, worker),
+                                 ?CHILD(aec_keys, 5000, worker)]
+         }}.
+
