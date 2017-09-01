@@ -1,32 +1,57 @@
 -module(aec_accounts).
 
 %% API
--export([get/2,
+-export([empty/0,
+         get/2,
          get_with_proof/2,
          put/2,
-         earn/3]).
+         earn/3,
+         root_hash/1]).
 
 -include("trees.hrl").
 
-get(Pubkey, _AccountsTree) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    Account = #account{pubkey = Pubkey,
-                       balance = 0},
-    {ok, Account}.
+empty() ->
+    {ok, gb_merkle_trees:empty()}.
 
-get_with_proof(Pubkey, _AccountsTree) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    Account = #account{pubkey = Pubkey,
-                       balance = 0},
-    {ok, {Account, <<"fakeproof">>}}.
+get(Pubkey, AccountsTree) ->
+    case gb_merkle_trees:lookup(Pubkey, AccountsTree) of
+        none ->
+            {error, notfound};
+        SerializedAccount when is_binary(SerializedAccount) ->
+            Account = deserialize(SerializedAccount),
+            {ok, Account}
+    end.
 
-put(_Account, AccountsTrees) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    {ok, AccountsTrees}.
+get_with_proof(Pubkey, AccountsTree) ->
+    case get(Pubkey, AccountsTree) of
+        {error, notfound} = E ->
+            E;
+        {ok, Account} ->
+            Proof = gb_merkle_trees:merkle_proof(Account#account.pubkey,
+                                                 AccountsTree),
+            {ok, {Account, Proof}}
+    end.
+
+put(Account, AccountsTree) ->
+    NewAccountsTree =
+        gb_merkle_trees:enter(Account#account.pubkey, serialize(Account),
+                              AccountsTree),
+    {ok, NewAccountsTree}.
 
 earn(#account{balance = Balance0}, Amount, Height) ->
     {ok, #account{balance = Balance0 + Amount,
                   height = Height}}.
+
+root_hash(AccountsTree) ->
+    case gb_merkle_trees:root_hash(AccountsTree) of
+        undefined ->
+            {error, empty};
+        Hash when is_binary(Hash) ->
+            {ok, Hash}
+    end.
+
+serialize(Account) ->
+    term_to_binary(Account).
+
+deserialize(SerializedAccount) ->
+    binary_to_term(SerializedAccount).
