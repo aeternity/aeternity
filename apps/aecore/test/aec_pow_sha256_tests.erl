@@ -1,10 +1,10 @@
 %%%=============================================================================
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%   Unit tests for the pow_sha256 module
+%%%   Unit tests for the aec_pow_sha256 module
 %%% @end
 %%%=============================================================================
--module(pow_sha256_tests).
+-module(aec_pow_sha256_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -14,7 +14,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("sha256.hrl").
 
--define(TEST_MODULE, pow_sha256).
+-define(TEST_MODULE, aec_pow_sha256).
 
 conversion_test_() ->
     {setup,
