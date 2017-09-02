@@ -2,7 +2,7 @@
 
 %% API
 -export([get/2,
-         get_with_proof/2,
+         get_with_proofs/2,
          put/2,
          earn/3]).
 
@@ -15,12 +15,12 @@ get(Pubkey, _AccountsTree) ->
                        balance = 0},
     {ok, Account}.
 
-get_with_proof(Pubkey, _AccountsTree) ->
+get_with_proofs(Pubkey, _AccountsTree) ->
     %% To be implemented when we have state Merkle trees
     %% to hold accounts with balances
     Account = #account{pubkey = Pubkey,
                        balance = 0},
-    {ok, {Account, <<"fakeproof">>}}.
+    {ok, {Account, [<<"fakeproof">>]}}.
 
 put(_Account, AccountsTrees) ->
     %% To be implemented when we have state Merkle trees

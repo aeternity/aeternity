@@ -10,10 +10,8 @@
 -define(BLOCK_MINE_REWARD, 10). %% To be set in governance
 
 
-new(#{account := AccountPubkey}, Trees) ->
-    AccountsTrees = aec_trees:accounts(Trees),
-    {ok, {_Account, Proof}} = aec_accounts:get_with_proof(AccountPubkey, AccountsTrees),
-    {ok, {#coinbase_tx{account = AccountPubkey}, [Proof]}}.
+new(#{account := AccountPubkey}, _Trees) ->
+    {ok, {#coinbase_tx{account = AccountPubkey}}}.
 
 run(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
