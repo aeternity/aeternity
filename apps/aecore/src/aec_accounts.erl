@@ -9,6 +9,7 @@
          root_hash/1,
          verify_proof/3]).
 
+-include("common.hrl").
 -include("trees.hrl").
 
 empty() ->
