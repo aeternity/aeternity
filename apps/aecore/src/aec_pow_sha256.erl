@@ -4,7 +4,7 @@
 %%%    Module dealing with SHA256 Proof of Work calculation and hash generation
 %%% @end
 %%%=============================================================================
--module(pow_sha256).
+-module(aec_pow_sha256).
 
 -export([generate/3,
          recalculate_difficulty/3,
@@ -64,8 +64,8 @@ generate_with_nonce(_Data, _Difficulty, _Nonce, 0) ->
     %% Count exhausted: fail
     {error, generation_count_exhausted};
 generate_with_nonce(Data, Difficulty, Nonce, Count) ->
-    Hash1 = sha256:hash(Data),
-    Hash2 = sha256:hash(<<Hash1/binary, Difficulty:16, Nonce:?HASH_BITS>>),
+    Hash1 = aec_sha256:hash(Data),
+    Hash2 = aec_sha256:hash(<<Hash1/binary, Difficulty:16, Nonce:?HASH_BITS>>),
     case binary_to_scientific(Hash2) of
         HD when HD < Difficulty ->
             %% Hash satisfies condition: return nonce

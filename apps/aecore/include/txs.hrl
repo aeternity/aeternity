@@ -1,4 +1,4 @@
--type(pubkey() :: binary()).
+-include("common.hrl").
 
 -record(coinbase_tx, {
           account = <<>> :: pubkey(),

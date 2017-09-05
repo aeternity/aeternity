@@ -1,0 +1,1 @@
+-type(pubkey() :: binary()).
