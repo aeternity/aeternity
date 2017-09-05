@@ -1,32 +1,58 @@
 -module(aec_accounts).
 
 %% API
--export([get/2,
-         get_with_proofs/2,
+-export([empty/0,
+         get/2,
+         get_with_proof/2,
          put/2,
-         earn/3]).
+         earn/3,
+         root_hash/1,
+         verify_proof/3]).
 
 -include("trees.hrl").
 
-get(Pubkey, _AccountsTree) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    Account = #account{pubkey = Pubkey,
-                       balance = 0},
-    {ok, Account}.
+empty() ->
+    {ok, _AccountsTree} = aec_trees:new().
 
-get_with_proofs(Pubkey, _AccountsTree) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    Account = #account{pubkey = Pubkey,
-                       balance = 0},
-    {ok, {Account, [<<"fakeproof">>]}}.
+get(Pubkey, AccountsTree) ->
+    case aec_trees:get(Pubkey, AccountsTree) of
+        {ok, SerializedAccount} when is_binary(SerializedAccount) ->
+            Account =
+                #account{pubkey = Pubkey} = %% Hardcoded expectation.
+                deserialize(SerializedAccount),
+            {ok, Account};
+        {error, notfound} = E ->
+            E
+    end.
 
-put(_Account, AccountsTrees) ->
-    %% To be implemented when we have state Merkle trees
-    %% to hold accounts with balances
-    {ok, AccountsTrees}.
+get_with_proof(Pubkey, AccountsTree) ->
+    case aec_trees:get_with_proof(Pubkey, AccountsTree) of
+        {ok, {SerializedAccount, Proof}} when is_binary(SerializedAccount) ->
+            Account =
+                #account{pubkey = Pubkey} = %% Hardcoded expectation.
+                deserialize(SerializedAccount),
+            {ok, {Account, Proof}};
+        {error, notfound} = E ->
+            E
+    end.
+
+put(Account, AccountsTree) ->
+    {ok, _NewAccountsTree} =
+        aec_trees:put(Account#account.pubkey, serialize(Account), AccountsTree).
 
 earn(#account{balance = Balance0}, Amount, Height) ->
     {ok, #account{balance = Balance0 + Amount,
                   height = Height}}.
+
+root_hash(AccountsTree) ->
+    aec_trees:root_hash(AccountsTree).
+
+verify_proof(Account, RootHash, Proof) ->
+    aec_trees:verify_proof(
+      Account#account.pubkey, serialize(Account), RootHash, Proof).
+
+serialize(Account) ->
+    term_to_binary(Account).
+
+deserialize(SerializedAccount) ->
+    binary_to_term(SerializedAccount).
