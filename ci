@@ -27,6 +27,14 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 xref; )
         ;;
+    script-start_local_rel)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make local-build && make local-start && until ./_build/local/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/local/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
+        ;;
+    script-start_prod_rel)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make prod-build && make prod-start && until ./_build/prod/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/prod/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
+        ;;
     after_failure-*)
         true
         ;;

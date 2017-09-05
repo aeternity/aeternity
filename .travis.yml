@@ -18,6 +18,8 @@ env:
   - JOB=test
   - JOB=dialyzer
   - JOB=xref
+  - JOB=start_local_rel
+  - JOB=start_prod_rel
 cache:
   directories:
     - $HOME/.cache/rebar3
