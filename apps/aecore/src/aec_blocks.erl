@@ -6,7 +6,8 @@
          difficulty/1,
          set_nonce/2,
          top/0,
-         new/3]).
+         new/3,
+         to_header/1]).
 
 -ifdef(TEST).
 -compile(export_all).
@@ -38,10 +39,8 @@ top() ->
 -spec new(block(), list(signed_tx()), trees()) -> {ok, block()} | {error, term()}.
 new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
-    LastBlockDifficulty = difficulty(LastBlock),
     LastBlockHeader = to_header(LastBlock),
     Height = LastBlockHeight + 1,
-    Difficulty = aec_pow_sha256:recalculate_difficulty(LastBlockDifficulty, 1, 1), %% TODO: set properly
     case aec_tx:apply_signed(Txs, Trees0, Height) of
         {ok, Trees} ->
             {ok, #block{height = Height,
@@ -49,8 +48,8 @@ new(LastBlock, Txs, Trees0) ->
                         root_hash = aec_trees:all_trees_hash(Trees),
                         trees = Trees,
                         txs = Txs,
-                        difficulty = Difficulty,
-                        time = 0, %% TODO: set it
+                        difficulty = difficulty(LastBlock),
+                        time = aeu_time:now_in_msecs(),
                         version = ?CURRENT_BLOCK_VERSION}};
         {error, _Reason} = Error ->
             Error

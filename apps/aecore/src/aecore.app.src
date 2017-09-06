@@ -9,7 +9,8 @@
     crypto,
     lager,
     gb_merkle_trees,
-    rocksdb
+    rocksdb,
+    aeutils
    ]},
   {env,[]},
   {modules, []},
