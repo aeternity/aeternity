@@ -31,7 +31,7 @@ all_test_() ->
        end},
       {"Set new keys",
        fun() ->
-               {ok, _} = aec_keys:set(<<"secret">>, ?TEST_PRIV, ?TEST_PUB)
+               ?assertEqual(ok, aec_keys:set(<<"secret">>, ?TEST_PRIV, ?TEST_PUB))
        end}
      ]
     }.
