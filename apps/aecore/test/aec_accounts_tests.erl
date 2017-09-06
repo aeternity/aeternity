@@ -1,6 +1,7 @@
 -module(aec_accounts_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("common.hrl").
 -include("trees.hrl").
 
 smoke_test() ->

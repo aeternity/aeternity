@@ -1,21 +1,26 @@
 -module(aec_trees).
 
+-include("common.hrl").
 -include("trees.hrl").
 
 %% API
--export([accounts/1,
-         with_accounts/2]).
--export([new/0,
+-export([all_trees_hash/1,
+         accounts/1,
+         set_accounts/2,
+         new/0,
          get/2,
          get_with_proof/2,
          put/3,
          root_hash/1,
          verify_proof/4]).
 
+all_trees_hash(_Trees) ->
+    <<>>.
+
 accounts(Trees) ->
     Trees#trees.accounts.
 
-with_accounts(Trees, Accounts) ->
+set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
 
 new() ->

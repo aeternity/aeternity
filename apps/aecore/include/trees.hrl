@@ -1,5 +1,3 @@
--include("common.hrl").
-
 -record(trees, {
           accounts}).
 -type(trees() :: #trees{}).
@@ -11,3 +9,4 @@
           balance = 0    :: non_neg_integer(),
           nonce = 0      :: non_neg_integer(),
           height = 0     :: non_neg_integer()}).
+-type(account() :: #account{}).
