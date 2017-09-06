@@ -48,7 +48,7 @@
           id = 0          :: non_neg_integer(),
           account1 = <<>> :: pubkey(),
           account2 = <<>> :: pubkey(),
-          amount = 0      :: binary(),
+          amount = 0      :: non_neg_integer(),
           fee = 0         :: non_neg_integer(),
           nonce = 0       :: non_neg_integer()}).
 -type(channel_team_close_tx() :: #channel_team_close_tx{}).

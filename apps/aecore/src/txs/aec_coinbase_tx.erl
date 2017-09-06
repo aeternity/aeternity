@@ -15,7 +15,7 @@
 new(#{account := AccountPubkey}, _Trees) ->
     {ok, #coinbase_tx{account = AccountPubkey}}.
 
--spec run(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()}.
+-spec run(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 run(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {ok, Account0} = aec_accounts:get(AccountPubkey, AccountsTrees0),

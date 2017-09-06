@@ -4,14 +4,18 @@
 -include("trees.hrl").
 
 %% API
--export([new/0,
+-export([all_trees_hash/1,
+         accounts/1,
+         set_accounts/2,
+         new/0,
          get/2,
          get_with_proof/2,
          put/3,
          root_hash/1,
-         verify_proof/4,
-         accounts/1,
-         set_accounts/2]).
+         verify_proof/4]).
+
+all_trees_hash(_Trees) ->
+    <<>>.
 
 accounts(Trees) ->
     Trees#trees.accounts.

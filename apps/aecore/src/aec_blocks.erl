@@ -46,7 +46,7 @@ new(LastBlock, Txs, Trees0) ->
         {ok, Trees} ->
             {ok, #block{height = Height,
                         prev_hash = aec_sha256:hash(LastBlockHeader),
-                        root_hash = aec_trees:root_hash(Trees),
+                        root_hash = aec_trees:all_trees_hash(Trees),
                         trees = Trees,
                         txs = Txs,
                         difficulty = Difficulty,

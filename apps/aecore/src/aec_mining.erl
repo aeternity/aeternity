@@ -14,7 +14,6 @@
 
 -spec mine() -> {ok, block()} | {error, term()}.
 mine() ->
-    %% Randomly,
     mine(?DEFAULT_MINE_ATTEMPTS_COUNT).
 
 -spec mine(non_neg_integer()) -> {ok, block()} | {error, term()}.
