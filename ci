@@ -27,6 +27,18 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 xref; )
         ;;
+    script-start_local_rel)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make local-build && make local-start && until ./_build/local/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/local/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
+        ;;
+    script-start_prod_rel)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make prod-build && make prod-start && until ./_build/prod/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/prod/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
+        ;;
+    script-rocksdb_in_prod_rel)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && make prod-build && make prod-start && until ./_build/prod/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/prod/rel/epoch/bin/epoch eval 'Path = "/tmp/rocksdb.test", Options = [{create_if_missing, true}], {ok, Db} = rocksdb:open(Path, Options), not_found = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:put(Db, <<"my key">>, <<"my value">>, [{sync, true}]), {ok, <<"my value">>} = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:delete(Db, <<"my key">>, [{sync, true}]), not_found = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:close(Db).'; ) ## See https://gitlab.com/barrel-db/erlang-rocksdb/wikis/Getting-started
+        ;;
     after_failure-*)
         true
         ;;
