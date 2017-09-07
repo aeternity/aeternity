@@ -108,4 +108,4 @@ log2(N) when N > 1 ->
     1 + log2(N div 2).
 
 pick_nonce() ->
-    crypto:rand_uniform(0, ?NONCE_RANGE).
+    rand:uniform(?NONCE_RANGE).
