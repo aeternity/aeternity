@@ -2,6 +2,7 @@
 
 %% API
 -export([prev_hash/1,
+         height/1,
          time_in_secs/1,
          get_by_height/1,
          get_by_hash/1]).
@@ -11,6 +12,9 @@
 
 prev_hash(Header) ->
     Header#header.prev_hash.
+
+height(Header) ->
+    Header#header.height.
 
 time_in_secs(Header) ->
     Time = Header#header.time,

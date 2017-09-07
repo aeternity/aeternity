@@ -1,7 +1,7 @@
 -include("trees.hrl").
 
 -record(block, {
-          height = 0             :: non_neg_integer(),
+          height = 0             :: height(),
           prev_hash = <<>>       :: binary(),
           root_hash = <<>>       :: binary(), % Hash of all state Merkle trees included in #block.trees
           trees = #trees{}       :: trees(),
@@ -13,7 +13,7 @@
 -type(block() :: #block{}).
 
 -record(header, {
-          height = 0             :: non_neg_integer(),
+          height = 0             :: height(),
           prev_hash = <<>>       :: binary(),
           root_hash = <<>>       :: binary(),
           difficulty = 0         :: non_neg_integer(),
