@@ -41,6 +41,8 @@ killall:
 	@echo "Kill all beam processes from this host"
 	@pkill -9 beam || true
 
+clean:
+	@./rebar3 clean
 
 #
 # Build rules
