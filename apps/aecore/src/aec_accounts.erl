@@ -41,9 +41,9 @@ put(Account, AccountsTree) ->
     {ok, _NewAccountsTree} =
         aec_trees:put(Account#account.pubkey, serialize(Account), AccountsTree).
 
-earn(#account{balance = Balance0}, Amount, Height) ->
-    {ok, #account{balance = Balance0 + Amount,
-                  height = Height}}.
+earn(#account{balance = Balance0} = Account0, Amount, Height) ->
+    {ok, Account0#account{balance = Balance0 + Amount,
+                          height = Height}}.
 
 root_hash(AccountsTree) ->
     aec_trees:root_hash(AccountsTree).
