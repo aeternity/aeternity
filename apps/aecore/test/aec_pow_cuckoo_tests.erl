@@ -28,7 +28,7 @@ pow_test_() ->
                 BigDiff = 256*256 + 255 + 1,
                 {T1, Res} = timer:tc(?TEST_MODULE, generate,
                                      [<<"wsffgujnjkqhduihsahswgdf">>, 169,
-                                      BigDiff, 7, 20, 100]),
+                                      BigDiff, 7, 5, 100]),
                 ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
                 ?assertEqual(ok, element(1, Res)),
 
@@ -46,7 +46,7 @@ pow_test_() ->
                 %% Unlikely to succeed after 2 steps
                 SmallDiff = 256*2 + 1,
                 Res = ?TEST_MODULE:generate(<<"wsffgujnjkqhduihsahswgdf">>, 169,
-                                            SmallDiff, 7, 20, 2),
+                                            SmallDiff, 7, 5, 2),
                 ?debugFmt("Received result ~p~n", [Res]),
                 ?assertEqual({error, generation_count_exhausted}, Res)
         end}

@@ -18,7 +18,7 @@
 #define HEADERLEN 80
 
 
-node_t* generate(char* header, int nonce, int ntrims, int nthreads) {
+node_t* generate_single(char* header, int nonce, int ntrims, int nthreads) {
   printf("Looking for %d-cycle on cuckoo%d(\"%s\",%d) with 50%% edges, %d trims, %d threads\n",
          PROOFSIZE, EDGEBITS + 1, header, nonce, ntrims, nthreads);
 

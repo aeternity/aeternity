@@ -16,7 +16,7 @@
 #define HEADERLEN 80
 
 
-extern node_t* generate(char* header, int nonce, int ntrims, int nthreads);
+extern node_t* generate_single(char* header, int nonce, int ntrims, int nthreads);
 extern int verify(char* header, int nonce, node_t soln[PROOFSIZE]);
 
 int read_solution(ErlNifEnv* env, const ERL_NIF_TERM e_soln, node_t soln[PROOFSIZE]);
@@ -27,7 +27,7 @@ int get_uint64(ErlNifEnv* env, const ERL_NIF_TERM from, uint64_t* to);
 /// API
 ///=============================================================================
 
-static ERL_NIF_TERM generate_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+static ERL_NIF_TERM generate_single_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 {
   int nonce, ntrims, nthreads;
   char header[HEADERLEN];
@@ -40,7 +40,7 @@ static ERL_NIF_TERM generate_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
       !enif_get_int(env, argv[3], &nthreads))
     return enif_make_badarg(env);
 
-  node_t* result = generate(header, nonce, ntrims, nthreads);
+  node_t* result = generate_single(header, nonce, ntrims, nthreads);
 
   if (result) {
     // success: encode result
@@ -92,9 +92,9 @@ static ERL_NIF_TERM get_node_size_nif(ErlNifEnv* env, int argc, const ERL_NIF_TE
 }
 
 static ErlNifFunc nif_funcs[] = {
-  {"generate", 4, generate_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
-  {"verify", 3, verify_nif, 0},
-  {"get_node_size", 0, get_node_size_nif, 0}
+  {"generate_single", 4, generate_single_nif, ERL_NIF_DIRTY_JOB_CPU_BOUND},
+  {"verify",          3, verify_nif,          0},
+  {"get_node_size",   0, get_node_size_nif,   0}
 };
 
 ERL_NIF_INIT(aec_pow_cuckoo, nif_funcs, NULL, NULL, NULL, NULL);
