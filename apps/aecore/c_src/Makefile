@@ -7,8 +7,6 @@ PROJECT := aec_pow_cuckoo
 
 LIBDIR := cuckoo
 
-C_TEST := test
-
 ERTS_INCLUDE_DIR ?= $(shell erl -noshell -s init stop -eval "io:format(\"~s/erts-~s/include/\", [code:root_dir(), erlang:system_info(version)]).")
 
 C_SRC_DIR = $(CURDIR)
@@ -122,10 +120,7 @@ $(CUCKOO_SRCS): deps
 $(CUCKOO_OBJECTS): deps $(CUCKOO_SRCS)
 
 clean: ## Clean all files
-	@rm -f $(OBJECTS) $(C_TEST) $(LIB_SO)
+	@rm -f $(OBJECTS) $(LIB_SO)
 
 distclean: clean
 	@rm -fR $(LIBDIR)
-
-$(C_TEST): test.o
-	$(link_verbose) $(CC) -o $(C_TEST) test.o $(LIB_SO) $(LDLIBS)
