@@ -9,7 +9,8 @@
 %%%-------------------------------------------------------------------
 -module(aec_pow_cuckoo).
 
--export([generate/6,
+-export([generate/4,
+         generate/6,
          verify/4,
          recalculate_difficulty/3]).
 
@@ -36,6 +37,28 @@ init() ->
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% Proof of Work generation with default settings, multiple attempts
+%%
+%% According to my experiments, increasing the number of trims from the default
+%% 7 in John Tromp's code does not really affect speed, reducing it causes failure.
+%%
+%% Measured execution times (seconds) for 7 trims for threads:
+%%   1: 44.61 46.92 46.41
+%%   2: 15.17 15.75 19.19
+%%   3:  9.35 10.92  9.73
+%%   4: 10.66  7.83 10.02
+%%   5:  7.41  7.47  7.32
+%%  10:  7.27  6.70  6.38
+%%  20:  6.25  6.74  6.41
+%%
+%%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
+%%------------------------------------------------------------------------------
+-spec generate(Data :: binary(), Nonce :: integer(), Difficulty :: aec_sha256:sci_int(),
+               Retries :: integer()) -> pow_cuckoo_result().
+generate(Data, Nonce, Difficulty, Retries) ->
+    generate(Data, Nonce, Difficulty, 7, 5, Retries).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation, multiple attempts
@@ -82,7 +105,7 @@ recalculate_difficulty(Difficulty, Expected, Actual) ->
 generate_hashed(_Hash, _Nonce, _Difficulty, _Trims, _Threads, 0) ->
     {error, generation_count_exhausted};
 generate_hashed(Hash, Nonce, Difficulty, Trims, Threads, Retries) when Retries > 0 ->
-    case generate(Hash, Nonce, Trims, Threads) of
+    case generate_single(Hash, Nonce, Trims, Threads) of
         {error, no_solutions} ->
             generate_hashed(Hash, Nonce + 1, Difficulty, Trims, Threads, Retries - 1);
         {ok, Soln} = Result ->
@@ -97,9 +120,9 @@ generate_hashed(Hash, Nonce, Difficulty, Trims, Threads, Retries) when Retries >
 %%------------------------------------------------------------------------------
 %% Proof of Work generation, a single attempt
 %%------------------------------------------------------------------------------
--spec generate(Header :: string(), Nonce :: integer(), Trims :: integer(),
+-spec generate_single(Header :: string(), Nonce :: integer(), Trims :: integer(),
                Threads :: integer()) -> pow_cuckoo_result().
-generate(_Header, _Nonce, _Trims, _Threads) ->
+generate_single(_Header, _Nonce, _Trims, _Threads) ->
     erlang:nif_error(nif_library_not_loaded).
 
 %%------------------------------------------------------------------------------
