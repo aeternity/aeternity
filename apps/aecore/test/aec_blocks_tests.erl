@@ -18,7 +18,8 @@ new_block_test_() ->
              {ok, NewBlock} = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
 
              ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
-             ?assertEqual(aec_sha256:hash(BlockHeader), NewBlock#block.prev_hash),
+             ?assertEqual(aec_sha256:hash(BlockHeader),
+                          ?TEST_MODULE:prev_hash(NewBlock)),
              ?assertEqual([], NewBlock#block.txs),
              ?assertEqual(17, NewBlock#block.difficulty),
              ?assertEqual(1, NewBlock#block.version)

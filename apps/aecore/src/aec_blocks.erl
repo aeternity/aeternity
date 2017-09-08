@@ -1,7 +1,8 @@
 -module(aec_blocks).
 
 %% API
--export([height/1,
+-export([prev_hash/1,
+         height/1,
          trees/1,
          difficulty/1,
          set_nonce/2,
@@ -18,6 +19,9 @@
 -include("txs.hrl").
 
 -define(CURRENT_BLOCK_VERSION, 1).
+
+prev_hash(Block) ->
+    Block#block.prev_hash.
 
 height(Block) ->
     Block#block.height.
