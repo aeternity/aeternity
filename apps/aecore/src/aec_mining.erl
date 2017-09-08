@@ -8,6 +8,7 @@
 -include("blocks.hrl").
 -include("txs.hrl").
 
+
 -define(DEFAULT_MINE_ATTEMPTS_COUNT, 10).
 
 %% API
@@ -24,6 +25,7 @@ mine(Attempts) ->
     case aec_blocks:new(LastBlock, Txs, Trees) of
         {ok, Block0} ->
             Block = maybe_recalculate_difficulty(Block0),
+
             case mine(Block, Attempts) of
                 {ok, _Block} = Ok ->
                     Ok;
@@ -40,8 +42,9 @@ mine(Attempts) ->
 -spec mine(block(), non_neg_integer()) -> {ok, block()} | {error, term()}.
 mine(Block, Attempts) ->
     Difficulty = aec_blocks:difficulty(Block),
-    case aec_pow_sha256:generate(Block, Difficulty, Attempts) of
-        {ok, Nonce} ->
+    Mod = aec_pow:pow_module(),
+    case Mod:generate(Block, Difficulty, Attempts) of
+        {ok, {Nonce, _}} ->
             {ok, aec_blocks:set_nonce(Block, Nonce)};
         {error, generation_count_exhausted} = Error ->
             Error
@@ -86,7 +89,7 @@ calculate_difficulty(NewBlock, BlocksToCheckCount) ->
     CurrentDifficulty = NewBlock#block.difficulty,
     CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
     ExpectedRate = aec_governance:expected_block_mine_rate(),
-    aec_pow_sha256:recalculate_difficulty(CurrentDifficulty, ExpectedRate, CurrentRate).
+    aec_pow:recalculate_difficulty(CurrentDifficulty, ExpectedRate, CurrentRate).
 
 -spec get_current_rate(block(), non_neg_integer()) -> non_neg_integer().
 get_current_rate(Block, BlocksToCheckCount) ->

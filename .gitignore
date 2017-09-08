@@ -14,3 +14,5 @@ erl_crash.dump
 logs
 _build
 .idea
+apps/aecore/c_src/cuckoo
+apps/aecore/priv

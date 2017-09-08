@@ -87,7 +87,6 @@ cpp_verbose = $(cpp_verbose_$(V))
 link_verbose_0 = @echo " LD    " $(@F);
 link_verbose = $(link_verbose_$(V))
 
-#SOURCES := $(shell find $(C_SRC_DIR) -maxdepth 1 -type f \( -name "*.cpp" -o -name "*.C" -o -name "*.cc" -o -name "*.cpp" \))
 OBJECTS = aec_pow_cuckoo.o aec_pow_cuckoo_nif.o
 CUCKOO_SRCS = $(LIBDIR)/src/blake2b-ref.c
 CUCKOO_OBJECTS = $(LIBDIR)/src/blake2b-ref.o
