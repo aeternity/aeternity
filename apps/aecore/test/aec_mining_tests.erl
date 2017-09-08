@@ -12,7 +12,7 @@
 
 mine_block_test_() ->
     Modules = [aec_pow_sha256, aec_pow_cuckoo],
-    TargetNonces = [63, 1, 30, 18],
+    TargetNonces = [106, 1, 31, 97],
     [{foreach,
       fun() ->
               application:start(crypto),
@@ -47,6 +47,12 @@ mine_block_test_() ->
 
                 ?assertEqual(1, Block#block.height),
                 ?assertEqual(TNonce, Block#block.nonce),
+                case Mod of
+                    aec_pow_cuckoo ->
+                        ?assertEqual(42, length(Block#block.pow_evidence));
+                    _ ->
+                        ?assertEqual([], Block#block.pow_evidence)
+                end,
                 ?assertEqual(1, length(Block#block.txs))
         end
        },
@@ -92,6 +98,12 @@ mine_block_test_() ->
 
                 ?assertEqual(30, Block#block.height),
                 ?assertEqual(TNonce, Block#block.nonce),
+                case Mod of
+                    aec_pow_cuckoo ->
+                        ?assertEqual(42, length(Block#block.pow_evidence));
+                    _ ->
+                        ?assertEqual([], Block#block.pow_evidence)
+                end,
                 ?assertEqual(?MAX_DIFFICULTY, Block#block.difficulty),
                 ?assertEqual(2, meck:num_calls(aec_governance, recalculate_difficulty_frequency, 0)),
                 ?assertEqual(1, meck:num_calls(aec_governance, expected_block_mine_rate, 0))
@@ -120,6 +132,12 @@ mine_block_test_() ->
 
                 ?assertEqual(200, Block#block.height),
                 ?assertEqual(TNonce, Block#block.nonce),
+                case Mod of
+                    aec_pow_cuckoo ->
+                        ?assertEqual(42, length(Block#block.pow_evidence));
+                    _ ->
+                        ?assertEqual([], Block#block.pow_evidence)
+                end,
                 ?assertEqual(true, ?MAX_DIFFICULTY < Block#block.difficulty)
         end
        }

@@ -44,8 +44,8 @@ mine(Block, Attempts) ->
     Difficulty = aec_blocks:difficulty(Block),
     Mod = aec_pow:pow_module(),
     case Mod:generate(Block, Difficulty, Attempts) of
-        {ok, {Nonce, _}} ->
-            {ok, aec_blocks:set_nonce(Block, Nonce)};
+        {ok, {Nonce, Evd}} ->
+            {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
         {error, generation_count_exhausted} = Error ->
             Error
     end.
