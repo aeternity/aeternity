@@ -39,6 +39,21 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && make prod-build && make prod-start && until ./_build/prod/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/prod/rel/epoch/bin/epoch eval 'Path = "/tmp/rocksdb.test", Options = [{create_if_missing, true}], {ok, Db} = rocksdb:open(Path, Options), not_found = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:put(Db, <<"my key">>, <<"my value">>, [{sync, true}]), {ok, <<"my value">>} = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:delete(Db, <<"my key">>, [{sync, true}]), not_found = rocksdb:get(Db, <<"my key">>, []), ok = rocksdb:close(Db).'; ) ## See https://gitlab.com/barrel-db/erlang-rocksdb/wikis/Getting-started
         ;;
+    after_failure-start_local_rel)
+        BuildDir="${3:?}"
+        ls -l "${BuildDir:?}"/_build/local/rel/epoch/log
+        for F in "${BuildDir:?}"/_build/local/rel/epoch/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ;;
+    after_failure-start_prod_rel)
+        BuildDir="${3:?}"
+        ls -l "${BuildDir:?}"/_build/prod/rel/epoch/log
+        for F in "${BuildDir:?}"/_build/prod/rel/epoch/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ;;
+    after_failure-rocksdb_in_prod_rel)
+        BuildDir="${3:?}"
+        ls -l "${BuildDir:?}"/_build/prod/rel/epoch/log
+        for F in "${BuildDir:?}"/_build/prod/rel/epoch/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        ;;
     after_failure-*)
         true
         ;;

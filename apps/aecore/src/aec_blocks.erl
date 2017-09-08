@@ -4,8 +4,9 @@
 -export([prev_hash/1,
          height/1,
          trees/1,
+         target/1,
          difficulty/1,
-         set_nonce/2,
+         set_nonce/3,
          new/3,
          to_header/1,
          serialize_for_network/1,
@@ -37,11 +38,16 @@ height(Block) ->
 trees(Block) ->
     Block#block.trees.
 
-difficulty(Block) ->
-    Block#block.difficulty.
+target(Block) ->
+    Block#block.target.
 
-set_nonce(Block, Nonce) ->
-    Block#block{nonce = Nonce}.
+difficulty(Block) ->
+    aec_pow:target_to_difficulty(target(Block)).
+
+%% Sets the evidence of PoW,too,  for Cuckoo Cycle
+set_nonce(Block, Nonce, Evd) ->
+    Block#block{nonce = Nonce,
+                pow_evidence = Evd}.
 
 -spec new(block(), list(signed_tx()), trees()) -> {ok, block()} | {error, term()}.
 new(LastBlock, Txs, Trees0) ->
@@ -55,7 +61,7 @@ new(LastBlock, Txs, Trees0) ->
                         root_hash = aec_trees:all_trees_hash(Trees),
                         trees = Trees,
                         txs = Txs,
-                        difficulty = difficulty(LastBlock),
+                        target = target(LastBlock),
                         time = aeu_time:now_in_msecs(),
                         version = ?CURRENT_BLOCK_VERSION}};
         {error, _Reason} = Error ->
@@ -66,16 +72,18 @@ new(LastBlock, Txs, Trees0) ->
 to_header(#block{height = Height,
                  prev_hash = PrevHash,
                  root_hash = RootHash,
-                 difficulty = Difficulty,
+                 target = Target,
                  nonce = Nonce,
                  time = Time,
-                 version = Version}) ->
+                 version = Version,
+                 pow_evidence = Evd}) ->
     #header{height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
-            difficulty = Difficulty,
+            target = Target,
             nonce = Nonce,
             time = Time,
+            pow_evidence = Evd,
             version = Version}.
 
 -spec serialize_for_network(BlockInternalRepresentation) ->

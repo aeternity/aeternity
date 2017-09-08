@@ -1,4 +1,4 @@
-.PHONY: deps deps_build clean distclean help
+.PHONY: deps deps_build clean distclean help test
 
 CURDIR := $(shell pwd)
 BASEDIR := $(abspath $(CURDIR)/..)
@@ -87,7 +87,6 @@ cpp_verbose = $(cpp_verbose_$(V))
 link_verbose_0 = @echo " LD    " $(@F);
 link_verbose = $(link_verbose_$(V))
 
-#SOURCES := $(shell find $(C_SRC_DIR) -maxdepth 1 -type f \( -name "*.cpp" -o -name "*.C" -o -name "*.cc" -o -name "*.cpp" \))
 OBJECTS = aec_pow_cuckoo.o aec_pow_cuckoo_nif.o
 CUCKOO_SRCS = $(LIBDIR)/src/blake2b-ref.c
 CUCKOO_OBJECTS = $(LIBDIR)/src/blake2b-ref.o
@@ -99,6 +98,10 @@ help: ## This documentation
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 all: deps $(LIB_SO) ## Build all
+
+# Use 256-times smaller memory footprint for nodes/edges in order to speed up unit tests
+test: all
+      CXXFLAGS += -DEDGEBITS=19
 
 $(LIB_SO): $(OBJECTS) $(CUCKOO_OBJECTS)
 	@mkdir -p $(BASEDIR)/priv/

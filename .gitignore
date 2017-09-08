@@ -16,3 +16,5 @@ _build
 .idea
 config/*/sys.config
 config/sys.config
+apps/aecore/c_src/cuckoo
+apps/aecore/priv

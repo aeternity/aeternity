@@ -9,44 +9,42 @@
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("pow.hrl").
 
 -define(TEST_MODULE, aec_pow_cuckoo).
 
 pow_test_() ->
     {setup,
-     fun() -> ok end ,
-     fun(_) -> ok end,
+     fun setup/0,
+     fun teardown/1,
      [{"Fail if retry count is zero",
        fun() ->
                ?assertEqual({error, generation_count_exhausted},
-                            ?TEST_MODULE:generate(<<"hello there">>, 5555, 0, 7, 7, 0))
+                            ?TEST_MODULE:generate(<<"hello there">>, 5555, 0))
        end},
-      {"Generate with a winning nonce and big difficulty, verify it",
+      {"Generate with a winning nonce and high target threshold, verify it",
        {timeout, 60,
         fun() ->
                 %% succeeds in a single step
-                BigDiff = 256*256 + 255 + 1,
+                SmallDiff = 0,
                 {T1, Res} = timer:tc(?TEST_MODULE, generate,
-                                     [<<"wsffgujnjkqhduihsahswgdf">>, 169,
-                                      BigDiff, 7, 5, 100]),
+                                     [<<"wsffgujnjkqhduihsahswgdf">>, ?HIGHEST_TARGET_SCI, 100]),
                 ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
                 ?assertEqual(ok, element(1, Res)),
 
                 %% verify the beast
-                {ok, Soln} = Res,
+                {ok, {Nonce, Soln}} = Res,
                 {T2, Res2} = timer:tc(?TEST_MODULE, verify,
-                                      [<<"wsffgujnjkqhduihsahswgdf">>, 169, Soln, BigDiff]),
+                                      [<<"wsffgujnjkqhduihsahswgdf">>, Nonce, Soln, ?HIGHEST_TARGET_SCI]),
                 ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
                 ?assertEqual(true, Res2)
         end}
       },
-      {"Generate with a winning nonce but difficulty, shall fail",
+      {"Generate with a winning nonce but low difficulty, shall fail",
        {timeout, 90,
         fun() ->
                 %% Unlikely to succeed after 2 steps
-                SmallDiff = 256*2 + 1,
-                Res = ?TEST_MODULE:generate(<<"wsffgujnjkqhduihsahswgdf">>, 169,
-                                            SmallDiff, 7, 5, 2),
+                Res = ?TEST_MODULE:generate(<<"wsffgujnjkqhduihsahswgdf">>, 16#01010000, 2),
                 ?debugFmt("Received result ~p~n", [Res]),
                 ?assertEqual({error, generation_count_exhausted}, Res)
         end}
@@ -75,5 +73,14 @@ misc_test_() ->
        end}
      ]
     }.
+
+setup() ->
+    ?debugFmt("Starting test ~p~n", [?MODULE]),
+    meck:new(aec_pow, [passthrough]),
+    meck:expect(aec_pow, pick_nonce, fun() -> 188 end).
+
+teardown(_) ->
+    meck:validate(aec_pow),
+    meck:unload(aec_pow).
 
 -endif.
