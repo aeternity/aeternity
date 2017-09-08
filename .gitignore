@@ -14,3 +14,5 @@ erl_crash.dump
 logs
 _build
 .idea
+config/*/sys.config
+config/sys.config
