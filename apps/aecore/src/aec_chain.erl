@@ -14,7 +14,8 @@
 %% API
 -export([start_link/1,
          stop/0]).
--export([top_header/0,
+-export([top/0,
+         top_header/0,
          top_block/0,
          get_header_by_hash/1,
          get_block_by_hash/1,
@@ -60,6 +61,16 @@ start_link(GenesisBlock) ->
 
 stop() ->
     gen_server:stop(?SERVER).
+
+%% Returns the highest known block in the chain with its state trees.
+%%
+%% The heighest known block may be lower than the highest block header
+%% in the chain as returned by `top_header/0`.
+-spec top() -> {ok, block()}.
+top() ->
+    {ok, BlockWithoutStateTrees = #block{}} = top_block(),
+    BlockWithStateTrees = BlockWithoutStateTrees, %% TODO: Enrich block with state trees.
+    {ok, BlockWithStateTrees}.
 
 %% Returns the highest block header in the chain.
 -spec top_header() -> {ok, header()}.

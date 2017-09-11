@@ -18,7 +18,7 @@ mine() ->
 
 -spec mine(non_neg_integer()) -> {ok, block()} | {error, term()}.
 mine(Attempts) ->
-    {ok, LastBlock} = aec_blocks:top(),
+    {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),
     Txs = get_txs_to_mine(Trees),
     case aec_blocks:new(LastBlock, Txs, Trees) of

@@ -32,7 +32,7 @@ mine_block_test_() ->
       {"Find a new block",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
-               meck:expect(aec_blocks, top, 0, {ok, #block{difficulty = ?MAX_DIFFICULTY}}),
+               meck:expect(aec_chain, top, 0, {ok, #block{difficulty = ?MAX_DIFFICULTY}}),
                meck:expect(aec_pow_sha256, pick_nonce, 0, 1),
                meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
 
@@ -45,7 +45,7 @@ mine_block_test_() ->
       {"Proof of work fails with generation_count_exhausted",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
-               meck:expect(aec_blocks, top, 0, {ok, #block{difficulty = 1}}),
+               meck:expect(aec_chain, top, 0, {ok, #block{difficulty = 1}}),
                meck:expect(aec_pow_sha256, pick_nonce, 0, 1),
                meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
 
@@ -53,6 +53,7 @@ mine_block_test_() ->
        end},
       {"Cannot apply signed tx",
        fun() ->
+               meck:expect(aec_chain, top, 0, {ok, #block{}}),
                meck:expect(aec_tx, apply_signed, 3, {error, tx_failed}),
 
                ?assertEqual({error, tx_failed}, ?TEST_MODULE:mine())
@@ -61,7 +62,7 @@ mine_block_test_() ->
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
                Now = 1504731164584,
-               meck:expect(aec_blocks, top, 0, {ok, #block{}}),
+               meck:expect(aec_chain, top, 0, {ok, #block{}}),
                meck:expect(aec_blocks, new, 3,
                            {ok, #block{height = 30,
                                        difficulty = ?MAX_DIFFICULTY,
@@ -86,7 +87,7 @@ mine_block_test_() ->
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
                Now = 1504731164584,
-               meck:expect(aec_blocks, top, 0, {ok, #block{}}),
+               meck:expect(aec_chain, top, 0, {ok, #block{}}),
                meck:expect(aec_blocks, new, 3,
                            {ok, #block{height = 200,
                                        difficulty = ?MAX_DIFFICULTY,
