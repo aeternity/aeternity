@@ -62,12 +62,17 @@ stop() ->
     gen_server:stop(?SERVER).
 
 %% Returns the highest block header in the chain.
+-spec top_header() -> {ok, header()}.
 top_header() ->
     %% TODO Store top header in ETS table so not to require server state.
     gen_server:call(?SERVER, {top_header},
                     ?DEFAULT_CALL_TIMEOUT).
 
 %% Returns the highest known block in the chain.
+%%
+%% The heighest known block may be lower than the highest block header
+%% in the chain as returned by `top_header/0`.
+-spec top_block() -> {ok, aec_blocks:block_deserialized_from_network()}.
 top_block() ->
     %% TODO Store top block in ETS table so not to require server state.
     gen_server:call(?SERVER, {top_block},
