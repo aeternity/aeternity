@@ -7,6 +7,22 @@
 fake_genesis_block() ->
     #block{height = 0, prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>}.
 
+top_test_() ->
+    {foreach,
+     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     [{"Initialize chain with genesis block, then check top block with related state trees",
+       fun() ->
+               GB = fake_genesis_block(),
+               ?assertEqual({ok, GB}, aec_chain:top_block()),
+
+               {ok, Top} = aec_chain:top(),
+               %% Check block apart from state trees.
+               ?assertEqual(GB, Top#block{trees = GB#block.trees}),
+               %% Check state trees in block.
+               _ = Top#block.trees %% TODO Check.
+       end}]}.
+
 genesis_test_() ->
     {setup,
      fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,

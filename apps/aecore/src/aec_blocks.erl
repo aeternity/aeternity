@@ -6,7 +6,6 @@
          trees/1,
          difficulty/1,
          set_nonce/2,
-         top/0,
          new/3,
          to_header/1,
          serialize_for_network/1,
@@ -43,11 +42,6 @@ difficulty(Block) ->
 
 set_nonce(Block, Nonce) ->
     Block#block{nonce = Nonce}.
-
-top() ->
-    %% TODO: fetch the most recent block from storage
-    %% and transform it to #block{} record
-    {ok, #block{}}.
 
 -spec new(block(), list(signed_tx()), trees()) -> {ok, block()} | {error, term()}.
 new(LastBlock, Txs, Trees0) ->
