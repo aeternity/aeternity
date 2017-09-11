@@ -456,6 +456,10 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
                         aec_headers:serialize_for_network(Header),
                     {ok, HeaderHash} =
                         aec_headers:hash_network_serialization(SerializedHeader),
+                    %% As header is a successor of the current top, it
+                    %% should not be stored yet.  So store header
+                    %% without first checking that it is not yet
+                    %% stored.
                     {ok, NewHeadersDb} =
                         headers_db_put(HeadersDb, HeaderHash, SerializedHeader),
                     {ok, NewTopHeaderDb} =
