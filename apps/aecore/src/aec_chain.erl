@@ -358,7 +358,7 @@ do_find_genesis_header_from_header_hash(HeaderHash, Height, HeadersDb) ->
 
 -type do_get_header_by_hash_reply() ::
         {ok, header()} |
-        {error, Reason::{header_not_found, Details::{top_header, header()}}}.
+        {error, Reason::{header_not_found, {top_header, header()}}}.
 -spec do_get_header_by_hash(block_header_hash(), header(), headers_db()) ->
                                    do_get_header_by_hash_reply().
 do_get_header_by_hash(HeaderHash, TopHeader, HeadersDb) ->
@@ -372,7 +372,7 @@ do_get_header_by_hash(HeaderHash, TopHeader, HeadersDb) ->
 
 -type do_get_block_by_hash_reply() ::
         {ok, header()} |
-        {error, Reason::{block_not_found, Details::{top_header, header()}}}.
+        {error, Reason::{block_not_found, {top_header, header()}}}.
 -spec do_get_block_by_hash(block_header_hash(), header(), blocks_db()) ->
                                   do_get_block_by_hash_reply().
 do_get_block_by_hash(HeaderHash, TopHeader, BlocksDb) ->
@@ -385,8 +385,8 @@ do_get_block_by_hash(HeaderHash, TopHeader, BlocksDb) ->
 
 -type do_get_header_by_height_reply() ::
         {ok, header()} |
-        {error, Reason::{chain_too_short, Details::{{chain_height, height()},
-                                                    {top_header, header()}}}}.
+        {error, Reason::{chain_too_short, {{chain_height, height()},
+                                           {top_header, header()}}}}.
 -spec do_get_header_by_height(height(), header(), headers_db()) ->
                                      do_get_header_by_height_reply().
 do_get_header_by_height(Height, TopHeader, HeadersDb) ->
@@ -419,8 +419,8 @@ do_get_past_header(Distance, CurrentHeader, HeadersDb)
 
 -type do_get_block_by_height_reply() ::
         {ok, block()} |
-        {error, Reason::{chain_too_short, Details::{{chain_height, height()},
-                                                    {top_header, header()}}} |
+        {error, Reason::{chain_too_short, {{chain_height, height()},
+                                           {top_header, header()}}} |
                         {block_not_found, {top_header, header()}}
         }.
 -spec do_get_block_by_height(height(), header(), headers_db(), blocks_db()) ->
