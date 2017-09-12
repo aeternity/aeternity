@@ -114,11 +114,15 @@ get_block_by_height(Height) ->
 
 %% Insert in the chain the specified header if it is a successor of
 %% the top header in the chain.
+-spec insert_header(header()) -> do_insert_header_reply_ok() |
+                                 do_insert_header_reply_error().
 insert_header(Header) ->
     gen_server:call(?SERVER, {insert_header, Header},
                     ?DEFAULT_CALL_TIMEOUT).
 
 %% Store the specified block if its header is in the chain.
+-spec write_block(do_write_block_argument()) -> do_write_block_reply_ok() |
+                                                do_write_block_reply_error().
 write_block(Block) ->
     gen_server:call(?SERVER, {write_block, Block},
                     ?DEFAULT_CALL_TIMEOUT).
@@ -440,6 +444,16 @@ do_get_block_by_height(Height, TopHeader, HeadersDb, BlocksDb) ->
             end
     end.
 
+-type do_insert_header_reply_ok() :: ok.
+-type do_insert_header_reply_error() ::
+        {error, Reason::{previous_hash_is_not_top, {top_header, header()}} |
+                        {height_inconsistent_with_previous_hash, {top_header,
+                                                                  header()}}
+        }.
+-spec do_insert_header(header(), header(), top_header_db(), headers_db()) ->
+                              do_insert_header_reply_error() |
+                              {ok, {do_insert_header_reply_ok(), NewState}} when
+      NewState :: {top_header_db(), headers_db()}.
 do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
     {ok, TopHeaderHash} = aec_headers:hash_internal_representation(TopHeader),
     case aec_headers:prev_hash(Header) of
@@ -475,6 +489,19 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
                 {error, {previous_hash_is_not_top, {top_header, TopHeader}}}
     end.
 
+-type do_write_block_argument() ::
+        block() | aec_blocks:block_deserialized_from_network().
+-type do_write_block_reply_ok() :: ok.
+-type do_write_block_reply_error() ::
+        {error, Reason::{header_not_in_chain, {top_header, header()}} |
+                        {block_already_stored, aec_blocks:block_serialized_for_network()}
+        }.
+-spec do_write_block(do_write_block_argument(),
+                     header(), aec_blocks:block_deserialized_from_network(),
+                     headers_db(), blocks_db()) ->
+                            do_write_block_reply_error() |
+                            {ok, {do_write_block_reply_ok(), NewState}} when
+      NewState :: {aec_blocks:block_deserialized_from_network(), blocks_db()}.
 do_write_block(Block, TopHeader, TopBlock, HeadersDb, BlocksDb) ->
     Header = aec_blocks:to_header(Block),
     {ok, SerializedHeader} = aec_headers:serialize_for_network(Header),
