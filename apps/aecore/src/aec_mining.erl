@@ -94,7 +94,7 @@ get_current_rate(Block, BlocksToCheckCount) ->
     BlockHeight = aec_blocks:height(Block),
 
     FirstBlockHeight = BlockHeight - BlocksToCheckCount,
-    {ok, FirstBlockHeader} = aec_headers:get_by_height(FirstBlockHeight),
+    {ok, FirstBlockHeader} = aec_chain:get_header_by_height(FirstBlockHeight), %% TODO: Ensure height refers to correct chain when we have support for longest chain.
 
     mining_rate_between_blocks(BlockHeader, FirstBlockHeader, BlocksToCheckCount).
 
