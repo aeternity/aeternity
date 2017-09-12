@@ -68,11 +68,11 @@ header_chain_test_() ->
              ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
              ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
-             ?assertEqual({error, block_not_found},
+             ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B1H)),
              {ok, B2H} = aec_headers:hash_internal_representation(BH2),
              ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
-             ?assertEqual({error, block_not_found},
+             ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B2H)),
 
              %% Check by height.
@@ -125,7 +125,7 @@ block_chain_test_() ->
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
                ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
-               ?assertEqual({error, block_not_found},
+               ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_internal_representation(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
@@ -178,7 +178,7 @@ block_chain_test_() ->
                ?assertEqual({ok, B1}, aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_internal_representation(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
-               ?assertEqual({error, block_not_found},
+               ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B2H)),
 
                %% Check by height.
@@ -195,4 +195,31 @@ block_chain_test_() ->
                ?assertEqual({error, {chain_too_short, {{chain_height, 2},
                                                        {top_header, BH2}}
                                     }}, aec_chain:get_block_by_height(3))
+       end}]}.
+
+%% Cover unhappy paths not covered in any other tests.
+unhappy_paths_test_() ->
+    {foreach,
+     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     [{"Get header by hash - case not found",
+       fun() ->
+               %% Check chain is at genesis.
+               B0 = fake_genesis_block(),
+               BH0 = aec_blocks:to_header(B0),
+               ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Add a header to the chain.
+               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
+               BH1 = #header{height = 1, prev_hash = B0H},
+               ?assertEqual(ok, aec_chain:insert_header(BH1)),
+
+               %% Attempt to lookup header not added to chain.
+               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               BH2 = #header{height = 2, prev_hash = B1H},
+               {ok, B2H} = aec_headers:hash_internal_representation(BH2),
+
+               %% Attempt to get by hash header not added to chain.
+               ?assertEqual({error, {header_not_found, {top_header, BH1}}},
+                            aec_chain:get_header_by_hash(B2H))
        end}]}.
