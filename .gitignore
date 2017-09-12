@@ -16,3 +16,5 @@ _build
 .idea
 config/*/sys.config
 config/sys.config
+priv
+c_src
