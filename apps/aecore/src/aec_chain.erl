@@ -34,6 +34,14 @@
 
 -define(SERVER, ?MODULE).
 -define(DEFAULT_CALL_TIMEOUT, infinity). %% For synchronous persistence and for forced chain (fork).
+
+-define(IS_HEIGHT(H), %% For guard.
+        (is_integer(H) andalso (H >= ?GENESIS_HEIGHT))
+       ).
+-define(IS_HEIGHT_AFTER_GENESIS(H), %% For guard.
+        (is_integer(H) andalso (H > ?GENESIS_HEIGHT))
+       ).
+
 -define(TOP_HEADER, top_header).
 
 -record(top_state,
@@ -179,13 +187,13 @@ handle_call({get_block_by_hash,
                                  State#state.blocks_db),
     {reply, Reply, State};
 handle_call({get_header_by_height, Height}, _From, State)
-  when is_integer(Height), Height >= 0 ->
+  when ?IS_HEIGHT(Height) ->
     Reply = do_get_header_by_height(Height,
                                     State#state.top#top_state.top_header,
                                     State#state.headers_db),
     {reply, Reply, State};
 handle_call({get_block_by_height, Height}, _From, State)
-  when is_integer(Height), Height >= 0 ->
+  when ?IS_HEIGHT(Height) ->
     Reply = do_get_block_by_height(Height,
                                    State#state.top#top_state.top_header,
                                    State#state.headers_db,
@@ -281,7 +289,7 @@ blocks_db_put(Db, K, V) ->
 
 do_init([GenesisBlock], TopHeaderDb, _HeadersDb, _BlocksDb) ->
     %% Hardcode expectations on specified genesis block.
-    0 = aec_blocks:height(GenesisBlock),
+    ?GENESIS_HEIGHT = aec_blocks:height(GenesisBlock),
     <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>> = aec_blocks:prev_hash(GenesisBlock),
 
     %% Compute genesis serializations and hash.
@@ -341,14 +349,15 @@ do_find_genesis_header_from_header_hash(HeaderHash, HeadersDb) ->
     {ok, SerializedHeader} = headers_db_get(HeadersDb, HeaderHash),
     {ok, Header} = aec_headers:deserialize_from_network(SerializedHeader),
     case aec_headers:height(Header) of
-        0 ->
+        ?GENESIS_HEIGHT ->
             {ok, SerializedHeader};
-        Height when is_integer(Height), Height > 0 ->
+        Height when ?IS_HEIGHT_AFTER_GENESIS(Height) ->
             do_find_genesis_header_from_header_hash(
               aec_headers:prev_hash(Header), Height - 1, HeadersDb)
     end.
 
-do_find_genesis_header_from_header_hash(HeaderHash, Height = 0, HeadersDb) ->
+do_find_genesis_header_from_header_hash(HeaderHash, Height = ?GENESIS_HEIGHT,
+                                        HeadersDb) ->
     {ok, SerializedHeader} = headers_db_get(HeadersDb, HeaderHash),
     {ok, Header} = aec_headers:deserialize_from_network(SerializedHeader),
     {Height, _} = {aec_headers:height(Header), Header},
@@ -479,8 +488,7 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
                     {ok, NewTopHeaderDb} =
                         top_header_db_put(TopHeaderDb, ?TOP_HEADER, HeaderHash),
                     {ok, {_Reply = ok, {NewTopHeaderDb, NewHeadersDb}}};
-                {HeaderHeight, _} when
-                      is_integer(HeaderHeight), HeaderHeight >= 0 ->
+                {HeaderHeight, _} when ?IS_HEIGHT(HeaderHeight) ->
                     {error, {height_inconsistent_with_previous_hash,
                              {top_header, TopHeader}}}
             end;
@@ -553,7 +561,7 @@ do_find_header_hash_in_chain(HeaderHashToFind, TopHeader, HeadersDb) ->
     if
         HeaderHashToFind =:= TopHeaderHash ->
             ok;
-        TopHeaderHeight =:= 0 ->
+        TopHeaderHeight =:= ?GENESIS_HEIGHT ->
             {error, not_found};
         true ->
             do_find_header_hash_in_chain_1(
@@ -566,9 +574,9 @@ do_find_header_hash_in_chain_1(HeaderHashToFind, HeaderHash, HeadersDb) ->
     {ok, SerializedHeader} = headers_db_get(HeadersDb, HeaderHash),
     {ok, Header} = aec_headers:deserialize_from_network(SerializedHeader),
     case aec_headers:height(Header) of
-        0 ->
+        ?GENESIS_HEIGHT ->
             {error, not_found};
-        Height when is_integer(Height), Height > 0 ->
+        Height when ?IS_HEIGHT_AFTER_GENESIS(Height) ->
             do_find_header_hash_in_chain_1(
               HeaderHashToFind, aec_headers:prev_hash(Header), HeadersDb)
     end.
