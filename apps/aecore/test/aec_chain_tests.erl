@@ -51,6 +51,9 @@ header_chain_test_() ->
              BH0 = aec_blocks:to_header(B0),
              ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
+             %% Check height of genesis - for readability of the test.
+             0 = aec_headers:height(BH0),
+
              %% Add a couple of headers - not blocks - to the chain.
              {ok, B0H} = aec_blocks:hash_internal_representation(B0),
              BH1 = #header{height = 1, prev_hash = B0H},
@@ -103,6 +106,9 @@ block_chain_test_() ->
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
+               %% Check height of genesis - for readability of the test.
+               0 = aec_headers:height(BH0),
+
                %% Add a couple of headers - not blocks - to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
                B1 = #block{height = 1, prev_hash = B0H},
@@ -152,6 +158,9 @@ block_chain_test_() ->
                B0 = fake_genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check height of genesis - for readability of the test.
+               0 = aec_headers:height(BH0),
 
                %% Add a couple of headers - not blocks - to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
@@ -208,6 +217,9 @@ unhappy_paths_test_() ->
                B0 = fake_genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check height of genesis - for readability of the test.
+               0 = aec_headers:height(BH0),
 
                %% Add a header to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
