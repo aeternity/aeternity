@@ -35,7 +35,7 @@
 %%------------------------------------------------------------------------------
 %% Add peer by url or supplying full peer() record.
 %%------------------------------------------------------------------------------
--spec add(http_uri:uri() | peer()) -> ok.
+-spec add(uri() | peer()) -> ok.
 add(Peer) when is_record(Peer, peer) ->
     gen_server:cast(?MODULE, {add, Peer}),
     ok;
@@ -46,7 +46,7 @@ add(PeerUri) ->
 %%------------------------------------------------------------------------------
 %% Remove peer by url
 %%------------------------------------------------------------------------------
--spec remove(http_uri:uri()) -> ok.
+-spec remove(uri()) -> ok.
 remove(PeerUri) ->
     gen_server:cast(?MODULE, {remove, PeerUri}),
     ok.
@@ -56,7 +56,7 @@ remove(PeerUri) ->
 %% Normally returns {ok, Peer}
 %% If peer not found gives {error, "peer unknown"}
 %%------------------------------------------------------------------------------
--spec info(http_uri:uri()) -> get_peer_result().
+-spec info(uri()) -> get_peer_result().
 info(PeerUri) ->
     gen_server:call(?MODULE, {info, PeerUri}).
 
@@ -83,7 +83,7 @@ get_random() ->
 %%------------------------------------------------------------------------------
 %% Get url from IP and port. IP format: xxx.xxx.xxx.xxx
 %%------------------------------------------------------------------------------
--spec uri_from_ip_port(IP :: string(), Port :: number()) -> http_uri:uri().
+-spec uri_from_ip_port(IP :: string(), Port :: number()) -> uri().
 uri_from_ip_port(IP, Port) ->
     "http://" ++ IP ++ ":" ++ integer_to_list(Port) ++ "/".
 
@@ -147,9 +147,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%=============================================================================
 
--spec hash_uri(http_uri:uri()) -> binary().
+-spec hash_uri(uri()) -> binary().
 hash_uri(Uri) when is_list(Uri)->
-    hash_uri(list_to_binary(Uri));
-hash_uri(Uri) ->
-    Hash = crypto:hash(md4,Uri),  %TODO add some random for execution but constant salt, so people can't mess with uri-s to hide on our list.
-    <<Hash/binary, Uri/binary>>.
+    Binary = list_to_binary(Uri),
+    Hash = crypto:hash(md4,Binary),  %TODO add some random for execution but constant salt, so people can't mess with uri-s to hide on our list.
+    <<Hash/binary, Binary/binary>>.
