@@ -41,14 +41,35 @@ get_by_hash(_Hash) ->
 -spec serialize_for_network(header()) ->
                                    {ok, block_header_serialized_for_network()}.
 serialize_for_network(H = #header{}) ->
-    %% TODO: Define serialization format.
-    {ok, term_to_binary(H)}.
+    Serialized =
+      #{<<"height">> =>  height(H),
+        <<"prev-hash">> => prev_hash(H),
+        <<"root-hash">> => H#header.root_hash,
+        <<"difficulty">> => H#header.difficulty,
+        <<"nonce">> => H#header.nonce,
+        <<"time">> => H#header.time,
+        <<"version">> => H#header.version
+      },
+    {ok, Serialized}.
 
 -spec deserialize_from_network(block_header_serialized_for_network()) ->
                                       {ok, header()}.
 deserialize_from_network(H) when is_binary(H) ->
-    %% TODO: Define serialization format.
-    {ok, #header{} = binary_to_term(H)}.
+      #{<<"height">> := Height,
+        <<"prev-hash">> := PrevHash,
+        <<"root-hash">> := RootHash,
+        <<"difficulty">> := Difficulty,
+        <<"nonce">> := Nonce,
+        <<"time">> := Time,
+        <<"version">> := Version 
+      } = H,
+    {ok, #header{height = Height,
+                 prev_hash = PrevHash,
+                 root_hash = RootHash,
+                 difficulty = Difficulty,
+                 nonce = Nonce,
+                 time = Time,
+                 version = Version}}.
 
 -spec hash_network_serialization(block_header_serialized_for_network()) ->
                                         {ok, block_header_hash()}.
