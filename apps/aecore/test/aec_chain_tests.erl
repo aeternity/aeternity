@@ -5,7 +5,9 @@
 -include("blocks.hrl").
 
 fake_genesis_block() ->
-    #block{height = 0, prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>}.
+    #block{height = 0,
+           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+           difficulty = 1}.
 
 top_test_() ->
     {foreach,
@@ -204,6 +206,47 @@ block_chain_test_() ->
                ?assertEqual({error, {chain_too_short, {{chain_height, 2},
                                                        {top_header, BH2}}
                                     }}, aec_chain:get_block_by_height(3))
+       end}]}.
+
+get_work_at_top_test_() ->
+    {foreach,
+     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     [{"Get work in chain of only genesis",
+       fun() ->
+               %% Check chain is at genesis.
+               B0 = fake_genesis_block(),
+               BH0 = aec_blocks:to_header(B0),
+               ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check difficulty of genesis - for readability of the test.
+               1.0 = aec_headers:linear_difficulty(BH0),
+
+               %% Check work of chain at top.
+               ?assertEqual({ok, {1.0, {top_header, BH0}}},
+                            aec_chain:get_work_at_top())
+       end},
+      {"Get work in chain of genesis block plus 2 headers",
+       fun() ->
+               %% Check chain is at genesis.
+               B0 = fake_genesis_block(),
+               BH0 = aec_blocks:to_header(B0),
+               ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check difficulty of genesis - for readability of the test.
+               1.0 = aec_headers:linear_difficulty(BH0),
+
+               %% Add a couple of headers to the chain.
+               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
+               BH1 = #header{height = 1, prev_hash = B0H, difficulty = 2},
+               ?assertEqual(ok, aec_chain:insert_header(BH1)),
+               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               BH2 = #header{height = 2, prev_hash = B1H, difficulty = 5},
+               ?assertEqual(ok, aec_chain:insert_header(BH2)),
+
+               %% Check work of chain at top.
+               ?assertEqual({ok, {8.0, {top_header, BH2}}},
+                            aec_chain:get_work_at_top())
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.
