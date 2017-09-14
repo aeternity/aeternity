@@ -5,7 +5,8 @@
 -include("blocks.hrl").
 
 fake_genesis_block() ->
-    #block{height = 0, prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>}.
+    #block{height = 0,
+           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>}.
 
 top_test_() ->
     {foreach,
@@ -204,6 +205,64 @@ block_chain_test_() ->
                ?assertEqual({error, {chain_too_short, {{chain_height, 2},
                                                        {top_header, BH2}}
                                     }}, aec_chain:get_block_by_height(3))
+       end}]}.
+
+fake_genesis_block_with_difficulty() ->
+    #block{height = 0,
+           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+           target = 1}. %% Field used as if it were difficulty for ease of testing.
+
+get_work_at_top_test_() ->
+    {foreach,
+     fun() ->
+             meck:new(aec_headers, [passthrough]),
+             meck:expect(
+               aec_headers, difficulty,
+               fun(#header{target = T}) when is_integer(T) -> float(T) end),
+             {ok, Pid} = aec_chain:start_link(
+                           fake_genesis_block_with_difficulty()),
+             Pid
+     end,
+     fun(_ChainPid) ->
+             ok = aec_chain:stop(),
+             ?assert(meck:validate(aec_headers)),
+             meck:unload(aec_headers)
+     end,
+     [{"Get work in chain of only genesis",
+       fun() ->
+               %% Check chain is at genesis.
+               B0 = fake_genesis_block_with_difficulty(),
+               BH0 = aec_blocks:to_header(B0),
+               ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check difficulty of genesis - for readability of the test.
+               1.0 = aec_headers:difficulty(BH0),
+
+               %% Check work of chain at top.
+               ?assertEqual({ok, {1.0, {top_header, BH0}}},
+                            aec_chain:get_work_at_top())
+       end},
+      {"Get work in chain of genesis block plus 2 headers",
+       fun() ->
+               %% Check chain is at genesis.
+               B0 = fake_genesis_block_with_difficulty(),
+               BH0 = aec_blocks:to_header(B0),
+               ?assertEqual({ok, BH0}, aec_chain:top_header()),
+
+               %% Check difficulty of genesis - for readability of the test.
+               1.0 = aec_headers:difficulty(BH0),
+
+               %% Add a couple of headers to the chain.
+               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
+               BH1 = #header{height = 1, prev_hash = B0H, target = 2},
+               ?assertEqual(ok, aec_chain:insert_header(BH1)),
+               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               BH2 = #header{height = 2, prev_hash = B1H, target = 5},
+               ?assertEqual(ok, aec_chain:insert_header(BH2)),
+
+               %% Check work of chain at top.
+               ?assertEqual({ok, {8.0, {top_header, BH2}}},
+                            aec_chain:get_work_at_top())
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.
