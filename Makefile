@@ -1,6 +1,15 @@
 CORE = rel/epoch/bin/epoch
 VER = 0.1.0
 
+
+PYTHON_DIR = py
+PYTHON_BIN = $(PYTHON_DIR)/bin
+NOSE = $(PYTHON_BIN)/nosetests
+PYTHON = $(PYTHON_BIN)/python
+PYTHON_TESTS = $(PYTHON_DIR)/tests
+PIP = $(PYTHON_BIN)/pip
+
+
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
@@ -89,11 +98,26 @@ dialyzer:
 test:
 	@./rebar3 do eunit,ct
 
+venv-present:
+	@virtualenv -q $(PYTHON_DIR)
+
+nose-env: venv-present
+	@. $(PYTHON_BIN)/activate && $(PIP) -q install -r $(PYTHON_DIR)/requirements.txt 
+
+python-tests:
+	@$(NOSE) --nocapture -c $(PYTHON_TESTS)/nose.cfg $(PYTHON_TESTS)
+
 swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
+	@rm -fr $(SWTEMP)
+
+swagger-python: config/swagger.yaml
+	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
+	@echo "Swagger python tempdir: $(SWTEMP)"
+	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@rm -fr $(SWTEMP)
 
 kill:

@@ -55,6 +55,9 @@ serialize_for_network(H = #header{}) ->
 -spec deserialize_from_network(block_header_serialized_for_network()) ->
                                       {ok, header()}.
 deserialize_from_network(H) when is_binary(H) ->
+    deserialize_from_network(jsx:decode(H));
+deserialize_from_network(H = #{}) ->
+
       #{<<"height">> := Height,
         <<"prev-hash">> := PrevHash,
         <<"root-hash">> := RootHash,
@@ -73,6 +76,8 @@ deserialize_from_network(H) when is_binary(H) ->
 
 -spec hash_network_serialization(block_header_serialized_for_network()) ->
                                         {ok, block_header_hash()}.
+hash_network_serialization(H = #{}) ->
+    hash_network_serialization(jsx:encode(H));
 hash_network_serialization(H) when is_binary(H) ->
     {ok, aec_sha256:hash(H)}.
 
