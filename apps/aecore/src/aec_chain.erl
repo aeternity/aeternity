@@ -67,7 +67,7 @@ stop() ->
 
 %% Returns the highest known block in the chain with its state trees.
 %%
-%% The heighest known block may be lower than the highest block header
+%% The highest known block may be lower than the highest block header
 %% in the chain as returned by `top_header/0`.
 -spec top() -> {ok, block()}.
 top() ->
@@ -84,7 +84,7 @@ top_header() ->
 
 %% Returns the highest known block in the chain.
 %%
-%% The heighest known block may be lower than the highest block header
+%% The highest known block may be lower than the highest block header
 %% in the chain as returned by `top_header/0`.
 -spec top_block() -> {ok, aec_blocks:block_deserialized_from_network()}.
 top_block() ->
