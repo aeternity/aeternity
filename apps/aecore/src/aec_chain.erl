@@ -1,9 +1,11 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
-%%% @doc Service holding the chain of block headers and blocks.
+%%% @doc Service holding the longest chain of block headers and blocks.
+%%%
+%%% The longest chain is determined according to the amount of work
+%%% done on the chain.
 %%%
 %%% @TODO Unit testing of unhappy paths.
-%%% @TODO Forced chain (fork).
 %%% @TODO Persistence.
 %%% @end
 %%%-------------------------------------------------------------------
@@ -23,8 +25,10 @@
          get_block_by_height/1,
          insert_header/1,
          write_block/1,
-         get_work_at_top/0]).
-%% TODO `force_insert_headers`: Insert the specified sequence of headers in the chain, potentially changing the top header in the chain.
+         get_work_at_top/0,
+         get_work_by_hash_and_at_top/1,
+         has_more_work/1,
+         force_insert_headers/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -74,6 +78,11 @@
 -type work() :: float(). %% TODO: Move to PoW-related module.
 
 -type chain_header() :: #chain_header{}.
+
+-type header_chain() :: header_chain_from_genesis()
+                      | header_chain_without_genesis().
+-type header_chain_from_genesis() :: [header(), ...]. %% First element is genesis.
+-type header_chain_without_genesis() :: [header(), ...]. %% First element has lowest height.
 
 -type top_header_db_key() :: ?TOP_HEADER. %% Only one key.
 -type top_header_db_value() :: block_header_hash().
@@ -170,6 +179,78 @@ get_work_at_top() ->
     gen_server:call(?SERVER, {get_work_at_top},
                     ?DEFAULT_CALL_TIMEOUT).
 
+-spec get_work_by_hash_and_at_top(block_header_hash()) ->
+                                         do_get_work_by_hash_and_at_top_reply().
+get_work_by_hash_and_at_top(HeaderHash) ->
+    gen_server:call(?SERVER, {get_work_by_hash_and_at_top, HeaderHash},
+                    ?DEFAULT_CALL_TIMEOUT).
+
+-spec has_more_work(header_chain()) ->
+                           {ok, {boolean(), {{{top_chain_work, work()},
+                                              {alt_chain_work, work()}},
+                                             {top_header, header()}}}} |
+                           {error, Reason} when
+      Reason :: {no_common_ancestor, {top_header, header()}}
+              | {different_genesis, {genesis_header, header()}}.
+has_more_work(HeaderChain = [LowerHeader | _]) ->
+    %% This function does not guarantee that the specified list of
+    %% headers is a chain, i.e. it does not check fields height and
+    %% previous hash in each header in relation to the previous
+    %% header.
+    case aec_headers:height(LowerHeader) of
+        ?GENESIS_HEIGHT ->
+            %% The specified chain is a chain complete from genesis.
+            %% Check that the genesis is the expected one.
+            {ok, GenesisHeader} = get_header_by_height(0),
+            if
+                LowerHeader =/= GenesisHeader ->
+                    {error, {different_genesis, {genesis_header,
+                                                 GenesisHeader}}};
+                true ->
+                    %% The specified chain does not require retrieving
+                    %% any ancestor for computing the total work in
+                    %% it.
+                    {ok, AltChainWork} = work_in_header_chain(HeaderChain),
+                    %% Retrieve the total work in the longest chain.
+                    {ok, {TopChainWork, {top_header, TopHeader}}} =
+                        get_work_at_top(),
+                    {ok, {'work_op_>'(AltChainWork, TopChainWork),
+                          {{{top_chain_work, TopChainWork},
+                            {alt_chain_work, AltChainWork}},
+                           {top_header, TopHeader}}}}
+            end;
+        LowerHeaderHeight when ?IS_HEIGHT_AFTER_GENESIS(LowerHeaderHeight) ->
+            %% The specified chain does not start from genesis.
+            %% Attempt to retrieve work of higher missing ancestor and
+            %% work of top, so to compare work of top against work of
+            %% specified chain.
+            LowerHeaderPreviousHash = aec_headers:prev_hash(LowerHeader),
+            case get_work_by_hash_and_at_top(LowerHeaderPreviousHash) of
+                {error, {header_not_found, {top_header, TopHeader}}} ->
+                    {error, {no_common_ancestor, {top_header, TopHeader}}};
+                {ok, {{{work_at_hash, WorkBeforeLowerHeader},
+                       {work_at_top, TopChainWork}},
+                      {top_header, TopHeader}}} ->
+                    {ok, WorkFromLowerHeader} =
+                        work_in_header_chain(HeaderChain),
+                    AltChainWork =
+                        'work_op_+'(WorkBeforeLowerHeader, WorkFromLowerHeader),
+                    {ok, {'work_op_>'(AltChainWork, TopChainWork),
+                          {{{top_chain_work, TopChainWork},
+                            {alt_chain_work, AltChainWork}},
+                           {top_header, TopHeader}}}}
+            end
+    end.
+
+%% Insert the specified sequence of headers in the chain, changing the
+%% top header in the chain.
+-spec force_insert_headers(header_chain()) ->
+                                  do_force_insert_headers_reply_ok() |
+                                  do_force_insert_headers_reply_error().
+force_insert_headers(HeaderChain) ->
+    gen_server:call(?SERVER, {force_insert_headers, HeaderChain},
+                    ?DEFAULT_CALL_TIMEOUT).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -190,8 +271,9 @@ init(_Args = [GenesisBlock]) ->
     %% Compute initial state of process.
     {ok, TopHeaderHash} = top_header_db_get(NewTopHeaderDb, ?TOP_HEADER),
     {ok, TopHeader} = headers_db_get(NewHeadersDb, TopHeaderHash),
-    {ok, SerializedTopBlock} = blocks_db_get(NewBlocksDb, TopHeaderHash),
-    {ok, TopBlock} = aec_blocks:deserialize_from_network(SerializedTopBlock),
+    {ok, TopBlock} =
+        do_find_highest_block_from_header_hash(TopHeaderHash,
+                                               NewHeadersDb, NewBlocksDb),
     TopState = #top_state{top_header = TopHeader,
                           top_header_db = NewTopHeaderDb,
                           top_block = TopBlock},
@@ -273,6 +355,37 @@ handle_call({write_block, Block}, _From, State) ->
 handle_call({get_work_at_top}, _From, State) ->
     Reply = do_get_work_at_top(State#state.top#top_state.top_header),
     {reply, Reply, State};
+handle_call({get_work_by_hash_and_at_top,
+             HeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
+            _From, State) ->
+    Reply = do_get_work_by_hash_and_at_top(HeaderHash,
+                                           State#state.top#top_state.top_header,
+                                           State#state.headers_db),
+    {reply, Reply, State};
+handle_call({force_insert_headers, HeaderChain = [_|_]}, _From, State) ->
+    case
+        do_force_insert_headers(HeaderChain,
+                                State#state.top#top_state.top_header,
+                                State#state.top#top_state.top_block,
+                                State#state.top#top_state.top_header_db,
+                                State#state.headers_db,
+                                State#state.blocks_db)
+    of
+        {error, _Reason} = Reply ->
+            {reply, Reply, State};
+        {ok, {Reply, {NewTopHeader, NewTopBlock,
+                      NewTopHeaderDb, NewHeadersDb, NewBlocksDb}}} ->
+            NewState =
+                State#state{
+                  top =
+                      State#state.top#top_state{
+                                    top_header = NewTopHeader,
+                                    top_header_db = NewTopHeaderDb,
+                                    top_block = NewTopBlock},
+                  headers_db = NewHeadersDb,
+                  blocks_db = NewBlocksDb},
+            {reply, Reply, NewState}
+    end;
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -300,6 +413,90 @@ code_change(_OldVsn, State, _Extra) ->
 header_difficulty(Header) ->
     aec_headers:linear_difficulty(Header).
 
+-spec 'work_op_>'(work(), work()) -> boolean().
+'work_op_>'(A, B) when ?IS_WORK(A), ?IS_WORK(B) ->
+    A > B.
+
+-spec 'work_op_+'(work(), work()) -> work().
+'work_op_+'(A, B) when ?IS_WORK(A), ?IS_WORK(B) ->
+    A + B.
+
+-spec work_in_header_chain(header_chain()) -> {ok, work()}.
+work_in_header_chain([Header]) ->
+    case header_difficulty(Header) of
+        W when ?IS_WORK(W) ->
+            {ok, W}
+    end;
+work_in_header_chain([LowerHeader | OtherHeaders]) ->
+    LowerHeaderWork = header_difficulty(LowerHeader),
+    {ok, OtherHeadersWork} = work_in_header_chain(OtherHeaders),
+    {ok, 'work_op_+'(LowerHeaderWork, OtherHeadersWork)}.
+
+-spec header_chain_with_work(work(), header_chain_without_genesis()) ->
+                                    [chain_header(), ...].
+header_chain_with_work(WorkBeforeLowerHeader, HeaderChain) ->
+    {_, ReversedHeaderChainWithWork} =
+        lists:foldl(
+          fun(H, {W, RHCW}) ->
+                  D = header_difficulty(H),
+                  HH = #chain_header{h = H, td = 'work_op_+'(W, D)},
+                  {HH#chain_header.td, [HH | RHCW]}
+          end,
+          {WorkBeforeLowerHeader, []},
+          HeaderChain),
+    lists:reverse(ReversedHeaderChainWithWork).
+
+-type is_header_chain_return_error() ::
+        {error, Reason::{inconsistent_previous_hash, term()} |
+                        {height_inconsistent_with_previous_height, term()}
+        }.
+-spec is_header_chain(header_chain()) -> ok | is_header_chain_return_error().
+is_header_chain([LowestHeader | OtherHeaders]) ->
+    {ok, LowestHeaderHash} =
+        aec_headers:hash_internal_representation(LowestHeader),
+    is_header_chain_1(LowestHeaderHash, aec_headers:height(LowestHeader),
+                      OtherHeaders).
+
+is_header_chain_1(<<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>, PreviousHeight, [])
+  when ?IS_HEIGHT(PreviousHeight) ->
+    ok;
+is_header_chain_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+                  PreviousHeight,
+                  [LowestHeader | OtherHeaders])
+  when ?IS_HEIGHT(PreviousHeight) ->
+    LowestHeaderPrevHash = aec_headers:prev_hash(LowestHeader),
+    ExpectedHeight = 1 + PreviousHeight,
+    LowestHeaderHeight = aec_headers:height(LowestHeader),
+    if
+        LowestHeaderPrevHash =/= PreviousHash ->
+            {error, {inconsistent_previous_hash,
+                     {{actual_previous_hash, LowestHeaderPrevHash},
+                      {expected_previous_hash, PreviousHash}}}};
+        LowestHeaderHeight =/= ExpectedHeight ->
+            {error, {height_inconsistent_with_previous_height,
+                     {{actual_height, LowestHeaderHeight},
+                      {expected_height, {ExpectedHeight}},
+                      {previous_hash, LowestHeaderPrevHash}}}};
+        true ->
+            {ok, LowestHeaderHash} =
+                aec_headers:hash_internal_representation(LowestHeader),
+            is_header_chain_1(
+              LowestHeaderHash, aec_headers:height(LowestHeader),
+              OtherHeaders)
+    end.
+
+-spec is_header_chain_included(header_chain(), chain_header(), headers_db()) ->
+                                      boolean().
+is_header_chain_included(HeaderChain, TopHeader, HeadersDb) ->
+    {ok, HeaderChainHash} =
+        aec_headers:hash_internal_representation(lists:last(HeaderChain)),
+    case do_find_header_hash_in_chain(HeaderChainHash, TopHeader, HeadersDb) of
+        ok ->
+            true;
+        {error, not_found} ->
+            false
+    end.
+
 chain_header_serialize(H) when ?IS_CHAIN_HEADER(H) ->
     term_to_binary(H).
 
@@ -320,6 +517,11 @@ db_get(Db, K) ->
 -spec db_put(db_handle(), db_key(), db_value()) -> db_put_return().
 db_put(Db, K, V) ->
     {ok, dict:store(K, V, Db)}.
+
+-type db_delete_return() :: {ok, NewDb::db_handle()}.
+-spec db_delete(db_handle(), db_key()) -> db_delete_return().
+db_delete(Db, K) ->
+    {ok, dict:erase(K, Db)}.
 
 -spec top_header_db_get(db_handle(), top_header_db_key()) ->
                                db_get_return(top_header_db_value()).
@@ -346,6 +548,11 @@ headers_db_get(Db, K) ->
 headers_db_put(Db, K, V) ->
     db_put(Db, K, chain_header_serialize(V)).
 
+-spec headers_db_delete(db_handle(), headers_db_key()) ->
+                               db_delete_return().
+headers_db_delete(Db, K) ->
+    db_delete(Db, K).
+
 -spec blocks_db_get(db_handle(), blocks_db_key()) ->
                            db_get_return(blocks_db_value()).
 blocks_db_get(Db, K) ->
@@ -355,6 +562,11 @@ blocks_db_get(Db, K) ->
                            db_put_return().
 blocks_db_put(Db, K, V) ->
     db_put(Db, K, V).
+
+-spec blocks_db_delete(db_handle(), blocks_db_key()) ->
+                              db_delete_return().
+blocks_db_delete(Db, K) ->
+    db_delete(Db, K).
 
 do_init([GenesisBlock], TopHeaderDb, HeadersDb, BlocksDb) ->
     %% Hardcode expectations on specified genesis block.
@@ -454,6 +666,20 @@ do_find_genesis_header_from_header_hash(HeaderHash, Height, HeadersDb) ->
     {Height, _} = {aec_headers:height(Header), Header},
     do_find_genesis_header_from_header_hash(
       aec_headers:prev_hash(Header), Height - 1, HeadersDb).
+
+do_find_highest_block_from_header_hash(HeaderHash, HeadersDb, BlocksDb) ->
+    case blocks_db_get(BlocksDb, HeaderHash) of
+        {ok, SerializedBlock} ->
+            {ok, _Block} =
+                aec_blocks:deserialize_from_network(SerializedBlock);
+        {error, not_found} ->
+            {ok, #chain_header{h = Header}} =
+                headers_db_get(HeadersDb, HeaderHash),
+            %% Assumption: The specified header hash leads to genesis.
+            %% Assumption: At least the genesis block is present.
+            do_find_highest_block_from_header_hash(
+              aec_headers:prev_hash(Header), HeadersDb, BlocksDb)
+    end.
 
 -type do_top_header_reply() :: {ok, header()}.
 -spec do_top_header(chain_header()) -> do_top_header_reply().
@@ -591,7 +817,8 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
             NewTopHeader =
                 #chain_header{
                    h = Header,
-                   td = TopHeader#chain_header.td + HeaderDifficulty},
+                   td = 'work_op_+'(TopHeader#chain_header.td,
+                                    HeaderDifficulty)},
             %% Ensure header is stored, then update top. In this order
             %% so that, if execution stops after storing header, the
             %% top header hash still refers to a a chain.
@@ -698,3 +925,272 @@ do_find_header_hash_in_chain_1(HeaderHashToFind, HeaderHash, HeadersDb) ->
 -spec do_get_work_at_top(chain_header()) -> do_get_work_at_top_reply().
 do_get_work_at_top(TopHeader) ->
     {ok, {TopHeader#chain_header.td, {top_header, TopHeader#chain_header.h}}}.
+
+-type do_get_work_by_hash_and_at_top_reply() ::
+        {ok, {ResultInfo::{{work_at_hash, work()},
+                           {work_at_top, work()}},
+              ResultContext::{top_header, header()}}} |
+        {error, Reason::{header_not_found, {top_header, header()}}}.
+-spec do_get_work_by_hash_and_at_top(block_header_hash(),
+                                     chain_header(), headers_db()
+                                    ) -> do_get_work_by_hash_and_at_top_reply().
+do_get_work_by_hash_and_at_top(HeaderHash, TopHeader, HeadersDb) ->
+    case headers_db_get(HeadersDb, HeaderHash) of
+        {error, not_found} ->
+            {error, {header_not_found, {top_header, TopHeader#chain_header.h}}};
+        {ok, #chain_header{td = WorkAtHash}} ->
+            {ok, {{{work_at_hash, WorkAtHash},
+                   {work_at_top, TopHeader#chain_header.td}},
+                  {top_header, TopHeader#chain_header.h}}}
+    end.
+
+-type do_force_insert_headers_reply_ok() :: {ok, {{old_top_header, header()},
+                                                  {new_top_header, header()}}}.
+-type do_force_insert_headers_reply_error() ::
+        is_header_chain_return_error() |
+        {error, Reason::{header_chain_already_included, term()} |
+                        {no_common_ancestor, term()}
+        }.
+-spec do_force_insert_headers(
+        header_chain(),
+        chain_header(), aec_blocks:block_deserialized_from_network(),
+        top_header_db(), headers_db(), blocks_db()
+       ) -> do_force_insert_headers_reply_error() |
+            {ok, {do_force_insert_headers_reply_ok(), NewState}} when
+      NewState :: {chain_header(), aec_blocks:block_deserialized_from_network(),
+                   top_header_db(), headers_db(), blocks_db()}.
+do_force_insert_headers(HeaderChain,
+                        TopHeader, TopBlock,
+                        TopHeaderDb, HeadersDb, BlocksDb) ->
+    case is_header_chain(HeaderChain) of
+        {error, _Reason} = Err ->
+            _Reply = Err;
+        ok ->
+            case is_header_chain_included(HeaderChain, TopHeader, HeadersDb) of
+                true ->
+                    _Reply =
+                        {error, {header_chain_already_included,
+                                 {top_header, TopHeader#chain_header.h}}};
+                false -> %% At least part of the chain is not included.
+                    case
+                        do_find_highest_common_ancestor(HeaderChain,
+                                                        TopHeader, HeadersDb)
+                    of
+                        {error, no_common_ancestor} ->
+                            _Reply =
+                                {error,
+                                 {no_common_ancestor,
+                                  {top_header, TopHeader#chain_header.h}}};
+                        {ok, {{highest_common_ancestor,
+                               HighestCommonAncestor},
+                              {not_included_header_chain,
+                               RelevantHeaderChainPortion =
+                                   [LowestRelevantHeader | _]}}} ->
+                            %% Hardcode expectation that lowest header
+                            %% of relevant portion of the specified
+                            %% header chain is not genesis, as it has
+                            %% at least a predecessor (the highest
+                            %% common ancestor).
+                            case aec_headers:height(LowestRelevantHeader) of
+                                H when ?IS_HEIGHT_AFTER_GENESIS(H) ->
+                                    do_force_insert_headers_1(
+                                      RelevantHeaderChainPortion,
+                                      HighestCommonAncestor,
+                                      TopHeader, TopBlock,
+                                      TopHeaderDb, HeadersDb, BlocksDb)
+                            end
+                    end
+            end
+    end.
+
+-spec do_force_insert_headers_1(
+        header_chain_without_genesis(),
+        chain_header(),
+        chain_header(), aec_blocks:block_deserialized_from_network(),
+        top_header_db(), headers_db(), blocks_db()
+       ) -> {ok, {do_force_insert_headers_reply_ok(), NewState}} when
+      NewState :: {chain_header(), aec_blocks:block_deserialized_from_network(),
+                   top_header_db(), headers_db(), blocks_db()}.
+do_force_insert_headers_1(HeaderChain = [_|_], %% Above common ancestor.
+                          CommonAncestor,
+                          OldTopHeader, _TopBlock,
+                          TopHeaderDb, HeadersDb, BlocksDb) ->
+    HeaderChainWithWork =
+        header_chain_with_work(CommonAncestor#chain_header.td, HeaderChain),
+    NewTopHeader = lists:last(HeaderChainWithWork),
+    {ok, NewTopHeaderHash} =
+        aec_headers:hash_internal_representation(NewTopHeader#chain_header.h),
+    {ok, CommonAncestorHash} =
+        aec_headers:hash_internal_representation(CommonAncestor#chain_header.h),
+    %% Ensure headers above common ancestor are stored, then update
+    %% top, then delete unused blocks (in old chain above highest
+    %% common ancestor), then delete unused headers (in old chain
+    %% above highest common ancestor). In this order so that, if
+    %% execution stops, the top header hash still refers to a chain,
+    %% and each block has its header stored.
+    %%
+    %% As the headers belong to a distinct chain than the current top,
+    %% they should not be stored yet.  So store each header without
+    %% first checking that it is not yet stored.
+    HeadersDbWithNewHeaders =
+        lists:foldl(
+          fun(H, HsDb) ->
+                  {ok, HH} =
+                      aec_headers:hash_internal_representation(
+                        H#chain_header.h),
+                  {ok, NewHsDb} = headers_db_put(HsDb, HH, H),
+                  NewHsDb
+          end,
+          HeadersDb,
+          HeaderChainWithWork),
+    {ok, NewTopHeaderDb} =
+        top_header_db_put(TopHeaderDb, ?TOP_HEADER, NewTopHeaderHash),
+    {ok, {NewHeadersDb, NewBlocksDb}} =
+        do_delete_headers_and_blocks_from_header_to_header_hash(
+          OldTopHeader, %% To delete.
+          CommonAncestorHash, %% Not to delete.
+          HeadersDbWithNewHeaders, BlocksDb),
+    {ok, NewTopBlock} =
+        do_find_highest_block_from_header_hash(NewTopHeaderHash,
+                                               NewHeadersDb, NewBlocksDb),
+    {ok, {_Reply = {ok, {{old_top_header, OldTopHeader#chain_header.h},
+                         {new_top_header, NewTopHeader#chain_header.h}}},
+          {NewTopHeader, NewTopBlock,
+           NewTopHeaderDb, NewHeadersDb, NewBlocksDb}}}.
+
+do_delete_headers_and_blocks_from_header_to_header_hash(
+  HighIncludedHeader, LowExcludedHeaderHash,
+  HeadersDb, BlocksDb) ->
+    {ok, HighIncludedHeaderHash} =
+        aec_headers:hash_internal_representation(
+          HighIncludedHeader#chain_header.h),
+    {ok, NewBlocksDb} = blocks_db_delete(BlocksDb, HighIncludedHeaderHash),
+    {ok, NewHeadersDb} = headers_db_delete(HeadersDb, HighIncludedHeaderHash),
+    case aec_headers:prev_hash(HighIncludedHeader#chain_header.h) of
+        LowExcludedHeaderHash ->
+            {ok, {NewHeadersDb, NewBlocksDb}};
+        PrevHeaderHash ->
+            {ok, PrevHeader} = headers_db_get(HeadersDb, PrevHeaderHash),
+            do_delete_headers_and_blocks_from_header_to_header_hash(
+              PrevHeader, LowExcludedHeaderHash,
+              NewHeadersDb, NewBlocksDb)
+    end.
+
+-spec do_find_highest_common_ancestor(
+        header_chain(), %% At least part of the first chain must be not included...
+        chain_header(), headers_db() %% ... in the second chain.
+       ) -> {ok, {{highest_common_ancestor, chain_header()},
+                  {not_included_header_chain, header_chain_without_genesis()}}
+            } |
+            {error, no_common_ancestor}.
+do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
+    %% The highest common ancestor cannot be higher than the minimum
+    %% height of the two chains.
+    [HighestHCHeader | ReversedHCRest] = lists:reverse(HC),
+    HCHeight = aec_headers:height(HighestHCHeader),
+    TopHeight = aec_headers:height(TopHeader#chain_header.h),
+    if
+        HCHeight =< TopHeight ->
+            %% Hardcode expectation on at least part of the chain
+            %% being not included.  Compare block headers at highest
+            %% common height.
+            {ok, H} = do_get_header_by_height(HCHeight, TopHeader, HeadersDb),
+            case
+                {aec_headers:hash_internal_representation(HighestHCHeader),
+                 aec_headers:hash_internal_representation(H)}
+            of
+                {{ok, HighestHCHeaderHash}, {ok, HH}}
+                  when HighestHCHeaderHash =/= HH ->
+                    ok
+            end,
+            do_find_highest_common_ancestor_1(
+              {aec_headers:prev_hash(HighestHCHeader),
+               aec_headers:height(HighestHCHeader),
+               ReversedHCRest},
+              {aec_headers:prev_hash(H), aec_headers:height(H), HeadersDb},
+              _NotIncludedHCAcc0 = [HighestHCHeader]);
+        HCHeight > TopHeight ->
+            %% Being higher, of course at least part of the chain is
+            %% not included.
+            {ok, TopHeaderHash} = aec_headers:hash_internal_representation(
+                                    TopHeader#chain_header.h),
+            do_find_highest_common_ancestor_2(
+              {aec_headers:prev_hash(HighestHCHeader),
+               aec_headers:height(HighestHCHeader),
+               ReversedHCRest},
+              {TopHeaderHash,
+               1 + aec_headers:height(TopHeader#chain_header.h),
+               HeadersDb},
+              _NotIncludedHCAcc0 = [HighestHCHeader])
+    end.
+
+%% The first specified chain may be without genesis. The second
+%% specified chain arrives at genesis. The two specified chains may
+%% refer to distinct genesis block headers.
+-spec do_find_highest_common_ancestor_1(
+        FirstChain::term(), SecondChain::term(),
+        NotIncludedHeaderChainAccumulator::header_chain()) -> term().
+do_find_highest_common_ancestor_1({_, H, []}, {_, H = ?GENESIS_HEIGHT, _}, _) ->
+    %% Distinct genesis block headers.
+    {error, no_common_ancestor};
+do_find_highest_common_ancestor_1({HCPrevHash, H, []}, {HCPrevHash, H, HeadersDb}, NotIncludedHC)
+  when ?IS_HEIGHT_AFTER_GENESIS(H) ->
+    %% The first chain is without genesis.
+    %%
+    %% The highest common ancestor is the header that is not in the
+    %% first chain, but that is the previous header of the lowest
+    %% header in the first chain.
+    {ok, Header2} = headers_db_get(HeadersDb, HCPrevHash),
+    {ok, {{highest_common_ancestor, Header2},
+          {not_included_header_chain, NotIncludedHC}}};
+do_find_highest_common_ancestor_1({_, H, []}, {_, H, _}, _)
+  when ?IS_HEIGHT_AFTER_GENESIS(H) ->
+    %% The first chain is without genesis.
+    %%
+    %% No known common ancestors - not even the previous header of the
+    %% lowest header in the first chain.
+    {error, no_common_ancestor};
+do_find_highest_common_ancestor_1({HCPrevHash, H, [HighestHCHeader | _]}, {HCPrevHash, H, HeadersDb}, NotIncludedHC)
+  when ?IS_HEIGHT_AFTER_GENESIS(H) ->
+    %% The highest common ancestor is the identified header, in the
+    %% first chain.
+    %%
+    %% Hardcode expectation that the ancestor is the same in both chains.
+    {ok, Header2 = #chain_header{h = HighestHCHeader}} =
+        headers_db_get(HeadersDb, HCPrevHash),
+    {ok, {{highest_common_ancestor, Header2},
+          {not_included_header_chain, NotIncludedHC}}};
+do_find_highest_common_ancestor_1({_, H, [HighestHCHeader | HCRest]}, {PrevHash, H, HeadersDb}, NotIncludedHC)
+  when ?IS_HEIGHT_AFTER_GENESIS(H) ->
+    %% Still looking for the highest common ancestor.  Go down both
+    %% chains.
+    {ok, #chain_header{h = Header2}} = headers_db_get(HeadersDb, PrevHash),
+    do_find_highest_common_ancestor_1(
+      {aec_headers:prev_hash(HighestHCHeader),
+       aec_headers:height(HighestHCHeader),
+       HCRest},
+      {aec_headers:prev_hash(Header2), aec_headers:height(Header2), HeadersDb},
+      [HighestHCHeader | NotIncludedHC]).
+
+-spec do_find_highest_common_ancestor_2(
+        FirstChain::term(), SecondChain::term(),
+        NotIncludedHeaderChainAccumulator::header_chain()) -> term().
+do_find_highest_common_ancestor_2({_, H1, [HighestHCHeader | HCRest]}, C2 = {_, H2, _}, NotIncludedHC)
+  when ?IS_HEIGHT(H1), ?IS_HEIGHT(H2), H1 > H2 ->
+    %% Still higher on first chain than on second chain.  Go down
+    %% first chain.
+    do_find_highest_common_ancestor_2(
+      {aec_headers:prev_hash(HighestHCHeader),
+       aec_headers:height(HighestHCHeader),
+       HCRest},
+      C2,
+      [HighestHCHeader | NotIncludedHC]
+     );
+do_find_highest_common_ancestor_2({_, H1, []}, {_, H2, _}, _)
+  when ?IS_HEIGHT(H1), ?IS_HEIGHT(H2), H1 > H2 ->
+    %% No known common ancestors.
+    {error, no_common_ancestor};
+do_find_highest_common_ancestor_2(C1 = {_, H, _}, C2 = {_, H, _}, NotIncludedHC)
+  when ?IS_HEIGHT(H) ->
+    %% The two chains have a block at the same height.  Reuse other function.
+    do_find_highest_common_ancestor_1(C1, C2, NotIncludedHC).

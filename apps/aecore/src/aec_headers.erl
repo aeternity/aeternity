@@ -3,6 +3,7 @@
 %% API
 -export([prev_hash/1,
          height/1,
+         nonce/1,
          time_in_secs/1,
          linear_difficulty/1,
          serialize_for_network/1,
@@ -22,6 +23,9 @@ prev_hash(Header) ->
 
 height(Header) ->
     Header#header.height.
+
+nonce(Header) ->
+    Header#header.nonce.
 
 time_in_secs(Header) ->
     Time = Header#header.time,
