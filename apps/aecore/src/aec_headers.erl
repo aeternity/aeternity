@@ -3,6 +3,7 @@
 %% API
 -export([prev_hash/1,
          height/1,
+         nonce/1,
          target/1,
          difficulty/1,
          time_in_secs/1,
@@ -23,6 +24,9 @@ prev_hash(Header) ->
 
 height(Header) ->
     Header#header.height.
+
+nonce(Header) ->
+    Header#header.nonce.
 
 target(Header) ->
     Header#header.target.
