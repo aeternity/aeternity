@@ -12,6 +12,9 @@
 -include("blocks.hrl").
 
 -define(SERVER, ?MODULE).
+-define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
+-define(CHILD(Mod,N,Type,Params), {Mod,{Mod,start_link,Params},permanent,N,Type,[Mod]}).
+
 
 %%====================================================================
 %% API functions
@@ -25,19 +28,9 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [
-                                 {peers,
-                                  {aec_peers, start_link, []},
-                                  permanent,
-                                  5000,
-                                  worker,
-                                  [aec_peers]},
-                                 {chain,
+    {ok, {{one_for_one, 5, 10}, [?CHILD(aec_peers, 5000, worker),
                                   %% XXX empty block instead ot genesis block,
                                   %% ticket #84
-                                  {aec_chain, start_link, [#block{}]},
-                                  permanent,
-                                  5000,
-                                  worker,
-                                  [aec_peers]}
-                                ]} }.
+                                 ?CHILD(aec_chain, 5000, worker, [#block{}]),
+                                 ?CHILD(aec_keys, 5000, worker)]
+         }}.

@@ -4,8 +4,6 @@
 -export([prev_hash/1,
          height/1,
          time_in_secs/1,
-         get_by_height/1,
-         get_by_hash/1,
          serialize_for_network/1,
          deserialize_from_network/1,
          hash_network_serialization/1,
@@ -27,16 +25,6 @@ height(Header) ->
 time_in_secs(Header) ->
     Time = Header#header.time,
     aeu_time:msecs_to_secs(Time).
-
-get_by_height(_Height) ->
-    %% TODO: Return block header by height
-    %% This may go to aec_blocks
-    {ok, #header{}}.
-
-get_by_hash(_Hash) ->
-    %% TODO: Return block header by hash
-    %% This may go to aec_blocks
-    {ok, #header{}}.
 
 -spec serialize_for_network(header()) ->
                                    {ok, block_header_serialized_for_network()}.

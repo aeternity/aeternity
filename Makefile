@@ -131,14 +131,13 @@ killall:
 clean:
 	@./rebar3 clean
 
-multi-build: dev1-build 
+multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
 	@for x in dev2 dev3; do \
 		cp -R _build/dev1 _build/$$x; \
 		cp config/$$x/sys.config _build/$$x/rel/epoch/releases/$(VER)/sys.config; \
 		cp config/$$x/vm.args _build/$$x/rel/epoch/releases/$(VER)/vm.args; \
 	done
-
 
 #
 # Build rules
