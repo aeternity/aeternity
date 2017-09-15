@@ -42,8 +42,8 @@ paths:
       responses:
         '200':
           description: successful operation
-#          schema:
-#            $ref: '#/definitions/Header'
+          schema:
+            $ref: '#/definitions/Header'
       security: []
   /block:
     get:
@@ -83,13 +83,6 @@ paths:
           description: successful operation
       security: []
 definitions:
-  Coinbasetx:
-    type: object
-    properties:
-      account:
-        type: string
-      nonce:
-        type: string
   Tree:
     type: object
     properties: {}
