@@ -74,27 +74,27 @@ maybe_recalculate_difficulty(Block) ->
             Block
     end.
 
--spec should_recalculate_difficulty(non_neg_integer()) -> boolean().
+-spec should_recalculate_difficulty(height()) -> boolean().
 should_recalculate_difficulty(Height) ->
     RecalculateDifficultyFrequency = aec_governance:recalculate_difficulty_frequency(),
     (Height > 10) andalso %% do not change difficulty for the first 10 blocks
                     (Height > RecalculateDifficultyFrequency)
         andalso (0 == (Height rem RecalculateDifficultyFrequency)).
 
--spec calculate_difficulty(block(), non_neg_integer()) -> non_neg_integer().
+-spec calculate_difficulty(block(), pos_integer()) -> non_neg_integer().
 calculate_difficulty(NewBlock, BlocksToCheckCount) ->
     CurrentDifficulty = NewBlock#block.difficulty,
     CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
     ExpectedRate = aec_governance:expected_block_mine_rate(),
     aec_pow_sha256:recalculate_difficulty(CurrentDifficulty, ExpectedRate, CurrentRate).
 
--spec get_current_rate(block(), non_neg_integer()) -> non_neg_integer().
+-spec get_current_rate(block(), pos_integer()) -> non_neg_integer().
 get_current_rate(Block, BlocksToCheckCount) ->
     BlockHeader = aec_blocks:to_header(Block),
     BlockHeight = aec_blocks:height(Block),
 
     FirstBlockHeight = BlockHeight - BlocksToCheckCount,
-    {ok, FirstBlockHeader} = aec_headers:get_by_height(FirstBlockHeight),
+    {ok, FirstBlockHeader} = aec_chain:get_header_by_height(FirstBlockHeight), %% TODO: Ensure height refers to correct chain when we have support for longest chain.
 
     mining_rate_between_blocks(BlockHeader, FirstBlockHeader, BlocksToCheckCount).
 

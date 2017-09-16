@@ -99,7 +99,7 @@ uri(Peer) ->
 %%% gen_server functions
 %%%=============================================================================
 
--record(state, {peers :: gb_trees:gb_tree(binary(),peer())}).
+-record(state, {peers :: gb_trees:tree(binary(),peer())}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).

@@ -12,7 +12,7 @@ handle_request('Ping', _, _Context) ->
     {200, [], #{pong => <<"pong">>}};
 
 handle_request('GetTop', _, _Context) ->
-    Header = aec_chain:top_header(),
+    {ok, Header} = aec_chain:top_header(),
     {ok, Resp} = aec_headers:serialize_for_network(Header),
     {200, [], Resp};
 
