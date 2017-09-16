@@ -55,7 +55,7 @@ header_chain_test_() ->
              {ok, B0H} = aec_blocks:hash_internal_representation(B0),
              BH1 = #header{height = 1, prev_hash = B0H},
              ?assertEqual(ok, aec_chain:insert_header(BH1)),
-             {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+             {ok, B1H} = aec_headers:hash_header(BH1),
              BH2 = #header{height = 2, prev_hash = B1H},
              ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
@@ -70,7 +70,7 @@ header_chain_test_() ->
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
              ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B1H)),
-             {ok, B2H} = aec_headers:hash_internal_representation(BH2),
+             {ok, B2H} = aec_headers:hash_header(BH2),
              ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
              ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B2H)),
@@ -108,7 +108,7 @@ block_chain_test_() ->
                B1 = #block{height = 1, prev_hash = B0H},
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
-               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               {ok, B1H} = aec_headers:hash_header(BH1),
                B2 = #block{height = 2, prev_hash = B1H},
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
@@ -127,7 +127,7 @@ block_chain_test_() ->
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B1H)),
-               {ok, B2H} = aec_headers:hash_internal_representation(BH2),
+               {ok, B2H} = aec_headers:hash_header(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
                ?assertEqual({ok, B2}, aec_chain:get_block_by_hash(B2H)),
 
@@ -158,7 +158,7 @@ block_chain_test_() ->
                B1 = #block{height = 1, prev_hash = B0H},
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
-               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               {ok, B1H} = aec_headers:hash_header(BH1),
                B2 = #block{height = 2, prev_hash = B1H},
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
@@ -176,7 +176,7 @@ block_chain_test_() ->
                ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
                ?assertEqual({ok, B1}, aec_chain:get_block_by_hash(B1H)),
-               {ok, B2H} = aec_headers:hash_internal_representation(BH2),
+               {ok, B2H} = aec_headers:hash_header(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B2H)),
@@ -215,9 +215,9 @@ unhappy_paths_test_() ->
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
 
                %% Attempt to lookup header not added to chain.
-               {ok, B1H} = aec_headers:hash_internal_representation(BH1),
+               {ok, B1H} = aec_headers:hash_header(BH1),
                BH2 = #header{height = 2, prev_hash = B1H},
-               {ok, B2H} = aec_headers:hash_internal_representation(BH2),
+               {ok, B2H} = aec_headers:hash_header(BH2),
 
                %% Attempt to get by hash header not added to chain.
                ?assertEqual({error, {header_not_found, {top_header, BH1}}},

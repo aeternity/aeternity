@@ -13,7 +13,7 @@ handle_request('Ping', _, _Context) ->
 
 handle_request('GetTop', _, _Context) ->
     {ok, Header} = aec_chain:top_header(),
-    {ok, Resp} = aec_headers:serialize_for_network(Header),
+    {ok, Resp} = aec_headers:serialize_to_map(Header),
     {200, [], Resp};
 
 handle_request('GetBlock', _, _Context) ->
