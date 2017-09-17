@@ -29,11 +29,44 @@
 -define(NONCE_RANGE, 1000000000000000000000000).
 -define(POW_MODULE, aec_pow_cuckoo).
 
+
+
+%%------------------------------------------------------------------------------
+%%                      Target threshold and difficulty
+%%
+%% The mining rate is controlled by setting a target threshold. The PoW nonce
+%% is accepted if a hash value (the hash of the header for SHA-256, the hash of
+%% the solution graph for Cuckoo Cycleas, converted to an integer) is below
+%% this target threshold.
+%%
+%% A lower target represents a harder task (requiers the hash to start with a
+%% number of zeros).
+%%
+%% The target thershold relates to another value: the diifculty. This is
+%% proportional to the hardness of the PoW task:
+%%
+%% Difficulty = <Target of difficulty 1> / Target,
+%%
+%% a floating point value.
+%% Bitcoin uses 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+%% as Difficulty 1 target (0x1d00ffff in scientific notation, see below). For
+%% Cuckoo Cycle we need a lighter filtering of solutions than for SHA-256 as the
+%% basic algorithm is much slower than a simple hash generation, so we use the
+%% largest possible value:
+%% 0xFFFF000000000000000000000000000000000000000000000000000000000000 (0x2100ffff
+%% in scientific notation) as difficulty 1.
+%%
+%% We store the current target threshold in the block header in scientific notation.
+%% Difficulty is used to select the winning fork of new blocks: the difficulty of a
+%% chain of blocks is the sum of the diffculty of each block.
+%%
 %% Integers represented in scientific notation:
-%%   2^24 * <base-2 exponent + 3> + the first 3 most significant bytes (i.e., the significand,
-%%   see https://en.wikipedia.org/wiki/Significand). The + 3 corresponds to the length of the
+%%   2^24 * <base-2 exponent + 3> + the first 3 most significant bytes (i.e.,
+%%   the significand, see https://en.wikipedia.org/wiki/Significand).
+%%   The + 3 corresponds to the length of the
 %%   significand (i.e., the int value is 0.<significand> * 8^<exponent>).
 %%   https://en.bitcoin.it/wiki/Difficulty#How_is_difficulty_stored_in_blocks.3F)
+%%------------------------------------------------------------------------------
 -type sci_int() :: integer().
 
 %% Optional evidence for PoW verification
