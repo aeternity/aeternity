@@ -5,6 +5,7 @@
          height/1,
          trees/1,
          difficulty/1,
+         linear_difficulty/1,
          set_nonce/2,
          new/3,
          to_header/1,
@@ -39,6 +40,10 @@ trees(Block) ->
 
 difficulty(Block) ->
     Block#block.difficulty.
+
+%% TODO Clarify difficulty - see `aec_headers` module.
+linear_difficulty(Block) ->
+    aec_headers:linear_difficulty(to_header(Block)).
 
 set_nonce(Block, Nonce) ->
     Block#block{nonce = Nonce}.

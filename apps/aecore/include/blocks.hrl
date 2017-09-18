@@ -1,5 +1,7 @@
 -include("trees.hrl").
 
+-define(GENESIS_HEIGHT, 0).
+
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 

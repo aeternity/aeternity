@@ -3,7 +3,9 @@
 %% API
 -export([prev_hash/1,
          height/1,
+         nonce/1,
          time_in_secs/1,
+         linear_difficulty/1,
          serialize_for_network/1,
          deserialize_from_network/1,
          hash_network_serialization/1,
@@ -22,9 +24,17 @@ prev_hash(Header) ->
 height(Header) ->
     Header#header.height.
 
+nonce(Header) ->
+    Header#header.nonce.
+
 time_in_secs(Header) ->
     Time = Header#header.time,
     aeu_time:msecs_to_secs(Time).
+
+%% TODO Clarify linear representation of expected average amount of
+%% work for mining block header.
+linear_difficulty(Header) ->
+    float(max(1.0, Header#header.difficulty)).
 
 -spec serialize_for_network(header()) ->
                                    {ok, block_header_serialized_for_network()}.
