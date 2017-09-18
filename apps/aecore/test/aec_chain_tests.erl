@@ -705,7 +705,7 @@ longest_header_chain_test_() ->
                  end,
                  lists:nthtail(1, MainHC))
        end},
-      {"The alternative header chain has more work, but results in sub-optimal choice because of concurrent insertion",
+      {"The alternative chain initially has more work, but concurrent insertion in chain service makes it not have more work any longer. I.e. concurrent insertions in the chain service do not result in sub-optimal choice.",
        fun() ->
                %% This test has the main aim of clarifying design of
                %% whether chain service shall reject forcing chain
@@ -717,7 +717,7 @@ longest_header_chain_test_() ->
                AltBC = [B0, _] = generate_block_chain_by_difficulties_with_nonce(B0, [1, 3], 222),
                _MainHC = [H0, HM1, HM2, HM3] = header_chain_from_block_chain(MainBC),
                InitialMainHC = [H0, HM1, HM2],
-               AltHC = [H0, HA1] = header_chain_from_block_chain(AltBC),
+               AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -743,12 +743,13 @@ longest_header_chain_test_() ->
                ?assertEqual({ok, HM3}, aec_chain:top_header()),
 
                %% Based on past - now obsolete - decision, update
-               %% chain.  Chain tracked in chain service is
-               %% sub-optimal.
-               ?assertEqual({ok, {{old_top_header, HM3},
-                                  {new_top_header, HA1}}},
+               %% chain.  Chain service rejects.
+               ?assertEqual({error, {chain_does_not_have_more_work,
+                                     {{{top_chain_work, 5.0},
+                                       {alt_chain_work, 4.0}},
+                                      {top_header, HM3}}}},
                             aec_chain:force_insert_headers(AltHC)),
-               ?assertEqual({ok, HA1}, aec_chain:top_header())
+               ?assertEqual({ok, HM3}, aec_chain:top_header())
        end}]}.
 
 longest_block_chain_test_() ->
