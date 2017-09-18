@@ -18,10 +18,15 @@ new(#{account := AccountPubkey}, _Trees) ->
 -spec run(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 run(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
-    {ok, Account0} = aec_accounts:get(AccountPubkey, AccountsTrees0),
-
-    {ok, Account} = aec_accounts:earn(Account0, ?BLOCK_MINE_REWARD, Height),
-
+    Account = case aec_accounts:get(AccountPubkey, AccountsTrees0) of
+                  {ok, Account0} ->
+                      %% Update account
+                      {ok, A} = aec_accounts:earn(Account0, ?BLOCK_MINE_REWARD, Height),
+                      A;
+                  {error, notfound} ->
+                      %% Create account
+                      aec_accounts:new(AccountPubkey, ?BLOCK_MINE_REWARD, Height)
+              end,
     {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
     {ok, Trees}.
