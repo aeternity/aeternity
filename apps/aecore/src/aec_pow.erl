@@ -125,7 +125,7 @@ integer_to_scientific(I) ->
 -spec target_to_difficulty(sci_int()) -> float().
 target_to_difficulty(Th) ->
     %% Max threshold over the current one
-    ?HIGHEST_BITCOIN_TARGET_INT/scientific_to_integer(Th).
+    ?HIGHEST_TARGET_INT/scientific_to_integer(Th).
 
 -spec pick_nonce() -> integer().
 pick_nonce() ->
