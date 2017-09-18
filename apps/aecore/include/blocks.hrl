@@ -1,9 +1,12 @@
 -include("trees.hrl").
 -include("pow.hrl").
 
+-define(GENESIS_VERSION, 1).
 -define(GENESIS_HEIGHT, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).
+-define(TXS_HASH_BYTES, 32).
+-define(STATE_HASH_BYTES, 32).
 
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 
