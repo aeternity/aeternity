@@ -4,11 +4,15 @@
 -export([mine/0,
          mine/1]).
 
+
 -include("common.hrl").
 -include("blocks.hrl").
 -include("txs.hrl").
 
--define(DEFAULT_MINE_ATTEMPTS_COUNT, 10).
+
+%% Cuckoo Cycle has a solution probability of 2.2% so we are
+%% likely to succeed in 100 steps (~90%).
+-define(DEFAULT_MINE_ATTEMPTS_COUNT, 100).
 
 %% API
 
@@ -24,6 +28,7 @@ mine(Attempts) ->
     case aec_blocks:new(LastBlock, Txs, Trees) of
         {ok, Block0} ->
             Block = maybe_recalculate_difficulty(Block0),
+
             case mine(Block, Attempts) of
                 {ok, _Block} = Ok ->
                     Ok;
@@ -39,10 +44,12 @@ mine(Attempts) ->
 
 -spec mine(block(), non_neg_integer()) -> {ok, block()} | {error, term()}.
 mine(Block, Attempts) ->
-    Difficulty = aec_blocks:difficulty(Block),
-    case aec_pow_sha256:generate(Block, Difficulty, Attempts) of
-        {ok, Nonce} ->
-            {ok, aec_blocks:set_nonce(Block, Nonce)};
+    Target = aec_blocks:target(Block),
+    {ok, BlockBin} = aec_headers:serialize_for_network(aec_blocks:to_header(Block)),
+    Mod = aec_pow:pow_module(),
+    case Mod:generate(BlockBin, Target, Attempts) of
+        {ok, {Nonce, Evd}} ->
+            {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
         {error, generation_count_exhausted} = Error ->
             Error
     end.
@@ -68,8 +75,8 @@ maybe_recalculate_difficulty(Block) ->
             %% Recalculate difficulty based on mining rate of N last blocks,
             %% where N = recalculate_difficulty_frequency.
             BlocksToCheckCount = aec_governance:recalculate_difficulty_frequency(),
-            Difficulty = calculate_difficulty(Block, BlocksToCheckCount),
-            Block#block{difficulty = Difficulty};
+            Target = calculate_difficulty(Block, BlocksToCheckCount),
+            Block#block{target = Target};
         false ->
             Block
     end.
@@ -83,10 +90,10 @@ should_recalculate_difficulty(Height) ->
 
 -spec calculate_difficulty(block(), pos_integer()) -> non_neg_integer().
 calculate_difficulty(NewBlock, BlocksToCheckCount) ->
-    CurrentDifficulty = NewBlock#block.difficulty,
+    CurrentTarget = NewBlock#block.target,
     CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
     ExpectedRate = aec_governance:expected_block_mine_rate(),
-    aec_pow_sha256:recalculate_difficulty(CurrentDifficulty, ExpectedRate, CurrentRate).
+    aec_pow:recalculate_difficulty(CurrentTarget, ExpectedRate, CurrentRate).
 
 -spec get_current_rate(block(), pos_integer()) -> non_neg_integer().
 get_current_rate(Block, BlocksToCheckCount) ->
