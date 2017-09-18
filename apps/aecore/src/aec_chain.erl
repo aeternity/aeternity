@@ -454,15 +454,17 @@ header_chain_with_work(WorkBeforeLowerHeader, HeaderChain) ->
 is_header_chain([LowestHeader | OtherHeaders]) ->
     {ok, LowestHeaderHash} =
         aec_headers:hash_internal_representation(LowestHeader),
-    is_header_chain_1(LowestHeaderHash, aec_headers:height(LowestHeader),
-                      OtherHeaders).
+    is_header_chain_internal_1(
+      LowestHeaderHash, aec_headers:height(LowestHeader),
+      OtherHeaders).
 
-is_header_chain_1(<<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>, PreviousHeight, [])
+is_header_chain_internal_1(
+  <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>, PreviousHeight, [])
   when ?IS_HEIGHT(PreviousHeight) ->
     ok;
-is_header_chain_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-                  PreviousHeight,
-                  [LowestHeader | OtherHeaders])
+is_header_chain_internal_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+                           PreviousHeight,
+                           [LowestHeader | OtherHeaders])
   when ?IS_HEIGHT(PreviousHeight) ->
     LowestHeaderPrevHash = aec_headers:prev_hash(LowestHeader),
     ExpectedHeight = 1 + PreviousHeight,
@@ -480,7 +482,7 @@ is_header_chain_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
         true ->
             {ok, LowestHeaderHash} =
                 aec_headers:hash_internal_representation(LowestHeader),
-            is_header_chain_1(
+            is_header_chain_internal_1(
               LowestHeaderHash, aec_headers:height(LowestHeader),
               OtherHeaders)
     end.
@@ -902,21 +904,23 @@ do_find_header_hash_in_chain(HeaderHashToFind, TopHeader, HeadersDb) ->
         TopHeaderHeight =:= ?GENESIS_HEIGHT ->
             {error, not_found};
         true ->
-            do_find_header_hash_in_chain_1(
+            do_find_header_hash_in_chain_internal_1(
               HeaderHashToFind,
               aec_headers:prev_hash(TopHeader#chain_header.h),
               HeadersDb)
     end.
 
-do_find_header_hash_in_chain_1(HeaderHashToFind, HeaderHashToFind, _) ->
+do_find_header_hash_in_chain_internal_1(
+  HeaderHashToFind, HeaderHashToFind, _) ->
     ok;
-do_find_header_hash_in_chain_1(HeaderHashToFind, HeaderHash, HeadersDb) ->
+do_find_header_hash_in_chain_internal_1(
+  HeaderHashToFind, HeaderHash, HeadersDb) ->
     {ok, #chain_header{h = Header}} = headers_db_get(HeadersDb, HeaderHash),
     case aec_headers:height(Header) of
         ?GENESIS_HEIGHT ->
             {error, not_found};
         Height when ?IS_HEIGHT_AFTER_GENESIS(Height) ->
-            do_find_header_hash_in_chain_1(
+            do_find_header_hash_in_chain_internal_1(
               HeaderHashToFind, aec_headers:prev_hash(Header), HeadersDb)
     end.
 
@@ -997,7 +1001,7 @@ do_force_insert_headers(HeaderChain,
                             %% common ancestor).
                             case aec_headers:height(LowestRelevantHeader) of
                                 H when ?IS_HEIGHT_AFTER_GENESIS(H) ->
-                                    do_force_insert_headers_1(
+                                    do_force_insert_headers_internal_1(
                                       RelevantHeaderChainPortion,
                                       HighestCommonAncestor,
                                       TopHeader, TopBlock,
@@ -1007,7 +1011,7 @@ do_force_insert_headers(HeaderChain,
             end
     end.
 
--spec do_force_insert_headers_1(
+-spec do_force_insert_headers_internal_1(
         header_chain_without_genesis(),
         chain_header(),
         chain_header(), aec_blocks:block_deserialized_from_network(),
@@ -1016,10 +1020,11 @@ do_force_insert_headers(HeaderChain,
             {ok, {do_force_insert_headers_reply_ok(), NewState}} when
       NewState :: {chain_header(), aec_blocks:block_deserialized_from_network(),
                    top_header_db(), headers_db(), blocks_db()}.
-do_force_insert_headers_1(HeaderChain = [_|_], %% Above common ancestor.
-                          CommonAncestor,
-                          OldTopHeader, _TopBlock,
-                          TopHeaderDb, HeadersDb, BlocksDb) ->
+do_force_insert_headers_internal_1(
+  HeaderChain = [_|_], %% Above common ancestor.
+  CommonAncestor,
+  OldTopHeader, _TopBlock,
+  TopHeaderDb, HeadersDb, BlocksDb) ->
     HeaderChainWithWork =
         header_chain_with_work(CommonAncestor#chain_header.td, HeaderChain),
     NewTopHeader = lists:last(HeaderChainWithWork),
@@ -1122,7 +1127,7 @@ do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
                   when HighestHCHeaderHash =/= HH ->
                     ok
             end,
-            do_find_highest_common_ancestor_1(
+            do_find_highest_common_ancestor_internal_1(
               {aec_headers:prev_hash(HighestHCHeader),
                aec_headers:height(HighestHCHeader),
                ReversedHCRest},
@@ -1133,7 +1138,7 @@ do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
             %% not included.
             {ok, TopHeaderHash} = aec_headers:hash_internal_representation(
                                     TopHeader#chain_header.h),
-            do_find_highest_common_ancestor_2(
+            do_find_highest_common_ancestor_internal_2(
               {aec_headers:prev_hash(HighestHCHeader),
                aec_headers:height(HighestHCHeader),
                ReversedHCRest},
@@ -1146,13 +1151,17 @@ do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
 %% The first specified chain may be without genesis. The second
 %% specified chain arrives at genesis. The two specified chains may
 %% refer to distinct genesis block headers.
--spec do_find_highest_common_ancestor_1(
+-spec do_find_highest_common_ancestor_internal_1(
         FirstChain::term(), SecondChain::term(),
         NotIncludedHeaderChainAccumulator::header_chain()) -> term().
-do_find_highest_common_ancestor_1({_, H, []}, {_, H = ?GENESIS_HEIGHT, _}, _) ->
+do_find_highest_common_ancestor_internal_1({_, H, []},
+                                           {_, H = ?GENESIS_HEIGHT, _},
+                                           _) ->
     %% Distinct genesis block headers.
     {error, no_common_ancestor};
-do_find_highest_common_ancestor_1({HCPrevHash, H, []}, {HCPrevHash, H, HeadersDb}, NotIncludedHC)
+do_find_highest_common_ancestor_internal_1({HCPrevHash, H, []},
+                                           {HCPrevHash, H, HeadersDb},
+                                           NotIncludedHC)
   when ?IS_HEIGHT_AFTER_GENESIS(H) ->
     %% The first chain is without genesis.
     %%
@@ -1162,14 +1171,17 @@ do_find_highest_common_ancestor_1({HCPrevHash, H, []}, {HCPrevHash, H, HeadersDb
     {ok, Header2} = headers_db_get(HeadersDb, HCPrevHash),
     {ok, {{highest_common_ancestor, Header2},
           {not_included_header_chain, NotIncludedHC}}};
-do_find_highest_common_ancestor_1({_, H, []}, {_, H, _}, _)
+do_find_highest_common_ancestor_internal_1({_, H, []}, {_, H, _}, _)
   when ?IS_HEIGHT_AFTER_GENESIS(H) ->
     %% The first chain is without genesis.
     %%
     %% No known common ancestors - not even the previous header of the
     %% lowest header in the first chain.
     {error, no_common_ancestor};
-do_find_highest_common_ancestor_1({HCPrevHash, H, [HighestHCHeader | _]}, {HCPrevHash, H, HeadersDb}, NotIncludedHC)
+do_find_highest_common_ancestor_internal_1(
+  {HCPrevHash, H, [HighestHCHeader | _]},
+  {HCPrevHash, H, HeadersDb},
+  NotIncludedHC)
   when ?IS_HEIGHT_AFTER_GENESIS(H) ->
     %% The highest common ancestor is the identified header, in the
     %% first chain.
@@ -1179,37 +1191,43 @@ do_find_highest_common_ancestor_1({HCPrevHash, H, [HighestHCHeader | _]}, {HCPre
         headers_db_get(HeadersDb, HCPrevHash),
     {ok, {{highest_common_ancestor, Header2},
           {not_included_header_chain, NotIncludedHC}}};
-do_find_highest_common_ancestor_1({_, H, [HighestHCHeader | HCRest]}, {PrevHash, H, HeadersDb}, NotIncludedHC)
+do_find_highest_common_ancestor_internal_1({_, H, [HighestHCHeader | HCRest]},
+                                           {PrevHash, H, HeadersDb},
+                                           NotIncludedHC)
   when ?IS_HEIGHT_AFTER_GENESIS(H) ->
     %% Still looking for the highest common ancestor.  Go down both
     %% chains.
     {ok, #chain_header{h = Header2}} = headers_db_get(HeadersDb, PrevHash),
-    do_find_highest_common_ancestor_1(
+    do_find_highest_common_ancestor_internal_1(
       {aec_headers:prev_hash(HighestHCHeader),
        aec_headers:height(HighestHCHeader),
        HCRest},
       {aec_headers:prev_hash(Header2), aec_headers:height(Header2), HeadersDb},
       [HighestHCHeader | NotIncludedHC]).
 
--spec do_find_highest_common_ancestor_2(
+-spec do_find_highest_common_ancestor_internal_2(
         FirstChain::term(), SecondChain::term(),
         NotIncludedHeaderChainAccumulator::header_chain()) -> term().
-do_find_highest_common_ancestor_2({_, H1, [HighestHCHeader | HCRest]}, C2 = {_, H2, _}, NotIncludedHC)
+do_find_highest_common_ancestor_internal_2({_, H1, [HighestHCHeader | HCRest]},
+                                           C2 = {_, H2, _},
+                                           NotIncludedHC)
   when ?IS_HEIGHT(H1), ?IS_HEIGHT(H2), H1 > H2 ->
     %% Still higher on first chain than on second chain.  Go down
     %% first chain.
-    do_find_highest_common_ancestor_2(
+    do_find_highest_common_ancestor_internal_2(
       {aec_headers:prev_hash(HighestHCHeader),
        aec_headers:height(HighestHCHeader),
        HCRest},
       C2,
       [HighestHCHeader | NotIncludedHC]
      );
-do_find_highest_common_ancestor_2({_, H1, []}, {_, H2, _}, _)
+do_find_highest_common_ancestor_internal_2({_, H1, []}, {_, H2, _}, _)
   when ?IS_HEIGHT(H1), ?IS_HEIGHT(H2), H1 > H2 ->
     %% No known common ancestors.
     {error, no_common_ancestor};
-do_find_highest_common_ancestor_2(C1 = {_, H, _}, C2 = {_, H, _}, NotIncludedHC)
+do_find_highest_common_ancestor_internal_2(C1 = {_, H, _},
+                                           C2 = {_, H, _},
+                                           NotIncludedHC)
   when ?IS_HEIGHT(H) ->
     %% The two chains have a block at the same height.  Reuse other function.
-    do_find_highest_common_ancestor_1(C1, C2, NotIncludedHC).
+    do_find_highest_common_ancestor_internal_1(C1, C2, NotIncludedHC).
