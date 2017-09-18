@@ -72,7 +72,7 @@ get_operations() ->
         },
         'PutBlock' => #{
             path => "/v1/block",
-            method => <<"PUT">>,
+            method => <<"POST">>,
             handler => 'swagger_external_handler'
         }
     }.

@@ -83,7 +83,7 @@ allowed_methods(
         operation_id = 'PutBlock'
     }
 ) ->
-    {[<<"PUT">>], Req, State};
+    {[<<"POST">>], Req, State};
 
 allowed_methods(Req, State) ->
     {[], Req, State}.

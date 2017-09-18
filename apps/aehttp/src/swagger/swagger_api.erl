@@ -116,7 +116,7 @@ validate_response('GetBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
+    validate_response_body('Header', 'Header', Body, ValidatorState);
 
 validate_response('Ping', 200, Body, ValidatorState) ->
     validate_response_body('Ping', 'Ping', Body, ValidatorState);

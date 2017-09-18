@@ -62,7 +62,7 @@ paths:
 #          schema:
 #            $ref: '#/definitions/Block'
       security: []
-    put:
+    post:
       tags:
         - external
       operationId: PutBlock 
