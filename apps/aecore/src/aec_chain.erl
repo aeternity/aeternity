@@ -948,8 +948,12 @@ do_get_work_by_hash_and_at_top(HeaderHash, TopHeader, HeadersDb) ->
                                                   {new_top_header, header()}}}.
 -type do_force_insert_headers_reply_error() ::
         is_header_chain_return_error() |
-        {error, Reason::{header_chain_already_included, term()} |
-                        {no_common_ancestor, term()}
+        {error,
+         Reason::{header_chain_already_included, term()} |
+                 {no_common_ancestor, term()} |
+                 {chain_does_not_have_more_work, {{{top_chain_work, work()},
+                                                   {alt_chain_work, work()}},
+                                                  {top_header, header()}}}
         }.
 -spec do_force_insert_headers(
         header_chain(),
@@ -1008,7 +1012,8 @@ do_force_insert_headers(HeaderChain,
         chain_header(),
         chain_header(), aec_blocks:block_deserialized_from_network(),
         top_header_db(), headers_db(), blocks_db()
-       ) -> {ok, {do_force_insert_headers_reply_ok(), NewState}} when
+       ) -> {error, Reason::{chain_does_not_have_more_work, term()}} |
+            {ok, {do_force_insert_headers_reply_ok(), NewState}} when
       NewState :: {chain_header(), aec_blocks:block_deserialized_from_network(),
                    top_header_db(), headers_db(), blocks_db()}.
 do_force_insert_headers_1(HeaderChain = [_|_], %% Above common ancestor.
@@ -1018,45 +1023,59 @@ do_force_insert_headers_1(HeaderChain = [_|_], %% Above common ancestor.
     HeaderChainWithWork =
         header_chain_with_work(CommonAncestor#chain_header.td, HeaderChain),
     NewTopHeader = lists:last(HeaderChainWithWork),
-    {ok, NewTopHeaderHash} =
-        aec_headers:hash_internal_representation(NewTopHeader#chain_header.h),
-    {ok, CommonAncestorHash} =
-        aec_headers:hash_internal_representation(CommonAncestor#chain_header.h),
-    %% Ensure headers above common ancestor are stored, then update
-    %% top, then delete unused blocks (in old chain above highest
-    %% common ancestor), then delete unused headers (in old chain
-    %% above highest common ancestor). In this order so that, if
-    %% execution stops, the top header hash still refers to a chain,
-    %% and each block has its header stored.
-    %%
-    %% As the headers belong to a distinct chain than the current top,
-    %% they should not be stored yet.  So store each header without
-    %% first checking that it is not yet stored.
-    HeadersDbWithNewHeaders =
-        lists:foldl(
-          fun(H, HsDb) ->
-                  {ok, HH} =
-                      aec_headers:hash_internal_representation(
-                        H#chain_header.h),
-                  {ok, NewHsDb} = headers_db_put(HsDb, HH, H),
-                  NewHsDb
-          end,
-          HeadersDb,
-          HeaderChainWithWork),
-    {ok, NewTopHeaderDb} =
-        top_header_db_put(TopHeaderDb, ?TOP_HEADER, NewTopHeaderHash),
-    {ok, {NewHeadersDb, NewBlocksDb}} =
-        do_delete_headers_and_blocks_from_header_to_header_hash(
-          OldTopHeader, %% To delete.
-          CommonAncestorHash, %% Not to delete.
-          HeadersDbWithNewHeaders, BlocksDb),
-    {ok, NewTopBlock} =
-        do_find_highest_block_from_header_hash(NewTopHeaderHash,
-                                               NewHeadersDb, NewBlocksDb),
-    {ok, {_Reply = {ok, {{old_top_header, OldTopHeader#chain_header.h},
-                         {new_top_header, NewTopHeader#chain_header.h}}},
-          {NewTopHeader, NewTopBlock,
-           NewTopHeaderDb, NewHeadersDb, NewBlocksDb}}}.
+    case 'work_op_>'(NewTopHeader#chain_header.td,
+                     OldTopHeader#chain_header.td) of
+        false ->
+            _Reply =
+                {error, {chain_does_not_have_more_work,
+                         {{{top_chain_work, OldTopHeader#chain_header.td},
+                           {alt_chain_work, NewTopHeader#chain_header.td}},
+                          {top_header, OldTopHeader#chain_header.h}}}};
+        true ->
+            {ok, NewTopHeaderHash} =
+                aec_headers:hash_internal_representation(
+                  NewTopHeader#chain_header.h),
+            {ok, CommonAncestorHash} =
+                aec_headers:hash_internal_representation(
+                  CommonAncestor#chain_header.h),
+            %% Ensure headers above common ancestor are stored, then
+            %% update top, then delete unused blocks (in old chain
+            %% above highest common ancestor), then delete unused
+            %% headers (in old chain above highest common
+            %% ancestor). In this order so that, if execution stops,
+            %% the top header hash still refers to a chain, and each
+            %% block has its header stored.
+            %%
+            %% As the headers belong to a distinct chain than the
+            %% current top, they should not be stored yet.  So store
+            %% each header without first checking that it is not yet
+            %% stored.
+            HeadersDbWithNewHeaders =
+                lists:foldl(
+                  fun(H, HsDb) ->
+                          {ok, HH} =
+                              aec_headers:hash_internal_representation(
+                                H#chain_header.h),
+                          {ok, NewHsDb} = headers_db_put(HsDb, HH, H),
+                          NewHsDb
+                  end,
+                  HeadersDb,
+                  HeaderChainWithWork),
+            {ok, NewTopHeaderDb} =
+                top_header_db_put(TopHeaderDb, ?TOP_HEADER, NewTopHeaderHash),
+            {ok, {NewHeadersDb, NewBlocksDb}} =
+                do_delete_headers_and_blocks_from_header_to_header_hash(
+                  OldTopHeader, %% To delete.
+                  CommonAncestorHash, %% Not to delete.
+                  HeadersDbWithNewHeaders, BlocksDb),
+            {ok, NewTopBlock} =
+                do_find_highest_block_from_header_hash(NewTopHeaderHash,
+                                                       NewHeadersDb, NewBlocksDb),
+            {ok, {_Reply = {ok, {{old_top_header, OldTopHeader#chain_header.h},
+                                 {new_top_header, NewTopHeader#chain_header.h}}},
+                  {NewTopHeader, NewTopBlock,
+                   NewTopHeaderDb, NewHeadersDb, NewBlocksDb}}}
+    end.
 
 do_delete_headers_and_blocks_from_header_to_header_hash(
   HighIncludedHeader, LowExcludedHeaderHash,
