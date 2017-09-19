@@ -138,12 +138,12 @@ top_block() ->
     gen_server:call(?SERVER, {top_block},
                     ?DEFAULT_CALL_TIMEOUT).
 
--spec get_header_by_hash(header_hash()) -> do_get_header_by_hash_reply().
+-spec get_header_by_hash(block_header_hash()) -> do_get_header_by_hash_reply().
 get_header_by_hash(HeaderHash) ->
     gen_server:call(?SERVER, {get_header_by_hash, HeaderHash},
                     ?DEFAULT_CALL_TIMEOUT).
 
--spec get_block_by_hash(header_hash()) -> do_get_block_by_hash_reply().
+-spec get_block_by_hash(block_header_hash()) -> do_get_block_by_hash_reply().
 get_block_by_hash(HeaderHash) ->
     gen_server:call(?SERVER, {get_block_by_hash, HeaderHash},
                     ?DEFAULT_CALL_TIMEOUT).
@@ -452,7 +452,7 @@ header_chain_with_work(WorkBeforeLowerHeader, HeaderChain) ->
 -spec is_header_chain(header_chain()) -> ok | is_header_chain_return_error().
 is_header_chain([LowestHeader | OtherHeaders]) ->
     {ok, LowestHeaderHash} =
-        aec_headers:hash_internal_representation(LowestHeader),
+        aec_headers:hash_header(LowestHeader),
     is_header_chain_internal_1(
       LowestHeaderHash, aec_headers:height(LowestHeader),
       OtherHeaders).
@@ -480,7 +480,7 @@ is_header_chain_internal_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
                       {previous_hash, LowestHeaderPrevHash}}}};
         true ->
             {ok, LowestHeaderHash} =
-                aec_headers:hash_internal_representation(LowestHeader),
+                aec_headers:hash_header(LowestHeader),
             is_header_chain_internal_1(
               LowestHeaderHash, aec_headers:height(LowestHeader),
               OtherHeaders)
@@ -490,7 +490,7 @@ is_header_chain_internal_1(PreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
                                       boolean().
 is_header_chain_included(HeaderChain, TopHeader, HeadersDb) ->
     {ok, HeaderChainHash} =
-        aec_headers:hash_internal_representation(lists:last(HeaderChain)),
+        aec_headers:hash_header(lists:last(HeaderChain)),
     case do_find_header_hash_in_chain(HeaderChainHash, TopHeader, HeadersDb) of
         ok ->
             true;
@@ -577,7 +577,7 @@ do_init([GenesisBlock], TopHeaderDb, HeadersDb, BlocksDb) ->
         aec_blocks:serialize_for_network(GenesisBlock),
     GenesisHeader = aec_blocks:to_header(GenesisBlock),
     {ok, GenesisHeaderHash} =
-        aec_headers:hash_internal_representation(GenesisHeader),
+        aec_headers:hash_header(GenesisHeader),
 
     %% Initialize databases.
     {ok, {NewTopHeaderDb, NewHeadersDb, NewBlocksDb}} =
@@ -799,7 +799,7 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
     {true, _} = {?IS_WORK(HeaderDifficulty), {bad_difficulty,
                                               HeaderDifficulty}},
     {ok, TopHeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>} =
-        aec_headers:hash_internal_representation(TopHeader#chain_header.h),
+        aec_headers:hash_header(TopHeader#chain_header.h),
     HeaderPreviousHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>> =
         aec_headers:prev_hash(Header),
     TopHeaderHeight = aec_headers:height(TopHeader#chain_header.h),
@@ -823,7 +823,7 @@ do_insert_header(Header, TopHeader, TopHeaderDb, HeadersDb) ->
             %% Ensure header is stored, then update top. In this order
             %% so that, if execution stops after storing header, the
             %% top header hash still refers to a a chain.
-            {ok, HeaderHash} = aec_headers:hash_internal_representation(Header),
+            {ok, HeaderHash} = aec_headers:hash_header(Header),
             %% As header is a successor of the current top, it should
             %% not be stored yet.  So store header without first
             %% checking that it is not yet stored.
@@ -1036,10 +1036,10 @@ do_force_insert_headers_internal_1(
                           {top_header, OldTopHeader#chain_header.h}}}};
         true ->
             {ok, NewTopHeaderHash} =
-                aec_headers:hash_internal_representation(
+                aec_headers:hash_header(
                   NewTopHeader#chain_header.h),
             {ok, CommonAncestorHash} =
-                aec_headers:hash_internal_representation(
+                aec_headers:hash_header(
                   CommonAncestor#chain_header.h),
             %% Ensure headers above common ancestor are stored, then
             %% update top, then delete unused blocks (in old chain
@@ -1057,7 +1057,7 @@ do_force_insert_headers_internal_1(
                 lists:foldl(
                   fun(H, HsDb) ->
                           {ok, HH} =
-                              aec_headers:hash_internal_representation(
+                              aec_headers:hash_header(
                                 H#chain_header.h),
                           {ok, NewHsDb} = headers_db_put(HsDb, HH, H),
                           NewHsDb
@@ -1084,7 +1084,7 @@ do_delete_headers_and_blocks_from_header_to_header_hash(
   HighIncludedHeader, LowExcludedHeaderHash,
   HeadersDb, BlocksDb) ->
     {ok, HighIncludedHeaderHash} =
-        aec_headers:hash_internal_representation(
+        aec_headers:hash_header(
           HighIncludedHeader#chain_header.h),
     {ok, NewBlocksDb} = blocks_db_delete(BlocksDb, HighIncludedHeaderHash),
     {ok, NewHeadersDb} = headers_db_delete(HeadersDb, HighIncludedHeaderHash),
@@ -1118,8 +1118,8 @@ do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
             %% common height.
             {ok, H} = do_get_header_by_height(HCHeight, TopHeader, HeadersDb),
             case
-                {aec_headers:hash_internal_representation(HighestHCHeader),
-                 aec_headers:hash_internal_representation(H)}
+                {aec_headers:hash_header(HighestHCHeader),
+                 aec_headers:hash_header(H)}
             of
                 {{ok, HighestHCHeaderHash}, {ok, HH}}
                   when HighestHCHeaderHash =/= HH ->
@@ -1134,7 +1134,7 @@ do_find_highest_common_ancestor(HC, TopHeader, HeadersDb) ->
         HCHeight > TopHeight ->
             %% Being higher, of course at least part of the chain is
             %% not included.
-            {ok, TopHeaderHash} = aec_headers:hash_internal_representation(
+            {ok, TopHeaderHash} = aec_headers:hash_header(
                                     TopHeader#chain_header.h),
             do_find_highest_common_ancestor_internal_2(
               {aec_headers:prev_hash(HighestHCHeader),
