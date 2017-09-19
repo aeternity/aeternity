@@ -70,5 +70,5 @@ genesis_block_as_deserialized_from_network() ->
 %% heap memory of the calling process.
 genesis_block() ->
     B = genesis_block_as_deserialized_from_network(),
-    B#block{
-      trees = todo}. %% TODO Return empty state trees. Refine module aec_trees.
+    {ok, T} = aec_trees:all_trees_new(),
+    B#block{trees = T}.
