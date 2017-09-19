@@ -31,7 +31,16 @@ all_test_() ->
      fun(TmpKeysDir) ->
              ok = aec_keys:stop(),
              ok = application:stop(crypto),
-             file:delete(TmpKeysDir)
+             {ok, KeyFiles} = file:list_dir(TmpKeysDir),
+             %% Expect two filenames - private and public keys.
+             [KF1, KF2] = KeyFiles,
+             lists:foreach(
+               fun(F) ->
+                       AbsF = filename:absname_join(TmpKeysDir, F),
+                       {ok, _} = {file:delete(AbsF), {F, AbsF}}
+               end,
+               KeyFiles),
+             ok = file:del_dir(TmpKeysDir)
      end,
      [fun(TmpKeysDir) ->
               [{"Sign coinbase transaction",
