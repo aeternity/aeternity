@@ -3,6 +3,9 @@
 %% API
 -export([prev_hash/1,
          height/1,
+         nonce/1,
+         target/1,
+         difficulty/1,
          time_in_secs/1,
          serialize_to_map/1,
          deserialize_from_map/1,
@@ -19,6 +22,15 @@ prev_hash(Header) ->
 
 height(Header) ->
     Header#header.height.
+
+nonce(Header) ->
+    Header#header.nonce.
+
+target(Header) ->
+    Header#header.target.
+
+difficulty(Header) ->
+    aec_pow:target_to_difficulty(target(Header)).
 
 time_in_secs(Header) ->
     Time = Header#header.time,

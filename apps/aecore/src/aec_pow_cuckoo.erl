@@ -9,10 +9,12 @@
 %%%-------------------------------------------------------------------
 -module(aec_pow_cuckoo).
 
--export([generate/4,
+-behaviour(aec_pow).
+
+-export([generate/3,
          generate/6,
-         verify/4,
-         recalculate_difficulty/3]).
+         verify/4]).
+
 
 -ifdef(TEST).
 -compile(export_all).
@@ -21,10 +23,7 @@
 -on_load(init/0).
 
 -type pow_cuckoo_solution() :: [integer()].
--type pow_cuckoo_result() :: {'ok', Soln :: pow_cuckoo_solution()} | {'error', atom()}.
 
--export_type([pow_cuckoo_result/0,
-              pow_cuckoo_solution/0]).
 
 %%%=============================================================================
 %%% NIF initialization
@@ -55,45 +54,37 @@ init() ->
 %%
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
--spec generate(Data :: binary(), Nonce :: integer(), Difficulty :: aec_sha256:sci_int(),
-               Retries :: integer()) -> pow_cuckoo_result().
-generate(Data, Nonce, Difficulty, Retries) ->
-    generate(Data, Nonce, Difficulty, 7, 5, Retries).
+-spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
+               Retries :: integer()) -> aec_pow:pow_result().
+generate(Data, Target, Retries) ->
+    Nonce = aec_pow:pick_nonce(),
+    generate(Data, Nonce, Target, 7, 5, Retries).
 
 %%------------------------------------------------------------------------------
-%% Proof of Work generation, multiple attempts
+%% Proof of Work generation, all params adjustable
 %%------------------------------------------------------------------------------
--spec generate(Data :: binary(), Nonce :: integer(), Difficulty :: aec_sha256:sci_int(),
-               Trims :: integer(), Threads :: integer(), Retries :: integer()) ->
-                      pow_cuckoo_result().
-generate(Data, Nonce, Difficulty, Trims, Threads, Retries) ->
+-spec generate(Data :: aec_sha256:hashable(), Nonce :: integer(),
+               Target :: aec_pow:sci_int(), Trims :: integer(),
+               Threads :: integer(), Retries :: integer()) ->
+                      aec_pow:pow_result().
+generate(Data, Nonce, Target, Trims, Threads, Retries) ->
     Hash = base64:encode_to_string(aec_sha256:hash(Data)),
-    generate_hashed(Hash, Nonce, Difficulty, Trims, Threads, Retries).
+    generate_hashed(Hash, Nonce, Target, Trims, Threads, Retries).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
--spec verify(Data :: binary(), Nonce :: integer(),
-             Soln :: pow_cuckoo_solution(), Difficulty :: aec_sha256:sci_int()) ->
+-spec verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
+             Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
-verify(Data, Nonce, Soln, Difficulty) ->
+verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
     Hash = base64:encode_to_string(aec_sha256:hash(Data)),
-    case test_difficulty(Soln, Difficulty) of
+    case test_target(Evd, Target) of
         true ->
-            verify(Hash, Nonce, Soln);
+            verify(Hash, Nonce, Evd);
         false ->
             false
     end.
-
-%%------------------------------------------------------------------------------
-%% Adjust difficulty so that generation of new blocks proceeds at the expected pace
-%%------------------------------------------------------------------------------
--spec recalculate_difficulty(aec_sha256:sci_int(), integer(), integer()) ->
-                                    aec_sha256:sci_int().
-recalculate_difficulty(Difficulty, Expected, Actual) ->
-    DiffInt = aec_sha256:scientific_to_integer(Difficulty),
-    aec_sha256:integer_to_scientific(max(1, DiffInt * Expected div Actual)).
-
 
 %%%=============================================================================
 %%% Internal functions
@@ -102,18 +93,18 @@ recalculate_difficulty(Difficulty, Expected, Actual) ->
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided and try consecutive nonces
 %%------------------------------------------------------------------------------
-generate_hashed(_Hash, _Nonce, _Difficulty, _Trims, _Threads, 0) ->
+generate_hashed(_Hash, _Nonce, _Target, _Trims, _Threads, 0) ->
     {error, generation_count_exhausted};
-generate_hashed(Hash, Nonce, Difficulty, Trims, Threads, Retries) when Retries > 0 ->
+generate_hashed(Hash, Nonce, Target, Trims, Threads, Retries) when Retries > 0 ->
     case generate_single(Hash, Nonce, Trims, Threads) of
         {error, no_solutions} ->
-            generate_hashed(Hash, Nonce + 1, Difficulty, Trims, Threads, Retries - 1);
-        {ok, Soln} = Result ->
-            case test_difficulty(Soln, Difficulty) of
+            generate_hashed(Hash, Nonce + 1, Target, Trims, Threads, Retries - 1);
+        {ok, Soln} ->
+            case test_target(Soln, Target) of
                 true ->
-                    Result;
+                    {ok, {Nonce, Soln}};
                 false ->
-                    generate_hashed(Hash, Nonce + 1, Difficulty, Trims, Threads, Retries - 1)
+                    generate_hashed(Hash, Nonce + 1, Target, Trims, Threads, Retries - 1)
             end
     end.
 
@@ -121,7 +112,9 @@ generate_hashed(Hash, Nonce, Difficulty, Trims, Threads, Retries) when Retries >
 %% Proof of Work generation, a single attempt
 %%------------------------------------------------------------------------------
 -spec generate_single(Header :: string(), Nonce :: integer(), Trims :: integer(),
-               Threads :: integer()) -> pow_cuckoo_result().
+                      Threads :: integer()) ->
+                             {'ok', Solution :: pow_cuckoo_solution()} |
+                             {'error', 'no_solutions'}.
 generate_single(_Header, _Nonce, _Trims, _Threads) ->
     erlang:nif_error(nif_library_not_loaded).
 
@@ -129,7 +122,7 @@ generate_single(_Header, _Nonce, _Trims, _Threads) ->
 %% Proof of Work verification (without difficulty check)
 %%------------------------------------------------------------------------------
 -spec verify(Hash :: string(), Nonce :: integer(),
-             Soln :: pow_cuckoo_solution()) -> boolean().
+             Soln :: aec_pow:pow_evidence()) -> boolean().
 verify(_Hash, _Nonce, _Soln) ->
     erlang:nif_error(nif_library_not_loaded).
 
@@ -142,16 +135,17 @@ get_node_size() ->
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a
-%% hash-based difficulty is suggested: the sha256 hash of the cycle nonces
-%% is restricted to be under the difficulty value (0 < difficulty < 2^256).
+%% hash-based target is suggested: the sha256 hash of the cycle nonces
+%% is restricted to be under the target value (0 < target < 2^256).
 %%------------------------------------------------------------------------------
--spec test_difficulty(Soln :: pow_cuckoo_solution(), Difficulty :: aec_sha256:sci_int()) ->
+-spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int()) ->
                              boolean().
-test_difficulty(Soln, Difficulty) ->
+test_target(Soln, Target) ->
     NodeSize = get_node_size(),
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
     Hash = aec_sha256:hash(Bin),
-    aec_sha256:binary_to_scientific(Hash) < Difficulty.
+    aec_pow:test_target(Hash, Target).
+
 
 %%------------------------------------------------------------------------------
 %% Convert solution (a list of 42 numbers) to a binary

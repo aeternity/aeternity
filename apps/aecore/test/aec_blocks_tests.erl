@@ -12,7 +12,7 @@
 new_block_test_() ->
     {"Generate new block with given txs and 0 nonce",
      fun() ->
-             PrevBlock = #block{height = 11, difficulty = 17},
+             PrevBlock = #block{height = 11, target = 17},
              BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
              {ok, NewBlock} = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
@@ -21,7 +21,7 @@ new_block_test_() ->
              ?assertEqual(aec_headers:hash_header(BlockHeader),
                           {ok, ?TEST_MODULE:prev_hash(NewBlock)}),
              ?assertEqual([], NewBlock#block.txs),
-             ?assertEqual(17, NewBlock#block.difficulty),
+             ?assertEqual(17, NewBlock#block.target),
              ?assertEqual(1, NewBlock#block.version)
      end
     }.

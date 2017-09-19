@@ -23,3 +23,5 @@ py/pip-selfcheck.json
 nosetests.xml
 py/tests/swagger_client
 *.pyc
+apps/aecore/c_src/cuckoo
+apps/aecore/priv
