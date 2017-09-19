@@ -90,25 +90,13 @@ allowed_methods(Req, State) ->
 
 -spec is_authorized(Req :: cowboy_req:req(), State :: state()) ->
     {
-        Value :: true | {false, AuthHeader :: iodata()},
+        Value :: {true, <<>>},
         Req :: cowboy_req:req(),
         State :: state()
     }.
 
 is_authorized(Req, State) ->
-    {true, Req, State};
-
-is_authorized(Req, State) ->
-    {true, Req, State};
-
-is_authorized(Req, State) ->
-    {true, Req, State};
-
-is_authorized(Req, State) ->
-    {true, Req, State};
-
-is_authorized(Req, State) ->
-    {{false, <<"">>}, Req, State}.
+    {{true, <<"">>}, Req, State}.
 
 -spec content_types_accepted(Req :: cowboy_req:req(), State :: state()) ->
     {
