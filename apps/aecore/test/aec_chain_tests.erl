@@ -4,17 +4,16 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
-fake_genesis_block() ->
-    #block{height = 0,
-           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>}.
+genesis_block() ->
+    aec_genesis:genesis_block_as_deserialized_from_network().
 
 top_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
      fun(_ChainPid) -> ok = aec_chain:stop() end,
      [{"Initialize chain with genesis block, then check top block with related state trees",
        fun() ->
-               GB = fake_genesis_block(),
+               GB = genesis_block(),
                ?assertEqual({ok, GB}, aec_chain:top_block()),
 
                {ok, Top} = aec_chain:top(),
@@ -26,10 +25,10 @@ top_test_() ->
 
 genesis_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
      fun(_ChainPid) -> ok = aec_chain:stop() end,
      fun() ->
-             GB = fake_genesis_block(),
+             GB = genesis_block(),
              ?assertEqual({ok, GB}, aec_chain:top_block()),
              GH = aec_blocks:to_header(GB),
              ?assertEqual({ok, GH}, aec_chain:top_header()),
@@ -44,11 +43,11 @@ genesis_test_() ->
 
 header_chain_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
      fun(_ChainPid) -> ok = aec_chain:stop() end,
      fun() ->
              %% Check chain is at genesis.
-             B0 = fake_genesis_block(),
+             B0 = genesis_block(),
              BH0 = aec_blocks:to_header(B0),
              ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -98,12 +97,12 @@ header_chain_test_() ->
 
 block_chain_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
      fun(_ChainPid) -> ok = aec_chain:stop() end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -156,7 +155,7 @@ block_chain_test_() ->
      {"Build chain with genesis block plus 2 headers, then store block corresponding to header before top header",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -208,10 +207,8 @@ block_chain_test_() ->
        end}]}.
 
 fake_genesis_block_with_difficulty() ->
-    #block{height = 0,
-           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-           target = 1, %% Field used as if it were difficulty for ease of testing.
-           nonce = 0}.
+    GB = aec_genesis:genesis_block_as_deserialized_from_network(),
+    GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
 
 get_work_at_top_test_() ->
     {foreach,
@@ -269,12 +266,12 @@ get_work_at_top_test_() ->
 %% Cover unhappy paths not covered in any other tests.
 unhappy_paths_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(fake_genesis_block()), Pid end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
      fun(_ChainPid) -> ok = aec_chain:stop() end,
      [{"Get header by hash - case not found",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -298,7 +295,7 @@ unhappy_paths_test_() ->
       {"Insert header meant to be successor of top header - case wrong previous hash",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -349,7 +346,7 @@ unhappy_paths_test_() ->
       {"Insert header meant to be successor of top header - case correct previous hash but wrong height",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
