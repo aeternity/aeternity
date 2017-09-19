@@ -26,7 +26,6 @@ pow_test_() ->
        {timeout, 60,
         fun() ->
                 %% succeeds in a single step
-                SmallDiff = 0,
                 {T1, Res} = timer:tc(?TEST_MODULE, generate,
                                      [<<"wsffgujnjkqhduihsahswgdf">>, ?HIGHEST_TARGET_SCI, 100]),
                 ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
