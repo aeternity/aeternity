@@ -118,9 +118,9 @@ deps: $(LIBDIR)
 $(LIBDIR):
 	git clone https://github.com/tromp/cuckoo.git
 
-$(CUCKOO_SRCS): deps
+$(CUCKOO_SRCS): $(LIBDIR)
 
-$(CUCKOO_OBJECTS): deps $(CUCKOO_SRCS)
+$(CUCKOO_OBJECTS): $(CUCKOO_SRCS)
 
 clean: ## Clean all files
 	@rm -f $(OBJECTS) $(LIB_SO)
