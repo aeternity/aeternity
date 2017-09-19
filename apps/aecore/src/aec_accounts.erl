@@ -2,6 +2,7 @@
 
 %% API
 -export([empty/0,
+         new/3,
          get/2,
          get_with_proof/2,
          put/2,
@@ -14,6 +15,9 @@
 
 empty() ->
     {ok, _AccountsTree} = aec_trees:new().
+
+new(Pubkey, Balance, Height) ->
+    #account{pubkey = Pubkey, balance = Balance, height = Height}.
 
 get(Pubkey, AccountsTree) ->
     case aec_trees:get(Pubkey, AccountsTree) of
