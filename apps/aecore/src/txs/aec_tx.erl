@@ -11,7 +11,7 @@
 -callback new(Args :: map(), Trees :: trees()) ->
     {ok, Tx :: term()}.
 
--callback run(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
+-callback process(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
 
 %% API
@@ -38,6 +38,6 @@ apply_signed([SignedTx | Rest], Trees0, Height) ->
 
 -spec apply_single(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 apply_single(#coinbase_tx{} = Tx, Trees, Height) ->
-    aec_coinbase_tx:run(Tx, Trees, Height);
+    aec_coinbase_tx:process(Tx, Trees, Height);
 apply_single(_Other, _Trees_, _Height) ->
     {error, not_implemented}.
