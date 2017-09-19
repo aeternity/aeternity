@@ -37,7 +37,7 @@ genesis_header() ->
        height = ?GENESIS_HEIGHT,
        prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
        %% txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>, %% TODO Refine `#header{}` record definition based on wiki https://github.com/aeternity/epoch/wiki/Block-Header
-       %% state_hash = <<0:?STATE_HASH_BYTES/unit:8>>, %% TODO Refine `#header{}` record definition based on wiki https://github.com/aeternity/epoch/wiki/Block-Header
+       root_hash = <<0:?STATE_HASH_BYTES/unit:8>>,
        %% TODO Delete proof_hash from wiki https://github.com/aeternity/epoch/wiki/Block-Header
        target = ?HIGHEST_TARGET_SCI, %% TODO Update wiki https://github.com/aeternity/epoch/wiki/Block-Header
        pow_evidence = no_value, %% TODO Refine type in `#header{}` record based on wiki https://github.com/aeternity/epoch/wiki/Block-Header and code.
@@ -52,7 +52,7 @@ genesis_block_as_deserialized_from_network() ->
        height = H#header.height,
        prev_hash = H#header.prev_hash,
        %% TODO txs_hash
-       %% TODO state_hash
+       root_hash = H#header.root_hash,
        %% TODO Delete proof_hash from wiki https://github.com/aeternity/epoch/wiki/Block-Header
        target = H#header.target,
        pow_evidence = H#header.pow_evidence,
