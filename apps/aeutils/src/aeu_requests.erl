@@ -74,21 +74,4 @@ process_request(Peer, get, Request) ->
             {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
     end.
 
--spec process_request(aec_peers:peer(), post, string(), map()) -> response(map()).
-process_request(Peer, post, Request, Map) ->
-    URL = aec_peers:uri(Peer) ++ "v1/" ++ Request,
-    Header = [],
-    Type = "application/json",
-    Body = jsx:encode(Map),
-    HTTPOptions = [],
-    Options = [],
-    R = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
-    case R of
-        {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
-            Result = jsx:decode(list_to_binary(Body), [return_maps]),
-            {ok, Result};
-        {error, _Reason} ->
-            {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
-    end.
-
 
