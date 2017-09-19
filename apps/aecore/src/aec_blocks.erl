@@ -24,7 +24,7 @@
 -include("blocks.hrl").
 -include("txs.hrl").
 
--define(CURRENT_BLOCK_VERSION, 1).
+-define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
 -type block_serialized_for_network() :: binary().
 -type block_deserialized_from_network() :: #block{trees :: DummyTrees::trees()}.
