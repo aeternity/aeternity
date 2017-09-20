@@ -102,6 +102,12 @@
     "Block" : {
       "type" : "object",
       "properties" : {
+        "txs" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/Tx"
+          }
+        },
         "trees" : {
           "type" : "array",
           "items" : {

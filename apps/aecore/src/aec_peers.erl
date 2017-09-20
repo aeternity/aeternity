@@ -22,7 +22,7 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -ifdef(TEST).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -endif.
 
 -include("peers.hrl").

@@ -28,7 +28,6 @@ mine(Attempts) ->
     case aec_blocks:new(LastBlock, Txs, Trees) of
         {ok, Block0} ->
             Block = maybe_recalculate_difficulty(Block0),
-
             case mine(Block, Attempts) of
                 {ok, _Block} = Ok ->
                     Ok;

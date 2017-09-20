@@ -7,6 +7,8 @@
          target/1,
          difficulty/1,
          time_in_secs/1,
+	 serialize_to_network/1,
+	 deserialize_from_network/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          serialize_to_binary/1,
@@ -36,6 +38,11 @@ time_in_secs(Header) ->
     Time = Header#header.time,
     aeu_time:msecs_to_secs(Time).
 
+-spec serialize_to_network(header()) -> {ok, binary()}.
+serialize_to_network(H = #header{}) ->
+    {ok, Map} = serialize_to_map(H),
+    {ok, jsx:encode(Map)}.
+
 -spec serialize_to_map(header()) -> {ok, map()}.
 serialize_to_map(H = #header{}) ->
     Serialized =
@@ -48,6 +55,10 @@ serialize_to_map(H = #header{}) ->
         <<"version">> => H#header.version
       },
     {ok, Serialized}.
+
+-spec deserialize_from_network(binary()) -> {ok, header()}.
+deserialize_from_network(B) when is_binary(B) ->
+    deserialize_from_map(jsx:decode(B, [return_maps])).
 
 -spec deserialize_from_map(map()) -> {ok, header()}.
 deserialize_from_map(H = #{}) ->
@@ -89,4 +100,3 @@ deserialize_from_binary(B) ->
 hash_header(H) ->
     BinaryH = serialize_to_binary(H),
     {ok, aec_sha256:hash(BinaryH)}.
-

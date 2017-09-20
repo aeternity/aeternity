@@ -16,12 +16,15 @@ handle_request('GetTop', _, _Context) ->
     {ok, Resp} = aec_headers:serialize_to_map(Header),
     {200, [], Resp};
 
-handle_request('GetBlock', _, _Context) ->
-    {ok, Block} = aec_chain:top_block(),
+handle_request('GetBlock', Req, _Context) ->
+    Hash = maps:get('BlockHash', Req),
+    {ok, Block} = aec_chain:get_block_by_hash(aeu_hex:hex_to_bin(Hash)),
     {ok, Resp} = aec_blocks:serialize_for_network(Block),
     {200, [], Resp};
 
-handle_request('PutBlock', _, _Context) ->
+handle_request('PutBlock', Req, _Context) ->
+    _Block = maps:get('Block', Req),
+    %TODO: verification and absorbe code
     {200, [], #{}};
 
 handle_request(OperationID, Req, Context) ->
