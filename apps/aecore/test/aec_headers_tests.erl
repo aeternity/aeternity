@@ -16,18 +16,13 @@ getters_test() ->
 
 network_serialization_test() ->
     Header = #header{},
-    {ok, SerializedHeader} = ?TEST_MODULE:serialize_for_network(Header),
+    {ok, SerializedHeader} = ?TEST_MODULE:serialize_to_map(Header),
     {ok, DeserializedHeader} =
-        ?TEST_MODULE:deserialize_from_network(SerializedHeader),
+        ?TEST_MODULE:deserialize_from_map(SerializedHeader),
     ?assertEqual(Header, DeserializedHeader),
     ?assertEqual({ok, SerializedHeader},
-                 ?TEST_MODULE:serialize_for_network(DeserializedHeader)).
+                 ?TEST_MODULE:serialize_to_map(DeserializedHeader)).
 
 hash_test() ->
     Header = #header{},
-    {ok, SerializedHeader} = ?TEST_MODULE:serialize_for_network(Header),
-    {ok, HeaderHash} =
-        ?TEST_MODULE:hash_network_serialization(SerializedHeader),
-    ?assertEqual({ok, HeaderHash},
-                 ?TEST_MODULE:hash_internal_representation(Header)),
-    ?assertEqual(aec_sha256:hash(SerializedHeader), HeaderHash).
+    {ok, HeaderHash} = ?TEST_MODULE:hash_header(Header).

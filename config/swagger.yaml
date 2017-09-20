@@ -1,0 +1,148 @@
+swagger: '2.0'
+info:
+  description: 'This is the [Aeternity](https://www.aeternity.com/) Epoch API.'
+  version: 1.0.0
+  title: Aeternity Epoch
+  termsOfService: 'https://www.aeternity.com/terms/'
+  contact:
+    email: apiteam@aeternity.com
+basePath: /v1
+tags:
+  - name: external
+    description: External API
+schemes:
+  - http
+paths:
+  /ping:
+    get:
+      tags:
+        - external
+      operationId: Ping
+      description: ''
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: Sample response
+          schema:
+            $ref: '#/definitions/Ping'
+      security: []
+  /top:
+    get:
+      tags:
+        - external
+      operationId: GetTop 
+      description: 'Get the top block header'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Header'
+      security: []
+  /block:
+    get:
+      tags:
+        - external
+      operationId: GetBlock 
+      description: 'Get the top block'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: top block
+#          schema:
+#            $ref: '#/definitions/Block'
+      security: []
+    post:
+      tags:
+        - external
+      operationId: PutBlock 
+      description: 'Get the top block header'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Put a new block to node
+          required: true
+          schema:
+            $ref: '#/definitions/Block'
+      responses:
+        '200':
+          description: successful operation
+      security: []
+definitions:
+  Tree:
+    type: object
+    properties: {}
+  Block:
+    type: object
+    properties:
+      txs:
+        type: array
+        items:
+          $ref: '#/definitions/Tx'
+      trees:
+        type: array
+        items:
+          $ref: '#/definitions/Tree'
+      height:
+        type: integer
+        format: int64
+      prev-hash:
+        type: string
+      root-hash:
+        type: string
+      difficulty:
+        type: integer
+        format: int64
+      nonce:
+        type: integer
+        format: int64
+      time:
+        type: integer
+        format: int64
+      version:
+        type: integer
+        format: int64
+  Header:
+    type: object
+    properties:
+      height:
+        type: integer
+        format: int64
+      prev-hash:
+        type: string
+      root-hash:
+        type: string
+      difficulty:
+        type: integer
+        format: int64
+      nonce:
+        type: integer
+        format: int64
+      time:
+        type: integer
+        format: int64
+      version:
+        type: integer
+        format: int64
+  Ping:
+    type: object
+    properties:
+      pong:
+        type: string
+externalDocs:
+  description: Find out more about Aeternity
+  url: 'http://www.aeternity.com'

@@ -14,7 +14,8 @@
          info/1,
          all/0,
          get_random/0,
-         uri_from_ip_port/2]).
+         uri_from_ip_port/2,
+         uri/1]).
 
 %% gen_server callbacks
 -export([start_link/0, init/1, handle_call/3, handle_cast/2, 
@@ -86,6 +87,13 @@ get_random() ->
 -spec uri_from_ip_port(IP :: string(), Port :: number()) -> http_uri:uri().
 uri_from_ip_port(IP, Port) ->
     "http://" ++ IP ++ ":" ++ integer_to_list(Port) ++ "/".
+
+%%------------------------------------------------------------------------------
+%% Get uri of peer
+%%------------------------------------------------------------------------------
+-spec uri(peer()) -> http_uri:uri().
+uri(Peer) ->
+    Peer#peer.uri.
 
 %%%=============================================================================
 %%% gen_server functions
