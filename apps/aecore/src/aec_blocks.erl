@@ -104,4 +104,4 @@ deserialize_from_network(B) when is_binary(B) ->
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->
-    aec_headers:hash_internal_representation(to_header(B)).
+    aec_headers:hash_header(to_header(B)).

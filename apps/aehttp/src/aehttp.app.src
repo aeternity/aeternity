@@ -1,0 +1,22 @@
+{application, aehttp,
+ [{description, "API"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { aehttp_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    ssl,
+    inets,
+    cowboy,
+    jsx,
+    lager,
+    jesse
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

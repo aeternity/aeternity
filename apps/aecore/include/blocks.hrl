@@ -30,3 +30,4 @@
           version = 0             :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence()}).
 -type(header() :: #header{}).
+-type(header_binary() :: binary()).
