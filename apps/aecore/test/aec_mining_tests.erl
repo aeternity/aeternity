@@ -58,7 +58,7 @@ mine_block_test_() ->
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
 
-                 {ok, Block} = ?TEST_MODULE:mine(),
+                 {ok, Block} = ?TEST_MODULE:mine(400),
 
                  ?assertEqual(1, Block#block.height),
                  ?assertEqual(1, length(Block#block.txs))
@@ -153,7 +153,7 @@ mine_block_test_() ->
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
 
-                 {ok, Block} = ?TEST_MODULE:mine(),
+                 {ok, Block} = ?TEST_MODULE:mine(400),
 
                  ?assertEqual(200, Block#block.height),
                  case PoWMod of
