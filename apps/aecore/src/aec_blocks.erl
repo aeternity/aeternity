@@ -60,6 +60,7 @@ new(LastBlock, Txs, Trees0) ->
                         prev_hash = LastBlockHeaderHash,
                         root_hash = aec_trees:all_trees_hash(Trees),
                         trees = Trees,
+                        %% TODO Compute txs_hash based on Txs.
                         txs = Txs,
                         target = target(LastBlock),
                         time = aeu_time:now_in_msecs(),
@@ -71,6 +72,7 @@ new(LastBlock, Txs, Trees0) ->
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,
                  prev_hash = PrevHash,
+                 txs_hash = TxsHash,
                  root_hash = RootHash,
                  target = Target,
                  nonce = Nonce,
@@ -79,6 +81,7 @@ to_header(#block{height = Height,
                  pow_evidence = Evd}) ->
     #header{height = Height,
             prev_hash = PrevHash,
+            txs_hash = TxsHash,
             root_hash = RootHash,
             target = Target,
             nonce = Nonce,
