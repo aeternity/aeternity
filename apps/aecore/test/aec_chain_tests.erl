@@ -5,7 +5,7 @@
 -include("blocks.hrl").
 
 genesis_block() ->
-    aec_genesis:genesis_block_as_deserialized_from_network().
+    aec_block_genesis:genesis_block_as_deserialized_from_network().
 
 top_test_() ->
     {foreach,
@@ -207,7 +207,7 @@ block_chain_test_() ->
        end}]}.
 
 fake_genesis_block_with_difficulty() ->
-    GB = aec_genesis:genesis_block_as_deserialized_from_network(),
+    GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
     GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
 
 get_work_at_top_test_() ->

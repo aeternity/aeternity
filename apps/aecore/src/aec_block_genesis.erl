@@ -20,7 +20,7 @@
 %%%     hashes in a block needs to have a special case for genesis.
 %%% @end
 %%%-------------------------------------------------------------------
--module(aec_genesis).
+-module(aec_block_genesis).
 
 %% API
 -export([genesis_header/0,
