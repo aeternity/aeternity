@@ -222,9 +222,9 @@ get_work_at_top_test_() ->
              Pid
      end,
      fun(_ChainPid) ->
-             ok = aec_chain:stop(),
              ?assert(meck:validate(aec_headers)),
-             meck:unload(aec_headers)
+             meck:unload(aec_headers),
+             ok = aec_chain:stop()
      end,
      [{"Get work in chain of only genesis",
        fun() ->
@@ -799,7 +799,7 @@ longest_block_chain_test_() ->
              Pid
      end,
      fun(_ChainPid) ->
-             ok = aec_chain:stop(),
+             aec_chain:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_blocks),
@@ -1021,3 +1021,5 @@ longest_block_chain_test_() ->
                  end,
                  lists:nthtail(1, MainHC))
        end}]}.
+
+

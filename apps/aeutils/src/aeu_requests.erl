@@ -2,21 +2,24 @@
 
 %% API
 -export([ping/1,
-         top/1%,
-         %block/2,
+         top/1,
+         block/2%,
          %send_block/2
         ]).
 
+-compile({parse_transform, lager_transform}).
 %% All requests take 
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(aec_peers:peer()) -> response(pong).
+-spec ping(aec_peers:peer()) -> response(map()).
 ping(Peer) ->
-    Response = process_request(Peer, get, "ping"),
+    Req = "ping?source=" ++ source_uri() ++ share_param(),
+    Response = process_request(Peer, get, Req),
     case Response of
-        {ok, _Map} ->
-            {ok, pong};
+        {ok, Map} ->
+            lager:debug("ping response: ~p", [Map]),
+            {ok, Map};
         {error, _Reason} = Error ->
             Error
     end.
@@ -24,32 +27,32 @@ ping(Peer) ->
 -spec top(aec_peers:peer()) -> response(aec_headers:header()).
 top(Peer) ->
     Response = process_request(Peer, get, "top"),
-    case Response of 
-        {ok, Map} ->
-            {ok, Header} = aec_headers:deserialize_from_map(Map),
+    case Response of
+        {ok, Data} ->
+            {ok, Header} = aec_headers:deserialize_from_network(Data),
             {ok, Header};
         {error, _Reason} = Error ->
             Error
     end.
 
-%-spec block(aec_peers:peer(), binary()) -> response(aec_blocks:block()).
-%block(Peer, Hash) ->
-%    HexHash = [ hd(erlang:integer_to_list(Nibble, 16)) || << Nibble:4 >> <= Hash],
-%    Response = process_request(Peer, get, "block?BlockHash="+HexHash),
-%    case Response of 
-%        {ok, Map} ->
-%            Block = aec_blocks:deserialize_from_json(Map),
-%            {ok, Block};
-%        {error, _Reason} = Error ->
-%            Error
-%    end.
+-spec block(aec_peers:peer(), binary()) -> response(aec_blocks:block()).
+block(Peer, Hash) ->
+    HexHash = aeu_hex:bin_to_hex(Hash),
+    Response = process_request(Peer, get, "block?BlockHash="++HexHash),
+    case Response of
+        {ok, Data} ->
+            Block = aec_blocks:deserialize_from_network(Data),
+            {ok, Block};
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 
 %-spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
 %send_block(Peer, Block) ->
 %    BlockSerialized = aec_blocks:serialize_for_network(Block),
 %    Response = process_request(Peer, post, "block", BlockSerialized),
-%    case Response of 
+%    case Response of
 %        {ok, _Map} ->
 %            {ok, ok};
 %        {error, _Reason} = Error ->
@@ -59,7 +62,9 @@ top(Peer) ->
 
 %% Internal functions
 
--spec process_request(aec_peers:peer(), get, string()) -> response(map()).
+-spec process_request(aec_peers:peer(), get, string()) ->
+			     response(B) when
+      B :: aec_blocks:block_serialized_for_network() | map().
 process_request(Peer, get, Request) ->
     URL = aec_peers:uri(Peer) ++ "v1/" ++ Request,
     Header = [],
@@ -68,10 +73,21 @@ process_request(Peer, get, Request) ->
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
-            Result = jsx:decode(list_to_binary(Body), [return_maps]),
-            {ok, Result};
+            try
+                Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
+                lager:debug("Decoded response: ~p", [Result]),
+                {ok, Result}
+            catch
+                error:E ->
+                    {error, {parse_error, E}}
+            end;
         {error, _Reason} ->
             {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
     end.
 
+source_uri() ->
+    Uri = aec_peers:get_local_peer_uri(),
+    http_uri:encode(Uri).
 
+share_param() ->
+    "&share=30".

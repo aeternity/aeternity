@@ -156,11 +156,10 @@ internal-stop: $$(KIND)
 
 internal-attach: $$(KIND)
 	@./_build/$(KIND)/$(CORE) attach
-	
+
 internal-clean: $$(KIND)
 	@rm -rf ./_build/$(KIND)/rel/epoch/data/*
 	@rm -rf ./_build/$(KIND)/rel/epoch/blocks/*
-	@rm -rf ./config/$(KIND)/sys.config
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
 

@@ -23,7 +23,7 @@ all_test_() ->
        fun() ->
                {Status, Peer} = aec_peers:get_random(),
                ?assertEqual(ok, Status),
-               ?assertEqual("http://someone.somewhere:1337/v1", Peer#peer.uri)
+               ?assertEqual("http://someone.somewhere:1337/v1/", Peer#peer.uri)
        end},
       {"Add a peer by object",
        fun() ->

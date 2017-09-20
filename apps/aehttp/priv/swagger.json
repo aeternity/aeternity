@@ -22,7 +22,20 @@
         "description" : "",
         "operationId" : "Ping",
         "produces" : [ "application/json" ],
-        "parameters" : [ ],
+        "parameters" : [ {
+          "name" : "source",
+          "in" : "query",
+          "description" : "Source peer address",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "share",
+          "in" : "query",
+          "description" : "Number of random peer URIs to return",
+          "required" : false,
+          "type" : "integer",
+          "format" : "int64"
+        } ],
         "responses" : {
           "200" : {
             "description" : "Sample response",
@@ -73,8 +86,8 @@
       },
       "post" : {
         "tags" : [ "external" ],
-        "description" : "Get the top block header",
-        "operationId" : "PutBlock",
+        "description" : "Post a new block",
+        "operationId" : "PostBlock",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -172,6 +185,12 @@
       "properties" : {
         "pong" : {
           "type" : "string"
+        },
+        "peers" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
         }
       }
     }

@@ -18,7 +18,7 @@ all_test_() ->
        fun() ->
                {ok, Peer}=aec_peers:get_random(),
                "http://localhost:8043/"=aec_peers:uri(Peer),
-               ?assertEqual({ok, pong}, aeu_requests:ping(Peer))
+               {ok, #{<<"pong">> := <<"pong">>}} = aeu_requests:ping(Peer)
        end}
      ]
     }.
@@ -27,10 +27,11 @@ setup() ->
     inets:start(),
     application:ensure_all_started(aehttp),
     aec_peers:start_link(),
-    aec_peers:add("http://localhost:8043/").
+    aec_peers:add("http://localhost:8043/", false).
 
 teardown(_) ->
     aec_peers:remove("http://localhost:8043/"),
-    application:stop(aehttp),
+    ok = application:stop(aehttp),
+    ok = application:stop(aecore),
     inets:stop().
 -endif.

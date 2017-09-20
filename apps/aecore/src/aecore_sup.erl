@@ -32,6 +32,6 @@ init([]) ->
                                   %% XXX empty block instead ot genesis block,
                                   %% ticket #84
                                  ?CHILD(aec_chain, 5000, worker, [#block{}]),
-                                 ?CHILD(aec_keys, 5000, worker)]
+                                 ?CHILD(aec_keys, 5000, worker),
+				 ?CHILD(aec_sync, 5000, worker)]
          }}.
-
