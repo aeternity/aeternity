@@ -5,8 +5,10 @@
          height/1,
          trees/1,
          target/1,
+         txs/1,
          difficulty/1,
          set_nonce/3,
+         set_trees/2,
          new/3,
          to_header/1,
          serialize_for_network/1,
@@ -29,25 +31,40 @@
 -type block_serialized_for_network() :: binary().
 -type block_deserialized_from_network() :: #block{trees :: DummyTrees::trees()}.
 
+-spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
     Block#block.prev_hash.
 
+-spec height(block()) -> height().
 height(Block) ->
     Block#block.height.
 
+-spec trees(block()) -> trees().
 trees(Block) ->
     Block#block.trees.
 
+-spec target(block()) -> float().
 target(Block) ->
     Block#block.target.
 
+-spec difficulty(block()) -> float().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
 %% Sets the evidence of PoW,too,  for Cuckoo Cycle
+-spec set_nonce(block(), non_neg_integer(), aec_pow:pow_evidence()) -> block().
 set_nonce(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
+
+-spec set_trees(block(), aec_trees:trees()) -> block().
+set_trees(Block, Trees) ->
+    Block#block{trees = Trees}.
+
+%% TODO: have a spec for list of transactions
+-spec txs(block()) -> list().
+txs(Block) ->
+    Block#block.txs.
 
 -spec new(block(), list(signed_tx()), trees()) -> {ok, block()} | {error, term()}.
 new(LastBlock, Txs, Trees0) ->

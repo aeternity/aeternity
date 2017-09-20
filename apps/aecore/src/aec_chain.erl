@@ -112,15 +112,16 @@ start_link(GenesisBlock) ->
 stop() ->
     gen_server:stop(?SERVER).
 
-%% Returns the highest known block in the chain with its state trees.
+%% Returns the highest known block in the chain with its state trees
 %%
 %% The highest known block may be lower than the highest block header
 %% in the chain as returned by `top_header/0`.
+%%
+%% TODO: handle out-of-order blocks
 -spec top() -> {ok, block()}.
 top() ->
-    {ok, BlockWithoutStateTrees = #block{}} = top_block(),
-    BlockWithStateTrees = BlockWithoutStateTrees, %% TODO: Enrich block with state trees.
-    {ok, BlockWithStateTrees}.
+    {ok, {Height, _Trees}} = aec_state:get_trees(),
+    {ok, _BlockWithState} = get_block_by_height(Height).
 
 %% Returns the highest block header in the chain.
 -spec top_header() -> do_top_header_reply().
@@ -862,6 +863,11 @@ do_write_block(Block, TopHeader, TopBlock, HeadersDb, BlocksDb) ->
                 {ok, SerializedBlock} ->
                     {error, {block_already_stored, SerializedBlock}};
                 {error, not_found} ->
+                    BlockHeight = aec_headers:height(Header),
+                    TopBlockHeight = aec_blocks:height(TopBlock),
+                    {_, {_StateHeight, _Trees}} =
+                            aec_state:apply_txs(aec_blocks:txs(Block), BlockHeight),
+
                     %% Store block.
                     {ok, SerializedBlock} =
                         aec_blocks:serialize_for_network(Block),
@@ -875,8 +881,6 @@ do_write_block(Block, TopHeader, TopBlock, HeadersDb, BlocksDb) ->
                     %% corresponds to a header already in the
                     %% chain. The consistency of the height of the
                     %% header was checked when inserting the header.
-                    BlockHeight = aec_headers:height(Header),
-                    TopBlockHeight = aec_blocks:height(TopBlock),
                     NewTopBlock =
                         if
                             BlockHeight > TopBlockHeight ->

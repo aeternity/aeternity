@@ -13,6 +13,7 @@
 -include("common.hrl").
 -include("trees.hrl").
 
+%% TODO: remove? We should not need such API (init via trees)
 empty() ->
     {ok, _AccountsTree} = aec_trees:new().
 
