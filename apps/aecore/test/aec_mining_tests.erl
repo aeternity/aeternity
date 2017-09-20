@@ -32,6 +32,7 @@ mine_block_test_() ->
              meck:new(aec_tx, [passthrough]),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_keys,[passthrough]),
+             meck:new(aec_trees, [passthrough]),
              meck:expect(aec_pow, pow_module, 0, PoWMod)
      end,
      fun(_) ->
@@ -42,12 +43,14 @@ mine_block_test_() ->
              meck:unload(aec_pow),
              meck:unload(aec_tx),
              meck:unload(aec_governance),
-             meck:unload(aec_keys)
+             meck:unload(aec_keys),
+             meck:unload(aec_trees)
      end,
      [
       {"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
+               meck:expect(aec_trees, all_trees_hash, 1, <<>>),
                meck:expect(aec_chain, top, 0, {ok, #block{target = ?HIGHEST_TARGET_SCI}}),
                meck:expect(aec_pow, pick_nonce, 0, 1),
                meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
@@ -64,6 +67,7 @@ mine_block_test_() ->
              atom_to_list(PoWMod) ++ ")",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
+               meck:expect(aec_trees, all_trees_hash, 1, <<>>),
                meck:expect(aec_chain, top, 0, {ok, #block{target = ?LOWEST_TARGET_SCI}}),
                meck:expect(aec_pow, pick_nonce, 0, 1),
                meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
@@ -85,6 +89,7 @@ mine_block_test_() ->
             atom_to_list(PoWMod) ++ ")",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
+               meck:expect(aec_trees, all_trees_hash, 1, <<>>),
                Now = 1504731164584,
                meck:expect(aec_chain, top, 0, {ok, #block{}}),
                meck:expect(aec_blocks, new, 3,
@@ -125,6 +130,7 @@ mine_block_test_() ->
             atom_to_list(PoWMod) ++ ")",
        fun() ->
                Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
+               meck:expect(aec_trees, all_trees_hash, 1, <<>>),
                Now = 1504731164584,
                Target = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
 

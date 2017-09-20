@@ -4,7 +4,8 @@
 -include("trees.hrl").
 
 %% API
--export([all_trees_hash/1,
+-export([all_trees_new/0,
+         all_trees_hash/1,
          accounts/1,
          set_accounts/2,
          new/0,
@@ -14,8 +15,14 @@
          root_hash/1,
          verify_proof/4]).
 
-all_trees_hash(_Trees) ->
-    <<>>.
+all_trees_new() ->
+    {ok, A} = new(),
+    {ok, #trees{accounts = A}}.
+
+all_trees_hash(Trees) ->
+    %% TODO Consider all state trees - not only accounts.
+    {ok, H} = aec_accounts:root_hash(accounts(Trees)),
+    H.
 
 accounts(Trees) ->
     Trees#trees.accounts.
