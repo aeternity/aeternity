@@ -14,5 +14,14 @@ erl_crash.dump
 logs
 _build
 .idea
+py/bin
+py/include
+py/lib
+py/local
+py/man
+py/pip-selfcheck.json
+nosetests.xml
+py/tests/swagger_client
+*.pyc
 apps/aecore/c_src/cuckoo
 apps/aecore/priv
