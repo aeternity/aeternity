@@ -29,7 +29,6 @@ pow_test_() ->
            fun() ->
                ?assertEqual(1, aec_pow:pick_nonce()),
                    %% succeeds in a single step
-                   SmallDiff = 0,
                    {T1, Res} = timer:tc(?TEST_MODULE, generate, [<<"hello there">>, ?HIGHEST_TARGET_SCI, 1]),
                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
                    ?assertEqual({ok, {1, no_value}}, Res),

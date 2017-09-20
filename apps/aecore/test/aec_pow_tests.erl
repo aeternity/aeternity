@@ -12,6 +12,8 @@
 
 -define(TEST_MODULE, aec_pow).
 
+-include("pow.hrl").
+
 conversion_test_() ->
     {setup,
      fun setup/0,
@@ -39,8 +41,15 @@ conversion_test_() ->
                ?assertEqual(16#1d00ffff,
                             ?TEST_MODULE:integer_to_scientific(16#00000000FFFF0000000000000000000000000000000000000000000000000000)),
                %% highest expressible number
-               ?assertEqual(16#2100ffff,
-                            ?TEST_MODULE:integer_to_scientific(16#FFFFFF0000000000000000000000000000000000000000000000000000000000))
+               ?assertEqual(?HIGHEST_TARGET_SCI,
+                            ?TEST_MODULE:integer_to_scientific(?HIGHEST_TARGET_INT))
+       end},
+      {"Scientific to integer conversion",
+       fun() ->               ?assertEqual(1, ?TEST_MODULE:scientific_to_integer(16#01010000)),
+                              ?assertEqual(255, ?TEST_MODULE:scientific_to_integer(16#0200ff00)),
+                              ?assertEqual(16#800000, ?TEST_MODULE:scientific_to_integer(16#04008000)),
+                              ?assertEqual(?HIGHEST_TARGET_INT,
+                                           aec_pow:scientific_to_integer(?HIGHEST_TARGET_SCI))
        end},
       {"Integer to scientific and back",
        fun() ->
@@ -155,8 +164,8 @@ conversion_test_() ->
                %% More than 3 nonzero bytes
                Diff = ?TEST_MODULE:target_to_difficulty(16#1b0404cb),
                ?debugFmt("Diff: ~p~n", [Diff]),
-               ?assert(Diff > 70040904177748.9),
-               ?assert(Diff < 70040904177749.0)
+               ?assert(Diff > 70039839613066.1),
+               ?assert(Diff < 70039839613066.2)
        end}
      ]
     }.
