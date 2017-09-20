@@ -103,3 +103,7 @@
           fee = 0         :: non_neg_integer(),
           nonce = 0       :: non_neg_integer()}).
 -type(oracle_close_tx() :: #oracle_close_tx{}).
+
+-type tx() :: coinbase_tx() | spend_tx() | channel_new_tx() | channel_grow_tx() |
+             channel_team_close_tx() | channel_solo_close_tx() | channel_slash_tx() |
+             channel_timeout_tx() | oracle_new_tx() | oracle_close_tx().
