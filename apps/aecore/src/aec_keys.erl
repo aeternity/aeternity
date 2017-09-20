@@ -18,7 +18,9 @@
 -include("txs.hrl").
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         start_link/1,
+         stop/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -56,7 +58,17 @@
 %% @end
 %%--------------------------------------------------------------------
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    %% INFO: set the password to re-use keys between restarts
+    Password = application:get_env(aecore, password, undefined),
+    KeysDir = application:get_env(aecore, keys_dir, filename:join(code:root_dir(), "keys")),
+    Args = [Password, KeysDir],
+    start_link(Args).
+
+start_link(Args) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
+
+stop() ->
+    gen_server:stop(?SERVER).
 
 -spec sign(term()) -> {ok, term()}.
 sign(Term) ->
@@ -96,17 +108,13 @@ delete() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([]) ->
+init([Password, KeysDir]) ->
     lager:info("Initializing keys manager"),
     %% TODO: consider moving the crypto config to config
     Algo = ecdsa,
     KeyType = ecdh,
     Digest = sha256,
     Curve = secp256k1,
-
-    %% INFO: set the password to re-use keys between restarts
-    Password = application:get_env(aecore, password, undefined),
-    KeysDir = application:get_env(aecore, keys_dir, filename:join(code:root_dir(), "keys")),
 
     %% Ensure there is directory for keys
     case filelib:is_dir(KeysDir) of
@@ -141,8 +149,8 @@ init([]) ->
 handle_call({sign, _}, _From, #state{priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call({sign, Term}, _From, #state{priv=PrivKey, algo=Algo, digest=Digest, curve=Curve} = State) ->
-    Signed = crypto:sign(Algo, Digest, term_to_binary(Term),  [PrivKey, crypto:ec_curve(Curve)]),
-    {reply, {ok, #signed_tx{data = Signed, signatures = []}}, State};
+    Signature = crypto:sign(Algo, Digest, term_to_binary(Term),  [PrivKey, crypto:ec_curve(Curve)]), %% TODO Review transaction serialization.
+    {reply, {ok, #signed_tx{data = Term, signatures = [Signature]}}, State};
 
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
