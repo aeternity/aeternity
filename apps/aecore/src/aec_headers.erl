@@ -7,17 +7,15 @@
          target/1,
          difficulty/1,
          time_in_secs/1,
-         serialize_for_network/1,
-         deserialize_from_network/1,
-         hash_network_serialization/1,
-         hash_internal_representation/1]).
-
--export_type([block_header_serialized_for_network/0]).
+         serialize_to_map/1,
+         deserialize_from_map/1,
+         serialize_to_binary/1,
+         deserialize_from_binary/1,
+         hash_header/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
 
--type block_header_serialized_for_network() :: binary().
 
 prev_hash(Header) ->
     Header#header.prev_hash.
@@ -38,24 +36,57 @@ time_in_secs(Header) ->
     Time = Header#header.time,
     aeu_time:msecs_to_secs(Time).
 
--spec serialize_for_network(header()) ->
-                                   {ok, block_header_serialized_for_network()}.
-serialize_for_network(H = #header{}) ->
-    %% TODO: Define serialization format.
-    {ok, term_to_binary(H)}.
+-spec serialize_to_map(header()) -> {ok, map()}.
+serialize_to_map(H = #header{}) ->
+    Serialized =
+      #{<<"height">> =>  height(H),
+        <<"prev-hash">> => base64:encode(prev_hash(H)),
+        <<"root-hash">> => base64:encode(H#header.root_hash),
+        <<"target">> => H#header.target,
+        <<"nonce">> => H#header.nonce,
+        <<"time">> => H#header.time,
+        <<"version">> => H#header.version
+      },
+    {ok, Serialized}.
 
--spec deserialize_from_network(block_header_serialized_for_network()) ->
-                                      {ok, header()}.
-deserialize_from_network(H) when is_binary(H) ->
-    %% TODO: Define serialization format.
-    {ok, #header{} = binary_to_term(H)}.
+-spec deserialize_from_map(map()) -> {ok, header()}.
+deserialize_from_map(H = #{}) ->
+      #{<<"height">> := Height,
+        <<"prev-hash">> := PrevHash,
+        <<"root-hash">> := RootHash,
+        <<"target">> := Target,
+        <<"nonce">> := Nonce,
+        <<"time">> := Time,
+        <<"version">> := Version 
+      } = H,
+    {ok, #header{height = Height,
+                 prev_hash = base64:decode(PrevHash),
+                 root_hash = base64:decode(RootHash),
+                 target = Target,
+                 nonce = Nonce,
+                 time = Time,
+                 version = Version}}.
 
--spec hash_network_serialization(block_header_serialized_for_network()) ->
-                                        {ok, block_header_hash()}.
-hash_network_serialization(H) when is_binary(H) ->
-    {ok, aec_sha256:hash(H)}.
+-spec serialize_to_binary(header()) -> {ok, header_binary()}.
+serialize_to_binary(H) ->
+    {ok, Map} = serialize_to_map(H),
+    {ok, jsx:encode(Map)}.
+    %<<(H#header.height):64,
+    %  (H#header.prev_hash):(?BLOCK_HEADER_HASH_BYTES*8),
+    %  (H#header.root_hash):(?BLOCK_HEADER_HASH_BYTES*8),
+    %  (H#header.target):64,
+    %  (H#header.nonce):64,
+    %  (H#header.time):64,
+    %  (H#header.version):16>>.
 
--spec hash_internal_representation(header()) -> {ok, block_header_hash()}.
-hash_internal_representation(H = #header{}) ->
-    {ok, HH} = serialize_for_network(H),
-    hash_network_serialization(HH).
+-spec deserialize_from_binary(header_binary()) -> {ok, header()}.
+deserialize_from_binary(B) ->
+    deserialize_from_map(jsx:decode(B, [return_maps])).
+
+%% TODO: make hash deterministic and based on the canonical serialization of
+%% the header.
+-spec hash_header(header()) -> {ok, block_header_hash()}.
+hash_header(H) ->
+    BinaryH = serialize_to_binary(H),
+    {ok, aec_sha256:hash(BinaryH)}.
+

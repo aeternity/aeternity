@@ -45,7 +45,7 @@ mine(Attempts) ->
 -spec mine(block(), non_neg_integer()) -> {ok, block()} | {error, term()}.
 mine(Block, Attempts) ->
     Target = aec_blocks:target(Block),
-    {ok, BlockBin} = aec_headers:serialize_for_network(aec_blocks:to_header(Block)),
+    {ok, BlockBin} = aec_headers:serialize_to_map(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
     case Mod:generate(BlockBin, Target, Attempts) of
         {ok, {Nonce, Evd}} ->
