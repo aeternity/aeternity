@@ -120,7 +120,7 @@ mine_block_test_() ->
 
                  %% Verify block
                  Block2 = aec_blocks:set_nonce(Block, 0, no_value),
-                 {ok, BlockBin} = aec_headers:serialize_for_network(aec_blocks:to_header(Block2)),
+                 {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block2)),
                  ?assertEqual(true, PoWMod:verify(BlockBin, Block#block.nonce,
                                                   Block#block.pow_evidence, ?HIGHEST_TARGET_SCI)),
 
@@ -165,7 +165,7 @@ mine_block_test_() ->
 
                  %% Verify block
                  Block2 = aec_blocks:set_nonce(Block, 0, no_value),
-                 {ok, BlockBin} = aec_headers:serialize_for_network(aec_blocks:to_header(Block2)),
+                 {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block2)),
                  ?assertEqual(true, PoWMod:verify(BlockBin, Block#block.nonce,
                                                   Block#block.pow_evidence, ?HIGHEST_TARGET_SCI)),
 
