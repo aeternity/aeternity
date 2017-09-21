@@ -51,7 +51,7 @@ apply_txs(Txs, AtHeight) ->
 %% API needed when external fork has more POW and we need to restart tree from common ancestor
 -spec force_trees(trees(), height()) -> {ok, {height(), trees()}}.
 force_trees(Trees, AtHeight) ->
-    gen_server:call(?SERVER, {force_tree, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
+    gen_server:call(?SERVER, {force_trees, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -73,7 +73,7 @@ check_chain_for_successor(Trees, AtHeight) ->
 init([]) ->
     {ok, TopBlock} = aec_chain:top_block(),
     TopHeight = aec_blocks:height(TopBlock),
-    {ok, EmptyTrees} = aec_trees:all_trees_new(),
+    EmptyTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
     CurrentTrees = setup_trees(TopHeight, EmptyTrees),
 
     {ok, #state{trees = CurrentTrees, height = TopHeight}}.
@@ -83,9 +83,6 @@ handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
 
 handle_call({force_trees, {Trees, AtHeight}}, _From, State) ->
     {reply, {ok, {AtHeight, Trees}}, State#state{trees = Trees, height = AtHeight}};
-
-handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
-    {reply, {ok, {Height, Trees}}, State};
 
 handle_call({apply_txs, {Txs, AtHeight}}, _From,
             #state{trees = Trees, height = CurrentHeigth} = State) ->
@@ -123,10 +120,11 @@ code_change(_OldVsn, State, _Extra) ->
 setup_trees(0, Trees) ->
     Trees;
 setup_trees(N, Trees) ->
+    TreesAtEndOfPreviousBlock = setup_trees(N-1, Trees),
     {ok, Block} = aec_chain:get_block_by_height(N),
     Txs = aec_blocks:txs(Block),
-    {ok, TreesUpdated} = apply_txs_internal(Txs, N, Trees),
-    setup_trees(N-1, TreesUpdated).
+    {ok, TreesUpdated} = apply_txs_internal(Txs, N, TreesAtEndOfPreviousBlock),
+    TreesUpdated.
 
 -spec apply_txs_internal(list(), height(), trees()) -> {ok, trees()}.
 apply_txs_internal(Txs, AtHeight, Trees) ->

@@ -12,11 +12,13 @@
 all_test_() ->
     {foreach,
         fun() ->
-            Pid = aec_state:start_link(),
-            Pid
+            {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block_as_deserialized_from_network()),
+            {ok, _} = aec_state:start_link(),
+            ok
         end,
         fun(_) ->
-            aec_state:stop()
+            ok = aec_state:stop(),
+            ok = aec_chain:stop()
         end,
         [fun(_) ->
             [{"Check force tree API ",
@@ -30,7 +32,7 @@ all_test_() ->
                     AccountTreeEmpty = aec_trees:accounts(EmptyTrees),
                     Account0 = aec_accounts:new(?TEST_PUB, 10, 1),
                     AccountTree0 = aec_accounts:put(Account0, AccountTreeEmpty),
-                    Trees1 = aec_trees:set_accounts(AccountTreeEmpty, AccountTree0),
+                    Trees1 = aec_trees:set_accounts(EmptyTrees, AccountTree0),
 
                     {ok, {_HeightOut1, TreesOut1}} = aec_state:force_trees(Trees1, 1),
                     ?assertEqual(TreesOut1, Trees1),
