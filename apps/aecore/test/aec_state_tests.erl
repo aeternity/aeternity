@@ -32,7 +32,7 @@ all_test_() ->
                     AccountTreeEmpty = aec_trees:accounts(EmptyTrees),
                     Account0 = aec_accounts:new(?TEST_PUB, 10, 1),
                     AccountTree0 = aec_accounts:put(Account0, AccountTreeEmpty),
-                    Trees1 = aec_trees:set_accounts(AccountTreeEmpty, AccountTree0),
+                    Trees1 = aec_trees:set_accounts(EmptyTrees, AccountTree0),
 
                     {ok, {_HeightOut1, TreesOut1}} = aec_state:force_trees(Trees1, 1),
                     ?assertEqual(TreesOut1, Trees1),
