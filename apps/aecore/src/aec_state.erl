@@ -76,6 +76,8 @@ init([]) ->
     EmptyTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
     {ok, TreesAtTopHeight} = setup_trees(TopHeight, EmptyTrees),
 
+    process_flag(trap_exit, true),
+
     {ok, #state{trees = TreesAtTopHeight, height = TopHeight}}.
 
 handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
@@ -90,7 +92,7 @@ handle_call({apply_txs, {Txs, AtHeight}}, _From,
         = case validate_height(CurrentHeigth, AtHeight) of
               true ->
                   {ok, TreesUpdated0} = apply_txs_internal(Txs, Trees, AtHeight),
-                  spawn(?MODULE, check_chain_for_successor, [TreesUpdated0, AtHeight]),
+                  spawn_link(?MODULE, check_chain_for_successor, [TreesUpdated0, AtHeight]),
                   {ok, TreesUpdated0, AtHeight};
               false ->
                   {{error, not_next_block}, Trees, CurrentHeigth}
@@ -101,6 +103,12 @@ handle_call({apply_txs, {Txs, AtHeight}}, _From,
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({'EXIT', _, normal}, State) ->
+    {noreply, State};
+handle_info({'EXIT', Pid, Reason}, State) ->
+    lager:info("FAILED: Block successor check crashed ~p ~p at ~p",
+               [Pid, Reason, State#state.height]),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 

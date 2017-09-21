@@ -17,7 +17,6 @@
 -export([start_link/1,
          stop/0]).
 -export([top/0,
-         top_with_state/0,
          top_header/0,
          top_block/0,
          get_header_by_hash/1,
@@ -122,11 +121,6 @@ stop() ->
 -spec top() -> {ok, block()}.
 top() ->
     {ok, _Block} = top_block().
-
-%% Returns the hightest known block WITH state trees
-top_with_state() ->
-    {ok, {Height, _Trees}} = aec_state:get_trees(),
-    {ok, _BlockWithState} = get_block_by_height(Height).
 
 %% Returns the highest block header in the chain.
 -spec top_header() -> do_top_header_reply().
@@ -870,20 +864,12 @@ do_write_block(Block, TopHeader, TopBlock, HeadersDb, BlocksDb) ->
                 {error, not_found} ->
                     BlockHeight = aec_headers:height(Header),
                     TopBlockHeight = aec_blocks:height(TopBlock),
-                    {_ok_OnlyForOrderedBlocks, {StateHeight, Trees}} =
+                    {_, {_StateHeight, _Trees}} =
                             aec_state:apply_txs(aec_blocks:txs(Block), BlockHeight),
 
-                    %% If this is out of order block, its fine to store it,
-                    %% but we don't have possibility to compute state - its missing
-                    %% TODO: can we back propagete state when we check for successor in aec_state?
-                    %%       currently updating db may cause data inconsistency or deadlock
-                    BlockMaybeWithTrees = case StateHeight == BlockHeight of
-                                              true -> aec_blocks:set_trees(Block, Trees);
-                                              false -> Block
-                                          end,
                     %% Store block.
                     {ok, SerializedBlock} =
-                        aec_blocks:serialize_for_network(BlockMaybeWithTrees),
+                        aec_blocks:serialize_for_network(Block),
                     {ok, NewBlocksDb} =
                         blocks_db_put(BlocksDb, HeaderHash, SerializedBlock),
 
