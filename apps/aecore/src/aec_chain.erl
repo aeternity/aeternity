@@ -120,8 +120,9 @@ stop() ->
 %% TODO: handle out-of-order blocks
 -spec top() -> {ok, block()}.
 top() ->
-    {ok, {Height, _Trees}} = aec_state:get_trees(),
-    {ok, _BlockWithState} = get_block_by_height(Height).
+    {ok, {Height, Trees}} = aec_state:get_trees(),
+    {ok, BlockWithoutState} = get_block_by_height(Height),
+    {ok, BlockWithoutState#block{trees = Trees}}.
 
 %% Returns the highest block header in the chain.
 -spec top_header() -> do_top_header_reply().

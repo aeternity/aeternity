@@ -33,7 +33,7 @@ all_test_() ->
              ok = application:stop(crypto),
              {ok, KeyFiles} = file:list_dir(TmpKeysDir),
              %% Expect two filenames - private and public keys.
-             [KF1, KF2] = KeyFiles,
+             [_KF1, _KF2] = KeyFiles,
              lists:foreach(
                fun(F) ->
                        AbsF = filename:absname_join(TmpKeysDir, F),
@@ -42,7 +42,7 @@ all_test_() ->
                KeyFiles),
              ok = file:del_dir(TmpKeysDir)
      end,
-     [fun(TmpKeysDir) ->
+     [fun(_) ->
               [{"Sign coinbase transaction",
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),

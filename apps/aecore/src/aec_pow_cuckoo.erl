@@ -96,7 +96,8 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
 generate_hashed(_Hash, _Nonce, _Target, _Trims, _Threads, 0) ->
     {error, generation_count_exhausted};
 generate_hashed(Hash, Nonce, Target, Trims, Threads, Retries) when Retries > 0 ->
-    case generate_single(Hash, Nonce, Trims, Threads) of
+    Nonce32 = Nonce band 16#7fffffff,
+    case generate_single(Hash, Nonce32, Trims, Threads) of
         {error, no_solutions} ->
             generate_hashed(Hash, Nonce + 1, Target, Trims, Threads, Retries - 1);
         {ok, Soln} ->
@@ -104,7 +105,11 @@ generate_hashed(Hash, Nonce, Target, Trims, Threads, Retries) when Retries > 0 -
                 true ->
                     {ok, {Nonce, Soln}};
                 false ->
-                    generate_hashed(Hash, Nonce + 1, Target, Trims, Threads, Retries - 1)
+                    NewNonce = case Nonce of
+                                   16#7fffffff -> 0;
+                                   _ -> Nonce + 1
+                               end,
+                    generate_hashed(Hash, NewNonce, Target, Trims, Threads, Retries - 1)
             end
     end.
 

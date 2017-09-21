@@ -70,7 +70,7 @@ start_link(Args) ->
 stop() ->
     gen_server:stop(?SERVER).
 
--spec sign(term()) -> {ok, term()}.
+-spec sign(term()) -> {ok, term()} | {error, term()}.
 sign(Term) ->
     gen_server:call(?MODULE, {sign, Term}).
 

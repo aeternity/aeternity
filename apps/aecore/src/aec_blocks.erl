@@ -26,6 +26,7 @@
 -include("blocks.hrl").
 -include("txs.hrl").
 
+
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
 -type block_serialized_for_network() :: binary().
@@ -43,7 +44,7 @@ height(Block) ->
 trees(Block) ->
     Block#block.trees.
 
--spec target(block()) -> float().
+-spec target(block()) -> integer().
 target(Block) ->
     Block#block.target.
 
@@ -119,6 +120,7 @@ serialize_to_map(B = #block{}) ->
     #{<<"height">> => height(B),
       <<"prev-hash">> => base64:encode(prev_hash(B)),
       <<"root-hash">> => base64:encode(B#block.root_hash),
+      <<"txs-hash">> => base64:encode(B#block.txs_hash),
       <<"target">> => B#block.target,
       <<"nonce">> => B#block.nonce,
       <<"time">> => B#block.time,
@@ -136,6 +138,7 @@ deserialize_from_network(B) when is_binary(B) ->
 deserialize_from_map(#{<<"height">> := Height,
 		       <<"prev-hash">> := PrevHash,
 		       <<"root-hash">> := RootHash,
+                       <<"txs-hash">> := TxsHash,
 		       <<"target">> := Target,
 		       <<"nonce">> := Nonce,
 		       <<"time">> := Time,
@@ -146,6 +149,7 @@ deserialize_from_map(#{<<"height">> := Height,
 	    height = Height,
 	    prev_hash = base64:decode(PrevHash),
 	    root_hash = base64:decode(RootHash),
+            txs_hash = base64:decode(TxsHash),
 	    target = Target,
 	    nonce = Nonce,
 	    time = Time,

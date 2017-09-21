@@ -108,7 +108,7 @@ mine_block_test_() ->
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
 
-                 {ok, Block} = ?TEST_MODULE:mine(),
+                 {ok, Block} = ?TEST_MODULE:mine(400),
 
                  ?assertEqual(30, Block#block.height),
                  case PoWMod of
@@ -179,21 +179,10 @@ mine_block_from_genesis_test_() ->
     PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
     [{setup,
       fun() ->
-              meck:new(aec_chain, [passthrough]),
               meck:new(aec_pow, [passthrough]),
-              meck:expect(
-                aec_chain, top,
-                fun() ->
-                        %% TODO Remove this workaround once
-                        %% `aec_chain:top/0` returns state trees.
-                        GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
-                        {ok, B} = meck:passthrough([]),
-                        {GB, _} = {B, {B, GB}},
-                        {ok, B#block{trees = (aec_block_genesis:genesis_block())#block.trees}}
-                end),
               meck:expect(aec_pow, pow_module, 0, PoWMod),
               meck:expect(aec_pow, pick_nonce, 0, 1),
-              {ok, Pid} = aec_chain:start_link(aec_block_genesis:genesis_block()),
+              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
               TmpKeysDir = mktempd(),
               ok = application:ensure_started(crypto),
               {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
@@ -205,7 +194,7 @@ mine_block_from_genesis_test_() ->
               ok = application:stop(crypto),
               {ok, KeyFiles} = file:list_dir(TmpKeysDir),
               %% Expect two filenames - private and public keys.
-              [KF1, KF2] = KeyFiles,
+              [_KF1, _KF2] = KeyFiles,
               lists:foreach(
                 fun(F) ->
                         AbsF = filename:absname_join(TmpKeysDir, F),
@@ -215,16 +204,16 @@ mine_block_from_genesis_test_() ->
               ok = file:del_dir(TmpKeysDir),
               ok = aec_chain:stop(),
               ?assert(meck:validate(aec_pow)),
-              ?assert(meck:validate(aec_chain)),
+              %% ?assert(meck:validate(aec_chain)),
               meck:unload(aec_pow),
-              meck:unload(aec_chain),
+              %% meck:unload(aec_chain),
               aec_state:stop(),
               file:delete(TmpKeysDir)
       end,
-      fun(TmpKeysDir) ->
+      fun(_) ->
               [{"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
                 fun() ->
-                        {ok, Block} = ?TEST_MODULE:mine(),
+                        {ok, Block} = ?TEST_MODULE:mine(400),
                         ?assertEqual(1, aec_blocks:height(Block)),
                         ?assertEqual(1, length(Block#block.txs)),
                         ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
