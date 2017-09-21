@@ -73,7 +73,7 @@ check_chain_for_successor(Trees, AtHeight) ->
 init([]) ->
     {ok, TopBlock} = aec_chain:top_block(),
     TopHeight = aec_blocks:height(TopBlock),
-    {ok, EmptyTrees} = aec_trees:all_trees_new(),
+    EmptyTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
     CurrentTrees = setup_trees(TopHeight, EmptyTrees),
 
     {ok, #state{trees = CurrentTrees, height = TopHeight}}.
