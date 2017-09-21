@@ -7,16 +7,19 @@
          %send_block/2
         ]).
 
+-compile({parse_transform, lager_transform}).
 %% All requests take 
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
 -spec ping(aec_peers:peer()) -> response(pong).
 ping(Peer) ->
-    Response = process_request(Peer, get, "ping"),
+    Req = "ping?source=" ++ source_uri() ++ share_param(),
+    Response = process_request(Peer, get, Req),
     case Response of
-        {ok, _Map} ->
-            {ok, pong};
+        {ok, Map} ->
+            lager:debug("ping response: ~p", [Map]),
+            {ok, Map};
         {error, _Reason} = Error ->
             Error
     end.
@@ -70,7 +73,18 @@ process_request(Peer, get, Request) ->
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
-            {ok, Body};
+            Result = try jsx:decode(iolist_to_binary(Body), [return_maps])
+                     catch
+                         error:_ -> Body
+                     end,
+            {ok, Result};
         {error, _Reason} ->
             {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
     end.
+
+source_uri() ->
+    Uri = aec_peers:get_local_peer_uri(),
+    http_uri:encode(Uri).
+
+share_param() ->
+    "&share=30".

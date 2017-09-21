@@ -103,7 +103,7 @@ serialize_to_map(B = #block{}) ->
       <<"version">> => B#block.version,
       <<"pow-evidence">> => serialize_pow_evidence(
 			      B#block.pow_evidence),
-      <<"txs">> => [] %TODO txs serialization
+      <<"txs">> => base64:encode(term_to_binary(B#block.txs))
      }.
 
 -spec deserialize_from_network(block_serialized_for_network()) ->
@@ -119,15 +119,17 @@ deserialize_from_map(#{<<"height">> := Height,
 		       <<"time">> := Time,
 		       <<"version">> := Version,
 		       <<"pow-evidence">> := PowEvidence,
-		       <<"txs">> := _Txs}) -> %TODO txs deserialization
-		       {ok, #block{height = Height,
-		prev_hash = base64:decode(PrevHash),
-                root_hash = base64:decode(RootHash),
-		target = Target,
-                nonce = Nonce,
-                time = Time,
-                version = Version,
-		pow_evidence = deserialize_pow_evidence(PowEvidence)}}.
+		       <<"txs">> := Txs}) ->
+    {ok, #block{
+	    height = Height,
+	    prev_hash = base64:decode(PrevHash),
+	    root_hash = base64:decode(RootHash),
+	    target = Target,
+	    nonce = Nonce,
+	    time = Time,
+	    version = Version,
+	    txs = binary_to_term(base64:decode(Txs)),
+	    pow_evidence = deserialize_pow_evidence(PowEvidence)}}.
 
 serialize_pow_evidence(Ev) ->
     base64:encode(term_to_binary(Ev)).

@@ -2,14 +2,29 @@
 
 -export([handle_request/3]).
 
+-compile({parse_transform, lager_transform}).
+
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
         Req :: cowboy_req:req(),
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
 
-handle_request('Ping', _, _Context) ->
-    {200, [], #{pong => <<"pong">>}};
+handle_request('Ping', #{source := Source,
+			 share  := Share}, _Context) ->
+    aec_peers:update_last_seen(Source),
+    Ok = #{pong => <<"pong">>},
+    Res = case mk_num(Share) of
+	      N when is_integer(N), N > 0 ->
+		  Peers = aec_peers:get_random(N, [Source]),
+                  PeerUris = [list_to_binary(aec_peers:uri(P))
+                              || P <- Peers],
+		  lager:debug("PeerUris = ~p~n", [PeerUris]),
+		  Ok#{peers => PeerUris};
+	      _ ->
+		  Ok
+	  end,
+    {200, [], Res};
 
 handle_request('GetTop', _, _Context) ->
     {ok, Header} = aec_chain:top_header(),
@@ -34,3 +49,14 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
+
+mk_num(undefined) ->
+    undefined;
+mk_num(I) when is_integer(I) ->
+    I;
+mk_num(B) when is_binary(B) ->
+    try binary_to_integer(B)
+    catch
+	error:_ ->
+	    undefined
+    end.
