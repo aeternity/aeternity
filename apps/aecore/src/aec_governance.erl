@@ -2,10 +2,12 @@
 
 %% API
 -export([recalculate_difficulty_frequency/0,
-         expected_block_mine_rate/0]).
+         expected_block_mine_rate/0,
+         block_mine_reward/0]).
 
 -define(RECALCULATE_DIFFICULTY_FREQUENCY, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300). %% 60secs * 5 = 300secs
+-define(BLOCK_MINE_REWARD, 10).
 
 
 recalculate_difficulty_frequency() ->
@@ -16,3 +18,6 @@ recalculate_difficulty_frequency() ->
 expected_block_mine_rate() ->
     %% Returned in seconds.
     ?EXPECTED_BLOCK_MINE_RATE.
+
+block_mine_reward() ->
+    ?BLOCK_MINE_REWARD.

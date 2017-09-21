@@ -73,7 +73,7 @@ create_coinbase_tx_no_account_test() ->
                                     aec_accounts:get(PubKey, AccountsTrees))
                end}
       end,
-      fun({PubKey, Trees0, CoinbaseTx}) ->
+      fun({_PubKey, Trees0, CoinbaseTx}) ->
               {"Process coinbase trx without existing account in state: shall fail",
                ?assertEqual({error, account_not_found}, aec_coinbase_tx:process(CoinbaseTx, Trees0, 9))}
       end

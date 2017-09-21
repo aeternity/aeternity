@@ -25,6 +25,7 @@ start_link() ->
 
 init([]) ->
     {ok, {{one_for_one, 5, 10}, [?CHILD(aec_peers, 5000, worker),
-                                 ?CHILD(aec_keys, 5000, worker)]
+                                 ?CHILD(aec_keys, 5000, worker),
+                                 ?CHILD(aec_miner, 5000, worker)]
          }}.
 
