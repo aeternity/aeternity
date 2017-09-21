@@ -73,11 +73,14 @@ process_request(Peer, get, Request) ->
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
-            Result = try jsx:decode(iolist_to_binary(Body), [return_maps])
-                     catch
-                         error:_ -> Body
-                     end,
-            {ok, Result};
+            try
+                Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
+                lager:debug("Decoded response: ~p", [Result]),
+                {ok, Result}
+            catch
+                error:E ->
+                    {error, {parse_error, E}}
+            end;
         {error, _Reason} ->
             {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
     end.

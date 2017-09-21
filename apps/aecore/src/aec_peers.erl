@@ -99,7 +99,7 @@ get_random() ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(non_neg_integer()) -> get_peer_result().
+-spec get_random(non_neg_integer()) -> [peer()].
 get_random(N) when is_integer(N), N >= 0 ->
     get_random(N, []).
 
@@ -110,7 +110,7 @@ get_random(N) when is_integer(N), N >= 0 ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(non_neg_integer(), [peer() | uri()]) -> get_peer_result().
+-spec get_random(non_neg_integer(), [peer() | uri()]) -> [peer()].
 get_random(N, Exclude) when is_integer(N), N >= 0, is_list(Exclude) ->
     gen_server:call(?MODULE, {get_random, N, Exclude}).
 
@@ -124,7 +124,7 @@ uri_from_ip_port(IP, Port) ->
 %%------------------------------------------------------------------------------
 %% Get uri of peer
 %%------------------------------------------------------------------------------
--spec uri(peer()) -> uri().
+-spec uri(peer() | uri()) -> uri().
 uri(#peer{uri = Uri}) ->
     Uri;
 uri(Uri) when is_list(Uri) ->
@@ -327,8 +327,9 @@ ping_peer(Peer) ->
     Res = aeu_requests:ping(Peer),
     lager:debug("ping result (~p): ~p", [Peer, Res]),
     case Res of
-        {ok, #{<<"peers">> := Peers}} ->
+        {ok, #{<<"pong">> := <<"pong">>} = Map} ->
             update_last_seen(Peer),
+            Peers = maps:get(<<"peers">>, Map, []),
             [add(P, true) || P <- Peers],
             ok;
         _ ->

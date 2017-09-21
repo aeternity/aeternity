@@ -17,7 +17,7 @@ handle_request('Ping', #{source := Source,
     Res = case mk_num(Share) of
 	      N when is_integer(N), N > 0 ->
 		  Peers = aec_peers:get_random(N, [Source]),
-                  PeerUris = [list_to_binary(aec_peers:uri(P))
+                  PeerUris = [iolist_to_binary(aec_peers:uri(P))
                               || P <- Peers],
 		  lager:debug("PeerUris = ~p~n", [PeerUris]),
 		  Ok#{peers => PeerUris};
