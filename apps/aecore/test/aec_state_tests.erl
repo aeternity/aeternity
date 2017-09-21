@@ -12,11 +12,13 @@
 all_test_() ->
     {foreach,
         fun() ->
-            Pid = aec_state:start_link(),
-            Pid
+            {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block_as_deserialized_from_network()),
+            {ok, _} = aec_state:start_link(),
+            ok
         end,
         fun(_) ->
-            aec_state:stop()
+            ok = aec_state:stop(),
+            ok = aec_chain:stop()
         end,
         [fun(_) ->
             [{"Check force tree API ",
