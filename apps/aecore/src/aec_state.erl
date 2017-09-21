@@ -120,10 +120,11 @@ code_change(_OldVsn, State, _Extra) ->
 setup_trees(0, Trees) ->
     Trees;
 setup_trees(N, Trees) ->
+    TreesAtEndOfPreviousBlock = setup_trees(N-1, Trees),
     {ok, Block} = aec_chain:get_block_by_height(N),
     Txs = aec_blocks:txs(Block),
-    {ok, TreesUpdated} = apply_txs_internal(Txs, N, Trees),
-    setup_trees(N-1, TreesUpdated).
+    {ok, TreesUpdated} = apply_txs_internal(Txs, N, TreesAtEndOfPreviousBlock),
+    TreesUpdated.
 
 -spec apply_txs_internal(list(), height(), trees()) -> {ok, trees()}.
 apply_txs_internal(Txs, AtHeight, Trees) ->
