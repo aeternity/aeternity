@@ -56,10 +56,13 @@ new(LastBlock, Txs, Trees0) ->
     Height = LastBlockHeight + 1,
     case aec_tx:apply_signed(Txs, Trees0, Height) of
         {ok, Trees} ->
+            {ok, TxsTree} = aec_txs_trees:new(Txs),
+            {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
             {ok, #block{height = Height,
                         prev_hash = LastBlockHeaderHash,
                         root_hash = aec_trees:all_trees_hash(Trees),
                         trees = Trees,
+                        txs_hash = TxsRootHash,
                         txs = Txs,
                         target = target(LastBlock),
                         time = aeu_time:now_in_msecs(),
@@ -71,6 +74,7 @@ new(LastBlock, Txs, Trees0) ->
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,
                  prev_hash = PrevHash,
+                 txs_hash = TxsHash,
                  root_hash = RootHash,
                  target = Target,
                  nonce = Nonce,
@@ -79,6 +83,7 @@ to_header(#block{height = Height,
                  pow_evidence = Evd}) ->
     #header{height = Height,
             prev_hash = PrevHash,
+            txs_hash = TxsHash,
             root_hash = RootHash,
             target = Target,
             nonce = Nonce,

@@ -35,7 +35,7 @@ genesis_header() ->
        version = ?GENESIS_VERSION,
        height = ?GENESIS_HEIGHT,
        prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-       %% TODO txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
+       txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
        root_hash = <<0:?STATE_HASH_BYTES/unit:8>>,
        target = ?HIGHEST_TARGET_SCI,
        pow_evidence = no_value,
@@ -49,13 +49,13 @@ genesis_block_as_deserialized_from_network() ->
        version = H#header.version,
        height = H#header.height,
        prev_hash = H#header.prev_hash,
-       %% TODO txs_hash
+       txs_hash = H#header.txs_hash,
        root_hash = H#header.root_hash,
        target = H#header.target,
        pow_evidence = H#header.pow_evidence,
        nonce = H#header.nonce,
        time = H#header.time,
-       txs = [], %% TODO Review representation. See also txs_hash
+       txs = [],
        trees = _DummyTrees = #trees{}
       }.
 
