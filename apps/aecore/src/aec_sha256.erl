@@ -10,7 +10,7 @@
 -export([hash/1]).
 
 -ifdef(TEST).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -endif.
 
 -include("sha256.hrl").

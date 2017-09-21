@@ -11,7 +11,8 @@
     cowboy,
     jsx,
     lager,
-    jesse
+    jesse,
+    aecore
    ]},
   {env,[]},
   {modules, []},

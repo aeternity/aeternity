@@ -14,7 +14,7 @@
          hash_internal_representation/1]).
 
 -ifdef(TEST).
--compile(export_all).
+-compile([export_all, nowarn_export_all]).
 -endif.
 
 -export_type([block_serialized_for_network/0,
@@ -91,16 +91,51 @@ to_header(#block{height = Height,
       BlockInternalRepresentation :: block()
                                    | block_deserialized_from_network().
 serialize_for_network(B = #block{}) ->
-    %% TODO: Define serialization format.
-    DummyTrees = #trees{},
-    {ok, term_to_binary(B#block{trees = DummyTrees})}.
+    {ok, jsx:encode(serialize_to_map(B))}.
+
+serialize_to_map(B = #block{}) ->
+    #{<<"height">> => height(B),
+      <<"prev-hash">> => base64:encode(prev_hash(B)),
+      <<"root-hash">> => base64:encode(B#block.root_hash),
+      <<"target">> => B#block.target,
+      <<"nonce">> => B#block.nonce,
+      <<"time">> => B#block.time,
+      <<"version">> => B#block.version,
+      <<"pow-evidence">> => serialize_pow_evidence(
+			      B#block.pow_evidence),
+      <<"txs">> => base64:encode(term_to_binary(B#block.txs))
+     }.
 
 -spec deserialize_from_network(block_serialized_for_network()) ->
                                       {ok, block_deserialized_from_network()}.
 deserialize_from_network(B) when is_binary(B) ->
-    %% TODO: Define serialization format.
-    DummyTrees = #trees{},
-    {ok, #block{trees = DummyTrees} = binary_to_term(B)}.
+    deserialize_from_map(jsx:decode(B, [return_maps])).
+
+deserialize_from_map(#{<<"height">> := Height,
+		       <<"prev-hash">> := PrevHash,
+		       <<"root-hash">> := RootHash,
+		       <<"target">> := Target,
+		       <<"nonce">> := Nonce,
+		       <<"time">> := Time,
+		       <<"version">> := Version,
+		       <<"pow-evidence">> := PowEvidence,
+		       <<"txs">> := Txs}) ->
+    {ok, #block{
+	    height = Height,
+	    prev_hash = base64:decode(PrevHash),
+	    root_hash = base64:decode(RootHash),
+	    target = Target,
+	    nonce = Nonce,
+	    time = Time,
+	    version = Version,
+	    txs = binary_to_term(base64:decode(Txs)),
+	    pow_evidence = deserialize_pow_evidence(PowEvidence)}}.
+
+serialize_pow_evidence(Ev) ->
+    base64:encode(term_to_binary(Ev)).
+
+deserialize_pow_evidence(Bin) ->
+    binary_to_term(base64:decode(Bin)).
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->

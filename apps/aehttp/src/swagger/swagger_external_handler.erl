@@ -80,7 +80,7 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'PutBlock'
+        operation_id = 'PostBlock'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -96,7 +96,19 @@ allowed_methods(Req, State) ->
     }.
 
 is_authorized(Req, State) ->
-    {true, Req, State}.
+    {true, Req, State};
+
+is_authorized(Req, State) ->
+    {true, Req, State};
+
+is_authorized(Req, State) ->
+    {true, Req, State};
+
+is_authorized(Req, State) ->
+    {true, Req, State};
+
+is_authorized(Req, State) ->
+    {{false, <<"">>}, Req, State}.
 
 -spec content_types_accepted(Req :: cowboy_req:req(), State :: state()) ->
     {
@@ -146,7 +158,7 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'PutBlock'
+        operation_id = 'PostBlock'
     }
 ) ->
     Headers = [],

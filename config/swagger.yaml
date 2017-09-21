@@ -21,13 +21,24 @@ paths:
       description: ''
       produces:
         - application/json
-      parameters: []
       responses:
         '200':
           description: Sample response
           schema:
             $ref: '#/definitions/Ping'
       security: []
+      parameters:
+        - in: query
+          name: source
+          description: 'Source peer address'
+          required : true
+          type : string
+        - in: query
+          name: share
+          description: 'Number of random peer URIs to return'
+          required : false
+          type: integer
+          format: int64
   /top:
     get:
       tags:
@@ -139,6 +150,11 @@ definitions:
     properties:
       pong:
         type: string
+      peers:
+        type: array
+        items:
+          type: string
+
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
