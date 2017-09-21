@@ -20,6 +20,7 @@ ifeq ($(UNAME_SYS), Darwin)
 	CFLAGS ?= -fPIC -O3 -std=c99 -arch x86_64 -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -arch x86_64 -Wall
 	LDFLAGS ?= -arch x86_64 -flat_namespace -undefined suppress
+	SED_FLAGS ?= -i ''
 else ifeq ($(UNAME_SYS), FreeBSD)
 	CC = clang
 	CXX = clang++
@@ -27,6 +28,7 @@ else ifeq ($(UNAME_SYS), FreeBSD)
 	CFLAGS += -D_GCLIBCXX_USE_C99
 	CXXFLAGS ?= -O3 -Wall
 	CXXFLAGS += -std=c++11 -stdlib=libc++ -D_GCLIBCXX_USE_C99
+	SED_FLAGS ?= -i
 else ifeq ($(UNAME_SYS), OpenBSD)
 	CC = egcc
 	CXX = eg++
@@ -34,6 +36,7 @@ else ifeq ($(UNAME_SYS), OpenBSD)
 	CFLAGS += -D_GCLIBCXX_USE_C99
 	CXXFLAGS ?= -O3 -Wall
 	CXXFLAGS += -std=c++11 -pthread -finline-functions -D_GCLIBCXX_USE_C99
+	SED_FLAGS ?= -i
 else ifeq ($(UNAME_SYS), DragonFly)
 	CC = c++48
 	CXX = c++48
@@ -41,6 +44,7 @@ else ifeq ($(UNAME_SYS), DragonFly)
 	CFLAGS += -D_GCLIBCXX_USE_C99
 	CXXFLAGS ?= -O3 -finline-functions -Wall
 	CXXFLAGS += -D_GCLIBCXX_USE_C99
+	SED_FLAGS ?= -i
 else ifeq ($(UNAME_SYS), NetBSD)
 	CC = c++48
 	CXX = c++48
@@ -48,6 +52,7 @@ else ifeq ($(UNAME_SYS), NetBSD)
 	CFLAGS += -D_GCLIBCXX_USE_C99
 	CXXFLAGS ?= -O3 -finline-functions -Wall
 	CXXFLAGS += -D_GCLIBCXX_USE_C99
+	SED_FLAGS ?= -i
 else ifeq ($(UNAME_SYS), SunOS)
 	ifeq ($(shell uname -v | sed 's/_.*$$//'), joyent)
 		CC = gcc
@@ -60,10 +65,12 @@ else ifeq ($(UNAME_SYS), SunOS)
 	CFLAGS += -D_GCLIBCXX_USE_C99
 	CXXFLAGS ?= -O3 -finline-functions -Wall
 	CXXFLAGS += -D_GCLIBCXX_USE_C99
+	SED_FLAGS ?= -i
 else ifeq ($(UNAME_SYS), Linux)
 	CC ?= gcc
 	CFLAGS ?= -fPIC -O3 -std=c99 -finline-functions -Wall -Wmissing-prototypes
 	CXXFLAGS ?= -O3 -finline-functions -Wall
+	SED_FLAGS ?= -i
 endif
 
 ifeq ($(UNAME_SYS), OpenBSD)
@@ -117,6 +124,8 @@ deps: $(LIBDIR)
 
 $(LIBDIR):
 	git clone https://github.com/tromp/cuckoo.git
+	sed $(SED_FLAGS) 's/printf/aec_printf/g' $(LIBDIR)/src/cuckoo_miner.hpp
+	sed $(SED_FLAGS) 's/.*TWICE_PER_ATOM = .*/int aec_printf(const char *format, ...);&/g' $(LIBDIR)/src/cuckoo_miner.hpp
 
 $(CUCKOO_SRCS): $(LIBDIR)
 

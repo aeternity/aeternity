@@ -17,19 +17,20 @@
 // arbitrary length of header hashed into siphash key
 #define HEADERLEN 80
 
+int aec_printf(const char *format, ...);
 
 node_t* generate_single(char* header, int nonce, int ntrims, int nthreads) {
-  printf("Looking for %d-cycle on cuckoo%d(\"%s\",%d) with 50%% edges, %d trims, %d threads\n",
-         PROOFSIZE, EDGEBITS + 1, header, nonce, ntrims, nthreads);
+  aec_printf("Looking for %d-cycle on cuckoo%d(\"%s\",%d) with 50%% edges, %d trims, %d threads\n",
+             PROOFSIZE, EDGEBITS + 1, header, nonce, ntrims, nthreads);
 
   u64 edgeBytes = NEDGES/8, nodeBytes = TWICE_ATOMS*sizeof(atwice);
   int edgeUnit, nodeUnit;
   for (edgeUnit=0; edgeBytes >= 1024; edgeBytes>>=10, edgeUnit++) ;
   for (nodeUnit=0; nodeBytes >= 1024; nodeBytes>>=10, nodeUnit++) ;
 
-  printf("Using %d%cB edge and %d%cB node memory, %d-way siphash, and %d-byte counters\n",
-         (int)edgeBytes, " KMGT"[edgeUnit], (int)nodeBytes, " KMGT"[nodeUnit],
-         NSIPHASH, SIZEOF_TWICE_ATOM);
+  aec_printf("Using %d%cB edge and %d%cB node memory, %d-way siphash, and %d-byte counters\n",
+             (int)edgeBytes, " KMGT"[edgeUnit], (int)nodeBytes, " KMGT"[nodeUnit],
+             NSIPHASH, SIZEOF_TWICE_ATOM);
 
   thread_ctx *threads = (thread_ctx *)calloc(nthreads, sizeof(thread_ctx));
   assert(threads);
@@ -37,7 +38,7 @@ node_t* generate_single(char* header, int nonce, int ntrims, int nthreads) {
 
   // Initiate context using header and nonce
   ctx.setheadernonce(header, sizeof(header), nonce);
-  printf("k0 %llx k1 %llx\n", ctx.sip_keys.k0, ctx.sip_keys.k1);
+  aec_printf("k0 %llx k1 %llx\n", ctx.sip_keys.k0, ctx.sip_keys.k1);
 
   // Spawn threads with this context
   for (int t = 0; t < nthreads; t++) {
@@ -57,22 +58,24 @@ node_t* generate_single(char* header, int nonce, int ntrims, int nthreads) {
 
   // Look for solutions
   if (ctx.nsols == 0) {
-    printf("No solution found for nonce %d\n", nonce);
+    aec_printf("No solution found for nonce %d\n", nonce);
 
     // Failed to find a solution
     free(threads);
     return NULL;
   }
   else {
-    printf("%d solutions found for nonce %d\n", ctx.nsols, nonce);
+    aec_printf("%d solutions found for nonce %d\n", ctx.nsols, nonce);
 
     // Return struct
+#ifdef DEBUG    
     for (unsigned s = 0; s < ctx.nsols; s++) {
       for (int i = 0; i < PROOFSIZE; i++) {
         printf(" %jx", (uintmax_t)ctx.sols[s][i]);
       }
       printf("\n");
     }
+#endif
 
     free(threads);
     // Return the 1st solution as result, dropping possible others
@@ -97,17 +100,34 @@ int verify(char* header, int nonce, node_t soln[PROOFSIZE]) {
   int pow_rc = verify(nonces, &ctx.sip_keys);
 
   if (pow_rc == POW_OK) {
+#ifdef DEBUG
     printf("Verified with cyclehash ");
     unsigned char cyclehash[32];
     blake2b((void *)cyclehash, sizeof(cyclehash), (const void *)nonces, sizeof(nonces), 0, 0);
     for (int i=0; i<32; i++)
       printf("%02x", cyclehash[i]);
-    printf("\n");
-
+      printf("\n");
+#endif
     return true;
   } else {
-    printf("FAILED due to %s\n", errstr[pow_rc]);
+    aec_printf("FAILED due to %s\n", errstr[pow_rc]);
 
-      return false;
+    return false;
   }
+}
+
+int aec_printf(const char *format, ...)
+{
+#ifdef DEBUG
+   va_list arg;
+   int done;
+
+   va_start (arg, format);
+   done = vfprintf (stdout, format, arg);
+   va_end (arg);
+
+   return done;
+#else
+   return 0;
+#endif
 }
