@@ -84,9 +84,6 @@ handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
 handle_call({force_trees, {Trees, AtHeight}}, _From, State) ->
     {reply, {ok, {AtHeight, Trees}}, State#state{trees = Trees, height = AtHeight}};
 
-handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
-    {reply, {ok, {Height, Trees}}, State};
-
 handle_call({apply_txs, {Txs, AtHeight}}, _From,
             #state{trees = Trees, height = CurrentHeigth} = State) ->
     {Reply, TreesUpdated, HeightUpdated}
