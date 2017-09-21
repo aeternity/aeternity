@@ -74,9 +74,9 @@ init([]) ->
     {ok, TopBlock} = aec_chain:top_block(),
     TopHeight = aec_blocks:height(TopBlock),
     EmptyTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
-    CurrentTrees = setup_trees(TopHeight, EmptyTrees),
+    {ok, TreesAtTopHeight} = setup_trees(TopHeight, EmptyTrees),
 
-    {ok, #state{trees = CurrentTrees, height = TopHeight}}.
+    {ok, #state{trees = TreesAtTopHeight, height = TopHeight}}.
 
 handle_call(get_trees, _From, #state{trees = Trees, height = Height} = State) ->
     {reply, {ok, {Height, Trees}}, State};
@@ -116,15 +116,21 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% INFO: not optimized (by local lookup of prev-block by hash in current-block)
 %%       because of incoming optimization with check points
--spec setup_trees(height(), trees()) -> trees().
+-spec setup_trees(height(), trees()) -> {ok, trees()}.
 setup_trees(0, Trees) ->
-    Trees;
+    {ok, Trees};
 setup_trees(N, Trees) ->
-    TreesAtEndOfPreviousBlock = setup_trees(N-1, Trees),
-    {ok, Block} = aec_chain:get_block_by_height(N),
+    do_setup_trees(0, N, Trees).
+
+-spec do_setup_trees(height(), height(), trees()) -> {ok, trees()}.
+do_setup_trees(TopHeight, TopHeight, Trees) ->
+    {ok, Trees};
+do_setup_trees(CurrentHeight, TopHeight, TreesAtEndOfPreviousBlock) ->
+    {ok, Block} = aec_chain:get_block_by_height(CurrentHeight),
     Txs = aec_blocks:txs(Block),
-    {ok, TreesUpdated} = apply_txs_internal(Txs, N, TreesAtEndOfPreviousBlock),
-    TreesUpdated.
+    {ok, TreesUpdated} = apply_txs_internal(Txs, CurrentHeight, TreesAtEndOfPreviousBlock),
+    do_setup_trees(CurrentHeight+1, TopHeight, TreesUpdated).
+
 
 -spec apply_txs_internal(list(), height(), trees()) -> {ok, trees()}.
 apply_txs_internal(Txs, AtHeight, Trees) ->
