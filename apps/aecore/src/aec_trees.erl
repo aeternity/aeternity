@@ -4,6 +4,7 @@
 -include("trees.hrl").
 
 %% API
+
 -export([all_trees_new/0,
          all_trees_hash/1,
          accounts/1,
@@ -15,6 +16,8 @@
          root_hash/1,
          verify_proof/4]).
 
+-type tree() :: gb_merkle_trees:tree().
+
 all_trees_new() ->
     {ok, A} = new(),
     {ok, #trees{accounts = A}}.
@@ -24,12 +27,15 @@ all_trees_hash(Trees) ->
     {ok, H} = aec_accounts:root_hash(accounts(Trees)),
     H.
 
+-spec accounts(trees()) -> tree().
 accounts(Trees) ->
     Trees#trees.accounts.
 
+-spec set_accounts(trees(), tree()) -> trees().
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
 
+-spec new() -> {ok, tree()}.
 new() ->
     {ok, gb_merkle_trees:empty()}.
 

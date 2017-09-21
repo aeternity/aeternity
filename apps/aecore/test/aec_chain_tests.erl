@@ -9,8 +9,9 @@ genesis_block() ->
 
 top_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
+              aec_state:start_link(), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
      [{"Initialize chain with genesis block, then check top block with related state trees",
        fun() ->
                GB = genesis_block(),
@@ -25,8 +26,9 @@ top_test_() ->
 
 genesis_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
+              aec_state:start_link(), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
      fun() ->
              GB = genesis_block(),
              ?assertEqual({ok, GB}, aec_chain:top_block()),
@@ -43,8 +45,9 @@ genesis_test_() ->
 
 header_chain_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
+              aec_state:start_link(), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
      fun() ->
              %% Check chain is at genesis.
              B0 = genesis_block(),
@@ -97,8 +100,9 @@ header_chain_test_() ->
 
 block_chain_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
+              aec_state:start_link(), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
                %% Check chain is at genesis.
@@ -175,6 +179,10 @@ block_chain_test_() ->
                %% Add one block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_chain:write_block(B1)),
 
+               %% Check proper state growth
+               {ok, {StateHeight, _Trees}} = aec_state:get_trees(),
+               ?assertEqual(1, StateHeight),
+
                %% Check highest header.
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
                %% Check heighest known block.
@@ -219,10 +227,12 @@ get_work_at_top_test_() ->
                fun(#header{target = T}) when is_integer(T) -> float(T) end),
              {ok, Pid} = aec_chain:start_link(
                            fake_genesis_block_with_difficulty()),
+             aec_state:start_link(),
              Pid
      end,
      fun(_ChainPid) ->
              ok = aec_chain:stop(),
+             ok = aec_state:stop(),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_headers)
      end,
@@ -266,8 +276,9 @@ get_work_at_top_test_() ->
 %% Cover unhappy paths not covered in any other tests.
 unhappy_paths_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop() end,
+     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
+              aec_state:start_link(), Pid end,
+     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
      [{"Get header by hash - case not found",
        fun() ->
                %% Check chain is at genesis.
@@ -427,10 +438,12 @@ longest_header_chain_test_() ->
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
              {ok, Pid} = aec_chain:start_link(
                            fake_genesis_block_with_difficulty()),
+             aec_state:start_link(),
              Pid
      end,
      fun(_ChainPid) ->
              ok = aec_chain:stop(),
+             ok = aec_state:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_blocks),
@@ -796,10 +809,12 @@ longest_block_chain_test_() ->
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
              {ok, Pid} = aec_chain:start_link(
                            fake_genesis_block_with_difficulty()),
+         aec_state:start_link(),
              Pid
      end,
      fun(_ChainPid) ->
              ok = aec_chain:stop(),
+             ok = aec_state:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_blocks),
@@ -829,6 +844,10 @@ longest_block_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
                ?assertEqual({ok, B2}, aec_chain:top_block()),
+
+               %% Check state of the world height
+               {ok, {StateHeight, _Trees}} = aec_state:get_trees(),
+               ?assertEqual(0, StateHeight),
 
                %% Determine chain with more work - specifying full
                %% header chain.
