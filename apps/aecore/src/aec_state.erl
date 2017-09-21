@@ -51,7 +51,7 @@ apply_txs(Txs, AtHeight) ->
 %% API needed when external fork has more POW and we need to restart tree from common ancestor
 -spec force_trees(trees(), height()) -> {ok, {height(), trees()}}.
 force_trees(Trees, AtHeight) ->
-    gen_server:call(?SERVER, {force_tree, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
+    gen_server:call(?SERVER, {force_trees, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
 
 stop() ->
     gen_server:stop(?SERVER).
