@@ -24,18 +24,22 @@ mine() ->
 mine(Attempts) ->
     {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),
-    Txs = get_txs_to_mine(Trees),
-    case aec_blocks:new(LastBlock, Txs, Trees) of
-        {ok, Block0} ->
-            Block = maybe_recalculate_difficulty(Block0),
-            case mine(Block, Attempts) of
-                {ok, _Block} = Ok ->
-                    Ok;
+    case get_txs_to_mine(Trees) of
+        {error, _} = Error ->
+            Error;
+        {ok, Txs} -> 
+            case aec_blocks:new(LastBlock, Txs, Trees) of
+                {ok, Block0} ->
+                    Block = maybe_recalculate_difficulty(Block0),
+                    case mine(Block, Attempts) of
+                        {ok, _Block} = Ok ->
+                            Ok;
+                        {error, _Reason} = Error ->
+                            Error
+                    end;
                 {error, _Reason} = Error ->
                     Error
-            end;
-        {error, _Reason} = Error ->
-            Error
+            end
     end.
 
 
@@ -53,18 +57,30 @@ mine(Block, Attempts) ->
             Error
     end.
 
--spec get_txs_to_mine(trees()) -> list(signed_tx()).
+-spec get_txs_to_mine(trees()) -> {'ok', list(signed_tx())} | {error, term()}.
 get_txs_to_mine(Trees) ->
     {ok, Txs0} = aec_tx_pool:all(),
-    {ok, CoinbaseTx} = create_coinbase_tx(Trees),
-    {ok, SignedCoinbaseTx} = aec_keys:sign(CoinbaseTx),
-    [SignedCoinbaseTx | Txs0].
+    case create_coinbase_tx(Trees) of
+        {ok, CoinbaseTx} ->
+            case aec_keys:sign(CoinbaseTx) of
+                {ok, SignedCoinbaseTx} ->
+                    {ok, [SignedCoinbaseTx | Txs0]};
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
 
--spec create_coinbase_tx(trees()) -> {ok, coinbase_tx()}.
+-spec create_coinbase_tx(trees()) -> {ok, coinbase_tx()} | {error, term()}.
 create_coinbase_tx(Trees) ->
-    {ok, Pubkey} = aec_keys:pubkey(),
-    {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => Pubkey}, Trees),
-    {ok, CoinbaseTx}.
+    case aec_keys:pubkey() of
+        {ok, Pubkey} ->
+            aec_coinbase_tx:new(#{account => Pubkey}, Trees);
+        {error, _} = Error ->
+            Error
+    end.
+
 
 -spec maybe_recalculate_difficulty(block()) -> block().
 maybe_recalculate_difficulty(Block) ->

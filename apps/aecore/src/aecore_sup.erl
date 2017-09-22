@@ -33,5 +33,6 @@ init([]) ->
                                  ?CHILD(aec_chain, 5000, worker, [GB]),
                                  ?CHILD(aec_state, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
-				 ?CHILD(aec_sync, 5000, worker)]
+				 ?CHILD(aec_sync, 5000, worker),
+                                 ?CHILD(aec_miner, 5000, worker)]
          }}.
