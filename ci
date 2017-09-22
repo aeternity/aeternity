@@ -3,6 +3,19 @@
 set -ev # Ref https://docs.travis-ci.com/user/customizing-the-build/#Implementing-Complex-Build-Steps
 set -x
 
+
+package_prefix() {
+    case "${1:?}" in
+        linux)
+            echo "ubuntu"
+            ;;
+        osx)
+            echo "osx-$(sw_vers -productVersion)"
+            ;;
+    esac
+}
+
+
 case "${1:?}"-"${2:?}" in
     before_install-*)
         true
@@ -42,6 +55,8 @@ case "${1:?}"-"${2:?}" in
     script-package)
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
+        Prefix=$(package_prefix "${TRAVIS_OS_NAME:?}")
+        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-0.1.0.tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/"${Prefix:?}"-epoch-0.1.0.tar.gz
         ;;
     after_failure-start_local_rel)
         BuildDir="${3:?}"

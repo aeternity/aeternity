@@ -12,7 +12,6 @@ install:
   - ./ci install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 script:
   - ./ci script "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
-  - cp -p _build/prod/rel/epoch/epoch-0.1.0.tar.gz _build/prod/rel/epoch/"${TRAVIS_OS_NAME:?}"-epoch-0.1.0.tar.gz
 after_failure:
   - ./ci after_failure "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 deploy:
@@ -33,6 +32,10 @@ matrix:
   include:
     - os: osx
       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+      language: generic
+      env: JOB=package
+    - os: osx
+      osx_image: xcode7.3 # [`xcode7.3` is Xcode 7.3.1 on OS X 10.11](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
       language: generic
       env: JOB=package
   allow_failures:
