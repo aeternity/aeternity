@@ -62,7 +62,7 @@ set_trees(Block, Trees) ->
     Block#block{trees = Trees}.
 
 %% TODO: have a spec for list of transactions
--spec txs(block()) -> list().
+-spec txs(block()) -> list(signed_tx()).
 txs(Block) ->
     Block#block.txs.
 

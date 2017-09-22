@@ -11,6 +11,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
+-include("txs.hrl").
 
 %% API
 -export([start_link/0, stop/0]).
@@ -124,25 +125,34 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% INFO: not optimized (by local lookup of prev-block by hash in current-block)
 %%       because of incoming optimization with check points
--spec setup_trees(height(), trees()) -> {ok, trees()}.
+-spec setup_trees(non_neg_integer(), trees()) -> {ok, trees()}.
 setup_trees(0, Trees) ->
     {ok, Trees};
 setup_trees(N, Trees) ->
     do_setup_trees(0, N, Trees).
 
--spec do_setup_trees(height(), height(), trees()) -> {ok, trees()}.
+-spec do_setup_trees(non_neg_integer(), non_neg_integer(), trees()) -> {ok, trees()} | {error, term()}.
 do_setup_trees(TopHeight, TopHeight, Trees) ->
     {ok, Trees};
 do_setup_trees(CurrentHeight, TopHeight, TreesAtEndOfPreviousBlock) ->
-    {ok, Block} = aec_chain:get_block_by_height(CurrentHeight),
-    Txs = aec_blocks:txs(Block),
-    {ok, TreesUpdated} = apply_txs_internal(Txs, CurrentHeight, TreesAtEndOfPreviousBlock),
-    do_setup_trees(CurrentHeight+1, TopHeight, TreesUpdated).
+    case aec_chain:get_block_by_height(CurrentHeight) of
+        {ok, Block} ->
+            Txs = aec_blocks:txs(Block),
+            case apply_txs_internal(Txs, TreesAtEndOfPreviousBlock, CurrentHeight) of
+                {ok, TreesUpdated} ->
+                    do_setup_trees(CurrentHeight+1, TopHeight, TreesUpdated);
+                {error, _} = Error ->
+                    Error
+            end;
+        {error, _} = Error ->
+            Error
+    end.
 
 
--spec apply_txs_internal(list(), height(), trees()) -> {ok, trees()}.
-apply_txs_internal(Txs, AtHeight, Trees) ->
-    {ok, _Trees0} = aec_tx:apply_signed(Txs, AtHeight, Trees).
+
+-spec apply_txs_internal(list(), trees(),  non_neg_integer()) -> {ok, trees()} | {error, term()}.
+apply_txs_internal(Txs, Trees, AtHeight) ->
+    aec_tx:apply_signed(Txs, Trees, AtHeight).
 
 %% TODO: introduce validation by hash (to cover forks with more PoW)
 -spec validate_height(non_neg_integer(), height()) -> boolean().
