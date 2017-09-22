@@ -68,10 +68,27 @@ handle_request('GetBlockByHash', Req, _Context) ->
             end
     end;
 
-handle_request('PutBlock', Req, _Context) ->
-    _Block = maps:get('Block', Req),
-    %TODO: verification and absorbe code
-    {200, [], #{}};
+handle_request('PostBlock', Req, _Context) ->
+    SerializedBlock = maps:get('Block', Req),
+    {ok, Block} = aec_blocks:deserialize_from_network(SerializedBlock),
+    Header = aec_blocks:to_header(Block),
+    {ok, HH} = aec_headers:hash_header(Header),
+    lager:debug("'PostBlock'; header hash: ~p", [HH]),
+    case aec_chain:get_block_by_hash(HH) of
+        {ok, _Existing} ->
+            lager:debug("Aleady have block", []),
+            {200, [], #{}};
+        {error, _} ->
+            case aec_chain:insert_header(Header) of
+                ok ->
+                    Res = aec_chain:write_block(Block),
+                    lager:debug("write_block result: ~p", [Res]);
+                {error, Reason} ->
+                    lager:debug("Couldn't insert header (~p)", [Reason])
+            end,
+            %% TODO update swagger.yaml to allow error returns?
+            {200, [], #{}}
+    end;
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
