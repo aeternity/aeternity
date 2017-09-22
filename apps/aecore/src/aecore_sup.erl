@@ -28,11 +28,10 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
+    GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
     {ok, {{one_for_one, 5, 10}, [?CHILD(aec_peers, 5000, worker),
-                                  %% XXX empty block instead ot genesis block,
-                                  %% ticket #84
-                                 ?CHILD(aec_chain, 5000, worker, [#block{}]),
+                                 ?CHILD(aec_chain, 5000, worker, [GB]),
                                  ?CHILD(aec_state, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
-				                 ?CHILD(aec_sync, 5000, worker)]
+				 ?CHILD(aec_sync, 5000, worker)]
          }}.
