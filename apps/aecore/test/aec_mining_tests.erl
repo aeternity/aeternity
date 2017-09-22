@@ -197,6 +197,7 @@ mine_block_from_genesis_test_() ->
               TmpKeysDir = mktempd(),
               ok = application:ensure_started(crypto),
               {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
+              aec_state:start_link(),
               TmpKeysDir
       end,
       fun(TmpKeysDir) ->
@@ -217,6 +218,7 @@ mine_block_from_genesis_test_() ->
               ?assert(meck:validate(aec_chain)),
               meck:unload(aec_pow),
               meck:unload(aec_chain),
+              aec_state:stop(),
               file:delete(TmpKeysDir)
       end,
       fun(TmpKeysDir) ->
