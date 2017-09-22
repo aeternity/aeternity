@@ -18,7 +18,11 @@
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
+-define(NIF_NAME, "aec_pow_cuckoo20_nif").
+-else.
+-define(NIF_NAME, "aec_pow_cuckoo28_nif").
 -endif.
+
 
 -on_load(init/0).
 
@@ -30,8 +34,7 @@
 %%%=============================================================================
 
 init() ->
-    ok = erlang:load_nif(filename:join([code:priv_dir(aecore),
-                                        "aec_pow_cuckoo_nif"]), 0).
+    ok = erlang:load_nif(filename:join([code:priv_dir(aecore), ?NIF_NAME]), 0).
 
 %%%=============================================================================
 %%% API

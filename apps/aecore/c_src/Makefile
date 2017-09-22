@@ -10,7 +10,10 @@ LIBDIR := cuckoo
 ERTS_INCLUDE_DIR ?= $(shell erl -noshell -s init stop -eval "io:format(\"~s/erts-~s/include/\", [code:root_dir(), erlang:system_info(version)]).")
 
 C_SRC_DIR = $(CURDIR)
-LIB_SO ?= $(CURDIR)/../priv/$(PROJECT)_nif.so
+PRIV_DIR = $(BASEDIR)/priv/
+LIB20_SO ?= $(CURDIR)/../priv/$(PROJECT)20_nif.so
+LIB28_SO ?= $(CURDIR)/../priv/$(PROJECT)28_nif.so
+LIB32_SO ?= $(CURDIR)/../priv/$(PROJECT)32_nif.so
 
 # System type and C compiler/flags.
 
@@ -87,7 +90,9 @@ cpp_verbose = $(cpp_verbose_$(V))
 link_verbose_0 = @echo " LD    " $(@F);
 link_verbose = $(link_verbose_$(V))
 
-OBJECTS = aec_pow_cuckoo.o aec_pow_cuckoo_nif.o
+OBJECTS20 = aec_pow_cuckoo.20o aec_pow_cuckoo_nif.20o
+OBJECTS28 = aec_pow_cuckoo.28o aec_pow_cuckoo_nif.28o
+OBJECTS32 = aec_pow_cuckoo.32o aec_pow_cuckoo_nif.32o
 CUCKOO_SRCS = $(LIBDIR)/src/blake2b-ref.c
 CUCKOO_OBJECTS = $(LIBDIR)/src/blake2b-ref.o
 
@@ -97,21 +102,28 @@ COMPILE_CPP = $(cpp_verbose) $(CXX) $(CXXFLAGS) $(CPPFLAGS) -c
 help: ## This documentation
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-all: deps $(LIB_SO) ## Build all
+all: deps $(PRIV_DIR) $(LIB20_SO) $(LIB28_SO) # $(LIB32_SO) ## Build all
 
-# Use 256-times smaller memory footprint for nodes/edges in order to speed up unit tests
-test: all
-      CXXFLAGS += -DEDGEBITS=19
+$(LIB20_SO): $(OBJECTS20) $(CUCKOO_OBJECTS)
+	$(link_verbose) $(CXX) -o $@ $(LDLIBS)  $(LDFLAGS) $^
 
-$(LIB_SO): $(OBJECTS) $(CUCKOO_OBJECTS)
-	@mkdir -p $(BASEDIR)/priv/
-	$(link_verbose) $(CXX) -o $(LIB_SO) $(LDLIBS)  $(LDFLAGS) $^
+$(LIB28_SO): $(OBJECTS28) $(CUCKOO_OBJECTS)
+	$(link_verbose) $(CXX) -o $@ $(LDLIBS)  $(LDFLAGS) $^
+
+# $(LIB32_SO): $(OBJECTS32) $(CUCKOO_OBJECTS)
+# 	$(link_verbose) $(CXX) -o $@ $(LDLIBS)  $(LDFLAGS) $^
 
 %.o: %.c
 	$(COMPILE_C) $(OUTPUT_OPTION) $<
 
-%.o: %.cpp
-	$(COMPILE_CPP) $(OUTPUT_OPTION) $<
+%.20o: %.cpp
+	$(COMPILE_CPP) -DEDGEBITS=19 $(OUTPUT_OPTION) $<
+
+%.28o: %.cpp
+	$(COMPILE_CPP) -DEDGEBITS=27 $(OUTPUT_OPTION) $<
+
+# %.32o: %.cpp
+# 	$(COMPILE_CPP) -DEDGEBITS=31 $(OUTPUT_OPTION) $<
 
 deps: $(LIBDIR)
 
