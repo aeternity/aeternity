@@ -1,3 +1,5 @@
+sudo: false
+dist: trusty
 language: erlang
 otp_release:
   - 20.0.1
@@ -9,6 +11,19 @@ script:
   - ./ci script "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 after_failure:
   - ./ci after_failure "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+deploy:
+  provider: releases
+  api_key:
+    # See https://docs.travis-ci.com/user/deployment/releases/#Authenticating-with-an-OAuth-token
+    secure: TODO_API_KEY_ENCRYPTED
+  file: _build/prod/rel/epoch/epoch-0.1.0.tar.gz
+  skip_cleanup: true
+  on:
+    # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+    repo: aeternity/epoch
+    tags: true
+    all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
+    condition: "${JOB:?} = package"
 matrix:
   include:
   allow_failures:
@@ -21,6 +36,7 @@ env:
   - JOB=start_local_rel
   - JOB=start_prod_rel
   - JOB=rocksdb_in_prod_rel
+  - JOB=package
 cache:
   directories:
     - $HOME/.cache/rebar3
