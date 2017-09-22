@@ -3,8 +3,8 @@
 -export([handle_request/3]).
 
 -compile({parse_transform, lager_transform}).
--include("../../aecore/include/common.hrl").
--include("../../aecore/include/trees.hrl").
+-include_lib("aecore/include/common.hrl").
+-include_lib("aecore/include/trees.hrl").
 
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
