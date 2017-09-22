@@ -60,7 +60,7 @@
 start_link() ->
     %% INFO: set the password to re-use keys between restarts
     Password = application:get_env(aecore, password, undefined),
-    KeysDir = application:get_env(aecore, keys_dir, filename:join(code:root_dir(), "keys")),
+    KeysDir = application:get_env(aecore, keys_dir, filename:join(code:priv_dir(aecore), "keys")),
     Args = [Password, KeysDir],
     start_link(Args).
 
