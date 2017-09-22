@@ -7,17 +7,20 @@
          target/1,
          difficulty/1,
          time_in_secs/1,
-	 serialize_to_network/1,
-	 deserialize_from_network/1,
+         serialize_to_network/1,
+         deserialize_from_network/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          serialize_to_binary/1,
          deserialize_from_binary/1,
-         hash_header/1]).
+         hash_header/1,
+         serialize_pow_evidence/1,
+         deserialize_pow_evidence/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
 
+-define(POW_EV_SIZE, 42).
 
 prev_hash(Header) ->
     Header#header.prev_hash.
@@ -47,13 +50,14 @@ serialize_to_network(H = #header{}) ->
 serialize_to_map(H = #header{}) ->
     Serialized =
       #{<<"height">> =>  height(H),
-        <<"prev-hash">> => base64:encode(prev_hash(H)),
-        <<"root-hash">> => base64:encode(H#header.root_hash),
-        <<"txs-hash">> => base64:encode(H#header.txs_hash),
+        <<"prev_hash">> => base64:encode(prev_hash(H)),
+        <<"state_hash">> => base64:encode(H#header.root_hash),
         <<"target">> => H#header.target,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
-        <<"version">> => H#header.version
+        <<"pow">> => serialize_pow_evidence(H#header.pow_evidence),
+        <<"version">> => H#header.version,
+        <<"txs_hash">> => base64:encode(H#header.txs_hash)
       },
     {ok, Serialized}.
 
@@ -64,22 +68,24 @@ deserialize_from_network(B) when is_binary(B) ->
 -spec deserialize_from_map(map()) -> {ok, header()}.
 deserialize_from_map(H = #{}) ->
       #{<<"height">> := Height,
-        <<"prev-hash">> := PrevHash,
-        <<"root-hash">> := RootHash,
-        <<"txs-hash">> := TxsHash,
+        <<"prev_hash">> := PrevHash,
+        <<"state_hash">> := RootHash,
         <<"target">> := Target,
         <<"nonce">> := Nonce,
         <<"time">> := Time,
-        <<"version">> := Version 
+        <<"version">> := Version, 
+		    <<"pow">> := PowEvidence,
+        <<"txs_hash">> := TxsHash
       } = H,
     {ok, #header{height = Height,
                  prev_hash = base64:decode(PrevHash),
                  root_hash = base64:decode(RootHash),
-                 txs_hash = base64:decode(TxsHash),
                  target = Target,
                  nonce = Nonce,
                  time = Time,
-                 version = Version}}.
+                 version = Version,
+                 pow_evidence = deserialize_pow_evidence(PowEvidence),
+                 txs_hash = base64:decode(TxsHash)}}.
 
 -spec serialize_to_binary(header()) -> {ok, header_binary()}.
 serialize_to_binary(H) ->
@@ -103,3 +109,24 @@ deserialize_from_binary(B) ->
 hash_header(H) ->
     {ok, BinaryH} = serialize_to_binary(H),
     {ok, aec_sha256:hash(BinaryH)}.
+
+serialize_pow_evidence(Ev) ->
+    EvList =
+     case is_list(Ev) andalso length(Ev) =:= ?POW_EV_SIZE of
+          true ->
+              Ev;
+          false ->
+              lists:duplicate(?POW_EV_SIZE, 0)
+      end,
+    base64:encode(term_to_binary(EvList)).
+
+deserialize_pow_evidence(Bin) ->
+    PowEvidence = binary_to_term(base64:decode(Bin)),
+    NoPow = lists:duplicate(?POW_EV_SIZE, 0),
+    case PowEvidence =:= NoPow of
+        true ->
+            'no_value';
+        false ->
+            PowEvidence
+    end.
+

@@ -3,6 +3,8 @@
 -export([handle_request/3]).
 
 -compile({parse_transform, lager_transform}).
+-include_lib("aecore/include/common.hrl").
+-include_lib("aecore/include/trees.hrl").
 
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
@@ -28,19 +30,79 @@ handle_request('Ping', #{source := Source,
 
 handle_request('GetTop', _, _Context) ->
     {ok, Header} = aec_chain:top_header(),
+    {ok, HH} = aec_headers:hash_header(Header),
     {ok, Resp} = aec_headers:serialize_to_map(Header),
-    {200, [], Resp};
+    {200, [], maps:put(hash, base64:encode(HH), Resp)};
 
-handle_request('GetBlock', Req, _Context) ->
-    Hash = maps:get('BlockHash', Req),
-    {ok, Block} = aec_chain:get_block_by_hash(aeu_hex:hex_to_bin(Hash)),
-    {ok, Resp} = aec_blocks:serialize_for_network(Block),
-    {200, [], Resp};
+handle_request('GetBlockByHeight', Req, _Context) ->
+    Height = maps:get('height', Req),
+    case aec_chain:get_block_by_height(Height) of
+        {ok, Block} ->
+            %% swagger generated code expects the Resp to be proplist or map
+            %% and always runs jsx:encode/1 on it - even if it is already
+            %% encoded to a binary; that's why we use
+            %% aec_blocks:serialize_to_map/1 instead of
+            %% aec_blocks:serialize_for_network/1 
+            Resp = aec_blocks:serialize_to_map(Block),
+            {200, [], Resp};
+        {error, {chain_too_short, _}} ->
+            {404, [], #{reason => <<"chain too short">>}}
+    end;
 
-handle_request('PutBlock', Req, _Context) ->
-    _Block = maps:get('Block', Req),
-    %TODO: verification and absorbe code
-    {200, [], #{}};
+handle_request('GetBlockByHash', Req, _Context) ->
+    Hash = base64:decode(maps:get('hash', Req)),
+    case aec_chain:get_header_by_hash(Hash) of
+        {error, {header_not_found, _}} ->
+            {404, [], #{reason => <<"block not found">>}};
+        {ok, Header} ->
+            {ok, HH} = aec_headers:hash_header(Header),
+            case aec_chain:get_block_by_hash(HH) of
+                {ok, Block} ->
+                    %% swagger generated code expects the Resp to be proplist
+                    %% or map and always runs jsx:encode/1 on it - even if it
+                    %% is already encoded to a binary; that's why we use
+                    %% aec_blocks:serialize_to_map/1 instead of
+                    %% aec_blocks:serialize_for_network/1 
+                    Resp = aec_blocks:serialize_to_map(Block),
+                    {200, [], Resp};
+                {error, {block_not_found, _}} ->
+                    {404, [], #{reason => <<"block not found">>}}
+            end
+    end;
+
+handle_request('PostBlock', Req, _Context) ->
+    SerializedBlock = maps:get('Block', Req),
+    {ok, Block} = aec_blocks:deserialize_from_network(SerializedBlock),
+    Header = aec_blocks:to_header(Block),
+    {ok, HH} = aec_headers:hash_header(Header),
+    lager:debug("'PostBlock'; header hash: ~p", [HH]),
+    case aec_chain:get_block_by_hash(HH) of
+        {ok, _Existing} ->
+            lager:debug("Aleady have block", []),
+            {200, [], #{}};
+        {error, _} ->
+            case aec_chain:insert_header(Header) of
+                ok ->
+                    Res = aec_chain:write_block(Block),
+                    lager:debug("write_block result: ~p", [Res]);
+                {error, Reason} ->
+                    lager:debug("Couldn't insert header (~p)", [Reason])
+            end,
+            %% TODO update swagger.yaml to allow error returns?
+            {200, [], #{}}
+    end;
+
+handle_request('GetAccountBalance', Req, _Context) ->
+    Pubkey = maps:get('pub_key', Req),
+    {ok, LastBlock} = aec_chain:top(),
+    Trees = aec_blocks:trees(LastBlock),
+    AccountsTree = aec_trees:accounts(Trees),
+    case aec_accounts:get(Pubkey, AccountsTree) of
+        {ok, #account{balance = B}} ->
+            {200, [], #{balance => B}};
+        _ ->
+            {404, [], #{reason => <<"account not found">>}}
+    end;
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
@@ -60,3 +122,4 @@ mk_num(B) when is_binary(B) ->
 	error:_ ->
 	    undefined
     end.
+

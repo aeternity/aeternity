@@ -1,4 +1,5 @@
 swagger: '2.0'
+openapi: '3.0.0'
 info:
   description: 'This is the [Aeternity](https://www.aeternity.com/) Epoch API.'
   version: 1.0.0
@@ -54,25 +55,61 @@ paths:
         '200':
           description: successful operation
           schema:
-            $ref: '#/definitions/Header'
+            $ref: '#/definitions/Top'
       security: []
-  /block:
+  /block-by-height:
     get:
       tags:
         - external
-      operationId: GetBlock 
-      description: 'Get the top block'
+      operationId: GetBlockByHeight
+      description: 'Get a block by height'
       consumes:
         - application/json
       produces:
         - application/json
-      parameters: []
+      parameters: 
+        - in: query
+          name: height
+          description: 'Height of the block to fetch'
+          required: true
+          type : integer
       responses:
         '200':
-          description: top block
+          description: The block being found  
           schema:
             $ref: '#/definitions/Block'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
       security: []
+  /block-by-hash:
+    get:
+      tags:
+        - external
+      operationId: GetBlockByHash 
+      description: 'Get a block by hash'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: query
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: The block being found  
+          schema:
+            $ref: '#/definitions/Block'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block:
     post:
       tags:
         - external
@@ -93,23 +130,44 @@ paths:
         '200':
           description: successful operation
       security: []
+  /account/balance:
+    get:
+      tags:
+        - external
+      operationId: GetAccountBalance
+      description: 'Get account''s balance'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: query
+          name: pub_key
+          description: 'Public key to extract balance for'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Account's balance
+          schema:
+            $ref: '#/definitions/Balance'
+        '404':
+          description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
 definitions:
-  Tree:
-    type: object
-    properties: {}
   Block:
     type: object
     properties:
-      trees:
-        type: array
-        items:
-          $ref: '#/definitions/Tree'
       height:
         type: integer
         format: int64
-      prev-hash:
+      prev_hash:
         type: string
-      state-hash:
+      state_hash:
+        type: string
+      txs_hash:
         type: string
       target:
         type: integer
@@ -123,15 +181,25 @@ definitions:
       version:
         type: integer
         format: int64
-  Header:
+      pow:
+        type: string
+      transactions:
+        type: array
+        items:
+          type: string
+  Top:
     type: object
     properties:
       height:
         type: integer
         format: int64
-      prev-hash:
+      hash:
         type: string
-      root-hash:
+      prev_hash:
+        type: string
+      state_hash:
+        type: string
+      txs_hash:
         type: string
       difficulty:
         type: integer
@@ -145,6 +213,8 @@ definitions:
       version:
         type: integer
         format: int64
+      pow:
+        type: string
   Ping:
     type: object
     properties:
@@ -154,7 +224,17 @@ definitions:
         type: array
         items:
           type: string
-
+  Error:
+    type: object
+    properties:
+      reason:
+        type: string
+  Balance:
+    type: object
+    properties:
+      balance:
+        type: integer
+        format: int64
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

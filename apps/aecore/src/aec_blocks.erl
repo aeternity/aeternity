@@ -13,6 +13,7 @@
          to_header/1,
          serialize_for_network/1,
          deserialize_from_network/1,
+         serialize_to_map/1,
          hash_internal_representation/1]).
 
 -ifdef(TEST).
@@ -117,17 +118,18 @@ serialize_for_network(B = #block{}) ->
     {ok, jsx:encode(serialize_to_map(B))}.
 
 serialize_to_map(B = #block{}) ->
+    EncodeTx = fun(Tx) -> base64:encode(term_to_binary(Tx)) end,
     #{<<"height">> => height(B),
-      <<"prev-hash">> => base64:encode(prev_hash(B)),
-      <<"root-hash">> => base64:encode(B#block.root_hash),
-      <<"txs-hash">> => base64:encode(B#block.txs_hash),
+      <<"prev_hash">> => base64:encode(prev_hash(B)),
+      <<"state_hash">> => base64:encode(B#block.root_hash),
+      <<"txs_hash">> => base64:encode(B#block.txs_hash),
       <<"target">> => B#block.target,
       <<"nonce">> => B#block.nonce,
       <<"time">> => B#block.time,
       <<"version">> => B#block.version,
-      <<"pow-evidence">> => serialize_pow_evidence(
-			      B#block.pow_evidence),
-      <<"txs">> => base64:encode(term_to_binary(B#block.txs))
+      <<"pow">> => aec_headers:serialize_pow_evidence(B#block.pow_evidence),
+      %% TODO: txs serialization
+      <<"transactions">> => lists:map(EncodeTx, B#block.txs)
      }.
 
 -spec deserialize_from_network(block_serialized_for_network()) ->
@@ -136,33 +138,29 @@ deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
 deserialize_from_map(#{<<"height">> := Height,
-		       <<"prev-hash">> := PrevHash,
-		       <<"root-hash">> := RootHash,
-                       <<"txs-hash">> := TxsHash,
+		       <<"prev_hash">> := PrevHash,
+		       <<"state_hash">> := RootHash,
+		       <<"txs_hash">> := TxsHash,
 		       <<"target">> := Target,
 		       <<"nonce">> := Nonce,
 		       <<"time">> := Time,
 		       <<"version">> := Version,
-		       <<"pow-evidence">> := PowEvidence,
-		       <<"txs">> := Txs}) ->
+		       <<"pow">> := PowEvidence,
+		       <<"transactions">> := Txs}) ->
+    DecodeTx = fun(Tx) -> term_to_binary(base64:decode(Tx)) end,
     {ok, #block{
 	    height = Height,
 	    prev_hash = base64:decode(PrevHash),
 	    root_hash = base64:decode(RootHash),
-            txs_hash = base64:decode(TxsHash),
+	    txs_hash = base64:decode(TxsHash),
 	    target = Target,
 	    nonce = Nonce,
 	    time = Time,
 	    version = Version,
-	    txs = binary_to_term(base64:decode(Txs)),
-	    pow_evidence = deserialize_pow_evidence(PowEvidence)}}.
-
-serialize_pow_evidence(Ev) ->
-    base64:encode(term_to_binary(Ev)).
-
-deserialize_pow_evidence(Bin) ->
-    binary_to_term(base64:decode(Bin)).
+	    txs = lists:map(DecodeTx, Txs),
+	    pow_evidence = aec_headers:deserialize_pow_evidence(PowEvidence)}}.
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
+

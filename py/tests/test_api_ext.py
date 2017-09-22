@@ -31,14 +31,6 @@ class TestExternalApi(unittest.TestCase):
     }
     """ ExternalApi unit test stubs """
 
-    def test_get_block(self):
-        """
-        Test case for get_block
-
-        
-        """
-        pass
-
     def test_get_top(self):
         """
         Test case for get_top
@@ -46,7 +38,38 @@ class TestExternalApi(unittest.TestCase):
         
         """
         api = self.EXT_API['dev1']
-        ping = api.get_top()
+        top = api.get_top()
+
+    def test_get_block_by_height(self):
+        """
+        Test case for get_block_by_height
+
+        
+        """
+        api = self.EXT_API['dev1']
+        block = api.get_block_by_height(0)
+
+    def test_get_block_by_hash(self):
+        """
+        Test case for get_block_by_hash (last block)
+
+        
+        """
+        api = self.EXT_API['dev1']
+        top = api.get_top()
+        block = api.get_block_by_hash(top.hash)
+
+    def test_get_account_balance(self):
+        """
+        Test case for get_account_balance (account not present)
+
+        
+        """
+        api = self.EXT_API['dev1']
+        try:
+            balance = api.get_account_balance("some pub key")
+        except ApiException as e:
+            self.assertEqual(e.status, 404)
 
     def test_ping(self):
         """
@@ -55,7 +78,7 @@ class TestExternalApi(unittest.TestCase):
         
         """
         api = self.EXT_API['dev1']
-        ping = api.ping()
+        ping = api.ping("localhost")
 
     def test_put_block(self):
         """
