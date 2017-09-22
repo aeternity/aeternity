@@ -59,7 +59,69 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Header"
+              "$ref" : "#/definitions/Top"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block-by-height" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get a block by height",
+        "operationId" : "GetBlockByHeight",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "query",
+          "description" : "Height of the block to fetch",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The block being found",
+            "schema" : {
+              "$ref" : "#/definitions/Block"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block-by-hash" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get a block by hash",
+        "operationId" : "GetBlockByHash",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "query",
+          "description" : "Hash of the block to fetch",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The block being found",
+            "schema" : {
+              "$ref" : "#/definitions/Block"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         },
@@ -67,23 +129,6 @@
       }
     },
     "/block" : {
-      "get" : {
-        "tags" : [ "external" ],
-        "description" : "Get the top block",
-        "operationId" : "GetBlock",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "top block",
-            "schema" : {
-              "$ref" : "#/definitions/Block"
-            }
-          }
-        },
-        "security" : [ ]
-      },
       "post" : {
         "tags" : [ "external" ],
         "description" : "Post a new block",
@@ -109,26 +154,20 @@
     }
   },
   "definitions" : {
-    "Tree" : {
-      "type" : "object"
-    },
     "Block" : {
       "type" : "object",
       "properties" : {
-        "trees" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/Tree"
-          }
-        },
         "height" : {
           "type" : "integer",
           "format" : "int64"
         },
-        "prev-hash" : {
+        "prev_hash" : {
           "type" : "string"
         },
-        "state-hash" : {
+        "state_hash" : {
+          "type" : "string"
+        },
+        "txs_hash" : {
           "type" : "string"
         },
         "target" : {
@@ -146,20 +185,35 @@
         "version" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "pow" : {
+          "type" : "string"
+        },
+        "transactions" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
         }
       }
     },
-    "Header" : {
+    "Top" : {
       "type" : "object",
       "properties" : {
         "height" : {
           "type" : "integer",
           "format" : "int64"
         },
-        "prev-hash" : {
+        "hash" : {
           "type" : "string"
         },
-        "root-hash" : {
+        "prev_hash" : {
+          "type" : "string"
+        },
+        "state_hash" : {
+          "type" : "string"
+        },
+        "txs_hash" : {
           "type" : "string"
         },
         "difficulty" : {
@@ -177,6 +231,9 @@
         "version" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "pow" : {
+          "type" : "string"
         }
       }
     },
@@ -191,6 +248,14 @@
           "items" : {
             "type" : "string"
           }
+        }
+      }
+    },
+    "Error" : {
+      "type" : "object",
+      "properties" : {
+        "reason" : {
+          "type" : "string"
         }
       }
     }

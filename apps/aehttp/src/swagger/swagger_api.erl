@@ -13,8 +13,14 @@
 -spec request_params(OperationID :: operation_id()) -> [Param :: request_param()].
 
 
-request_params('GetBlock') ->
+request_params('GetBlockByHash') ->
     [
+        'hash'
+    ];
+
+request_params('GetBlockByHeight') ->
+    [
+        'height'
     ];
 
 request_params('GetTop') ->
@@ -61,6 +67,24 @@ request_params(_) ->
 }.
 
 
+
+request_param_info('GetBlockByHash', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHeight', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
 
 request_param_info('Ping', 'source') ->
     #{
@@ -132,11 +156,18 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
 ) -> ok | no_return().
 
 
-validate_response('GetBlock', 200, Body, ValidatorState) ->
+validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
+validate_response('GetBlockByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('Block', 'Block', Body, ValidatorState);
+validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
-    validate_response_body('Header', 'Header', Body, ValidatorState);
+    validate_response_body('Top', 'Top', Body, ValidatorState);
 
 validate_response('Ping', 200, Body, ValidatorState) ->
     validate_response_body('Ping', 'Ping', Body, ValidatorState);
