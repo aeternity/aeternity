@@ -7,13 +7,14 @@
          target/1,
          difficulty/1,
          time_in_secs/1,
-	 serialize_to_network/1,
-	 deserialize_from_network/1,
+         serialize_to_network/1,
+         deserialize_from_network/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          serialize_to_binary/1,
          deserialize_from_binary/1,
-         hash_header/1]).
+         hash_header/1,
+         replace_empty_pow/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -47,12 +48,14 @@ serialize_to_network(H = #header{}) ->
 serialize_to_map(H = #header{}) ->
     Serialized =
       #{<<"height">> =>  height(H),
-        <<"prev-hash">> => base64:encode(prev_hash(H)),
-        <<"root-hash">> => base64:encode(H#header.root_hash),
+        <<"prev_hash">> => base64:encode(prev_hash(H)),
+        <<"state_hash">> => base64:encode(H#header.root_hash),
         <<"target">> => H#header.target,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
-        <<"version">> => H#header.version
+        <<"pow">> => H#header.pow_evidence,
+        <<"version">> => H#header.version,
+        <<"txs_hash">> => base64:encode(H#header.txs_hash)
       },
     {ok, Serialized}.
 
@@ -63,12 +66,14 @@ deserialize_from_network(B) when is_binary(B) ->
 -spec deserialize_from_map(map()) -> {ok, header()}.
 deserialize_from_map(H = #{}) ->
       #{<<"height">> := Height,
-        <<"prev-hash">> := PrevHash,
-        <<"root-hash">> := RootHash,
+        <<"prev_hash">> := PrevHash,
+        <<"state_hash">> := RootHash,
         <<"target">> := Target,
         <<"nonce">> := Nonce,
         <<"time">> := Time,
-        <<"version">> := Version 
+        <<"version">> := Version, 
+        <<"pow">> := PowEvidence,
+        <<"txs_hash">> := TxsHash
       } = H,
     {ok, #header{height = Height,
                  prev_hash = base64:decode(PrevHash),
@@ -76,7 +81,9 @@ deserialize_from_map(H = #{}) ->
                  target = Target,
                  nonce = Nonce,
                  time = Time,
-                 version = Version}}.
+                 version = Version,
+                 pow_evidence = PowEvidence,
+                 txs_hash = base64:decode(TxsHash)}}.
 
 -spec serialize_to_binary(header()) -> {ok, header_binary()}.
 serialize_to_binary(H) ->
@@ -100,3 +107,9 @@ deserialize_from_binary(B) ->
 hash_header(H) ->
     {ok, BinaryH} = serialize_to_binary(H),
     {ok, aec_sha256:hash(BinaryH)}.
+
+replace_empty_pow(#header{pow_evidence = no_value} = Header) ->
+    Header#header{pow_evidence = 0};
+replace_empty_pow(#header{} = Header) ->
+    Header.
+
