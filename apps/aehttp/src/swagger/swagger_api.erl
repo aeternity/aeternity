@@ -13,6 +13,11 @@
 -spec request_params(OperationID :: operation_id()) -> [Param :: request_param()].
 
 
+request_params('GetAccountBalance') ->
+    [
+        'pub_key'
+    ];
+
 request_params('GetBlockByHash') ->
     [
         'hash'
@@ -67,6 +72,15 @@ request_params(_) ->
 }.
 
 
+
+request_param_info('GetAccountBalance', 'pub_key') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
 
 request_param_info('GetBlockByHash', 'hash') ->
     #{
@@ -155,6 +169,11 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
     ValidatorState :: jesse_state:state()
 ) -> ok | no_return().
 
+
+validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
+    validate_response_body('Balance', 'Balance', Body, ValidatorState);
+validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);

@@ -130,6 +130,32 @@ paths:
         '200':
           description: successful operation
       security: []
+  /account/balance:
+    get:
+      tags:
+        - external
+      operationId: GetAccountBalance
+      description: 'Get account''s balance'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: query
+          name: pub_key
+          description: 'Public key to extract balance for'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Account's balance
+          schema:
+            $ref: '#/definitions/Balance'
+        '404':
+          description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
 definitions:
   Block:
     type: object
@@ -203,6 +229,12 @@ definitions:
     properties:
       reason:
         type: string
+  Balance:
+    type: object
+    properties:
+      balance:
+        type: integer
+        format: int64
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

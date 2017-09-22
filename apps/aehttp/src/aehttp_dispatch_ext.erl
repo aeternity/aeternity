@@ -3,6 +3,8 @@
 -export([handle_request/3]).
 
 -compile({parse_transform, lager_transform}).
+-include("../../aecore/include/common.hrl").
+-include("../../aecore/include/trees.hrl").
 
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
@@ -88,6 +90,18 @@ handle_request('PostBlock', Req, _Context) ->
             end,
             %% TODO update swagger.yaml to allow error returns?
             {200, [], #{}}
+    end;
+
+handle_request('GetAccountBalance', Req, _Context) ->
+    Pubkey = maps:get('pub_key', Req),
+    {ok, LastBlock} = aec_chain:top(),
+    Trees = aec_blocks:trees(LastBlock),
+    AccountsTree = aec_trees:accounts(Trees),
+    case aec_accounts:get(Pubkey, AccountsTree) of
+        {ok, #account{balance = B}} ->
+            {200, [], #{balance => B}};
+        _ ->
+            {404, [], #{reason => <<"account not found">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->

@@ -55,6 +55,11 @@ group_paths() ->
 
 get_operations() ->
     #{ 
+        'GetAccountBalance' => #{
+            path => "/v1/account/balance",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetBlockByHash' => #{
             path => "/v1/block-by-hash",
             method => <<"GET">>,
