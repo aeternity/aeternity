@@ -55,8 +55,13 @@ group_paths() ->
 
 get_operations() ->
     #{ 
-        'GetBlock' => #{
-            path => "/v1/block",
+        'GetBlockByHash' => #{
+            path => "/v1/block-by-hash",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
+        'GetBlockByHeight' => #{
+            path => "/v1/block-by-height",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
