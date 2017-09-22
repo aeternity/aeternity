@@ -12,11 +12,20 @@
 new_block_test_() ->
     {setup,
      fun() ->
+             meck:new(aec_txs_trees, [passthrough]),
              meck:new(aec_trees, [passthrough]),
+             meck:expect(aec_txs_trees, new, 1, {ok, fake_txs_tree}),
+             meck:expect(
+               aec_txs_trees, root_hash,
+               fun(fake_txs_tree) ->
+                       {ok, <<"fake_txs_tree_hash">>}
+               end),
              meck:expect(aec_trees, all_trees_hash, 1, <<>>)
      end,
      fun(_) ->
+             ?assert(meck:validate(aec_txs_trees)),
              ?assert(meck:validate(aec_trees)),
+             meck:unload(aec_txs_trees),
              meck:unload(aec_trees)
      end,
      {"Generate new block with given txs and 0 nonce",
@@ -31,6 +40,7 @@ new_block_test_() ->
                   aec_headers:serialize_to_binary(BlockHeader),
               ?assertEqual(aec_sha256:hash(SerializedBlockHeader),
                            ?TEST_MODULE:prev_hash(NewBlock)),
+              ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),
               ?assertEqual([], NewBlock#block.txs),
               ?assertEqual(17, NewBlock#block.target),
               ?assertEqual(1, NewBlock#block.version)

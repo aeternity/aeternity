@@ -56,9 +56,9 @@ mine_block_test_() ->
                  meck:expect(aec_pow, pick_nonce, 0, 1),
                  meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
+                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
 
-                 {ok, Block} = ?TEST_MODULE:mine(),
+                 {ok, Block} = ?TEST_MODULE:mine(400),
 
                  ?assertEqual(1, Block#block.height),
                  ?assertEqual(1, length(Block#block.txs))
@@ -73,7 +73,7 @@ mine_block_test_() ->
                  meck:expect(aec_pow, pick_nonce, 0, 1),
                  meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
+                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
 
                  ?assertEqual({error, generation_count_exhausted}, ?TEST_MODULE:mine())
          end}},
@@ -83,7 +83,7 @@ mine_block_test_() ->
                 meck:expect(aec_chain, top, 0, {ok, #block{}}),
                 meck:expect(aec_tx, apply_signed, 3, {error, tx_failed}),
                 meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
+                meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
                 ?assertEqual({error, tx_failed}, ?TEST_MODULE:mine())
         end},
        {timeout, 60,
@@ -106,7 +106,7 @@ mine_block_test_() ->
                  meck:expect(aec_governance, recalculate_difficulty_frequency, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
+                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
 
                  {ok, Block} = ?TEST_MODULE:mine(),
 
@@ -151,9 +151,9 @@ mine_block_test_() ->
                  meck:expect(aec_governance, recalculate_difficulty_frequency, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = <<"123">>}}),
+                 meck:expect(aec_keys, sign, 1, {ok, #signed_tx{data = {<<"123">>}, signatures = [sig1]}}),
 
-                 {ok, Block} = ?TEST_MODULE:mine(),
+                 {ok, Block} = ?TEST_MODULE:mine(400),
 
                  ?assertEqual(200, Block#block.height),
                  case PoWMod of
@@ -224,7 +224,9 @@ mine_block_from_genesis_test_() ->
                 fun() ->
                         {ok, Block} = ?TEST_MODULE:mine(),
                         ?assertEqual(1, aec_blocks:height(Block)),
-                        ?assertEqual(1, length(Block#block.txs))
+                        ?assertEqual(1, length(Block#block.txs)),
+                        ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
+                                     Block#block.txs_hash)
                 end}]
       end} || PoWMod <- PoWModules].
 
