@@ -59,6 +59,18 @@ class TestExternalApi(unittest.TestCase):
         top = api.get_top()
         block = api.get_block_by_hash(top.hash)
 
+    def test_get_account_balance(self):
+        """
+        Test case for get_account_balance (account not present)
+
+        
+        """
+        api = self.EXT_API['dev1']
+        try:
+            balance = api.get_account_balance("some pub key")
+        except ApiException as e:
+            self.assertEqual(e.status, 404)
+
     def test_ping(self):
         """
         Test case for ping

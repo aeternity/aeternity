@@ -151,6 +151,37 @@
         },
         "security" : [ ]
       }
+    },
+    "/account/balance" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get account's balance",
+        "operationId" : "GetAccountBalance",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "pub_key",
+          "in" : "query",
+          "description" : "Public key to extract balance for",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Account's balance",
+            "schema" : {
+              "$ref" : "#/definitions/Balance"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
     }
   },
   "definitions" : {
@@ -256,6 +287,15 @@
       "properties" : {
         "reason" : {
           "type" : "string"
+        }
+      }
+    },
+    "Balance" : {
+      "type" : "object",
+      "properties" : {
+        "balance" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       }
     }
