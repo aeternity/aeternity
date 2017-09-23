@@ -163,7 +163,7 @@
           "name" : "pub_key",
           "in" : "query",
           "description" : "Public key to extract balance for",
-          "required" : true,
+          "required" : false,
           "type" : "string"
         } ],
         "responses" : {

@@ -144,7 +144,6 @@ paths:
         - in: query
           name: pub_key
           description: 'Public key to extract balance for'
-          required: true
           type : string
       responses:
         '200':

@@ -78,7 +78,7 @@ request_param_info('GetAccountBalance', 'pub_key') ->
         source => qs_val  ,
         rules => [
             {type, 'binary'},
-            required
+            not_required
         ]
     };
 
