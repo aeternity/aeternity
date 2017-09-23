@@ -139,6 +139,9 @@ $(LIBDIR):
 	sed $(SED_FLAGS) 's/printf/aec_printf/g' $(LIBDIR)/src/cuckoo_miner.hpp
 	sed $(SED_FLAGS) 's/.*TWICE_PER_ATOM = .*/int aec_printf(const char *format, ...);&/g' $(LIBDIR)/src/cuckoo_miner.hpp
 
+$(PRIV_DIR):
+	mkdir -p $(PRIV_DIR)
+
 $(CUCKOO_SRCS): $(LIBDIR)
 
 $(CUCKOO_OBJECTS): $(CUCKOO_SRCS)
