@@ -130,6 +130,9 @@ deps: $(LIBDIR)
 $(LIBDIR):
 	git clone https://github.com/tromp/cuckoo.git
 
+$(PRIV_DIR):
+	mkdir -p $(PRIV_DIR)
+
 $(CUCKOO_SRCS): $(LIBDIR)
 
 $(CUCKOO_OBJECTS): $(CUCKOO_SRCS)
