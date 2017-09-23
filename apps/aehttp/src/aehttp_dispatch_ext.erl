@@ -93,7 +93,14 @@ handle_request('PostBlock', Req, _Context) ->
     end;
 
 handle_request('GetAccountBalance', Req, _Context) ->
-    Pubkey = maps:get('pub_key', Req),
+    Pubkey =
+      case maps:get('pub_key', Req) of
+          undefined ->
+              {ok, PK} = aec_keys:pubkey(),
+              PK;
+          PK ->
+              PK
+      end,
     {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),
     AccountsTree = aec_trees:accounts(Trees),
