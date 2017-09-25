@@ -25,6 +25,7 @@
 -include("pow.hrl").
 -include("sha256.hrl").
 
+
 %% 10^24, approx. 2^80
 -define(NONCE_RANGE, 1000000000000000000000000).
 -define(POW_MODULE, aec_pow_cuckoo).
@@ -137,11 +138,17 @@ pick_nonce() ->
 %% difficulty).
 %%------------------------------------------------------------------------------
 -spec recalculate_difficulty(sci_int(), integer(), integer()) -> sci_int().
+recalculate_difficulty(Difficulty, _Expected, 0) ->
+    %% In the unexpected case the the two blocks used for rate calculation
+    %% have the same timestamp, do not update difficulty (as rate is meaningless).
+    %% TODO: handle this case. Most likely that this is case we failed to enforce
+    %% increasing timestaps in headers.
+    Difficulty;
 recalculate_difficulty(Difficulty, Expected, Actual) ->
     DiffInt = scientific_to_integer(Difficulty),
     %% Prevent 0 difficulty: 0 can never be increased
     integer_to_scientific(min(?HIGHEST_TARGET_INT,
-                              max(1, (DiffInt * Expected) div Actual))).
+                              max(1, ((DiffInt * Expected) div Actual)))).
 
 
 %%------------------------------------------------------------------------------

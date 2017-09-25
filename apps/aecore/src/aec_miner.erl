@@ -156,7 +156,7 @@ running(cast, mine, State) ->
             {next_state, running, State};
         {error, generation_count_exhausted} ->
             %% Needs more attempts, go on trying
-            lager:info("Failed to mine block in ~p attampts, retrying.",
+            lager:info("Failed to mine block in ~p attempts, retrying.",
                        [?MINING_ATTEPTS_PER_CYCLE]),
             gen_statem:cast(?SERVER, mine),
             {next_state, running, State};

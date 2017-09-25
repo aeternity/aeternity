@@ -1,4 +1,4 @@
-.PHONY: deps deps_build clean distclean help test
+.PHONY: deps deps_build clean distclean help
 
 CURDIR := $(shell pwd)
 BASEDIR := $(abspath $(CURDIR)/..)
