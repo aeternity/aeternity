@@ -107,7 +107,8 @@ should_recalculate_difficulty(Height) ->
 calculate_difficulty(NewBlock, BlocksToCheckCount) ->
     CurrentTarget = NewBlock#block.target,
     CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
-    ExpectedRate = aec_governance:expected_block_mine_rate(),
+    %% rate in millisecs per block
+    ExpectedRate = 1000 * aec_governance:expected_block_mine_rate(),
     aec_pow:recalculate_difficulty(CurrentTarget, ExpectedRate, CurrentRate).
 
 -spec get_current_rate(block(), pos_integer()) -> non_neg_integer().
@@ -122,7 +123,8 @@ get_current_rate(Block, BlocksToCheckCount) ->
 
 -spec mining_rate_between_blocks(header(), header(), non_neg_integer()) -> non_neg_integer().
 mining_rate_between_blocks(Block1Header, Block2Header, BlocksMinedCount) ->
-    Time1 = aec_headers:time_in_secs(Block1Header),
-    Time2 = aec_headers:time_in_secs(Block2Header),
-    TimeDiff = Time1 - Time2,
+    Time1 = aec_headers:time_in_msecs(Block1Header),
+    Time2 = aec_headers:time_in_msecs(Block2Header),
+    %% TODO: validate header timestamps
+    TimeDiff = max(1, Time1 - Time2),
     TimeDiff div BlocksMinedCount.

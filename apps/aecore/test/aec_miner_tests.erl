@@ -18,12 +18,10 @@
 miner_test_() ->
     {foreach,
      fun() ->
-             meck:new(aeu_time, [passthrough]),
              meck:new(aec_governance, [passthrough]),
-             meck:expect(aeu_time, msecs_to_secs, fun(Ms) -> Ms end),
              meck:expect(aec_governance, expected_block_mine_rate,
                          fun() ->
-                                 meck:passthrough([])
+                                 meck:passthrough([]) div 256
                          end),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
              {ok, _} = aec_state:start_link(),
@@ -50,9 +48,7 @@ miner_test_() ->
                KeyFiles),
              ok = file:del_dir(TmpKeysDir),
              ?assert(meck:validate(aec_governance)),
-             ?assert(meck:validate(aeu_time)),
              meck:unload(aec_governance),
-             meck:unload(aeu_time),
              file:delete(TmpKeysDir)
      end,
      [fun(_) ->

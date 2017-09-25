@@ -25,4 +25,4 @@ network_serialization_test() ->
 
 hash_test() ->
     Header = #header{},
-    {ok, HeaderHash} = ?TEST_MODULE:hash_header(Header).
+    {ok, _HeaderHash} = ?TEST_MODULE:hash_header(Header).

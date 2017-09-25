@@ -7,6 +7,7 @@
          target/1,
          difficulty/1,
          time_in_secs/1,
+         time_in_msecs/1,
          serialize_to_network/1,
          deserialize_from_network/1,
          serialize_to_map/1,
@@ -40,6 +41,9 @@ difficulty(Header) ->
 time_in_secs(Header) ->
     Time = Header#header.time,
     aeu_time:msecs_to_secs(Time).
+
+time_in_msecs(Header) ->
+    Header#header.time.
 
 -spec serialize_to_network(header()) -> {ok, binary()}.
 serialize_to_network(H = #header{}) ->
