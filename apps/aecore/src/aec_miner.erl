@@ -122,7 +122,7 @@ init(_) ->
 %% @end
 %%--------------------------------------------------------------------
 idle({call, From}, start, State) ->
-    lager:info("Mining resumed by user.", []),
+    epoch_mining:info("Mining resumed by user.", []),
     gen_statem:cast(?SERVER, mine),
     {next_state, running, State, [{reply, From, ok}]};
 idle({call, From}, suspend, State) ->
@@ -135,7 +135,7 @@ idle(_Type, _Msg, State) ->
 running({call, From}, start, State) ->
     {next_state, running, State, [{reply, From, {error, already_started}}]};
 running({call, From}, suspend, State) ->
-    lager:info("Mining suspended by user.", []),
+    epoch_mining:info("Mining suspended by user.", []),
     {next_state, idle, State, [{reply, From, ok}]};
 running(cast, mine, State) ->
     case aec_mining:mine(?MINING_ATTEPTS_PER_CYCLE) of
@@ -145,18 +145,21 @@ running(cast, mine, State) ->
                 ok ->
                     case aec_chain:write_block(Block) of
                         ok ->
-                            lager:info("Reached height ~p.", [Block#block.height]);
+                            epoch_mining:info("Block inserted: Height = ~p"
+                                              "~nHash = ~s",
+                                              [Block#block.height,
+                                               as_hex(Block#block.root_hash)]);
                         {error, Reason} ->
-                            lager:error("Block insertion failed: ~p.", [Reason])
+                            epoch_mining:error("Block insertion failed: ~p.", [Reason])
                     end;
                 {error, Reason} ->
-                    lager:error("Header insertion failed: ~p.", [Reason])
+                    epoch_mining:error("Header insertion failed: ~p.", [Reason])
             end,
             gen_statem:cast(?SERVER, mine),
             {next_state, running, State};
         {error, generation_count_exhausted} ->
             %% Needs more attempts, go on trying
-            lager:info("Failed to mine block in ~p attempts, retrying.",
+            epoch_mining:info("Failed to mine block in ~p attempts, retrying.",
                        [?MINING_ATTEPTS_PER_CYCLE]),
             gen_statem:cast(?SERVER, mine),
             {next_state, running, State};
@@ -165,7 +168,7 @@ running(cast, mine, State) ->
             gen_statem:cast(?SERVER, check_keys),
             {next_state, waiting_for_keys, State};
         {error, Reason} ->
-            lager:error("Mining attempt failed with error: ~p.", [Reason]),
+            epoch_mining:error("Mining attempt failed with error: ~p.", [Reason]),
             gen_statem:cast(?SERVER, mine),
             {next_state, running, State}
     end;
@@ -178,7 +181,7 @@ waiting_for_keys(cast, check_keys, State) ->
     timer:sleep(1000),
     case aec_keys:pubkey() of
         {ok, _Pubkey} ->
-            lager:info("Key available, mining resumed.", []),
+            epoch_mining:info("Key available, mining resumed.", []),
             gen_statem:cast(?SERVER, mine),
             {next_state, running, State};
         {error, _} ->
@@ -227,4 +230,7 @@ callback_mode() ->
 %%%===================================================================
 
 report_suspended() ->
-    lager:error("Mining suspended as no keys are avaiable for signing.", []).
+    epoch_mining:error("Mining suspended as no keys are avaiable for signing.", []).
+
+as_hex(S) ->
+    [io_lib:format("~2.16.0b",[X]) || <<X:8>> <= S].
