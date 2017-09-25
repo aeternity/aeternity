@@ -88,6 +88,21 @@ class TestExternalApi(unittest.TestCase):
         """
         pass
 
+    def test_download_chain(self):
+        """
+        Test case for downloading the whole chain
+
+        
+        """
+        api = self.EXT_API['dev1']
+        top = api.get_top()
+        block = api.get_block_by_hash(top.hash)
+        while block.height != 0:
+            print("Downloaded block " + str(block.height))
+            block = api.get_block_by_hash(block.prev_hash)
+        if block.height == 0:
+            print("Downloaded genesis block")
+
 
 if __name__ == '__main__':
     unittest.main()
