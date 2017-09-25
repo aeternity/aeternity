@@ -211,14 +211,17 @@ mine_block_from_genesis_test_() ->
               file:delete(TmpKeysDir)
       end,
       fun(_) ->
-              [{"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
-                fun() ->
-                        {ok, Block} = ?TEST_MODULE:mine(400),
-                        ?assertEqual(1, aec_blocks:height(Block)),
-                        ?assertEqual(1, length(Block#block.txs)),
-                        ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
-                                     Block#block.txs_hash)
-                end}]
+              [
+               {timeout, 60,
+                {"Find first block after genesis (PoW module " ++ atom_to_list(PoWMod) ++ ")",
+                 fun() ->
+                         {ok, Block} = ?TEST_MODULE:mine(400),
+                         ?assertEqual(1, aec_blocks:height(Block)),
+                         ?assertEqual(1, length(Block#block.txs)),
+                         ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
+                                      Block#block.txs_hash)
+                 end}}
+              ]
       end} || PoWMod <- PoWModules].
 
 mktempd() ->
