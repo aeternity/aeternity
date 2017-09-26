@@ -67,7 +67,7 @@ class TestExternalApi(unittest.TestCase):
         """
         api = self.EXT_API['dev1']
         try:
-            balance = api.get_account_balance("some pub key")
+            balance = api.get_account_balance()
         except ApiException as e:
             self.assertEqual(e.status, 404)
 
