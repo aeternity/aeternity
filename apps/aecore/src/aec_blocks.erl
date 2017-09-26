@@ -14,6 +14,7 @@
          serialize_for_network/1,
          deserialize_from_network/1,
          serialize_to_map/1,
+         deserialize_from_map/1,
          hash_internal_representation/1]).
 
 -ifdef(TEST).
@@ -147,7 +148,7 @@ deserialize_from_map(#{<<"height">> := Height,
 		       <<"version">> := Version,
 		       <<"pow">> := PowEvidence,
 		       <<"transactions">> := Txs}) ->
-    DecodeTx = fun(Tx) -> term_to_binary(base64:decode(Tx)) end,
+    DecodeTx = fun(Tx) -> binary_to_term(base64:decode(Tx)) end,
     {ok, #block{
 	    height = Height,
 	    prev_hash = base64:decode(PrevHash),

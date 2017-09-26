@@ -72,7 +72,7 @@ handle_request('GetBlockByHash', Req, _Context) ->
 
 handle_request('PostBlock', Req, _Context) ->
     SerializedBlock = maps:get('Block', Req),
-    {ok, Block} = aec_blocks:deserialize_from_network(SerializedBlock),
+    {ok, Block} = aec_blocks:deserialize_from_map(SerializedBlock),
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
     lager:debug("'PostBlock'; header hash: ~p", [HH]),
