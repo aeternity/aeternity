@@ -4,6 +4,7 @@ language: erlang
 otp_release:
   - 20.0.1
 before_install:
+  - if test osx = "${TRAVIS_OS_NAME:?}"; then export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"; fi
   - if test osx = "${TRAVIS_OS_NAME:?}"; then brew update; fi
   - if test osx = "${TRAVIS_OS_NAME:?}"; then brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"; fi
   - erl -version
@@ -34,10 +35,6 @@ matrix:
       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
       language: generic
       env: JOB=package
-    - os: osx
-      osx_image: xcode7.3 # [`xcode7.3` is Xcode 7.3.1 on OS X 10.11](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
-      env: JOB=package
   allow_failures:
     - env: JOB=xref
   fast_finish: true
@@ -45,10 +42,9 @@ env:
   - JOB=test
   - JOB=dialyzer
   - JOB=xref
-  - JOB=start_local_rel
-  - JOB=start_prod_rel
-  - JOB=rocksdb_in_prod_rel
+  - JOB=check_rels
   - JOB=package
 cache:
   directories:
     - $HOME/.cache/rebar3
+    - $HOME/Library/Caches/Homebrew
