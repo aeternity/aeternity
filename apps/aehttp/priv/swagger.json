@@ -218,7 +218,10 @@
           "format" : "int64"
         },
         "pow" : {
-          "type" : "string"
+          "type" : "array",
+          "items" : {
+            "type" : "integer"
+          }
         },
         "transactions" : {
           "type" : "array",

@@ -115,22 +115,26 @@ hash_header(H) ->
     {ok, aec_sha256:hash(BinaryH)}.
 
 serialize_pow_evidence(Ev) ->
-    EvList =
-     case is_list(Ev) andalso length(Ev) =:= ?POW_EV_SIZE of
-          true ->
-              Ev;
-          false ->
-              lists:duplicate(?POW_EV_SIZE, 0)
-      end,
-    base64:encode(term_to_binary(EvList)).
-
-deserialize_pow_evidence(Bin) ->
-    PowEvidence = binary_to_term(base64:decode(Bin)),
-    NoPow = lists:duplicate(?POW_EV_SIZE, 0),
-    case PowEvidence =:= NoPow of
+    case is_list(Ev) andalso length(Ev) =:= ?POW_EV_SIZE of
         true ->
+            Ev;
+        false ->
+            lists:duplicate(?POW_EV_SIZE, 0)
+    end.
+
+deserialize_pow_evidence(L) when is_list(L) ->
+    % not trusting the network, filterting out any non-integers or negative
+    % numbers
+    PowEvidence =
+      lists:filter(fun(N) -> is_integer(N) andalso N >=0 end, L),
+    NoPow = lists:duplicate(?POW_EV_SIZE, 0),
+    case PowEvidence =:= NoPow orelse length(PowEvidence) =/= ?POW_EV_SIZE of
+        true -> % broken PoW
             'no_value';
         false ->
             PowEvidence
-    end.
+    end;
+deserialize_pow_evidence(_) ->
+    'no_value'.
+
 
