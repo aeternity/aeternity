@@ -21,4 +21,4 @@ Here's how you can test this release...
  
 8. This is a single-node release but [syncing between nodes is on our plate](https://github.com/aeternity/epoch/milestone/3).
 
-9. We feel your command-line pain but do not despair, [help is coming!](https://github.com/aeternity/epoch-ui)!
+9. We feel your command-line pain but do not despair, [help is coming](https://github.com/aeternity/epoch-ui)!
