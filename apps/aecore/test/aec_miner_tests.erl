@@ -115,7 +115,7 @@ miner_test_() ->
                        ?assertEqual({running, {state}}, sys:get_state(aec_miner)),
                        ?assertEqual(ok, aec_keys:delete()),
                        timer:sleep(100),
-                       ?assertEqual({waiting_for_keys, {state}}, sys:get_state(aec_miner)),
+                       ?assertEqual({waiting_for_keys, {state}}, sys:get_state(aec_miner)), %% XXX This assertion is fragile. Ticket GH-204 shall simplify this code path.
                        ?assertNotEqual(error, aec_keys:new("mynewpassword")),
                        timer:sleep(100),
                        ?assertEqual({running, {state}}, sys:get_state(aec_miner))
