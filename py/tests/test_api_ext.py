@@ -16,11 +16,18 @@ from __future__ import absolute_import
 import os
 import sys
 import unittest
+import datetime
 
 import swagger_client
 from swagger_client.rest import ApiException
 from swagger_client.apis.external_api import ExternalApi
 from swagger_client.api_client import ApiClient
+from swagger_client.models.block import Block
+
+def utc_now():
+    d = datetime.datetime.utcnow()
+    epoch = datetime.datetime(1970,1,1)
+    return int((d - epoch).total_seconds())
 
 
 class TestExternalApi(unittest.TestCase):
@@ -80,13 +87,45 @@ class TestExternalApi(unittest.TestCase):
         api = self.EXT_API['dev1']
         ping = api.ping("localhost")
 
-    def test_put_block(self):
+    def test_post_block(self):
         """
-        Test case for put_block
+        Test case for post_block
 
         
         """
-        pass
+        api = self.EXT_API['dev1']
+        top = api.get_top()
+        top_block = api.get_block_by_hash(top.hash)
+        block = Block(height = top_block.height + 1,
+                prev_hash = top.hash,
+                ## temporary
+                state_hash = "6CN+HP79yKQYgD/GD3zfDb7Jcc9qp2MrHdzqxgoCxuQ=",
+                ## temporary
+                txs_hash = "hVwaPrDaxgos7LbLqmAmNgVRx7hyZKT0oUV61t2RiwI=",
+                ## temporary
+                target = 553713663,
+                ## temporary
+                nonce = 1191330979,
+                time = utc_now(),
+                version = 1,
+                ## temporary
+                pow = [311548,2065665,6108863,6269271,16501612,25441900,
+                    26363511,26606249,27545581,29487162,31612335,40204159,
+                    41283125,48945262,53014386,56739428,58119000,59077030,
+                    60929609,61830792,72652230,72875797,74755966,76251602,
+                    78469652,80969532,81248131,83068478,83633671,84203994,
+                    85711118,89505851,90157562,90524633,96451406,99105008,
+                    103724145,110979886,116332888,117754872,128960259,133685357
+                    ],
+                ## temporary
+                transactions=["g2gDZAAJc2lnbmVkX3R4aANkAAtjb2luYmFzZV90eG0AA"
+                    + "ABBBAAggMEhrC3ODBqlYeQ6dk00F87AKMkV6kkyhgfJ/luOzGUC+4"
+                    + "APxFkVgAYPai3TjSyLRObv0GeDACg1ZxwnfHZhAGwAAAABbQAAAEc"
+                    + "wRQIgayzfIlgGTevxOmL/ucn0qG8WgQ49Rvg1ETmr9wkjJXECIQDN"
+                    + "rCsjv23qPirn7jNVJ1XWqzumrH/WdxUr2byP+dVwQWo="]
+                )
+        api.post_block(block)
+        print("Posted block " + str(block.height))
 
     def test_download_chain(self):
         """
