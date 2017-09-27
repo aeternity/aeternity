@@ -86,14 +86,26 @@ miner_test_() ->
               {timeout, 60,
                {"Run miner for a while",
                 fun() ->
-                        timer:sleep(5000),    %% TODO: make it event-driven
+                        meck:new(aec_chain, [passthrough]),
+                        TestPid = self(),
+                        meck:expect(
+                          aec_chain, write_block,
+                          fun(B) ->
+                                  Result = meck:passthrough([B]),
+                                  TestPid ! block_written_in_chain,
+                                  Result
+                          end),
+                        receive block_written_in_chain -> ok end,
                         ?assertEqual(ok, ?TEST_MODULE:suspend()),
                         {ok, TopBlock} = aec_chain:top(),
-                        ?debugFmt("reached height ~p~n", [aec_blocks:height(TopBlock)]),
-                        ?assert(aec_blocks:height(TopBlock) > 0),
-                        ?debugFmt("reached balance ~p~n", [?TEST_MODULE:get_balance()]),
-                        ?assertEqual(1, length(TopBlock#block.txs)),
-                        ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0, TopBlock#block.txs_hash)
+                        ?assertMatch(X when X > 0, aec_blocks:height(TopBlock)),
+                        ?assertMatch(
+                           Txs when is_list(Txs) andalso length(Txs) > 0,
+                           aec_blocks:txs(TopBlock)),
+                        ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
+                                     TopBlock#block.txs_hash),
+                        ?assert(meck:validate(aec_chain)),
+                        meck:unload(aec_chain)
                 end}
               }
       end,
@@ -103,7 +115,7 @@ miner_test_() ->
                        ?assertEqual({running, {state}}, sys:get_state(aec_miner)),
                        ?assertEqual(ok, aec_keys:delete()),
                        timer:sleep(100),
-                       ?assertEqual({waiting_for_keys, {state}}, sys:get_state(aec_miner)),
+                       ?assertEqual({waiting_for_keys, {state}}, sys:get_state(aec_miner)), %% XXX This assertion is fragile. Ticket GH-204 shall simplify this code path.
                        ?assertNotEqual(error, aec_keys:new("mynewpassword")),
                        timer:sleep(100),
                        ?assertEqual({running, {state}}, sys:get_state(aec_miner))
