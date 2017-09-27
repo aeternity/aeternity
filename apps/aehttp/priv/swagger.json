@@ -226,7 +226,7 @@
         "transactions" : {
           "type" : "array",
           "items" : {
-            "type" : "string"
+            "$ref" : "#/definitions/SignedTx"
           }
         }
       }
@@ -299,6 +299,35 @@
         "balance" : {
           "type" : "integer",
           "format" : "int64"
+        }
+      }
+    },
+    "CoinbaseTx" : {
+      "type" : "object",
+      "properties" : {
+        "pubkey" : {
+          "type" : "string"
+        },
+        "nonce" : {
+          "type" : "integer"
+        }
+      }
+    },
+    "SignedTx" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+          "type" : "string"
+        },
+        "data" : {
+          "type" : "object",
+          "properties" : { }
+        },
+        "signatures" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
         }
       }
     }

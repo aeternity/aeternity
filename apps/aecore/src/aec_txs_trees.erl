@@ -16,7 +16,7 @@ new(Txs = [_|_]) ->
     {ok, TxsTree}.
 
 put_signed_tx(SignedTx, TxsTree) ->
-    V = aec_tx_sign:serialize(SignedTx),
+    V = aec_tx_sign:serialize_to_binary(SignedTx),
     K = aec_sha256:hash(V),
     {ok, _NewTxsTree} =
         aec_trees:put(K, V, TxsTree).

@@ -23,11 +23,20 @@ from swagger_client.rest import ApiException
 from swagger_client.apis.external_api import ExternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.block import Block
+from swagger_client.models.signed_tx import SignedTx
+from swagger_client.models.coinbase_tx import CoinbaseTx
 
 def utc_now():
     d = datetime.datetime.utcnow()
     epoch = datetime.datetime(1970,1,1)
     return int((d - epoch).total_seconds())
+
+def signed_coinbase_tx(height):
+    account = "BAAggMEhrC3ODBqlYeQ6dk00F87AKMkV6kkyhgfJ/luOzGUC+4APxFkVgAYPai3TjSyLRObv0GeDACg1ZxwnfHY="
+    coinbase = CoinbaseTx(pubkey = account, nonce = height - 1)
+    return SignedTx(data = coinbase, type = "coinbase",
+            signatures =
+            ["Some signature"])
 
 
 class TestExternalApi(unittest.TestCase):
@@ -96,16 +105,17 @@ class TestExternalApi(unittest.TestCase):
         api = self.EXT_API['dev1']
         top = api.get_top()
         top_block = api.get_block_by_hash(top.hash)
-        block = Block(height = top_block.height + 1,
+        block_height = top_block.height + 1
+        block = Block(height = block_height,
                 prev_hash = top.hash,
                 ## temporary
                 state_hash = "6CN+HP79yKQYgD/GD3zfDb7Jcc9qp2MrHdzqxgoCxuQ=",
                 ## temporary
-                txs_hash = "hVwaPrDaxgos7LbLqmAmNgVRx7hyZKT0oUV61t2RiwI=",
+                txs_hash = "VqLNlzhbj4qyzy/z9EweR+TtZyaJqWJYHnjckoBuYTM=",
                 ## temporary
                 target = 553713663,
                 ## temporary
-                nonce = 1191330979,
+                nonce = block_height,
                 time = utc_now(),
                 version = 1,
                 ## temporary
@@ -118,11 +128,7 @@ class TestExternalApi(unittest.TestCase):
                     103724145,110979886,116332888,117754872,128960259,133685357
                     ],
                 ## temporary
-                transactions=["g2gDZAAJc2lnbmVkX3R4aANkAAtjb2luYmFzZV90eG0AA"
-                    + "ABBBAAggMEhrC3ODBqlYeQ6dk00F87AKMkV6kkyhgfJ/luOzGUC+4"
-                    + "APxFkVgAYPai3TjSyLRObv0GeDACg1ZxwnfHZhAGwAAAABbQAAAEc"
-                    + "wRQIgayzfIlgGTevxOmL/ucn0qG8WgQ49Rvg1ETmr9wkjJXECIQDN"
-                    + "rCsjv23qPirn7jNVJ1XWqzumrH/WdxUr2byP+dVwQWo="]
+                transactions=[signed_coinbase_tx(block_height)]
                 )
         api.post_block(block)
         print("Posted block " + str(block.height))
@@ -141,7 +147,6 @@ class TestExternalApi(unittest.TestCase):
             block = api.get_block_by_hash(block.prev_hash)
         if block.height == 0:
             print("Downloaded genesis block")
-
 
 if __name__ == '__main__':
     unittest.main()
