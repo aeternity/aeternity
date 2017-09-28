@@ -218,7 +218,7 @@ fake_genesis_block_with_difficulty() ->
     GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
     GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
 
-get_work_at_top_test_() ->
+get_work_test_() ->
     {foreach,
      fun() ->
              meck:new(aec_headers, [passthrough]),
@@ -248,7 +248,7 @@ get_work_at_top_test_() ->
 
                %% Check work of chain at top.
                ?assertEqual({ok, {1.0, {top_header, BH0}}},
-                            aec_chain:get_work_at_top())
+                            aec_chain:get_total_difficulty_of_top())
        end},
       {"Get work in chain of genesis block plus 2 headers",
        fun() ->
@@ -270,7 +270,7 @@ get_work_at_top_test_() ->
 
                %% Check work of chain at top.
                ?assertEqual({ok, {8.0, {top_header, BH2}}},
-                            aec_chain:get_work_at_top())
+                            aec_chain:get_total_difficulty_of_top())
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.

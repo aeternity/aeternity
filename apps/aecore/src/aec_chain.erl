@@ -3,7 +3,14 @@
 %%% @doc Service holding the longest chain of block headers and blocks.
 %%%
 %%% The longest chain is determined according to the amount of work
-%%% done on the chain.
+%%% done on the chain, i.e. according to the total difficulty of the
+%%% highest header in the chain (the so-called "top" header).  The
+%%% total difficulty of a header is the sum of the difficulty of the
+%%% header and the total difficulty of the previous header.
+%%%
+%%% The difficulty of a header is a linear representation of the
+%%% expected average amount of work required for mining the header,
+%%% and is derived from the target threshold in the header.
 %%%
 %%% @TODO Unit testing of unhappy paths.
 %%% @TODO Persistence.
@@ -25,8 +32,8 @@
          get_block_by_height/1,
          insert_header/1,
          write_block/1,
-         get_work_at_top/0,
-         get_work_by_hash_and_at_top/1,
+         get_total_difficulty_of_top/0,
+         get_total_difficulty_by_hash_and_of_top/1,
          has_more_work/1,
          force_insert_headers/1]).
 
@@ -176,17 +183,25 @@ write_block(Block) ->
     gen_server:call(?SERVER, {write_block, Block},
                     ?DEFAULT_CALL_TIMEOUT).
 
--spec get_work_at_top() -> do_get_work_at_top_reply().
-get_work_at_top() ->
-    gen_server:call(?SERVER, {get_work_at_top},
+%% Returns the amount of work done on the chain i.e. the total
+%% difficulty of the top header.
+-spec get_total_difficulty_of_top() -> do_get_total_difficulty_of_top_reply().
+get_total_difficulty_of_top() ->
+    gen_server:call(?SERVER, {get_total_difficulty_of_top},
                     ?DEFAULT_CALL_TIMEOUT).
 
--spec get_work_by_hash_and_at_top(block_header_hash()) ->
-                                         do_get_work_by_hash_and_at_top_reply().
-get_work_by_hash_and_at_top(HeaderHash) ->
-    gen_server:call(?SERVER, {get_work_by_hash_and_at_top, HeaderHash},
+%% Returns the total difficulty of the specified header and the total
+%% difficulty of the top header.
+-spec get_total_difficulty_by_hash_and_of_top(
+        block_header_hash()
+       ) -> do_get_total_difficulty_by_hash_and_of_top_reply().
+get_total_difficulty_by_hash_and_of_top(HeaderHash) ->
+    gen_server:call(?SERVER, {get_total_difficulty_by_hash_and_of_top,
+                              HeaderHash},
                     ?DEFAULT_CALL_TIMEOUT).
 
+%% Returns whether the specified alternative chain has more amount of
+%% work done on it than the currently held chain.
 -spec has_more_work(header_chain()) ->
                            {ok, {boolean(), {{{top_chain_work, work()},
                                               {alt_chain_work, work()}},
@@ -215,7 +230,7 @@ has_more_work(HeaderChain = [LowerHeader | _]) ->
                     {ok, AltChainWork} = work_in_header_chain(HeaderChain),
                     %% Retrieve the total work in the longest chain.
                     {ok, {TopChainWork, {top_header, TopHeader}}} =
-                        get_work_at_top(),
+                        get_total_difficulty_of_top(),
                     {ok, {'work_op_>'(AltChainWork, TopChainWork),
                           {{{top_chain_work, TopChainWork},
                             {alt_chain_work, AltChainWork}},
@@ -227,7 +242,12 @@ has_more_work(HeaderChain = [LowerHeader | _]) ->
             %% work of top, so to compare work of top against work of
             %% specified chain.
             LowerHeaderPreviousHash = aec_headers:prev_hash(LowerHeader),
-            case get_work_by_hash_and_at_top(LowerHeaderPreviousHash) of
+            case
+                %% Prefer one atomic retrieval of work at alleged
+                %% ancestor and at top in order to avoid case of chain
+                %% changing between the two retrievals.
+                get_total_difficulty_by_hash_and_of_top(LowerHeaderPreviousHash)
+            of
                 {error, {header_not_found, {top_header, TopHeader}}} ->
                     {error, {no_common_ancestor, {top_header, TopHeader}}};
                 {ok, {{{work_at_hash, WorkBeforeLowerHeader},
@@ -354,15 +374,17 @@ handle_call({write_block, Block}, _From, State) ->
                   blocks_db = NewBlocksDb},
             {reply, Reply, NewState}
     end;
-handle_call({get_work_at_top}, _From, State) ->
-    Reply = do_get_work_at_top(State#state.top#top_state.top_header),
+handle_call({get_total_difficulty_of_top}, _From, State) ->
+    Reply =
+        do_get_total_difficulty_of_top(State#state.top#top_state.top_header),
     {reply, Reply, State};
-handle_call({get_work_by_hash_and_at_top,
+handle_call({get_total_difficulty_by_hash_and_of_top,
              HeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
             _From, State) ->
-    Reply = do_get_work_by_hash_and_at_top(HeaderHash,
-                                           State#state.top#top_state.top_header,
-                                           State#state.headers_db),
+    Reply = do_get_total_difficulty_by_hash_and_of_top(
+              HeaderHash,
+              State#state.top#top_state.top_header,
+              State#state.headers_db),
     {reply, Reply, State};
 handle_call({force_insert_headers, HeaderChain = [_|_]}, _From, State) ->
     case
@@ -929,21 +951,23 @@ do_find_header_hash_in_chain_internal_1(
               HeaderHashToFind, aec_headers:prev_hash(Header), HeadersDb)
     end.
 
--type do_get_work_at_top_reply() ::
+-type do_get_total_difficulty_of_top_reply() ::
         {ok, {WorkAtTop::work(), {top_header, header()}}}.
--spec do_get_work_at_top(chain_header()) -> do_get_work_at_top_reply().
-do_get_work_at_top(TopHeader) ->
+-spec do_get_total_difficulty_of_top(
+        chain_header()) -> do_get_total_difficulty_of_top_reply().
+do_get_total_difficulty_of_top(TopHeader) ->
     {ok, {TopHeader#chain_header.td, {top_header, TopHeader#chain_header.h}}}.
 
--type do_get_work_by_hash_and_at_top_reply() ::
+-type do_get_total_difficulty_by_hash_and_of_top_reply() ::
         {ok, {ResultInfo::{{work_at_hash, work()},
                            {work_at_top, work()}},
               ResultContext::{top_header, header()}}} |
         {error, Reason::{header_not_found, {top_header, header()}}}.
--spec do_get_work_by_hash_and_at_top(block_header_hash(),
-                                     chain_header(), headers_db()
-                                    ) -> do_get_work_by_hash_and_at_top_reply().
-do_get_work_by_hash_and_at_top(HeaderHash, TopHeader, HeadersDb) ->
+-spec do_get_total_difficulty_by_hash_and_of_top(
+        block_header_hash(),
+        chain_header(), headers_db()
+       ) -> do_get_total_difficulty_by_hash_and_of_top_reply().
+do_get_total_difficulty_by_hash_and_of_top(HeaderHash, TopHeader, HeadersDb) ->
     case headers_db_get(HeadersDb, HeaderHash) of
         {error, not_found} ->
             {error, {header_not_found, {top_header, TopHeader#chain_header.h}}};
