@@ -1,2 +1,3 @@
 -type(height() :: non_neg_integer()).
 -type(pubkey() :: binary()).
+-type(account_nonce() :: non_neg_integer()).

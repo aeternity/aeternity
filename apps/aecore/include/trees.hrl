@@ -7,6 +7,6 @@
 -record(account, {
           pubkey = <<>>  :: pubkey(),
           balance = 0    :: non_neg_integer(),
-          nonce = 0      :: non_neg_integer(),
+          nonce = 0      :: account_nonce(),
           height = 0     :: height()}).
 -type(account() :: #account{}).

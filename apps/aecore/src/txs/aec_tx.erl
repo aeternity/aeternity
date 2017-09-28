@@ -1,6 +1,11 @@
 -module(aec_tx).
 
--export([apply_signed/3]).
+-optional_callbacks([fee/1]).
+
+-export([initiating_account/1,
+         initiating_account_nonce/1,
+         fee/1,
+         apply_signed/3]).
 
 -include("common.hrl").
 -include("trees.hrl").
@@ -14,6 +19,12 @@
 -callback new(Args :: map(), Trees :: trees()) ->
     {ok, Tx :: term()}.
 
+-callback initiating_account(tx()) -> pubkey().
+
+-callback initiating_account_nonce(tx()) -> account_nonce().
+
+-callback fee(tx()) -> fee().
+
 -callback check(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
 
@@ -23,6 +34,18 @@
 %%%%=============================================================================
 %% API
 %%%=============================================================================
+
+-spec initiating_account(tx()) -> pubkey().
+initiating_account(#coinbase_tx{} = Tx) ->
+    aec_coinbase_tx:initiating_account(Tx).
+
+-spec initiating_account_nonce(tx()) -> account_nonce().
+initiating_account_nonce(#coinbase_tx{} = Tx) ->
+    aec_coinbase_tx:initiating_account_nonce(Tx).
+
+-spec fee(tx()) -> {ok, fee()} | {error, {no_fee_for_tx_type, TxType::atom()}}.
+fee(#coinbase_tx{}) ->
+    {error, {no_fee_for_tx_type, coinbase}}.
 
 -spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 apply_signed([], Trees, _Height) ->
