@@ -32,7 +32,7 @@
          get_block_by_height/1,
          insert_header/1,
          write_block/1,
-         get_total_difficulty_of_top/0,
+         get_total_difficulty/0,
          get_total_difficulty_by_hash/1,
          get_total_difficulty_by_hash_and_of_top/1,
          has_more_work/1,
@@ -186,9 +186,9 @@ write_block(Block) ->
 
 %% Returns the amount of work done on the chain i.e. the total
 %% difficulty of the top header.
--spec get_total_difficulty_of_top() -> do_get_total_difficulty_of_top_reply().
-get_total_difficulty_of_top() ->
-    gen_server:call(?SERVER, {get_total_difficulty_of_top},
+-spec get_total_difficulty() -> do_get_total_difficulty_reply().
+get_total_difficulty() ->
+    gen_server:call(?SERVER, {get_total_difficulty},
                     ?DEFAULT_CALL_TIMEOUT).
 
 %% Returns the total difficulty of the specified header.
@@ -238,7 +238,7 @@ has_more_work(HeaderChain = [LowerHeader | _]) ->
                     {ok, AltChainWork} = work_in_header_chain(HeaderChain),
                     %% Retrieve the total work in the longest chain.
                     {ok, {TopChainWork, {top_header, TopHeader}}} =
-                        get_total_difficulty_of_top(),
+                        get_total_difficulty(),
                     {ok, {'work_op_>'(AltChainWork, TopChainWork),
                           {{{top_chain_work, TopChainWork},
                             {alt_chain_work, AltChainWork}},
@@ -382,9 +382,8 @@ handle_call({write_block, Block}, _From, State) ->
                   blocks_db = NewBlocksDb},
             {reply, Reply, NewState}
     end;
-handle_call({get_total_difficulty_of_top}, _From, State) ->
-    Reply =
-        do_get_total_difficulty_of_top(State#state.top#top_state.top_header),
+handle_call({get_total_difficulty}, _From, State) ->
+    Reply = do_get_total_difficulty(State#state.top#top_state.top_header),
     {reply, Reply, State};
 handle_call({get_total_difficulty_by_hash,
              HeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
@@ -967,11 +966,11 @@ do_find_header_hash_in_chain_internal_1(
               HeaderHashToFind, aec_headers:prev_hash(Header), HeadersDb)
     end.
 
--type do_get_total_difficulty_of_top_reply() ::
+-type do_get_total_difficulty_reply() ::
         {ok, {WorkAtTop::work(), {top_header, header()}}}.
--spec do_get_total_difficulty_of_top(
-        chain_header()) -> do_get_total_difficulty_of_top_reply().
-do_get_total_difficulty_of_top(TopHeader) ->
+-spec do_get_total_difficulty(
+        chain_header()) -> do_get_total_difficulty_reply().
+do_get_total_difficulty(TopHeader) ->
     {ok, {TopHeader#chain_header.td, {top_header, TopHeader#chain_header.h}}}.
 
 -type do_get_total_difficulty_by_hash_reply() ::
