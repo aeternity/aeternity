@@ -148,7 +148,7 @@ $(CUCKOO_SRCS): $(LIBDIR)
 $(CUCKOO_OBJECTS): $(CUCKOO_SRCS)
 
 clean: ## Clean all files
-	@rm -f $(OBJECTS) $(LIB_SO)
+	@rm -f $(OBJECTS20) $(OBJECTS28) $(OBJECTS32) $(LIB_SO)
 
 distclean: clean
 	@rm -fR $(LIBDIR)
