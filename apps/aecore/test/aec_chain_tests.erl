@@ -248,7 +248,10 @@ get_work_test_() ->
 
                %% Check work of chain at top.
                ?assertEqual({ok, {1.0, {top_header, BH0}}},
-                            aec_chain:get_total_difficulty_of_top())
+                            aec_chain:get_total_difficulty_of_top()),
+               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
+               ?assertEqual({ok, {1.0, {top_header, BH0}}},
+                            aec_chain:get_total_difficulty_by_hash(B0H))
        end},
       {"Get work in chain of genesis block plus 2 headers",
        fun() ->
@@ -270,7 +273,16 @@ get_work_test_() ->
 
                %% Check work of chain at top.
                ?assertEqual({ok, {8.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty_of_top())
+                            aec_chain:get_total_difficulty_of_top()),
+
+               %% Check work at each header in the chain.
+               {ok, B2H} = aec_headers:hash_header(BH2),
+               ?assertEqual({ok, {8.0, {top_header, BH2}}},
+                            aec_chain:get_total_difficulty_by_hash(B2H)),
+               ?assertEqual({ok, {3.0, {top_header, BH2}}},
+                            aec_chain:get_total_difficulty_by_hash(B1H)),
+               ?assertEqual({ok, {1.0, {top_header, BH2}}},
+                            aec_chain:get_total_difficulty_by_hash(B0H))
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.

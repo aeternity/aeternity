@@ -33,6 +33,7 @@
          insert_header/1,
          write_block/1,
          get_total_difficulty_of_top/0,
+         get_total_difficulty_by_hash/1,
          get_total_difficulty_by_hash_and_of_top/1,
          has_more_work/1,
          force_insert_headers/1]).
@@ -188,6 +189,13 @@ write_block(Block) ->
 -spec get_total_difficulty_of_top() -> do_get_total_difficulty_of_top_reply().
 get_total_difficulty_of_top() ->
     gen_server:call(?SERVER, {get_total_difficulty_of_top},
+                    ?DEFAULT_CALL_TIMEOUT).
+
+%% Returns the total difficulty of the specified header.
+-spec get_total_difficulty_by_hash(block_header_hash()) ->
+                                          do_get_total_difficulty_by_hash_reply().
+get_total_difficulty_by_hash(HeaderHash) ->
+    gen_server:call(?SERVER, {get_total_difficulty_by_hash, HeaderHash},
                     ?DEFAULT_CALL_TIMEOUT).
 
 %% Returns the total difficulty of the specified header and the total
@@ -377,6 +385,14 @@ handle_call({write_block, Block}, _From, State) ->
 handle_call({get_total_difficulty_of_top}, _From, State) ->
     Reply =
         do_get_total_difficulty_of_top(State#state.top#top_state.top_header),
+    {reply, Reply, State};
+handle_call({get_total_difficulty_by_hash,
+             HeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
+            _From, State) ->
+    Reply = do_get_total_difficulty_by_hash(
+              HeaderHash,
+              State#state.top#top_state.top_header,
+              State#state.headers_db),
     {reply, Reply, State};
 handle_call({get_total_difficulty_by_hash_and_of_top,
              HeaderHash = <<_:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
@@ -958,6 +974,21 @@ do_find_header_hash_in_chain_internal_1(
 do_get_total_difficulty_of_top(TopHeader) ->
     {ok, {TopHeader#chain_header.td, {top_header, TopHeader#chain_header.h}}}.
 
+-type do_get_total_difficulty_by_hash_reply() ::
+        {ok, {WorkAtHash::work(), {top_header, header()}}} |
+        {error, Reason::{header_not_found, {top_header, header()}}}.
+-spec do_get_total_difficulty_by_hash(
+        block_header_hash(),
+        chain_header(), headers_db()
+       ) -> do_get_total_difficulty_by_hash_reply().
+do_get_total_difficulty_by_hash(HeaderHash, TopHeader, HeadersDb) ->
+    case headers_db_get(HeadersDb, HeaderHash) of
+        {error, not_found} ->
+            {error, {header_not_found, {top_header, TopHeader#chain_header.h}}};
+        {ok, #chain_header{td = WorkAtHash}} ->
+            {ok, {WorkAtHash, {top_header, TopHeader#chain_header.h}}}
+    end.
+
 -type do_get_total_difficulty_by_hash_and_of_top_reply() ::
         {ok, {ResultInfo::{{work_at_hash, work()},
                            {work_at_top, work()}},
@@ -968,10 +999,11 @@ do_get_total_difficulty_of_top(TopHeader) ->
         chain_header(), headers_db()
        ) -> do_get_total_difficulty_by_hash_and_of_top_reply().
 do_get_total_difficulty_by_hash_and_of_top(HeaderHash, TopHeader, HeadersDb) ->
-    case headers_db_get(HeadersDb, HeaderHash) of
-        {error, not_found} ->
-            {error, {header_not_found, {top_header, TopHeader#chain_header.h}}};
-        {ok, #chain_header{td = WorkAtHash}} ->
+    case do_get_total_difficulty_by_hash(HeaderHash, TopHeader, HeadersDb) of
+        {error, {header_not_found, {top_header, TH}}} = Err
+          when TH =:= TopHeader#chain_header.h ->
+            Err;
+        {ok, {WorkAtHash, {top_header, _}}} ->
             {ok, {{{work_at_hash, WorkAtHash},
                    {work_at_top, TopHeader#chain_header.td}},
                   {top_header, TopHeader#chain_header.h}}}
