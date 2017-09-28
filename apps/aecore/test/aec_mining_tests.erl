@@ -33,7 +33,8 @@ mine_block_test_() ->
               meck:new(aec_governance, [passthrough]),
               meck:new(aec_keys,[passthrough]),
               meck:new(aec_trees, [passthrough]),
-              meck:expect(aec_pow, pow_module, 0, PoWMod)
+              meck:expect(aec_pow, pow_module, 0, PoWMod),
+              {ok, _} = aec_tx_pool:start_link()
       end,
       fun(_) ->
               application:stop(crypto),
@@ -44,7 +45,8 @@ mine_block_test_() ->
               meck:unload(aec_tx),
               meck:unload(aec_governance),
               meck:unload(aec_keys),
-              meck:unload(aec_trees)
+              meck:unload(aec_trees),
+              ok = aec_tx_pool:stop()
       end,
       [
        {timeout, 60,
@@ -182,6 +184,7 @@ mine_block_from_genesis_test_() ->
               meck:new(aec_pow, [passthrough]),
               meck:expect(aec_pow, pow_module, 0, PoWMod),
               meck:expect(aec_pow, pick_nonce, 0, 1),
+              {ok, _} = aec_tx_pool:start_link(),
               {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
               TmpKeysDir = mktempd(),
               ok = application:ensure_started(crypto),
@@ -203,10 +206,9 @@ mine_block_from_genesis_test_() ->
                 KeyFiles),
               ok = file:del_dir(TmpKeysDir),
               ok = aec_chain:stop(),
+              ok = aec_tx_pool:stop(),
               ?assert(meck:validate(aec_pow)),
-              %% ?assert(meck:validate(aec_chain)),
               meck:unload(aec_pow),
-              %% meck:unload(aec_chain),
               aec_state:stop(),
               file:delete(TmpKeysDir)
       end,
