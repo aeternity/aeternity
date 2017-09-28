@@ -1,6 +1,7 @@
 -module(aec_tx).
 
--export([apply_signed/3]).
+-export([fee/1,
+         apply_signed/3]).
 
 -include("common.hrl").
 -include("trees.hrl").
@@ -23,6 +24,9 @@
 %%%%=============================================================================
 %% API
 %%%=============================================================================
+
+fee(#spend_tx{fee = F}) ->
+    F.
 
 -spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 apply_signed([], Trees, _Height) ->

@@ -23,6 +23,7 @@ miner_test_() ->
                          fun() ->
                                  meck:passthrough([]) div 256
                          end),
+             {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
              {ok, _} = aec_state:start_link(),
              TmpKeysDir = mktempd(),
@@ -36,6 +37,7 @@ miner_test_() ->
              ok = aec_keys:stop(),
              ok = aec_state:stop(),
              ok = aec_chain:stop(),
+             ok = aec_tx_pool:stop(),
              ok = application:stop(crypto),
              {ok, KeyFiles} = file:list_dir(TmpKeysDir),
              %% Expect two filenames - private and public keys.
