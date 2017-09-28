@@ -80,6 +80,22 @@ create_coinbase_tx_no_account_test() ->
      ]
     }.
 
+getters_test_() ->
+    [{"Coinbase tx has initiating account and related nonce",
+      fun() ->
+              A = <<"a pubkey">>,
+              {ok, Tx} = aec_coinbase_tx:new(#{account => A},
+                                             unused_state_trees_argument),
+              ?assertEqual(A, aec_tx:initiating_account(Tx)),
+              ?assertEqual(0, aec_tx:initiating_account_nonce(Tx)) %% TODO Review when coinbase tx `new` considers nonce from account state tree.
+      end},
+     {"Coinbase tx does not have fee",
+      fun() ->
+              {ok, Tx} = aec_coinbase_tx:new(#{account => <<"a pubkey">>},
+                                             unused_state_trees_argument),
+              ?assertEqual({error, {no_fee_for_tx_type, coinbase}},
+                           aec_tx:fee(Tx))
+      end}].
 
 %%%=============================================================================
 %%% Internal functions
