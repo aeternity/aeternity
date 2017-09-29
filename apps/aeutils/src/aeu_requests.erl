@@ -3,8 +3,8 @@
 %% API
 -export([ping/1,
          top/1,
-         block/2%,
-         %send_block/2
+         block/2,
+         send_block/2
         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -14,11 +14,16 @@
 
 -spec ping(aec_peers:peer()) -> response(map()).
 ping(Peer) ->
-    Req = "ping?source=" ++ source_uri() ++ share_param(),
-    Response = process_request(Peer, get, Req),
+    Req = "ping",
+    #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
+    Peers = [iolist_to_binary(aec_peers:uri(P))
+             || P <- aec_peers:get_random(Share, [Peer])],
+    PingObj = PingObj0#{<<"peers">> => Peers},
+    Response = process_request(Peer, post, Req, PingObj),
     case Response of
         {ok, Map} ->
             lager:debug("ping response: ~p", [Map]),
+            aec_sync:compare_ping_objects(PingObj, Map),
             {ok, Map};
         {error, _Reason} = Error ->
             Error
@@ -29,35 +34,36 @@ top(Peer) ->
     Response = process_request(Peer, get, "top"),
     case Response of
         {ok, Data} ->
-            {ok, Header} = aec_headers:deserialize_from_network(Data),
+            {ok, Header} = aec_headers:deserialize_from_map(Data),
             {ok, Header};
         {error, _Reason} = Error ->
             Error
     end.
 
+
 -spec block(aec_peers:peer(), binary()) -> response(aec_blocks:block()).
 block(Peer, Hash) ->
-    HexHash = aeu_hex:bin_to_hex(Hash),
-    Response = process_request(Peer, get, "block?BlockHash="++HexHash),
+    EncHash = base64:encode(Hash),
+    Response = process_request(Peer, get, "block-by-hash", [{"hash", EncHash}]),
     case Response of
         {ok, Data} ->
-            Block = aec_blocks:deserialize_from_network(Data),
+            {ok, Block} = aec_blocks:deserialize_from_map(Data),
             {ok, Block};
         {error, _Reason} = Error ->
             Error
     end.
 
-
-%-spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
-%send_block(Peer, Block) ->
-%    BlockSerialized = aec_blocks:serialize_for_network(Block),
-%    Response = process_request(Peer, post, "block", BlockSerialized),
-%    case Response of
-%        {ok, _Map} ->
-%            {ok, ok};
-%        {error, _Reason} = Error ->
-%            Error
-%    end.
+-spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
+send_block(Peer, Block) ->
+    Uri = aec_peers:uri(Peer),
+    BlockSerialized = aec_blocks:serialize_to_map(Block),
+    Response = process_request(Uri, post, "block", BlockSerialized),
+    case Response of
+        {ok, _Map} ->
+            {ok, ok};
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 
 %% Internal functions
@@ -65,12 +71,38 @@ block(Peer, Hash) ->
 -spec process_request(aec_peers:peer(), get, string()) ->
 			     response(B) when
       B :: aec_blocks:block_serialized_for_network() | map().
-process_request(Peer, get, Request) ->
-    URL = aec_peers:uri(Peer) ++ "v1/" ++ Request,
+process_request(Peer, Method, Request) ->
+    process_request(Peer, Method, Request, []).
+
+process_request(Peer, Method, Request, Params) ->
     Header = [],
     HTTPOptions = [],
     Options = [],
+    process_request(Peer, Method, Request, Params, Header, HTTPOptions, Options).
+
+process_request(Peer, get, Request, Params, Header, HTTPOptions, Options) ->
+    URL = binary_to_list(
+            iolist_to_binary(
+              [aec_peers:uri(Peer), "v1/", Request, encode_get_params(Params)])),
+    lager:debug("GET URL = ~p", [URL]),
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
+    process_http_return(R);
+process_request(Peer, post, Request, Params, Header, HTTPOptions, Options) ->
+    URL = aec_peers:uri(Peer) ++ "v1/" ++ Request,
+    {Type, Body} = case Params of
+                       Map when is_map(Map) ->
+                           %% JSON-encoded
+                           lager:debug("JSON-encoding Params: ~p", [Params]),
+                           {"application/json", jsx:encode(Params)};
+                       _ ->
+                           {"application/x-www-form-urlencoded",
+                            http_uri:encode(Request)}
+                   end,
+    lager:debug("Type = ~p~nBody = ~p", [Type, Body]),
+    R = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
+    process_http_return(R).
+
+process_http_return(R) ->
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
             try
@@ -81,13 +113,24 @@ process_request(Peer, get, Request) ->
                 error:E ->
                     {error, {parse_error, E}}
             end;
-        {error, _Reason} ->
+        {error, _} = _Error ->
+            lager:debug("process_http_return: ~p", [_Error]),
             {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
     end.
 
-source_uri() ->
-    Uri = aec_peers:get_local_peer_uri(),
-    http_uri:encode(Uri).
+encode_get_params(#{} = Ps) ->
+    encode_get_params(maps:to_list(Ps));
+encode_get_params([{K,V}|T]) ->
+    ["?", [str(K),"=",uenc(V)
+           | [["&", str(K1), "=", uenc(V1)]
+              || {K1, V1} <- T]]];
+encode_get_params([]) ->
+    [].
 
-share_param() ->
-    "&share=30".
+%% str(A) when is_atom(A) ->
+%%     atom_to_binary(A, latin1);
+str(S) when is_list(S); is_binary(S) ->
+    S.
+
+uenc(V) ->
+    http_uri:encode(V).

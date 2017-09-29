@@ -5,7 +5,9 @@
   {applications,
    [kernel,
     stdlib,
-    lager
+    lager,
+    gproc,
+    jobs
    ]},
   {env,[]}
  ]}.

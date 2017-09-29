@@ -15,31 +15,30 @@ schemes:
   - http
 paths:
   /ping:
-    get:
+    post:
       tags:
         - external
       operationId: Ping
       description: ''
       produces:
         - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Ping a peer
+          required: true
+          schema:
+            $ref: '#/definitions/Ping'
       responses:
         '200':
           description: Sample response
           schema:
             $ref: '#/definitions/Ping'
+        '404':
+          description: Different genesis blocks
+          schema:
+            $ref: '#/definitions/Error'
       security: []
-      parameters:
-        - in: query
-          name: source
-          description: 'Source peer address'
-          required : true
-          type : string
-        - in: query
-          name: share
-          description: 'Number of random peer URIs to return'
-          required : false
-          type: integer
-          format: int64
   /top:
     get:
       tags:
@@ -219,8 +218,17 @@ definitions:
   Ping:
     type: object
     properties:
-      pong:
+      source:
         type: string
+      genesis_hash:
+        type: string
+      best_hash:
+        type: string
+      difficulty:
+        type: number
+      share:
+        type: integer
+        format: int64
       peers:
         type: array
         items:

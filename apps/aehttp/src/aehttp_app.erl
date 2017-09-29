@@ -13,6 +13,8 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
+-export([local_peer_uri/0]).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -22,6 +24,10 @@ start(_StartType, _StartArgs) ->
     ok = start_swagger_external(),
     {ok, Pid}.
 
+local_peer_uri() ->
+    Port = get_port(),
+    local_peer(Port).
+
 %%--------------------------------------------------------------------
 stop(_State) ->
     ok.
@@ -30,8 +36,7 @@ stop(_State) ->
 %% Internal functions
 %%====================================================================
 start_swagger_external() ->
-    Port = application:get_env(aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT),
-    aec_peers:set_local_peer_uri(local_peer(Port)),
+    Port = get_port(),
     Spec = swagger_server:child_spec(swagger_ext, #{
                                        ip => {0, 0, 0, 0},
                                        port => Port,
@@ -49,3 +54,6 @@ local_peer(Port) ->
 	    {ok, Host} = inet:gethostname(),
 	    aec_peers:uri_from_ip_port(Host, Port)
     end.
+
+get_port() ->
+    application:get_env(aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT).

@@ -38,6 +38,9 @@
          has_more_work/1,
          force_insert_headers/1]).
 
+-export([export_chain/1,
+         import_chain/1]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -281,6 +284,36 @@ force_insert_headers(HeaderChain) ->
     gen_server:call(?SERVER, {force_insert_headers, HeaderChain},
                     ?DEFAULT_CALL_TIMEOUT).
 
+export_chain(OutFile) ->
+    Headers = all_headers(),
+    Blocks = all_blocks(Headers),
+    file:write_file(
+      OutFile, term_to_binary({{0,1}, Headers, Blocks}, [compressed])).
+
+import_chain(File) ->
+    case file:read_file(File) of
+        {ok, Bin} ->
+            try binary_to_term(Bin) of
+                {{0,1}, Headers, Blocks} ->
+                    io:fwrite("Headers = ~p~n"
+                              "Blocks = ~p~n",
+                              [Headers, Blocks]),
+                    lists:foreach(
+                      fun(H) ->
+                              ok = insert_header(H)
+                      end, Headers),
+                    lists:foreach(
+                      fun(B) ->
+                              ok = write_block(B)
+                      end, Blocks)
+            catch
+                error:Reason ->
+                    {error, Reason}
+            end;
+        Error ->
+            Error
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -426,8 +459,8 @@ handle_call({force_insert_headers, HeaderChain = [_|_]}, _From, State) ->
             {reply, Reply, NewState}
     end;
 handle_call(Request, From, State) ->
-    lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
-    {noreply, State}.
+    lager:warning("Unknown call request from ~p: ~p", [From, Request]),
+    {reply, {error, unknown_request}, State}.
 
 handle_cast(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
@@ -1291,3 +1324,26 @@ do_find_highest_common_ancestor_internal_2(C1 = {_, H, _},
   when ?IS_HEIGHT(H) ->
     %% The two chains have a block at the same height.  Reuse other function.
     do_find_highest_common_ancestor_internal_1(C1, C2, NotIncludedHC).
+
+all_headers() ->
+    all_headers(top_header(), []).
+
+all_headers({ok, H}, Acc) ->
+    case aec_headers:height(H) of
+        0 ->
+            Acc;
+        _ ->
+            all_headers(
+              get_header_by_hash(
+                aec_headers:prev_hash(H)), [H|Acc])
+    end;
+all_headers({error, E}, _) ->
+    erlang:error(E).
+
+all_blocks(Hdrs) ->
+    lists:foldr(
+      fun(H, Acc) ->
+              {ok, HH} = aec_headers:hash_header(H),
+              {ok, B} = aec_chain:get_block_by_hash(HH),
+              [B|Acc]
+      end, [], Hdrs).

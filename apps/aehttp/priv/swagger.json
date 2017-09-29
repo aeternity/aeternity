@@ -17,30 +17,31 @@
   "schemes" : [ "http" ],
   "paths" : {
     "/ping" : {
-      "get" : {
+      "post" : {
         "tags" : [ "external" ],
         "description" : "",
         "operationId" : "Ping",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "source",
-          "in" : "query",
-          "description" : "Source peer address",
+          "in" : "body",
+          "name" : "body",
+          "description" : "Ping a peer",
           "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "share",
-          "in" : "query",
-          "description" : "Number of random peer URIs to return",
-          "required" : false,
-          "type" : "integer",
-          "format" : "int64"
+          "schema" : {
+            "$ref" : "#/definitions/Ping"
+          }
         } ],
         "responses" : {
           "200" : {
             "description" : "Sample response",
             "schema" : {
               "$ref" : "#/definitions/Ping"
+            }
+          },
+          "404" : {
+            "description" : "Different genesis blocks",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         },
@@ -274,8 +275,21 @@
     "Ping" : {
       "type" : "object",
       "properties" : {
-        "pong" : {
+        "source" : {
           "type" : "string"
+        },
+        "genesis_hash" : {
+          "type" : "string"
+        },
+        "best_hash" : {
+          "type" : "string"
+        },
+        "difficulty" : {
+          "type" : "number"
+        },
+        "share" : {
+          "type" : "integer",
+          "format" : "int64"
         },
         "peers" : {
           "type" : "array",

@@ -12,10 +12,12 @@
        {ref,"4db7aad81944e2d12981a2ecd23dd59e32ab1651"}},
   0},
  {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
+ {<<"gproc">>,{pkg,<<"gproc">>,<<"0.6.1">>},0},
  {<<"jesse">>,
   {git,"https://github.com/for-GET/jesse.git",
        {ref,"dd40e210216bdab96549bcd105410c4d1d93d248"}},
   0},
+ {<<"jobs">>,{pkg,<<"jobs">>,<<"0.7.0">>},0},
  {<<"jsx">>,
   {git,"https://github.com/talentdeficit/jsx.git",
        {ref,"3074d4865b3385a050badf7828ad31490d860df5"}},
@@ -24,6 +26,7 @@
   {git,"https://github.com/erlang-lager/lager.git",
        {ref,"c3970a99131c7c73de7eba3c2a569806fe47e40a"}},
   0},
+ {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.0.0">>},1},
  {<<"ranch">>,
   {git,"https://github.com/ninenines/ranch.git",
        {ref,"adf1822defc2b7cfdc7aca112adabfa1d614043c"}},
@@ -36,5 +39,8 @@
 [
 {pkg_hash,[
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
+ {<<"gproc">>, <<"4579663E5677970758A05D8F65D13C3E9814EC707AD51D8DCEF7294EDA1A730C">>},
+ {<<"jobs">>, <<"7259401F88CB7590B0BDF1270C01FAE02EC2510C1F41055302407C5EFDA74214">>},
+ {<<"parse_trans">>, <<"9E96B1C9C3A0DF54E7B76F8F685D38BFA1EB21B31E042B1D1A5A70258E4DB1E3">>},
  {<<"rocksdb">>, <<"CD59EE3B6CB33D0AF8C17126AD055420AD2A625C5AE50913619D4FA1ADD85D54">>}]}
 ].
