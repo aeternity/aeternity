@@ -1,4 +1,4 @@
-Aeternity is looking for fully autonomous software hackers proficient in Rust or Erlang.
+Aeternity is looking for fully autonomous software hackers proficient in Erlang.
 
 We are a distributed team, we work remotely and our software is completely open source. 
 
