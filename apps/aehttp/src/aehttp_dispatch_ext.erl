@@ -31,7 +31,8 @@ handle_request('Ping', #{source := Source,
 handle_request('GetTop', _, _Context) ->
     {ok, Header} = aec_chain:top_header(),
     {ok, HH} = aec_headers:hash_header(Header),
-    {ok, Resp} = aec_headers:serialize_to_map(Header),
+    {ok, Top} = aec_headers:serialize_to_map(Header),
+    Resp = cleanup_genesis(Top),
     {200, [], maps:put(hash, base64:encode(HH), Resp)};
 
 handle_request('GetBlockByHeight', Req, _Context) ->
@@ -43,7 +44,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             %% encoded to a binary; that's why we use
             %% aec_blocks:serialize_to_map/1 instead of
             %% aec_blocks:serialize_for_network/1 
-            Resp = aec_blocks:serialize_to_map(Block),
+            Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             {200, [], Resp};
         {error, {chain_too_short, _}} ->
             {404, [], #{reason => <<"chain too short">>}}
@@ -63,7 +64,8 @@ handle_request('GetBlockByHash', Req, _Context) ->
                     %% is already encoded to a binary; that's why we use
                     %% aec_blocks:serialize_to_map/1 instead of
                     %% aec_blocks:serialize_for_network/1 
-                    Resp = aec_blocks:serialize_to_map(Block),
+                    Resp =
+                      cleanup_genesis(aec_blocks:serialize_to_map(Block)),
                     {200, [], Resp};
                 {error, {block_not_found, _}} ->
                     {404, [], #{reason => <<"block not found">>}}
@@ -71,7 +73,7 @@ handle_request('GetBlockByHash', Req, _Context) ->
     end;
 
 handle_request('PostBlock', Req, _Context) ->
-    SerializedBlock = maps:get('Block', Req),
+    SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
     {ok, Block} = aec_blocks:deserialize_from_map(SerializedBlock),
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
@@ -130,3 +132,23 @@ mk_num(B) when is_binary(B) ->
 	    undefined
     end.
 
+empty_fields_in_genesis() ->
+    [ <<"prev_hash">>,
+      <<"state_hash">>,
+      <<"pow">>,
+      <<"txs_hash">>,
+      <<"transactions">>].
+
+%% to be used for both headers and blocks
+cleanup_genesis(#{<<"height">> := 0} = Genesis) ->
+    maps:without(empty_fields_in_genesis(), Genesis);
+cleanup_genesis(Val) ->
+    Val.
+
+add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
+    GB = aec_blocks:serialize_to_map(
+           aec_block_genesis:genesis_block_as_deserialized_from_network()),
+    EmptyFields = maps:with(empty_fields_in_genesis(), GB),
+    maps:merge(Block, EmptyFields);
+add_missing_to_genesis_block(Val) ->
+    Val.
