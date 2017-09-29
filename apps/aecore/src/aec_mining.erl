@@ -59,7 +59,7 @@ mine(Block, Attempts) ->
 
 -spec get_txs_to_mine(trees()) -> {'ok', list(signed_tx())} | {error, term()}.
 get_txs_to_mine(Trees) ->
-    {ok, Txs0} = aec_tx_pool:all(),
+    {ok, Txs0} = aec_tx_pool:pop(aec_governance:max_txs_in_block() - 1),
     case create_coinbase_tx(Trees) of
         {ok, CoinbaseTx} ->
             case aec_keys:sign(CoinbaseTx) of
