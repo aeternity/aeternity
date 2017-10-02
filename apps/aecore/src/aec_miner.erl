@@ -148,7 +148,8 @@ running(cast, mine, State) ->
                             epoch_mining:info("Block inserted: Height = ~p"
                                               "~nHash = ~s",
                                               [Block#block.height,
-                                               as_hex(Block#block.root_hash)]);
+                                               as_hex(Block#block.root_hash)]),
+                            aec_sync:block_created(Block);
                         {error, Reason} ->
                             epoch_mining:error("Block insertion failed: ~p.", [Reason])
                     end;

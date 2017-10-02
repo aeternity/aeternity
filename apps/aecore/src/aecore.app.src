@@ -12,7 +12,7 @@
     rocksdb,
     aeutils
    ]},
-  {env,[]},
+  {env, []},
   {modules, []},
 
   {maintainers, []},

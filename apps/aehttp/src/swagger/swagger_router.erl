@@ -77,7 +77,7 @@ get_operations() ->
         },
         'Ping' => #{
             path => "/v1/ping",
-            method => <<"GET">>,
+            method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
         'PostBlock' => #{

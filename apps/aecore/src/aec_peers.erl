@@ -11,6 +11,7 @@
 %% API
 -export([add/1,
          add/2,
+         add_and_ping_peers/1,
          remove/1,
          info/1,
          all/0,
@@ -56,6 +57,17 @@ add(Peer, Connect) when is_boolean(Connect) ->
     ok.
 
 %%------------------------------------------------------------------------------
+%% Add peer by url or supplying full peer() record. Connect if `Connect==true`
+%%------------------------------------------------------------------------------
+-spec add_and_ping_peers([uri()]) -> ok.
+add_and_ping_peers(Peers) ->
+    case [peer_record(P) || P <- Peers] of
+        [] -> ok;
+        [_|_] = PeerRecs ->
+            gen_server:cast(?MODULE, {add_and_ping, PeerRecs})
+    end.
+
+%%------------------------------------------------------------------------------
 %% Remove peer by url
 %%------------------------------------------------------------------------------
 -spec remove(uri()) -> ok.
@@ -99,7 +111,9 @@ get_random() ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(non_neg_integer()) -> [peer()].
+-spec get_random(all | non_neg_integer()) -> [peer()].
+get_random(all) ->
+    get_random(all, []);
 get_random(N) when is_integer(N), N >= 0 ->
     get_random(N, []).
 
@@ -110,7 +124,9 @@ get_random(N) when is_integer(N), N >= 0 ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(non_neg_integer(), [peer() | uri()]) -> [peer()].
+-spec get_random(all | non_neg_integer(), [peer() | uri()]) -> [peer()].
+get_random(all, Exclude) when is_list(Exclude) ->
+    gen_server:call(?MODULE, {get_random, all, Exclude});
 get_random(N, Exclude) when is_integer(N), N >= 0, is_list(Exclude) ->
     gen_server:call(?MODULE, {get_random, N, Exclude}).
 
@@ -165,7 +181,9 @@ start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
 
 init(ok) ->
-    {ok, #state{peers=gb_trees:empty()}}.
+    PeerUri = aehttp_app:local_peer_uri(),
+    {ok, #state{peers=gb_trees:empty(),
+                local_peer_uri = PeerUri}}.
 
 handle_call({set_local_peer_uri, Peer}, _From, State) ->
     {reply, ok, State#state{local_peer_uri = Peer}};
@@ -205,7 +223,11 @@ handle_call(get_random, _From, State) ->
 handle_cast({update_last_seen, Uri, Time}, State = #state{peers = Peers}) ->
     Hash = hash_uri(Uri),
     NewPeers = case gb_trees:lookup(Hash, Peers) of
-                   none -> Peers;
+                   none ->
+                       %% can happen e.g. at first ping
+                       Peer = peer_record(Uri),
+                       gb_trees:enter(
+                         Hash, Peer#peer{last_seen = Time}, Peers);
                    {value, Peer} ->
                        gb_trees:update(
                          Hash, Peer#peer{last_seen = Time}, Peers)
@@ -220,6 +242,18 @@ handle_cast({add, Peer, Connect}, State = #state{peers = Peers})
     end,
     NewPeers = gb_trees:enter(hash_uri(Peer#peer.uri), Peer, Peers),
     {noreply, State#state{peers=NewPeers}};
+handle_cast({add_and_ping, Peers}, State) ->
+    lists:foreach(
+      fun(P) ->
+              Key = hash_uri(P#peer.uri),
+              case has_been_seen(Key, Peers) of
+                  true -> ok;
+                  false ->
+                      %% TODO: use jobs workers instead
+                      spawn(fun() -> ping_peer(P) end)
+              end
+      end, Peers),
+    {noreply, State};
 handle_cast({remove, PeerUri}, State = #state{peers = Peers}) ->
     HashUri = hash_uri(normalize_uri(PeerUri)),
     NewPeers = case gb_trees:lookup(HashUri, Peers) of
@@ -255,6 +289,8 @@ peer_record(PeerUri) ->
 normalize_peer(Peer = #peer{uri = Uri}) ->
     Peer#peer{uri = normalize_uri(Uri)}.
 
+normalize_uri(#peer{uri = Uri}) ->
+    ensure_trailing_slash(Uri);
 normalize_uri(Uri) ->
     ensure_trailing_slash(Uri).
 
@@ -269,7 +305,11 @@ ensure_trailing_slash(Uri) ->
       binary_to_list(<<Pfx/binary, "/">>)
     end.
 
-get_random_n(N, Exclude, Tree) ->
+get_random_n(N0, Exclude, Tree) ->
+    N = case N0 of
+            all -> gb_trees:size(Tree);
+            N0 when is_integer(N0) -> N0
+        end,
     Pruned = lists:foldl(
                fun(P, Acc) ->
                        exclude_peer(P, Acc)
@@ -327,7 +367,7 @@ ping_peer(Peer) ->
     Res = aeu_requests:ping(Peer),
     lager:debug("ping result (~p): ~p", [Peer, Res]),
     case Res of
-        {ok, #{<<"pong">> := <<"pong">>} = Map} ->
+        {ok, Map} ->
             update_last_seen(Peer),
             Peers = maps:get(<<"peers">>, Map, []),
             [add(P, true) || P <- Peers],
