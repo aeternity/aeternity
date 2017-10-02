@@ -1,0 +1,20 @@
+{application, aevm,
+ [{description, "Virtual machine for Aethernity"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { aevm_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    lager,
+    jsx,
+    aebytecode,
+    sha3
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
