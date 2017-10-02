@@ -18,6 +18,9 @@ endif
 
 PYTHON_DIR = py
 PYTHON_TESTS = $(PYTHON_DIR)/tests
+PIP = $(PYTHON_BIN)/pip
+
+export AEVM_EXTERNAL_TEST_DIR=aevm_external
 
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
@@ -121,6 +124,15 @@ test:
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
+aevm-test: aevm-test-deps
+	@./rebar3 eunit --application=aevm
+
+aevm-test-deps: $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
+
+$(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
+	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
+
+
 venv-present:
 	@virtualenv -q $(PYTHON_DIR)
 
@@ -216,6 +228,6 @@ internal-clean: $$(KIND)
 	dev2-start, dev2-stop, dev2-attach, dev2-clean \
 	dev3-start, dev3-stop, dev3-attach, dev3-clean \
 	dialyzer \
-	test \
+	test aevm-test-deps\
 	kill killall \
 	clean distclean

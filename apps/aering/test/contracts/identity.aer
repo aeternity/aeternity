@@ -1,0 +1,14 @@
+
+contract type Identity = {
+  type state;
+
+  let id: int => int;
+};
+
+contract Identity = {
+  let id(x:int) = {
+    x;
+  };
+};
+
+
