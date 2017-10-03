@@ -27,3 +27,7 @@ apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 .chain
 REVISION
+apps/aecore/c_src/*.[1-9][0-9]o
+apps/aecore/c_src/cuckoo
+apps/aecore/priv
+aevm_external
