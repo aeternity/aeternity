@@ -39,38 +39,528 @@ eval(State) ->
 	    OP   = code_get_op(CP, Code),
 	    State0 = aevm_eeevm_state:trace_format("~n", [], State),
 	    case OP of
-		?STOP -> State0;
+		?STOP ->
+		    %% 0x00 STOP
+		    %% Halts execution.
+		    State0;
 		?ADD ->
-		    {Arg1, State1} = pop(State0),
-		    {Arg2, State2} = pop(State1),
-		    Val = add(Arg1, Arg2),
+		    %% 0x01 ADD δ=2 α=1
+		    %% Addition operation.
+		    %% µs'[0] ≡ µs[0] + µs[1]
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = add(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?MUL ->
+		    %% 0x02 MUL δ=2 α=1
+		    %% Multiplication operation.
+		    %% µs'[0] ≡ µs[0] * µs[1]
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = mul(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SUB ->
+		    %% 0x03 SUB δ=2 α=1
+		    %% Subtraction operation.
+		    %% µ's[0] ≡ µs[0] − µs[1]
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = sub(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?DIV ->
+		    %% 0x04 DIV δ=2 α=1
+		    %% Integer division operation.
+		    %% µ's[0] ≡ 0 if µs[1] = 0
+		    %%          µs[0] / µs[1] otherwise
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = idiv(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SDIV ->
+		    %% 0x05 SDIV δ=2 α=1
+		    %% Signed integer division operation. (truncated)
+		    %% µ's[0] ≡ 0      if µs[1] = 0
+		    %%          -2^256 if µs[0] = −2^255 ∧ µs[1] = −1
+		    %%          sgn(µs[0] ÷ µs[1]) |µs[0] ÷ µs[1]| otherwise
+		    %% Where all values are treated as two’s complement
+		    %% signed 256-bit integers.
+		    %% Note the overflow semantic when −2^255 is negated.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = sdiv(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?MOD ->
+		    %% 0x06 MOD δ=2 α=1
+		    %% Modulo remainder operation.
+		    %% µ's[0] ≡  0 if µs[1] = 0
+		    %%           µs[0] mod µs[1] otherwise
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = mod(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SMOD ->
+		    %% 0x07 SMOD δ=2 α=1
+		    %% Signed modulo remainder operation.
+		    %% µ's[0] ≡ (0 if µs[1] = 0
+		    %%           sgn(µs[0])(|µs[0]| mod |µs[1]|) otherwise
+		    %% Where all values are treated as
+		    %% two’s complement signed 256-bit integers.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = smod(Us0, Us1),
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
 		?ADDMOD ->
-		    {Arg1, State1} = pop(State0),
-		    {Arg2, State2} = pop(State1),
-		    {Arg3, State3} = pop(State2),
-		    Val = addmod(Arg1, Arg2, Arg3),
+		    %% 0x08 ADDMOD  δ=3 α=1
+		    %% Modulo addition operation.
+		    %% µs'[0] ≡ 0 if µs[2] = 0
+		    %%          (µs[0] + µs[1]) mod µs[2] otherwise
+		    %% All intermediate calculations of this operation
+		    %% are not subject to the 2^256 modulo.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    Val = addmod(Us0, Us1, Us2),
 		    State4 = push(Val, State3),
 		    next_instruction(OP, State4);
+		?MULMOD ->
+		    %% 0x09 MULMOD  δ=3 α=1
+		    %% Modulo multiplication operation.
+		    %% µ's[0] ≡ 0 if µs[2] = 0
+		    %%          µs[0] × µs[1]) mod µs[2] otherwise
+		    %% All intermediate calculations of this operation are
+		    %% not subject to the 2^256 modulo
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    Val = mulmod(Us0, Us1, Us2),
+		    State4 = push(Val, State3),
+		    next_instruction(OP, State4);
+		?EXP ->
+		    %% 0x0a EXP δ=2 α=1
+		    %% Exponential operation.
+		    %% µ's[0] ≡ µs[0] ^ µs[1]
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = exp(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SIGNEXTEND ->
+		    %% 0x0b SIGNEXTEND δ=2 α=1
+		    %% Extend length of two’s complement signed integer.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[1]t if i =< t
+		    %%                           where t = 256 − 8*(µs[0] + 1)
+		    %%                           µs[1]i otherwise
+		    %% µs[x]i gives the ith bit (counting from zero) of µs[x]
+
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = signextend(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+
+		?LT ->
+		    %% 0x10 LT δ=2 α=1
+		    %% Less-than comparison.
+		    %% µ's[0] ≡ 1 if µs[0] < µs[1]
+		    %%          0 otherwise
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = if (Us0 < Us1) -> 1;
+			     true -> 0
+			  end,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?GT ->
+		    %% 0x11 GT δ=2 α=1
+		    %% Greater-than comparison.
+		    %% µ's[0] ≡ 1 if µs[0] > µs[1]
+		    %%          0 otherwise
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = if (Us0 > Us1) -> 1;
+			     true -> 0
+			  end,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SLT ->
+		    %% 0x12 SLT δ=2 α=1
+		    %% Signed less-than comparison.
+		    %% µ's[0] ≡ 1 if µs[0] < µs[1]
+		    %%          0 otherwise
+		    %% Where all values are treated as
+		    %% two’s complement signed 256-bit integers.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    SUs0 = signed(Us0),
+		    SUs1 = signed(Us1),
+		    Val = if (SUs0 < SUs1) -> 1;
+			     true -> 0
+			  end,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?SGT ->
+		    %% 0x13 SGT δ=2 α=1
+		    %% Signed greater-than comparison.
+		    %% µ's[0] ≡ 1 if µs[0] > µs[1]
+		    %%          0 otherwise
+		    %% Where all values are treated as
+		    %% two’s complement signed 256-bit integers.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    SUs0 = signed(Us0),
+		    SUs1 = signed(Us1),
+		    Val = if (SUs0 > SUs1) -> 1;
+			     true -> 0
+			  end,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+
+
+		?EQ ->
+		    %% 0x14 EQ δ=2 α=1
+		    %% Equality comparison.
+		    %% µ's[0] ≡ 1 if µs[0] = µs[1]
+		    %%          0 otherwise
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = if (Us0 == Us1) -> 1;
+			     true -> 0
+			  end,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?ISZERO ->
+		    %% 0x15 ISZERO δ=1 α=1
+		    %% Simple not operator.
+		    %% µ's[0] ≡ 1 if µs[0] = 0
+		    %%          0 otherwise
+		    {Us0, State1} = pop(State0),
+		    Val = if Us0 =:= 0 -> 1; true -> 0 end,
+		    State2 = push(Val, State1),
+		    next_instruction(OP, State2);
+		?AND ->
+		    %% 0x16 AND δ=2 α=1
+		    %% Bitwise AND operation.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∧ µs[1]i
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = Us0 band Us1,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?OR ->
+		    %% 0x17 OR δ=2 α=1
+		    %% Bitwise OR operation.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∨ µs[1]i
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = Us0 bor Us1,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?XOR ->
+		    %% 0x18 XOR δ=2 α=1
+		    %% Bitwise XOR operation.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ µs[0]i ∨ µs[1]i
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = Us0 bxor Us1,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+		?NOT ->
+		    %% 0x19 NOT δ=1 α=1
+		    %% Bitwise NOT operation.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ 1 if µs[0]i = 0
+		    %%                           0 otherwise
+		    {Us0, State1} = pop(State0),
+		    Val = (bnot Us0) band ?MASK256,
+		    State2 = push(Val, State1),
+		    next_instruction(OP, State2);
+		?BYTE ->
+		    %% 0x1a BYTE δ=2 α=1
+		    %% Retrieve single byte from word.
+		    %% ∀i ∈ [0..255] : µ's[0]i ≡ (µs[1](i+8µs[0])
+                    %%                              if i < 8 ∧ µs[0] < 32
+		    %%                           0  otherwise
+		    %% For Nth byte, we count from the left
+		    %% (i.e. N=0 would be the most significant
+		    %% in big endian)
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Val = byte(Us0, Us1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
+
+		?CALLDATALOAD ->
+		    %% 0x35 CALLDATALOAD δ=1 α=1
+		    %% Get input data of current environment.
+		    %% µ's[0] ≡ Id[µs[0] . . .(µs[0] + 31)] with Id[x] = 0 if x >= |Id|
+		    %% This pertains to the input data passed with the message
+		    %% call instruction or transaction.
+		    Bytes = 32,
+		    {Us0, State1} = pop(State0),
+		    Arg = data_get_val(Us0, Bytes, State1),
+		    State2 = push(Arg, State1),
+		    next_instruction(OP, State2);
+
+		?MLOAD ->
+		    %% 0x51 MLOAD δ=1 α=1
+		    %% Load word from memory.
+		    %% µ's[0] ≡ µm[µs[0] . . .(µs[0] + 31)]
+		    %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
+		    %% The addition in the calculation of µ'i
+		    %% is not subject to the 2^256 modulo.
+		    {Us0, State1} = pop(State0),
+		    Val = mload(Us0, State1),
+		    State2 = push(Val, State1),
+		    next_instruction(OP, State2);
+		?MSTORE ->
+		    %% 0x52 MSTORE δ=2 α=0
+		    %% Save word to memory.
+		    %% µ'm[µs[0] . . .(µs[0] + 31)] ≡ µs[1]
+		    %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
+		    %% The addition in the calculation of µ'i
+		    %% is not subject to the 2^256 modulo.
+		    {Address, State1} = pop(State0),
+		    {Value, State2} = pop(State1),
+		    State3 = mstore(Address, Value, State2),
+		    next_instruction(OP, State3);
+		?MSTORE8 ->
+		    %% 0x53 MSTORE8 δ=2 α=0
+		    %% Save byte to memory.
+		    %% µ'm[µs[0]] ≡ µs[1] mod 256
+		    %% µ'i ≡ max(µi, [(µs[0] + 32) ÷ 32])
+		    %% The addition in the calculation of µ'i
+		    %% is not subject to the 2^256 modulo.
+		    {Address, State1} = pop(State0),
+		    {Value, State2} = pop(State1),
+		    State3 = mstore8(Address, Value, State2),
+		    next_instruction(OP, State3);
+		?SLOAD ->
+		    %% 0x54 SLOAD δ=1 α=1
+		    %% Load word from storage.
+		    %% µ's[0] ≡ σ[Ia]s[µs[0]]
+		    {Us0, State1} = pop(State0),
+		    Val = sload(Us0, State1),
+		    State2 = push(Val, State1),
+		    next_instruction(OP, State2);
 		?SSTORE ->
+		    %% 0x55 SSTORE δ=2 α=0
+		    %% Save word to storage.
+		    %% σ'[Ia]s[µs[0]] ≡ µs[1]
+		    %% CSSTORE(σ, µ) ≡ Gsset if µs[1] =/= 0
+                    %%                         ∧ σ[Ia]s[µs[0]] = 0
+		    %%                 Gsreset otherwise
+		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
+		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
+		    %%       0 otherwise
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
 		    State3 = sstore(Address, Value, State2),
 		    next_instruction(OP, State3);
+		?JUMP ->
+		    %% 0x56 JUMP  δ=1 α=0
+		    %% Alter the program counter.
+		    %% JJUMP(µ) ≡ µs[0]
+		    %% This has the effect of writing said value to µpc.
+		    {Us0, State1} = pop(State0),
+		    State2 = set_cp(Us0-1, State1),
+		    next_instruction(OP, State2);
 		?PUSH1 ->
-		    Arg = code_get_arg(CP+1, 1, Code),
+		    %% 0x60 PUSH1 δ=0 α=1
+		    %% Place 1 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 1,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
 		    State1 = push(Arg, State0),
-		    State2 = inc_cp(1, State1),
+		    State2 = inc_cp(Bytes, State1),
 		    next_instruction(OP, State2);
+		?PUSH2 ->
+		    %% 0x61 PUSH1 δ=0 α=1
+		    %% Place 2 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 2)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 2,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+		?PUSH3 ->
+		    %% 0x62 PUSH2 δ=0 α=1
+		    %% Place 3 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 3)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 3,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+		?PUSH4 ->
+		    %% 0x63 PUSH4 δ=0 α=1
+		    %% Place 4 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 4)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 4,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+
+		?PUSH7 ->
+		    %% 0x66 PUSH7 δ=0 α=1
+		    %% Place a 7 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 7)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 7,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+		?PUSH8 ->
+		    %% 0x67 PUSH8 δ=0 α=1
+		    %% Place an 8 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 8)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 8,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+		?PUSH9 ->
+		    %% 0x68 PUSH17 δ=0 α=1
+		    %% Place a 9 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 9)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 9,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+
+
+		?PUSH17 ->
+		    %% 0x70 PUSH17 δ=0 α=1
+		    %% Place 17 byte item on stack.
+		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 17)
+		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
+		    %%               0 otherwise
+		    %% The bytes are read in line from the
+		    %% program code’s bytes array.
+		    %% The function c ensures the bytes
+		    %% default to zero if they extend past the limits.
+		    %% The byte is right-aligned (takes the lowest
+		    %% significant place in big endian).
+		    Bytes = 17,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
+		    State1 = push(Arg, State0),
+		    State2 = inc_cp(Bytes, State1),
+		    next_instruction(OP, State2);
+
+
 		?PUSH32 ->
-		    Arg = code_get_arg(CP+1, 32, Code),
+		    %% 0x7f PUSH32 δ=0 α=1
+		    %% Place 32-byte (full word) item on stack.
+		    %% µ's[0] ≡ c(µpc + 1). . .(µpc + 32)
+		    %% where c is defined as above.
+		    %% The bytes are right-aligned
+		    %% (takes the lowest significant place in big endian).
+		    Bytes = 32,
+		    Arg = code_get_arg(CP+1, Bytes, Code),
 		    State1 = push(Arg, State0),
-		    State2 = inc_cp(32, State1),
+		    State2 = inc_cp(Bytes, State1),
 		    next_instruction(OP, State2);
+
+		?DUP2 ->
+		    %% 0x81 DUP2  δ=2 α=3
+		    %% Duplicate 2nd stack item.
+		    %% µ's[0] ≡ µs[1]
+		    %% TODO: consider random access stack...
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    State3 = push(Us1, State2),
+		    State4 = push(Us0, State3),
+		    State5 = push(Us1, State4),
+		    next_instruction(OP, State5);
+
+		?SWAP1 ->
+		    %% 0x90 SWAP1 δ=2 α=2
+		    %% Exchange 1st and 2nd stack items.
+		    %% µ's[0] ≡ µs[1]
+		    %% µ's[1] ≡ µs[0]
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    State3 = push(Us0, State2),
+		    State4 = push(Us1, State3),
+		    next_instruction(OP, State4);
+		?RETURN ->
+		    %% 0xf3 RETURN δ=2 α=0
+		    %% Halt execution returning output data.
+		    %% HRETURN(µ) ≡ µm[µs[0] . . .(µs[0] + µs[1] − 1)]
+		    %% This has the effect of halting the execution
+		    %% at this point with output defined.
+		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Out = get_mem_area(Us0, Us0+Us1-1, State2),
+		    aevm_eeevm_state:set_out(Out, State2);
 		_ ->
 		    error({opcode_not_implemented,
-			   hd(io_lib:format("~2.16B",[OP]))})
+			   lists:flatten(
+			     io_lib:format("~2.16.0B",[OP]))})
 	    end;
 	true -> State
     end.
@@ -79,15 +569,83 @@ eval(State) ->
 %% ARITHMETIC
 %% ------------------------------------------------------------------------
 add(Arg1, Arg2) -> (Arg1 + Arg2) band ?MASK256.
+mul(Arg1, Arg2) -> (Arg1 * Arg2) band ?MASK256.
+sub(Arg1, Arg2) -> (Arg1 - Arg2) band ?MASK256.
+exp(Arg1, Arg2) -> pow(Arg1, Arg2) band ?MASK256.
+idiv(_Arg1,    0)-> 0;
+idiv(Arg1, Arg2)-> (Arg1 div Arg2) band ?MASK256.
+sdiv(_Arg1, 0)-> 0;
+sdiv(?NEG2TO255, -1) -> ?NEG2TO255;
+sdiv(Arg1, Arg2) ->
+    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
+    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
+    (SArg1 div SArg2) band ?MASK256.
 
-addmod(Arg1, Arg2, Arg3) -> mod((Arg1 + Arg2), Arg3) band ?MASK256.
-mod(Arg1, Arg2) -> (Arg1 rem Arg2 + Arg2) rem Arg2.
+mod(_Arg1,   0) -> 0;
+mod(Arg1, Arg2) -> modulo(Arg1, Arg2) band ?MASK256.
+
+smod(_Arg1,   0) -> 0;
+smod(Arg1, Arg2) -> smodulo(Arg1, Arg2) band ?MASK256.
+
+
+addmod(_Arg1,_Arg2,   0) -> 0;
+addmod(Arg1, Arg2, Arg3) -> modulo((Arg1 + Arg2), Arg3) band ?MASK256.
+modulo(Arg1, Arg2) ->
+    Res = (Arg1 rem Arg2 + Arg2) rem Arg2,
+    Res.
+
+mulmod(_Arg1,_Arg2,   0) -> 0;
+mulmod(Arg1, Arg2, Arg3) -> modulo((Arg1 * Arg2), Arg3) band ?MASK256.
+
+signed(Val) ->
+    <<SVal:256/integer-signed>> = <<Val:256/integer-unsigned>>,
+    SVal.
+
+smodulo(Arg1, Arg2) ->
+    <<SArg1:256/integer-signed>> = <<Arg1:256/integer-unsigned>>,
+    <<SArg2:256/integer-signed>> = <<Arg2:256/integer-unsigned>>,
+    Res = (SArg1 rem (SArg2 + SArg2)) rem SArg2,
+    Res.
+
+pow(X, Y) when is_integer(X), is_integer(Y), Y >= 0 ->
+    pow(1, X, Y).
+
+pow(N, _, 0) ->     N;
+pow(N, X, 1) -> X * N;
+pow(N, X, Y) ->
+    Square = (X * X) band ?MASK256,
+    Exp = Y bsr 1,
+    if (Y band 1) =:= 0 -> pow(    N, Square, Exp);
+       true             -> pow(X * N, Square, Exp)
+    end.
+
+
+signextend(Us0, Us1) ->
+    ExtendTo =  (256 - 8*((Us0+1) band 255)) band 255,
+    <<_:ExtendTo,SignBit:1, TruncVal/bits>> = 
+	<<Us1:256/integer-unsigned>>,
+    Pad = << <<SignBit:1>> || _ <- lists:seq(1,ExtendTo)>>,
+    <<Val:256/integer-unsigned>> =
+	<<Pad:ExtendTo/bits, SignBit:1, TruncVal/bits>>,
+    Val.
+
+
+byte(Byte, Arg2) when Byte < 32 ->
+    Bitpos = 256 - 8*(Byte+1),
+    Mask = 255,
+    (Arg2 bsr Bitpos) band Mask;
+byte(_,_) -> 0.
+
+
+    
+
 %% ------------------------------------------------------------------------
 %% STACK
 %% ------------------------------------------------------------------------
 push(Arg, State) ->
+    Val = Arg band ?MASK256,
     Stack   = aevm_eeevm_state:stack(State),
-    aevm_eeevm_state:set_stack([Arg|Stack], State).
+    aevm_eeevm_state:set_stack([Val|Stack], State).
 
 pop(State) ->
     [Arg|Stack] = aevm_eeevm_state:stack(State),
@@ -98,27 +656,106 @@ pop(State) ->
 %% ------------------------------------------------------------------------
 
 %% No alignment or size check. Don't use directly.
-mem_write(Address, 0, Mem) -> maps:remove(Address, Mem);
-mem_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
-    
-sstore(Address, Value, State) when is_integer(Value) ->
+m_write(Address,     0, Mem) -> maps:remove(Address, Mem);
+m_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
+
+m_read(Address, 1, Mem) ->
+    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
+    WordVal = maps:get(AlignedAddress , Mem, 0),
+    ByteOffset = Address - AlignedAddress,
+    Byte = ((WordVal bsr ByteOffset) band 255),
+    Byte;
+m_read(Address, 32, Mem) ->
+    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
+    case AlignedAddress =:= Address of
+	true -> %% Aligned.
+	    maps:get(AlignedAddress , Mem, 0);
+	false -> %%
+	    error(unaligned_mem_read_not_implemented)
+    end.
+
+
+mload(Address, State) ->
+    Mem = aevm_eeevm_state:mem(State),
+    Value = m_read(Address, 32, Mem),
+    Value.
+
+
+mstore(Address, Value, State) when is_integer(Value) ->
     case (Address band ?ALIGN256) of
 	%% 256-bits-word aligned
 	0 -> Mem = aevm_eeevm_state:mem(State),
 	     %% Make sure value fits in 256 bits.
 	     Value256 = Value band ?MASK256,
-	     Mem1 = mem_write(Address, Value256, Mem),
+	     Mem1 = m_write(Address, Value256, Mem),
 	     aevm_eeevm_state:set_mem(Mem1, State);
 	_ -> %% Unligned
 	    error({unaligned_sstore_not_handled, Address, Value})
     end.
 
+mstore8(Address, Value, State) when is_integer(Value) ->
+    Mem = aevm_eeevm_state:mem(State),
+    Byte = Value band 255,
+    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
+    WordVal = maps:get(AlignedAddress , Mem, 0),
+    ByteOffset = Address - AlignedAddress,
+    NewWord = (WordVal band (bnot (255 bsl ByteOffset))) bor (Byte bsl ByteOffset),
+    Mem1 = m_write(AlignedAddress, NewWord, Mem),
+    aevm_eeevm_state:set_mem(Mem1, State).
+
+get_mem_area(From, To, State) ->
+    Mem = aevm_eeevm_state:mem(State),
+    list_to_binary([m_read(X, 1, Mem) || X <- lists:seq(From, To)]).
+
+%% ------------------------------------------------------------------------
+%% STORAGE
+%% ------------------------------------------------------------------------
+storage_read(Address, Mem) -> maps:get(Address, Mem, 0).
+
+%% No alignment or size check. Don't use directly.
+storage_write(Address,     0, Mem) -> maps:remove(Address, Mem);
+storage_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
+
+sload(Address, State) ->
+    Store = aevm_eeevm_state:storage(State),
+    Value = storage_read(Address, Store),
+    Value.
+
+
+    
+sstore(Address, Value, State) when is_integer(Value) ->
+    Store = aevm_eeevm_state:storage(State),
+    %% Make sure value fits in 256 bits.
+    Value256 = Value band ?MASK256,
+    Store1 = storage_write(Address, Value256, Store),
+    aevm_eeevm_state:set_storage(Store1, State).
+
+
+%% ------------------------------------------------------------------------
+%% DATA
+%% ------------------------------------------------------------------------
+data_get_val(Address, Size, State) ->
+    Data = aevm_eeevm_state:data(State),
+    if Address >= byte_size(Data) -> 0;
+       true ->
+	    Pos = Address * 8,
+	    Length = Size*8,
+	    <<_:Pos, Arg:Length, _/binary>> = Data,
+	    Arg
+    end.
+
+					 
 
 %% ------------------------------------------------------------------------
 %% CODE
 %% ------------------------------------------------------------------------
 code_get_op(CP, Code) -> binary:at(Code, CP).
 
+%% The function c ensures the bytes default to zero if they
+%% extend past the limits.
+%% The byte is right-aligned (takes the lowest significant
+%% place in big endian).
+code_get_arg(CP,_Size, Code) when CP >= byte_size(Code) -> 0;
 code_get_arg(CP, Size, Code) ->
     Pos = CP * 8,
     Length = Size*8,
@@ -127,6 +764,10 @@ code_get_arg(CP, Size, Code) ->
 
 next_instruction(OP, State) ->
     eval(inc_cp(spend_gas(OP, State))).
+
+set_cp(Address, State) ->
+    aevm_eeevm_state:set_cp(Address, State).
+
 
 inc_cp(State) ->
     CP = aevm_eeevm_state:cp(State),
