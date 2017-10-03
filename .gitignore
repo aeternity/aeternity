@@ -26,3 +26,4 @@ py/tests/swagger_client
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
 apps/aecore/priv
+aevm_external

@@ -10,28 +10,38 @@
 
 -export([ code/1
 	, cp/1
+	, data/1
 	, gas/1
 	, init/1
 	, mem/1
-	, stack/1
 	, set_code/2
 	, set_cp/2
 	, set_gas/2
 	, set_mem/2
+	, set_out/2
 	, set_stack/2
+	, set_storage/2
+	, stack/1
+	, storage/1
 	, trace_format/3
 	]).
 
 init(Spec) ->
-    Code = maps:get(code, Spec),
-    Gas = maps:get(gas, Spec),
-    Trace = maps:get(trace, Spec, false),
-    TraceFun = maps:get(trace_fun, Spec, fun(S,A) -> io:format(S,A) end),
+    Exec = maps:get(exec, Spec),
+    Opts = maps:get(opts, Spec),
+    Code = maps:get(code, Exec),
+    Data = maps:get(data, Exec),
+    Gas = maps:get(gas, Exec),
+    Trace = maps:get(trace, Opts, false),
+    TraceFun = maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end),
 
     #{ stack     => []
-     , mem       => #{}
+     , memory    => #{}
+     , storage   => #{}   %% For now. Should be permanent.
      , code      => Code
+     , data      => Data
      , gas       => Gas
+     , out       => <<>>
      , cp        => 0
      , do_trace  => Trace
      , trace_fun => TraceFun
@@ -39,21 +49,27 @@ init(Spec) ->
      }.
 
 
-cp(State)    -> maps:get(cp, State).
-code(State)  -> maps:get(code, State).
-stack(State) -> maps:get(stack, State).
-mem(State)   -> maps:get(mem, State).
-gas(State)   -> maps:get(gas, State).
-do_trace(State) -> maps:get(do_trace, State).
-trace(State) -> maps:get(trace, State).
+cp(State)        -> maps:get(cp, State).
+code(State)      -> maps:get(code, State).
+data(State)      -> maps:get(data, State).
+stack(State)     -> maps:get(stack, State).
+mem(State)       -> maps:get(memory, State).
+gas(State)       -> maps:get(gas, State).
+storage(State)   -> maps:get(storage, State).
+
+do_trace(State)  -> maps:get(do_trace, State).
+trace(State)     -> maps:get(trace, State).
 trace_fun(State) -> maps:get(trace_fun, State).
 
 
-set_cp(Value, State)    -> maps:put(cp, Value, State).
-set_code(Value, State)  -> maps:put(code, Value, State).
-set_stack(Value, State) -> maps:put(stack, Value, State).
-set_mem(Value, State)   -> maps:put(mem, Value, State).
-set_gas(Value, State)   -> maps:put(gas, Value, State).
+set_cp(Value, State)      -> maps:put(cp, Value, State).
+set_code(Value, State)    -> maps:put(code, Value, State).
+set_stack(Value, State)   -> maps:put(stack, Value, State).
+set_mem(Value, State)     -> maps:put(memory, Value, State).
+set_out(Value, State)     -> maps:put(out, Value, State).
+set_gas(Value, State)     -> maps:put(gas, Value, State).
+set_storage(Value, State) -> maps:put(storage, Value, State).
+  
 
 add_trace(T, State) ->
     Trace = maps:get(trace, State),
