@@ -135,7 +135,7 @@ $(LIB28_SO): $(OBJECTS28) $(CUCKOO_OBJECTS)
 deps: $(LIBDIR)
 
 $(LIBDIR):
-	git clone https://github.com/tromp/cuckoo.git
+	git clone https://github.com/aeternity/cuckoo.git
 	( cd $(LIBDIR) && git checkout bded215; )
 	sed $(SED_FLAGS) 's/printf/aec_printf/g' $(LIBDIR)/src/cuckoo_miner.hpp
 	sed $(SED_FLAGS) 's/.*TWICE_PER_ATOM = .*/int aec_printf(const char *format, ...);&/g' $(LIBDIR)/src/cuckoo_miner.hpp
