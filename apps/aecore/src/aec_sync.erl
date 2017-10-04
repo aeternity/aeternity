@@ -22,6 +22,9 @@
 -export([local_ping_object/0,
          compare_ping_objects/2]).
 
+-export([subscribe/1,
+         unsubscribe/1]).
+
 %% gen_server callbacks
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
 	 handle_info/2,  terminate/2, code_change/3]).
@@ -129,6 +132,16 @@ compare_ping_objects(Local, Remote) ->
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
 
+-spec subscribe(block_created | block_received) -> ok.
+subscribe(Event) when Event == block_created; Event == block_received ->
+    gproc_ps:subscribe(l, Event),
+    ok.
+
+-spec unsubscribe(block_created | block_received) -> ok.
+unsubscribe(Event) ->
+    gproc_ps:unsubscribe(l, Event),
+    ok.
+
 %%%=============================================================================
 %%% gen_server functions
 %%%=============================================================================
@@ -182,6 +195,7 @@ handle_cast({received_block, Block}, State) ->
 handle_cast({block_created, Block}, State) ->
     HdrHash = header_hash(Block),
     cache_and_queue_block(HdrHash, Block, created, forward, State),
+    publish(block_created, aec_blocks:height(Block)),
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
@@ -340,34 +354,50 @@ inspect_regs(Regs, T0, Hash, {P,R} = Prod, Acc) ->
     end.
 
 do_start_sync(PeerUri) ->
-    fetch_headers(PeerUri, []).
+    fetch_headers(PeerUri, genesis_hash(), []).
 
-fetch_headers(PeerUri, Acc) ->
+genesis_hash() ->
+    GHdr = aec_block_genesis:genesis_header(),
+    {ok, GHash} = aec_headers:hash_header(GHdr),
+    GHash.
+
+fetch_headers(PeerUri, GHash, Acc) ->
     case aeu_requests:top(PeerUri) of
         {ok, Hdr} ->
             lager:debug("Top hdr (~p): ~p", [PeerUri, Hdr]),
             {ok, HdrHash} = aec_headers:hash_header(Hdr),
-            case aec_chain:get_header_by_hash(HdrHash) of
-                {ok, _} ->
-                    case aec_chain:get_block_by_hash(HdrHash) of
-                        {ok, _} ->
-                            lager:debug("we have the top block - done", []),
-                            %% We're done already!
-                            ok;
-                        {error, _} ->
-                            lager:debug("fetching top block (~p)", [HdrHash]),
-                            Acc1 = fetch_block(HdrHash, PeerUri, Acc),
-                            fetch_next(aec_headers:prev_hash(Hdr), PeerUri, Acc1)
-                    end;
-                {error, _} ->
-                    lager:debug("we don't have the top block header, fetching block (~p)",
-                                [HdrHash]),
-                    Acc1 = fetch_block(HdrHash, PeerUri, Acc),
-                    fetch_next(aec_headers:prev_hash(Hdr), PeerUri, Acc1)
+            case HdrHash of
+                GHash ->
+                    %% already the genesis hash
+                    ok;
+                _ ->
+                    fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, Acc)
             end;
         {error, Reason} ->
             lager:debug("fetching top block (~p) failed: ~p", [PeerUri, Reason])
     end.
+
+fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, Acc) ->
+    case aec_chain:get_header_by_hash(HdrHash) of
+        {ok, _} ->
+            case aec_chain:get_block_by_hash(HdrHash) of
+                {ok, _} ->
+                    lager:debug("we have the top block - done", []),
+                    %% We're done already!
+                    ok;
+                {error, _} ->
+                    lager:debug("fetching top block (~p)", [HdrHash]),
+                    Acc1 = fetch_block(HdrHash, PeerUri, Acc),
+                    fetch_next(aec_headers:prev_hash(Hdr),
+                               PeerUri, GHash, Acc1)
+            end;
+        {error, _} ->
+            lager:debug("we don't have the top block header,"
+                        " fetching block (~p)", [HdrHash]),
+            Acc1 = fetch_block(HdrHash, PeerUri, Acc),
+            fetch_next(aec_headers:prev_hash(Hdr), PeerUri, GHash, Acc1)
+    end.
+
 
 fetch_block(Hash, PeerUri, Acc) ->
     case aeu_requests:block(PeerUri, Hash) of
@@ -381,7 +411,10 @@ fetch_block(Hash, PeerUri, Acc) ->
             Acc
     end.
 
-fetch_next(Hash, PeerUri, Acc) ->
+fetch_next(GHash, _, GHash, Acc) ->
+    %% No need to fetch the genesis block
+    try_write_blocks(Acc);
+fetch_next(Hash, PeerUri, GHash, Acc) ->
     case aeu_requests:block(PeerUri, Hash) of
         {ok, Block} ->
             case aec_blocks:height(Block) of
@@ -401,7 +434,7 @@ fetch_next(Hash, PeerUri, Acc) ->
                         {error, _} ->
                             lager:debug("new block, continue (~p)", [HdrHash]),
                             fetch_next(
-                              aec_headers:prev_hash(Hdr), PeerUri,
+                              aec_headers:prev_hash(Hdr), PeerUri, GHash,
                               [{HdrHash, Block}|Acc])
                     end
             end;
@@ -473,3 +506,6 @@ header_hash(Block) ->
 
 source_uri() ->
     list_to_binary(aec_peers:get_local_peer_uri()).
+
+publish(Event, Msg) ->
+    gproc_ps:publish(l, Event, Msg).
