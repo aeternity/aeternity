@@ -22,6 +22,7 @@
 start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_swagger_external(),
+    gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 
 local_peer_uri() ->
