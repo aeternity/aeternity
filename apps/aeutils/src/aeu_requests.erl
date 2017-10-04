@@ -24,6 +24,7 @@ ping(Peer) ->
         {ok, Map} ->
             lager:debug("ping response: ~p", [Map]),
             aec_sync:compare_ping_objects(PingObj, Map),
+            check_returned_source(Map, Peer),
             {ok, Map};
         {error, _Reason} = Error ->
             Error
@@ -134,3 +135,14 @@ str(S) when is_list(S); is_binary(S) ->
 
 uenc(V) ->
     http_uri:encode(V).
+
+check_returned_source(#{<<"source">> := Source}, Peer) ->
+    if Peer =/= Source ->
+            %% Consider Peer an alias of Source
+            %% (which should already be registered with aec_peers)
+            lager:debug("Source (~p) and Peer (~p) differ; adding alias",
+                        [Source, Peer]),
+            aec_peers:register_alias(Source, Peer);
+       true ->
+            ok
+    end.
