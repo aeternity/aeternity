@@ -18,6 +18,7 @@
 
 -type tree() :: gb_merkle_trees:tree().
 
+-spec all_trees_new() -> {ok, trees()}.
 all_trees_new() ->
     {ok, A} = new(),
     {ok, #trees{accounts = A}}.

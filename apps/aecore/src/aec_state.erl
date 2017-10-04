@@ -21,6 +21,10 @@
          apply_txs/2,
          force_trees/2]).
 
+-export([
+    empty_state/0,
+    rebuild_from_genesis/0]).
+
 %% API to support consequences of allowing blocks out of order
 -export([check_chain_for_successor/2]).
 
@@ -33,6 +37,8 @@
 
 -record(state, {trees  :: trees(),
                 height = ?GENESIS_HEIGHT :: height()}).
+
+-define(PRE_GENESIS_HEIGHT, ?GENESIS_HEIGHT-1).
 
 %%%===================================================================
 %%% API
@@ -50,9 +56,20 @@ apply_txs(Txs, AtHeight) ->
     gen_server:call(?SERVER, {apply_txs, {Txs, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
 
 %% API needed when external fork has more POW and we need to restart tree from common ancestor
--spec force_trees(trees(), height()) -> {ok, {height(), trees()}}.
+-spec force_trees(trees(), integer()) -> {ok, {height(), trees()}}.
 force_trees(Trees, AtHeight) ->
     gen_server:call(?SERVER, {force_trees, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
+
+-spec empty_state() -> {ok, {height(), trees()}}.
+empty_state() ->
+    %% Initialize state service to pre-genesis state, handy for testing
+    {ok, EmptyTrees} = aec_trees:all_trees_new(),
+    force_trees(EmptyTrees, ?PRE_GENESIS_HEIGHT).
+
+-spec rebuild_from_genesis() -> {ok, {height(), trees()}}.
+rebuild_from_genesis() ->
+    {ok, {TopHeight, TreesAtTopHeight}} = rebuild_state_from_chain(),
+    force_trees(TreesAtTopHeight, TopHeight).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -72,10 +89,7 @@ check_chain_for_successor(Trees, AtHeight) ->
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-    {ok, TopBlock} = aec_chain:top_block(),
-    TopHeight = aec_blocks:height(TopBlock),
-    EmptyTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
-    {ok, TreesAtTopHeight} = setup_trees(TopHeight, EmptyTrees),
+    {ok, {TopHeight, TreesAtTopHeight}} = rebuild_state_from_chain(),
 
     process_flag(trap_exit, true),
 
@@ -122,6 +136,13 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec rebuild_state_from_chain() -> {ok, {height(), trees()}}.
+rebuild_state_from_chain() ->
+    {ok, TopBlock} = aec_chain:top_block(),
+    TopHeight = aec_blocks:height(TopBlock),
+    GenesisTrees = aec_blocks:trees(aec_block_genesis:genesis_block()),
+    {ok, TreesAtTopHeight} = setup_trees(TopHeight, GenesisTrees),
+    {ok, {TopHeight, TreesAtTopHeight}}.
 
 %% INFO: not optimized (by local lookup of prev-block by hash in current-block)
 %%       because of incoming optimization with check points
@@ -151,6 +172,8 @@ do_setup_trees(CurrentHeight, TopHeight, TreesAtEndOfPreviousBlock) ->
 
 
 -spec apply_txs_internal(list(), trees(),  non_neg_integer()) -> {ok, trees()} | {error, term()}.
+apply_txs_internal([], Trees, _) ->
+    {ok, Trees};
 apply_txs_internal(Txs, Trees, AtHeight) ->
     aec_tx:apply_signed(Txs, Trees, AtHeight).
 

@@ -38,6 +38,11 @@ all_test_() ->
                     ?assertEqual(TreesOut1, Trees1),
                     {ok, {HeightOut2, TreesOut2}} = aec_state:get_trees(),
                     ?assertEqual(1, HeightOut2),
-                    ?assertEqual(TreesOut2, Trees1)
+                    ?assertEqual(TreesOut2, Trees1),
+
+                    aec_state:empty_state(),
+                    {ok, {HeightRestarted, _TreesRestarted}} = aec_state:get_trees(),
+                    ?assertEqual(?GENESIS_HEIGHT-1, HeightRestarted)
+
                 end}]
         end]}.
