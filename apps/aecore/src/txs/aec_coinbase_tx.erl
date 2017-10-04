@@ -3,7 +3,10 @@
 %% API
 -export([new/2,
          check/3,
-         process/3]).
+         process/3,
+         serialize/1,
+         deserialize/1,
+         type/0]).
 
 -behavior(aec_tx).
 
@@ -43,3 +46,14 @@ process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
         {error, notfound} ->
             {error, account_not_found}
     end.
+
+serialize(#coinbase_tx{account = Account, nonce = Nonce}) ->
+    #{<<"pubkey">> => base64:encode(Account),
+      <<"nonce">> => Nonce}.
+
+deserialize(#{<<"pubkey">> := Account, <<"nonce">> := Nonce}) -> 
+    #coinbase_tx{account = base64:decode(Account), nonce = Nonce}.
+
+type() ->
+ <<"coinbase">>.
+

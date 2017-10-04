@@ -21,6 +21,12 @@
 -callback process(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
 
+-callback serialize(Tx :: term()) -> map().
+
+-callback deserialize(map()) -> Tx :: term().
+
+-callback type() -> binary().
+
 %%%%=============================================================================
 %% API
 %%%=============================================================================
@@ -42,9 +48,7 @@ apply_signed([SignedTx | Rest], Trees0, Height) ->
                             apply_signed(Rest, Trees2, Height);
                         {error, _Reason} = Error ->
                             Error
-                    end;
-                {error, _Reason} = Error ->
-                    Error
+                    end
             end;
         {error, _Reason} = Error ->
             Error
@@ -59,16 +63,15 @@ apply_signed([SignedTx | Rest], Trees0, Height) ->
 %% Check transaction. Prepare state tree: e.g., create newly referenced account
 %%------------------------------------------------------------------------------
 -spec check_single(tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
-check_single(#coinbase_tx{} = Tx, Trees, Height) ->
-    aec_coinbase_tx:check(Tx, Trees, Height);
-check_single(_Other, _Trees_, _Height) ->
-    {error, not_implemented}.
+check_single(Tx, Trees, Height) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:check(Tx, Trees, Height).
 
 %%------------------------------------------------------------------------------
 %% Process the transaction. Accounts must already be present in the state tree
 %%------------------------------------------------------------------------------
 -spec process_single(tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
-process_single(#coinbase_tx{} = Tx, Trees, Height) ->
-    aec_coinbase_tx:process(Tx, Trees, Height);
-process_single(_Other, _Trees_, _Height) ->
-    {error, not_implemented}.
+process_single(Tx, Trees, Height) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:process(Tx, Trees, Height).
+

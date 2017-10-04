@@ -186,7 +186,7 @@ definitions:
       transactions:
         type: array
         items:
-          type: string
+          $ref: '#/definitions/SignedTx'
   Top:
     type: object
     properties:
@@ -244,6 +244,27 @@ definitions:
       balance:
         type: integer
         format: int64
+  CoinbaseTx:
+    type: object
+    properties:
+      pubkey:
+        type: string
+      nonce:
+        type: integer 
+  SignedTx:
+    type: object
+    properties:
+      type:
+        type: string
+      data:
+        type: object
+        schema:
+          oneOf:
+            - $ref: '#/definitions/CoinbaseTx'
+      signatures:
+        type: array
+        items:
+          type: string
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'
