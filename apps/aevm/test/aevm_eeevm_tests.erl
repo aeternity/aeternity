@@ -392,6 +392,34 @@ vm_push_dup_swap_tests() ->
       %% , swapjump1  %% No post in TC-spec
     ].
 
+%%====================================================================
+%% VMTests tests
+%%====================================================================
+
+vm_sha3_test_() ->
+    aevm_test_utils:testcase_generate("VMTests/vmSha3Test",
+				      vm_sha3_tests()).
+
+vm_sha3_tests() ->
+    [ sha3_0
+    , sha3_1
+    , sha3_2
+    %% , sha3_3 %% error validate_storage
+    %% , sha3_4 %% error validate_storage
+    %% , sha3_5 %% timeout
+    %% , sha3_6 %% timeout
+    %% , sha3_bigOffset %% error validate_storage
+    , sha3_bigOffset2
+    %% , sha3_bigSize %% timeout
+    , sha3_memSizeNoQuadraticCost31
+    , sha3_memSizeQuadraticCost32
+    , sha3_memSizeQuadraticCost32_zeroSize
+    , sha3_memSizeQuadraticCost33
+    , sha3_memSizeQuadraticCost63
+    , sha3_memSizeQuadraticCost64
+    , sha3_memSizeQuadraticCost64_2
+    , sha3_memSizeQuadraticCost65
+    ].
 
 
 %%====================================================================
