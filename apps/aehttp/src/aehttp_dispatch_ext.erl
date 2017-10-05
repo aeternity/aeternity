@@ -56,7 +56,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             {200, [], Resp};
         {error, {chain_too_short, _}} ->
-            {404, [], #{reason => <<"chain too short">>}}
+            {404, [], #{reason => <<"Chain too short">>}}
     end;
 
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
@@ -64,7 +64,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
     Hash = base64:decode(maps:get('hash', Req)),
     case aec_chain:get_header_by_hash(Hash) of
         {error, {header_not_found, _}} ->
-            {404, [], #{reason => <<"block not found">>}};
+            {404, [], #{reason => <<"Block not found">>}};
         {ok, Header} ->
             {ok, HH} = aec_headers:hash_header(Header),
             case aec_chain:get_block_by_hash(HH) of
@@ -78,7 +78,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                       cleanup_genesis(aec_blocks:serialize_to_map(Block)),
                     {200, [], Resp};
                 {error, {block_not_found, _}} ->
-                    {404, [], #{reason => <<"block not found">>}}
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end;
 
@@ -122,7 +122,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
         {ok, #account{balance = B}} ->
             {200, [], #{balance => B}};
         _ ->
-            {404, [], #{reason => <<"account not found">>}}
+            {404, [], #{reason => <<"Account not found">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->
