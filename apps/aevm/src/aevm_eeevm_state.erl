@@ -15,6 +15,7 @@
 	, gas/1
 	, init/1
 	, init/2
+        , out/1
 	, mem/1
 	, set_call/2
 	, set_code/2
@@ -63,6 +64,7 @@ code(State)      -> maps:get(code, State).
 data(State)      -> maps:get(data, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
+out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
 storage(State)   -> maps:get(storage, State).
 
