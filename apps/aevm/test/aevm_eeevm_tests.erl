@@ -8,51 +8,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(opt_format(___Opts__, ___Fmt___, ___Args___),
-        case maps:get(trace, ___Opts__, false) of
-            true -> ?debugFmt(___Fmt___, ___Args___);
-            _    -> ok
-        end).
-
--define(wrap_run(___Expr___),
-        try ___Expr___
-        catch ___X___:___Y___ ->
-                error({___X___, ___Y___, erlang:get_stacktrace()})
-        end).
-
-
 %%====================================================================
 %% Test harness
 %%====================================================================
-
-testcase_generate(Path, Tests) ->
-    case aevm_test_utils:is_external_available() of
-        true ->
-            {foreachx
-            , fun get_config/1
-            , fun(_, _) -> ok end
-            , [{{Path, TestName}, fun testcase/2} || TestName <- Tests]
-            };
-        false ->
-            []
-    end.
-
-get_config({Path, TestName}) ->
-    aevm_test_utils:get_config(Path, TestName).
-
-testcase({Path, Name}, Spec) ->
-    { Path ++ "/" ++ atom_to_list(Name)
-    , fun() ->
-              Opts = extra_opts(Name),
-              ?opt_format(Opts, "Running: ~w~n", [Name]),
-              State = ?wrap_run(aevm_eeevm:run(Spec#{opts => Opts})),
-              ?opt_format(Opts, "Checking: ~w~n", [Name]),
-              PostStorageSpec = aevm_test_utils:get_post_storage(Spec),
-              Storage = aevm_eeevm_state:storage(State),
-              ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
-              ?assertEqual(PostStorageSpec, Storage)
-      end
-    }.
 
 %% To turn on tracing for a test case return a map with trace => true.
 %% e.g. extra_opts(mulmod4) -> #{trace => true};
@@ -65,7 +23,9 @@ extra_opts(_) ->
 %%====================================================================
 
 arithmetic_test_() ->
-    testcase_generate("VMTests/vmArithmeticTest", arithmetic_tests()).
+    Tests = arithmetic_tests(),
+    Path  = "VMTests/vmArithmeticTest",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 arithmetic_tests() ->
     [ add0
@@ -267,8 +227,9 @@ arithmetic_tests() ->
 %%====================================================================
 
 logic_test_() ->
-    testcase_generate("VMTests/vmBitwiseLogicOperation",
-		      logic_tests()).
+    Tests = logic_tests(),
+    Path  = "VMTests/vmBitwiseLogicOperation",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 logic_tests() ->
     [ and0
@@ -338,7 +299,8 @@ logic_tests() ->
 %% VMTests tests
 %%====================================================================
 
-vm_test_() -> testcase_generate("VMTests/vmTests", vm_tests()).
+vm_test_() ->
+    aevm_test_utils:testcase_generate("VMTests/vmTests", vm_tests()).
 
 vm_tests() ->
     [ %% arith    %% Missing post in all of these
@@ -352,7 +314,7 @@ vm_tests() ->
 %%====================================================================
 
 vm_push_dup_swap_test_() ->
-    testcase_generate("VMTests/vmPushDupSwapTest", vm_push_dup_swap_tests()).
+    aevm_test_utils:testcase_generate("VMTests/vmPushDupSwapTest", vm_push_dup_swap_tests()).
 
 vm_push_dup_swap_tests() ->
     [ dup1

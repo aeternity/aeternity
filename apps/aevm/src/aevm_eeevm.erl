@@ -17,29 +17,16 @@
 %%% Created : 2 Oct 2017
 %%%-------------------------------------------------------------------
 -module(aevm_eeevm).
--export([run/1]).
+-export([eval/1]).
 
 %% Exports for tracing. TODO: move to aevm_eevm_code
 -export([code_get_op/2]).
 
 -include("aevm_eeevm.hrl").
 
-run(Spec) ->
-    State = aevm_eeevm_state:init(Spec),
-    try eval(State) of
-	NewState ->
-	    %% Executed to completion
-	    NewState
-	    %% TODO: Possibly flag callouts here
-    catch throw:{Error, ErrorState} ->
-	    %% Handle execution exceptions gracefully here.
-	    io:format("Error ~p~n", [Error]),
-	    ErrorState
-    end.
-
 %% Main eval loop.
 %%
-%% 
+%%
 eval(State) ->
     CP   = aevm_eeevm_state:cp(State),
     Code = aevm_eeevm_state:code(State),
