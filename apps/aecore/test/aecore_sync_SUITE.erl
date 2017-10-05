@@ -371,18 +371,23 @@ miner_xform({function,L,running,3,Clauses}) ->
 miner_xform(_) ->
     continue.
 
-%% Remove all calls to gen_statem:cast(aec_miner, mine) from the
+%% Remove all calls to gen_statem:cast(aec_miner, create_block_candidate) from the
 %% 'running' state - i.e. don't automatically re-mine
 miner_xform_1({call,L,
                {remote,_,{atom,_,gen_statem},{atom,_,cast}},
-               [{atom,_,aec_miner},{atom,_,mine}]}) ->
+               [{atom,_,aec_miner},{atom,_,create_block_candidate}]}) ->
     {atom,L,ok};
 miner_xform_1({clause,_,[{tuple,_,[{atom,_,error},
                                    {atom,_,generation_count_exhausted}]}],
                _,_} = C) ->
     %% don't change next state to idle!
     C;
-miner_xform_1({tuple,L,[{atom,_,next_state},{atom,_,running},{var,_,S}]}) ->
+miner_xform_1({clause,_,[{tuple,_,[{atom,_,error},
+                                   {atom,_,nonce_range_exhausted}]}],
+               _,_} = C) ->
+    %% don't change next state to idle!
+    C;
+miner_xform_1({tuple,L,[{atom,_,next_state},{atom,_,configure},{var,_,S}]}) ->
     {tuple,L,[{atom,L,next_state},{atom,L,idle},{var,L,S}]};
 miner_xform_1(_) ->
     continue.

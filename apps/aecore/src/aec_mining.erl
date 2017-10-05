@@ -1,8 +1,9 @@
 -module(aec_mining).
 
 %% API
--export([mine/0,
-         mine/1]).
+-export([create_block_candidate/0,
+         apply_new_txs/1,
+         mine/4]).
 
 
 -include("common.hrl").
@@ -10,54 +11,63 @@
 -include("txs.hrl").
 
 
-%% Cuckoo Cycle has a solution probability of 2.2% so we are
-%% likely to succeed in 100 steps (~90%).
--define(DEFAULT_MINE_ATTEMPTS_COUNT, 100).
-
 %% API
 
--spec mine() -> {ok, block()} | {error, term()}.
-mine() ->
-    mine(?DEFAULT_MINE_ATTEMPTS_COUNT).
-
--spec mine(non_neg_integer()) -> {ok, block()} | {error, term()}.
-mine(Attempts) ->
+-spec create_block_candidate() -> {ok, block(), integer(), integer()} | {error, term()}.
+create_block_candidate() ->
     {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),
     case get_txs_to_mine(Trees) of
         {error, _} = Error ->
             Error;
-        {ok, Txs} -> 
+        {ok, Txs} ->
             case aec_blocks:new(LastBlock, Txs, Trees) of
                 {ok, Block0} ->
                     Block = maybe_recalculate_difficulty(Block0),
-                    case mine(Block, Attempts) of
-                        {ok, _Block} = Ok ->
-                            Ok;
-                        {error, _Reason} = Error ->
-                            Error
-                    end;
+                    {InitialNonce, MaxNonce} = aec_pow:pick_nonces(),
+                    {ok, Block, InitialNonce, MaxNonce};
                 {error, _Reason} = Error ->
                     Error
             end
     end.
 
+-spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer(), integer()} | {error, term()}.
+apply_new_txs(#block{txs = Txs} = Block) ->
+    MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
+    CurrentTxsBlockCount = length(Txs),
+    case {MaxTxsInBlockCount, CurrentTxsBlockCount} of
+        {Count, Count} ->
+            {ok, Block};
+        {_, _} ->
+            %% TODO: Do not create new block candidate with all txs applied again on trees.
+            %% What should be done instead is:
+            %%  1) Fetch [aec_governance:max_txs_in_block() - 1] transactions from the mempool
+            %%  2) From the fetched transaction, filter out txs
+            %%     which are already included in the current block candidate.
+            %%  3) Apply txs on the current blocks candidate.
+            %%  4) Replace in the block candidate only the subset of
+            %%     its fields, i.e. txs tree root hash, state trees, and whatnot...
+            create_block_candidate()
+    end.
 
-%% Internal functions
-
--spec mine(block(), non_neg_integer()) -> {ok, block()} | {error, term()}.
-mine(Block, Attempts) ->
+-spec mine(block(), non_neg_integer(), integer(), integer()) -> {ok, block()} | {error, term()}.
+mine(Block, Attempts, InitialNonce, MaxNonce) ->
     Target = aec_blocks:target(Block),
     {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
-    case Mod:generate(BlockBin, Target, Attempts) of
+    case Mod:generate(BlockBin, Target, Attempts, InitialNonce, MaxNonce) of
         {ok, {Nonce, Evd}} ->
             {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
         {error, generation_count_exhausted} = Error ->
+            Error;
+        {error, nonce_range_exhausted} = Error ->
             Error
     end.
 
--spec get_txs_to_mine(trees()) -> {'ok', list(signed_tx())} | {error, term()}.
+
+%% Internal functions
+
+-spec get_txs_to_mine(trees()) -> {ok, list(signed_tx()), non_neg_integer()} | {error, term()}.
 get_txs_to_mine(Trees) ->
     {ok, Txs0} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     case create_coinbase_tx(Trees) of

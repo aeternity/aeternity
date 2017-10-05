@@ -114,13 +114,16 @@ miner_test_() ->
       fun(_) ->
               {"Remove keys while miner runs",
                fun() ->
-                       ?assertEqual({running, {state}}, sys:get_state(aec_miner)),
+                       {State1, _Data1} = sys:get_state(aec_miner),
+                       ?assertEqual(running, State1),
                        ?assertEqual(ok, aec_keys:delete()),
-                       timer:sleep(100),
-                       ?assertEqual({waiting_for_keys, {state}}, sys:get_state(aec_miner)), %% XXX This assertion is fragile. Ticket GH-204 shall simplify this code path.
+                       timer:sleep(1000),
+                       {State2, _Data2} = sys:get_state(aec_miner),
+                       ?assertEqual(waiting_for_keys, State2), %% XXX This assertion is fragile. Ticket GH-204 shall simplify this code path.
                        ?assertNotEqual(error, aec_keys:new("mynewpassword")),
-                       timer:sleep(100),
-                       ?assertEqual({running, {state}}, sys:get_state(aec_miner))
+                       timer:sleep(10),
+                       {State3, _Data3} = sys:get_state(aec_miner),
+                       ?assertEqual(configure, State3)
                end}
       end
      ]}.
