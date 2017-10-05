@@ -14,6 +14,7 @@
 	, data/1
 	, gas/1
 	, init/1
+	, init/2
 	, mem/1
 	, set_call/2
 	, set_code/2
@@ -30,8 +31,10 @@
 	]).
 
 init(Spec) ->
+    init(Spec, #{}).
+
+init(Spec, Opts) ->
     Exec = maps:get(exec, Spec),
-    Opts = maps:get(opts, Spec),
     Code = maps:get(code, Exec),
     Data = maps:get(data, Exec),
     Caller = maps:get(caller, Exec),
@@ -77,10 +80,9 @@ set_out(Value, State)     -> maps:put(out, Value, State).
 set_gas(Value, State)     -> maps:put(gas, Value, State).
 set_storage(Value, State) -> maps:put(storage, Value, State).
 set_selfdestruct(Value, State) -> maps:put(selfdestruct, Value, State).
-  
 
 add_trace(T, State) ->
-    Trace = maps:get(trace, State),
+    Trace = trace(State),
     maps:put(trace, Trace ++ [T], State).
 
 trace_format(String, Argument, State) ->
