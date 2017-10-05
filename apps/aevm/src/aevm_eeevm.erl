@@ -26,7 +26,16 @@
 
 run(Spec) ->
     State = aevm_eeevm_state:init(Spec),
-    eval(State).
+    try eval(State) of
+	NewState ->
+	    %% Executed to completion
+	    NewState
+	    %% TODO: Possibly flag callouts here
+    catch throw:{Error, ErrorState} ->
+	    %% Handle execution exceptions gracefully here.
+	    io:format("Error ~p~n", [Error]),
+	    ErrorState
+    end.
 
 %% Main eval loop.
 %%
@@ -295,6 +304,17 @@ eval(State) ->
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
 
+		?CALLER ->
+		    %% 0x33 CALLER δ=0 α=1
+		    %% Get caller address.
+		    %% µ's[0] ≡ Is
+		    %% This is the address of the account
+		    %% that is directly responsible for this execution.
+		    Arg = aevm_eeevm_state:caller(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
+
+
 		?CALLDATALOAD ->
 		    %% 0x35 CALLDATALOAD δ=1 α=1
 		    %% Get input data of current environment.
@@ -370,6 +390,32 @@ eval(State) ->
 		    {Us0, State1} = pop(State0),
 		    State2 = set_cp(Us0-1, State1),
 		    next_instruction(OP, State2);
+		?JUMPI ->
+		    %% 0x57 JUMPI δ=2 α=0
+		    %% Conditionally alter the program counter.
+		    %% JJUMPI(µ) ≡ µs[0] if µs[1] =/= 0
+		    %%             µpc + 1 otherwise
+		    %% This has the effect of writing said value to µpc.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    State3 =
+			if Us1 =/= 0 -> set_cp(Us0-1, State1);
+			   true      -> State1
+			end,
+		    next_instruction(OP, State3);
+		?GAS ->
+		    %% 0x5a GAS δ=0 α=1
+		    %% Get the amount of available gas,
+		    %% including the corresponding reduction
+		    %% for the cost of this instruction.
+		    %% µ's[0] ≡ µg
+		    Arg = aevm_eeevm_state:gas(State0),
+		    Cost = op_cost(maps:get(OP, opcodes())),
+		    Val = Arg - Cost,
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State1);
+
+
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.
@@ -382,135 +428,69 @@ eval(State) ->
 		    %% default to zero if they extend past the limits.
 		    %% The byte is right-aligned (takes the lowest
 		    %% significant place in big endian).
-		    Bytes = 1,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH2 ->
 		    %% 0x61 PUSH1 δ=0 α=1
 		    %% Place 2 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 2)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 2,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH3 ->
-		    %% 0x62 PUSH2 δ=0 α=1
-		    %% Place 3 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 3)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 3,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH4 ->
-		    %% 0x63 PUSH4 δ=0 α=1
-		    %% Place 4 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 4)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 4,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
-
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH5 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH6 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH7 ->
-		    %% 0x66 PUSH7 δ=0 α=1
-		    %% Place a 7 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 7)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 7,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH8 ->
-		    %% 0x67 PUSH8 δ=0 α=1
-		    %% Place an 8 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 8)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 8,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH9 ->
-		    %% 0x68 PUSH17 δ=0 α=1
-		    %% Place a 9 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 9)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 9,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
-
-
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH10 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH11 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH12 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH13 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH14 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH15 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH16 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH17 ->
-		    %% 0x70 PUSH17 δ=0 α=1
-		    %% Place 17 byte item on stack.
-		    %% µ's[0] ≡ c(µpc + 1 ... µpc + 17)
-		    %% where c(x) ≡ (Ib[x] if x < ||Ib||
-		    %%               0 otherwise
-		    %% The bytes are read in line from the
-		    %% program code’s bytes array.
-		    %% The function c ensures the bytes
-		    %% default to zero if they extend past the limits.
-		    %% The byte is right-aligned (takes the lowest
-		    %% significant place in big endian).
-		    Bytes = 17,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
-
-
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH18 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH19 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH20 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH21 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH22 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH23 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH24 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH25 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH26 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH27 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH28 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH29 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH30 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?PUSH31 ->
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
 		?PUSH32 ->
 		    %% 0x7f PUSH32 δ=0 α=1
 		    %% Place 32-byte (full word) item on stack.
@@ -518,34 +498,188 @@ eval(State) ->
 		    %% where c is defined as above.
 		    %% The bytes are right-aligned
 		    %% (takes the lowest significant place in big endian).
-		    Bytes = 32,
-		    Arg = code_get_arg(CP+1, Bytes, Code),
-		    State1 = push(Arg, State0),
-		    State2 = inc_cp(Bytes, State1),
-		    next_instruction(OP, State2);
-
+		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		?DUP1 ->
+		    %% 0x80 DUP1  δ=1 α=2
+		    %% Duplicate 1nd stack item.
+		    %% µ's[0] ≡ µs[0]
+		    next_instruction(OP, dup(1,State0));
 		?DUP2 ->
 		    %% 0x81 DUP2  δ=2 α=3
 		    %% Duplicate 2nd stack item.
 		    %% µ's[0] ≡ µs[1]
-		    %% TODO: consider random access stack...
-		    {Us0, State1} = pop(State0),
-		    {Us1, State2} = pop(State1),
-		    State3 = push(Us1, State2),
-		    State4 = push(Us0, State3),
-		    State5 = push(Us1, State4),
-		    next_instruction(OP, State5);
+		    next_instruction(OP, dup(2,State0));
+		?DUP3 ->
+		    %% 0x82 DUP3  δ=3 α=4
+		    %% Duplicate 3nd stack item.
+		    %% µ's[0] ≡ µs[2]
+		    next_instruction(OP, dup(3,State0));
+		?DUP4 ->
+		    %% 0x83 DUP4  δ=4 α=5
+		    %% Duplicate 4th stack item.
+		    %% µ's[0] ≡ µs[3]
+		    next_instruction(OP, dup(4,State0));
+		?DUP5 ->
+		    %% 0x84 DUP5  δ=5 α=6
+		    %% Duplicate 5th stack item.
+		    %% µ's[0] ≡ µs[4]
+		    next_instruction(OP, dup(5,State0));
+		?DUP6 ->
+		    %% 0x85 DUP6  δ=6 α=7
+		    %% Duplicate 6th stack item.
+		    %% µ's[0] ≡ µs[5]
+		    next_instruction(OP, dup(6,State0));
+		?DUP7 ->
+		    %% 0x86 DUP7  δ=7 α=8
+		    %% Duplicate 7th stack item.
+		    %% µ's[0] ≡ µs[6]
+		    next_instruction(OP, dup(7,State0));
+		?DUP8 ->
+		    %% 0x87 DUP8  δ=8 α=9
+		    %% Duplicate 8th stack item.
+		    %% µ's[0] ≡ µs[7]
+		    next_instruction(OP, dup(8,State0));
+		?DUP9 ->
+		    %% 0x88 DUP9  δ=9 α=10
+		    %% Duplicate 9th stack item.
+		    %% µ's[0] ≡ µs[8]
+		    next_instruction(OP, dup(9,State0));
+		?DUP10 ->
+		    %% 0x89 DUP10  δ=10 α=11
+		    %% Duplicate 10th stack item.
+		    %% µ's[0] ≡ µs[9]
+		    next_instruction(OP, dup(10,State0));
+		?DUP11 ->
+		    %% 0x8a DUP11  δ=11 α=12
+		    %% Duplicate 11th stack item.
+		    %% µ's[0] ≡ µs[10]
+		    next_instruction(OP, dup(11,State0));
+		?DUP12 ->
+		    %% 0x8b DUP12  δ=12 α=13
+		    %% Duplicate 12th stack item.
+		    %% µ's[0] ≡ µs[11]
+		    next_instruction(OP, dup(12,State0));
+		?DUP13 ->
+		    %% 0x8c DUP13  δ=13 α=14
+		    %% Duplicate 13th stack item.
+		    %% µ's[0] ≡ µs[12]
+		    next_instruction(OP, dup(13,State0));
+		?DUP14 ->
+		    %% 0x8d DUP14  δ=14 α=15
+		    %% Duplicate 14th stack item.
+		    %% µ's[0] ≡ µs[13]
+		    next_instruction(OP, dup(14,State0));
+		?DUP15 ->
+		    %% 0x8e DUP15  δ=15 α=16
+		    %% Duplicate 15th stack item.
+		    %% µ's[0] ≡ µs[14]
+		    next_instruction(OP, dup(15,State0));
+		?DUP16 ->
+		    %% 0x8f DUP16  δ=16 α=17
+		    %% Duplicate 16th stack item.
+		    %% µ's[0] ≡ µs[5]
+		    next_instruction(OP, dup(16,State0));
 
 		?SWAP1 ->
 		    %% 0x90 SWAP1 δ=2 α=2
 		    %% Exchange 1st and 2nd stack items.
 		    %% µ's[0] ≡ µs[1]
 		    %% µ's[1] ≡ µs[0]
-		    {Us0, State1} = pop(State0),
-		    {Us1, State2} = pop(State1),
-		    State3 = push(Us0, State2),
-		    State4 = push(Us1, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP2 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP3 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP4 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP5 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP6 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP7 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP8 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP9 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP10 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP11 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP12 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP13 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP14 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP15 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		?SWAP16 ->
+		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+
+
+		?CALL ->
+		    %% 0xf1 CALL  δ=7 α=1
+		    %% Message-call into an account.
+		    %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
+		    %%                    Θ(σ, Ia, Io, t, t,
+		    %% (σ', g', A+, o) ≡    CCALLGAS(µ), Ip, µs[2], µs[2],
+		    %%                      i, Ie + 1)
+		    %%                      if µs[2] =< σ[Ia]b ∧ Ie < 1024
+		    %%                    (σ, g, ∅,()) otherwise  
+                    %% n ≡ min({µs[6], |o|})
+		    %% µ'm[µs[5] . . .(µs[5] + n − 1)] = o[0 . . .(n − 1)]
+		    %% µ'g ≡ µg + g'
+		    %% µ's[0] ≡ x
+		    %% A' ≡ A U A+
+		    %% t ≡ µs[1] mod 2^160
+		    %% where
+		    %%  x = 0
+		    %%   if the code execution for this
+		    %%      operation failed due to an exceptional halting
+		    %%      Z(σ, µ, I) = T 
+                    %%   or
+		    %%   if µs[2] > σ[Ia]b (not enough funds)
+		    %%   or
+		    %%   Ie = 1024 (call depth limit reached); 
+		    %%  x = 1
+		    %%   otherwise.
+		    %% µ'i ≡ M(M(µi, µs[3], µs[4]), µs[5], µs[6])
+		    %% Thus the operand order is:
+		    %%  gas, to, value, in offset, in size,
+		    %%  out offset, out size.
+		    %% CCALL(σ, µ) ≡ CGASCAP(σ, µ) + CEXTRA(σ, µ)
+		    %% CCALLGAS(σ, µ) ≡ CGASCAP(σ, µ) + Gcallstipend
+		    %%                    if µs[2] =/= 0
+		    %%                  CGASCAP(σ, µ)
+		    %%                    otherwise
+		    %% CGASCAP(σ, µ) ≡ min{L(µg − CEXTRA(σ, µ)), µs[0]}
+		    %%                    if µg ≥ CEXTRA(σ, µ)
+		    %%                 µs[0]
+		    %%                    otherwise
+		    %% CEXTRA(σ, µ) ≡ Gcall + CXFER(µ) + CNEW(σ, µ)
+		    %% CXFER(µ) ≡ Gcallvalue if µs[2] =/= 0
+		    %%            0 otherwise
+		    %% CNEW(σ, µ) ≡ Gnewaccount if σ[µs[1] mod 2^160] = ∅
+		    %%              0 otherwise
+		    %%
+		    {Gas, State1} = pop(State0),
+		    {To, State2} = pop(State1),
+		    {Value, State3} = pop(State2),
+		    {IOffset, State4} = pop(State3),
+		    {ISize, State5} = pop(State4),
+		    {OOffset, State6} = pop(State5),
+		    {OSize, State7} = pop(State6),
+		    Call = #{ gas => Gas
+			    , to => To
+			    , value => Value
+			    , in_offset => IOffset
+			    , in_size => ISize
+			    , out_offset => OOffset
+			    , out_size => OSize},
+		    State8 = aevm_eeevm_state:set_call(Call, State7),
+		    State8;
+
 		?RETURN ->
 		    %% 0xf3 RETURN δ=2 α=0
 		    %% Halt execution returning output data.
@@ -557,6 +691,21 @@ eval(State) ->
 		    {Us1, State2} = pop(State1),
 		    Out = get_mem_area(Us0, Us0+Us1-1, State2),
 		    aevm_eeevm_state:set_out(Out, State2);
+		?SUICIDE ->
+		    %% 0xff SELFDESTRUCT 1 0
+		    %% Halt execution and register account for
+		    %% later deletion.
+		    %% A's ≡ As ∪ {Ia}
+		    %% σ'[µs[0] mod 2^160]b ≡ σ[µs[0] mod 2^160]b + σ[Ia]b
+		    %% σ'[Ia]b ≡ 0
+		    %% A'r ≡ Ar + (Rselfdestruct if Ia -∈ As
+		    %%       0 otherwise
+		    %% CSELFDESTRUCT(σ, µ) ≡ Gselfdestruct
+		    %%                       + Gnewaccount
+		    %%                           if σ[µs[0] mod 2^160] = ∅
+		    %%                       + 0 otherwise
+		    {Us0, State1} = pop(State0),
+		    aevm_eeevm_state:set_selfdestruct(Us0, State1);
 		_ ->
 		    error({opcode_not_implemented,
 			   lists:flatten(
@@ -647,9 +796,53 @@ push(Arg, State) ->
     Stack   = aevm_eeevm_state:stack(State),
     aevm_eeevm_state:set_stack([Val|Stack], State).
 
+push_n_bytes_from_cp(N, State) ->
+    CP   = aevm_eeevm_state:cp(State),
+    Code = aevm_eeevm_state:code(State),
+    Arg = code_get_arg(CP+1, N, Code),
+    State1 = push(Arg, State),
+    inc_cp(N, State1).
+
+
 pop(State) ->
-    [Arg|Stack] = aevm_eeevm_state:stack(State),
-    {Arg, aevm_eeevm_state:set_stack(Stack, State)}.
+    case aevm_eeevm_state:stack(State) of
+	[Arg|Stack] ->
+	    {Arg, aevm_eeevm_state:set_stack(Stack, State)};
+	[] ->
+	    throw({error_pop_empty_stack, State})
+    end.
+
+dup(N, State) ->
+    case aevm_eeevm_state:stack(State) of
+	[] ->
+	    throw({error_dup_empty_stack, State});
+	Stack ->
+	    case length(Stack) < N of
+		true ->
+		    throw({error_dup_too_small_stack, State});
+		false ->
+		    Val = lists:nth(N, Stack),
+		    push(Val, State)
+	    end
+    end.
+
+swap(N, State) ->
+    case aevm_eeevm_state:stack(State) of
+	[] ->
+    	    throw({error_swap_empty_stack, State});
+	[Top|Rest] ->
+	    case length(Rest) < N of
+		true ->
+		    throw({error_swap_too_small_stack, State});
+		false ->
+		    Nth = lists:nth(N, Rest),
+		    Stack = [Nth| set_nth(N, Top, Rest)],
+		    aevm_eeevm_state:set_stack(Stack, State)
+	    end
+    end.
+
+set_nth(1, Val, [_|Rest]) -> [Val|Rest];
+set_nth(N, Val, [E|Rest]) -> [E|set_nth(N-1, Val, Rest)].
 
 %% ------------------------------------------------------------------------
 %% MEMORY
@@ -756,6 +949,13 @@ code_get_op(CP, Code) -> binary:at(Code, CP).
 %% The byte is right-aligned (takes the lowest significant
 %% place in big endian).
 code_get_arg(CP,_Size, Code) when CP >= byte_size(Code) -> 0;
+code_get_arg(CP, Size, Code) when CP+Size >= byte_size(Code) -> 
+    End = byte_size(Code),
+    DataSize = (Size - (End - CP))*8,
+    Pos = CP * 8,
+    Length = Size*8,
+    <<_:Pos, Arg:Length, _/binary>> = <<Code/binary, 0:DataSize>>,
+    Arg;
 code_get_arg(CP, Size, Code) ->
     Pos = CP * 8,
     Length = Size*8,
