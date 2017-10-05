@@ -65,17 +65,21 @@ testcase({Path, Name, Opts}, Spec) ->
               ?opt_format(Opts, "Running: ~w~n", [Name]),
               State = ?wrap_run(run_eeevm(InitState)),
               ?opt_format(Opts, "Checking: ~w~n", [Name]),
-              PostStorageSpec = get_post_storage(Spec),
-              Storage = aevm_eeevm_state:storage(State),
               ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
-              ?assertEqual(PostStorageSpec, Storage)
+              validate_storage(State, Spec),
+              validate_out(State, Spec)
       end
     }.
 
-get_post_storage(#{post := Post}) ->
+validate_storage(State, #{post := Post} =_Spec) ->
     %% TODO: The hash needs to be checked
-    [{_, #{storage := Storage}}] = maps:to_list(Post),
-    Storage.
+    [{_, #{storage := PostStorageSpec}}] = maps:to_list(Post),
+    Storage = aevm_eeevm_state:storage(State),
+    ?assertEqual(PostStorageSpec, Storage).
+
+validate_out(State, #{out := SpecOut} =_Spec) ->
+    Out  = aevm_eeevm_state:out(State),
+    ?assertEqual(SpecOut, Out).
 
 %%--------------------------------------------------------------------
 %% Interfacing to aevm_eevm
@@ -86,7 +90,7 @@ init_state(Spec, Opts) ->
 run_eeevm(State) ->
     try aevm_eeevm:eval(State) of
 	NewState ->
-	    %% Executed to completion
+	    %% Executed to completion'
 	    NewState
 	    %% TODO: Possibly flag callouts here
     catch throw:{Error, ErrorState} ->
