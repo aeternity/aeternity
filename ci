@@ -58,7 +58,7 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
         Prefix=$(package_prefix "${TRAVIS_OS_NAME:?}")
-        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-0.1.0.tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/"${Prefix:?}"-epoch-0.1.0.tar.gz
+        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-0.2.0.tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/"${Prefix:?}"-epoch-0.2.0.tar.gz
         ;;
     after_failure-check_rels)
         BuildDir="${3:?}"
