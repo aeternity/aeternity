@@ -8,7 +8,8 @@
 %%% Created : 2 Oct 2017
 %%%-------------------------------------------------------------------
 
--export([ caller/1
+-export([ call/1
+        , caller/1
 	, code/1
 	, cp/1
 	, data/1
@@ -34,30 +35,37 @@
 init(Spec) ->
     init(Spec, #{}).
 
-init(Spec, Opts) ->
-    Exec = maps:get(exec, Spec),
-    Code = maps:get(code, Exec),
-    Data = maps:get(data, Exec),
-    Caller = maps:get(caller, Exec),
-    Gas = maps:get(gas, Exec),
-    Trace = maps:get(trace, Opts, false),
-    TraceFun = maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end),
-
-    #{ stack     => []
-     , memory    => #{}
-     , storage   => #{}   %% For now. Should be permanent.
-     , code      => Code
-     , data      => Data
-     , caller    => Caller
-     , gas       => Gas
-     , out       => <<>>
+init(#{exec := Exec, pre := Pre} = _Spec, Opts) ->
+    Address = maps:get(address, Exec),
+    #{ address   => Address
+     , call      => #{}
+     , caller    => maps:get(caller, Exec)
+     , code      => maps:get(code, Exec)
      , cp        => 0
-     , do_trace  => Trace
-     , trace_fun => TraceFun
+     , data      => maps:get(data, Exec)
+     , do_trace  => maps:get(trace, Opts, false)
+     , gas       => maps:get(gas, Exec)
+     , gas_price => maps:get(gasPrice, Exec)
+     , memory    => #{}
+     , origin    => maps:get(origin, Exec)
+     , out       => <<>>
+     , stack     => []
+     , storage   => init_storage(Address, Pre)
      , trace     => []
+     , trace_fun => init_trace_fun(Opts)
+     , value     => maps:get(value, Exec)
      }.
 
+init_storage(Address, #{} = Pre) ->
+    case maps:get(Address, Pre, undefined) of
+        undefined -> #{};
+        #{storage := S} -> S
+    end.
 
+init_trace_fun(Opts) ->
+    maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
+
+call(State)      -> maps:get(call, State).
 caller(State)    -> maps:get(caller, State).
 cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).

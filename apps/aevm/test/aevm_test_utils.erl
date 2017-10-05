@@ -67,19 +67,36 @@ testcase({Path, Name, Opts}, Spec) ->
               ?opt_format(Opts, "Checking: ~w~n", [Name]),
               ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
               validate_storage(State, Spec),
-              validate_out(State, Spec)
+              validate_out(State, Spec),
+              validate_gas(State, Spec),
+              validate_callcreates(State, Spec)
       end
     }.
 
-validate_storage(State, #{post := Post} =_Spec) ->
-    %% TODO: The hash needs to be checked
-    [{_, #{storage := PostStorageSpec}}] = maps:to_list(Post),
+validate_storage(State, #{exec := #{address := Addr}, post := Post} =_Spec) ->
+    PostStorage =
+        case maps:get(Addr, Post, undefined) of
+            undefined -> #{};
+            #{storage := S} -> S
+        end,
     Storage = aevm_eeevm_state:storage(State),
-    ?assertEqual(PostStorageSpec, Storage).
+    ?assertEqual(PostStorage, Storage).
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),
     ?assertEqual(SpecOut, Out).
+
+validate_gas(State, #{gas :=_SpecGas, exec := #{gas :=_GasIn}} =_Spec) ->
+    %% TODO: Start checking when gas is calculated correctly.
+    _Out  = aevm_eeevm_state:gas(State),
+    %% ?assertEqual({GasIn, SpecGas}, {GasIn, Out}),
+    ok.
+
+validate_callcreates(State, #{callcreates := []} =_Spec) ->
+    Callcreates = aevm_eeevm_state:call(State),
+    ?assertEqual(0, maps:size(Callcreates));
+validate_callcreates(_State, #{callcreates := [_|_] =_CallcreatesSpec} =_Spec) ->
+    error(callcreates_nyi).
 
 %%--------------------------------------------------------------------
 %% Interfacing to aevm_eevm
