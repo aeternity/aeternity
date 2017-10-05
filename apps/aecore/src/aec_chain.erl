@@ -1159,6 +1159,9 @@ do_force_insert_headers_internal_1(
                   end,
                   HeadersDb,
                   HeaderChainWithWork),
+            {ok, _} = aec_state:force_trees(
+                        aec_blocks:trees(aec_block_genesis:genesis_block()),
+                        ?GENESIS_HEIGHT),
             {ok, NewTopHeaderDb} =
                 top_header_db_put(TopHeaderDb, ?TOP_HEADER, NewTopHeaderHash),
             {ok, {NewHeadersDb, NewBlocksDb}} =
@@ -1169,6 +1172,7 @@ do_force_insert_headers_internal_1(
             {ok, NewTopBlock} =
                 do_find_highest_block_from_header_hash(NewTopHeaderHash,
                                                        NewHeadersDb, NewBlocksDb),
+            ok = aec_state:async_check_chain_for_successor(),
             {ok, {_Reply = {ok, {{old_top_header, OldTopHeader#chain_header.h},
                                  {new_top_header, NewTopHeader#chain_header.h}}},
                   {NewTopHeader, NewTopBlock,
