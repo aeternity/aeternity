@@ -19,7 +19,8 @@
 %% API designed for chain service
 -export([get_trees/0,
          apply_txs/2,
-         force_trees/2]).
+         force_trees/2,
+         async_check_chain_for_successor/0]).
 
 -export([
     empty_state/0,
@@ -59,6 +60,10 @@ apply_txs(Txs, AtHeight) ->
 -spec force_trees(trees(), integer()) -> {ok, {height(), trees()}}.
 force_trees(Trees, AtHeight) ->
     gen_server:call(?SERVER, {force_trees, {Trees, AtHeight}}, ?DEFAULT_CALL_TIMEOUT).
+
+-spec async_check_chain_for_successor() -> ok.
+async_check_chain_for_successor() ->
+    gen_server:cast(?SERVER, {check_chain_for_successor}).
 
 -spec empty_state() -> {ok, {height(), trees()}}.
 empty_state() ->
@@ -115,7 +120,9 @@ handle_call({apply_txs, {Txs, AtHeight}}, _From,
     {reply, {Reply, {HeightUpdated, TreesUpdated}},
         State#state{trees=TreesUpdated, height = HeightUpdated}}.
 
-handle_cast(_Msg, State) ->
+handle_cast({check_chain_for_successor},
+            #state{trees = Trees, height = Height} = State) ->
+    spawn_link(?MODULE, check_chain_for_successor, [Trees, Height]),
     {noreply, State}.
 
 handle_info({'EXIT', _, normal}, State) ->

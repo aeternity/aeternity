@@ -1172,7 +1172,7 @@ do_force_insert_headers_internal_1(
             {ok, NewTopBlock} =
                 do_find_highest_block_from_header_hash(NewTopHeaderHash,
                                                        NewHeadersDb, NewBlocksDb),
-            %% TODO Trigger check chain for successor.
+            ok = aec_state:async_check_chain_for_successor(),
             {ok, {_Reply = {ok, {{old_top_header, OldTopHeader#chain_header.h},
                                  {new_top_header, NewTopHeader#chain_header.h}}},
                   {NewTopHeader, NewTopBlock,
