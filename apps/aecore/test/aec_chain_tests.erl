@@ -9,9 +9,15 @@ genesis_block() ->
 
 top_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
-              aec_state:start_link(), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
+     fun() ->
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             {ok, _} = aec_state:start_link(),
+             ok
+     end,
+     fun(_) ->
+             ok = aec_state:stop(),
+             ok = aec_chain:stop()
+     end,
      [{"Initialize chain with genesis block, then check top block with related state trees",
        fun() ->
                GB = genesis_block(),
@@ -26,9 +32,15 @@ top_test_() ->
 
 genesis_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
-              aec_state:start_link(), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
+     fun() ->
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             {ok, _} = aec_state:start_link(),
+             ok
+     end,
+     fun(_) ->
+             ok = aec_state:stop(),
+             ok = aec_chain:stop()
+     end,
      fun() ->
              GB = genesis_block(),
              ?assertEqual({ok, GB}, aec_chain:top_block()),
@@ -45,9 +57,15 @@ genesis_test_() ->
 
 header_chain_test_() ->
     {setup,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
-              aec_state:start_link(), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
+     fun() ->
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             {ok, _} = aec_state:start_link(),
+             ok
+     end,
+     fun(_) ->
+             ok = aec_state:stop(),
+             ok = aec_chain:stop()
+     end,
      fun() ->
              %% Check chain is at genesis.
              B0 = genesis_block(),
@@ -100,9 +118,15 @@ header_chain_test_() ->
 
 block_chain_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
-              aec_state:start_link(), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
+     fun() ->
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             {ok, _} = aec_state:start_link(),
+             ok
+     end,
+     fun(_) ->
+             ok = aec_state:stop(),
+             ok = aec_chain:stop()
+     end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
                %% Check chain is at genesis.
@@ -225,16 +249,16 @@ get_work_test_() ->
              meck:expect(
                aec_headers, difficulty,
                fun(#header{target = T}) when is_integer(T) -> float(T) end),
-             {ok, Pid} = aec_chain:start_link(
-                           fake_genesis_block_with_difficulty()),
-             aec_state:start_link(),
-             Pid
+             {ok, _} = aec_chain:start_link(
+                         fake_genesis_block_with_difficulty()),
+             {ok, _} = aec_state:start_link(),
+             ok
      end,
-     fun(_ChainPid) ->
+     fun(_) ->
              ok = aec_state:stop(),
+             ok = aec_chain:stop(),
              ?assert(meck:validate(aec_headers)),
-             meck:unload(aec_headers),
-             ok = aec_chain:stop()
+             meck:unload(aec_headers)
      end,
      [{"Get work in chain of only genesis",
        fun() ->
@@ -288,9 +312,15 @@ get_work_test_() ->
 %% Cover unhappy paths not covered in any other tests.
 unhappy_paths_test_() ->
     {foreach,
-     fun() -> {ok, Pid} = aec_chain:start_link(genesis_block()),
-              aec_state:start_link(), Pid end,
-     fun(_ChainPid) -> ok = aec_chain:stop(), ok = aec_state:stop() end,
+     fun() ->
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             {ok, _} = aec_state:start_link(),
+             ok
+     end,
+     fun(_) ->
+             ok = aec_state:stop(),
+             ok = aec_chain:stop()
+     end,
      [{"Get header by hash - case not found",
        fun() ->
                %% Check chain is at genesis.
@@ -448,14 +478,14 @@ longest_header_chain_test_() ->
              meck:expect(
                aec_blocks, difficulty,
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
-             {ok, Pid} = aec_chain:start_link(
-                           fake_genesis_block_with_difficulty()),
-             aec_state:start_link(),
-             Pid
+             {ok, _} = aec_chain:start_link(
+                         fake_genesis_block_with_difficulty()),
+             {ok, _} = aec_state:start_link(),
+             ok
      end,
-     fun(_ChainPid) ->
-             ok = aec_chain:stop(),
+     fun(_) ->
              ok = aec_state:stop(),
+             ok = aec_chain:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_blocks),
@@ -819,14 +849,14 @@ longest_block_chain_test_() ->
              meck:expect(
                aec_blocks, difficulty,
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
-             {ok, Pid} = aec_chain:start_link(
-                           fake_genesis_block_with_difficulty()),
-         aec_state:start_link(),
-             Pid
+             {ok, _} = aec_chain:start_link(
+                         fake_genesis_block_with_difficulty()),
+             {ok, _} = aec_state:start_link(),
+             ok
      end,
-     fun(_ChainPid) ->
-             ok = aec_chain:stop(),
+     fun(_) ->
              ok = aec_state:stop(),
+             ok = aec_chain:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_blocks),
