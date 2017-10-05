@@ -110,6 +110,9 @@ python-tests:
 python-ws-test:
 	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3014 --log INFO --handler ws_logic
 
+release-integration-test:
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --maxheight=50 --version=$(VER)
+
 swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
