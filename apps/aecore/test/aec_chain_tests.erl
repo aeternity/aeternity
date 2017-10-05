@@ -25,9 +25,11 @@ top_test_() ->
 
                {ok, Top} = aec_chain:top(),
                %% Check block apart from state trees.
-               ?assertEqual(GB, Top#block{trees = GB#block.trees}),
+               ?assertEqual(GB,
+                            aec_blocks:set_trees(Top, aec_blocks:trees(GB))),
                %% Check state trees in block.
-               _ = Top#block.trees %% TODO Check.
+               ?assertEqual(aec_blocks:trees(aec_block_genesis:genesis_block()),
+                            aec_blocks:trees(Top))
        end}]}.
 
 genesis_test_() ->
