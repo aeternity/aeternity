@@ -14,7 +14,6 @@
 
 %% To turn on tracing for a test case return a map with trace => true.
 %% e.g. extra_opts(mulmod4) -> #{trace => true};
-extra_opts(signextend_Overflow_dj42) -> #{trace => true};
 extra_opts(_) ->
     #{}.
 

@@ -842,8 +842,8 @@ m_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
 m_read(Address, 1, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
     WordVal = maps:get(AlignedAddress , Mem, 0),
-    ByteOffset = Address - AlignedAddress,
-    Byte = ((WordVal bsr ByteOffset) band 255),
+    ByteOffset = 31 - (Address - AlignedAddress),
+    Byte = ((WordVal bsr (ByteOffset*8)) band 255),
     Byte;
 m_read(Address, 32, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
