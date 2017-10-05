@@ -87,7 +87,7 @@ header_chain_test_() ->
 
              %% Check highest header.
              ?assertEqual({ok, BH2}, aec_chain:top_header()),
-             %% Check heighest known block - still genesis.
+             %% Check highest known block - still genesis.
              ?assertEqual({ok, B0}, aec_chain:top_block()),
 
              %% Check by hash.
@@ -154,7 +154,7 @@ block_chain_test_() ->
 
                %% Check highest header.
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
-               %% Check heighest known block.
+               %% Check highest known block.
                ?assertEqual({ok, B2}, aec_chain:top_block()),
 
                %% Check by hash.
@@ -211,7 +211,7 @@ block_chain_test_() ->
 
                %% Check highest header.
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
-               %% Check heighest known block.
+               %% Check highest known block.
                ?assertEqual({ok, B1}, aec_chain:top_block()),
 
                %% Check by hash.
