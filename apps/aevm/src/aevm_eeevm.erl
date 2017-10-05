@@ -276,6 +276,17 @@ eval(State) ->
 		    Val = (bnot Us0) band ?MASK256,
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
+		?SHA3 ->
+		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
+		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
+		    %% µi ≡ M(µi, µs[0], µs[1])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    Arg = get_mem_area(Us0, Us0+Us1-1, State2),
+		    Hash = sha3:hash(256, Arg),
+		    <<Val:256/integer-unsigned>> = Hash,
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
 		?BYTE ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
@@ -386,8 +397,8 @@ eval(State) ->
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    State3 =
-			if Us1 =/= 0 -> set_cp(Us0-1, State1);
-			   true      -> State1
+			if Us1 =/= 0 -> set_cp(Us0-1, State2);
+			   true      -> State2
 			end,
 		    next_instruction(OP, State3);
 		?GAS ->
