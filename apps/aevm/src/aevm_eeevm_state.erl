@@ -15,6 +15,7 @@
 	, data/1
 	, extcodesize/2
 	, gas/1
+	, gasprice/1
 	, init/1
 	, init/2
 	, jumpdests/1
@@ -92,6 +93,7 @@ mem(State)       -> maps:get(memory, State).
 number(State)    -> maps:get(number, State).
 out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
+gasprice(State)  -> maps:get(gas_price, State).
 storage(State)   -> maps:get(storage, State).
 value(State)     -> maps:get(value, State).
 
