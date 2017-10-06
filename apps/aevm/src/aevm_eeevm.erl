@@ -161,7 +161,11 @@ eval(StateIn) ->
 		    Val = signextend(Us0, Us1),
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
-
+		%% No opcodes 0x0c-0x0f
+		16#0c -> throw({illegal_instruction, OP, State});
+		16#0d -> throw({illegal_instruction, OP, State});
+		16#0e -> throw({illegal_instruction, OP, State});
+		16#0f -> throw({illegal_instruction, OP, State});
 		?LT ->
 		    %% 0x10 LT δ=2 α=1
 		    %% Less-than comparison.
@@ -218,8 +222,6 @@ eval(StateIn) ->
 			  end,
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
-
-
 		?EQ ->
 		    %% 0x14 EQ δ=2 α=1
 		    %% Equality comparison.
@@ -277,18 +279,6 @@ eval(StateIn) ->
 		    Val = (bnot Us0) band ?MASK256,
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
-		?SHA3 ->
-		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
-		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
-		    %% µi ≡ M(µi, µs[0], µs[1])
-		    {Us0, State1} = pop(State0),
-		    {Us1, State2} = pop(State1),
-                    To   = Us0+Us1-1,
-		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
-		    Hash = sha3:hash(256, Arg),
-		    <<Val:256/integer-unsigned>> = Hash,
-		    State4 = push(Val, State3),
-		    next_instruction(OP, State4);
 		?BYTE ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
@@ -303,7 +293,40 @@ eval(StateIn) ->
 		    Val = byte(Us0, Us1),
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
-
+		%% No opcodes 0x1b-0x1f
+		16#1b -> throw({illegal_instruction, OP, State});
+		16#1c -> throw({illegal_instruction, OP, State});
+		16#1d -> throw({illegal_instruction, OP, State});
+		16#1e -> throw({illegal_instruction, OP, State});
+		16#1f -> throw({illegal_instruction, OP, State});
+		?SHA3 ->
+		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
+		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
+		    %% µi ≡ M(µi, µs[0], µs[1])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+                    To   = Us0+Us1-1,
+		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
+		    Hash = sha3:hash(256, Arg),
+		    <<Val:256/integer-unsigned>> = Hash,
+		    State4 = push(Val, State3),
+		    next_instruction(OP, State4);
+		%% No opcodes 0x21-0x2f
+		16#21 -> throw({illegal_instruction, OP, State});
+		16#22 -> throw({illegal_instruction, OP, State});
+		16#23 -> throw({illegal_instruction, OP, State});
+		16#24 -> throw({illegal_instruction, OP, State});
+		16#25 -> throw({illegal_instruction, OP, State});
+		16#26 -> throw({illegal_instruction, OP, State});
+		16#27 -> throw({illegal_instruction, OP, State});
+		16#28 -> throw({illegal_instruction, OP, State});
+		16#29 -> throw({illegal_instruction, OP, State});
+		16#2a -> throw({illegal_instruction, OP, State});
+		16#2b -> throw({illegal_instruction, OP, State});
+		16#2c -> throw({illegal_instruction, OP, State});
+		16#2d -> throw({illegal_instruction, OP, State});
+		16#2e -> throw({illegal_instruction, OP, State});
+		16#2f -> throw({illegal_instruction, OP, State});
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
 		    %% Get caller address.
@@ -326,6 +349,14 @@ eval(StateIn) ->
 		    Arg = data_get_val(Us0, Bytes, State1),
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State2);
+
+		%% No opcode 0x3f
+		16#3f -> throw({illegal_instruction, OP, State});
+		?POP ->
+		    %% 0x50 POP δ=1 α=0
+		    %% Remove item from stack.
+		    {_, State1} = pop(State0),
+		    next_instruction(OP, State1);
 
 		?MLOAD ->
 		    %% 0x51 MLOAD δ=1 α=1

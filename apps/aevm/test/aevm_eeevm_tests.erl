@@ -404,11 +404,11 @@ vm_sha3_tests() ->
     [ sha3_0
     , sha3_1
     , sha3_2
-    %% , sha3_3 %% error validate_storage
-    %% , sha3_4 %% error validate_storage
+    , sha3_3 %% no post
+    , sha3_4 %% no post
     %% , sha3_5 %% timeout
     %% , sha3_6 %% timeout
-    %% , sha3_bigOffset %% error validate_storage
+    , sha3_bigOffset %% no post
     , sha3_bigOffset2
     %% , sha3_bigSize %% timeout
     , sha3_memSizeNoQuadraticCost31
@@ -421,6 +421,19 @@ vm_sha3_tests() ->
     , sha3_memSizeQuadraticCost65
     ].
 
+%%====================================================================
+%% VMTests tests
+%%====================================================================
+
+vm_io_and_flow_operations_test_() ->
+    aevm_test_utils:testcase_generate("VMTests/vmIOandFlowOperations",
+				      vm_io_and_flow_operations_tests()).
+
+
+vm_io_and_flow_operations_tests() ->
+    [ pop0
+    , pop1
+    ].
 
 %%====================================================================
 %% Internal functions
