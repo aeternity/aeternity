@@ -407,6 +407,14 @@ loop(StateIn) ->
 
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State});
+		?NUMBER ->
+		    %% 0x43 NUMBER  δ=0 α=1
+		    %% Get the block’s number.
+		    %% µ's[0] ≡ IHi
+		    Arg = aevm_eeevm_state:number(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
+		    
 		?POP ->
 		    %% 0x50 POP δ=1 α=0
 		    %% Remove item from stack.
