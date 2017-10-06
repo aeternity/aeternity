@@ -283,7 +283,8 @@ eval(StateIn) ->
 		    %% µi ≡ M(µi, µs[0], µs[1])
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-		    Arg = get_mem_area(Us0, Us0+Us1-1, State2),
+
+		    Arg = aevm_eeevm_memory:get_area(Us0, Us0+Us1-1, State2),
 		    Hash = sha3:hash(256, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
 		    State3 = push(Val, State2),
@@ -334,7 +335,7 @@ eval(StateIn) ->
 		    %% The addition in the calculation of µ'i
 		    %% is not subject to the 2^256 modulo.
 		    {Us0, State1} = pop(State0),
-		    Val = mload(Us0, State1),
+		    Val = aevm_eeevm_memory:load(Us0, State1),
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
 		?MSTORE ->
@@ -346,7 +347,7 @@ eval(StateIn) ->
 		    %% is not subject to the 2^256 modulo.
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
-		    State3 = mstore(Address, Value, State2),
+		    State3 = aevm_eeevm_memory:store(Address, Value, State2),
 		    next_instruction(OP, State3);
 		?MSTORE8 ->
 		    %% 0x53 MSTORE8 δ=2 α=0
@@ -357,7 +358,7 @@ eval(StateIn) ->
 		    %% is not subject to the 2^256 modulo.
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
-		    State3 = mstore8(Address, Value, State2),
+		    State3 = aevm_eeevm_memory:store8(Address, Value, State2),
 		    next_instruction(OP, State3);
 		?SLOAD ->
 		    %% 0x54 SLOAD δ=1 α=1
@@ -686,7 +687,7 @@ eval(StateIn) ->
 		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-		    Out = get_mem_area(Us0, Us0+Us1-1, State2),
+		    Out = aevm_eeevm_memory:get_area(Us0, Us0+Us1-1, State2),
 		    aevm_eeevm_state:set_out(Out, State2);
 		?SUICIDE ->
 		    %% 0xff SELFDESTRUCT 1 0
@@ -842,62 +843,6 @@ set_nth(1, Val, [_|Rest]) -> [Val|Rest];
 set_nth(N, Val, [E|Rest]) -> [E|set_nth(N-1, Val, Rest)].
 
 %% ------------------------------------------------------------------------
-%% MEMORY
-%% ------------------------------------------------------------------------
-
-%% No alignment or size check. Don't use directly.
-m_write(Address,     0, Mem) -> maps:remove(Address, Mem);
-m_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
-
-m_read(Address, 1, Mem) ->
-    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
-    WordVal = maps:get(AlignedAddress , Mem, 0),
-    ByteOffset = 31 - (Address - AlignedAddress),
-    Byte = ((WordVal bsr (ByteOffset*8)) band 255),
-    Byte;
-m_read(Address, 32, Mem) ->
-    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
-    case AlignedAddress =:= Address of
-	true -> %% Aligned.
-	    maps:get(AlignedAddress , Mem, 0);
-	false -> %%
-	    error(unaligned_mem_read_not_implemented)
-    end.
-
-
-mload(Address, State) ->
-    Mem = aevm_eeevm_state:mem(State),
-    Value = m_read(Address, 32, Mem),
-    Value.
-
-
-mstore(Address, Value, State) when is_integer(Value) ->
-    case (Address band ?ALIGN256) of
-	%% 256-bits-word aligned
-	0 -> Mem = aevm_eeevm_state:mem(State),
-	     %% Make sure value fits in 256 bits.
-	     Value256 = Value band ?MASK256,
-	     Mem1 = m_write(Address, Value256, Mem),
-	     aevm_eeevm_state:set_mem(Mem1, State);
-	_ -> %% Unligned
-	    error({unaligned_sstore_not_handled, Address, Value})
-    end.
-
-mstore8(Address, Value, State) when is_integer(Value) ->
-    Mem = aevm_eeevm_state:mem(State),
-    Byte = Value band 255,
-    AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
-    WordVal = maps:get(AlignedAddress , Mem, 0),
-    ByteOffset = Address - AlignedAddress,
-    NewWord = (WordVal band (bnot (255 bsl ByteOffset))) bor (Byte bsl ByteOffset),
-    Mem1 = m_write(AlignedAddress, NewWord, Mem),
-    aevm_eeevm_state:set_mem(Mem1, State).
-
-get_mem_area(From, To, State) ->
-    Mem = aevm_eeevm_state:mem(State),
-    list_to_binary([m_read(X, 1, Mem) || X <- lists:seq(From, To)]).
-
-%% ------------------------------------------------------------------------
 %% STORAGE
 %% ------------------------------------------------------------------------
 storage_read(Address, Mem) -> maps:get(Address, Mem, 0).
@@ -911,8 +856,6 @@ sload(Address, State) ->
     Value = storage_read(Address, Store),
     Value.
 
-
-    
 sstore(Address, Value, State) when is_integer(Value) ->
     Store = aevm_eeevm_state:storage(State),
     %% Make sure value fits in 256 bits.
