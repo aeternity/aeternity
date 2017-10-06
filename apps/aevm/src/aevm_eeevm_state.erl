@@ -19,6 +19,7 @@
 	, jumpdests/1
         , out/1
 	, mem/1
+	, number/1
 	, set_call/2
 	, set_code/2
 	, set_cp/2
@@ -38,7 +39,9 @@
 init(Spec) ->
     init(Spec, #{}).
 
-init(#{exec := Exec, pre := Pre} = _Spec, Opts) ->
+init(#{ env  := Env
+      , exec := Exec
+      , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
     #{ address   => Address
      , call      => #{}
@@ -50,6 +53,7 @@ init(#{exec := Exec, pre := Pre} = _Spec, Opts) ->
      , gas       => maps:get(gas, Exec)
      , gas_price => maps:get(gasPrice, Exec)
      , memory    => #{}
+     , number    => maps:get(currentNumber, Env)
      , origin    => maps:get(origin, Exec)
      , out       => <<>>
      , stack     => []
@@ -76,6 +80,7 @@ data(State)      -> maps:get(data, State).
 jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
+number(State)    -> maps:get(number, State).
 out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
 storage(State)   -> maps:get(storage, State).
