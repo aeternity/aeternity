@@ -494,7 +494,8 @@ vm_environmental_info_test_() ->
 				      vm_environmental_info_tests()).
 
 vm_environmental_info_tests() ->
-    [ calldatasize0
+    [ calldatacopy0
+    , calldatasize0
      
     ].
 

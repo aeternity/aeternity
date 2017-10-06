@@ -397,7 +397,23 @@ loop(StateIn) ->
 		    Val = byte_size(aevm_eeevm_state:data(State0)),
 		    State1 = push(Val, State0),
 		    next_instruction(OP, State1);
-		    
+		?CALLDATACOPY ->
+		    %% 0x37 CALLDATACOPY 3 0
+		    %% Copy input data in current environment to memory.
+		    %% ∀i∈{0...µs[2]−1}µ'm[µs[0] + i] ≡ Id[µs[1] + i]
+		    %%                                       if µs[1] + i < |Id|
+		    %%                                   0 otherwise
+		    %% The additions in µs[1] + i are not subject to
+		    %% the 2^256 modulo.
+		    %% µ'i ≡ M(µi, µs[0], µs[2])
+		    %% This pertains to the input data passed with
+		    %% the message call instruction or transaction.    
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    CallData = data_get_bytes(Us1, Us2, State3),
+		    State4 = aevm_eeevm_memory:write_area(Us0, CallData, State3),
+		    next_instruction(OP, State4);
 
 		?CODECOPY ->
 		    %% 0x39 CODECOPY δ=3 α=0
@@ -1014,6 +1030,20 @@ data_get_val(Address, Size, State) ->
 	    <<_:Pos, Arg:Length, _/binary>> = Data,
 	    Arg
     end.
+
+data_get_bytes(Address, Size, State) ->
+    Data = aevm_eeevm_state:data(State),
+    Pos = Address * 8,
+    if Address+Size >= byte_size(Data) ->
+	    End = byte_size(Data),
+	    DataSize = (Size - (End - Address))*8,
+	    <<_:Pos, Bytes:Size/binary, _/binary>> = <<Data/binary, 0:DataSize>>,
+	    Bytes;
+       true ->
+	    <<_:Pos, Bytes:Size/binary, _/binary>> = Data,
+	    Bytes
+    end.
+
 
 					 
 
