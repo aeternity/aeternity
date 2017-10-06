@@ -32,6 +32,7 @@
 	, stack/1
 	, storage/1
 	, trace_format/3
+	, value/1
 	]).
 
 init(Spec) ->
@@ -78,6 +79,7 @@ mem(State)       -> maps:get(memory, State).
 out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
 storage(State)   -> maps:get(storage, State).
+value(State)     -> maps:get(value, State).
 
 do_trace(State)  -> maps:get(do_trace, State).
 trace(State)     -> maps:get(trace, State).

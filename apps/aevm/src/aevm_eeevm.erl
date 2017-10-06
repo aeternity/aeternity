@@ -369,8 +369,14 @@ loop(StateIn) ->
 		    Arg = aevm_eeevm_state:caller(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
-
-
+		?CALLVALUE ->
+		   %% 0x34 CALLVALUE 0 1
+		    %% Get deposited value by the instruction/transaction
+		    %% responsible for this execution.
+		    %% µ's[0] ≡ Iv
+		    Val = aevm_eeevm_state:value(State0),
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State1);
 		?CALLDATALOAD ->
 		    %% 0x35 CALLDATALOAD δ=1 α=1
 		    %% Get input data of current environment.
@@ -886,7 +892,11 @@ byte(_,_) -> 0.
 push(Arg, State) ->
     Val = Arg band ?MASK256,
     Stack   = aevm_eeevm_state:stack(State),
-    aevm_eeevm_state:set_stack([Val|Stack], State).
+    if length(Stack) < 1024 ->
+	    aevm_eeevm_state:set_stack([Val|Stack], State);
+       true ->
+	    throw({out_of_stack, State})
+    end.
 
 push_n_bytes_from_cp(N, State) ->
     CP   = aevm_eeevm_state:cp(State),
@@ -1020,5 +1030,5 @@ spend_gas(Op, State) ->
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
         true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
-	false -> exit({out_of_gas, State})
+	false -> throw({out_of_gas, State})
     end.
