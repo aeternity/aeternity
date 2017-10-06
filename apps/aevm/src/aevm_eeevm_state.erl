@@ -8,7 +8,9 @@
 %%% Created : 2 Oct 2017
 %%%-------------------------------------------------------------------
 
--export([ call/1
+-export([ accountbalance/2
+	, address/1
+	, call/1
         , caller/1
 	, code/1
 	, cp/1
@@ -46,6 +48,7 @@ init(#{ env  := Env
       , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
     #{ address   => Address
+     , balances  => get_balances(Pre)
      , call      => #{}
      , caller    => maps:get(caller, Exec)
      , code      => maps:get(code, Exec)
@@ -76,10 +79,18 @@ get_ext_code_sizes(#{} = Pre) ->
     maps:from_list(
       [{Address, byte_size(C)} || {Address, #{code := C}} <-maps:to_list(Pre)]).
 
+get_balances(#{} = Pre) ->
+    maps:from_list(
+      [{Address, B} || {Address, #{balance := B}}
+			   <- maps:to_list(Pre)]).
+
 
 init_trace_fun(Opts) ->
     maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
 
+accountbalance(Address, State) ->
+    maps:get(Address, maps:get(balances, State), 0).
+address(State)   -> maps:get(address, State).
 call(State)      -> maps:get(call, State).
 caller(State)    -> maps:get(caller, State).
 cp(State)        -> maps:get(cp, State).

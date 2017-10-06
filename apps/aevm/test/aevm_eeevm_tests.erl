@@ -494,7 +494,9 @@ vm_environmental_info_test_() ->
 				      vm_environmental_info_tests()).
 
 vm_environmental_info_tests() ->
-    [ calldatacopy0
+    [ address0
+    , balanceAddress2
+    , calldatacopy0
     , calldatasize0
     , codesize
     %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2

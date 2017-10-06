@@ -187,7 +187,6 @@ loop(StateIn) ->
 		    %%                           where t = 256 − 8*(µs[0] + 1)
 		    %%                           µs[1]i otherwise
 		    %% µs[x]i gives the ith bit (counting from zero) of µs[x]
-
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    Val = signextend(Us0, Us1),
@@ -359,6 +358,24 @@ loop(StateIn) ->
 		16#2d -> throw({illegal_instruction, OP, State});
 		16#2e -> throw({illegal_instruction, OP, State});
 		16#2f -> throw({illegal_instruction, OP, State});
+		?ADDRESS ->
+		    %% 0x30 Address δ=0 α=1
+		    %% Get address of currently executing account.
+		    %% µ's[0] ≡ Ia
+		    Arg = aevm_eeevm_state:address(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
+		?BALANCE ->
+		    %% 0x31 BALANCE δ=1 α=1
+		    %%  Get balance of the given account.
+		    %%  Get balance of the given account.
+		    %% µ's[0] ≡ σ[µs[0]]b if σ[µs[0] mod 2^160] =/= ∅
+		    %%          0  otherwise
+		    {Us0, State1} = pop(State0),
+		    Arg = aevm_eeevm_state:accountbalance(Us0, State1),
+		    State2 = push(Arg, State1),
+		    next_instruction(OP, State2);
+
 
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
