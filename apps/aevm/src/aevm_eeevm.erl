@@ -359,6 +359,7 @@ loop(StateIn) ->
 		16#2d -> throw({illegal_instruction, OP, State});
 		16#2e -> throw({illegal_instruction, OP, State});
 		16#2f -> throw({illegal_instruction, OP, State});
+
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
 		    %% Get caller address.
@@ -488,9 +489,7 @@ loop(StateIn) ->
 		    %% 0x59 PC δ=0 α=1
 		    %% Get the size of active memory in bytes.
 		    %% µ's[0] ≡ 32*µi
-		    
-		    %% TODO: replace by callto mem library
-		    Val =  32 * maps:size(aevm_eeevm_state:mem(State)),
+		    Val =  32 * aevm_eeevm_memory:size_in_words(State),
 		    State1 = push(Val, State0),
 		    next_instruction(OP, State1);
 		?GAS ->
