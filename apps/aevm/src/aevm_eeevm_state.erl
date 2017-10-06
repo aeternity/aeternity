@@ -21,6 +21,7 @@
 	, init/1
 	, init/2
 	, jumpdests/1
+	, origin/1
         , out/1
 	, mem/1
 	, number/1
@@ -104,6 +105,7 @@ jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
 number(State)    -> maps:get(number, State).
+origin(State)    -> maps:get(origin, State).
 out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
 gasprice(State)  -> maps:get(gas_price, State).

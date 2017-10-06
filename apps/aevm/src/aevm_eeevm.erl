@@ -375,7 +375,16 @@ loop(StateIn) ->
 		    Arg = aevm_eeevm_state:accountbalance(Us0, State1),
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State2);
-
+		?ORIGIN ->
+		    %% 0x32 ORIGIN 0 1
+		    %% Get execution origination address.
+		    %% µ's[0] ≡ Io
+		    %% This is the sender of original transaction;
+		    %% it is never an account with non-empty
+		    %% associated code.
+		    Arg = aevm_eeevm_state:origin(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
 
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
