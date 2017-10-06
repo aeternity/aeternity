@@ -59,7 +59,7 @@ store8(Address, Value, State) when is_integer(Value) ->
     aevm_eeevm_state:set_mem(Mem1, State).
 
 size_in_words(State) ->
-    Mem = aevm_eevm_state:mem(State),
+    Mem = aevm_eeevm_state:mem(State),
     case maps:get(highest_aligned_address, Mem, undefined) of
         undefined -> 0;
         Highest -> (Highest bsr 5) + 1
