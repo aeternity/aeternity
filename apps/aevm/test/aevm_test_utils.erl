@@ -73,18 +73,24 @@ testcase({Path, Name, Opts}, Spec) ->
       end
     }.
 
-validate_storage(State, #{exec := #{address := Addr}, post := Post} =_Spec) ->
-    PostStorage =
-        case maps:get(Addr, Post, undefined) of
-            undefined -> #{};
-            #{storage := S} -> S
-        end,
-    Storage = aevm_eeevm_state:storage(State),
-    ?assertEqual(PostStorage, Storage).
+validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
+    case Spec of
+	#{ post := Post} ->
+	    PostStorage =
+		case maps:get(Addr, Post, undefined) of
+		    undefined -> #{};
+		    #{storage := S} -> S
+		end,
+	    Storage = aevm_eeevm_state:storage(State),
+	    ?assertEqual(PostStorage, Storage);
+	_ -> true
+    end.
 
 validate_out(State, #{out := SpecOut} =_Spec) ->
     Out  = aevm_eeevm_state:out(State),
-    ?assertEqual(SpecOut, Out).
+    ?assertEqual(SpecOut, Out);
+validate_out(_State, _Spec) -> true.
+
 
 validate_gas(State, #{gas :=_SpecGas, exec := #{gas :=_GasIn}} =_Spec) ->
     %% TODO: Start checking when gas is calculated correctly.

@@ -19,7 +19,7 @@
 -module(aevm_eeevm).
 -export([eval/1]).
 
-%% Exports for tracing. TODO: move to aevm_eevm_code
+%% Exports for tracing. TODO: move to aevm_eeevm_code
 -export([code_get_op/2]).
 
 -include("aevm_eeevm.hrl").
@@ -27,7 +27,39 @@
 %% Main eval loop.
 %%
 %%
-eval(StateIn) ->
+eval(State) ->
+    loop(valid_jumpdests(State)).
+
+valid_jumpdests(State) ->
+    Code = aevm_eeevm_state:code(State),
+    JumpDests = jumpdests(0,Code, #{}),
+    aevm_eeevm_state:set_jumpdests(JumpDests, State).
+
+%% Jump Destination Validity. 
+%% DJ (c, i) ≡ {} if i > |c|
+%%             {i} ∪ DJ (c, N(i, c[i])) if c[i] = JUMPDEST
+%%             DJ (c, N(i, c[i])) otherwise
+%% where N is the next valid instruction position in the
+%% code, skipping the data of a PUSH instruction, if any:
+%% 
+%% N(i, w) ≡ i + w − PUSH1 + 2 if w ∈ [PUSH1, PUSH32]
+%%           i + 1 otherwise
+jumpdests(N, Code, ValidDests) when N >= byte_size(Code) ->
+    ValidDests;
+jumpdests(N, Code, ValidDests) ->
+    OP = code_get_op(N, Code),
+    case OP of
+	?JUMPDEST ->
+	    jumpdests(N+1, Code, maps:put(N, true, ValidDests));
+	OP when (OP >= ?PUSH1) andalso (OP =< ?PUSH32) ->
+	    jumpdests(N+(OP-?PUSH1+2), Code, ValidDests);
+	_ -> jumpdests(N+1, Code, ValidDests)
+    end.
+  
+    
+    
+
+loop(StateIn) ->
     CP   = aevm_eeevm_state:cp(StateIn),
     Code = aevm_eeevm_state:code(StateIn),
     case CP >= byte_size(Code) of
@@ -161,7 +193,11 @@ eval(StateIn) ->
 		    Val = signextend(Us0, Us1),
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
-
+		%% No opcodes 0x0c-0x0f
+		16#0c -> throw({illegal_instruction, OP, State});
+		16#0d -> throw({illegal_instruction, OP, State});
+		16#0e -> throw({illegal_instruction, OP, State});
+		16#0f -> throw({illegal_instruction, OP, State});
 		?LT ->
 		    %% 0x10 LT δ=2 α=1
 		    %% Less-than comparison.
@@ -218,8 +254,6 @@ eval(StateIn) ->
 			  end,
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
-
-
 		?EQ ->
 		    %% 0x14 EQ δ=2 α=1
 		    %% Equality comparison.
@@ -277,18 +311,6 @@ eval(StateIn) ->
 		    Val = (bnot Us0) band ?MASK256,
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
-		?SHA3 ->
-		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
-		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
-		    %% µi ≡ M(µi, µs[0], µs[1])
-		    {Us0, State1} = pop(State0),
-		    {Us1, State2} = pop(State1),
-                    To   = Us0+Us1-1,
-		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
-		    Hash = sha3:hash(256, Arg),
-		    <<Val:256/integer-unsigned>> = Hash,
-		    State4 = push(Val, State3),
-		    next_instruction(OP, State4);
 		?BYTE ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
@@ -303,6 +325,40 @@ eval(StateIn) ->
 		    Val = byte(Us0, Us1),
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State3);
+		%% No opcodes 0x1b-0x1f
+		16#1b -> throw({illegal_instruction, OP, State});
+		16#1c -> throw({illegal_instruction, OP, State});
+		16#1d -> throw({illegal_instruction, OP, State});
+		16#1e -> throw({illegal_instruction, OP, State});
+		16#1f -> throw({illegal_instruction, OP, State});
+		?SHA3 ->
+		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
+		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
+		    %% µi ≡ M(µi, µs[0], µs[1])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+                    To   = Us0+Us1-1,
+		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
+		    Hash = sha3:hash(256, Arg),
+		    <<Val:256/integer-unsigned>> = Hash,
+		    State4 = push(Val, State3),
+		    next_instruction(OP, State4);
+		%% No opcodes 0x21-0x2f
+		16#21 -> throw({illegal_instruction, OP, State});
+		16#22 -> throw({illegal_instruction, OP, State});
+		16#23 -> throw({illegal_instruction, OP, State});
+		16#24 -> throw({illegal_instruction, OP, State});
+		16#25 -> throw({illegal_instruction, OP, State});
+		16#26 -> throw({illegal_instruction, OP, State});
+		16#27 -> throw({illegal_instruction, OP, State});
+		16#28 -> throw({illegal_instruction, OP, State});
+		16#29 -> throw({illegal_instruction, OP, State});
+		16#2a -> throw({illegal_instruction, OP, State});
+		16#2b -> throw({illegal_instruction, OP, State});
+		16#2c -> throw({illegal_instruction, OP, State});
+		16#2d -> throw({illegal_instruction, OP, State});
+		16#2e -> throw({illegal_instruction, OP, State});
+		16#2f -> throw({illegal_instruction, OP, State});
 
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
@@ -327,6 +383,13 @@ eval(StateIn) ->
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State2);
 
+		%% No opcode 0x3f
+		16#3f -> throw({illegal_instruction, OP, State});
+		?POP ->
+		    %% 0x50 POP δ=1 α=0
+		    %% Remove item from stack.
+		    {_, State1} = pop(State0),
+		    next_instruction(OP, State1);
 		?MLOAD ->
 		    %% 0x51 MLOAD δ=1 α=1
 		    %% Load word from memory.
@@ -388,8 +451,13 @@ eval(StateIn) ->
 		    %% JJUMP(µ) ≡ µs[0]
 		    %% This has the effect of writing said value to µpc.
 		    {Us0, State1} = pop(State0),
-		    State2 = set_cp(Us0-1, State1),
-		    next_instruction(OP, State2);
+		    JumpDests =  aevm_eeevm_state:jumpdests(State1),
+		    case maps:get(Us0, JumpDests, false) of
+			true -> 
+			    State2 = set_cp(Us0-1, State1),
+			    next_instruction(OP, State2);
+			false -> throw({invalid_jumpdest, Us0, State1})
+		    end;
 		?JUMPI ->
 		    %% 0x57 JUMPI δ=2 α=0
 		    %% Conditionally alter the program counter.
@@ -399,10 +467,31 @@ eval(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    State3 =
-			if Us1 =/= 0 -> set_cp(Us0-1, State2);
+			if Us1 =/= 0 ->
+				JumpDests =  aevm_eeevm_state:jumpdests(State1),
+				case maps:get(Us0, JumpDests, false) of
+				    true -> 
+					set_cp(Us0-1, State2);
+				    false -> 
+					throw({invalid_jumpdest, Us0, State1})
+				end;
 			   true      -> State2
 			end,
 		    next_instruction(OP, State3);
+		?PC ->
+		    %% 0x58 PC δ=0 α=1
+		    %% Get the value of the program counter prior to
+		    %% the increment corresponding to this instruction.
+		    %% µ's[0] ≡ µpc
+		    State1 = push(CP, State0),
+		    next_instruction(OP, State1);
+		?MSIZE ->
+		    %% 0x59 PC δ=0 α=1
+		    %% Get the size of active memory in bytes.
+		    %% µ's[0] ≡ 32*µi
+		    Val =  32 * aevm_eeevm_memory:size_in_words(State),
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State1);
 		?GAS ->
 		    %% 0x5a GAS δ=0 α=1
 		    %% Get the amount of available gas,
@@ -412,8 +501,12 @@ eval(StateIn) ->
 		    Val = aevm_eeevm_state:gas(State0),
 		    State1 = push(Val, State0),
 		    next_instruction(OP, State1);
-
-
+		?JUMPDEST ->
+		    %% 0x5b JUMPDEST  δ=0 α=0
+		    %% Mark a valid destination for jumps.
+		    %% This operation has no effect on machine
+		    %% state during execution.
+		    next_instruction(OP, State0);
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.
@@ -904,7 +997,7 @@ code_get_arg(CP, Size, Code) ->
     Arg.
 
 next_instruction(_OP, State) ->
-    eval(inc_cp(State)).
+    loop(inc_cp(State)).
 
 set_cp(Address, State) ->
     aevm_eeevm_state:set_cp(Address, State).
