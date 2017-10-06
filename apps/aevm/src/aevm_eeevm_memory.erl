@@ -46,9 +46,10 @@ store8(Address, Value, State) when is_integer(Value) ->
     Mem = aevm_eeevm_state:mem(State),
     Byte = Value band 255,
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
-    WordVal = maps:get(AlignedAddress , Mem, 0),
-    ByteOffset = Address - AlignedAddress,
-    NewWord = (WordVal band (bnot (255 bsl ByteOffset))) bor (Byte bsl ByteOffset),
+    WordVal = maps:get(AlignedAddress, Mem, 0),
+    BitOffset = (Address - AlignedAddress) * 8,
+    <<Pre:BitOffset, _:8, Post/bits>> = <<WordVal:256>>,
+    <<NewWord:256>> = <<Pre:BitOffset, Byte:8, Post/bits>>,
     Mem1 = write(AlignedAddress, NewWord, Mem),
     aevm_eeevm_state:set_mem(Mem1, State).
 
