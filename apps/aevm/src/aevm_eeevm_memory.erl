@@ -23,13 +23,17 @@
 %%====================================================================
 
 get_area(From, To, State) ->
-  Mem = aevm_eeevm_state:mem(State),
-  list_to_binary([read(X, 1, Mem) || X <- lists:seq(From, To)]).
+    Mem = aevm_eeevm_state:mem(State),
+    {_, Mem1} = read(From, 1, Mem),
+    {_, Mem2} = read(To, 1, Mem1),
+    State1 = aevm_eeevm_state:set_mem(Mem2, State),
+    Res = list_to_binary([read_raw(X, 1, Mem2) || X <- lists:seq(From, To)]),
+    {Res, State1}.
 
 load(Address, State) ->
     Mem = aevm_eeevm_state:mem(State),
-    Value = read(Address, 32, Mem),
-    Value.
+    {Res, Mem1} = read(Address, 32, Mem),
+    {Res, aevm_eeevm_state:set_mem(Mem1, State)}.
 
 store(Address, Value, State) when is_integer(Value) ->
     %% Make sure value fits in 256 bits.
@@ -79,8 +83,8 @@ write(Address, Value, Mem) -> extend(Address, maps:put(Address, Value, Mem)).
 write_unaligned(Address, Value256, Mem) ->
     LowAligned = (Address bor ?ALIGN256) - ?ALIGN256,
     HighAligned = LowAligned + 32,
-    OldLow  = read(LowAligned, 32, Mem),
-    OldHigh = read(HighAligned, 32, Mem),
+    {OldLow, _} = read(LowAligned, 32, Mem),   %% We can skip the extend since
+    {OldHigh, _} = read(HighAligned, 32, Mem), %% we will write in the end
     BitOffsetLow = (Address - LowAligned)*8,
     BitOffsetHigh = 256 - BitOffsetLow,
     <<Pre:BitOffsetLow, _/bits>> = <<OldLow:256>>,
@@ -89,17 +93,21 @@ write_unaligned(Address, Value256, Mem) ->
     Mem1 = write(HighAligned, NewHigh, Mem),
     write(LowAligned, NewLow, Mem1).
 
+read_raw(Address, N, Mem) ->
+    {Res, _} = read(Address, N, Mem),
+    Res.
+
 read(Address, 1, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
     WordVal = maps:get(AlignedAddress , Mem, 0),
     ByteOffset = 31 - (Address - AlignedAddress),
     Byte = ((WordVal bsr (ByteOffset*8)) band 255),
-    Byte;
+    {Byte, extend(AlignedAddress, Mem)};
 read(Address, 32, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
     case AlignedAddress =:= Address of
 	true -> %% Aligned.
-	    maps:get(AlignedAddress , Mem, 0);
+	    {maps:get(AlignedAddress , Mem, 0), extend(AlignedAddress, Mem)};
 	false -> %%
 	    error(unaligned_mem_read_not_implemented)
     end.
