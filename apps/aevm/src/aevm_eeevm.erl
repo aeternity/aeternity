@@ -495,7 +495,7 @@ loop(StateIn) ->
 				    true -> 
 					set_cp(Us0-1, State2);
 				    false -> 
-					throw({invalid_jumpdest, Us0, State1})
+					throw({{invalid_jumpdest, Us0}, State1})
 				end;
 			   true      -> State2
 			end,
