@@ -414,7 +414,12 @@ loop(StateIn) ->
 		    CallData = data_get_bytes(Us1, Us2, State3),
 		    State4 = aevm_eeevm_memory:write_area(Us0, CallData, State3),
 		    next_instruction(OP, State4);
-
+		?CODESIZE ->
+		    %% 0x38 CODESIZE 0 1
+		    %% Get size of code running in current environment.
+		    %% µ's[0] ≡ |Ib|
+		    State1 = push(byte_size(Code), State0),
+		    next_instruction(OP, State1);
 		?CODECOPY ->
 		    %% 0x39 CODECOPY δ=3 α=0
 		    %% Copy code running in current environment to memory.
