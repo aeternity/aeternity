@@ -96,7 +96,7 @@ write_unaligned(Address, Value256, Mem) ->
     BitOffsetLow = (Address - LowAligned)*8,
     BitOffsetHigh = 256 - BitOffsetLow,
     <<Pre:BitOffsetLow, _/bits>> = <<OldLow:256>>,
-    <<_, Post:BitOffsetHigh>> = <<OldHigh:256>>,
+    <<_:BitOffsetLow, Post:BitOffsetHigh>> = <<OldHigh:256>>,
     <<NewLow:256, NewHigh:256>> =
 	<<Pre:BitOffsetLow, Value256:256, Post:BitOffsetHigh>>,
     Mem1 = write(HighAligned, NewHigh, Mem),
@@ -118,5 +118,13 @@ read(Address, 32, Mem) ->
 	true -> %% Aligned.
 	    {maps:get(AlignedAddress , Mem, 0), extend(AlignedAddress, Mem)};
 	false -> %%
-	    error(unaligned_mem_read_not_implemented)
+	    Lo = maps:get(AlignedAddress , Mem, 0),
+	    Hi = maps:get(AlignedAddress+32 , Mem, 0),
+	    Offset = (Address - AlignedAddress)*8,
+	    HiBitsSize = ?WORDSIZE-Offset,
+	    <<_:Offset, HiBits:HiBitsSize>> = <<Lo:?WORDSIZE>>,
+	    LoBitsSize = Offset,
+	    <<LoBits:LoBitsSize, _:HiBitsSize>> = <<Hi:?WORDSIZE>>,
+	    <<Word:256>> = <<HiBits:HiBitsSize,LoBits:LoBitsSize>>,
+	    {Word, extend(AlignedAddress+32, Mem)}
     end.
