@@ -357,7 +357,6 @@ eval(StateIn) ->
 		    %% Remove item from stack.
 		    {_, State1} = pop(State0),
 		    next_instruction(OP, State1);
-
 		?MLOAD ->
 		    %% 0x51 MLOAD δ=1 α=1
 		    %% Load word from memory.
@@ -434,6 +433,15 @@ eval(StateIn) ->
 			   true      -> State2
 			end,
 		    next_instruction(OP, State3);
+		?PC ->
+		    %% 0x58 PC δ=0 α=1
+		    %% Get the value of the program counter prior to
+		    %% the increment corresponding to this instruction.
+		    %% µ's[0] ≡ µpc
+		    State1 = push(CP, State0),
+		    next_instruction(OP, State1);
+		    
+
 		?GAS ->
 		    %% 0x5a GAS δ=0 α=1
 		    %% Get the amount of available gas,

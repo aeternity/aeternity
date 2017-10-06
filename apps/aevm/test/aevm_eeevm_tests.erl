@@ -433,6 +433,8 @@ vm_io_and_flow_operations_test_() ->
 vm_io_and_flow_operations_tests() ->
     [ pop0
     , pop1
+    , pc0
+    , pc1
     ].
 
 %%====================================================================
