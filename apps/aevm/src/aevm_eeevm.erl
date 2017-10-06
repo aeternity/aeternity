@@ -440,8 +440,15 @@ eval(StateIn) ->
 		    %% µ's[0] ≡ µpc
 		    State1 = push(CP, State0),
 		    next_instruction(OP, State1);
+		?MSIZE ->
+		    %% 0x59 PC δ=0 α=1
+		    %% Get the size of active memory in bytes.
+		    %% µ's[0] ≡ 32*µi
 		    
-
+		    %% TODO: replace by callto mem library
+		    Val =  32 * maps:size(aevm_eeevm_state:mem(State)),
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State1);
 		?GAS ->
 		    %% 0x5a GAS δ=0 α=1
 		    %% Get the amount of available gas,
@@ -451,8 +458,13 @@ eval(StateIn) ->
 		    Val = aevm_eeevm_state:gas(State0),
 		    State1 = push(Val, State0),
 		    next_instruction(OP, State1);
-
-
+		?JUMPDEST ->
+		    %% 0x5b JUMPDEST  δ=0 α=0
+		    %% Mark a valid destination for jumps.
+		    %% This operation has no effect on machine
+		    %% state during execution.
+		    next_instruction(OP, State0);
+		
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.

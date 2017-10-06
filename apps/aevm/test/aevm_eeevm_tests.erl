@@ -431,7 +431,13 @@ vm_io_and_flow_operations_test_() ->
 
 
 vm_io_and_flow_operations_tests() ->
-    [ pop0
+    [ jump0_jumpdest0
+    , jump0_jumpdest2
+    , msize0
+    , msize1
+    , msize2
+    %% , msize3 %% TODO: Need new memory handling
+    , pop0
     , pop1
     , pc0
     , pc1
