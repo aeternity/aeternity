@@ -478,7 +478,7 @@ loop(StateIn) ->
 			true -> 
 			    State2 = set_cp(Us0-1, State1),
 			    next_instruction(OP, State2);
-			false -> throw({invalid_jumpdest, Us0, State1})
+			false -> throw({{invalid_jumpdest, Us0}, State1})
 		    end;
 		?JUMPI ->
 		    %% 0x57 JUMPI δ=2 α=0
