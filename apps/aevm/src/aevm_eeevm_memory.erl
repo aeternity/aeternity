@@ -88,8 +88,9 @@ write_unaligned(Address, Value256, Mem) ->
     BitOffsetLow = (Address - LowAligned)*8,
     BitOffsetHigh = 256 - BitOffsetLow,
     <<Pre:BitOffsetLow, _/bits>> = <<OldLow:256>>,
-    <<_:BitOffsetHigh, Post/bits>> = <<OldHigh:256>>,
-    <<NewLow:256, NewHigh:256>> = <<Pre:BitOffsetLow, Value256:256, Post/bits>>,
+    <<_, Post:BitOffsetHigh>> = <<OldHigh:256>>,
+    <<NewLow:256, NewHigh:256>> =
+	<<Pre:BitOffsetLow, Value256:256, Post:BitOffsetHigh>>,
     Mem1 = write(HighAligned, NewHigh, Mem),
     write(LowAligned, NewLow, Mem1).
 
