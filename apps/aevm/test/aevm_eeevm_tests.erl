@@ -434,6 +434,7 @@ vm_io_and_flow_operations_tests() ->
     [ jump0_foreverOutOfGas
     , jump0_jumpdest0
     , jump0_jumpdest2
+    , kv1
     , loop_stacklimit_1020
     , loop_stacklimit_1021
     , msize0
