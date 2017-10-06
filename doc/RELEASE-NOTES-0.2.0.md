@@ -105,7 +105,7 @@ For example, if node 1 does not manage to contact nodes 2 and 3 you will see som
 2017-10-06 13:05:54.632 [debug] <0.669.0>@aec_peers:ping_peer:402 ping result ({peer,"http://localhost:9903/",0}): {error,"A problem occured"}
 2017-10-06 13:05:54.632 [debug] <0.668.0>@aec_peers:ping_peer:402 ping result ({peer,"http://localhost:9902/",0}): {error,"A problem occured"}
 ```
-In this case, assuming nodes 2 and 3 are already up, stop and start node 1.
+In this case, assuming nodes 2 and 3 are already up, stop node 1 (in directory for node 1: `bin/epoch stop`) and then start node 1.
 
 In the case that node 1 manages to contact nodes 2 and 3 you will see something like the following in the log of node 1:
 ```
