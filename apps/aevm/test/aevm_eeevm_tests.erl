@@ -468,6 +468,7 @@ vm_io_and_flow_operations_tests() ->
     , kv1
     , loop_stacklimit_1020
     , loop_stacklimit_1021
+    , memory1
     , msize0
     , msize1
     , msize2
