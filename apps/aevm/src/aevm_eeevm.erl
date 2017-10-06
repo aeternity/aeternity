@@ -283,12 +283,12 @@ eval(StateIn) ->
 		    %% µi ≡ M(µi, µs[0], µs[1])
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-
-		    Arg = aevm_eeevm_memory:get_area(Us0, Us0+Us1-1, State2),
+                    To   = Us0+Us1-1,
+		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
 		    Hash = sha3:hash(256, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
-		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    State4 = push(Val, State3),
+		    next_instruction(OP, State4);
 		?BYTE ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
@@ -335,9 +335,9 @@ eval(StateIn) ->
 		    %% The addition in the calculation of µ'i
 		    %% is not subject to the 2^256 modulo.
 		    {Us0, State1} = pop(State0),
-		    Val = aevm_eeevm_memory:load(Us0, State1),
-		    State2 = push(Val, State1),
-		    next_instruction(OP, State2);
+		    {Val, State2} = aevm_eeevm_memory:load(Us0, State1),
+		    State3 = push(Val, State2),
+		    next_instruction(OP, State3);
 		?MSTORE ->
 		    %% 0x52 MSTORE δ=2 α=0
 		    %% Save word to memory.
@@ -687,8 +687,9 @@ eval(StateIn) ->
 		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-		    Out = aevm_eeevm_memory:get_area(Us0, Us0+Us1-1, State2),
-		    aevm_eeevm_state:set_out(Out, State2);
+                    To = Us0+Us1-1,
+		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
+		    aevm_eeevm_state:set_out(Out, State3);
 		?SUICIDE ->
 		    %% 0xff SELFDESTRUCT 1 0
 		    %% Halt execution and register account for
