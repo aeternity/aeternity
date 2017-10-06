@@ -422,7 +422,7 @@ vm_sha3_tests() ->
     ].
 
 %%====================================================================
-%% VMTests tests
+%% VM IO and Flow tests
 %%====================================================================
 
 vm_io_and_flow_operations_test_() ->
@@ -469,6 +469,7 @@ vm_io_and_flow_operations_tests() ->
     , loop_stacklimit_1020
     , loop_stacklimit_1021
     , memory1
+    , mstore8_0
     , msize0
     , msize1
     , msize2
@@ -480,6 +481,21 @@ vm_io_and_flow_operations_tests() ->
     , return2
     , stack_loop
     , 'when'
+      %% TODD: Add remaining testcases.
+    ].
+
+
+%%====================================================================
+%% VM Get Env Tests
+%%====================================================================
+
+vm_environmental_info_test_() ->
+    aevm_test_utils:testcase_generate("VMTests/vmEnvironmentalInfo",
+				      vm_environmental_info_tests()).
+
+vm_environmental_info_tests() ->
+    [ calldatasize0
+     
     ].
 
 %%====================================================================

@@ -388,6 +388,16 @@ loop(StateIn) ->
 		    Arg = data_get_val(Us0, Bytes, State1),
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State2);
+		?CALLDATASIZE ->
+		    %% 0x36 CALLDATASIZE δ=0 α=1
+		    %% Get size of input data in current environment.
+		    %% µ's[0] ≡ |Id|
+		    %% This pertains to the input data passed with the
+		    %% message call instruction or transaction.
+		    Val = byte_size(aevm_eeevm_state:data(State0)),
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State1);
+		    
 
 		?CODECOPY ->
 		    %% 0x39 CODECOPY δ=3 α=0
