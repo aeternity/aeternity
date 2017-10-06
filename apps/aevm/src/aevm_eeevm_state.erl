@@ -13,6 +13,7 @@
 	, code/1
 	, cp/1
 	, data/1
+	, extcodesize/2
 	, gas/1
 	, init/1
 	, init/2
@@ -49,6 +50,7 @@ init(#{ env  := Env
      , code      => maps:get(code, Exec)
      , cp        => 0
      , data      => maps:get(data, Exec)
+     , ext_code_sizes => get_ext_code_sizes(Pre)
      , do_trace  => maps:get(trace, Opts, false)
      , gas       => maps:get(gas, Exec)
      , gas_price => maps:get(gasPrice, Exec)
@@ -69,6 +71,11 @@ init_storage(Address, #{} = Pre) ->
         #{storage := S} -> S
     end.
 
+get_ext_code_sizes(#{} = Pre) ->
+    maps:from_list(
+      [{Address, byte_size(C)} || {Address, #{code := C}} <-maps:to_list(Pre)]).
+
+
 init_trace_fun(Opts) ->
     maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
 
@@ -77,6 +84,8 @@ caller(State)    -> maps:get(caller, State).
 cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).
 data(State)      -> maps:get(data, State).
+extcodesize(Adr, State) ->
+    maps:get(Adr, maps:get(ext_code_sizes, State), 0).
 jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).

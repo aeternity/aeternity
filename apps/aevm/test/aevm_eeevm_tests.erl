@@ -497,6 +497,8 @@ vm_environmental_info_tests() ->
     [ calldatacopy0
     , calldatasize0
     , codesize
+    %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
+    , extcodesize0
     ].
 
 %%====================================================================

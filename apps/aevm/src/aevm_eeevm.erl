@@ -415,7 +415,7 @@ loop(StateIn) ->
 		    State4 = aevm_eeevm_memory:write_area(Us0, CallData, State3),
 		    next_instruction(OP, State4);
 		?CODESIZE ->
-		    %% 0x38 CODESIZE 0 1
+		    %% 0x38 CODESIZE  δ=0 α=1
 		    %% Get size of code running in current environment.
 		    %% µ's[0] ≡ |Ib|
 		    State1 = push(byte_size(Code), State0),
@@ -436,6 +436,16 @@ loop(StateIn) ->
 		    State4 = aevm_eeevm_memory:write_area(Us0, CodeArea, State3),
 		    next_instruction(OP, State4);
 
+		?EXTCODESIZE ->
+		    %% 0x3b EXTCODESIZE δ=1 α=1
+		    %% Get size of an account’s code.
+		    %% µ's[0] ≡ |σ[µs[0] mod 2^160] c|
+		    {Us0, State1} = pop(State0),
+		    Val = aevm_eeevm_state:extcodesize(Us0, State1),
+		    io:format("EXTCODEIZE~p~n",[Val]),
+		    State2 = push(Val, State1),
+		    next_instruction(OP, State2);
+		    
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State});
 		?NUMBER ->
