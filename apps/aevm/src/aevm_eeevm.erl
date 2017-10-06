@@ -19,7 +19,7 @@
 -module(aevm_eeevm).
 -export([eval/1]).
 
-%% Exports for tracing. TODO: move to aevm_eevm_code
+%% Exports for tracing. TODO: move to aevm_eeevm_code
 -export([code_get_op/2]).
 
 -include("aevm_eeevm.hrl").
@@ -27,7 +27,39 @@
 %% Main eval loop.
 %%
 %%
-eval(StateIn) ->
+eval(State) ->
+    loop(valid_jumpdests(State)).
+
+valid_jumpdests(State) ->
+    Code = aevm_eeevm_state:code(State),
+    JumpDests = jumpdests(0,Code, #{}),
+    aevm_eeevm_state:set_jumpdests(JumpDests, State).
+
+%% Jump Destination Validity. 
+%% DJ (c, i) ≡ {} if i > |c|
+%%             {i} ∪ DJ (c, N(i, c[i])) if c[i] = JUMPDEST
+%%             DJ (c, N(i, c[i])) otherwise
+%% where N is the next valid instruction position in the
+%% code, skipping the data of a PUSH instruction, if any:
+%% 
+%% N(i, w) ≡ i + w − PUSH1 + 2 if w ∈ [PUSH1, PUSH32]
+%%           i + 1 otherwise
+jumpdests(N, Code, ValidDests) when N >= byte_size(Code) ->
+    ValidDests;
+jumpdests(N, Code, ValidDests) ->
+    OP = code_get_op(N, Code),
+    case OP of
+	?JUMPDEST ->
+	    jumpdests(N+1, Code, maps:put(N, true, ValidDests));
+	OP when (OP >= ?PUSH1) andalso (OP =< ?PUSH32) ->
+	    jumpdests(N+(OP-?PUSH1+2), Code, ValidDests);
+	_ -> jumpdests(N+1, Code, ValidDests)
+    end.
+  
+    
+    
+
+loop(StateIn) ->
     CP   = aevm_eeevm_state:cp(StateIn),
     Code = aevm_eeevm_state:code(StateIn),
     case CP >= byte_size(Code) of
@@ -418,8 +450,13 @@ eval(StateIn) ->
 		    %% JJUMP(µ) ≡ µs[0]
 		    %% This has the effect of writing said value to µpc.
 		    {Us0, State1} = pop(State0),
-		    State2 = set_cp(Us0-1, State1),
-		    next_instruction(OP, State2);
+		    JumpDests =  aevm_eeevm_state:jumpdests(State1),
+		    case maps:get(Us0, JumpDests, false) of
+			true -> 
+			    State2 = set_cp(Us0-1, State1),
+			    next_instruction(OP, State2);
+			false -> throw({invalid_jumpdest, Us0, State1})
+		    end;
 		?JUMPI ->
 		    %% 0x57 JUMPI δ=2 α=0
 		    %% Conditionally alter the program counter.
@@ -429,7 +466,14 @@ eval(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    State3 =
-			if Us1 =/= 0 -> set_cp(Us0-1, State2);
+			if Us1 =/= 0 ->
+				JumpDests =  aevm_eeevm_state:jumpdests(State1),
+				case maps:get(Us0, JumpDests, false) of
+				    true -> 
+					set_cp(Us0-1, State2);
+				    false -> 
+					throw({invalid_jumpdest, Us0, State1})
+				end;
 			   true      -> State2
 			end,
 		    next_instruction(OP, State3);
@@ -464,7 +508,6 @@ eval(StateIn) ->
 		    %% This operation has no effect on machine
 		    %% state during execution.
 		    next_instruction(OP, State0);
-		
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.
@@ -955,7 +998,7 @@ code_get_arg(CP, Size, Code) ->
     Arg.
 
 next_instruction(_OP, State) ->
-    eval(inc_cp(State)).
+    loop(inc_cp(State)).
 
 set_cp(Address, State) ->
     aevm_eeevm_state:set_cp(Address, State).

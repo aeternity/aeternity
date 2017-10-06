@@ -431,7 +431,8 @@ vm_io_and_flow_operations_test_() ->
 
 
 vm_io_and_flow_operations_tests() ->
-    [ jump0_jumpdest0
+    [%% jump0_foreverOutOfGas
+      jump0_jumpdest0
     , jump0_jumpdest2
     , msize0
     , msize1

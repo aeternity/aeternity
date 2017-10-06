@@ -16,12 +16,14 @@
 	, gas/1
 	, init/1
 	, init/2
+	, jumpdests/1
         , out/1
 	, mem/1
 	, set_call/2
 	, set_code/2
 	, set_cp/2
 	, set_gas/2
+	, set_jumpdests/2
 	, set_mem/2
 	, set_out/2
 	, set_selfdestruct/2
@@ -70,6 +72,7 @@ caller(State)    -> maps:get(caller, State).
 cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).
 data(State)      -> maps:get(data, State).
+jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
 out(State)       -> maps:get(out, State).
@@ -89,6 +92,7 @@ set_mem(Value, State)     -> maps:put(memory, Value, State).
 set_out(Value, State)     -> maps:put(out, Value, State).
 set_gas(Value, State)     -> maps:put(gas, Value, State).
 set_storage(Value, State) -> maps:put(storage, Value, State).
+set_jumpdests(Value, State)    -> maps:put(jumpdests, Value, State).
 set_selfdestruct(Value, State) -> maps:put(selfdestruct, Value, State).
 
 add_trace(T, State) ->
