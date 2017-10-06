@@ -13,7 +13,7 @@ To fully appreciate the newest developments you need to experience syncing nodes
 
 The easiest way to achieve it, is to deploy 3 local nodes and see how they communicate.
 Please find detailed information about custom configuration here:
-https://github.com/aeternity/epoch/blob/4d1baf36207dfeff2d2f1a5256d37285574b7457/doc/CUSTOMIZATION.md
+https://github.com/aeternity/epoch/blob/a9611e4/doc/CUSTOMIZATION.md
 
 1. Download packages for Good Peers release, unpack and enter the directory.
 
