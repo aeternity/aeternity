@@ -496,7 +496,7 @@ vm_environmental_info_test_() ->
 vm_environmental_info_tests() ->
     [ calldatacopy0
     , calldatasize0
-     
+    , codesize
     ].
 
 %%====================================================================
