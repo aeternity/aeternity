@@ -10,6 +10,7 @@
 
 -export([ get_area/3
         , load/2
+        , size_in_words/1
         , store/3
         , store8/3
         ]).
@@ -31,16 +32,16 @@ load(Address, State) ->
     Value.
 
 store(Address, Value, State) when is_integer(Value) ->
-    case (Address band ?ALIGN256) of
-	%% 256-bits-word aligned
-	0 -> Mem = aevm_eeevm_state:mem(State),
-	     %% Make sure value fits in 256 bits.
-	     Value256 = Value band ?MASK256,
-	     Mem1 = write(Address, Value256, Mem),
-	     aevm_eeevm_state:set_mem(Mem1, State);
-	_ -> %% Unligned
-	    error({unaligned_sstore_not_handled, Address, Value})
-    end.
+    %% Make sure value fits in 256 bits.
+    Value256 = Value band ?MASK256,
+    Mem = aevm_eeevm_state:mem(State),
+    Mem1 = case (Address band ?ALIGN256) of
+               0 -> %% 256-bits-word aligned
+                   write(Address, Value256, Mem);
+               _ -> %% Unaligned
+                   write_unaligned(Address, Value256, Mem)
+           end,
+    aevm_eeevm_state:set_mem(Mem1, State).
 
 store8(Address, Value, State) when is_integer(Value) ->
     Mem = aevm_eeevm_state:mem(State),
@@ -53,14 +54,40 @@ store8(Address, Value, State) when is_integer(Value) ->
     Mem1 = write(AlignedAddress, NewWord, Mem),
     aevm_eeevm_state:set_mem(Mem1, State).
 
+size_in_words(State) ->
+    Mem = aevm_eevm_state:mem(State),
+    case maps:get(highest_aligned_address, Mem, undefined) of
+        undefined -> 0;
+        Highest -> (Highest bsr 5) + 1
+    end.
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
+extend(AlignedAddress, Mem) when is_integer(AlignedAddress) ->
+    Highest = maps:get(highest_aligned_address, Mem, undefined),
+    case (AlignedAddress > Highest) orelse (Highest =:= undefined) of
+        true -> maps:put(highest_aligned_address, AlignedAddress, Mem);
+        false -> Mem
+    end.
+
 %% No alignment or size check. Don't use directly.
 write(Address,     0, Mem) -> maps:remove(Address, Mem);
-write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
+write(Address, Value, Mem) -> extend(Address, maps:put(Address, Value, Mem)).
+
+write_unaligned(Address, Value256, Mem) ->
+    LowAligned = (Address bor ?ALIGN256) - ?ALIGN256,
+    HighAligned = LowAligned + 32,
+    OldLow  = read(LowAligned, 32, Mem),
+    OldHigh = read(HighAligned, 32, Mem),
+    BitOffsetLow = (Address - LowAligned)*8,
+    BitOffsetHigh = 256 - BitOffsetLow,
+    <<Pre:BitOffsetLow, _/bits>> = <<OldLow:256>>,
+    <<_:BitOffsetHigh, Post/bits>> = <<OldHigh:256>>,
+    <<NewLow:256, NewHigh:256>> = <<Pre:BitOffsetLow, Value256:256, Post/bits>>,
+    Mem1 = write(HighAligned, NewHigh, Mem),
+    write(LowAligned, NewLow, Mem1).
 
 read(Address, 1, Mem) ->
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
