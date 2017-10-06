@@ -435,14 +435,20 @@ loop(StateIn) ->
 		    CodeArea = code_get_area(Us1, Us2, Code),
 		    State4 = aevm_eeevm_memory:write_area(Us0, CodeArea, State3),
 		    next_instruction(OP, State4);
-
+		?GASPRICE ->
+		    %% 0x3a GASPRICE δ=0 α=1
+		    %% Get price of gas in current environment.
+		    %% µ's[0] ≡ Ip
+		    %%  This is gas price specified by the originating transaction.   
+		    Arg = aevm_eeevm_state:gasprice(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
 		?EXTCODESIZE ->
 		    %% 0x3b EXTCODESIZE δ=1 α=1
 		    %% Get size of an account’s code.
 		    %% µ's[0] ≡ |σ[µs[0] mod 2^160] c|
 		    {Us0, State1} = pop(State0),
 		    Val = aevm_eeevm_state:extcodesize(Us0, State1),
-		    io:format("EXTCODEIZE~p~n",[Val]),
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
 		    

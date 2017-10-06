@@ -499,6 +499,7 @@ vm_environmental_info_tests() ->
     , codesize
     %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
     , extcodesize0
+    , gasprice
     ].
 
 %%====================================================================
