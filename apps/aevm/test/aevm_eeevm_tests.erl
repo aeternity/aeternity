@@ -495,7 +495,12 @@ vm_environmental_info_test_() ->
 
 vm_environmental_info_tests() ->
     [ address0
+    , balance0
+    , balance1
+    , balance01
     , balanceAddress2
+    , balanceAddressInputTooBigLeftMyAddress
+    , balanceCaller3
     , calldatacopy0
     , calldatasize0
     , codesize

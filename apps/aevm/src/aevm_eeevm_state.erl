@@ -40,6 +40,8 @@
 	, value/1
 	]).
 
+-include("aevm_eeevm.hrl").
+ 
 init(Spec) ->
     init(Spec, #{}).
 
@@ -89,7 +91,7 @@ init_trace_fun(Opts) ->
     maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
 
 accountbalance(Address, State) ->
-    maps:get(Address, maps:get(balances, State), 0).
+    maps:get(Address band ?MASK160, maps:get(balances, State), 0).
 address(State)   -> maps:get(address, State).
 call(State)      -> maps:get(call, State).
 caller(State)    -> maps:get(caller, State).
@@ -97,7 +99,7 @@ cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).
 data(State)      -> maps:get(data, State).
 extcodesize(Adr, State) ->
-    maps:get(Adr, maps:get(ext_code_sizes, State), 0).
+    maps:get(Adr band ?MASK160 , maps:get(ext_code_sizes, State), 0).
 jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
