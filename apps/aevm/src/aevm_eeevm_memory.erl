@@ -13,6 +13,7 @@
         , size_in_words/1
         , store/3
         , store8/3
+	, write_area/3
         ]).
 
 -include("aevm_eeevm.hrl").
@@ -29,6 +30,13 @@ get_area(From, To, State) ->
     State1 = aevm_eeevm_state:set_mem(Mem2, State),
     Res = list_to_binary([read_raw(X, 1, Mem2) || X <- lists:seq(From, To)]),
     {Res, State1}.
+
+write_area(From, Bytes, State) ->
+    write_bytes(From, [B || <<B:8>> <= Bytes], State).
+
+write_bytes(_, [], State) -> State;
+write_bytes(Address, [Byte|Bytes], State) ->
+    write_bytes(Address+1, Bytes, store8(Address, Byte, State)).
 
 load(Address, State) ->
     Mem = aevm_eeevm_state:mem(State),

@@ -370,7 +370,7 @@ loop(StateIn) ->
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
 		?CALLVALUE ->
-		   %% 0x34 CALLVALUE 0 1
+		   %% 0x34 CALLVALUE δ=0 α=1
 		    %% Get deposited value by the instruction/transaction
 		    %% responsible for this execution.
 		    %% µ's[0] ≡ Iv
@@ -388,6 +388,22 @@ loop(StateIn) ->
 		    Arg = data_get_val(Us0, Bytes, State1),
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State2);
+
+		?CODECOPY ->
+		    %% 0x39 CODECOPY δ=3 α=0
+		    %% Copy code running in current environment to memory.
+		    %% ∀i∈{0...µs[2]−1}µ0m[µs[0] + i] ≡ Ib[µs[1] + i]
+		    %%                                        if µs[1] + i < |Ib|
+		    %%                                   STOP otherwise
+		    %% µ'i ≡ M(µi, µs[0], µs[2])
+		    %% The additions in µs[1] + i are not subject to
+		    %% the 2^256 modulo.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    CodeArea = code_get_area(Us1, Us2, Code),
+		    State4 = aevm_eeevm_memory:write_area(Us0, CodeArea, State3),
+		    next_instruction(OP, State4);
 
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State});
@@ -1005,6 +1021,17 @@ code_get_arg(CP, Size, Code) ->
     Length = Size*8,
     <<_:Pos, Arg:Length, _/binary>> = Code,
     Arg.
+
+code_get_area(From, Size, Code) when From+Size >= byte_size(Code) ->
+    End = byte_size(Code),
+    DataSize = (Size - (End -From))*8,
+    Pos = From * 8,
+     <<_:Pos, Arg:Size/binary, _/binary>> = <<Code/binary, 0:DataSize>>,
+    Arg;
+code_get_area(From, Size, Code) ->
+    Pos = From * 8,
+    <<_:Pos, Arg:Size/binary, _/binary>> = Code,
+    Arg.   
 
 next_instruction(_OP, State) ->
     loop(inc_cp(State)).
