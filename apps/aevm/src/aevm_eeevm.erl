@@ -574,7 +574,6 @@ loop(StateIn) ->
 		16#4d -> throw({illegal_instruction, OP, State0});
 		16#4e -> throw({illegal_instruction, OP, State0});
 		16#4f -> throw({illegal_instruction, OP, State0});
-		    
 		?POP ->
 		    %% 0x50 POP δ=1 α=0
 		    %% Remove item from stack.
@@ -697,6 +696,10 @@ loop(StateIn) ->
 		    %% This operation has no effect on machine
 		    %% state during execution.
 		    next_instruction(OP, State0);
+		16#5c -> throw({illegal_instruction, OP, State0});
+		16#5d -> throw({illegal_instruction, OP, State0});
+		16#5e -> throw({illegal_instruction, OP, State0});
+		16#5f -> throw({illegal_instruction, OP, State0});
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.
@@ -860,7 +863,6 @@ loop(StateIn) ->
 		    %% Duplicate 16th stack item.
 		    %% µ's[0] ≡ µs[5]
 		    next_instruction(OP, dup(16,State0));
-
 		?SWAP1 ->
 		    %% 0x90 SWAP1 δ=2 α=2
 		    %% Exchange 1st and 2nd stack items.
@@ -897,7 +899,63 @@ loop(StateIn) ->
 		    next_instruction(OP, swap(OP-?SWAP1+1, State));
 		?SWAP16 ->
 		    next_instruction(OP, swap(OP-?SWAP1+1, State));
-
+		%% For all logging operations,
+		%% the state change is to append an additional
+		%% log entry on to the substate’s log series:
+		%% A'l ≡ Al · (Ia, t, µm[µs[0] . . .(µs[0] + µs[1] − 1)])
+		%% and to update the memory consumption counter:
+		%% µ'i ≡ M(µi, µs[0], µs[1])
+		%% The entry’s topic series, t, differs accordingly:
+		?LOG0 ->
+		    %% 0xa0 LOG0 δ=2 α=0
+		    %% Append log record with no topics.
+		    %% t ≡ ()
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    State3 = log({}, Us0, Us1, State2),
+		    next_instruction(OP, State3);
+		?LOG1 ->
+		    %% 0xa1 LOG1 δ=3 α=0 
+		    %% Append log record with one topic.
+		    %% t ≡ (µs[2])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    State4 = log({Us2}, Us0, Us1, State3),
+		    next_instruction(OP, State4);
+		?LOG2 ->
+		    %% 0xa2 LOG2 δ=4 α=0 
+		    %% Append log record with one topic.
+		    %% t ≡ (µs[2],(µs[3])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    {Us3, State4} = pop(State3),
+		    State5 = log({Us2, Us3}, Us0, Us1, State4),
+		    next_instruction(OP, State5);
+		?LOG3 ->
+		    %% 0xa3 LOG3 δ=4 α=0 
+		    %% Append log record with one topic.
+		    %% t ≡ (µs[2], µs[3], µs[4])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    {Us3, State4} = pop(State3),
+		    {Us4, State5} = pop(State4),
+		    State6 = log({Us2, Us3, Us4}, Us0, Us1, State5),
+		    next_instruction(OP, State6);
+		?LOG4 ->
+		    %% 0xa4 LOG4 δ=6 α=0 
+		    %% Append log record with one topic.
+		    %% t ≡ (µs[2], µs[3], µs[4], µs[5])
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    {Us3, State4} = pop(State3),
+		    {Us4, State5} = pop(State4),
+		    {Us5, State6} = pop(State5),
+		    State7 = log({Us2, Us3, Us4, Us5}, Us0, Us1, State6),
+		    next_instruction(OP, State7);
 
 		?CALL ->
 		    %% 0xf1 CALL  δ=7 α=1
@@ -1167,18 +1225,7 @@ data_get_val(Address, Size, State) ->
 
 data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
-    Pos = Address * 8,
-    if Address+Size >= byte_size(Data) ->
-	    End = byte_size(Data),
-	    DataSize = (Size - (End - Address))*8,
-	    <<_:Pos, Bytes:Size/binary, _/binary>> = <<Data/binary, 0:DataSize>>,
-	    Bytes;
-       true ->
-	    <<_:Pos, Bytes:Size/binary, _/binary>> = Data,
-	    Bytes
-    end.
-
-
+    aevm_eeevm_utils:bin_copy(Address, Size, Data).
 					 
 
 %% ------------------------------------------------------------------------
@@ -1225,3 +1272,64 @@ spend_gas(Op, State) ->
         true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
 	false -> throw({out_of_gas, State})
     end.
+
+%% ------------------------------------------------------------------------
+%% LOGS
+%% ------------------------------------------------------------------------
+%%
+%% TODO: Should account address be 160 or 256 bits?
+%% TODO: Implement log bloom filter/.. q
+%% 
+%% The transaction receipt is a tuple of four items comprising
+%% the post-transaction state, Rσ, the cumulative gas
+%% used in the block containing the transaction receipt as of
+%% immediately after the transaction has happened, Ru, the
+%% set of logs created through execution of the transaction, Rl
+%% and the Bloom filter composed from information in those
+%% logs, Rb:
+%% (18) R ≡ (Rσ, Ru, Rb, Rl)
+%% The function LR trivially prepares a transaction receipt
+%% for being transformed into an RLP-serialised byte array:
+%% (19) LR(R) ≡ (TRIE(LS(Rσ)), Ru, Rb, Rl)
+%% thus the post-transaction state, Rσ is encoded into a trie
+%% structure, the root of which forms the first item.
+%% We assert Ru, the cumulative gas used is a positive integer
+%% and that the logs Bloom, Rb, is a hash of size 2048
+%% bits (256 bytes):
+%% (20) Ru ∈ P ∧ Rb ∈ B256
+%% The log entries, Rl, is a series of log entries, termed,
+%% for example, (O0, O1, ...). A log entry, O, is a tuple of a
+%% logger’s address, Oa, a series of 32-bytes log topics, Ot
+%% and some number of bytes of data, Od:
+%% (21) O ≡ (Oa,(Ot0, Ot1, ...), Od)
+%% (22) Oa ∈ B20 ∧ ∀t∈Ot : t ∈ B32 ∧ Od ∈ B
+%% We define the Bloom filter function, M, to reduce a log
+%% entry into a single 256-byte hash:
+%% (23) M(O) ≡ V_(t∈{Oa}∪Ot) (M3:2048(t))
+%% where M3:2048 is a specialised Bloom filter that sets
+%% three bits out of 2048, given an arbitrary byte sequence.
+%% It does this through taking the low-order 11 bits of each
+%% of the first three pairs of bytes in a Keccak-256 hash of
+%% the byte sequence. Formally:
+%% (24) M3:2048(x : x ∈ B) ≡ y : y ∈ B256 where:
+%% (25) y = (0, 0, ..., 0) except:
+%% (26) ∀i∈{0,2,4} : Bm(x,i)(y) = 1
+%% (27) m(x, i) ≡ KEC(x)[i, i + 1] mod 2048
+%% where B is the bit reference function such that Bj (x)
+%% equals the bit of index j (indexed from 0) in the byte array x.
+
+log(Topics, MemAddress, Length, State) ->
+    Logs = aevm_eeevm_state:logs(State),
+    AccountAddress = aevm_eeevm_state:address(State),
+    Header = log_topics(AccountAddress, Topics),
+    {Body, State1} = aevm_eeevm_memory:get_area(
+		       MemAddress, MemAddress+Length, State),
+    LogEntry = <<Header/binary, Body/binary>>,
+    NewLogs = [LogEntry|Logs],
+    aevm_eeevm_state:set_logs(NewLogs, State1).
+    
+    
+log_topics(AccountAddress, Topics) ->
+    Bytes = << << X:256>> || X <- tuple_to_list(Topics) >>,
+    <<AccountAddress:256, Bytes/binary >>.
+

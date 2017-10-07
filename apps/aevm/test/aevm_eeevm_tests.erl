@@ -538,9 +538,26 @@ vm_block_info_tests() ->
     , difficulty
     , gaslimit
     , timestamp
+      %% TODD: Add remaining testcases.
     ].
 
 
+%%====================================================================
+%% VM Log Test
+%%====================================================================
+
+vm_log_test_() ->
+    Tests = vm_log_tests(),
+    Path  = "VMTests/vmLogTest",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
+
+vm_log_tests() ->
+    [ log0_nonEmptyMem
+    , log1_nonEmptyMem_logMemSize1_logMemStart31
+    , log2_nonEmptyMem_logMemSize1
+    , log3_PC
+    , log4_PC
+    ].
 
 %%====================================================================
 %% Internal functions

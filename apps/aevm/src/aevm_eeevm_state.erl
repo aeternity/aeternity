@@ -26,6 +26,7 @@
 	, init/1
 	, init/2
 	, jumpdests/1
+	, logs/1
 	, origin/1
         , out/1
 	, mem/1
@@ -35,6 +36,7 @@
 	, set_cp/2
 	, set_gas/2
 	, set_jumpdests/2
+	, set_logs/2
 	, set_mem/2
 	, set_out/2
 	, set_selfdestruct/2
@@ -81,6 +83,7 @@ init(#{ env  := Env
 
      , code      => maps:get(code, Exec)
      , cp        => 0
+     , logs      => []
      , memory    => #{}
      , stack     => []
      , storage   => init_storage(Address, Pre)
@@ -111,8 +114,6 @@ get_balances(#{} = Pre) ->
 			   <- maps:to_list(Pre)]).
 
 get_blockhash_fun(Opts) ->
-
-    io:format("Opts ~p~n",[Opts]),
     case maps:get(blockhash, Opts, default) of
 	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(N,A) end;
 	sha3 -> fun(N,_A) -> 
@@ -164,6 +165,7 @@ out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
 gaslimit(State)  -> maps:get(gas_limit, State).
 gasprice(State)  -> maps:get(gas_price, State).
+logs(State)      -> maps:get(logs, State).
 storage(State)   -> maps:get(storage, State).
 value(State)     -> maps:get(value, State).
 timestamp(State) -> maps:get(timestamp, State).
@@ -180,6 +182,7 @@ set_stack(Value, State)   -> maps:put(stack, Value, State).
 set_mem(Value, State)     -> maps:put(memory, Value, State).
 set_out(Value, State)     -> maps:put(out, Value, State).
 set_gas(Value, State)     -> maps:put(gas, Value, State).
+set_logs(Value, State)    -> maps:put(logs, Value, State).
 set_storage(Value, State) -> maps:put(storage, Value, State).
 set_jumpdests(Value, State)    -> maps:put(jumpdests, Value, State).
 set_selfdestruct(Value, State) -> maps:put(selfdestruct, Value, State).
