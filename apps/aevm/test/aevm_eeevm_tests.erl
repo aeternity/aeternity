@@ -535,6 +535,7 @@ vm_block_info_test_() ->
 vm_block_info_tests() ->
     [ blockhashInRange
     , coinbase
+    , timestamp
     ].
 
 

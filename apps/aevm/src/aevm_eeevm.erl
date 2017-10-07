@@ -501,13 +501,11 @@ loop(StateIn) ->
 			   lists:flatten(
 			     io_lib:format("~2.16.0B",[OP]))});
 		?RETURNDATACOPY ->
-		    %% 0x3d RETURNDATACOPY
+		    %% 0x3e RETURNDATACOPY
 		    %% Not in yellow paper
 		    error({opcode_not_implemented,
 			   lists:flatten(
 			     io_lib:format("~2.16.0B",[OP]))});
-		%% No opcode 0x3e
-		16#3e -> throw({illegal_instruction, OP, State0});
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State0});
 		?BLOCKHASH ->
@@ -537,7 +535,13 @@ loop(StateIn) ->
 		    Arg = aevm_eeevm_state:coinbase(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
-		    
+		?TIMESTAMP ->
+		    %% 0x42 TIMESTAMP δ=0 α=1
+		    %% Get the block’s timestamp.
+		    %% µ's[0] ≡ IHs
+		    Arg = aevm_eeevm_state:timestamp(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
 		?NUMBER ->
 		    %% 0x43 NUMBER  δ=0 α=1
 		    %% Get the block’s number.
