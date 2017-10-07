@@ -7,8 +7,7 @@
          send_block/2
         ]).
 
--compile({parse_transform, lager_transform}).
-%% All requests take 
+-export([parse_uri/1]).
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
@@ -18,13 +17,14 @@ ping(Peer) ->
     #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
     Peers = [iolist_to_binary(aec_peers:uri(P))
              || P <- aec_peers:get_random(Share, [Peer])],
+    lager:debug("ping(); Peers = ~p", [Peers]),
     PingObj = PingObj0#{<<"peers">> => Peers},
     Response = process_request(Peer, post, Req, PingObj),
     case Response of
         {ok, Map} ->
             lager:debug("ping response: ~p", [Map]),
             aec_sync:compare_ping_objects(PingObj, Map),
-            check_returned_source(Map, Peer),
+            check_returned_source(Map, list_to_binary(aec_peers:uri(Peer))),
             {ok, Map};
         {error, _Reason} = Error ->
             Error
@@ -64,6 +64,18 @@ send_block(Peer, Block) ->
             {ok, ok};
         {error, _Reason} = Error ->
             Error
+    end.
+
+-spec parse_uri(http_uri:uri()) -> {string(), string(), integer()} | error.
+parse_uri(Uri) ->
+    case http_uri:parse(Uri) of
+        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
+            {Scheme, Host, Port};
+        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
+            {Scheme, Host, Port};
+        {error, _Reason} ->
+            lager:debug("cannot parse Uri (~p): ~p", [Uri, _Reason]),
+            error
     end.
 
 
@@ -142,7 +154,7 @@ check_returned_source(#{<<"source">> := Source}, Peer) ->
             %% (which should already be registered with aec_peers)
             lager:debug("Source (~p) and Peer (~p) differ; adding alias",
                         [Source, Peer]),
-            aec_peers:register_alias(Source, Peer);
+            aec_peers:register_source(Source, Peer);
        true ->
             ok
     end.
