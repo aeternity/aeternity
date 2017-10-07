@@ -40,6 +40,7 @@
 	, set_storage/2
 	, stack/1
 	, storage/1
+	, timestamp/1
 	, trace_format/3
 	, value/1
 	]).
@@ -64,6 +65,7 @@ init(#{ env  := Env
 
      , coinbase  => maps:get(currentCoinbase, Env)
      , number    => maps:get(currentNumber, Env)
+     , timestamp => maps:get(currentTimestamp, Env)
 
      , balances  => get_balances(Pre)
      , ext_code_blocks => get_ext_code_blocks(Pre)
@@ -158,6 +160,7 @@ gas(State)       -> maps:get(gas, State).
 gasprice(State)  -> maps:get(gas_price, State).
 storage(State)   -> maps:get(storage, State).
 value(State)     -> maps:get(value, State).
+timestamp(State) -> maps:get(timestamp, State).
 
 do_trace(State)  -> maps:get(do_trace, State).
 trace(State)     -> maps:get(trace, State).
