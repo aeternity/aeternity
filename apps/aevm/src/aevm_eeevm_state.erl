@@ -17,9 +17,11 @@
 	, coinbase/1
 	, cp/1
 	, data/1
+	, difficulty/1
 	, extcode/4
 	, extcodesize/2
 	, gas/1
+	, gaslimit/1
 	, gasprice/1
 	, init/1
 	, init/2
@@ -63,14 +65,16 @@ init(#{ env  := Env
      , origin    => maps:get(origin, Exec)
      , value     => maps:get(value, Exec)
 
-     , coinbase  => maps:get(currentCoinbase, Env)
-     , number    => maps:get(currentNumber, Env)
-     , timestamp => maps:get(currentTimestamp, Env)
+     , coinbase   => maps:get(currentCoinbase, Env)
+     , difficulty => maps:get(currentDifficulty, Env)
+     , gas_limit  => maps:get(currentGasLimit, Env)
+     , number     => maps:get(currentNumber, Env)
+     , timestamp  => maps:get(currentTimestamp, Env)
 
-     , balances  => get_balances(Pre)
+     , balances        => get_balances(Pre)
      , ext_code_blocks => get_ext_code_blocks(Pre)
-     , ext_code_sizes => get_ext_code_sizes(Pre)
-     , block_hash_fun => BlockHashFun
+     , ext_code_sizes  => get_ext_code_sizes(Pre)
+     , block_hash_fun  => BlockHashFun
 
      , out       => <<>>
      , call      => #{}
@@ -143,6 +147,7 @@ code(State)      -> maps:get(code, State).
 coinbase(State)  -> maps:get(coinbase, State).
 cp(State)        -> maps:get(cp, State).
 data(State)      -> maps:get(data, State).
+difficulty(State)-> maps:get(difficulty, State).
 extcodesize(Adr, State) ->
     maps:get(Adr band ?MASK160, maps:get(ext_code_sizes, State), 0).
 extcode(Account, Start, Length, State) ->
@@ -157,6 +162,7 @@ number(State)    -> maps:get(number, State).
 origin(State)    -> maps:get(origin, State).
 out(State)       -> maps:get(out, State).
 gas(State)       -> maps:get(gas, State).
+gaslimit(State)  -> maps:get(gas_limit, State).
 gasprice(State)  -> maps:get(gas_price, State).
 storage(State)   -> maps:get(storage, State).
 value(State)     -> maps:get(value, State).
