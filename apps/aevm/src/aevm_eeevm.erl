@@ -530,6 +530,13 @@ loop(StateIn) ->
 		    Hash = aevm_eeevm_state:blockhash(Us0, 0, State1),
 		    State2 = push(Hash, State1),
 		    next_instruction(OP, State2);
+		?COINBASE ->
+		    %% 0x41 COINBASE δ=0 α=1
+		    %% Get the block’s beneficiary address.
+		    %% µ's[0] ≡ IHc
+		    Arg = aevm_eeevm_state:coinbase(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
 		    
 		?NUMBER ->
 		    %% 0x43 NUMBER  δ=0 α=1
