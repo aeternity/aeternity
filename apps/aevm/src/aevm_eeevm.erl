@@ -956,7 +956,9 @@ loop(StateIn) ->
 		    {Us5, State6} = pop(State5),
 		    State7 = log({Us2, Us3, Us4, Us5}, Us0, Us1, State6),
 		    next_instruction(OP, State7);
-
+		OP when OP >= 16#a5,
+			OP =< 16#ef  ->
+		    throw({illegal_instruction, OP, State0});
 		?CALL ->
 		    %% 0xf1 CALL  δ=7 α=1
 		    %% Message-call into an account.
