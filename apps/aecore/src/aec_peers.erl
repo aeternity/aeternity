@@ -184,7 +184,7 @@ get_local_peer_uri() ->
 %%------------------------------------------------------------------------------
 -spec update_last_seen(uri()) -> ok.
 update_last_seen(Uri) ->
-    gen_server:cast(?MODULE, {update_last_seen, uri(Uri), erlang:system_time()}).
+    gen_server:cast(?MODULE, {update_last_seen, uri(Uri), timestamp()}).
 
 %%%=============================================================================
 %%% gen_server functions
@@ -251,6 +251,14 @@ handle_cast({update_last_seen, Uri, Time}, State = #state{peers = Peers}) ->
                   Hash, Peer#peer{last_seen = Time}, Peers)
         end,
     {noreply, State#state{peers = NewPeers}};
+handle_cast({ping_error, Uri, Time}, State) ->
+    {noreply, log_ping_and_set_reping(
+                error,
+                fun calc_backoff_retry/1, Uri, Time, State)};
+handle_cast({good_ping, Uri, Time}, State) ->
+    {noreply, log_ping_and_set_reping(
+                ok,
+                fun set_max_retry/1, Uri, Time, State)};
 handle_cast({add, Peer, Connect}, State = #state{peers = Peers})
   when is_record(Peer, peer) ->
     Key = hash_uri(Peer#peer.uri),
@@ -272,7 +280,10 @@ handle_cast({alias, PeerUri, Alias} = _R, State = #state{aliases = As}) ->
                   As
           end,
     {noreply, State#state{aliases = As1}};
-handle_cast({add_and_ping, Peers}, State) ->
+handle_cast({add_and_ping, PeerUris}, State) ->
+    lager:debug("add and ping peers ~p", [PeerUris]),
+    #state{peers = Peers} = State1 = insert_peer_uris(PeerUris, State),
+    lager:debug("known peers: ~p", [gb_trees:to_list(Peers)]),
     lists:foreach(
       fun(P) ->
               Key = hash_uri(P#peer.uri),
@@ -282,8 +293,8 @@ handle_cast({add_and_ping, Peers}, State) ->
                       %% TODO: use jobs workers instead
                       spawn(fun() -> ping_peer(P) end)
               end
-      end, Peers),
-    {noreply, State};
+      end, PeerUris),
+    {noreply, State1};
 handle_cast({remove, PeerUri}, State = #state{peers = Peers}) ->
     HashUri = hash_uri(normalize_uri(PeerUri)),
     case gb_trees:lookup(HashUri, Peers) of
@@ -292,6 +303,23 @@ handle_cast({remove, PeerUri}, State = #state{peers = Peers}) ->
             {noreply, do_remove_peer(HashUri, Peer, State)}
     end.
 
+handle_info({timeout, Ref, {ping_peer, Uri}}, State) ->
+    lager:debug("got ping_peer timer msg for ~p", [Uri]),
+    case lookup_peer(Uri, State) of
+        none ->
+            lager:debug("ping_peer timer msg for unknown uri (~p)", [Uri]),
+            {noreply, State};
+        {value, Hash, #peer{ping_tref = Ref} = Peer} ->
+            %% TODO: use jobs workers instead
+            spawn(fun() -> ping_peer(Peer) end),
+            Peers = gb_trees:enter(
+                      Hash, Peer#peer{ping_tref = undefined},
+                      State#state.peers),
+            {noreply, State#state{peers = Peers}};
+        {value, _, #peer{}} ->
+            lager:debug("stale ping_peer timer msg (~p) - ignore", [Uri]),
+            {noreply, State}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 terminate(_Reason, _State) ->
@@ -302,6 +330,17 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+timestamp() ->
+    erlang:system_time(millisecond).
+
+-spec log_ping_error(uri()) -> ok.
+log_ping_error(Uri) ->
+    gen_server:cast(?MODULE, {ping_error, uri(Uri), timestamp()}).
+
+-spec log_good_ping(uri()) -> ok.
+log_good_ping(Uri) ->
+    gen_server:cast(?MODULE, {good_ping, uri(Uri), timestamp()}).
 
 -spec hash_uri(uri()) -> binary().
 hash_uri(Uri) when is_list(Uri)->
@@ -402,11 +441,12 @@ ping_peer(Peer) ->
     lager:debug("ping result (~p): ~p", [Peer, Res]),
     case Res of
         {ok, Map} ->
-            update_last_seen(Peer),
+            log_good_ping(Peer#peer.uri),
             Peers = maps:get(<<"peers">>, Map, []),
             [add(P, true) || P <- Peers],
             ok;
         _ ->
+            log_ping_error(Peer#peer.uri),
             ok
     end.
 
@@ -465,6 +505,9 @@ aliases(Uri, {_, _, Iter2}, Acc) ->
 aliases(_, none, Acc) ->
     Acc.
 
+enter_peer(#peer{uri = Uri} = Peer, #state{} = State) ->
+    enter_peer(hash_uri(Uri), Peer, State).
+
 enter_peer(Key, Peer, #state{aliases = As, peers = Peers} = State) ->
     PeerUri = uri(Peer),
     %% An uri shouldn't be both a peer and an alias (this would be, at best,
@@ -473,3 +516,83 @@ enter_peer(Key, Peer, #state{aliases = As, peers = Peers} = State) ->
     As1 = gb_trees:delete_any(PeerUri, As),
     Peers1 = gb_trees:enter(Key, Peer, Peers),
     State#state{aliases = As1, peers = Peers1}.
+
+insert_peer_uris(Uris, #state{} = S) ->
+    lists:foldl(
+      fun(Uri, Sx) ->
+              enter_peer(peer_record(Uri), Sx)
+      end, S, Uris).
+
+log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
+    case lookup_peer(Uri, State) of
+        none ->
+            lager:debug("Reported ping event for unknown peer (~p)", [Uri]),
+            State;
+        {value, Hash, Peer} ->
+            Peer1 = save_ping_event(Res, Time, Peer),
+            NewTime = CalcF(Peer1),
+            lager:debug("Starting re-ping timer for ~p: ~p", [Uri, NewTime]),
+            TRef = erlang:start_timer(
+                     NewTime, self(), {ping_peer, Uri}),
+            Peer2 = save_ping_timer(TRef, Peer1),
+            Peers = gb_trees:enter(
+                       Hash, Peer2, State#state.peers),
+            State#state{peers = Peers}
+    end.
+
+save_ping_event(Res, T, #peer{} = Peer) ->
+    LastPings = case Peer#peer.last_pings of
+                    []      -> [T];
+                    [A]     -> [T,A];
+                    [A,B|_] -> [T,A,B]
+                end,
+    LastSeen = case Res of
+                   ok    -> T;
+                   error -> Peer#peer.last_seen
+               end,
+    Peer#peer{last_seen = LastSeen, last_pings = LastPings}.
+
+save_ping_timer(TRef, #peer{ping_tref = Prev} = Peer) ->
+    case Prev of
+        undefined -> ok;
+        _ -> erlang:cancel_timer(Prev, [{info, false}])
+    end,
+    Peer#peer{ping_tref = TRef}.
+
+calc_backoff_retry(#peer{last_pings = Last}) ->
+    lager:debug("calc_backoff_retry; Last = ~p", [Last]),
+    {Min, Max} = ping_interval_limits(),
+    Intervals = intervals(Last, Min),
+    lager:debug("Intervals = ~p", [Intervals]),
+    erlang:min(Max, calc_retry(Intervals, Min)).
+
+set_max_retry(_) ->
+    {_, Max} = ping_interval_limits(),
+    Max.
+
+intervals([A, B | T], Min) when A > B ->
+    [A-B | intervals([B | T], Min)];
+intervals([_, B | T], Min) ->
+    [0 | intervals([B | T], Min)];
+intervals([_], _) -> [];
+intervals([], _) -> [].
+
+calc_retry([A,B|_], Min) when A < B ->
+    A + Min;
+calc_retry([A,B|_], _) ->
+    A + B;
+calc_retry(_, Min) ->
+    Min.
+
+ping_interval_limits() ->
+    Default = {3000, 60000},
+    case application:get_env(aecore, ping_interval_limits, {3000, 60000}) of
+        {Min, Max} = Res when is_integer(Min),
+                              is_integer(Max),
+                              Max >= Min ->
+            Res;
+        Other ->
+            lager:debug("invalid ping limits: ~p; using default (~p)",
+                        [Other, Default]),
+            Default
+    end.
