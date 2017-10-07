@@ -493,6 +493,20 @@ loop(StateIn) ->
 		    CodeArea = aevm_eeevm_state:extcode(Us0, Us2, Us3, State4),
 		    State5 = aevm_eeevm_memory:write_area(Us1, CodeArea, State4),
 		    next_instruction(OP, State5);
+		?RETURNDATASIZE ->
+		    %% 0x3d RETURNDATASIZE
+		    %% Not in yellow paper
+		    error({opcode_not_implemented,
+			   lists:flatten(
+			     io_lib:format("~2.16.0B",[OP]))});
+		?RETURNDATACOPY ->
+		    %% 0x3d RETURNDATACOPY
+		    %% Not in yellow paper
+		    error({opcode_not_implemented,
+			   lists:flatten(
+			     io_lib:format("~2.16.0B",[OP]))});
+		%% No opcode 0x3e
+		16#3e -> throw({illegal_instruction, OP, State});
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State});
 		?NUMBER ->
