@@ -549,6 +549,31 @@ loop(StateIn) ->
 		    Arg = aevm_eeevm_state:number(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
+		?DIFFICULTY ->
+		    %% 0x44 DIFFICULTY δ=0 α=1
+		    %% Get the block’s difficulty.
+		    %% µ's[0] ≡ IHd
+		    Arg = aevm_eeevm_state:difficulty(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
+		?GASLIMIT ->
+		    %% 0x45 GASLIMIT  δ=0 α=1
+		    %% Get the block’s number.
+		    %% µ's[0] ≡ IHl
+		    Arg = aevm_eeevm_state:gaslimit(State0),
+		    State1 = push(Arg, State0),
+		    next_instruction(OP, State1);
+		%% No opcode 0x46-0x4f
+		16#46 -> throw({illegal_instruction, OP, State0});
+		16#47 -> throw({illegal_instruction, OP, State0});
+		16#48 -> throw({illegal_instruction, OP, State0});
+		16#49 -> throw({illegal_instruction, OP, State0});
+		16#4a -> throw({illegal_instruction, OP, State0});
+		16#4b -> throw({illegal_instruction, OP, State0});
+		16#4c -> throw({illegal_instruction, OP, State0});
+		16#4d -> throw({illegal_instruction, OP, State0});
+		16#4e -> throw({illegal_instruction, OP, State0});
+		16#4f -> throw({illegal_instruction, OP, State0});
 		    
 		?POP ->
 		    %% 0x50 POP δ=1 α=0
