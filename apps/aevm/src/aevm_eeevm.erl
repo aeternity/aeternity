@@ -385,7 +385,6 @@ loop(StateIn) ->
 		    Arg = aevm_eeevm_state:origin(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
-
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
 		    %% Get caller address.
@@ -477,7 +476,23 @@ loop(StateIn) ->
 		    Val = aevm_eeevm_state:extcodesize(Us0, State1),
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State2);
-		    
+		?EXTCODECOPY ->
+		    %% 0x3c EXTCODECOPY δ=4 α=0
+		    %% Copy an account’s code to memory.
+		    %% ∀i∈{0...µs[3]−1}µ'm[µs[1] + i] ≡ c[µs[2] + i]
+		    %%                                       if µs[2] + i < |c|
+		    %%                                   STOP otherwise
+		    %% where c ≡ σ[µs[0] mod 2^160]c
+		    %% µ'i ≡ M(µi, µs[1], µs[3])
+		    %% The additions in µs[2] + i are not
+		    %% subject to the 2^256 modulo.
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Us2, State3} = pop(State2),
+		    {Us3, State4} = pop(State3),
+		    CodeArea = aevm_eeevm_state:extcode(Us0, Us2, Us3, State4),
+		    State5 = aevm_eeevm_memory:write_area(Us1, CodeArea, State4),
+		    next_instruction(OP, State5);
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State});
 		?NUMBER ->
@@ -1104,29 +1119,13 @@ code_get_op(CP, Code) -> binary:at(Code, CP).
 %% The byte is right-aligned (takes the lowest significant
 %% place in big endian).
 code_get_arg(CP,_Size, Code) when CP >= byte_size(Code) -> 0;
-code_get_arg(CP, Size, Code) when CP+Size >= byte_size(Code) -> 
-    End = byte_size(Code),
-    DataSize = (Size - (End - CP))*8,
-    Pos = CP * 8,
-    Length = Size*8,
-    <<_:Pos, Arg:Length, _/binary>> = <<Code/binary, 0:DataSize>>,
-    Arg;
-code_get_arg(CP, Size, Code) ->
-    Pos = CP * 8,
-    Length = Size*8,
-    <<_:Pos, Arg:Length, _/binary>> = Code,
+code_get_arg(CP, Size, Code) when Size < 33 ->
+    BitSize = Size * 8,
+    <<Arg:BitSize>> = aevm_eeevm_utils:bin_copy(CP, Size, Code),
     Arg.
 
-code_get_area(From, Size, Code) when From+Size >= byte_size(Code) ->
-    End = byte_size(Code),
-    DataSize = (Size - (End -From))*8,
-    Pos = From * 8,
-     <<_:Pos, Arg:Size/binary, _/binary>> = <<Code/binary, 0:DataSize>>,
-    Arg;
 code_get_area(From, Size, Code) ->
-    Pos = From * 8,
-    <<_:Pos, Arg:Size/binary, _/binary>> = Code,
-    Arg.   
+    aevm_eeevm_utils:bin_copy(From, Size, Code).
 
 next_instruction(_OP, State) ->
     loop(inc_cp(State)).

@@ -15,6 +15,7 @@
 	, code/1
 	, cp/1
 	, data/1
+	, extcode/4
 	, extcodesize/2
 	, gas/1
 	, gasprice/1
@@ -43,33 +44,39 @@
 
 -include("aevm_eeevm.hrl").
  
-init(Spec) ->
-    init(Spec, #{}).
+init(Spec) -> init(Spec, #{}).
 
 init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
     #{ address   => Address
-     , balances  => get_balances(Pre)
-     , call      => #{}
      , caller    => maps:get(caller, Exec)
-     , code      => maps:get(code, Exec)
-     , cp        => 0
      , data      => maps:get(data, Exec)
-     , ext_code_sizes => get_ext_code_sizes(Pre)
-     , do_trace  => maps:get(trace, Opts, false)
      , gas       => maps:get(gas, Exec)
      , gas_price => maps:get(gasPrice, Exec)
-     , memory    => #{}
-     , number    => maps:get(currentNumber, Env)
      , origin    => maps:get(origin, Exec)
+     , value     => maps:get(value, Exec)
+
+     , number    => maps:get(currentNumber, Env)
+
+     , balances  => get_balances(Pre)
+     , ext_code_blocks => get_ext_code_blocks(Pre)
+     , ext_code_sizes => get_ext_code_sizes(Pre)
+
      , out       => <<>>
+     , call      => #{}
+
+     , code      => maps:get(code, Exec)
+     , cp        => 0
+     , memory    => #{}
      , stack     => []
      , storage   => init_storage(Address, Pre)
+
+     , do_trace  => maps:get(trace, Opts, false)
      , trace     => []
      , trace_fun => init_trace_fun(Opts)
-     , value     => maps:get(value, Exec)
+
      }.
 
 init_storage(Address, #{} = Pre) ->
@@ -81,6 +88,10 @@ init_storage(Address, #{} = Pre) ->
 get_ext_code_sizes(#{} = Pre) ->
     maps:from_list(
       [{Address, byte_size(C)} || {Address, #{code := C}} <-maps:to_list(Pre)]).
+
+get_ext_code_blocks(#{} = Pre) ->
+    maps:from_list(
+      [{Address, C} || {Address, #{code := C}} <-maps:to_list(Pre)]).
 
 get_balances(#{} = Pre) ->
     maps:from_list(
@@ -100,7 +111,12 @@ cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).
 data(State)      -> maps:get(data, State).
 extcodesize(Adr, State) ->
-    maps:get(Adr band ?MASK160 , maps:get(ext_code_sizes, State), 0).
+    maps:get(Adr band ?MASK160, maps:get(ext_code_sizes, State), 0).
+extcode(Account, Start, Length, State) ->
+    CodeBlock = maps:get(Account band ?MASK160,
+			 maps:get(ext_code_blocks, State), <<>>),
+    aevm_eeevm_utils:bin_copy(Start, Length, CodeBlock).
+    
 jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).
