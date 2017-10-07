@@ -14,6 +14,7 @@
 	, call/1
         , caller/1
 	, code/1
+	, coinbase/1
 	, cp/1
 	, data/1
 	, extcode/4
@@ -61,6 +62,7 @@ init(#{ env  := Env
      , origin    => maps:get(origin, Exec)
      , value     => maps:get(value, Exec)
 
+     , coinbase  => maps:get(currentCoinbase, Env)
      , number    => maps:get(currentNumber, Env)
 
      , balances  => get_balances(Pre)
@@ -135,8 +137,9 @@ address(State)   -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
 call(State)      -> maps:get(call, State).
 caller(State)    -> maps:get(caller, State).
-cp(State)        -> maps:get(cp, State).
 code(State)      -> maps:get(code, State).
+coinbase(State)  -> maps:get(coinbase, State).
+cp(State)        -> maps:get(cp, State).
 data(State)      -> maps:get(data, State).
 extcodesize(Adr, State) ->
     maps:get(Adr band ?MASK160, maps:get(ext_code_sizes, State), 0).
