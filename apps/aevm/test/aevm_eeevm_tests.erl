@@ -12,9 +12,15 @@
 %% Test harness
 %%====================================================================
 
-%% To turn on tracing for a test case return a map with trace => true.
-%% e.g. extra_opts(mulmod4) -> #{trace => true};
-extra_opts(_) ->
+%% For VMTests
+%%  "Because the data of the blockchain is not given, the opcode BLOCKHASH could not 
+%%   return the hashes of the corresponding blocks. Therefore we define the hash of 
+%%   block number n to be SHA3-256("n")."
+%% Indicated by the option blockhash->sha3
+extra_opts(Name) -> maps:put(blockhash, sha3, extra_opts_tc(Name)).
+%% To turn on tracing for a test case return a map with trace => true
+%% e.g. extra_opt_tc(mulmod4) -> #{trace => true};
+extra_opts_tc(_) ->
     #{}.
 
 %%====================================================================
@@ -299,7 +305,9 @@ logic_tests() ->
 %%====================================================================
 
 vm_test_() ->
-    aevm_test_utils:testcase_generate("VMTests/vmTests", vm_tests()).
+    Tests =  vm_tests(),
+    Path  = "VMTests/vmTests",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_tests() ->
     [ %% arith    %% Missing post in all of these
@@ -393,12 +401,13 @@ vm_push_dup_swap_tests() ->
     ].
 
 %%====================================================================
-%% VMTests tests
+%% Sha3 tests
 %%====================================================================
 
 vm_sha3_test_() ->
-    aevm_test_utils:testcase_generate("VMTests/vmSha3Test",
-				      vm_sha3_tests()).
+    Tests =  vm_sha3_tests(),
+    Path  = "VMTests/vmSha3Test",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_sha3_tests() ->
     [ sha3_0
@@ -426,9 +435,9 @@ vm_sha3_tests() ->
 %%====================================================================
 
 vm_io_and_flow_operations_test_() ->
-    aevm_test_utils:testcase_generate("VMTests/vmIOandFlowOperations",
-				      vm_io_and_flow_operations_tests()).
-
+    Tests = vm_io_and_flow_operations_tests(),
+    Path  = "VMTests/vmIOandFlowOperations",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_io_and_flow_operations_tests() ->
     [ 'DynamicJumpPathologicalTest0'
@@ -490,8 +499,9 @@ vm_io_and_flow_operations_tests() ->
 %%====================================================================
 
 vm_environmental_info_test_() ->
-    aevm_test_utils:testcase_generate("VMTests/vmEnvironmentalInfo",
-				      vm_environmental_info_tests()).
+    Tests = vm_environmental_info_tests(),
+    Path  = "VMTests/vmEnvironmentalInfo",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_environmental_info_tests() ->
     [ address0
@@ -509,7 +519,24 @@ vm_environmental_info_tests() ->
     , extcodesize0
     , gasprice
     , origin
+      %% TODD: Add remaining testcases.
     ].
+
+
+%%====================================================================
+%% VM Block Info Tests
+%%====================================================================
+
+vm_block_info_test_() ->
+    Tests = vm_block_info_tests(),
+    Path  = "VMTests/vmBlockInfoTest",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
+
+vm_block_info_tests() ->
+    [ blockhashInRange
+    ].
+
+
 
 %%====================================================================
 %% Internal functions

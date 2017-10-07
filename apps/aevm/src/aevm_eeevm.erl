@@ -464,7 +464,8 @@ loop(StateIn) ->
 		    %% 0x3a GASPRICE δ=0 α=1
 		    %% Get price of gas in current environment.
 		    %% µ's[0] ≡ Ip
-		    %%  This is gas price specified by the originating transaction.   
+		    %%  This is gas price specified by the
+		    %% originating transaction.   
 		    Arg = aevm_eeevm_state:gasprice(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
@@ -506,9 +507,30 @@ loop(StateIn) ->
 			   lists:flatten(
 			     io_lib:format("~2.16.0B",[OP]))});
 		%% No opcode 0x3e
-		16#3e -> throw({illegal_instruction, OP, State});
+		16#3e -> throw({illegal_instruction, OP, State0});
 		%% No opcode 0x3f
-		16#3f -> throw({illegal_instruction, OP, State});
+		16#3f -> throw({illegal_instruction, OP, State0});
+		?BLOCKHASH ->
+		    %% 0x40 BLOCKHASH δ=1 α=1
+		    %% Get the hash of one of the 256 most
+		    %% recent complete blocks.
+		    %% µ's[0] ≡ P(IHp, µs[0], 0)
+		    %% where P is the hash of a block of a particular number,
+		    %% up to a maximum age.
+		    %% 0 is left on the stack if the looked for block number
+		    %% is greater than the current block number
+		    %% or more than 256 blocks behind the current block.
+		    %%               0 if n > Hi ∨ a = 256 ∨ h = 0
+		    %% P(h, n, a) ≡  h if n = Hi
+		    %%               P(Hp, n, a + 1) otherwise
+		    %% and we assert the header H can be determined as
+		    %% its hash is the parent hash
+		    %% in the block following it.
+		    {Us0, State1} = pop(State0),
+		    Hash = aevm_eeevm_state:blockhash(Us0, 0, State1),
+		    State2 = push(Hash, State1),
+		    next_instruction(OP, State2);
+		    
 		?NUMBER ->
 		    %% 0x43 NUMBER  δ=0 α=1
 		    %% Get the block’s number.
@@ -567,9 +589,9 @@ loop(StateIn) ->
 		    %% 0x55 SSTORE δ=2 α=0
 		    %% Save word to storage.
 		    %% σ'[Ia]s[µs[0]] ≡ µs[1]
-		    %% CSSTORE(σ, µ) ≡ Gsset if µs[1] =/= 0
-                    %%                         ∧ σ[Ia]s[µs[0]] = 0
-		    %%                 Gsreset otherwise
+		    %%                   Gsset if µs[1] =/= 0
+                    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
+		    %%                   Gsreset otherwise
 		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
 		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
 		    %%       0 otherwise

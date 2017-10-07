@@ -10,6 +10,7 @@
 
 -export([ accountbalance/2
 	, address/1
+	, blockhash/3
 	, call/1
         , caller/1
 	, code/1
@@ -50,6 +51,8 @@ init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
+    BlockHashFun = get_blockhash_fun(Opts),
+
     #{ address   => Address
      , caller    => maps:get(caller, Exec)
      , data      => maps:get(data, Exec)
@@ -63,6 +66,7 @@ init(#{ env  := Env
      , balances  => get_balances(Pre)
      , ext_code_blocks => get_ext_code_blocks(Pre)
      , ext_code_sizes => get_ext_code_sizes(Pre)
+     , block_hash_fun => BlockHashFun
 
      , out       => <<>>
      , call      => #{}
@@ -98,13 +102,37 @@ get_balances(#{} = Pre) ->
       [{Address, B} || {Address, #{balance := B}}
 			   <- maps:to_list(Pre)]).
 
+get_blockhash_fun(Opts) ->
+
+    io:format("Opts ~p~n",[Opts]),
+    case maps:get(blockhash, Opts, default) of
+	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(N,A) end;
+	sha3 -> fun(N,_A) -> 
+			%% Because the data of the blockchain is not
+			%% given, the opcode BLOCKHASH could not
+			%% return the hashes of the corresponding
+			%% blocks. Therefore we define the hash of
+			%% block number n to be SHA3-256("n").
+			if N > 256 -> 0;
+			   true ->
+				BinN = integer_to_binary(N),
+				Hash = sha3:hash(256, BinN),
+				<<Val:256/integer-unsigned>> = Hash,
+				Val
+			end
+		end
+    end.
+    
+
 
 init_trace_fun(Opts) ->
     maps:get(trace_fun, Opts, fun(S,A) -> io:format(S,A) end).
 
+
 accountbalance(Address, State) ->
     maps:get(Address band ?MASK160, maps:get(balances, State), 0).
 address(State)   -> maps:get(address, State).
+blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
 call(State)      -> maps:get(call, State).
 caller(State)    -> maps:get(caller, State).
 cp(State)        -> maps:get(cp, State).
