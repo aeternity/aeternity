@@ -56,16 +56,13 @@ jumpdests(N, Code, ValidDests) ->
 	_ -> jumpdests(N+1, Code, ValidDests)
     end.
 
-
-
-
 loop(StateIn) ->
     CP   = aevm_eeevm_state:cp(StateIn),
     Code = aevm_eeevm_state:code(StateIn),
     case CP >= byte_size(Code) of
 	false ->
 	    OP   = code_get_op(CP, Code),
-	    State = spend_gas(OP, StateIn),
+            State = spend_op_gas(OP, StateIn),
 	    State0 = aevm_eeevm_state:trace_format("~n", [], State),
 	    case OP of
 		%% =s: Stop and Arithmetic Operations
@@ -81,7 +78,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = add(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?MUL ->
 		    %% 0x02 MUL δ=2 α=1
 		    %% Multiplication operation.
@@ -90,7 +87,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = mul(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SUB ->
 		    %% 0x03 SUB δ=2 α=1
 		    %% Subtraction operation.
@@ -99,7 +96,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = sub(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?DIV ->
 		    %% 0x04 DIV δ=2 α=1
 		    %% Integer division operation.
@@ -109,7 +106,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = idiv(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SDIV ->
 		    %% 0x05 SDIV δ=2 α=1
 		    %% Signed integer division operation. (truncated)
@@ -123,7 +120,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = sdiv(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?MOD ->
 		    %% 0x06 MOD δ=2 α=1
 		    %% Modulo remainder operation.
@@ -133,7 +130,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = mod(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SMOD ->
 		    %% 0x07 SMOD δ=2 α=1
 		    %% Signed modulo remainder operation.
@@ -145,7 +142,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = smod(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?ADDMOD ->
 		    %% 0x08 ADDMOD  δ=3 α=1
 		    %% Modulo addition operation.
@@ -158,7 +155,7 @@ loop(StateIn) ->
 		    {Us2, State3} = pop(State2),
 		    Val = addmod(Us0, Us1, Us2),
 		    State4 = push(Val, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		?MULMOD ->
 		    %% 0x09 MULMOD  δ=3 α=1
 		    %% Modulo multiplication operation.
@@ -171,7 +168,7 @@ loop(StateIn) ->
 		    {Us2, State3} = pop(State2),
 		    Val = mulmod(Us0, Us1, Us2),
 		    State4 = push(Val, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		?EXP ->
 		    %% 0x0a EXP δ=2 α=1
 		    %% Exponential operation.
@@ -180,7 +177,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = exp(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SIGNEXTEND ->
 		    %% 0x0b SIGNEXTEND δ=2 α=1
 		    %% Extend length of two’s complement signed integer.
@@ -192,7 +189,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = signextend(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		%% No opcodes 0x0c-0x0f
 		16#0c -> throw({illegal_instruction, OP, State});
 		16#0d -> throw({illegal_instruction, OP, State});
@@ -210,7 +207,7 @@ loop(StateIn) ->
 			     true -> 0
 			  end,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?GT ->
 		    %% 0x11 GT δ=2 α=1
 		    %% Greater-than comparison.
@@ -222,7 +219,7 @@ loop(StateIn) ->
 			     true -> 0
 			  end,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SLT ->
 		    %% 0x12 SLT δ=2 α=1
 		    %% Signed less-than comparison.
@@ -238,7 +235,7 @@ loop(StateIn) ->
 			     true -> 0
 			  end,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SGT ->
 		    %% 0x13 SGT δ=2 α=1
 		    %% Signed greater-than comparison.
@@ -254,7 +251,7 @@ loop(StateIn) ->
 			     true -> 0
 			  end,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?EQ ->
 		    %% 0x14 EQ δ=2 α=1
 		    %% Equality comparison.
@@ -266,7 +263,7 @@ loop(StateIn) ->
 			     true -> 0
 			  end,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?ISZERO ->
 		    %% 0x15 ISZERO δ=1 α=1
 		    %% Simple not operator.
@@ -275,7 +272,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Val = if Us0 =:= 0 -> 1; true -> 0 end,
 		    State2 = push(Val, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?AND ->
 		    %% 0x16 AND δ=2 α=1
 		    %% Bitwise AND operation.
@@ -284,7 +281,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = Us0 band Us1,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?OR ->
 		    %% 0x17 OR δ=2 α=1
 		    %% Bitwise OR operation.
@@ -293,7 +290,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = Us0 bor Us1,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?XOR ->
 		    %% 0x18 XOR δ=2 α=1
 		    %% Bitwise XOR operation.
@@ -302,7 +299,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = Us0 bxor Us1,
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?NOT ->
 		    %% 0x19 NOT δ=1 α=1
 		    %% Bitwise NOT operation.
@@ -311,7 +308,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Val = (bnot Us0) band ?MASK256,
 		    State2 = push(Val, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?BYTE ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
@@ -325,7 +322,7 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    Val = byte(Us0, Us1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		%% No opcodes 0x1b-0x1f
 		16#1b -> throw({illegal_instruction, OP, State});
 		16#1c -> throw({illegal_instruction, OP, State});
@@ -344,7 +341,7 @@ loop(StateIn) ->
 		    Hash = sha3:hash(256, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
 		    State4 = push(Val, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		%% No opcodes 0x21-0x2f
 		16#21 -> throw({illegal_instruction, OP, State});
 		16#22 -> throw({illegal_instruction, OP, State});
@@ -368,7 +365,7 @@ loop(StateIn) ->
 		    %% µ's[0] ≡ Ia
 		    Arg = aevm_eeevm_state:address(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?BALANCE ->
 		    %% 0x31 BALANCE δ=1 α=1
 		    %%  Get balance of the given account.
@@ -378,7 +375,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Arg = aevm_eeevm_state:accountbalance(Us0, State1),
 		    State2 = push(Arg, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?ORIGIN ->
 		    %% 0x32 ORIGIN 0 1
 		    %% Get execution origination address.
@@ -388,7 +385,7 @@ loop(StateIn) ->
 		    %% associated code.
 		    Arg = aevm_eeevm_state:origin(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?CALLER ->
 		    %% 0x33 CALLER δ=0 α=1
 		    %% Get caller address.
@@ -397,7 +394,7 @@ loop(StateIn) ->
 		    %% that is directly responsible for this execution.
 		    Arg = aevm_eeevm_state:caller(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?CALLVALUE ->
 		    %% 0x34 CALLVALUE δ=0 α=1
 		    %% Get deposited value by the instruction/transaction
@@ -405,7 +402,7 @@ loop(StateIn) ->
 		    %% µ's[0] ≡ Iv
 		    Val = aevm_eeevm_state:value(State0),
 		    State1 = push(Val, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?CALLDATALOAD ->
 		    %% 0x35 CALLDATALOAD δ=1 α=1
 		    %% Get input data of current environment.
@@ -416,7 +413,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Arg = data_get_val(Us0, Bytes, State1),
 		    State2 = push(Arg, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?CALLDATASIZE ->
 		    %% 0x36 CALLDATASIZE δ=0 α=1
 		    %% Get size of input data in current environment.
@@ -425,7 +422,7 @@ loop(StateIn) ->
 		    %% message call instruction or transaction.
 		    Val = byte_size(aevm_eeevm_state:data(State0)),
 		    State1 = push(Val, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?CALLDATACOPY ->
 		    %% 0x37 CALLDATACOPY 3 0
 		    %% Copy input data in current environment to memory.
@@ -442,13 +439,13 @@ loop(StateIn) ->
 		    {Us2, State3} = pop(State2),
 		    CallData = data_get_bytes(Us1, Us2, State3),
 		    State4 = aevm_eeevm_memory:write_area(Us0, CallData, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		?CODESIZE ->
 		    %% 0x38 CODESIZE  δ=0 α=1
 		    %% Get size of code running in current environment.
 		    %% µ's[0] ≡ |Ib|
 		    State1 = push(byte_size(Code), State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?CODECOPY ->
 		    %% 0x39 CODECOPY δ=3 α=0
 		    %% Copy code running in current environment to memory.
@@ -463,7 +460,7 @@ loop(StateIn) ->
 		    {Us2, State3} = pop(State2),
 		    CodeArea = code_get_area(Us1, Us2, Code),
 		    State4 = aevm_eeevm_memory:write_area(Us0, CodeArea, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		?GASPRICE ->
 		    %% 0x3a GASPRICE δ=0 α=1
 		    %% Get price of gas in current environment.
@@ -472,7 +469,7 @@ loop(StateIn) ->
 		    %% originating transaction.   
 		    Arg = aevm_eeevm_state:gasprice(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?EXTCODESIZE ->
 		    %% 0x3b EXTCODESIZE δ=1 α=1
 		    %% Get size of an account’s code.
@@ -480,7 +477,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Val = aevm_eeevm_state:extcodesize(Us0, State1),
 		    State2 = push(Val, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?EXTCODECOPY ->
 		    %% 0x3c EXTCODECOPY δ=4 α=0
 		    %% Copy an account’s code to memory.
@@ -497,7 +494,7 @@ loop(StateIn) ->
 		    {Us3, State4} = pop(State3),
 		    CodeArea = aevm_eeevm_state:extcode(Us0, Us2, Us3, State4),
 		    State5 = aevm_eeevm_memory:write_area(Us1, CodeArea, State4),
-		    next_instruction(OP, State5);
+		    next_instruction(OP, State, State5);
 		?RETURNDATASIZE ->
 		    %% 0x3d RETURNDATASIZE
 		    %% Not in yellow paper
@@ -532,42 +529,42 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Hash = aevm_eeevm_state:blockhash(Us0, 0, State1),
 		    State2 = push(Hash, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?COINBASE ->
 		    %% 0x41 COINBASE δ=0 α=1
 		    %% Get the block’s beneficiary address.
 		    %% µ's[0] ≡ IHc
 		    Arg = aevm_eeevm_state:coinbase(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?TIMESTAMP ->
 		    %% 0x42 TIMESTAMP δ=0 α=1
 		    %% Get the block’s timestamp.
 		    %% µ's[0] ≡ IHs
 		    Arg = aevm_eeevm_state:timestamp(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?NUMBER ->
 		    %% 0x43 NUMBER  δ=0 α=1
 		    %% Get the block’s number.
 		    %% µ's[0] ≡ IHi
 		    Arg = aevm_eeevm_state:number(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?DIFFICULTY ->
 		    %% 0x44 DIFFICULTY δ=0 α=1
 		    %% Get the block’s difficulty.
 		    %% µ's[0] ≡ IHd
 		    Arg = aevm_eeevm_state:difficulty(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?GASLIMIT ->
 		    %% 0x45 GASLIMIT  δ=0 α=1
 		    %% Get the block’s number.
 		    %% µ's[0] ≡ IHl
 		    Arg = aevm_eeevm_state:gaslimit(State0),
 		    State1 = push(Arg, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		%% No opcode 0x46-0x4f
 		16#46 -> throw({illegal_instruction, OP, State0});
 		16#47 -> throw({illegal_instruction, OP, State0});
@@ -584,7 +581,7 @@ loop(StateIn) ->
 		    %% 0x50 POP δ=1 α=0
 		    %% Remove item from stack.
 		    {_, State1} = pop(State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?MLOAD ->
 		    %% 0x51 MLOAD δ=1 α=1
 		    %% Load word from memory.
@@ -595,7 +592,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    {Val, State2} = aevm_eeevm_memory:load(Us0, State1),
 		    State3 = push(Val, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?MSTORE ->
 		    %% 0x52 MSTORE δ=2 α=0
 		    %% Save word to memory.
@@ -606,7 +603,7 @@ loop(StateIn) ->
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
 		    State3 = aevm_eeevm_memory:store(Address, Value, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?MSTORE8 ->
 		    %% 0x53 MSTORE8 δ=2 α=0
 		    %% Save byte to memory.
@@ -617,7 +614,7 @@ loop(StateIn) ->
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
 		    State3 = aevm_eeevm_memory:store8(Address, Value, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?SLOAD ->
 		    %% 0x54 SLOAD δ=1 α=1
 		    %% Load word from storage.
@@ -625,7 +622,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    Val = sload(Us0, State1),
 		    State2 = push(Val, State1),
-		    next_instruction(OP, State2);
+		    next_instruction(OP, State, State2);
 		?SSTORE ->
 		    %% 0x55 SSTORE δ=2 α=0
 		    %% Save word to storage.
@@ -639,7 +636,7 @@ loop(StateIn) ->
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
 		    State3 = sstore(Address, Value, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?JUMP ->
 		    %% 0x56 JUMP  δ=1 α=0
 		    %% Alter the program counter.
@@ -650,7 +647,7 @@ loop(StateIn) ->
 		    case maps:get(Us0, JumpDests, false) of
 			true -> 
 			    State2 = set_cp(Us0-1, State1),
-			    next_instruction(OP, State2);
+			    next_instruction(OP, State, State2);
 			false -> throw({{invalid_jumpdest, Us0}, State1})
 		    end;
 		?JUMPI ->
@@ -672,21 +669,21 @@ loop(StateIn) ->
 				end;
 			   true      -> State2
 			end,
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?PC ->
 		    %% 0x58 PC δ=0 α=1
 		    %% Get the value of the program counter prior to
 		    %% the increment corresponding to this instruction.
 		    %% µ's[0] ≡ µpc
 		    State1 = push(CP, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?MSIZE ->
 		    %% 0x59 PC δ=0 α=1
 		    %% Get the size of active memory in bytes.
 		    %% µ's[0] ≡ 32*µi
 		    Val =  32 * aevm_eeevm_memory:size_in_words(State),
 		    State1 = push(Val, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?GAS ->
 		    %% 0x5a GAS δ=0 α=1
 		    %% Get the amount of available gas,
@@ -695,13 +692,13 @@ loop(StateIn) ->
 		    %% µ's[0] ≡ µg
 		    Val = aevm_eeevm_state:gas(State0),
 		    State1 = push(Val, State0),
-		    next_instruction(OP, State1);
+		    next_instruction(OP, State, State1);
 		?JUMPDEST ->
 		    %% 0x5b JUMPDEST  δ=0 α=0
 		    %% Mark a valid destination for jumps.
 		    %% This operation has no effect on machine
 		    %% state during execution.
-		    next_instruction(OP, State0);
+		    next_instruction(OP, State, State0);
 		16#5c -> throw({illegal_instruction, OP, State0});
 		16#5d -> throw({illegal_instruction, OP, State0});
 		16#5e -> throw({illegal_instruction, OP, State0});
@@ -719,196 +716,202 @@ loop(StateIn) ->
 		    %% default to zero if they extend past the limits.
 		    %% The byte is right-aligned (takes the lowest
 		    %% significant place in big endian).
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH2 ->
 		    %% 0x61 PUSH1 δ=0 α=1
 		    %% Place 2 byte item on stack.
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH3 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH4 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH5 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH6 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH7 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH8 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH9 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH10 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH11 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH12 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH13 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH14 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH15 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH16 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH17 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH18 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH19 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH20 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH21 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH22 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH23 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH24 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH25 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH26 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH27 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH28 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH29 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH30 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH31 ->
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?PUSH32 ->
-		    %% 0x7f PUSH32 δ=0 α=1
-		    %% Place 32-byte (full word) item on stack.
-		    %% µ's[0] ≡ c(µpc + 1). . .(µpc + 32)
-		    %% where c is defined as above.
-		    %% The bytes are right-aligned
-		    %% (takes the lowest significant place in big endian).
-		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
-		%% 80s Duplication Operations
+                    State1 = push_n_bytes_from_cp(OP-?PUSH1+1, State0),
+		    next_instruction(OP, State, State1);
 		?DUP1 ->
 		    %% 0x80 DUP1  δ=1 α=2
 		    %% Duplicate 1nd stack item.
 		    %% µ's[0] ≡ µs[0]
-		    next_instruction(OP, dup(1,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP2 ->
-		    %% 0x81 DUP2  δ=2 α=3
-		    %% Duplicate 2nd stack item.
-		    %% µ's[0] ≡ µs[1]
-		    next_instruction(OP, dup(2,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP3 ->
-		    %% 0x82 DUP3  δ=3 α=4
-		    %% Duplicate 3nd stack item.
-		    %% µ's[0] ≡ µs[2]
-		    next_instruction(OP, dup(3,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP4 ->
-		    %% 0x83 DUP4  δ=4 α=5
-		    %% Duplicate 4th stack item.
-		    %% µ's[0] ≡ µs[3]
-		    next_instruction(OP, dup(4,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP5 ->
-		    %% 0x84 DUP5  δ=5 α=6
-		    %% Duplicate 5th stack item.
-		    %% µ's[0] ≡ µs[4]
-		    next_instruction(OP, dup(5,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP6 ->
-		    %% 0x85 DUP6  δ=6 α=7
-		    %% Duplicate 6th stack item.
-		    %% µ's[0] ≡ µs[5]
-		    next_instruction(OP, dup(6,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP7 ->
-		    %% 0x86 DUP7  δ=7 α=8
-		    %% Duplicate 7th stack item.
-		    %% µ's[0] ≡ µs[6]
-		    next_instruction(OP, dup(7,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP8 ->
-		    %% 0x87 DUP8  δ=8 α=9
-		    %% Duplicate 8th stack item.
-		    %% µ's[0] ≡ µs[7]
-		    next_instruction(OP, dup(8,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP9 ->
-		    %% 0x88 DUP9  δ=9 α=10
-		    %% Duplicate 9th stack item.
-		    %% µ's[0] ≡ µs[8]
-		    next_instruction(OP, dup(9,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP10 ->
-		    %% 0x89 DUP10  δ=10 α=11
-		    %% Duplicate 10th stack item.
-		    %% µ's[0] ≡ µs[9]
-		    next_instruction(OP, dup(10,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP11 ->
-		    %% 0x8a DUP11  δ=11 α=12
-		    %% Duplicate 11th stack item.
-		    %% µ's[0] ≡ µs[10]
-		    next_instruction(OP, dup(11,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP12 ->
-		    %% 0x8b DUP12  δ=12 α=13
-		    %% Duplicate 12th stack item.
-		    %% µ's[0] ≡ µs[11]
-		    next_instruction(OP, dup(12,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP13 ->
-		    %% 0x8c DUP13  δ=13 α=14
-		    %% Duplicate 13th stack item.
-		    %% µ's[0] ≡ µs[12]
-		    next_instruction(OP, dup(13,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP14 ->
-		    %% 0x8d DUP14  δ=14 α=15
-		    %% Duplicate 14th stack item.
-		    %% µ's[0] ≡ µs[13]
-		    next_instruction(OP, dup(14,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP15 ->
-		    %% 0x8e DUP15  δ=15 α=16
-		    %% Duplicate 15th stack item.
-		    %% µ's[0] ≡ µs[14]
-		    next_instruction(OP, dup(15,State0));
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?DUP16 ->
-		    %% 0x8f DUP16  δ=16 α=17
-		    %% Duplicate 16th stack item.
-		    %% µ's[0] ≡ µs[5]
-		    next_instruction(OP, dup(16,State0));
-		%% 90s Exchange Operations
+                    State1 = dup(OP -?DUP1+1,State0),
+		    next_instruction(OP, State, State1);
 		?SWAP1 ->
-		    %% 0x90 SWAP1 δ=2 α=2
-		    %% Exchange 1st and 2nd stack items.
-		    %% µ's[0] ≡ µs[1]
-		    %% µ's[1] ≡ µs[0]
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP2 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP3 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP4 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP5 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP6 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP7 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP8 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP9 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP10 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP11 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP12 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP13 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP14 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP15 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		?SWAP16 ->
-		    next_instruction(OP, swap(OP-?SWAP1+1, State));
-		%% a0s: Logging OPerations
+                    State1 = swap(OP-?SWAP1+1, State0),
+		    next_instruction(OP, State, State1);
 		%% For all logging operations,
 		%% the state change is to append an additional
 		%% log entry on to the substate’s log series:
@@ -923,16 +926,16 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    State3 = log({}, Us0, Us1, State2),
-		    next_instruction(OP, State3);
+		    next_instruction(OP, State, State3);
 		?LOG1 ->
-		    %% 0xa1 LOG1 δ=3 α=0 
+		    %% 0xa1 LOG1 δ=3 α=0
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2])
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    {Us2, State3} = pop(State2),
 		    State4 = log({Us2}, Us0, Us1, State3),
-		    next_instruction(OP, State4);
+		    next_instruction(OP, State, State4);
 		?LOG2 ->
 		    %% 0xa2 LOG2 δ=4 α=0 
 		    %% Append log record with one topic.
@@ -942,7 +945,7 @@ loop(StateIn) ->
 		    {Us2, State3} = pop(State2),
 		    {Us3, State4} = pop(State3),
 		    State5 = log({Us2, Us3}, Us0, Us1, State4),
-		    next_instruction(OP, State5);
+		    next_instruction(OP, State, State5);
 		?LOG3 ->
 		    %% 0xa3 LOG3 δ=4 α=0 
 		    %% Append log record with one topic.
@@ -953,7 +956,7 @@ loop(StateIn) ->
 		    {Us3, State4} = pop(State3),
 		    {Us4, State5} = pop(State4),
 		    State6 = log({Us2, Us3, Us4}, Us0, Us1, State5),
-		    next_instruction(OP, State6);
+		    next_instruction(OP, State, State6);
 		?LOG4 ->
 		    %% 0xa4 LOG4 δ=6 α=0 
 		    %% Append log record with one topic.
@@ -965,7 +968,7 @@ loop(StateIn) ->
 		    {Us4, State5} = pop(State4),
 		    {Us5, State6} = pop(State5),
 		    State7 = log({Us2, Us3, Us4, Us5}, Us0, Us1, State6),
-		    next_instruction(OP, State7);
+		    next_instruction(OP, State, State7);
 		OP when OP >= 16#a5,
 			OP =< 16#ef  ->
 		    throw({illegal_instruction, OP, State0});
@@ -1000,7 +1003,7 @@ loop(StateIn) ->
 		    {CodeArea, State4} = aevm_eeevm_memory:get_area(From, To, State3),
 		    {X, State5} = create_account(Value, CodeArea, State4),
 		    State6 = push(X, State5),
-		    next_instruction(OP, State6);
+		    next_instruction(OP, State, State6);
 		?CALL ->
 		    %% 0xf1 CALL  δ=7 α=1
 		    %% Message-call into an account.
@@ -1062,7 +1065,7 @@ loop(StateIn) ->
 			    , out_offset => OOffset
 			    , out_size => OSize},
 		    State8 = aevm_eeevm_state:set_call(Call, State7),
-		    State8;
+		    spend_mem_gas(State, State8);
 		?CALLCODE ->
 		    %% 0xf2 CALLCODE 7 1
 		    %% Message-call into this account with an alternative account’s code.
@@ -1093,7 +1096,7 @@ loop(StateIn) ->
 			    , out_offset => OOffset
 			    , out_size => OSize},
 		    State8 = aevm_eeevm_state:set_call(Call, State7),
-		    State8;
+                    spend_mem_gas(State, State8);
 		?RETURN ->
 		    %% 0xf3 RETURN δ=2 α=0
 		    %% Halt execution returning output data.
@@ -1105,7 +1108,8 @@ loop(StateIn) ->
 		    {Us1, State2} = pop(State1),
 		    To = Us0+Us1-1,
 		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
-		    aevm_eeevm_state:set_out(Out, State3);
+		    State4 = aevm_eeevm_state:set_out(Out, State3),
+                    spend_mem_gas(State, State4);
 		?DELEGATECALL ->
 		    %% 0xf4 DELEGATECALL  δ=6 α=1
 		    %% Message-call into this account with an
@@ -1141,7 +1145,7 @@ loop(StateIn) ->
 			    , out_offset => OOffset
 			    , out_size => OSize},
 		    State7 = aevm_eeevm_state:set_call(Call, State6),
-		    State7;
+		    spend_mem_gas(State, State7);
 		16#f5 -> throw({illegal_instruction, OP, State0});
 		16#f6 -> throw({illegal_instruction, OP, State0});
 		16#f7 -> throw({illegal_instruction, OP, State0});
@@ -1169,7 +1173,8 @@ loop(StateIn) ->
 		    %%                           if σ[µs[0] mod 2^160] = ∅
 		    %%                       + 0 otherwise
 		    {Us0, State1} = pop(State0),
-		    aevm_eeevm_state:set_selfdestruct(Us0, State1);
+		    State2 = aevm_eeevm_state:set_selfdestruct(Us0, State1),
+                    spend_mem_gas(State, State2);
 		_ ->
 		    error({opcode_not_implemented,
 			   lists:flatten(
@@ -1351,7 +1356,6 @@ data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     aevm_eeevm_utils:bin_copy(Address, Size, Data).
 
-
 %% ------------------------------------------------------------------------
 %% CODE
 %% ------------------------------------------------------------------------
@@ -1370,8 +1374,8 @@ code_get_arg(CP, Size, Code) when Size < 33 ->
 code_get_area(From, Size, Code) ->
     aevm_eeevm_utils:bin_copy(From, Size, Code).
 
-next_instruction(_OP, State) ->
-    loop(inc_cp(State)).
+next_instruction(_OP, StateWithOpGas, StateOut) ->
+    loop(inc_cp(spend_mem_gas(StateWithOpGas, StateOut))).
 
 set_cp(Address, State) ->
     aevm_eeevm_state:set_cp(Address, State).
@@ -1389,8 +1393,13 @@ inc_cp(Amount, State) ->
 %% GAS
 %% ------------------------------------------------------------------------
 
-spend_gas(Op, State) ->
-    Cost = aevm_gas:op_cost(Op, State),
+spend_op_gas(Op, State) ->
+    spend_gas_common(aevm_gas:op_cost(Op, State), State).
+
+spend_mem_gas(StateWithOpGas, StateOut) ->
+    spend_gas_common(aevm_gas:mem_cost(StateWithOpGas, StateOut), StateOut).
+
+spend_gas_common(Cost, State) ->
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
 	true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
