@@ -336,8 +336,7 @@ loop(StateIn) ->
 		    %% µi ≡ M(µi, µs[0], µs[1])
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-		    To   = Us0+Us1-1,
-		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
+		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
 		    Hash = sha3:hash(256, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
 		    State4 = push(Val, State3),
@@ -998,8 +997,7 @@ loop(StateIn) ->
 		    {Value, State1} = pop(State0),
 		    {From, State2} = pop(State1),
 		    {Size, State3} = pop(State2),
-		    To = From+Size-1,
-		    {CodeArea, State4} = aevm_eeevm_memory:get_area(From, To, State3),
+		    {CodeArea, State4} = aevm_eeevm_memory:get_area(From, Size, State3),
 		    {X, State5} = create_account(Value, CodeArea, State4),
 		    State6 = push(X, State5),
 		    next_instruction(OP, State, State6);
@@ -1105,8 +1103,7 @@ loop(StateIn) ->
 		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-		    To = Us0+Us1-1,
-		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
+		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
 		    State4 = aevm_eeevm_state:set_out(Out, State3),
                     spend_mem_gas(State, State4);
 		?DELEGATECALL ->
@@ -1397,7 +1394,7 @@ log(Topics, MemAddress, Length, State) ->
     AccountAddress = aevm_eeevm_state:address(State),
     Header = log_topics(AccountAddress, Topics),
     {Body, State1} = aevm_eeevm_memory:get_area(
-		       MemAddress, MemAddress+Length, State),
+		       MemAddress, Length, State),
     LogEntry = <<Header/binary, Body/binary>>,
     NewLogs = [LogEntry|Logs],
     aevm_eeevm_state:set_logs(NewLogs, State1).

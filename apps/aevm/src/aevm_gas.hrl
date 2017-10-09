@@ -22,11 +22,17 @@
 %% Amount of gas to pay for operations of the set Wextcode.
 -define(GEXTCODE, 700).
 
+%% Amount of gas to pay for operations of the set Wextcodesize.
+-define(GEXTCODESIZE, 20). %% From go implementation
+
+%% Amount of gas to pay for operations of the set Wextcodecopy.
+-define(GEXTCODECOPY, 20). %% From go implementation
+
 %% Amount of gas to pay for a BALANCE operation.
--define(GBALANCE, 400).
+-define(GBALANCE, 20). %% From the go implementation. 400 in yellowpages
 
 %% Paid for a SLOAD operation.
--define(GSLOAD, 200).
+-define(GSLOAD, 50). %% From the go implementation. 200 in yellowpaper
 
 %% Paid for a JUMPDEST operation.
 -define(GJUMPDEST, 1).
@@ -50,6 +56,9 @@
 %% Amount of gas to pay for a SELFDESTRUCT operation.
 -define(GSELFDESTRUCT, 5000).
 
+%% From the go implementation
+%% -define(GSUICIDE, 0).
+
 %% Paid for a CREATE operation.
 -define(GCREATE, 32000).
 
@@ -58,7 +67,7 @@
 -define(GCODEDEPOSIT, 200).
 
 %% Paid for a CALL operation.
--define(GCALL, 700).
+-define(GCALL, 700). %% 40 from the go implementation
 
 %% Paid for a non-zero value transfer as part of the CALL operation.
 -define(GCALLVALUE, 9000).
@@ -75,7 +84,7 @@
 
 %% Partial payment when multiplied by dlog256(exponent)e for the EXP
 %% operation.
--define(GEXPBYTE, 50).
+-define(GEXPBYTE, 10). %% From the go implementation. 50 from the yellowpages
 
 %% Paid for every additional word when expanding memory.
 -define(GMEMORY, 3).
@@ -114,3 +123,64 @@
 
 %% Payment for BLOCKHASH operation.
 -define(GBLOCKHASH, 20).
+
+%% From https://github.com/ethereum/go-ethereum/blob/master/params/gas_table.go
+%% package params
+
+%% type GasTable struct {
+%% 	ExtcodeSize uint64
+%% 	ExtcodeCopy uint64
+%% 	Balance     uint64
+%% 	SLoad       uint64
+%% 	Calls       uint64
+%% 	Suicide     uint64
+
+%% 	ExpByte uint64
+
+%% 	// CreateBySuicide occurs when the
+%% 	// refunded account is one that does
+%% 	// not exist. This logic is similar
+%% 	// to call. May be left nil. Nil means
+%% 	// not charged.
+%% 	CreateBySuicide uint64
+%% }
+%%
+%% var (
+%% 	// GasTableHomestead contain the gas prices for
+%% 	// the homestead phase.
+%% 	GasTableHomestead = GasTable{
+%% 		ExtcodeSize: 20,
+%% 		ExtcodeCopy: 20,
+%% 		Balance:     20,
+%% 		SLoad:       50,
+%% 		Calls:       40,
+%% 		Suicide:     0,
+%% 		ExpByte:     10,
+%% 	}
+
+%% 	// GasTableHomestead contain the gas re-prices for
+%% 	// the homestead phase.
+%% 	GasTableEIP150 = GasTable{
+%% 		ExtcodeSize: 700,
+%% 		ExtcodeCopy: 700,
+%% 		Balance:     400,
+%% 		SLoad:       200,
+%% 		Calls:       700,
+%% 		Suicide:     5000,
+%% 		ExpByte:     10,
+
+%% 		CreateBySuicide: 25000,
+%% 	}
+
+%% 	GasTableEIP158 = GasTable{
+%% 		ExtcodeSize: 700,
+%% 		ExtcodeCopy: 700,
+%% 		Balance:     400,
+%% 		SLoad:       200,
+%% 		Calls:       700,
+%% 		Suicide:     5000,
+%% 		ExpByte:     50,
+
+%% 		CreateBySuicide: 25000,
+%% 	}
+%% )

@@ -23,12 +23,16 @@
 %% API
 %%====================================================================
 
-get_area(From, To, State) ->
+%% get_area(From, To, State) when From =:= To ->
+%%     {<<>>, State};
+get_area(_From, 0, State) ->
+    {<<>>, State};
+get_area(From, Size, State) ->
     Mem = aevm_eeevm_state:mem(State),
-    {_, Mem1} = read(From, 1, Mem),
-    {_, Mem2} = read(To, 1, Mem1),
-    State1 = aevm_eeevm_state:set_mem(Mem2, State),
-    Res = list_to_binary([read_raw(X, 1, Mem2) || X <- lists:seq(From, To)]),
+    To = From + Size - 1,
+    {_, Mem1} = read(To, 1, Mem),
+    State1 = aevm_eeevm_state:set_mem(Mem1, State),
+    Res = list_to_binary([read_raw(X, 1, Mem1) || X <- lists:seq(From, To)]),
     {Res, State1}.
 
 write_area(From, Bytes, State) ->
@@ -68,20 +72,18 @@ store8(Address, Value, State) when is_integer(Value) ->
 
 size_in_words(State) ->
     Mem = aevm_eeevm_state:mem(State),
-    case maps:get(highest_aligned_address, Mem, undefined) of
-        undefined -> 0;
-        Highest -> (Highest bsr 5) + 1
-    end.
+    maps:get(mem_size, Mem, 0).
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
 
 extend(AlignedAddress, Mem) when is_integer(AlignedAddress) ->
-    Highest = maps:get(highest_aligned_address, Mem, undefined),
-    case (AlignedAddress > Highest) orelse (Highest =:= undefined) of
-        true -> maps:put(highest_aligned_address, AlignedAddress, Mem);
-        false -> Mem
+    NewSize = (AlignedAddress bsr 5) + 1,
+    case maps:get(mem_size, Mem, undefined) of
+        undefined -> maps:put(mem_size, NewSize, Mem);
+        Size when NewSize > Size -> maps:put(mem_size, NewSize, Mem);
+        _ -> Mem
     end.
 
 %% No alignment or size check. Don't use directly.
