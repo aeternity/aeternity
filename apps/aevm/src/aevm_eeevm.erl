@@ -620,7 +620,7 @@ loop(StateIn) ->
 		    %% Load word from storage.
 		    %% µ's[0] ≡ σ[Ia]s[µs[0]]
 		    {Us0, State1} = pop(State0),
-		    Val = sload(Us0, State1),
+		    Val = aevm_eeevm_store:load(Us0, State1),
 		    State2 = push(Val, State1),
 		    next_instruction(OP, State, State2);
 		?SSTORE ->
@@ -635,7 +635,7 @@ loop(StateIn) ->
 		    %%       0 otherwise
 		    {Address, State1} = pop(State0),
 		    {Value, State2} = pop(State1),
-		    State3 = sstore(Address, Value, State2),
+		    State3 = aevm_eeevm_store:store(Address, Value, State2),
 		    next_instruction(OP, State, State3);
 		?JUMP ->
 		    %% 0x56 JUMP  δ=1 α=0
@@ -1278,28 +1278,6 @@ dup(N, State) ->
 
 swap(N, State) ->
     aevm_eeevm_stack:swap(N, State).
-
-%% ------------------------------------------------------------------------
-%% STORAGE
-%% ------------------------------------------------------------------------
-storage_read(Address, Mem) -> maps:get(Address, Mem, 0).
-
-%% No alignment or size check. Don't use directly.
-storage_write(Address,     0, Mem) -> maps:remove(Address, Mem);
-storage_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
-
-sload(Address, State) ->
-    Store = aevm_eeevm_state:storage(State),
-    Value = storage_read(Address, Store),
-    Value.
-
-sstore(Address, Value, State) when is_integer(Value) ->
-    Store = aevm_eeevm_state:storage(State),
-    %% Make sure value fits in 256 bits.
-    Value256 = Value band ?MASK256,
-    Store1 = storage_write(Address, Value256, Store),
-    aevm_eeevm_state:set_storage(Store1, State).
-
 
 %% ------------------------------------------------------------------------
 %% DATA
