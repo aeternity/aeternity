@@ -159,3 +159,6 @@ Please remember to stop all 3 nodes by running the following commands in each of
 
     bin/epoch stop
 
+### Danger! Expert zone!
+
+Do not [customize the configuration of this release](https://github.com/aeternity/epoch/blob/master/doc/CUSTOMIZATION.md) unless you know what you are doing!
