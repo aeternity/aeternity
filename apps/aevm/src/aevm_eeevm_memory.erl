@@ -85,7 +85,7 @@ extend(AlignedAddress, Mem) when is_integer(AlignedAddress) ->
     end.
 
 %% No alignment or size check. Don't use directly.
-write(Address,     0, Mem) -> maps:remove(Address, Mem);
+write(Address,     0, Mem) -> extend(Address, maps:remove(Address, Mem));
 write(Address, Value, Mem) -> extend(Address, maps:put(Address, Value, Mem)).
 
 write_unaligned(Address, Value256, Mem) ->

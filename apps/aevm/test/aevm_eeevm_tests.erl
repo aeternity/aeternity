@@ -19,7 +19,7 @@
 %% Indicated by the option blockhash->sha3
 extra_opts(Name) -> maps:put(blockhash, sha3, extra_opts_tc(Name)).
 %% To turn on tracing for a test case return a map with trace => true
-%% e.g. extra_opt_tc(mulmod4) -> #{trace => true};
+%% e.g. extra_opts_tc(mulmod4) -> #{trace => true};
 extra_opts_tc(_) ->
     #{}.
 
@@ -617,8 +617,8 @@ vm_environmental_info_tests() ->
     , calldatacopy2_return
     , calldatacopy_DataIndexTooHigh2
     , calldatacopy_DataIndexTooHigh2_return
-    %% , calldatacopy_DataIndexTooHigh
-    %% , calldatacopy_DataIndexTooHigh_return
+    , calldatacopy_DataIndexTooHigh
+    , calldatacopy_DataIndexTooHigh_return
     , calldatacopy_sec
     , calldatacopyUnderFlow
     , calldatacopyZeroMemExpansion
