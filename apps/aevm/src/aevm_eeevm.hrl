@@ -143,7 +143,7 @@
 -define(     'STATICCALL', 16#fa).
 
 -define(         'REVERT', 16#fd).
-
+-define(        'INVALID', 16#fe).
 -define(        'SUICIDE', 16#ff).
 
 -define(WORDSIZE, 256).

@@ -55,9 +55,9 @@ jumpdests(N, Code, ValidDests) ->
 	    jumpdests(N+(OP-?PUSH1+2), Code, ValidDests);
 	_ -> jumpdests(N+1, Code, ValidDests)
     end.
-  
-    
-    
+
+
+
 
 loop(StateIn) ->
     CP   = aevm_eeevm_state:cp(StateIn),
@@ -65,9 +65,10 @@ loop(StateIn) ->
     case CP >= byte_size(Code) of
 	false ->
 	    OP   = code_get_op(CP, Code),
-            State = spend_gas(OP, StateIn),
+	    State = spend_gas(OP, StateIn),
 	    State0 = aevm_eeevm_state:trace_format("~n", [], State),
 	    case OP of
+		%% =s: Stop and Arithmetic Operations
 		?STOP ->
 		    %% 0x00 STOP
 		    %% Halts execution.
@@ -197,6 +198,7 @@ loop(StateIn) ->
 		16#0d -> throw({illegal_instruction, OP, State});
 		16#0e -> throw({illegal_instruction, OP, State});
 		16#0f -> throw({illegal_instruction, OP, State});
+		%% 10s: Comparison & Bitwise Logic Operations
 		?LT ->
 		    %% 0x10 LT δ=2 α=1
 		    %% Less-than comparison.
@@ -314,7 +316,7 @@ loop(StateIn) ->
 		    %% 0x1a BYTE δ=2 α=1
 		    %% Retrieve single byte from word.
 		    %% ∀i ∈ [0..255] : µ's[0]i ≡ (µs[1](i+8µs[0])
-                    %%                              if i < 8 ∧ µs[0] < 32
+		    %%                              if i < 8 ∧ µs[0] < 32
 		    %%                           0  otherwise
 		    %% For Nth byte, we count from the left
 		    %% (i.e. N=0 would be the most significant
@@ -330,13 +332,14 @@ loop(StateIn) ->
 		16#1d -> throw({illegal_instruction, OP, State});
 		16#1e -> throw({illegal_instruction, OP, State});
 		16#1f -> throw({illegal_instruction, OP, State});
+		%% 20s: SHA3
 		?SHA3 ->
 		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
 		    %% µ's[0] ≡ Keccak(µm[µs[0] . . .(µs[0] + µs[1] − 1)])
 		    %% µi ≡ M(µi, µs[0], µs[1])
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-                    To   = Us0+Us1-1,
+		    To   = Us0+Us1-1,
 		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
 		    Hash = sha3:hash(256, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
@@ -358,6 +361,7 @@ loop(StateIn) ->
 		16#2d -> throw({illegal_instruction, OP, State});
 		16#2e -> throw({illegal_instruction, OP, State});
 		16#2f -> throw({illegal_instruction, OP, State});
+		%% 30s: Environmental Information
 		?ADDRESS ->
 		    %% 0x30 Address δ=0 α=1
 		    %% Get address of currently executing account.
@@ -395,7 +399,7 @@ loop(StateIn) ->
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State1);
 		?CALLVALUE ->
-		   %% 0x34 CALLVALUE δ=0 α=1
+		    %% 0x34 CALLVALUE δ=0 α=1
 		    %% Get deposited value by the instruction/transaction
 		    %% responsible for this execution.
 		    %% µ's[0] ≡ Iv
@@ -508,6 +512,7 @@ loop(StateIn) ->
 			     io_lib:format("~2.16.0B",[OP]))});
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State0});
+		%% 40s Block Information
 		?BLOCKHASH ->
 		    %% 0x40 BLOCKHASH δ=1 α=1
 		    %% Get the hash of one of the 256 most
@@ -574,6 +579,7 @@ loop(StateIn) ->
 		16#4d -> throw({illegal_instruction, OP, State0});
 		16#4e -> throw({illegal_instruction, OP, State0});
 		16#4f -> throw({illegal_instruction, OP, State0});
+		%% 50s: Stack, Memory, Storage and Flow Operations
 		?POP ->
 		    %% 0x50 POP δ=1 α=0
 		    %% Remove item from stack.
@@ -625,7 +631,7 @@ loop(StateIn) ->
 		    %% Save word to storage.
 		    %% σ'[Ia]s[µs[0]] ≡ µs[1]
 		    %%                   Gsset if µs[1] =/= 0
-                    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
+		    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
 		    %%                   Gsreset otherwise
 		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
 		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
@@ -700,6 +706,7 @@ loop(StateIn) ->
 		16#5d -> throw({illegal_instruction, OP, State0});
 		16#5e -> throw({illegal_instruction, OP, State0});
 		16#5f -> throw({illegal_instruction, OP, State0});
+		%% 60s & 70s Push Operations
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
 		    %% Place 1 byte item on stack.
@@ -783,6 +790,7 @@ loop(StateIn) ->
 		    %% The bytes are right-aligned
 		    %% (takes the lowest significant place in big endian).
 		    next_instruction(OP, push_n_bytes_from_cp(OP-?PUSH1+1, State));
+		%% 80s Duplication Operations
 		?DUP1 ->
 		    %% 0x80 DUP1  δ=1 α=2
 		    %% Duplicate 1nd stack item.
@@ -863,6 +871,7 @@ loop(StateIn) ->
 		    %% Duplicate 16th stack item.
 		    %% µ's[0] ≡ µs[5]
 		    next_instruction(OP, dup(16,State0));
+		%% 90s Exchange Operations
 		?SWAP1 ->
 		    %% 0x90 SWAP1 δ=2 α=2
 		    %% Exchange 1st and 2nd stack items.
@@ -899,6 +908,7 @@ loop(StateIn) ->
 		    next_instruction(OP, swap(OP-?SWAP1+1, State));
 		?SWAP16 ->
 		    next_instruction(OP, swap(OP-?SWAP1+1, State));
+		%% a0s: Logging OPerations
 		%% For all logging operations,
 		%% the state change is to append an additional
 		%% log entry on to the substate’s log series:
@@ -959,6 +969,38 @@ loop(StateIn) ->
 		OP when OP >= 16#a5,
 			OP =< 16#ef  ->
 		    throw({illegal_instruction, OP, State0});
+		%% F0s: System operations
+		?CREATE->
+		    %% 0xf0 CREATE δ=3 α=1 
+		    %% Create a new account with associated code.
+		    %% i ≡ µm[µs[1] . . .(µs[1] + µs[2] − 1)]
+		    %% (σ', µ'g, A+) ≡ (Λ(σ∗, Ia, Io, L(µg), Ip, µs[0], i, Ie + 1)
+		    %%                             if µs[0] =< σ[Ia]b ∧ Ie < 1024
+		    %%                 (σ, µg, ∅) 
+		    %%                             otherwise
+		    %% σ∗ ≡ σ except σ∗[Ia]n = σ[Ia]n + 1
+		    %% A' ≡ A U A+ which implies:   A's ≡ As ∪ A+s 
+		    %%                            ∧ A'l ≡ Al · A+l 
+		    %%                            ∧ A'r ≡ Ar + A+r
+		    %% µ's[0] ≡ x
+		    %% where x = 0 if the code execution for this operation
+		    %%                failed due to an exceptional halting
+		    %%                Z(σ∗, µ, I) = T or Ie = 1024
+		    %%                  (the maximum call depth limit is reached)
+		    %%                or µs[0] > σ[Ia]b (balance of the caller is too
+		    %%                                   low to fulfil the value transfer);
+		    %%        x = A(Ia, σ[Ia]n), the address of the newly created account, 
+		    %%             otherwise.
+		    %% µ'i ≡ M(µi, µs[1], µs[2])
+		    %% Thus the operand order is: value, input offset, input size.
+		    {Value, State1} = pop(State0),
+		    {From, State2} = pop(State1),
+		    {Size, State3} = pop(State2),
+		    To = From+Size-1,
+		    {CodeArea, State4} = aevm_eeevm_memory:get_area(From, To, State3),
+		    {X, State5} = create_account(Value, CodeArea, State4),
+		    State6 = push(X, State5),
+		    next_instruction(OP, State6);
 		?CALL ->
 		    %% 0xf1 CALL  δ=7 α=1
 		    %% Message-call into an account.
@@ -968,7 +1010,7 @@ loop(StateIn) ->
 		    %%                      i, Ie + 1)
 		    %%                      if µs[2] =< σ[Ia]b ∧ Ie < 1024
 		    %%                    (σ, g, ∅,()) otherwise  
-                    %% n ≡ min({µs[6], |o|})
+		    %% n ≡ min({µs[6], |o|})
 		    %% µ'm[µs[5] . . .(µs[5] + n − 1)] = o[0 . . .(n − 1)]
 		    %% µ'g ≡ µg + g'
 		    %% µ's[0] ≡ x
@@ -979,7 +1021,7 @@ loop(StateIn) ->
 		    %%   if the code execution for this
 		    %%      operation failed due to an exceptional halting
 		    %%      Z(σ, µ, I) = T 
-                    %%   or
+		    %%   or
 		    %%   if µs[2] > σ[Ia]b (not enough funds)
 		    %%   or
 		    %%   Ie = 1024 (call depth limit reached); 
@@ -1004,6 +1046,7 @@ loop(StateIn) ->
 		    %% CNEW(σ, µ) ≡ Gnewaccount if σ[µs[1] mod 2^160] = ∅
 		    %%              0 otherwise
 		    %%
+		    %% TODO: This is probably completely wrong:
 		    {Gas, State1} = pop(State0),
 		    {To, State2} = pop(State1),
 		    {Value, State3} = pop(State2),
@@ -1020,7 +1063,37 @@ loop(StateIn) ->
 			    , out_size => OSize},
 		    State8 = aevm_eeevm_state:set_call(Call, State7),
 		    State8;
-
+		?CALLCODE ->
+		    %% 0xf2 CALLCODE 7 1
+		    %% Message-call into this account with an alternative account’s code.
+		    %% Exactly equivalent to CALL except:
+		    %%                    Θ(σ∗, Ia, Io, Ia, t, CCALLGAS(µ),
+		    %%                    Ip, µs[2], µs[2], i, Ie + 1)
+		    %% (σ', g0, A+, o) ≡     if µs[2] =< σ[Ia]b ∧ Ie < 1024
+		    %%                    (σ, g, ∅,()) 
+		    %%                       otherwise
+		    %% Note the change in the fourth parameter to the call
+		    %% Θ from the 2nd stack value µs[1] (as in CALL) to the
+		    %% present address Ia. This means that the recipient is
+		    %% in fact the same account as at present, simply that
+		    %% the code is overwritten.
+		    {Gas, State1} = pop(State0),
+		    {_To, State2} = pop(State1),
+		    {Value, State3} = pop(State2),
+		    {IOffset, State4} = pop(State3),
+		    {ISize, State5} = pop(State4),
+		    {OOffset, State6} = pop(State5),
+		    {OSize, State7} = pop(State6),
+		    %% TODO: This is most certanly wrong
+		    Call = #{ gas => Gas
+			    , to => aevm_eeevm_state:address(State7)
+			    , value => Value
+			    , in_offset => IOffset
+			    , in_size => ISize
+			    , out_offset => OOffset
+			    , out_size => OSize},
+		    State8 = aevm_eeevm_state:set_call(Call, State7),
+		    State8;
 		?RETURN ->
 		    %% 0xf3 RETURN δ=2 α=0
 		    %% Halt execution returning output data.
@@ -1030,9 +1103,58 @@ loop(StateIn) ->
 		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: This
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
-                    To = Us0+Us1-1,
+		    To = Us0+Us1-1,
 		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, To, State2),
 		    aevm_eeevm_state:set_out(Out, State3);
+		?DELEGATECALL ->
+		    %% 0xf4 DELEGATECALL  δ=6 α=1
+		    %% Message-call into this account with an
+		    %% alternative account’s code, but persisting
+		    %% the current values for sender and value.
+		    %% Compared with CALL, DELEGATECALL takes one fewer arguments.
+		    %% The omitted argument is µs[2].
+		    %% As a result, µs[3], µs[4], µs[5] and µs[6]
+		    %% in the definition of CALL
+		    %% should respectively be replaced with µs[2], µs[3], µs[4] and µs[5].
+		    %% Otherwise exactly equivalent to CALL except:
+		    %%                    Θ(σ∗,Is,Io,Ia,t,µs[0],Ip,0,Iv,i,Ie + 1)
+		    %%                      if Iv 6 σ[Ia]b ∧ Ie < 1024
+		    %% (σ', g0, A+, o) ≡ 
+		    %%                    (σ, g, ∅,()) 
+		    %%                      otherwise
+		    %% Note the changes (in addition to that of the fourth parameter)
+		    %% to the second and ninth parameters to the call Θ.
+		    %% This means that the recipient is in fact the same account as at
+		    %% present, simply that the code is overwritten and the context is
+		    %% almost entirely identical.
+		    %% TODO: This is probably completely wrong:
+		    {Gas, State1} = pop(State0),
+		    {To, State2} = pop(State1),
+		    {IOffset, State3} = pop(State2),
+		    {ISize, State4} = pop(State3),
+		    {OOffset, State5} = pop(State4),
+		    {OSize, State6} = pop(State5),
+		    Call = #{ gas => Gas
+			    , to => To
+			    , in_offset => IOffset
+			    , in_size => ISize
+			    , out_offset => OOffset
+			    , out_size => OSize},
+		    State7 = aevm_eeevm_state:set_call(Call, State6),
+		    State7;
+		16#f5 -> throw({illegal_instruction, OP, State0});
+		16#f6 -> throw({illegal_instruction, OP, State0});
+		16#f7 -> throw({illegal_instruction, OP, State0});
+		16#f8 -> throw({illegal_instruction, OP, State0});
+		16#f9 -> throw({illegal_instruction, OP, State0});
+		16#fa -> throw({illegal_instruction, OP, State0});
+		16#fb -> throw({illegal_instruction, OP, State0});
+		16#fc -> throw({illegal_instruction, OP, State0});
+		16#fd -> throw({illegal_instruction, OP, State0});
+		?INVALID -> 
+		    %% 0xfe INVALID δ=∅ α=∅ 
+		    %% Designated invalid instruction.
+		    throw({the_invalid_instruction, OP, State0});
 		?SUICIDE ->
 		    %% 0xff SELFDESTRUCT 1 0
 		    %% Halt execution and register account for
@@ -1128,7 +1250,7 @@ byte(Byte, Arg2) when Byte < 32 ->
 byte(_,_) -> 0.
 
 
-    
+
 
 %% ------------------------------------------------------------------------
 %% STACK
@@ -1175,7 +1297,7 @@ dup(N, State) ->
 swap(N, State) ->
     case aevm_eeevm_state:stack(State) of
 	[] ->
-    	    throw({error_swap_empty_stack, State});
+	    throw({error_swap_empty_stack, State});
 	[Top|Rest] ->
 	    case length(Rest) < N of
 		true ->
@@ -1228,7 +1350,7 @@ data_get_val(Address, Size, State) ->
 data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     aevm_eeevm_utils:bin_copy(Address, Size, Data).
-					 
+
 
 %% ------------------------------------------------------------------------
 %% CODE
@@ -1271,7 +1393,7 @@ spend_gas(Op, State) ->
     Cost = aevm_gas:op_cost(Op, State),
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
-        true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
+	true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
 	false -> throw({out_of_gas, State})
     end.
 
@@ -1329,9 +1451,17 @@ log(Topics, MemAddress, Length, State) ->
     LogEntry = <<Header/binary, Body/binary>>,
     NewLogs = [LogEntry|Logs],
     aevm_eeevm_state:set_logs(NewLogs, State1).
-    
-    
+
+
 log_topics(AccountAddress, Topics) ->
     Bytes = << << X:256>> || X <- tuple_to_list(Topics) >>,
     <<AccountAddress:256, Bytes/binary >>.
 
+
+%% ------------------------------------------------------------------------
+%% Account Functions
+%% ------------------------------------------------------------------------
+
+create_account(Value, CodeArea, State) ->
+    %% TODO: Do actual account creation
+    {16#DEADC0DE, State}.

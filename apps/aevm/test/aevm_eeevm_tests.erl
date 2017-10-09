@@ -193,7 +193,7 @@ arithmetic_tests() ->
     , sdivByZero0
     , sdivByZero1
     , sdivByZero2
-    %% , sdiv_dejavu %% Missing callcreates && post. Illegal pop
+      %% , sdiv_dejavu %% Missing callcreates && post. Illegal pop
     , sdiv_i256min
     , sdiv_i256min2
     , sdiv_i256min3
@@ -206,7 +206,7 @@ arithmetic_tests() ->
     , signextend_BitIsSetInHigherByte
     , signextend_bitIsSet
     , signextendInvalidByteNumber
-    %% , signextend_Overflow_dj42 %% Missing callcreates && post. Illegal pop
+      %% , signextend_Overflow_dj42 %% Missing callcreates && post. Illegal pop
     , smod0
     , smod1
     , smod2
@@ -326,7 +326,7 @@ vm_push_dup_swap_test_() ->
 vm_push_dup_swap_tests() ->
     [ dup1
     , dup2
-    %% , dup2error %% Throws pop on empty. TC-Spec has no post block.
+      %% , dup2error %% Throws pop on empty. TC-Spec has no post block.
     , dup3
     , dup4
     , dup5
@@ -415,11 +415,11 @@ vm_sha3_tests() ->
     , sha3_2
     , sha3_3 %% no post
     , sha3_4 %% no post
-    %% , sha3_5 %% timeout
-    %% , sha3_6 %% timeout
+      %% , sha3_5 %% timeout
+      %% , sha3_6 %% timeout
     , sha3_bigOffset %% no post
     , sha3_bigOffset2
-    %% , sha3_bigSize %% timeout
+      %% , sha3_bigSize %% timeout
     , sha3_memSizeNoQuadraticCost31
     , sha3_memSizeQuadraticCost32
     , sha3_memSizeQuadraticCost32_zeroSize
@@ -514,7 +514,7 @@ vm_environmental_info_tests() ->
     , calldatacopy0
     , calldatasize0
     , codesize
-    %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
+      %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
     , extcodecopy0
     , extcodesize0
     , gasprice
@@ -557,6 +557,22 @@ vm_log_tests() ->
     , log2_nonEmptyMem_logMemSize1
     , log3_PC
     , log4_PC
+      %% TODO: Actually test log results
+      %% TODO add the rest of the tests
+    ].
+
+%%====================================================================
+%% VM System Operations Tests
+%%====================================================================
+
+vm_system_operations_test_() ->
+    Tests = vm_system_operations_tests(),
+    Path  = "VMTests/vmSystemOperations",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
+
+vm_system_operations_tests() ->
+    [ %% createNameRegistrator %% TODO: Tobias: Env setup badmatch 
+
     ].
 
 %%====================================================================
