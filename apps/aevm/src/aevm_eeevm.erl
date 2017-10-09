@@ -1261,61 +1261,23 @@ byte(_,_) -> 0.
 %% STACK
 %% ------------------------------------------------------------------------
 push(Arg, State) ->
-    Val = Arg band ?MASK256,
-    Stack   = aevm_eeevm_state:stack(State),
-    if length(Stack) < 1024 ->
-	    aevm_eeevm_state:set_stack([Val|Stack], State);
-       true ->
-	    throw({out_of_stack, State})
-    end.
+    aevm_eeevm_stack:push(Arg, State).
 
 push_n_bytes_from_cp(N, State) ->
     CP   = aevm_eeevm_state:cp(State),
     Code = aevm_eeevm_state:code(State),
-    Arg = code_get_arg(CP+1, N, Code),
-    State1 = push(Arg, State),
+    Arg  = code_get_arg(CP+1, N, Code),
+    State1 = aevm_eeevm_stack:push(Arg, State),
     inc_cp(N, State1).
 
-
 pop(State) ->
-    case aevm_eeevm_state:stack(State) of
-	[Arg|Stack] ->
-	    {Arg, aevm_eeevm_state:set_stack(Stack, State)};
-	[] ->
-	    throw({error_pop_empty_stack, State})
-    end.
+    aevm_eeevm_stack:pop(State).
 
 dup(N, State) ->
-    case aevm_eeevm_state:stack(State) of
-	[] ->
-	    throw({error_dup_empty_stack, State});
-	Stack ->
-	    case length(Stack) < N of
-		true ->
-		    throw({error_dup_too_small_stack, State});
-		false ->
-		    Val = lists:nth(N, Stack),
-		    push(Val, State)
-	    end
-    end.
+    aevm_eeevm_stack:dup(N, State).
 
 swap(N, State) ->
-    case aevm_eeevm_state:stack(State) of
-	[] ->
-	    throw({error_swap_empty_stack, State});
-	[Top|Rest] ->
-	    case length(Rest) < N of
-		true ->
-		    throw({error_swap_too_small_stack, State});
-		false ->
-		    Nth = lists:nth(N, Rest),
-		    Stack = [Nth| set_nth(N, Top, Rest)],
-		    aevm_eeevm_state:set_stack(Stack, State)
-	    end
-    end.
-
-set_nth(1, Val, [_|Rest]) -> [Val|Rest];
-set_nth(N, Val, [E|Rest]) -> [E|set_nth(N-1, Val, Rest)].
+    aevm_eeevm_stack:swap(N, State).
 
 %% ------------------------------------------------------------------------
 %% STORAGE
