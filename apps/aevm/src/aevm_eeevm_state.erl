@@ -198,8 +198,9 @@ trace_format(String, Argument, State) ->
     case do_trace(State) of
 	true ->
 	    F = trace_fun(State),
-	    F("~8.16.0B : ~2.16.0B", [CP, OP]),
+	    F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
 	    F(" ~w", [stack(State)]),
+	    F(" ~p", [mem(State)]),
 	    F(String, Argument),
 	    add_trace({CP, OP}, State);
 	false ->
