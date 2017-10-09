@@ -18,7 +18,6 @@ bin_copy(Pos, N, Bin) ->
     BitPos = Pos * 8,
     if (Pos+N >= Size) andalso (Pos > Size) ->
 	    ByteSize = N*8,
-	    io:format("Size ~p~n",[ByteSize]),
 	    <<0:ByteSize>>;
        Pos+N >= Size ->
 	    Extend = (N - (Size - Pos)) * 8,
