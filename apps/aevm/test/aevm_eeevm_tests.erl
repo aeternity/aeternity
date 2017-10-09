@@ -600,21 +600,57 @@ vm_environmental_info_test_() ->
 
 vm_environmental_info_tests() ->
     [ address0
+    , address1
     , balance0
     , balance1
     , balance01
     , balanceAddress2
+    , balanceAddressInputTooBig
     , balanceAddressInputTooBigLeftMyAddress
+    , balanceAddressInputTooBigRightMyAddress
     , balanceCaller3
     , calldatacopy0
+    , calldatacopy0_return
+    , calldatacopy1
+    , calldatacopy1_return
+    , calldatacopy2
+    , calldatacopy2_return
+    %% , calldatacopy_DataIndexTooHigh2
+    %% , calldatacopy_DataIndexTooHigh2_return
+    %% , calldatacopy_DataIndexTooHigh
+    %% , calldatacopy_DataIndexTooHigh_return
+    , calldatacopy_sec
+    , calldatacopyUnderFlow
+    , calldatacopyZeroMemExpansion
+    , calldatacopyZeroMemExpansion_return
+    %% , calldataload0
+    , calldataload1
+    %% , calldataload2
+    , calldataload_BigOffset
+    , calldataloadSizeTooHigh
+    %% , calldataloadSizeTooHighPartial
     , calldatasize0
+    , calldatasize1
+    , calldatasize2
+    , caller
+    , callvalue
+    , codecopy0
+    %% , codecopy_DataIndexTooHigh
+    , codecopyZeroMemExpansion
     , codesize
       %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
+    , extcodecopy0AddressTooBigLeft
+    , extcodecopy0AddressTooBigRight
     , extcodecopy0
+    %% , extcodecopy_DataIndexTooHigh
+    , extcodecopyZeroMemExpansion
     , extcodesize0
+    , extcodesize1
+    , 'ExtCodeSizeAddressInputTooBigLeftMyAddress'
+    , 'ExtCodeSizeAddressInputTooBigRightMyAddress'
+    , extcodesizeUnderFlow
     , gasprice
     , origin
-      %% TODD: Add remaining testcases.
     ].
 
 
