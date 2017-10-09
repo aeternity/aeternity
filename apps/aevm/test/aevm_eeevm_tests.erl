@@ -440,57 +440,152 @@ vm_io_and_flow_operations_test_() ->
     aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
 
 vm_io_and_flow_operations_tests() ->
-    [ 'DynamicJumpPathologicalTest0'
+    [ bad_indirect_jump1
+    , bad_indirect_jump2
+    , 'BlockNumberDynamicJump0_AfterJumpdest'
+    , 'BlockNumberDynamicJump0_AfterJumpdest3'
+    , 'BlockNumberDynamicJump0_AfterJumpdest'
+    , 'BlockNumberDynamicJump0_AfterJumpdest3'
+    , 'BlockNumberDynamicJump0_foreverOutOfGas'
+    , 'BlockNumberDynamicJump0_jumpdest0'
+    , 'BlockNumberDynamicJump0_jumpdest2'
+    , 'BlockNumberDynamicJump0_withoutJumpdest'
+    , 'BlockNumberDynamicJump1'
+    , 'BlockNumberDynamicJumpi0'
+    , 'BlockNumberDynamicJumpi1'
+    , 'BlockNumberDynamicJumpi1_jumpdest'
+    , 'BlockNumberDynamicJumpiAfterStop'
+    , 'BlockNumberDynamicJumpifInsidePushWithJumpDest'
+    , 'BlockNumberDynamicJumpifInsidePushWithoutJumpDest'
+    , 'BlockNumberDynamicJumpInsidePushWithJumpDest'
+    , 'BlockNumberDynamicJumpInsidePushWithoutJumpDest'
+    , 'BlockNumberDynamicJumpiOutsideBoundary'
+    , byte1
+    , calldatacopyMemExp
+    , codecopyMemExp
+    , deadCode_1
+    , dupAt51becameMload
+    , 'DyanmicJump0_outOfBoundary'
+    , 'DynamicJump0_AfterJumpdest3'
+    , 'DynamicJump0_AfterJumpdest'
+    , 'DynamicJump0_foreverOutOfGas'
+    , 'DynamicJump0_jumpdest0'
+    , 'DynamicJump0_jumpdest2'
+    , 'DynamicJump0_withoutJumpdest'
+    , 'DynamicJump1'
+    , 'DynamicJumpAfterStop'
+    , 'DynamicJumpi0'
+    , 'DynamicJumpi1'
+    , 'DynamicJumpi1_jumpdest'
+    , 'DynamicJumpiAfterStop'
+    , 'DynamicJumpifInsidePushWithJumpDest'
+    , 'DynamicJumpifInsidePushWithoutJumpDest'
+    , 'DynamicJumpInsidePushWithJumpDest'
+    , 'DynamicJumpInsidePushWithoutJumpDest'
+    , 'DynamicJumpiOutsideBoundary'
+    , 'DynamicJumpJD_DependsOnJumps0'
+    , 'DynamicJumpJD_DependsOnJumps1'
+    , 'DynamicJumpPathologicalTest0'
     , 'DynamicJumpPathologicalTest1'
     , 'DynamicJumpPathologicalTest2'
     , 'DynamicJumpPathologicalTest3'
     , 'DynamicJumpStartWithJumpDest'
+    , 'DynamicJump_value1'
+    , 'DynamicJump_value2'
+    , 'DynamicJump_value3'
+    , 'DynamicJump_valueUnderflow'
+    , 'extcodecopyMemExp'
     , for_loop1
     , for_loop2
+      %%    , gas0
+    , gas1
     , gasOverFlow
+    , 'indirect_jump1'
+    , 'indirect_jump2'
+    , 'indirect_jump3'
+    , 'indirect_jump4'
+    , 'JDfromStorageDynamicJump0_AfterJumpdest3'
+    , 'JDfromStorageDynamicJump0_AfterJumpdest'
     , 'JDfromStorageDynamicJump0_foreverOutOfGas'
     , 'JDfromStorageDynamicJump0_jumpdest0'
     , 'JDfromStorageDynamicJump0_jumpdest2'
+    , 'JDfromStorageDynamicJump0_withoutJumpdest'
+    , 'JDfromStorageDynamicJump1'
+    , 'JDfromStorageDynamicJumpi0'
+    , 'JDfromStorageDynamicJumpi1'
     , 'JDfromStorageDynamicJumpi1_jumpdest'
     , 'JDfromStorageDynamicJumpiAfterStop'
     , 'JDfromStorageDynamicJumpifInsidePushWithJumpDest'
+    , 'JDfromStorageDynamicJumpifInsidePushWithoutJumpDest'
     , 'JDfromStorageDynamicJumpInsidePushWithJumpDest'
+    , 'JDfromStorageDynamicJumpInsidePushWithoutJumpDest'
+    , 'JDfromStorageDynamicJumpiOutsideBoundary'
     , jump0_AfterJumpdest
     , jump0_AfterJumpdest3
     , jump0_foreverOutOfGas
     , jump0_jumpdest0
     , jump0_jumpdest2
-    , jumpAfterStop
-    , jumpdestBigList
-    , jumpDynamicJumpSameDest
-    , jumpi1_jumpdest
-    , jumpiAfterStop
-    , jumpi_at_the_end
-    , jumpifInsidePushWithJumpDest
-    , jumpInsidePushWithJumpDest
-    , jumpiToUint64maxPlus1
-    , jumpiToUintmaxPlus1
-    , jumpOntoJump
-    , jumpTo1InstructionafterJump
-    , jumpTo1InstructionafterJump_jumpdestFirstInstruction
-    , jumpToUintmaxPlus1
-    , kv1
-    , loop_stacklimit_1020
-    , loop_stacklimit_1021
-    , memory1
-    , mstore8_0
+    , 'jump0_outOfBoundary'
+    , 'jump0_withoutJumpdest'
+    , 'jump1'
+    , 'jumpAfterStop'
+    , 'jumpdestBigList'
+    , 'jumpDynamicJumpSameDest'
+    , 'jumpHigh'
+    , 'jumpi0'
+    , 'jumpi1'
+    , 'jumpi1_jumpdest'
+    , 'jumpiAfterStop'
+    , 'jumpi_at_the_end'
+    , 'jumpifInsidePushWithJumpDest'
+    , 'jumpifInsidePushWithoutJumpDest'
+    , 'jumpInsidePushWithJumpDest'
+    , 'jumpInsidePushWithoutJumpDest'
+    , 'jumpiOutsideBoundary'
+    , 'jumpiToUint64maxPlus1'
+    , 'jumpiToUintmaxPlus1'
+    , 'jumpOntoJump'
+    , 'jumpTo1InstructionafterJump'
+    , 'jumpTo1InstructionafterJump_jumpdestFirstInstruction'
+    , 'jumpTo1InstructionafterJump_noJumpDest'
+    , 'jumpToUint64maxPlus1'
+    , 'jumpToUintmaxPlus1'
+    , 'kv1'
+    , 'log1MemExp'
+    , 'loop_stacklimit_1020'
+    , 'loop_stacklimit_1021'
+    , 'memory1'
+    , 'mloadError0'
+    , 'mloadError1'
+    , 'mloadMemExp'
+    , 'mloadOutOfGasError2'
     , msize0
     , msize1
     , msize2
-      %% , msize3 %% TODO: Need new memory handling
-    , pop0
-    , pop1
-    , pc0
-    , pc1
-    , return2
-    , stack_loop
-    , 'when'
-      %% TODD: Add remaining testcases.
+    , msize3
+    , 'mstore0'
+    , 'mstore1'
+    , 'mstore8_0'
+    , 'mstore8_1'
+    , 'mstore8MemExp'
+    , 'mstore8WordToBigError'
+    , 'mstoreMemExp'
+    , 'mstore_mload0'
+    , 'mstoreWordToBigError'
+    , 'pc0'
+    , 'pc1'
+    , 'pop0'
+    , 'pop1'
+    , 'return1'
+    , 'return2'
+    , 'sha3MemExp'
+    , 'sstore_load_0'
+    , 'sstore_load_1'
+    , 'sstore_load_2'
+    , 'sstore_underflow'
+    , 'stackjump1'
+    , 'stack_loop'
+    , 'swapAt52becameMstore'
     ].
 
 
