@@ -625,24 +625,24 @@ vm_environmental_info_tests() ->
     , calldatacopyZeroMemExpansion_return
     , calldataload0
     , calldataload1
-    %% , calldataload2
+    , calldataload2
     , calldataload_BigOffset
     , calldataloadSizeTooHigh
-    %% , calldataloadSizeTooHighPartial
+    , calldataloadSizeTooHighPartial
     , calldatasize0
     , calldatasize1
     , calldatasize2
     , caller
     , callvalue
     , codecopy0
-    %% , codecopy_DataIndexTooHigh
+    , codecopy_DataIndexTooHigh
     , codecopyZeroMemExpansion
     , codesize
-      %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
+    %% , env1 %% TODO: Tobias: aevm_test_utils,build_config_lists,2
     , extcodecopy0AddressTooBigLeft
     , extcodecopy0AddressTooBigRight
     , extcodecopy0
-    %% , extcodecopy_DataIndexTooHigh
+    , extcodecopy_DataIndexTooHigh
     , extcodecopyZeroMemExpansion
     , extcodesize0
     , extcodesize1
