@@ -623,7 +623,7 @@ vm_environmental_info_tests() ->
     , calldatacopyUnderFlow
     , calldatacopyZeroMemExpansion
     , calldatacopyZeroMemExpansion_return
-    %% , calldataload0
+    , calldataload0
     , calldataload1
     %% , calldataload2
     , calldataload_BigOffset

@@ -409,9 +409,8 @@ loop(StateIn) ->
 		    %% µ's[0] ≡ Id[µs[0] . . .(µs[0] + 31)] with Id[x] = 0 if x >= |Id|
 		    %% This pertains to the input data passed with the message
 		    %% call instruction or transaction.
-		    Bytes = 32,
 		    {Us0, State1} = pop(State0),
-		    Arg = data_get_val(Us0, Bytes, State1),
+		    Arg = data_get_val(Us0, State1),
 		    State2 = push(Arg, State1),
 		    next_instruction(OP, State, State2);
 		?CALLDATASIZE ->
@@ -1282,16 +1281,14 @@ swap(N, State) ->
 %% ------------------------------------------------------------------------
 %% DATA
 %% ------------------------------------------------------------------------
-data_get_val(Address, Size, State) ->
-    Data = aevm_eeevm_state:data(State),
-    if Address >= byte_size(Data) -> 0;
-       true ->
-	    Pos = Address * 8,
-	    Length = Size*8,
-	    <<_:Pos, Arg:Length, _/binary>> = Data,
-	    Arg
-    end.
 
+%% Get a 256-bit (32 bytes) word from input data.
+data_get_val(Address, State) ->
+    Data = aevm_eeevm_state:data(State),
+    <<Val:256>> = aevm_eeevm_utils:bin_copy(Address, 32, Data),
+    Val.
+
+%% Get a binary of size Size bytes from input data.
 data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
