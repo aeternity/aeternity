@@ -20,8 +20,17 @@
 extra_opts(Name) -> maps:put(blockhash, sha3, extra_opts_tc(Name)).
 %% To turn on tracing for a test case return a map with trace => true
 %% e.g. extra_opts_tc(mulmod4) -> #{trace => true};
-extra_opts_tc(_) ->
-    #{}.
+extra_opts_tc(Name) ->
+    case gas_exception(Name) of
+        true  -> #{validate_gas => false};
+        false -> #{}
+    end.
+
+gas_exception(Name) ->
+    lists:member(Name,
+                 [ suicide
+                 , push32AndSuicide
+                 ]).
 
 %%====================================================================
 %% Arithmetic tests
@@ -321,7 +330,7 @@ vm_tests() ->
 %%====================================================================
 
 vm_push_dup_swap_test_() ->
-    aevm_test_utils:testcase_generate("VMTests/vmPushDupSwapTest", vm_push_dup_swap_tests()).
+    aevm_test_utils:testcase_generate("VMTests/vmPushDupSwapTest", vm_push_dup_swap_tests(), fun extra_opts/1).
 
 vm_push_dup_swap_tests() ->
     [ dup1

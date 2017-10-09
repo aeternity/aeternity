@@ -42,8 +42,8 @@ peek(N, State) when is_integer(N), N >= 0 ->
     peek_n(N, aevm_eeevm_state:stack(State)).
 
 peek_n(0, [X|_]) -> X;
-peek_n(1, [_,_,X|_]) -> X;
-peek_n(2, [_,_,_,X|_]) -> X;
+peek_n(1, [_,X|_]) -> X;
+peek_n(2, [_,_,X|_]) -> X;
 peek_n(N, List) ->
     try lists:nth(N + 1, List)
     catch _:_ -> error({badarg, N, List})

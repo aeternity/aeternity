@@ -103,8 +103,8 @@ all_but_one_64th(X) ->
 peek(N, State) ->
     aevm_eeevm_stack:peek(N, State).
 
-floor_log_256(X) when is_integer(X), X >= 0 ->
-    floor_log_256(X, 0).
+floor_log_256(X) when is_integer(X), X > 0 ->
+    floor_log_256(X, -1).
 
 floor_log_256(0,  N) -> N;
 floor_log_256(X, N) -> floor_log_256(X bsr 8, N + 1).

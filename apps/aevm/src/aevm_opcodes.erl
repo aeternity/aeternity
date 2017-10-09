@@ -62,8 +62,8 @@ opcode(?CALLDATACOPY)   -> {'CALLDATACOPY'   ,  3,  0, ?GVERYLOW};
 opcode(?CODESIZE)       -> {'CODESIZE'       ,  0,  1, ?GBASE};
 opcode(?CODECOPY)       -> {'CODECOPY'       ,  3,  0, ?GVERYLOW};
 opcode(?GASPRICE)       -> {'GASPRICE'       ,  0,  1, ?GBASE};
-opcode(?EXTCODESIZE)    -> {'EXTCODESIZE'    ,  1,  1, ?GEXTCODE};
-opcode(?EXTCODECOPY)    -> {'EXTCODECOPY'    ,  4,  0, ?GEXTCODE};
+opcode(?EXTCODESIZE)    -> {'EXTCODESIZE'    ,  1,  1, ?GEXTCODESIZE};
+opcode(?EXTCODECOPY)    -> {'EXTCODECOPY'    ,  4,  0, ?GEXTCODECOPY};
 opcode(?RETURNDATASIZE) -> {'RETURNDATASIZE' ,  0,  1, 2}; %% TODO
 opcode(?RETURNDATACOPY) -> {'RETURNDATACOPY' ,  3,  0, 3}; %% TODO
 opcode(?BLOCKHASH)      -> {'BLOCKHASH'      ,  1,  1, ?GBLOCKHASH};
