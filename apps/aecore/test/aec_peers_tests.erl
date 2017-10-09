@@ -47,9 +47,40 @@ all_test_() ->
       {"Uri_from_ip_port",
        fun() ->
                ?assertEqual("http://123.123.123.123:1337/", aec_peers:uri_from_ip_port("123.123.123.123", 1337))
+       end},
+      {"Remove all",
+       fun do_remove_all/0},
+      {"Add peer",
+       fun() ->
+               ok = aec_peers:add("http://localhost:800", false),
+               ["http://localhost:800/"] =
+                   [aec_peers:uri(P) || P <- aec_peers:all()]
+       end},
+      {"Register source",
+       fun() ->
+               ok = aec_peers:register_source("http://somenode:800",
+                                              "http://localhost:800"),
+               {ok, P} = aec_peers:info("http://localhost:800"),
+               "http://somenode:800/" = aec_peers:uri(P)
+       end},
+      {"Get random N",
+       fun() ->
+               do_remove_all(),
+               Base = "http://localhost:",
+               [ok = aec_peers:add(Base ++ integer_to_list(N))
+                || N <- lists:seq(900,910)],
+               L1 = aec_peers:get_random(5),
+               5 = length(L1)
        end}
+
      ]
     }.
+
+do_remove_all() ->
+    [aec_peers:remove(P) || P <- aec_peers:all()],
+    [] = aec_peers:all(),
+    ok.
+
 
 setup() ->
     crypto:start(),

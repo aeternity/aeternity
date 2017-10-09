@@ -199,10 +199,10 @@ update_last_seen(Uri) ->
 %%%=============================================================================
 
 -record(state, {peers :: gb_trees:tree(binary(),peer()),
-                aliases :: gb_trees:tree(uri(), binary()),
+                aliases :: gb_trees:tree(uri(), uri()),
                 local_peer_uri :: uri(),
-                local_peer_host :: string(),
-                local_peer_port :: integer()}).
+                local_peer_host :: string() | undefined,
+                local_peer_port :: integer() | undefined}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
