@@ -16,13 +16,14 @@
 bin_copy(Pos, N, Bin) ->
     Size = byte_size(Bin),
     BitPos = Pos * 8,
-    ZeroExtendedBinary =
-	if Pos+N >= Size ->
-		Extend = (N - (Size - Pos)) * 8,
-		<<Bin/binary, 0:Extend>>;
-	   true ->
-		Bin
-	end,
-    <<_:BitPos, Copy:N/binary, _/binary>> = ZeroExtendedBinary,
-    Copy.
+    if (Pos+N >= Size) andalso (Pos > Size) ->  <<0:N>>;
+       Pos+N >= Size ->
+	    Extend = (N - (Size - Pos)) * 8,
+	    <<_:BitPos, Copy:N/binary, _/binary>> = <<Bin/binary, 0:Extend>>,
+	    Copy;
+       true ->
+	    <<_:BitPos, Copy:N/binary, _/binary>> = Bin,
+	    Copy
+    end.
+
     

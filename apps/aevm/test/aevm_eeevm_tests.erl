@@ -615,8 +615,8 @@ vm_environmental_info_tests() ->
     , calldatacopy1_return
     , calldatacopy2
     , calldatacopy2_return
-    %% , calldatacopy_DataIndexTooHigh2
-    %% , calldatacopy_DataIndexTooHigh2_return
+    , calldatacopy_DataIndexTooHigh2
+    , calldatacopy_DataIndexTooHigh2_return
     %% , calldatacopy_DataIndexTooHigh
     %% , calldatacopy_DataIndexTooHigh_return
     , calldatacopy_sec

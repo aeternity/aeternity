@@ -424,7 +424,7 @@ loop(StateIn) ->
 		    State1 = push(Val, State0),
 		    next_instruction(OP, State, State1);
 		?CALLDATACOPY ->
-		    %% 0x37 CALLDATACOPY 3 0
+		    %% 0x37 CALLDATACOPY δ=3 α=0
 		    %% Copy input data in current environment to memory.
 		    %% ∀i∈{0...µs[2]−1}µ'm[µs[0] + i] ≡ Id[µs[1] + i]
 		    %%                                       if µs[1] + i < |Id|
@@ -433,7 +433,7 @@ loop(StateIn) ->
 		    %% the 2^256 modulo.
 		    %% µ'i ≡ M(µi, µs[0], µs[2])
 		    %% This pertains to the input data passed with
-		    %% the message call instruction or transaction.    
+		    %% the message call instruction or transaction.
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    {Us2, State3} = pop(State2),
@@ -1294,7 +1294,11 @@ data_get_val(Address, Size, State) ->
 
 data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
-    aevm_eeevm_utils:bin_copy(Address, Size, Data).
+    try aevm_eeevm_utils:bin_copy(Address, Size, Data)
+    catch error:system_limit ->
+	    throw({out_of_memory, State})
+    end.
+				     
 
 %% ------------------------------------------------------------------------
 %% CODE
