@@ -165,7 +165,7 @@ start_link() ->
 
 init([]) ->
     Peers = application:get_env(aecore, peers, []),
-    [connect_peer(P) || P <- Peers],
+    aec_peers:add_and_ping_peers(Peers),
     {ok, #state{}}.
 
 handle_call(subset_size, _From, #state{subset_size = Sz} = State) ->

@@ -20,11 +20,12 @@ handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
         ok ->
             Source = maps:get(<<"source">>, PingObj),
             aec_peers:update_last_seen(Source),
+            TheirPeers = maps:get(<<"peers">>, PingObj, []),
+            aec_peers:add_and_ping_peers(TheirPeers),
             Ok = LocalPingObj#{<<"pong">> => <<"pong">>},
             Share = maps:get(<<"share">>, PingObj),
             Res = case mk_num(Share) of
                       N when is_integer(N), N > 0 ->
-                          TheirPeers = maps:get(<<"peers">>, PingObj, []),
                           Peers = aec_peers:get_random(N, [Source|TheirPeers]),
                           PeerUris = [iolist_to_binary(aec_peers:uri(P))
                                       || P <- Peers],

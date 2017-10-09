@@ -14,24 +14,17 @@ all_test_() ->
     {setup,
      fun setup/0,
      fun teardown/1,
-     [{"Ping the peer",
-       fun() ->
-               {ok, Peer}=aec_peers:get_random(),
-               "http://localhost:8043/"=aec_peers:uri(Peer),
-               {ok, #{<<"pong">> := <<"pong">>}} = aeu_requests:ping(Peer)
-       end}
-     ]
+     []
     }.
 
 setup() ->
-    inets:start(),
-    application:ensure_all_started(aehttp),
-    aec_peers:start_link(),
-    aec_peers:add("http://localhost:8043/", false).
+    ok = application:ensure_started(inets),
+    {ok, Apps} = application:ensure_all_started(aehttp),
+    Apps.
 
-teardown(_) ->
-    aec_peers:remove("http://localhost:8043/"),
-    ok = application:stop(aehttp),
-    ok = application:stop(aecore),
-    inets:stop().
+teardown(Apps) ->
+    [ok = application:stop(A) || A <- lists:reverse(Apps)],
+    ok = application:stop(inets).
+
+
 -endif.

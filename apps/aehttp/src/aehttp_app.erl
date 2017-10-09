@@ -50,7 +50,22 @@ start_swagger_external() ->
 local_peer(Port) ->
     case application:get_env(aehttp, local_peer_address) of
 	{ok, Addr} ->
-	    Addr;
+            case aeu_requests:parse_uri(Addr) of
+                {_Scheme, _Host, Port} ->    % same port as above
+                    Addr;
+                {_Scheme, _Host, _OtherPort} ->
+                    erlang:error({port_mismatch,
+                                  [{swagger_port_external, Port},
+                                   {local_peer_address, Addr}]});
+                error ->
+                    case re:run(Addr, "[:/]", []) of
+                        {match, _} ->
+                            erlang:error({cannot_parse, [{local_peer_address,
+                                                          Addr}]});
+                        nomatch ->
+                            aec_peers:uri_from_ip_port(Addr, Port)
+                    end
+            end;
 	_ ->
 	    {ok, Host} = inet:gethostname(),
 	    aec_peers:uri_from_ip_port(Host, Port)
