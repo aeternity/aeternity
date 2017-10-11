@@ -666,9 +666,9 @@ vm_block_info_test_() ->
 vm_block_info_tests() ->
     [ blockhashInRange
     , blockhash257Block
-    %%, blockhash258Block
+    , blockhash258Block
     , blockhashInRange
-    %%, blockhashMyBlock
+    , blockhashMyBlock
     %%, blockhashNotExistingBlock
     %% , blockhashOutOfRange
     , blockhashUnderFlow
