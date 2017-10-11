@@ -57,7 +57,7 @@ init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
-    BlockHashFun = get_blockhash_fun(Opts),
+    BlockHashFun = get_blockhash_fun(Opts, Env),
 
     #{ address   => Address
      , caller    => maps:get(caller, Exec)
@@ -113,7 +113,7 @@ get_balances(#{} = Pre) ->
       [{Address, B} || {Address, #{balance := B}}
 			   <- maps:to_list(Pre)]).
 
-get_blockhash_fun(Opts) ->
+get_blockhash_fun(Opts, Env) ->
     case maps:get(blockhash, Opts, default) of
 	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(N,A) end;
 	sha3 -> fun(N,_A) -> 
@@ -122,7 +122,8 @@ get_blockhash_fun(Opts) ->
 			%% return the hashes of the corresponding
 			%% blocks. Therefore we define the hash of
 			%% block number n to be SHA3-256("n").
-			if N > 256 -> 0;
+			CurrentNumber = maps:get(currentNumber, Env),
+			if CurrentNumber - 256 > N -> 0;
 			   true ->
 				BinN = integer_to_binary(N),
 				Hash = sha3:hash(256, BinN),
