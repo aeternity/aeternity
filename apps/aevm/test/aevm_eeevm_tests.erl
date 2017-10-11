@@ -665,10 +665,19 @@ vm_block_info_test_() ->
 
 vm_block_info_tests() ->
     [ blockhashInRange
+    , blockhash257Block
+    %%, blockhash258Block
+    , blockhashInRange
+    %%, blockhashMyBlock
+    %%, blockhashNotExistingBlock
+    %% , blockhashOutOfRange
+    , blockhashUnderFlow
     , coinbase
     , difficulty
     , gaslimit
+    , number
     , timestamp
+
       %% TODD: Add remaining testcases.
     ].
 
