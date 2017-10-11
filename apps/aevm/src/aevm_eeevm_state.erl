@@ -57,7 +57,7 @@ init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = _Spec, Opts) ->
     Address = maps:get(address, Exec),
-    BlockHashFun = get_blockhash_fun(Opts, Env),
+    BlockHashFun = get_blockhash_fun(Opts, Env, Address),
 
     #{ address   => Address
      , caller    => maps:get(caller, Exec)
@@ -113,9 +113,9 @@ get_balances(#{} = Pre) ->
       [{Address, B} || {Address, #{balance := B}}
 			   <- maps:to_list(Pre)]).
 
-get_blockhash_fun(Opts, Env) ->
+get_blockhash_fun(Opts, Env, H) ->
     case maps:get(blockhash, Opts, default) of
-	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(N,A) end;
+	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
 	sha3 -> fun(N,_A) -> 
 			%% Because the data of the blockchain is not
 			%% given, the opcode BLOCKHASH could not
@@ -123,7 +123,8 @@ get_blockhash_fun(Opts, Env) ->
 			%% blocks. Therefore we define the hash of
 			%% block number n to be SHA3-256("n").
 			CurrentNumber = maps:get(currentNumber, Env),
-			if CurrentNumber - 256 > N -> 0;
+			if (N >= CurrentNumber) or (_A == 256) or (H==0) -> 0;
+			   CurrentNumber - 256 > N -> 0;
 			   true ->
 				BinN = integer_to_binary(N),
 				Hash = sha3:hash(256, BinN),
