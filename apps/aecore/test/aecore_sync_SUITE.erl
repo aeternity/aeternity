@@ -146,8 +146,6 @@ restart_node(Dev, Config) ->
 
 
 start_third_node(Config) ->
-    N1 = node_(dev1),
-    N2 = node_(dev2),
     N3 = node_(dev3),
     start_node_(dev3, Config),
     connect(N3),

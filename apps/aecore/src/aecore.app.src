@@ -12,7 +12,9 @@
     rocksdb,
     aeutils
    ]},
-  {env, []},
+  {env, [
+        {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}}
+        ]},
   {modules, []},
 
   {maintainers, []},

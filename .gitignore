@@ -25,4 +25,5 @@ py/tests/swagger_client
 *.pyc
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
-apps/aecore/priv
+apps/aecore/priv/*.so
+apps/aecore/priv/keys

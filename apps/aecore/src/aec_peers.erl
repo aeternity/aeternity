@@ -296,7 +296,7 @@ handle_cast({add, #peer{uri = Uri} = Peer, Connect},
                     maybe_ping_peer(Peer, State);
                 false -> ok
             end,
-            {noreply, enter_peer(Key, Peer, State)};
+            {noreply, metrics(enter_peer(Key, Peer, State))};
         _Other ->
             lager:debug("Will not add peer (~p): ~p", [Uri, _Other]),
             {noreply, State}
@@ -314,7 +314,7 @@ handle_cast({source, SrcUri, Alias} = _R,
             Peers1 = enter_peer(NewPeer,
                                 gb_trees:delete(Hash, Peers)),
             As1 = gb_trees:enter(Alias, SrcUri, As),
-            {noreply, State#state{peers = Peers1, aliases = As1}};
+            {noreply, metrics(State#state{peers = Peers1, aliases = As1})};
         {{value, Ha, Pa}, {value, _Hs, Ps}} ->
             Peer = if Ps#peer.last_seen < Pa#peer.last_seen ->
                            Pa;
@@ -325,7 +325,7 @@ handle_cast({source, SrcUri, Alias} = _R,
                        Peer#peer{uri = SrcUri},
                        gb_trees:delete(Ha, Peers)),
             As1 = gb_trees:enter(Alias, SrcUri, As),
-            {noreply, State#state{peers = Peers1, aliases = As1}};
+            {noreply, metrics(State#state{peers = Peers1, aliases = As1})};
         _Other ->
             lager:debug("unexpected result (source):~n~p", [_Other]),
             {noreply, State}
@@ -350,7 +350,7 @@ handle_cast({remove, PeerUri}, State = #state{peers = Peers}) ->
     case gb_trees:lookup(HashUri, Peers) of
         none -> {noreply, State};
        {value, Peer} ->
-            {noreply, do_remove_peer(HashUri, Peer, State)}
+            {noreply, metrics(do_remove_peer(HashUri, Peer, State))}
     end.
 
 handle_info({timeout, Ref, {ping_peer, Uri}}, State) ->
@@ -380,6 +380,12 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+metrics(#state{peers = Peers} = State) ->
+    try exometer:update([ae,epoch,aecore,peers,count],
+                        gb_trees:size(Peers))
+    catch _:_ -> ok end,
+    State.
 
 enter_peer(#peer{uri = Uri} = P, Peers) ->
     gb_trees:enter(hash_uri(Uri), P, Peers).
@@ -590,11 +596,20 @@ log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
             lager:debug("Reported ping event for unknown peer (~p)", [Uri]),
             State;
         {value, _Hash, Peer} ->
+            update_ping_metrics(Res),
             Peer1 = save_ping_event(Res, Time, Peer),
             Peer2 = start_ping_timer(CalcF, Peer1),
             Peers = enter_peer(Peer2, State#state.peers),
             State#state{peers = Peers}
     end.
+
+update_ping_metrics(Res) ->
+    Name = case Res of
+               ok    -> [ae,epoch,aecore,peers,ping,success];
+               error -> [ae,epoch,aecore,peers,ping,failure]
+           end,
+    try exometer:update(Name, 1)
+    catch _:_ -> ok end.
 
 start_ping_timer(CalcF, #peer{uri = Uri} = Peer) ->
     NewTime = CalcF(Peer),
