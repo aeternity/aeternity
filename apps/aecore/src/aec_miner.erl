@@ -145,6 +145,8 @@ running(cast, mine, State) ->
                 ok ->
                     case aec_chain:write_block(Block) of
                         ok ->
+                            try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
+                            catch error:_ -> ok end,
                             epoch_mining:info("Block inserted: Height = ~p"
                                               "~nHash = ~s",
                                               [Block#block.height,
@@ -160,6 +162,8 @@ running(cast, mine, State) ->
             {next_state, running, State};
         {error, generation_count_exhausted} ->
             %% Needs more attempts, go on trying
+            try exometer:update([ae,epoch,aecore,mining,retries], 1)
+            catch error:_ -> ok end,
             epoch_mining:info("Failed to mine block in ~p attempts, retrying.",
                        [?MINING_ATTEPTS_PER_CYCLE]),
             gen_statem:cast(?SERVER, mine),
