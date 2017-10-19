@@ -1,5 +1,5 @@
 CORE = rel/epoch/bin/epoch
-VER = 0.2.0
+VER := $(shell cat VERSION)
 
 
 PYTHON_DIR = py
