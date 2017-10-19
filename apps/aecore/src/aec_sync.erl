@@ -32,8 +32,6 @@
 %% Callback for jobs producer queue
 -export([sync_worker/0]).
 
--define(RECV_POOL, aec_sync_recv_pool).
-
 -type ping_obj() :: map().
 
 -ifdef(TEST).
@@ -154,14 +152,7 @@ unsubscribe(Event) ->
                 pings = gb_trees:empty()}).
 
 start_link() ->
-    ensure_tab(?RECV_POOL, [set, public, named_table]),
-    case gen_server:start_link({local, ?MODULE}, ?MODULE, [], []) of
-        {ok, Pid} ->
-            ets:give_away(?RECV_POOL, Pid, []),
-            {ok, Pid};
-        Other ->
-            Other
-    end.
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
     Peers = application:get_env(aecore, peers, []),
@@ -183,18 +174,10 @@ handle_cast({start_sync, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {start_sync, PeerUri}),
     {noreply, State};
 handle_cast({received_block, Block}, State) ->
-    HdrHash = header_hash(Block),
-    case aec_chain:get_block_by_hash(HdrHash) of
-        {ok, _} ->
-            %% we have the block; do not re-send
-            {noreply, State};
-        {error, _} ->
-            cache_and_queue_block(HdrHash, Block, received, forward, State),
-            {noreply, State}
-    end;
+    queue_block(Block, received, forward, State),
+    {noreply, State};
 handle_cast({block_created, Block}, State) ->
-    HdrHash = header_hash(Block),
-    cache_and_queue_block(HdrHash, Block, created, forward, State),
+    queue_block(Block, created, forward, State),
     publish(block_created, aec_blocks:height(Block)),
     {noreply, State};
 handle_cast(_, State) ->
@@ -222,136 +205,30 @@ sync_worker() ->
 process_job([{T, Job}]) ->
     reg_worker(Job, T),
     case Job of
-        {forward, HdrHash, Peer} ->
-            do_forward(HdrHash, Peer);
-        {{remove, _Status}, HdrHash} ->
-            do_remove_received(HdrHash, T);
+        {forward, #{block := Block}, Peer} ->
+            do_forward_block(Block, Peer);
         {start_sync, PeerUri} ->
             do_start_sync(PeerUri);
         _Other ->
             lager:debug("unknown job", [])
     end.
 
-cache_and_queue_block(HdrHash, Block, Status, Op, State) ->
-    case Peers = aec_peers:get_random(State#state.subset_size) of
+queue_block(Block, Status, Op, State) ->
+    case aec_peers:get_random(State#state.subset_size) of
         [] ->
             ok;
-        [_|_] ->
-            ets:insert(?RECV_POOL, {HdrHash, #{block => Block,
-                                               status => Status}}),
-            [enqueue_recv({Op, HdrHash, Peer})
-             || Peer <- Peers],
-            jobs:enqueue(sync_jobs, {{remove, Status}, HdrHash})
+        [_|_] = Peers ->
+            [enqueue_recv({Op, #{status => Status,
+                                 block  => Block}, Peer})
+             || Peer <- Peers]
     end.
 
 enqueue_recv(Job) ->
     jobs:enqueue(sync_jobs, Job).
 
-do_forward(HdrHash, Peer) ->
-    case ets:lookup(?RECV_POOL, HdrHash) of
-        [{_, #{block := Block}}] ->
-            do_forward_block(Block, Peer);
-        [] ->
-            case aec_chain:get_block_by_hash(HdrHash) of
-                {ok, Block} ->
-                    do_forward_block(Block, Peer);
-                {error, _} ->
-                    ok
-            end
-    end.
-
 do_forward_block(Block, Peer) ->
     Res = aeu_requests:send_block(Peer, Block),
     lager:debug("send_block Res (~p): ~p", [Peer, Res]).
-
-%% A potential race is that another worker has dequeued the previous
-%% job, it pertains to this block, but the worker was scheduled out
-%% before having a chance to retrieve the block from the 'cache'.
-%% In this case, the last worker will try to fetch the block from the
-%% chain instead. If the block hasn't yet been added to the chain, the
-%% worker is out of luck, and the block doesn't get forwarded.
-%% For now, sleep a bit before deleting. TODO: come up with a way to
-%% eliminate the race.
-do_remove_received(HdrHash, T) ->
-    Prods = jobs:queue_info(sync_workers, producers) -- [self()],
-    %% each producer should register a property once
-    %% it knows what to do.
-    await_workers(HdrHash, T, [{P, process_info(P, reductions)}
-                               || P <- Prods]),
-    lager:debug("await_workers done, deleting ~p", [HdrHash]),
-    ets:delete(?RECV_POOL, HdrHash).
-
-await_workers(_, _, []) ->
-    ok;
-await_workers(Hash, T0, Prods) ->
-    Regs = gproc:select({l, p}, [{ {worker_prop('$1'), '$2', '$3'},
-                                   [],
-                                   [{{'$2', '$1', '$3'}}] }]),
-    lager:debug("Await, Regs = ~p", [Regs]),
-    case lists:foldr(
-           fun(Prod, Acc) ->
-                   filter_producer(Prod, Regs, T0, Hash, Acc)
-           end, [], Prods) of
-        [] ->
-            %% all Prods are either dead, working on newer
-            %% things or a different hash
-            ok;
-        [_|_] = PrunedProds ->
-            %% These might be idle, or haven't yet had time to read
-            %% the hash, or are still working on the hash. Wait a while.
-            timer:sleep(1000),
-            await_workers(Hash, T0, prune_idle_and_dead(PrunedProds, T0, Hash))
-    end.
-
-filter_producer({P,_,Hash} = Prod, _, _, Hash, Acc) ->
-    case is_process_alive(P) of
-        true  -> [Prod|Acc];
-        false -> Acc
-    end;
-filter_producer({P, R} = Prod, Regs, T0, Hash, Acc) ->
-    case lists:keyfind(P, 1, Regs) of
-        {_, _, T} when T > T0 ->
-            %% These have newer jobs - not related
-            Acc;
-        {_, J, _} when element(2, J) =:= Hash ->
-            %% this is related - allow to finish
-            [{P, R, Hash}|Acc];
-        _ ->
-            case is_process_alive(P) of
-                true  -> [Prod|Acc];
-                false -> Acc
-            end
-    end.
-
-prune_idle_and_dead(Prods, T0, Hash) ->
-    lists:foldr(
-      fun({P,_} = Prod, Acc) ->
-              {gproc, Regs} = gproc:info(P, gproc),
-              inspect_regs(Regs, T0, Hash, Prod, Acc);
-         ({P,_,H} = Prod, Acc) when H =:= Hash ->
-              case is_process_alive(P) of
-                  true  -> [Prod|Acc];
-                  false -> Acc
-              end
-      end, [], Prods).
-
-inspect_regs([], _, _, {P, R} = Prod, Acc) ->
-    case process_info(P, reductions) of
-        R         -> Acc;
-        undefined -> Acc;
-        _ ->
-            [Prod|Acc]
-    end;
-inspect_regs(Regs, T0, Hash, {P,R} = Prod, Acc) ->
-    case [{J1, T1} || {{?MODULE, worker, J1}, T1} <- Regs] of
-        [{_,T}] when T > T0 ->
-            %% newer job - ignore
-            Acc;
-        [{Job,_}] when element(2, Job) =:= Hash ->
-            [{P, R, Hash}|Acc];
-        [] ->
-            [Prod|Acc]
-    end.
 
 do_start_sync(PeerUri) ->
     fetch_headers(PeerUri, genesis_hash(), []).
@@ -490,14 +367,6 @@ worker_prop(Job) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
-ensure_tab(T, Opts) ->
-    case ets:info(T, name) of
-        undefined ->
-            ets:new(T, [{heir, self(), []}|Opts]);
-        _ ->
-            true
-    end.
 
 header_hash(Block) ->
     Header = aec_blocks:to_header(Block),
