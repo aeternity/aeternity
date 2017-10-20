@@ -22,6 +22,7 @@
 %%------------------------------------------------------------------------------
 -export([init/1,
          idle/3,
+         configure/3,
          running/3,
          waiting_for_keys/3,
          terminate/3,
@@ -33,10 +34,17 @@
 
 
 -define(SERVER, ?MODULE).
-%% TODO: make it configurable
--define(MINING_ATTEPTS_PER_CYCLE, 10).
 
--record(state, {}).
+%% Cuckoo Cycle has a solution probability of 2.2% so we are
+%% likely to succeed in 100 steps (~90%).
+-define(MINING_ATTEPTS_PER_CYCLE, 10).
+-define(FETCH_NEW_TXS_FROM_POOL, true).
+
+-record(state, {block_candidate :: block() | undefined,
+                cycle_attempts_count = ?MINING_ATTEPTS_PER_CYCLE :: non_neg_integer(),
+                initial_cycle_nonce = 0 :: integer(),
+                max_block_candidate_nonce = 0 :: integer(),
+                fetch_new_txs_from_pool :: boolean()}).
 
 %%%===================================================================
 %%% API
@@ -104,8 +112,12 @@ get_balance() ->
 %% @end
 %%--------------------------------------------------------------------
 init(_) ->
-    gen_statem:cast(?SERVER, mine),
-    {ok, running, #state{}}.
+    CycleAttemptsCount = application:get_env(aecore, mining_cycle_attempts_count, ?MINING_ATTEPTS_PER_CYCLE),
+    FetchNewTxsFromPool = application:get_env(aecore, fetch_new_txs_from_pool_during_mining, ?FETCH_NEW_TXS_FROM_POOL),
+
+    gen_statem:cast(?SERVER, create_block_candidate),
+    {ok, configure, #state{cycle_attempts_count = CycleAttemptsCount,
+                           fetch_new_txs_from_pool = FetchNewTxsFromPool}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -123,8 +135,8 @@ init(_) ->
 %%--------------------------------------------------------------------
 idle({call, From}, start, State) ->
     epoch_mining:info("Mining resumed by user.", []),
-    gen_statem:cast(?SERVER, mine),
-    {next_state, running, State, [{reply, From, ok}]};
+    gen_statem:cast(?SERVER, create_block_candidate),
+    {next_state, configure, State, [{reply, From, ok}]};
 idle({call, From}, suspend, State) ->
     {next_state, idle, State, [{reply, From, {error, not_started}}]};
 idle({call, From}, _Msg, State) ->
@@ -132,54 +144,95 @@ idle({call, From}, _Msg, State) ->
 idle(_Type, _Msg, State) ->
     {next_state, idle, State}.
 
-running({call, From}, start, State) ->
-    {next_state, running, State, [{reply, From, {error, already_started}}]};
-running({call, From}, suspend, State) ->
-    epoch_mining:info("Mining suspended by user.", []),
+configure({call, From}, start, State) ->
+    {next_state, configure, State, [{reply, From, {error, already_started}}]};
+configure({call, From}, suspend, State) ->
+    epoch_mining:info("Mining suspended by user", []),
     {next_state, idle, State, [{reply, From, ok}]};
-running(cast, mine, State) ->
-    case aec_mining:mine(?MINING_ATTEPTS_PER_CYCLE) of
-        {ok, Block} ->
-            Header = aec_blocks:to_header(Block),
-            case aec_chain:insert_header(Header) of
-                ok ->
-                    case aec_chain:write_block(Block) of
-                        ok ->
-                            try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
-                            catch error:_ -> ok end,
-                            epoch_mining:info("Block inserted: Height = ~p"
-                                              "~nHash = ~s",
-                                              [Block#block.height,
-                                               as_hex(Block#block.root_hash)]),
-                            aec_sync:block_created(Block);
-                        {error, Reason} ->
-                            epoch_mining:error("Block insertion failed: ~p.", [Reason])
-                    end;
-                {error, Reason} ->
-                    epoch_mining:error("Header insertion failed: ~p.", [Reason])
-            end,
+configure(cast, create_block_candidate, State) ->
+    case aec_mining:create_block_candidate() of
+        {ok, BlockCandidate, InitialNonce, MaxMiningNonce} ->
             gen_statem:cast(?SERVER, mine),
-            {next_state, running, State};
-        {error, generation_count_exhausted} ->
-            %% Needs more attempts, go on trying
-            try exometer:update([ae,epoch,aecore,mining,retries], 1)
-            catch error:_ -> ok end,
-            epoch_mining:info("Failed to mine block in ~p attempts, retrying.",
-                       [?MINING_ATTEPTS_PER_CYCLE]),
-            gen_statem:cast(?SERVER, mine),
-            {next_state, running, State};
+            {next_state, running, State#state{block_candidate = BlockCandidate,
+                                              initial_cycle_nonce = InitialNonce,
+                                              max_block_candidate_nonce = MaxMiningNonce}};
         {error, key_not_found} ->
             report_suspended(),
             gen_statem:cast(?SERVER, check_keys),
             {next_state, waiting_for_keys, State};
         {error, Reason} ->
-            epoch_mining:error("Mining attempt failed with error: ~p.", [Reason]),
+            epoch_mining:error("Creation of block candidate failed: ~p", [Reason]),
+            gen_statem:cast(?SERVER, create_block_candidate),
+            {next_state, configure, State}
+    end;
+configure(cast, bump_initial_cycle_nonce, #state{fetch_new_txs_from_pool = true,
+                                                 block_candidate = BlockCandidate,
+                                                 cycle_attempts_count = CycleAttemptsCount,
+                                                 initial_cycle_nonce = InitialCycleNonce0} = State) ->
+    case aec_mining:apply_new_txs(BlockCandidate) of
+        {ok, BlockCandidate} ->
+            %% No new txs applied to the block.
+            %% Continue incrementing nonce, without block candidate modifications.
+            epoch_mining:info("No new txs available; continuing mining with bumped nonce"),
+            InitialCycleNonce = (InitialCycleNonce0 + CycleAttemptsCount) band 16#7fffffff,
             gen_statem:cast(?SERVER, mine),
-            {next_state, running, State}
+            {next_state, running, State#state{initial_cycle_nonce = InitialCycleNonce}};
+        {ok, NewBlockCandidate, InitialNonce, MaxMiningNonce} ->
+            epoch_mining:info("New txs added for mining"),
+            gen_statem:cast(?SERVER, mine),
+            {next_state, running, State#state{block_candidate = NewBlockCandidate,
+                                              initial_cycle_nonce = InitialNonce,
+                                              max_block_candidate_nonce = MaxMiningNonce}};
+        {error, key_not_found} ->
+            report_suspended(),
+            gen_statem:cast(?SERVER, check_keys),
+            {next_state, waiting_for_keys, State};
+        {error, Reason} ->
+            epoch_mining:error("Application of new txs failed: ~p", [Reason]),
+            gen_statem:cast(?SERVER, bump_initial_cycle_nonce),
+            {next_state, configure, State}
+    end;
+configure(cast, bump_initial_cycle_nonce, #state{initial_cycle_nonce = InitialCycleNonce0,
+                                                 cycle_attempts_count = CycleAttemptsCount} = State) ->
+    InitialCycleNonce = (InitialCycleNonce0 + CycleAttemptsCount) band 16#7fffffff,
+    gen_statem:cast(?SERVER, mine),
+    {next_state, running, State#state{initial_cycle_nonce = InitialCycleNonce}};
+configure({call, From}, _Msg, State) ->
+    {next_state, configure, State, [{reply, From, {error, not_supported}}]};
+configure(_Type, _Msg, State) ->
+    {next_state, idle, State}.
+
+running({call, From}, start, State) ->
+    {next_state, running, State, [{reply, From, {error, already_started}}]};
+running({call, From}, suspend, State) ->
+    epoch_mining:info("Mining suspended by user.", []),
+    {next_state, idle, State, [{reply, From, ok}]};
+running(cast, mine, #state{block_candidate = BlockCandidate,
+                           cycle_attempts_count = CycleAttemptsCount,
+                           initial_cycle_nonce = CurrentMiningNonce,
+                           max_block_candidate_nonce = MaxMiningNonce} = State) ->
+    case aec_mining:mine(BlockCandidate, CycleAttemptsCount, CurrentMiningNonce, MaxMiningNonce) of
+        {ok, Block} ->
+            ok = save_mined_block(Block),
+            gen_statem:cast(?SERVER, create_block_candidate),
+            {next_state, configure, State};
+        {error, generation_count_exhausted} ->
+            try exometer:update([ae,epoch,aecore,mining,retries], 1)
+            catch error:_ -> ok end,
+            epoch_mining:info("Failed to mine block in ~p attempts, retrying.",
+                              [CycleAttemptsCount]),
+            gen_statem:cast(?SERVER, bump_initial_cycle_nonce),
+            {next_state, configure, State};
+        {error, nonce_range_exhausted} ->
+            try exometer:update([ae,epoch,aecore,mining,retries], 1)
+            catch error:_ -> ok end,
+            epoch_mining:info("Failed to mine block, nonce range exhausted; regenerating block candidate"),
+            gen_statem:cast(?SERVER, create_block_candidate),
+            {next_state, configure, State}
     end;
 running({call, From}, _Msg, State) ->
     {next_state, running, State, [{reply, From, {error, not_supported}}]};
-running(_Type, _Msg, State) ->
+running(cast, _Msg, State) ->
     {next_state, idle, State}.
 
 waiting_for_keys(cast, check_keys, State) ->
@@ -187,8 +240,8 @@ waiting_for_keys(cast, check_keys, State) ->
     case aec_keys:pubkey() of
         {ok, _Pubkey} ->
             epoch_mining:info("Key available, mining resumed.", []),
-            gen_statem:cast(?SERVER, mine),
-            {next_state, running, State};
+            gen_statem:cast(?SERVER, create_block_candidate),
+            {next_state, configure, State};
         {error, _} ->
             report_suspended(),
             gen_statem:cast(?SERVER, check_keys),
@@ -233,6 +286,27 @@ callback_mode() ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+-spec save_mined_block(block()) -> ok.
+save_mined_block(Block) ->
+    Header = aec_blocks:to_header(Block),
+    case aec_chain:insert_header(Header) of
+        ok ->
+            case aec_chain:write_block(Block) of
+                ok ->
+                    try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
+                    catch error:_ -> ok end,
+                    epoch_mining:info("Block inserted: Height = ~p"
+                                      "~nHash = ~s",
+                                      [Block#block.height,
+                                       as_hex(Block#block.root_hash)]),
+                    aec_sync:block_created(Block);
+                {error, Reason} ->
+                    epoch_mining:error("Block insertion failed: ~p.", [Reason])
+            end;
+        {error, Reason} ->
+            epoch_mining:error("Header insertion failed: ~p.", [Reason])
+    end.
 
 report_suspended() ->
     epoch_mining:error("Mining suspended as no keys are avaiable for signing.", []).

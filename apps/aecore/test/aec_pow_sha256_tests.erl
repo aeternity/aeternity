@@ -23,34 +23,34 @@ pow_test_() ->
            fun() ->
                    %% succeeds in a single step
                    ?assertEqual({error, generation_count_exhausted},
-                            ?TEST_MODULE:generate(<<"hello there">>, ?HIGHEST_TARGET_SCI, 0))
+                                ?TEST_MODULE:generate(<<"hello there">>, ?HIGHEST_TARGET_SCI, 0, 1, 0))
+           end},
+          {"Fail when max nonce is reached",
+           fun() ->
+                   ?assertEqual({error, nonce_range_exhausted},
+                                ?TEST_MODULE:generate(<<"hello there">>, 0, 10, 2, 4))
            end},
           {"Generate with very high target threshold",
            fun() ->
-               ?assertEqual(1, aec_pow:pick_nonce()),
                    %% succeeds in a single step
-                   {T1, Res} = timer:tc(?TEST_MODULE, generate, [<<"hello there">>, ?HIGHEST_TARGET_SCI, 1]),
-               ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
+                   {T1, Res} = timer:tc(?TEST_MODULE, generate, [<<"hello there">>, ?HIGHEST_TARGET_SCI, 1, 1, 0]),
+                   ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
                    ?assertEqual({ok, {1, no_value}}, Res),
 
                    %% verify
                    {T2, Res2} = timer:tc(?TEST_MODULE, verify,
                                          [<<"hello there">>, 1, no_value, ?HIGHEST_TARGET_SCI]),
                    ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
-               ?assertEqual(true, Res2)
+                   ?assertEqual(true, Res2)
            end}
          ]
      end
     }.
 
 setup() ->
-    crypto:start(),
-    meck:new(aec_pow, [passthrough]),
-    meck:expect(aec_pow, pick_nonce, fun() -> 1 end).
+    crypto:start().
 
 teardown(_) ->
-    meck:validate(aec_pow),
-    meck:unload(aec_pow),
     crypto:stop().
 
 -endif.

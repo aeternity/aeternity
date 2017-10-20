@@ -8,7 +8,7 @@
 
 -behaviour(aec_pow).
 
--export([generate/3,
+-export([generate/5,
          verify/4]).
 
 
@@ -28,10 +28,10 @@
 %% is still not satisfied after trying 'Count' times with incremented nonce values.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-               Count :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Count) ->
-    Nonce = aec_pow:pick_nonce(),
-    generate_with_nonce(Data, Target, Nonce, Count).
+               Count :: integer(), Nonce :: integer(),
+               MaxNonce :: integer()) -> aec_pow:pow_result().
+generate(Data, Target, Count, Nonce, MaxNonce) ->
+    generate_with_nonce(Data, Target, Nonce, MaxNonce, Count).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with target check)
@@ -41,7 +41,7 @@ generate(Data, Target, Count) ->
                     boolean().
 verify(Data, Nonce, Evd, Target) when Evd == no_value ->
     %% Verification: just try if current Nonce satisfies target threshold
-    case generate_with_nonce(Data, Target, Nonce, 1) of
+    case generate_with_nonce(Data, Target, Nonce, -1, 1) of
         {ok, _} ->
             true;
         _ ->
@@ -54,18 +54,22 @@ verify(Data, Nonce, Evd, Target) when Evd == no_value ->
 
 
 -spec generate_with_nonce(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-                          Nonce :: integer(), Count :: integer()) -> aec_pow:pow_result().
-generate_with_nonce(_Data, _Target, _Nonce, 0) ->
+                          Nonce :: integer(), MaxNonce :: integer(),
+                          Count :: integer()) -> aec_pow:pow_result().
+generate_with_nonce(_Data, _Target, _Nonce, _MaxNonce, 0) ->
     %% Count exhausted: fail
     {error, generation_count_exhausted};
-generate_with_nonce(Data, Target, Nonce, Count) ->
+generate_with_nonce(_Data, _Target, Nonce, Nonce, _Count) ->
+    {error, nonce_range_exhausted};
+generate_with_nonce(Data, Target, Nonce, MaxNonce, Count) ->
+    Nonce32 = Nonce band 16#7fffffff,
     Hash1 = aec_sha256:hash(Data),
-    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce:?HASH_BITS>>),
+    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce32:?HASH_BITS>>),
     case aec_pow:test_target(Hash2, Target) of
         true ->
             %% Hash satisfies condition: return nonce
             {ok, {Nonce, no_value}};
         false ->
             %% Keep trying
-            generate_with_nonce(Data, Target, Nonce + 1, Count - 1)
+            generate_with_nonce(Data, Target, Nonce + 1, MaxNonce, Count - 1)
     end.

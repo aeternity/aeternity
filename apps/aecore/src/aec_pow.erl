@@ -7,7 +7,7 @@
 -module(aec_pow).
 
 -export([test_target/2,
-         pick_nonce/0,
+         pick_nonces/0,
          target_to_difficulty/1,
          recalculate_difficulty/3,
 
@@ -73,7 +73,7 @@
 %% Optional evidence for PoW verification
 -type pow_evidence() :: 'no_value' | term().
 -type pow_result() :: {'ok', {Nonce :: integer, Solution :: pow_evidence()}} |
-                      {'error', 'generation_count_exhausted'}.
+                      {error, generation_count_exhausted} | {error, nonce_range_exhausted}.
 %% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
 %% over the actual one. Always positive.
 -type difficulty() :: float().
@@ -88,7 +88,8 @@
 %%%=============================================================================
 
 -callback generate(Data :: aec_sha256:hashable(), Difficulty :: aec_pow:sci_int(),
-                   Count :: integer()) ->
+                   AttemptsCount :: non_neg_integer(), InitialNonce :: integer(),
+                   MaxNonce :: integer()) ->
     aec_pow:pow_result().
 
 -callback verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
@@ -128,9 +129,16 @@ target_to_difficulty(Th) ->
     %% Max threshold over the current one
     ?HIGHEST_TARGET_INT/scientific_to_integer(Th).
 
--spec pick_nonce() -> integer().
-pick_nonce() ->
-    rand:uniform(?NONCE_RANGE) band 16#7fffffff.
+-spec pick_nonces() -> {integer(), integer()}.
+pick_nonces() ->
+    InitialNonce = rand:uniform(?NONCE_RANGE) band 16#7fffffff,
+    MaxNonce = case InitialNonce of
+                   0 ->
+                       16#7fffffff;
+                   _ ->
+                       InitialNonce - 1
+               end,
+    {InitialNonce, MaxNonce}.
 
 %%------------------------------------------------------------------------------
 %% Adjust difficulty so that generation of new blocks proceeds at the expected pace
