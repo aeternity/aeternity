@@ -4,6 +4,12 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
+-define(compareBlockResults(B1, B2),
+	?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
+		     aec_blocks:serialize_for_network(element(2,B2)))).
+
+-define(GENESIS_DIFFICULTY, 553713663.0).
+
 genesis_block() ->
     aec_block_genesis:genesis_block_as_deserialized_from_network().
 
@@ -11,17 +17,14 @@ top_test_() ->
     {foreach,
      fun() ->
              {ok, _} = aec_chain:start_link(genesis_block()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop()
      end,
      [{"Initialize chain with genesis block, then check top block with related state trees",
        fun() ->
                GB = genesis_block(),
-               ?assertEqual({ok, GB}, aec_chain:top_block()),
 
                {ok, Top} = aec_chain:top(),
                %% Check block apart from state trees.
@@ -36,36 +39,33 @@ genesis_test_() ->
     {setup,
      fun() ->
              {ok, _} = aec_chain:start_link(genesis_block()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop()
      end,
      fun() ->
              GB = genesis_block(),
-             ?assertEqual({ok, GB}, aec_chain:top_block()),
              GH = aec_blocks:to_header(GB),
              ?assertEqual({ok, GH}, aec_chain:top_header()),
 
              ?assertEqual({ok, GH}, aec_chain:get_header_by_height(0)),
-             ?assertEqual({ok, GB}, aec_chain:get_block_by_height(0)),
+             ?compareBlockResults({ok, GB}, aec_chain:get_block_by_height(0)),
 
              {ok, GHH} = aec_blocks:hash_internal_representation(GB),
              ?assertEqual({ok, GH}, aec_chain:get_header_by_hash(GHH)),
-             ?assertEqual({ok, GB}, aec_chain:get_block_by_hash(GHH))
+	     ?compareBlockResults({ok, GB}, aec_chain:get_block_by_hash(GHH))
      end}.
+
+    
 
 header_chain_test_() ->
     {setup,
      fun() ->
              {ok, _} = aec_chain:start_link(genesis_block()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop()
      end,
      fun() ->
@@ -87,12 +87,10 @@ header_chain_test_() ->
 
              %% Check highest header.
              ?assertEqual({ok, BH2}, aec_chain:top_header()),
-             %% Check highest known block - still genesis.
-             ?assertEqual({ok, B0}, aec_chain:top_block()),
 
              %% Check by hash.
              ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
-             ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
+	     ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
              ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B1H)),
@@ -103,7 +101,7 @@ header_chain_test_() ->
 
              %% Check by height.
              ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
-             ?assertEqual({ok, B0}, aec_chain:get_block_by_height(0)),
+             ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
              ?assertEqual({error, {block_not_found, {top_header, BH2}
                                   }}, aec_chain:get_block_by_height(1)),
@@ -122,11 +120,9 @@ block_chain_test_() ->
     {foreach,
      fun() ->
              {ok, _} = aec_chain:start_link(genesis_block()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop()
      end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
@@ -154,22 +150,20 @@ block_chain_test_() ->
 
                %% Check highest header.
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
-               %% Check highest known block.
-               ?assertEqual({ok, B2}, aec_chain:top_block()),
 
                %% Check by hash.
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
-               ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
+               ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_header(BH2),
-               ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
-               ?assertEqual({ok, B2}, aec_chain:get_block_by_hash(B2H)),
+	       ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
+               ?compareBlockResults({ok, B2}, aec_chain:get_block_by_hash(B2H)),
 
                %% Check by height.
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
-               ?assertEqual({ok, B0}, aec_chain:get_block_by_height(0)),
+               ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}
                                     }}, aec_chain:get_block_by_height(1)),
@@ -205,20 +199,14 @@ block_chain_test_() ->
                %% Add one block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_chain:write_block(B1)),
 
-               %% Check proper state growth
-               {ok, {StateHeight, _Trees}} = aec_state:get_trees(),
-               ?assertEqual(1, StateHeight),
-
                %% Check highest header.
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
-               %% Check highest known block.
-               ?assertEqual({ok, B1}, aec_chain:top_block()),
 
                %% Check by hash.
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
-               ?assertEqual({ok, B0}, aec_chain:get_block_by_hash(B0H)),
+               ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
-               ?assertEqual({ok, B1}, aec_chain:get_block_by_hash(B1H)),
+	       ?compareBlockResults({ok, B1}, aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_header(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
@@ -226,9 +214,9 @@ block_chain_test_() ->
 
                %% Check by height.
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
-               ?assertEqual({ok, B0}, aec_chain:get_block_by_height(0)),
+               ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
-               ?assertEqual({ok, B1}, aec_chain:get_block_by_height(1)),
+	       ?compareBlockResults({ok, B1}, aec_chain:get_block_by_height(1)),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_height(2)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}
                                     }}, aec_chain:get_block_by_height(2)),
@@ -239,10 +227,10 @@ block_chain_test_() ->
                                                        {top_header, BH2}}
                                     }}, aec_chain:get_block_by_height(3))
        end}]}.
-
 fake_genesis_block_with_difficulty() ->
     GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
-    GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
+    GB.
+  %% GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
 
 get_work_test_() ->
     {foreach,
@@ -253,11 +241,9 @@ get_work_test_() ->
                fun(#header{target = T}) when is_integer(T) -> float(T) end),
              {ok, _} = aec_chain:start_link(
                          fake_genesis_block_with_difficulty()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop(),
              ?assert(meck:validate(aec_headers)),
              meck:unload(aec_headers)
@@ -269,15 +255,14 @@ get_work_test_() ->
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
-               %% Check difficulty of genesis - for readability of the test.
-               1.0 = aec_headers:difficulty(BH0),
+               %% Check difficulty of genesis
+	       %% NOTE: floating point matching... not safe.
+               ?GENESIS_DIFFICULTY = aec_headers:difficulty(BH0),
 
                %% Check work of chain at top.
+	       %% NOTE: floating point matching... not safe.
                ?assertEqual({ok, {1.0, {top_header, BH0}}},
-                            aec_chain:get_total_difficulty()),
-               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               ?assertEqual({ok, {1.0, {top_header, BH0}}},
-                            aec_chain:get_total_difficulty_by_hash(B0H))
+                            aec_chain:get_total_difficulty())
        end},
       {"Get work in chain of genesis block plus 2 headers",
        fun() ->
@@ -287,7 +272,8 @@ get_work_test_() ->
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Check difficulty of genesis - for readability of the test.
-               1.0 = aec_headers:difficulty(BH0),
+	       %% NOTE: floating point matching... not safe.
+               ?GENESIS_DIFFICULTY = aec_headers:difficulty(BH0),
 
                %% Add a couple of headers to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
@@ -299,16 +285,7 @@ get_work_test_() ->
 
                %% Check work of chain at top.
                ?assertEqual({ok, {8.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty()),
-
-               %% Check work at each header in the chain.
-               {ok, B2H} = aec_headers:hash_header(BH2),
-               ?assertEqual({ok, {8.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty_by_hash(B2H)),
-               ?assertEqual({ok, {3.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty_by_hash(B1H)),
-               ?assertEqual({ok, {1.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty_by_hash(B0H))
+                            aec_chain:get_total_difficulty())
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.
@@ -316,11 +293,9 @@ unhappy_paths_test_() ->
     {foreach,
      fun() ->
              {ok, _} = aec_chain:start_link(genesis_block()),
-             {ok, _} = aec_state:start_link(),
              ok
      end,
      fun(_) ->
-             ok = aec_state:stop(),
              ok = aec_chain:stop()
      end,
      [{"Get header by hash - case not found",
@@ -357,46 +332,46 @@ unhappy_paths_test_() ->
                %% Check height of genesis - for readability of the test.
                0 = aec_headers:height(BH0),
 
-               %% Attempts to add to the chain at genesis header with
-               %% inconsistent previous header fail.
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH0}}},
-                            aec_chain:insert_header(BH0)), %% Genesis again.
+               %% %% Attempts to add to the chain at genesis header with
+               %% %% inconsistent previous header fail.
+               %% ?assertEqual({error, {previous_hash_is_not_top,
+               %%                      {top_header, BH0}}},
+	       %% aec_chain:insert_header(BH0)), %% Genesis again.
+	       %% New implementation allows new headers where hash_is_not_top
+	       %%
+	       %% But a new genisis should not be allowed.
+
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
                BH1 = #header{height = 1, prev_hash = B0H},
                {ok, B1H} = aec_headers:hash_header(BH1),
                BH2 = #header{height = 2, prev_hash = B1H},
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH0}}},
-                            aec_chain:insert_header(BH2)), %% Too far ahead.
+	       %% New implementation allows new headers where hash_is_not_top
+	       %%
+               %% ?assertEqual({error, {previougs_hash_is_not_top,
+	       %% {top_header, BH0}}},
+	       aec_chain:insert_header(BH2), %% far ahead.
+	       %% Chain BH0->[] BH2
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Add a header to the chain.
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
-               ?assertEqual({ok, BH1}, aec_chain:top_header()),
+	       %% Chain BH0->BH1->BH2
+               ?assertEqual({ok, BH2}, aec_chain:top_header()),
 
-               %% Attempts to add to chain of two blocks with
-               %% inconsistent previous header fail.
+
                {ok, B2H} = aec_headers:hash_header(BH2),
                BH3 = #header{height = 3, prev_hash = B2H},
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH1}}},
-                            aec_chain:insert_header(BH3)), %% Too far ahead.
-               ?assertEqual({ok, BH1}, aec_chain:top_header()),
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH1}}},
-                            aec_chain:insert_header(BH0)), %% Genesis again.
-               ?assertEqual({ok, BH1}, aec_chain:top_header()),
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH1}}},
+	       aec_chain:insert_header(BH3), %% Top
+	       %% Chain BH0->BH1->BH2-BH3
+               ?assertEqual({ok, BH3}, aec_chain:top_header()),
+               ?assertEqual(ok,
                             aec_chain:insert_header(BH1)), %% Block 1 again.
-               ?assertEqual({ok, BH1}, aec_chain:top_header()),
-               ?assertEqual({error, {previous_hash_is_not_top,
-                                     {top_header, BH1}}},
-                            aec_chain:insert_header(
-                              #header{height = 2, prev_hash = B0H})), %% Previous hash to to 2 block headers ago.
-               ?assertEqual({ok, BH1}, aec_chain:top_header())
+               ?assertEqual({ok, BH3}, aec_chain:top_header()),
+	       %% Previous hash to to 2 block headers ago.
+	       aec_chain:insert_header(#header{height = 2, prev_hash = B0H}),
+
+               ?assertEqual({ok, BH3}, aec_chain:top_header())
        end},
       {"Insert header meant to be successor of top header - case correct previous hash but wrong height",
        fun() ->
@@ -506,14 +481,12 @@ longest_header_chain_test_() ->
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
              {ok, _} = aec_chain:start_link(
                          fake_genesis_block_with_difficulty()),
-             {ok, _} = aec_state:start_link(),
              %% Start `aec_keys` merely for generating realistic chain
              %% with test signed coinbase txs - as a node would do.
              _TmpKeysDir = aec_keys_setup()
      end,
      fun(TmpKeysDir) ->
              ok = aec_keys_cleanup(TmpKeysDir),
-             ok = aec_state:stop(),
              ok = aec_chain:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
@@ -532,22 +505,14 @@ longest_header_chain_test_() ->
                %% Check nonce of genesis - for readability of the test.
                0 = aec_headers:nonce(BH0),
 
+	       %% TODO Handling of new genisis block not implemented.
                %% Generate the alternative header chain from a
                %% different genesis.
-               HA0 = BH0#header{nonce = 1},
-               {ok, HA0H} = aec_headers:hash_header(HA0),
-               HA1 = #header{height = 1, prev_hash = HA0H},
-               AltHC = [HA0, HA1],
-
-               %% Attempt to determine chain with more work -
-               %% specifying full header chain.
-               ?assertEqual({error, {different_genesis, {genesis_header, BH0}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({error, {no_common_ancestor, {top_header, BH0}}},
-                            aec_chain:has_more_work(
-                              [HA1] = lists:nthtail(1, AltHC))),
+               %% HA0 = BH0#header{nonce = 1},
+               %% {ok, HA0H} = aec_headers:hash_header(HA0),
+               %% HA1 = #header{height = 1, prev_hash = HA0H},
+               %% _AltHC = [HA0, HA1],
+	       %% [aec_chain:insert_header(H) || H <- AltHC],
 
                %% Check top.
                ?assertEqual({ok, BH0}, aec_chain:top_header())
@@ -557,11 +522,11 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2, 2], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
+               _AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -574,19 +539,6 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {false, {{{top_chain_work, 5.0},
-                                           {alt_chain_work, 4.0}},
-                                          {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {false, {{{top_chain_work, 5.0},
-                                           {alt_chain_work, 4.0}},
-                                          {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
                %% Give up updating chain because existing chain has more work.
                ok
        end},
@@ -595,11 +547,11 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 111)],
                AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
+               _AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -611,19 +563,6 @@ longest_header_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
-
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {false, {{{top_chain_work, 4.0},
-                                           {alt_chain_work, 3.0}},
-                                          {top_header, HM1}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {false, {{{top_chain_work, 4.0},
-                                           {alt_chain_work, 3.0}},
-                                          {top_header, HM1}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
 
                %% Give up updating chain because existing chain has more work.
                ok
@@ -633,11 +572,11 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
+               _AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -649,19 +588,6 @@ longest_header_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
-
-               %% Attempt to determine chain with more work -
-               %% specifying full header chain.
-               ?assertEqual({ok, {false, {{{top_chain_work, 3.0},
-                                           {alt_chain_work, 3.0}},
-                                          {top_header, HM1}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {false, {{{top_chain_work, 3.0},
-                                           {alt_chain_work, 3.0}},
-                                          {top_header, HM1}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
 
                %% Give up updating chain because existing chain has same work.
                ok
@@ -671,7 +597,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -688,46 +614,18 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM1}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM1}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
-               %% Update chain because existing chain has less work.
-               ?assertEqual({ok, {{old_top_header, HM1},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(
-                              lists:nthtail(1, AltHC))),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- lists:nthtail(1, AltHC)],
 
                %% Check top changed.
-               ?assertEqual({ok, HA3}, aec_chain:top_header()),
-
-               %% Check that headers in previous chain cannot be
-               %% retrieved by hash; i.e. chain service minimizes used
-               %% storage while exposing consistent view of chain.
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
+               ?assertEqual({ok, HA3}, aec_chain:top_header())
        end},
       {"The alternative header chain has more work - case alternative chain is higher. Force chain including genesis.",
        fun() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -744,45 +642,18 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM1}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM1}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
-               %% Update chain because existing chain has less work.
-               ?assertEqual({ok, {{old_top_header, HM1},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
-               ?assertEqual({ok, HA3}, aec_chain:top_header()),
-
-               %% Check that headers in previous chain cannot be
-               %% retrieved by hash; i.e. chain service minimizes used
-               %% storage while exposing consistent view of chain.
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
+               ?assertEqual({ok, HA3}, aec_chain:top_header())
        end},
       {"The alternative header chain has more work - case alternative chain is less high",
        fun() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -799,38 +670,12 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
-               %% Update chain because existing chain has less work.
-               ?assertEqual({ok, {{old_top_header, HM2},
-                                  {new_top_header, HA1}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- AltHC],
 
                %% Check top changed.
-               ?assertEqual({ok, HA1}, aec_chain:top_header()),
+               ?assertEqual({ok, HA1}, aec_chain:top_header())
 
-               %% Check that headers in previous chain cannot be
-               %% retrieved by hash; i.e. chain service minimizes used
-               %% storage while exposing consistent view of chain.
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA1}}},
-                                      aec_chain:get_header_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
        end},
       {"The alternative chain initially has more work, but concurrent insertion in chain service makes it not have more work any longer. I.e. concurrent insertions in the chain service do not result in sub-optimal choice.",
        fun() ->
@@ -841,12 +686,12 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
                MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 2], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                _MainHC = [H0, HM1, HM2, HM3] = header_chain_from_block_chain(MainBC),
                InitialMainHC = [H0, HM1, HM2],
-               AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
+               _AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -857,27 +702,10 @@ longest_header_chain_test_() ->
                  lists:nthtail(1, InitialMainHC)),
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
 
-               %% Determine chain with more work.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-
-               %% Decide to update chain because existing chain has
-               %% less work.
 
                %% Concurrent actor increases amount of work in tracked
                %% chain.
                ok = aec_chain:insert_header(HM3),
-               ?assertEqual({ok, HM3}, aec_chain:top_header()),
-
-               %% Based on past - now obsolete - decision, update
-               %% chain.  Chain service rejects.
-               ?assertEqual({error, {chain_does_not_have_more_work,
-                                     {{{top_chain_work, 5.0},
-                                       {alt_chain_work, 4.0}},
-                                      {top_header, HM3}}}},
-                            aec_chain:force_insert_headers(AltHC)),
                ?assertEqual({ok, HM3}, aec_chain:top_header())
        end}]}.
 
@@ -894,14 +722,12 @@ longest_block_chain_test_() ->
                fun(#block{target = T}) when is_integer(T) -> float(T) end),
              {ok, _} = aec_chain:start_link(
                          fake_genesis_block_with_difficulty()),
-             {ok, _} = aec_state:start_link(),
              %% Start `aec_keys` merely for generating realistic chain
              %% with test signed coinbase txs - as a node would do.
              _TmpKeysDir = aec_keys_setup()
      end,
      fun(TmpKeysDir) ->
              ok = aec_keys_cleanup(TmpKeysDir),
-             ok = aec_state:stop(),
              ok = aec_chain:stop(),
              ?assert(meck:validate(aec_blocks)),
              ?assert(meck:validate(aec_headers)),
@@ -913,7 +739,7 @@ longest_block_chain_test_() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -921,13 +747,10 @@ longest_block_chain_test_() ->
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is at genesis.
                S0 = aec_blocks:trees(aec_block_genesis:genesis_block()),
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
-               ?assertMatch({ExpH, {ok, {ExpH, _}}},
-                            {aec_blocks:height(B0), aec_state:get_trees()}),
 
                %% Insert the main block chain.
                lists:foreach(
@@ -939,7 +762,6 @@ longest_block_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
-               ?assertEqual({ok, B2}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                MainTop = aec_chain_top_ok(),
@@ -947,36 +769,15 @@ longest_block_chain_test_() ->
                %% ... and it is at highest block of main chain.
                ?assertEqual(B2, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B2))),
-               ?assertMatch({ExpH, {ok, {ExpH, _}}},
-                            {aec_blocks:height(B2), aec_state:get_trees()}),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
-               %% Update header chain because existing chain has less
-               %% work.
-               ?assertEqual({ok, {{old_top_header, HM2},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is back to genesis.
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
-               ?assertMatch({ExpH, {ok, {ExpH, _}}},
-                            {aec_blocks:height(B0), aec_state:get_trees()}),
 
                %% Insert all blocks for new chain.
                lists:foreach(
@@ -985,39 +786,21 @@ longest_block_chain_test_() ->
 
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, BA3}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                AltTop = aec_chain_top_ok(),
                ?assertNotEqual(aec_blocks:set_trees(B0, S0), AltTop),
                %% ... and it is at highest block of alternative chain.
                ?assertEqual(BA3, aec_blocks:set_trees(AltTop,
-                                                      aec_blocks:trees(BA3))),
-               ?assertMatch({ExpH, {ok, {ExpH, _}}},
-                            {aec_blocks:height(BA3), aec_state:get_trees()}),
+                                                      aec_blocks:trees(BA3)))
 
-               %% Check that headers and blocks in previous chain
-               %% cannot be retrieved by hash; i.e. chain service
-               %% minimizes used storage while exposing consistent
-               %% view of chain."
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH)),
-                         ?assertEqual({error, {block_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_block_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
        end},
       {"The alternative block chain has more work - case both main and alternative chains with all blocks. Two blocks in common.",
        fun() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
                MainBC = [_, B1, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0, B1 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B1, [1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -1025,7 +808,6 @@ longest_block_chain_test_() ->
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is at genesis.
                S0 = aec_blocks:trees(aec_block_genesis:genesis_block()),
@@ -1041,7 +823,6 @@ longest_block_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
-               ?assertEqual({ok, B2}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                MainTop = aec_chain_top_ok(),
@@ -1050,32 +831,11 @@ longest_block_chain_test_() ->
                ?assertEqual(B2, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B2))),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(2, AltHC))),
-
-               %% Update header chain because existing chain has less
-               %% work.
-               ?assertEqual({ok, {{old_top_header, HM2},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, B1}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                timer:sleep(1000), %% TODO Make this event driven.
@@ -1092,37 +852,21 @@ longest_block_chain_test_() ->
 
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, BA3}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                AltTop = aec_chain_top_ok(),
                ?assertNotEqual(AltHsTop, AltTop),
                %% ... and it is at highest block of alternative chain.
                ?assertEqual(BA3, aec_blocks:set_trees(AltTop,
-                                                      aec_blocks:trees(BA3))),
+                                                      aec_blocks:trees(BA3)))
 
-               %% Check that headers and blocks in previous chain
-               %% cannot be retrieved by hash; i.e. chain service
-               %% minimizes used storage while exposing consistent
-               %% view of chain."
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH)),
-                         ?assertEqual({error, {block_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_block_by_hash(HH))
-                 end,
-                 lists:nthtail(2, MainHC))
        end},
       {"The alternative block chain has more work - case main chain with only block corresponding to top header (not contiguous to genesis), and alternative chain with only block corresponding to top header (not contiguous to genesis). Only genesis block in common.",
        fun() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -1130,7 +874,6 @@ longest_block_chain_test_() ->
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is at genesis.
                S0 = aec_blocks:trees(aec_block_genesis:genesis_block()),
@@ -1146,33 +889,17 @@ longest_block_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
-               ?assertEqual({ok, B2}, aec_chain:top_block()),
 
                %% Check state of the world is still at genesis.
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
 
-               %% Update header chain because existing chain has less
-               %% work.
-               ?assertEqual({ok, {{old_top_header, HM2},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is still at genesis.
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
@@ -1183,33 +910,17 @@ longest_block_chain_test_() ->
 
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, BA3}, aec_chain:top_block()),
 
                %% Check state of the world is still at genesis.
-               ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
+               ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok())
 
-               %% Check that headers and blocks in previous chain
-               %% cannot be retrieved by hash; i.e. chain service
-               %% minimizes used storage while exposing consistent
-               %% view of chain."
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH)),
-                         ?assertEqual({error, {block_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_block_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
        end},
       {"The alternative block chain has more work - case main chain with only one block contiguous to genesis, and alternative chain with two blocks contiguous to genesis. Only genesis block in common.",
        fun() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               1.0 = aec_blocks:difficulty(B0), %% For readability of the test.
+               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
                MainBC = [_, B1, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, BA1, BA2, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -1217,7 +928,6 @@ longest_block_chain_test_() ->
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is at genesis.
                S0 = aec_blocks:trees(aec_block_genesis:genesis_block()),
@@ -1233,7 +943,6 @@ longest_block_chain_test_() ->
 
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
-               ?assertEqual({ok, B1}, aec_chain:top_block()),
 
                %% Check state of the world changed ...
                MainTop = aec_chain_top_ok(),
@@ -1242,28 +951,11 @@ longest_block_chain_test_() ->
                ?assertEqual(B1, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B1))),
 
-               %% Determine chain with more work - specifying full
-               %% header chain.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(AltHC)),
-               %% Attempt to determine chain with more work -
-               %% specifying header chain removing old ancestors.
-               ?assertEqual({ok, {true, {{{top_chain_work, 3.0},
-                                          {alt_chain_work, 4.0}},
-                                         {top_header, HM2}}}},
-                            aec_chain:has_more_work(lists:nthtail(1, AltHC))),
-
-               %% Update header chain because existing chain has less
-               %% work.
-               ?assertEqual({ok, {{old_top_header, HM2},
-                                  {new_top_header, HA3}}},
-                            aec_chain:force_insert_headers(AltHC)),
+	       %% Insert new chain
+	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, B0}, aec_chain:top_block()),
 
                %% Check state of the world is back to genesis.
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
@@ -1274,30 +966,17 @@ longest_block_chain_test_() ->
 
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-               ?assertEqual({ok, BA2}, aec_chain:top_block()),
-
+	       
+	       %% !!!! Race condition here !!!!
+	       timer:sleep(2000),
                %% Check state of the world changed ...
                AltTop = aec_chain_top_ok(),
                ?assertNotEqual(aec_blocks:set_trees(B0, S0), AltTop),
                %% ... and it is at highest block of alternative chain.
-               ?assertEqual(BA2, aec_blocks:set_trees(AltTop,
-                                                      aec_blocks:trees(BA2))),
 
-               %% Check that headers and blocks in previous chain
-               %% cannot be retrieved by hash; i.e. chain service
-               %% minimizes used storage while exposing consistent
-               %% view of chain."
-               lists:foreach(
-                 fun(H) ->
-                         {ok, HH} = aec_headers:hash_header(H),
-                         ?assertEqual({error, {header_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_header_by_hash(HH)),
-                         ?assertEqual({error, {block_not_found,
-                                               {top_header, HA3}}},
-                                      aec_chain:get_block_by_hash(HH))
-                 end,
-                 lists:nthtail(1, MainHC))
+               ?assertEqual(BA2, aec_blocks:set_trees(AltTop,
+                                                      aec_blocks:trees(BA2)))
+
        end}]}.
 
 aec_chain_top_ok() ->
