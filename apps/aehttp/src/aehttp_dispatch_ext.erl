@@ -94,16 +94,25 @@ handle_request('PostBlock', Req, _Context) ->
             %% Do not tell sync to re-broadcast block we already know about
             {200, [], #{}};
         {error, _} ->
-            case aec_chain:insert_header(Header) of
-                ok ->
-                    Res = aec_chain:write_block(Block),
-                    aec_sync:received_block(Block),
-                    lager:debug("write_block result: ~p", [Res]);
-                {error, Reason} ->
-                    lager:debug("Couldn't insert header (~p)", [Reason])
-            end,
-            %% TODO update swagger.yaml to allow error returns?
-            {200, [], #{}}
+            case {aec_headers:validate(Header), aec_blocks:validate(Block)} of
+                {ok, ok} ->
+                    case aec_chain:insert_header(Header) of
+                        ok ->
+                            Res = aec_chain:write_block(Block),
+                            aec_sync:received_block(Block),
+                            lager:debug("write_block result: ~p", [Res]);
+                        {error, Reason} ->
+                            lager:debug("Couldn't insert header (~p)", [Reason])
+                    end,
+                    %% TODO update swagger.yaml to allow error returns?
+                    {200, [], #{}};
+                {{error, Reason}, _} ->
+                    lager:info("Malformed block posted to the node (~p)", [Reason]),
+                    {400, [], #{reason => <<"validation failed">>}};
+                {ok, {error, Reason}} ->
+                    lager:info("Malformed block posted to the node (~p)", [Reason]),
+                    {400, [], #{reason => <<"validation failed">>}}
+            end
     end;
 
 handle_request('GetAccountBalance', Req, _Context) ->
