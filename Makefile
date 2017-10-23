@@ -101,11 +101,14 @@ test:
 venv-present:
 	@virtualenv -q $(PYTHON_DIR)
 
-nose-env: venv-present
+python-env: venv-present
 	@. $(PYTHON_BIN)/activate && $(PIP) -q install -r $(PYTHON_DIR)/requirements.txt 
 
 python-tests:
 	@$(NOSE) --nocapture -c $(PYTHON_TESTS)/nose.cfg $(PYTHON_TESTS)
+
+python-ws-test:
+	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3014 --log INFO --handler ws_logic
 
 swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)

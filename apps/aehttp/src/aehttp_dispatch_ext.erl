@@ -1,6 +1,7 @@
 -module(aehttp_dispatch_ext).
 
 -export([handle_request/3]).
+-export([cleanup_genesis/1]).
 
 -compile({parse_transform, lager_transform}).
 -include_lib("aecore/include/common.hrl").

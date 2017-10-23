@@ -12,7 +12,9 @@
     jsx,
     lager,
     jesse,
-    aecore
+    aecore,
+    gproc,
+    poolboy
    ]},
   {env,[]},
   {modules, []},
