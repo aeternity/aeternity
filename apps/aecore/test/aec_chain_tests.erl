@@ -13,6 +13,16 @@
 genesis_block() ->
     aec_block_genesis:genesis_block_as_deserialized_from_network().
 
+assert_genesis_difficulty(Block) ->
+    %% Avoid floating point comparison. Not safe.
+    ?assertEqual(trunc(1000*?GENESIS_DIFFICULTY),
+                 trunc(1000*aec_blocks:difficulty(Block))).
+
+assert_fake_genesis_difficulty(Block) ->
+    %% Avoid floating point comparison. Not safe.
+    ?assertEqual(trunc(1000*1.0),
+                 trunc(1000*aec_blocks:difficulty(Block))).
+
 top_test_() ->
     {foreach,
      fun() ->
@@ -255,9 +265,7 @@ get_work_test_() ->
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
-               %% Check difficulty of genesis
-	       %% NOTE: floating point matching... not safe.
-               ?GENESIS_DIFFICULTY = aec_headers:difficulty(BH0),
+               assert_fake_genesis_difficulty(B0),
 
                %% Check work of chain at top.
 	       %% NOTE: floating point matching... not safe.
@@ -271,9 +279,7 @@ get_work_test_() ->
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
-               %% Check difficulty of genesis - for readability of the test.
-	       %% NOTE: floating point matching... not safe.
-               ?GENESIS_DIFFICULTY = aec_headers:difficulty(BH0),
+               assert_fake_genesis_difficulty(B0),
 
                %% Add a couple of headers to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
@@ -522,7 +528,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
+               assert_genesis_difficulty(B0),
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2, 2], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -547,7 +553,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 111)],
                AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -572,7 +578,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -597,7 +603,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -625,7 +631,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
+               assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
                AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
@@ -653,7 +659,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
+               assert_genesis_difficulty(B0),
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -686,7 +692,7 @@ longest_header_chain_test_() ->
                %% Generate the two header chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
+               assert_genesis_difficulty(B0),
                MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 2], 111)],
                AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
                _MainHC = [H0, HM1, HM2, HM3] = header_chain_from_block_chain(MainBC),
@@ -739,7 +745,7 @@ longest_block_chain_test_() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -800,7 +806,7 @@ longest_block_chain_test_() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0), 
+               assert_genesis_difficulty(B0),
                MainBC = [_, B1, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0, B1 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B1, [1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -866,7 +872,7 @@ longest_block_chain_test_() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
@@ -920,7 +926,7 @@ longest_block_chain_test_() ->
                %% Generate the two block chains.
                B0 = fake_genesis_block_with_difficulty(),
                0 = aec_blocks:height(B0), %% For readability of the test.
-               ?GENESIS_DIFFICULTY = aec_blocks:difficulty(B0),
+               assert_genesis_difficulty(B0),
                MainBC = [_, B1, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
                AltBC = [_, BA1, BA2, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),

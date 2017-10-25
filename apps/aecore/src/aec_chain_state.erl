@@ -247,13 +247,23 @@ check_update_after_insert(Node, State) ->
         off_chain -> State;
         in_chain -> update_state_tree(Node, State);
         {fork, ForkNode} ->
-            NewTopNodes = find_new_header_top_from_node(ForkNode, State),
-            NewTopNode = determine_new_header_top(NewTopNodes, State),
-            State1 = set_top_header_hash(NewTopNode#node.hash, State),
-            update_state_tree(ForkNode, State1);
+            NewTopHashes = find_new_header_top_from_node(ForkNode, State),
+            NewTopHash = determine_new_header_top_hash(NewTopHashes, State),
+            case NewTopHash =:= get_top_header_hash(State) of
+                true  ->
+                    %% The fork is not taking over.
+                    %% Don't bother calculating the state for this chain
+                    %% to save some space.
+                    State;
+                false ->
+                    %% The fork is the new main chain. We must update state
+                    %% from the fork point.
+                    State1 = set_top_header_hash(NewTopHash, State),
+                    update_state_tree(ForkNode, State1)
+            end;
         new_top ->
-            [NewTopNode] = find_new_header_top_from_node(Node, State),
-            State1 = set_top_header_hash(NewTopNode#node.hash, State),
+            [NewTopHash] = find_new_header_top_from_node(Node, State),
+            State1 = set_top_header_hash(NewTopHash, State),
             update_state_tree(Node, State1)
     end.
 
@@ -272,7 +282,7 @@ determine_chain_relation(Node, State) ->
             in_chain; %% This is the top header
         TopHash when is_binary(TopHash), Height =:= 0 ->
             %% A new genesis block. TODO: This
-            error(new_genesis_block_nyi);
+            internal_error(rejecting_new_genesis_block);
         TopHash when is_binary(TopHash) ->
             case is_node_in_main_chain(Node, State) of
                 true -> in_chain;
@@ -326,11 +336,11 @@ find_new_header_top_from_node(Node, State) ->
     Height = node_height(Node),
     Hash = hash(Node),
     case children(blocks_db_find_at_height(Height + 1, State), Hash) of
-        [] -> [Node];
+        [] -> [Hash];
         [NextNode] -> find_new_header_top_from_node(NextNode, State);
         [_|_]  = List ->
-            lists:flatten([find_new_header_top_from_node(N, State)
-                           || N <- List])
+            Fun = fun(N) -> find_new_header_top_from_node(N, State) end,
+            lists:flatmap(Fun, List)
     end.
 
 children(Nodes, Hash) ->
@@ -343,11 +353,10 @@ children([N|Ns], ParentHash, Acc) ->
 	false -> children(Ns, ParentHash, Acc)
     end.
 
-determine_new_header_top(Nodes, State) ->
-    Difficulties = [{total_difficulty_at_hash(N#node.hash, State), N}
-                    || N <- Nodes],
-    {_D, N}  = lists:last(lists:sort(Difficulties)),
-    N.
+determine_new_header_top_hash(Hashes, State) ->
+    {_D, H}  = lists:max([{total_difficulty_at_hash(H, State), H}
+                          || H <- Hashes]),
+    H.
 
 genesis_state_tree(Node) ->
     %% TODO: This should be handled somewhere else.

@@ -60,14 +60,10 @@ stop() ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
- 
+
 init(_Args = [GenesisBlock]) ->
     process_flag(trap_exit, true),
-    GenesisHeader = aec_blocks:to_header(GenesisBlock),
-    {ok, S2} = insert_header(GenesisHeader, new_state()),
-    {ok, S3} = insert_block(GenesisBlock, S2),
-    {ok, S3}.
-
+    {ok, _State} = insert_block(GenesisBlock, new_state()).
 
 %% State preserving functions
 handle_call(top, _From, State) ->
