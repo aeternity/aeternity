@@ -37,8 +37,8 @@ new_block_test_() ->
               {ok, NewBlock} = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
 
               ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
-              {ok, SerializedBlockHeader} =
-                  aec_headers:serialize_to_binary(BlockHeader),
+              SerializedBlockHeader =
+                  aec_headers:serialize_for_hash(BlockHeader),
               ?assertEqual(aec_sha256:hash(SerializedBlockHeader),
                            ?TEST_MODULE:prev_hash(NewBlock)),
               ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),

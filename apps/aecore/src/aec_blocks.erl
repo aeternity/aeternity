@@ -13,6 +13,8 @@
          to_header/1,
          serialize_for_network/1,
          deserialize_from_network/1,
+         serialize_for_store/1,
+         deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          hash_internal_representation/1,
@@ -132,36 +134,85 @@ serialize_to_map(B = #block{}) ->
       <<"transactions">> => lists:map(fun aec_tx_sign:serialize/1, B#block.txs)
      }.
 
+-define(STORAGEVERSION, 1).
+serialize_for_store(B = #block{}) ->
+    term_to_binary({?STORAGEVERSION,
+                    height(B),
+                    prev_hash(B),
+                    B#block.root_hash,
+                    B#block.txs_hash,
+                    B#block.target,
+                    B#block.nonce,
+                    B#block.time,
+                    B#block.version,
+                    B#block.pow_evidence,
+                    B#block.txs}, [{compressed,9}]).
+
+deserialize_from_store(Bin) ->
+    case binary_to_term(Bin) of
+        {?STORAGEVERSION,
+         Height,
+         PrevHash,
+         RootHash,
+         TxsHash,
+         Target,
+         Nonce,
+         Time,
+         Version,
+         PowEvidence,
+         Txs} ->
+            #block{
+               height = Height,
+               prev_hash = PrevHash,
+               root_hash = RootHash,
+               txs_hash = TxsHash,
+               target = Target,
+               nonce = Nonce,
+               time = Time,
+               version = Version,
+               txs = Txs,
+               pow_evidence = PowEvidence};
+        T when tuple_size(T) > 0 ->
+            case element(1, T) of
+               I when is_integer(I), I > ?STORAGEVERSION ->
+                    exit({future_storage_version, I, Bin});
+                %% Add handler of old version here when upgrading version.
+                I when is_integer(I), I < ?STORAGEVERSION ->
+                    exit({old_forgotten_storage_version, I, Bin})
+            end
+    end.
+
 -spec deserialize_from_network(block_serialized_for_network()) ->
                                       {ok, block_deserialized_from_network()}.
 deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
 deserialize_from_map(#{<<"height">> := Height,
-		       <<"prev_hash">> := PrevHash,
-		       <<"state_hash">> := RootHash,
-		       <<"txs_hash">> := TxsHash,
-		       <<"target">> := Target,
-		       <<"nonce">> := Nonce,
-		       <<"time">> := Time,
-		       <<"version">> := Version,
-		       <<"pow">> := PowEvidence,
-		       <<"transactions">> := Txs}) ->
+                       <<"prev_hash">> := PrevHash,
+                       <<"state_hash">> := RootHash,
+                       <<"txs_hash">> := TxsHash,
+                       <<"target">> := Target,
+                       <<"nonce">> := Nonce,
+                       <<"time">> := Time,
+                       <<"version">> := Version,
+                       <<"pow">> := PowEvidence,
+                       <<"transactions">> := Txs}) ->
     {ok, #block{
-	    height = Height,
-	    prev_hash = base64:decode(PrevHash),
-	    root_hash = base64:decode(RootHash),
-	    txs_hash = base64:decode(TxsHash),
-	    target = Target,
-	    nonce = Nonce,
-	    time = Time,
-	    version = Version,
-	    txs = lists:map(fun aec_tx_sign:deserialize/1, Txs),
-	    pow_evidence = aec_headers:deserialize_pow_evidence(PowEvidence)}}.
+            height = Height,
+            prev_hash = base64:decode(PrevHash),
+            root_hash = base64:decode(RootHash),
+            txs_hash = base64:decode(TxsHash),
+            target = Target,
+            nonce = Nonce,
+            time = Time,
+            version = Version,
+            txs = lists:map(fun aec_tx_sign:deserialize/1, Txs),
+            pow_evidence = aec_headers:deserialize_pow_evidence(PowEvidence)}}.
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
+
 
 -spec validate(block()) -> ok | {error, term()}.
 validate(Block) ->
@@ -200,3 +251,4 @@ validate_txs_hash(#block{txs = Txs,
         _Other ->
             {error, malformed_txs_hash}
     end.
+
