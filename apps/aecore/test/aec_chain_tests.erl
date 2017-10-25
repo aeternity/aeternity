@@ -5,8 +5,8 @@
 -include("blocks.hrl").
 
 -define(compareBlockResults(B1, B2),
-	?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
-		     aec_blocks:serialize_for_network(element(2,B2)))).
+        ?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
+                     aec_blocks:serialize_for_network(element(2,B2)))).
 
 -define(GENESIS_DIFFICULTY, 553713663.0).
 
@@ -64,10 +64,8 @@ genesis_test_() ->
 
              {ok, GHH} = aec_blocks:hash_internal_representation(GB),
              ?assertEqual({ok, GH}, aec_chain:get_header_by_hash(GHH)),
-	     ?compareBlockResults({ok, GB}, aec_chain:get_block_by_hash(GHH))
+             ?compareBlockResults({ok, GB}, aec_chain:get_block_by_hash(GHH))
      end}.
-
-    
 
 header_chain_test_() ->
     {setup,
@@ -100,7 +98,7 @@ header_chain_test_() ->
 
              %% Check by hash.
              ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
-	     ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
+             ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
              ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                           aec_chain:get_block_by_hash(B1H)),
@@ -168,7 +166,7 @@ block_chain_test_() ->
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
                             aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_header(BH2),
-	       ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
+               ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
                ?compareBlockResults({ok, B2}, aec_chain:get_block_by_hash(B2H)),
 
                %% Check by height.
@@ -216,7 +214,7 @@ block_chain_test_() ->
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_hash(B0H)),
                ?compareBlockResults({ok, B0}, aec_chain:get_block_by_hash(B0H)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_hash(B1H)),
-	       ?compareBlockResults({ok, B1}, aec_chain:get_block_by_hash(B1H)),
+               ?compareBlockResults({ok, B1}, aec_chain:get_block_by_hash(B1H)),
                {ok, B2H} = aec_headers:hash_header(BH2),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_hash(B2H)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}}},
@@ -226,7 +224,7 @@ block_chain_test_() ->
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
                ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
-	       ?compareBlockResults({ok, B1}, aec_chain:get_block_by_height(1)),
+               ?compareBlockResults({ok, B1}, aec_chain:get_block_by_height(1)),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_height(2)),
                ?assertEqual({error, {block_not_found, {top_header, BH2}
                                     }}, aec_chain:get_block_by_height(2)),
@@ -268,7 +266,7 @@ get_work_test_() ->
                assert_fake_genesis_difficulty(B0),
 
                %% Check work of chain at top.
-	       %% NOTE: floating point matching... not safe.
+               %% NOTE: floating point matching... not safe.
                ?assertEqual({ok, {1.0, {top_header, BH0}}},
                             aec_chain:get_total_difficulty())
        end},
@@ -342,40 +340,40 @@ unhappy_paths_test_() ->
                %% %% inconsistent previous header fail.
                %% ?assertEqual({error, {previous_hash_is_not_top,
                %%                      {top_header, BH0}}},
-	       %% aec_chain:insert_header(BH0)), %% Genesis again.
-	       %% New implementation allows new headers where hash_is_not_top
-	       %%
-	       %% But a new genisis should not be allowed.
+               %% aec_chain:insert_header(BH0)), %% Genesis again.
+               %% New implementation allows new headers where hash_is_not_top
+               %%
+               %% But a new genisis should not be allowed.
 
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
                BH1 = #header{height = 1, prev_hash = B0H},
                {ok, B1H} = aec_headers:hash_header(BH1),
                BH2 = #header{height = 2, prev_hash = B1H},
-	       %% New implementation allows new headers where hash_is_not_top
-	       %%
+               %% New implementation allows new headers where hash_is_not_top
+               %%
                %% ?assertEqual({error, {previougs_hash_is_not_top,
-	       %% {top_header, BH0}}},
-	       aec_chain:insert_header(BH2), %% far ahead.
-	       %% Chain BH0->[] BH2
+               %% {top_header, BH0}}},
+               aec_chain:insert_header(BH2), %% far ahead.
+               %% Chain BH0->[] BH2
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Add a header to the chain.
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
-	       %% Chain BH0->BH1->BH2
+               %% Chain BH0->BH1->BH2
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
 
 
                {ok, B2H} = aec_headers:hash_header(BH2),
                BH3 = #header{height = 3, prev_hash = B2H},
-	       aec_chain:insert_header(BH3), %% Top
-	       %% Chain BH0->BH1->BH2-BH3
+               aec_chain:insert_header(BH3), %% Top
+               %% Chain BH0->BH1->BH2-BH3
                ?assertEqual({ok, BH3}, aec_chain:top_header()),
                ?assertEqual(ok,
                             aec_chain:insert_header(BH1)), %% Block 1 again.
                ?assertEqual({ok, BH3}, aec_chain:top_header()),
-	       %% Previous hash to to 2 block headers ago.
-	       aec_chain:insert_header(#header{height = 2, prev_hash = B0H}),
+               %% Previous hash to to 2 block headers ago.
+               aec_chain:insert_header(#header{height = 2, prev_hash = B0H}),
 
                ?assertEqual({ok, BH3}, aec_chain:top_header())
        end},
@@ -511,14 +509,14 @@ longest_header_chain_test_() ->
                %% Check nonce of genesis - for readability of the test.
                0 = aec_headers:nonce(BH0),
 
-	       %% TODO Handling of new genisis block not implemented.
+               %% TODO Handling of new genisis block not implemented.
                %% Generate the alternative header chain from a
                %% different genesis.
                %% HA0 = BH0#header{nonce = 1},
                %% {ok, HA0H} = aec_headers:hash_header(HA0),
                %% HA1 = #header{height = 1, prev_hash = HA0H},
                %% _AltHC = [HA0, HA1],
-	       %% [aec_chain:insert_header(H) || H <- AltHC],
+               %% [aec_chain:insert_header(H) || H <- AltHC],
 
                %% Check top.
                ?assertEqual({ok, BH0}, aec_chain:top_header())
@@ -620,8 +618,8 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- lists:nthtail(1, AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- lists:nthtail(1, AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header())
@@ -648,8 +646,8 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM1}, aec_chain:top_header()),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header())
@@ -676,8 +674,8 @@ longest_header_chain_test_() ->
                %% Check top is main chain.
                ?assertEqual({ok, HM2}, aec_chain:top_header()),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- AltHC],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- AltHC],
 
                %% Check top changed.
                ?assertEqual({ok, HA1}, aec_chain:top_header())
@@ -776,8 +774,8 @@ longest_block_chain_test_() ->
                ?assertEqual(B2, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B2))),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
@@ -837,8 +835,8 @@ longest_block_chain_test_() ->
                ?assertEqual(B2, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B2))),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
@@ -900,8 +898,8 @@ longest_block_chain_test_() ->
                ?assertEqual(aec_blocks:set_trees(B0, S0), aec_chain_top_ok()),
 
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
 
                %% Check top changed.
@@ -957,8 +955,8 @@ longest_block_chain_test_() ->
                ?assertEqual(B1, aec_blocks:set_trees(MainTop,
                                                      aec_blocks:trees(B1))),
 
-	       %% Insert new chain
-	       [aec_chain:insert_header(H) || H <- tl(AltHC)],
+               %% Insert new chain
+               [aec_chain:insert_header(H) || H <- tl(AltHC)],
 
                %% Check top changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
@@ -972,9 +970,9 @@ longest_block_chain_test_() ->
 
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
-	       
-	       %% !!!! Race condition here !!!!
-	       timer:sleep(2000),
+
+               %% !!!! Race condition here !!!!
+               timer:sleep(2000),
                %% Check state of the world changed ...
                AltTop = aec_chain_top_ok(),
                ?assertNotEqual(aec_blocks:set_trees(B0, S0), AltTop),
