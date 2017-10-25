@@ -89,7 +89,6 @@ fork_update(AddedToChain, RemovedFromChain) ->
     delete(AddedToChain -- RemovedFromChain),
     ok.
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
