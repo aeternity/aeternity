@@ -25,7 +25,6 @@ miner_test_() ->
                          end),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-             {ok, _} = aec_state:start_link(),
              TmpKeysDir = mktempd(),
              ok = application:ensure_started(crypto),
              {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
@@ -35,7 +34,6 @@ miner_test_() ->
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
              ok = aec_keys:stop(),
-             ok = aec_state:stop(),
              ok = aec_chain:stop(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(crypto),

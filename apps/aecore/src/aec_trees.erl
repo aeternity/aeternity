@@ -12,6 +12,7 @@
          new/0,
          get/2,
          get_with_proof/2,
+         is_trees/1,
          put/3,
          root_hash/1,
          verify_proof/4]).
@@ -56,6 +57,10 @@ get_with_proof(Key, Tree) when is_binary(Key) ->
         {error, notfound} = E ->
             E
     end.
+
+-spec is_trees(any()) -> boolean().
+is_trees(#trees{}) -> true;
+is_trees(_) -> false.
 
 put(Key, Value, Tree) when is_binary(Key), is_binary(Value) ->
     NewTree = gb_merkle_trees:enter(Key, Value, Tree),
