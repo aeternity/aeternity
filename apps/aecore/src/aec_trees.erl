@@ -1,7 +1,7 @@
 -module(aec_trees).
 
 -include("common.hrl").
--include("trees.hrl").
+-include("blocks.hrl").
 
 %% API
 
@@ -26,8 +26,10 @@ all_trees_new() ->
 
 all_trees_hash(Trees) ->
     %% TODO Consider all state trees - not only accounts.
-    {ok, H} = aec_accounts:root_hash(accounts(Trees)),
-    H.
+    case aec_accounts:root_hash(accounts(Trees)) of
+      {ok, H} -> H;
+      {error, empty} -> <<0:?STATE_HASH_BYTES/unit:8>>
+    end.
 
 -spec accounts(trees()) -> tree().
 accounts(Trees) ->

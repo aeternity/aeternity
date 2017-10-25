@@ -86,34 +86,14 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
 handle_request('PostBlock', Req, _Context) ->
     SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
     {ok, Block} = aec_blocks:deserialize_from_map(SerializedBlock),
+
+    %% Only for logging
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
     lager:debug("'PostBlock'; header hash: ~p", [HH]),
-    case aec_chain:get_block_by_hash(HH) of
-        {ok, _Existing} ->
-            lager:debug("Aleady have block", []),
-            %% Do not tell sync to re-broadcast block we already know about
-            {200, [], #{}};
-        {error, _} ->
-            case {aec_headers:validate(Header), aec_blocks:validate(Block)} of
-                {ok, ok} ->
-                    case aec_chain:insert_header(Header) of
-                        ok ->
-                            Res = aec_chain:write_block(Block),
-                            aec_sync:received_block(Block),
-                            lager:debug("write_block result: ~p", [Res]);
-                        {error, Reason} ->
-                            lager:debug("Couldn't insert header (~p)", [Reason])
-                    end,
-                    %% TODO update swagger.yaml to allow error returns?
-                    {200, [], #{}};
-                {{error, Reason}, _} ->
-                    lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {404, [], #{reason => <<"validation failed">>}};
-                {ok, {error, Reason}} ->
-                    lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {404, [], #{reason => <<"validation failed">>}}
-            end
+    case  aec_miner:post_block(Block) of
+        ok -> {200, [], #{}};
+        error -> {404, [], #{reason => <<"validation failed">>}}
     end;
 
 handle_request('GetAccountBalance', Req, _Context) ->

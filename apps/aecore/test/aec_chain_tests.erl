@@ -4,6 +4,13 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
+-import(aec_test_utils,
+        [ extend_block_chain_by_difficulties_with_nonce_and_coinbase/3
+        , aec_keys_setup/0
+        , aec_keys_cleanup/1
+        ]).
+
+
 -define(compareBlockResults(B1, B2),
         ?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
                      aec_blocks:serialize_for_network(element(2,B2)))).
@@ -11,26 +18,23 @@
 -define(GENESIS_DIFFICULTY, 553713663.0).
 
 genesis_block() ->
-    aec_block_genesis:genesis_block_as_deserialized_from_network().
+    aec_block_genesis:genesis_block().
 
 assert_genesis_difficulty(Block) ->
     %% Avoid floating point comparison. Not safe.
     ?assertEqual(trunc(1000*?GENESIS_DIFFICULTY),
                  trunc(1000*aec_blocks:difficulty(Block))).
 
-assert_fake_genesis_difficulty(Block) ->
-    %% Avoid floating point comparison. Not safe.
-    ?assertEqual(trunc(1000*1.0),
-                 trunc(1000*aec_blocks:difficulty(Block))).
-
 top_test_() ->
     {foreach,
      fun() ->
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
-             ok = aec_chain:stop()
+             ok = aec_chain:stop(),
+             ok = aec_persistence:stop()
      end,
      [{"Initialize chain with genesis block, then check top block with related state trees",
        fun() ->
@@ -48,11 +52,13 @@ top_test_() ->
 genesis_test_() ->
     {setup,
      fun() ->
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
-             ok = aec_chain:stop()
+             ok = aec_chain:stop(),
+             ok = aec_persistence:stop()
      end,
      fun() ->
              GB = genesis_block(),
@@ -70,11 +76,13 @@ genesis_test_() ->
 header_chain_test_() ->
     {setup,
      fun() ->
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
-             ok = aec_chain:stop()
+             ok = aec_chain:stop(),
+             ok = aec_persistence:stop()
      end,
      fun() ->
              %% Check chain is at genesis.
@@ -127,11 +135,13 @@ header_chain_test_() ->
 block_chain_test_() ->
     {foreach,
      fun() ->
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
-             ok = aec_chain:stop()
+             ok = aec_chain:stop(),
+             ok = aec_persistence:stop()
      end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
@@ -235,49 +245,40 @@ block_chain_test_() ->
                                                        {top_header, BH2}}
                                     }}, aec_chain:get_block_by_height(3))
        end}]}.
-fake_genesis_block_with_difficulty() ->
-    GB = aec_block_genesis:genesis_block_as_deserialized_from_network(),
-    GB.
-  %% GB#block{target = 1}. %% Field used as if it were difficulty for ease of testing.
 
 get_work_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_headers, [passthrough]),
-             meck:expect(
-               aec_headers, difficulty,
-               fun(#header{target = T}) when is_integer(T) -> float(T) end),
-             {ok, _} = aec_chain:start_link(
-                         fake_genesis_block_with_difficulty()),
+             ok = aec_test_utils:mock_difficulty_as_target(),
+             {ok, _} = aec_persistence:start_link(),
+             {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
              ok = aec_chain:stop(),
-             ?assert(meck:validate(aec_headers)),
-             meck:unload(aec_headers)
+             ok = aec_persistence:stop(),
+             ok = aec_test_utils:unmock_difficulty_as_target(),
+             ok
      end,
      [{"Get work in chain of only genesis",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
-               assert_fake_genesis_difficulty(B0),
-
                %% Check work of chain at top.
-               %% NOTE: floating point matching... not safe.
-               ?assertEqual({ok, {1.0, {top_header, BH0}}},
-                            aec_chain:get_total_difficulty())
+               {ok, {Difficulty, {top_header, TH}}} = aec_chain:get_total_difficulty(),
+               ?assertEqual(TH, BH0),
+               ?assertEqual(trunc(1000*(?GENESIS_DIFFICULTY)),
+                            trunc(1000*Difficulty))
        end},
       {"Get work in chain of genesis block plus 2 headers",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
-
-               assert_fake_genesis_difficulty(B0),
 
                %% Add a couple of headers to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
@@ -288,19 +289,24 @@ get_work_test_() ->
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
                %% Check work of chain at top.
-               ?assertEqual({ok, {8.0, {top_header, BH2}}},
-                            aec_chain:get_total_difficulty())
+               {ok, {Difficulty, {top_header, TH}}} = aec_chain:get_total_difficulty(),
+               ?assertEqual(TH, BH2),
+               ?assertEqual(trunc(1000*(?GENESIS_DIFFICULTY + 7.0)),
+                            trunc(1000*Difficulty))
+
        end}]}.
 
 %% Cover unhappy paths not covered in any other tests.
 unhappy_paths_test_() ->
     {foreach,
      fun() ->
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              ok
      end,
      fun(_) ->
-             ok = aec_chain:stop()
+             ok = aec_chain:stop(),
+             ok = aec_persistence:stop()
      end,
      [{"Get header by hash - case not found",
        fun() ->
@@ -426,81 +432,30 @@ unhappy_paths_test_() ->
                ?assertEqual({ok, BH1}, aec_chain:top_header())
        end}]}.
 
-extend_block_chain_by_difficulties_with_nonce_and_coinbase(
-  PreviousBlock,
-  Difficulties, Nonce) ->
-    {ok, MinerAccount} = aec_keys:pubkey(),
-    extend_block_chain_by_difficulties_with_nonce_and_coinbase(
-      PreviousBlock, Difficulties, Nonce,
-      MinerAccount).
-
-extend_block_chain_by_difficulties_with_nonce_and_coinbase(
-  PreviousBlock,
-  Difficulties, Nonce,
-  MinerAccount) ->
-    [PreviousBlock | BlockChainExtension] =
-        lists:reverse(
-          lists:foldl(
-            fun(D, [PrevB | _] = BC) ->
-                    B = next_block_by_difficulty_with_nonce_and_coinbase(
-                          PrevB,
-                          D, Nonce,
-                          MinerAccount),
-                    [B | BC]
-            end,
-            [PreviousBlock],
-            Difficulties)),
-    BlockChainExtension.
-
-next_block_by_difficulty_with_nonce_and_coinbase(PreviousBlock,
-                                                 Difficulty, Nonce,
-                                                 MinerAccount) ->
-    {ok, PreviousHash} = aec_blocks:hash_internal_representation(PreviousBlock),
-    H = 1 + aec_blocks:height(PreviousBlock),
-    #block{height = H,
-           prev_hash = PreviousHash,
-           target = Difficulty,
-           nonce = Nonce,
-           txs = [signed_coinbase_tx(MinerAccount, H)]}.
-
-signed_coinbase_tx(Account, _AccountNonce) ->
-    {ok, Tx} = aec_coinbase_tx:new(#{account => Account},
-                                   unused_state_trees_argument),
-    {ok, STx} = aec_keys:sign(Tx),
-    STx.
-
 header_chain_from_block_chain(BC) ->
     lists:map(fun aec_blocks:to_header/1, BC).
 
 longest_header_chain_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_headers, [passthrough]),
-             meck:new(aec_blocks, [passthrough]),
-             meck:expect(
-               aec_headers, difficulty,
-               fun(#header{target = T}) when is_integer(T) -> float(T) end),
-             meck:expect(
-               aec_blocks, difficulty,
-               fun(#block{target = T}) when is_integer(T) -> float(T) end),
-             {ok, _} = aec_chain:start_link(
-                         fake_genesis_block_with_difficulty()),
              %% Start `aec_keys` merely for generating realistic chain
              %% with test signed coinbase txs - as a node would do.
-             _TmpKeysDir = aec_keys_setup()
+             TmpKeysDir = aec_keys_setup(),
+             ok = aec_test_utils:mock_difficulty_as_target(),
+             {ok, _} = aec_persistence:start_link(),
+             {ok, _} = aec_chain:start_link(genesis_block()),
+             TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              ok = aec_keys_cleanup(TmpKeysDir),
+             ok = aec_persistence:stop(),
              ok = aec_chain:stop(),
-             ?assert(meck:validate(aec_blocks)),
-             ?assert(meck:validate(aec_headers)),
-             meck:unload(aec_blocks),
-             meck:unload(aec_headers)
+             ok = aec_test_utils:unmock_difficulty_as_target()
      end,
      [{"The alternative header chain has a different genesis hence its amount of work cannot be compared",
        fun() ->
                %% Check chain is at genesis.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
@@ -524,7 +479,7 @@ longest_header_chain_test_() ->
       {"The alternative header chain does not have more work - case alternative chain is less high",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2, 2], 111)],
@@ -549,7 +504,7 @@ longest_header_chain_test_() ->
       {"The alternative header chain does not have more work - case alternative chain is higher",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 111)],
@@ -574,7 +529,7 @@ longest_header_chain_test_() ->
       {"The alternative chain has the same amount of work, hence is to be ignored because received later",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
@@ -599,7 +554,7 @@ longest_header_chain_test_() ->
       {"The alternative header chain has more work - case alternative chain is higher. Force chain excluding genesis.",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
@@ -627,7 +582,7 @@ longest_header_chain_test_() ->
       {"The alternative header chain has more work - case alternative chain is higher. Force chain including genesis.",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
@@ -655,7 +610,7 @@ longest_header_chain_test_() ->
       {"The alternative header chain has more work - case alternative chain is less high",
        fun() ->
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
@@ -688,7 +643,7 @@ longest_header_chain_test_() ->
                %% with less work.
 
                %% Generate the two header chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 2], 111)],
@@ -716,32 +671,24 @@ longest_header_chain_test_() ->
 longest_block_chain_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_headers, [passthrough]),
-             meck:new(aec_blocks, [passthrough]),
-             meck:expect(
-               aec_headers, difficulty,
-               fun(#header{target = T}) when is_integer(T) -> float(T) end),
-             meck:expect(
-               aec_blocks, difficulty,
-               fun(#block{target = T}) when is_integer(T) -> float(T) end),
-             {ok, _} = aec_chain:start_link(
-                         fake_genesis_block_with_difficulty()),
              %% Start `aec_keys` merely for generating realistic chain
              %% with test signed coinbase txs - as a node would do.
-             _TmpKeysDir = aec_keys_setup()
+             TmpKeysDir = aec_keys_setup(),
+             ok = aec_test_utils:mock_difficulty_as_target(),
+             {ok, _} = aec_persistence:start_link(),
+             {ok, _} = aec_chain:start_link(genesis_block()),
+	     TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             ok = aec_keys_cleanup(TmpKeysDir),
              ok = aec_chain:stop(),
-             ?assert(meck:validate(aec_blocks)),
-             ?assert(meck:validate(aec_headers)),
-             meck:unload(aec_blocks),
-             meck:unload(aec_headers)
+             ok = aec_persistence:stop(),
+             ok = aec_keys_cleanup(TmpKeysDir),
+             ok = aec_test_utils:unmock_difficulty_as_target()
      end,
      [{"The alternative block chain has more work - case both main and alternative chains with all blocks. Only genesis block in common.",
        fun() ->
                %% Generate the two block chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
@@ -802,7 +749,7 @@ longest_block_chain_test_() ->
       {"The alternative block chain has more work - case both main and alternative chains with all blocks. Two blocks in common.",
        fun() ->
                %% Generate the two block chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_, B1, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
@@ -842,7 +789,6 @@ longest_block_chain_test_() ->
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
 
                %% Check state of the world changed ...
-               timer:sleep(1000), %% TODO Make this event driven.
                AltHsTop = aec_chain_top_ok(),
                ?assertNotEqual(MainTop, AltHsTop),
                %% ... and it is back to highest common ancestor.
@@ -868,7 +814,7 @@ longest_block_chain_test_() ->
       {"The alternative block chain has more work - case main chain with only block corresponding to top header (not contiguous to genesis), and alternative chain with only block corresponding to top header (not contiguous to genesis). Only genesis block in common.",
        fun() ->
                %% Generate the two block chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
@@ -922,7 +868,7 @@ longest_block_chain_test_() ->
       {"The alternative block chain has more work - case main chain with only one block contiguous to genesis, and alternative chain with two blocks contiguous to genesis. Only genesis block in common.",
        fun() ->
                %% Generate the two block chains.
-               B0 = fake_genesis_block_with_difficulty(),
+               B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
                MainBC = [_, B1, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
@@ -971,8 +917,6 @@ longest_block_chain_test_() ->
                %% Check top block changed.
                ?assertEqual({ok, HA3}, aec_chain:top_header()),
 
-               %% !!!! Race condition here !!!!
-               timer:sleep(2000),
                %% Check state of the world changed ...
                AltTop = aec_chain_top_ok(),
                ?assertNotEqual(aec_blocks:set_trees(B0, S0), AltTop),
@@ -986,29 +930,3 @@ longest_block_chain_test_() ->
 aec_chain_top_ok() ->
     {ok, T} = aec_chain:top(),
     T.
-
-aec_keys_setup() ->
-    TmpKeysDir = mktempd(),
-    ok = application:ensure_started(crypto),
-    {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
-    TmpKeysDir.
-
-aec_keys_cleanup(TmpKeysDir) ->
-    ok = aec_keys:stop(),
-    ok = application:stop(crypto),
-    {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-    %% Expect two filenames - private and public keys.
-    [_KF1, _KF2] = KeyFiles,
-    lists:foreach(
-      fun(F) ->
-              AbsF = filename:absname_join(TmpKeysDir, F),
-              {ok, _} = {file:delete(AbsF), {F, AbsF}}
-      end,
-      KeyFiles),
-    ok = file:del_dir(TmpKeysDir).
-
-mktempd() ->
-    mktempd(os:type()).
-
-mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).

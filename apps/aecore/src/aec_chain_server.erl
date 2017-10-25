@@ -50,6 +50,8 @@
 %%% API -  the main API for the server is in aec_chain.
 %%%===================================================================
 
+start_link({_Chain,_TopBlockHash,_TopBlockStateTrees} = Args) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []);
 start_link(GenesisBlock) ->
     Args = [GenesisBlock],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
@@ -63,7 +65,29 @@ stop() ->
 
 init(_Args = [GenesisBlock]) ->
     process_flag(trap_exit, true),
-    {ok, _State} = insert_block(GenesisBlock, new_state()).
+    {_, State} = insert_block(GenesisBlock, new_state()),
+    {ok, State};
+init({Chain, TopBlockHash, TopBlockStateTrees}) ->
+    process_flag(trap_exit, true),
+    StateTrees = [{TopBlockHash, TopBlockStateTrees}],
+    {_, State} = init_chain(Chain, new_state(Chain, StateTrees)),
+    {ok, State}.
+
+init_chain([#block{} = Block | Rest], State) ->
+    case aec_chain_state:insert_block(Block, State) of
+        {ok, State1} ->
+            init_chain(Rest, State1);
+        _ ->
+            init_chain(Rest, State)
+    end;
+init_chain([#header{} = Header | Rest], State) ->
+    case aec_chain_state:insert_header(Header, State) of
+        {ok, State1} ->
+            init_chain(Rest, State1);
+        _ ->
+            init_chain(Rest, State)
+    end;
+init_chain([], State) -> {ok, State}.
 
 %% State preserving functions
 handle_call(top, _From, State) ->
@@ -80,6 +104,9 @@ handle_call({get_block_by_height, H}, _From, State) ->
     {reply, get_block_by_height(H, State), State};
 handle_call(difficulty, _From, State) ->
     {reply, difficulty(State), State};
+handle_call({common_ancestor, Hash1, Hash2}, _From, State) ->
+    {reply,
+     aec_chain_state:find_common_ancestor(Hash1, Hash2,State), State};
 
 %% Update functions
 handle_call({insert_header, H}, _From, State) ->
@@ -114,32 +141,41 @@ code_change(_OldVsn, State, _Extra) ->
 new_state() ->
     aec_chain_state:new().
 
+new_state(Chain, StateTrees) ->
+    aec_chain_state:new_from_persistance(Chain, StateTrees).
+
 insert_block(Block, State) ->
     case aec_chain_state:insert_block(Block, State) of
-        {ok, State1} -> {ok, State1};
+        {ok, State1} ->
+            store_block(Block, State, State1),
+            {ok, State1};
         {error, What} -> {{error, What}, State}
     end.
 
+
 insert_header(Header, State) ->
     case aec_chain_state:insert_header(Header, State) of
-	{error, height_inconsistent_with_previous_hash} ->
+        {error, height_inconsistent_with_previous_hash} ->
             %% TODO: Special case for test case. Should go away.
-	    Top = aec_chain_state:top_header(State),
-	    {{error, {height_inconsistent_with_previous_hash,
-		     {top_header, Top}}}, State};
+            Top = aec_chain_state:top_header(State),
+            {{error, {height_inconsistent_with_previous_hash,
+                      {top_header, Top}}}, State};
         {error, What} -> {{error, What}, State};
-	{ok, NewState} -> {ok, NewState}
+        {ok, State1} ->
+            store_header(Header, State, State1),
+            {ok, State1}
     end.
+
 
 top(State) ->
     {ok, aec_chain_state:top_block(State)}.
 
 get_block(Hash, State) ->
      case aec_chain_state:get_block(Hash, State) of
-	{ok, Res} -> {ok, Res};
-	error ->
-	    Top = aec_chain_state:top_header(State),
-	    {error, {block_not_found, {top_header, Top}}}
+         {ok, Res} -> {ok, Res};
+         error ->
+             Top = aec_chain_state:top_header(State),
+             {error, {block_not_found, {top_header, Top}}}
     end.
 
 top_header(State) ->
@@ -147,15 +183,16 @@ top_header(State) ->
 
 get_header(Hash, State) ->
     case aec_chain_state:get_header(Hash, State) of
-	{ok, Res} -> {ok, Res};
-	error ->
-	    Top = aec_chain_state:top_header(State),
-	    {error, {header_not_found, {top_header, Top}}}
+        {ok, Res} -> {ok, Res};
+        error ->
+            Top = aec_chain_state:top_header(State),
+            {error, {header_not_found, {top_header, Top}}}
     end.
 
 difficulty(State) ->
     {ok, X} = aec_chain_state:difficulty_at_top_header(State),
     X.
+
 
 %% WARNING WARNING WARNING WARNING WARNING WARNING
 %% Temporary implementation beyond this point.
@@ -163,35 +200,86 @@ difficulty(State) ->
 
 get_block_by_height(H, State) ->
     case get_header_by_height(H, State) of
-	{error, _} = E -> E;
-	{ok, Header} -> 
-	    {ok, HeaderHash} = aec_headers:hash_header(Header),
-	    get_block(HeaderHash, State)
+        {error, _} = E -> E;
+        {ok, Header} ->
+            {ok, HeaderHash} = aec_headers:hash_header(Header),
+            get_block(HeaderHash, State)
     end.
 
 find_header_at_height(H, HeaderHash, State) ->
     {ok, Header} = aec_chain_state:get_header(HeaderHash, State),
     Current = aec_headers:height(Header),
     if Current > H ->
-	    find_header_at_height(H, aec_headers:prev_hash(Header), State);
-       Current =:= H -> 
-	    {ok, Header}
+            find_header_at_height(H, aec_headers:prev_hash(Header), State);
+       Current =:= H ->
+            {ok, Header}
     end.
-
-
-
 
 get_header_by_height(H, State) ->
     TopHeader  = aec_chain_state:top_header(State),
     CH = aec_headers:height(TopHeader),
     if CH < H ->
 
-	    {error, {chain_too_short, 
-		     {{chain_height, CH},
-		      {top_header, TopHeader}}}};
+            {error, {chain_too_short,
+                     {{chain_height, CH},
+                      {top_header, TopHeader}}}};
        CH > H ->
-	    find_header_at_height(H, aec_headers:prev_hash(TopHeader), State);
-       true -> 
-	    {ok, TopHeader}
+            find_header_at_height(H, aec_headers:prev_hash(TopHeader), State);
+       true ->
+            {ok, TopHeader}
     end.
+
+%%%===================================================================
+%%% Helper functions for persitence
+%%%===================================================================
+
+store_block(Block, StateBefore, State) ->
+    try begin
+            %% Best effort persistence.
+            %% If the server is not there, ignore it.
+            aec_persistence:write_block(Block),
+            persist_chain(StateBefore, State)
+        end
+    catch T:E ->
+            lager:error("Persistence server error: ~p:~p", [T, E]),
+            ok
+    end.
+
+store_header(Header, StateBefore, State) ->
+    try begin
+            %% Best effort persistence.
+            %% If the server is not there, ignore it.
+            aec_persistence:write_header(Header),
+            persist_chain(StateBefore, State)
+        end
+    catch T:E ->
+            lager:error("Persistence server error: ~p:~p", [T, E]),
+            ok
+    end.
+
+%% NOTE: The order is significant.
+%%       The header we can persist right away, but the top block hash
+%%       should not be written unless we have persisted the state trees
+%%       to avoid problems on restart.
+persist_chain(StateBefore, StateAfter) ->
+    case aec_chain_state:top_header_hash(StateAfter) of
+        undefined -> ok;
+        TopHeaderHash ->
+            aec_persistence:write_top_header(TopHeaderHash),
+            case aec_chain_state:top_block_hash(StateAfter) of
+                undefined -> ok;
+                TopBlockHash ->
+                    persist_state_trees(StateBefore, StateAfter),
+                    aec_persistence:write_top_block(TopBlockHash)
+            end
+    end.
+
+persist_state_trees(StateBefore, StateAfter) ->
+    %% Persist the state trees
+    Trees1 = aec_chain_state:get_state_trees_for_persistance(StateBefore),
+    Trees2 = aec_chain_state:get_state_trees_for_persistance(StateAfter),
+    Persist = Trees2 -- Trees1,
+    lists:foreach(fun({Hash, Trees}) ->
+                          aec_persistence:write_block_state(Hash, Trees)
+                  end, Persist).
 

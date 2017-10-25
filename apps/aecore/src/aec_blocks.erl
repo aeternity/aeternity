@@ -18,6 +18,7 @@
          serialize_to_map/1,
          deserialize_from_map/1,
          hash_internal_representation/1,
+         root_hash/1,
          validate/1]).
 
 -ifdef(TEST).
@@ -56,6 +57,10 @@ target(Block) ->
 -spec difficulty(block()) -> float().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
+
+-spec root_hash(block()) -> binary().
+root_hash(Block) ->
+    Block#block.root_hash.
 
 %% Sets the evidence of PoW,too,  for Cuckoo Cycle
 -spec set_nonce(block(), non_neg_integer(), aec_pow:pow_evidence()) -> block().
@@ -134,23 +139,24 @@ serialize_to_map(B = #block{}) ->
       <<"transactions">> => lists:map(fun aec_tx_sign:serialize/1, B#block.txs)
      }.
 
--define(STORAGEVERSION, 1).
+-define(STORAGE_VERSION, 1).
 serialize_for_store(B = #block{}) ->
-    term_to_binary({?STORAGEVERSION,
-                    height(B),
-                    prev_hash(B),
-                    B#block.root_hash,
-                    B#block.txs_hash,
-                    B#block.target,
-                    B#block.nonce,
-                    B#block.time,
-                    B#block.version,
-                    B#block.pow_evidence,
-                    B#block.txs}, [{compressed,9}]).
+    Bin = term_to_binary({?STORAGE_VERSION,
+                          height(B),
+                          prev_hash(B),
+                          B#block.root_hash,
+                          B#block.txs_hash,
+                          B#block.target,
+                          B#block.nonce,
+                          B#block.time,
+                          B#block.version,
+                          B#block.pow_evidence,
+                          B#block.txs}, [{compressed,9}]),
+    <<?STORAGE_TYPE_BLOCK:8, Bin/binary>>.
 
-deserialize_from_store(Bin) ->
+deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
     case binary_to_term(Bin) of
-        {?STORAGEVERSION,
+        {?STORAGE_VERSION,
          Height,
          PrevHash,
          RootHash,
@@ -161,26 +167,30 @@ deserialize_from_store(Bin) ->
          Version,
          PowEvidence,
          Txs} ->
-            #block{
-               height = Height,
-               prev_hash = PrevHash,
-               root_hash = RootHash,
-               txs_hash = TxsHash,
-               target = Target,
-               nonce = Nonce,
-               time = Time,
-               version = Version,
-               txs = Txs,
-               pow_evidence = PowEvidence};
+            {ok,
+             #block{
+                height = Height,
+                prev_hash = PrevHash,
+                root_hash = RootHash,
+                txs_hash = TxsHash,
+                target = Target,
+                nonce = Nonce,
+                time = Time,
+                version = Version,
+                txs = Txs,
+                pow_evidence = PowEvidence}
+            };
         T when tuple_size(T) > 0 ->
             case element(1, T) of
-               I when is_integer(I), I > ?STORAGEVERSION ->
+               I when is_integer(I), I > ?STORAGE_VERSION ->
                     exit({future_storage_version, I, Bin});
                 %% Add handler of old version here when upgrading version.
-                I when is_integer(I), I < ?STORAGEVERSION ->
+                I when is_integer(I), I < ?STORAGE_VERSION ->
                     exit({old_forgotten_storage_version, I, Bin})
             end
-    end.
+    end;
+deserialize_from_store(_) -> false.
+
 
 -spec deserialize_from_network(block_serialized_for_network()) ->
                                       {ok, block_deserialized_from_network()}.
