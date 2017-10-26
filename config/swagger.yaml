@@ -128,6 +128,10 @@ paths:
       responses:
         '200':
           description: successful operation
+        '400':
+          description: Block or header validation error
+          schema:
+            $ref: '#/definitions/Error'
       security: []
   /account/balance:
     get:

@@ -15,7 +15,8 @@
          deserialize_from_network/1,
          serialize_to_map/1,
          deserialize_from_map/1,
-         hash_internal_representation/1]).
+         hash_internal_representation/1,
+         validate/1]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -162,3 +163,40 @@ deserialize_from_map(#{<<"height">> := Height,
 hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
 
+-spec validate(block()) -> ok | {error, term()}.
+validate(Block) ->
+    Validators = [fun validate_coinbase_txs_count/1,
+                  fun validate_txs_hash/1],
+    aeu_validation:run(Validators, Block).
+
+-spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
+validate_coinbase_txs_count(#block{txs = Txs}) ->
+    CoinbaseTxsCount = lists:foldl(
+                         fun(SignedTx, Count) ->
+                                 Tx = aec_tx_sign:data(SignedTx),
+                                 Mod = tx_dispatcher:handler(Tx),
+                                 case Mod:type() of
+                                     <<"coinbase">> ->
+                                         Count + 1;
+                                     _Other ->
+                                         Count
+                                 end
+                         end, 0, Txs),
+    case CoinbaseTxsCount =< 1 of
+        true ->
+            ok;
+        false ->
+            {error, multiple_coinbase_txs}
+    end.
+
+-spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
+validate_txs_hash(#block{txs = Txs,
+                         txs_hash = BlockTxsHash}) ->
+    {ok, TxsTree} = aec_txs_trees:new(Txs),
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
+    case TxsRootHash of
+        BlockTxsHash ->
+            ok;
+        _Other ->
+            {error, malformed_txs_hash}
+    end.

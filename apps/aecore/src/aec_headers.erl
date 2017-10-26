@@ -16,7 +16,8 @@
          deserialize_from_binary/1,
          hash_header/1,
          serialize_pow_evidence/1,
-         deserialize_pow_evidence/1]).
+         deserialize_pow_evidence/1,
+         validate/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -137,4 +138,40 @@ deserialize_pow_evidence(L) when is_list(L) ->
 deserialize_pow_evidence(_) ->
     'no_value'.
 
+-spec validate(header()) -> ok | {error, term()}.
+validate(Header) ->
+    Validators = [fun validate_version/1,
+                  fun validate_pow/1,
+                  fun validate_time/1],
+    aeu_validation:run(Validators, Header).
 
+-spec validate_version(header()) -> ok | {error, protocol_version_mismatch}.
+validate_version(#header{version = ?PROTOCOL_VERSION}) ->
+    ok;
+validate_version(_Header) ->
+    {error, protocol_version_mismatch}.
+
+-spec validate_pow(header()) -> ok | {error, incorrect_pow}.
+validate_pow(#header{nonce = Nonce,
+                     pow_evidence = Evd,
+                     target = Target} = Header) ->
+    Mod = aec_pow:pow_module(),
+    %% Zero nonce and pow_evidence before hashing, as this is how the mined block got hashed.
+    Header1 = Header#header{nonce = 0, pow_evidence = no_value},
+    {ok, HeaderBinary} = serialize_to_binary(Header1),
+    case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
+        true ->
+            ok;
+        false ->
+            {error, incorrect_pow}
+    end.
+
+-spec validate_time(header()) -> ok | {error, block_from_the_future}.
+validate_time(#header{time = Time}) ->
+    MaxAcceptedTime = aeu_time:now_in_msecs() + ?ACCEPTED_FUTURE_BLOCK_TIME_SHIFT,
+    case Time < MaxAcceptedTime of
+        true ->
+            ok;
+        false ->
+            {error, block_from_the_future}
+    end.
