@@ -153,6 +153,42 @@
         "security" : [ ]
       }
     },
+    "/tx" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Post a new transaction",
+        "operationId" : "PostTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Put a new transaction to node",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SignedTx"
+          }
+        } ]
+      }
+    },
+    "/transactions" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get transactions in the mempool",
+        "operationId" : "GetTxs",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
+            }
+          }
+        }
+      }
+    },
     "/account/balance" : {
       "get" : {
         "tags" : [ "external" ],
@@ -325,6 +361,12 @@
         "nonce" : {
           "type" : "integer"
         }
+      }
+    },
+    "Transactions" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/definitions/SignedTx"
       }
     },
     "SignedTx" : {

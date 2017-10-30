@@ -1,6 +1,6 @@
 -record(signed_tx, {
-          data            :: term(),
-          signatures = [] :: list(binary())}).
+          data                       :: term(),
+          signatures = ordsets:new() :: ordsets:ordset(binary())}).
 -type(signed_tx() :: #signed_tx{}).
 
 

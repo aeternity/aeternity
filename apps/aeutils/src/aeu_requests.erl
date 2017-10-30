@@ -4,6 +4,8 @@
 -export([ping/1,
          top/1,
          block/2,
+         transactions/1,
+         send_tx/2,
          send_block/2
         ]).
 
@@ -54,11 +56,37 @@ block(Peer, Hash) ->
             Error
     end.
 
+-spec transactions(aec_peers:peer()) -> response([aec_tx:signed_tx()]).
+transactions(Peer) ->
+    Uri = aec_peers:uri(Peer),
+    Response = process_request(Uri, post, "transactions", []),
+    case Response of
+        {ok, Map} ->
+            Txs = maps:get('Transactions', Map, []),
+            {ok, lists:map(
+                   fun(T) ->
+                           {ok, Tx} = aec_tx_sign:deserialize_from_binary(T),
+                           Tx
+                   end, Txs)}
+    end.
+
 -spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
 send_block(Peer, Block) ->
     Uri = aec_peers:uri(Peer),
     BlockSerialized = aec_blocks:serialize_to_map(Block),
     Response = process_request(Uri, post, "block", BlockSerialized),
+    case Response of
+        {ok, _Map} ->
+            {ok, ok};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+-spec send_tx(aec_peers:peer(), aec_tx:signed_tx()) -> response(ok).
+send_tx(Peer, SignedTx) ->
+    Uri = aec_peers:uri(Peer),
+    TxSerialized = aec_tx_sign:serialize_to_binary(SignedTx),
+    Response = process_request(Uri, post, "tx", TxSerialized),
     case Response of
         {ok, _Map} ->
             {ok, ok};

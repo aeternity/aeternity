@@ -149,7 +149,9 @@ init([Password, KeysDir]) ->
 handle_call({sign, _}, _From, #state{priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call({sign, Term}, _From, #state{priv=PrivKey, algo=Algo, digest=Digest, curve=Curve} = State) ->
-    Signature = crypto:sign(Algo, Digest, term_to_binary(Term),  [PrivKey, crypto:ec_curve(Curve)]), %% TODO Review transaction serialization.
+    Bin = aec_tx:serialize_to_binary(Term),
+    Signature = crypto:sign(
+                  Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]),
     {reply, {ok, #signed_tx{data = Term, signatures = [Signature]}}, State};
 
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->

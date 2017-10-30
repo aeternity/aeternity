@@ -82,6 +82,10 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
             end
     end;
 
+handle_request('GetTxs', Req, _Context) ->
+    N = maps:get('N', Req, 30),
+    error(nyi);
+
 handle_request('PostBlock', Req, _Context) ->
     SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
     {ok, Block} = aec_blocks:deserialize_from_map(SerializedBlock),
@@ -94,25 +98,29 @@ handle_request('PostBlock', Req, _Context) ->
             %% Do not tell sync to re-broadcast block we already know about
             {200, [], #{}};
         {error, _} ->
-            case {aec_headers:validate(Header), aec_blocks:validate(Block)} of
-                {ok, ok} ->
-                    case aec_chain:insert_header(Header) of
-                        ok ->
-                            Res = aec_chain:write_block(Block),
-                            aec_sync:received_block(Block),
-                            lager:debug("write_block result: ~p", [Res]);
-                        {error, Reason} ->
-                            lager:debug("Couldn't insert header (~p)", [Reason])
-                    end,
-                    %% TODO update swagger.yaml to allow error returns?
-                    {200, [], #{}};
-                {{error, Reason}, _} ->
-                    lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}};
-                {ok, {error, Reason}} ->
-                    lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}}
-            end
+            case aec_chain:insert_header(Header) of
+                ok ->
+                    Res = aec_chain:write_block(Block),
+                    aec_sync:received_block(Block),
+                    lager:debug("write_block result: ~p", [Res]);
+                {error, Reason} ->
+                    lager:debug("Couldn't insert header (~p)", [Reason])
+            end,
+            %% TODO update swagger.yaml to allow error returns?
+            {200, [], #{}}
+    end;
+
+handle_request('PostTx', Req, _Context) ->
+    SerializedTx = maps:get('SignedTx', Req),
+    {ok, SignedTx} = aec_tx_sign:deserialize_from_binary(SerializedTx),
+    case aec_tx_pool:push(SignedTx) of
+        ok ->
+            lager:debug("Successfully added tx to pool", []),
+            {200, [], #{}};
+        {error, _} = Error ->
+            %% not necessarily an error condition for the remote side
+            lager:debug("Error pushing tx to school: ~p", [Error]),
+            {200, [], #{}}
     end;
 
 handle_request('GetAccountBalance', Req, _Context) ->
