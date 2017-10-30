@@ -28,8 +28,9 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(TAB, ?MODULE).
 
--record(state, {txs :: pool_db()}).
+-record(state, {}).
 
 -type negated_fee() :: non_pos_integer().
 -type non_pos_integer() :: neg_integer() | 0.
@@ -38,17 +39,26 @@
         {negated_fee(), %% Negated fee - not fee - in order to sort by decreasing fee.
          tx()}. %% TODO Minimize e.g.: (1) hash of tx; (2) initiating account and its nonce.
 -type pool_db_value() :: signed_tx().
--type pool_db() :: gb_trees:tree(pool_db_key(), pool_db_value()).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+    ensure_tab(),
+    case gen_server:start_link({local, ?SERVER}, ?MODULE, [], []) of
+        {ok, Pid} = Ok ->
+            ets:give_away(?TAB, Pid, []),
+            Ok;
+        Other ->
+            Other
+    end.
 
 stop() ->
-    gen_server:stop(?SERVER).
+    %% implies also clearing the mempool
+    Res = gen_server:stop(?SERVER),
+    ets:delete_all_objects(?TAB),
+    Res.
 
 %% Ensure the specified transaction is stored in the pool.
 %%
@@ -75,9 +85,9 @@ delete(Tx) ->
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
--spec peek(MaxNumberOfTxs::pos_integer()) -> {ok, [signed_tx()]}.
-peek(MaxNumberOfTxs) ->
-    gen_server:call(?SERVER, {peek, MaxNumberOfTxs}).
+-spec peek(pos_integer() | infinity) -> {ok, [signed_tx()]}.
+peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    {ok, pool_db_peek(MaxN)}.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -86,25 +96,19 @@ peek(MaxNumberOfTxs) ->
 init([]) ->
     %% No `process_flag(trap_exit, true)` because no cleaning up
     %% needed in `terminate/2`.
-    {ok, Db} = pool_db_open(),
-    State = #state{txs = Db},
-    {ok, State}.
+    {ok, #state{}}.
 
 handle_call({push, Tx}, _From, State) ->
-    {ok, NewDb} = pool_db_put(State#state.txs, pool_db_key(Tx), Tx),
-    NewState = State#state{txs = NewDb},
-    Reply = ok,
-    {reply, Reply, NewState};
+    case aec_tx_sign:verify(Tx) of
+        ok ->
+            ets_insert({pool_db_key(Tx), Tx}),
+            {reply, ok, State};
+        {error, Reason} ->
+            {reply, {error, {verification_error, Reason}}, State}
+    end;
 handle_call({delete, Tx}, _From, State) ->
-    {ok, NewDb} = pool_db_delete(State#state.txs, pool_db_key(Tx)),
-    NewState = State#state{txs = NewDb},
-    Reply = ok,
-    {reply, Reply, NewState};
-handle_call({peek, MaxNumberOfTxs}, _From, State)
-  when is_integer(MaxNumberOfTxs), MaxNumberOfTxs > 0 ->
-    {ok, Txs} = pool_db_peek(State#state.txs, MaxNumberOfTxs),
-    Reply = {ok, Txs},
-    {reply, Reply, State};
+    ets_delete(pool_db_key(Tx)),
+    {reply, ok, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -113,6 +117,8 @@ handle_cast(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
+handle_info({'ETS-TRANSFER', _, _, _}, State) ->
+    {noreply, State};
 handle_info(Info, State) ->
     lager:warning("Ignoring unknown info: ~p", [Info]),
     {noreply, State}.
@@ -127,38 +133,38 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+-spec pool_db_key(pool_db_value()) -> pool_db_key().
 pool_db_key(SignedTx) ->
     Tx = aec_tx_sign:data(SignedTx),
-    {-aec_tx:fee(Tx), Tx}.
+    Sigs = aec_tx_sign:signatures(SignedTx),
+    {-aec_tx:fee(Tx), Sigs}.
 
--spec pool_db_open() -> {ok, pool_db()}.
-pool_db_open() ->
-    {ok, gb_trees:empty()}.
+-spec pool_db_peek(MaxNumber::pos_integer()) -> [pool_db_value()].
+pool_db_peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    sel_return(ets_select([{ {'_', '$1'}, [], ['$1'] }], MaxN)).
 
--spec pool_db_peek(pool_db(), MaxNumber::pos_integer()) ->
-                          {ok, [pool_db_value()]}.
-pool_db_peek(Db, MaxN) ->
-    %% Do not require the complete list of all elements to be built in
-    %% memory at one time.
-    GbTreesPeekFun =
-        fun
-            F(_, 0, AccIn) ->
-                _AccOut = AccIn;
-            F(none, _, AccIn) ->
-                _AccOut = AccIn;
-            F({_K, V, Iter}, N, AccIn) when is_integer(N), N > 0 ->
-                F(gb_trees:next(Iter), N - 1, [V | AccIn])
-        end,
-    Vs = GbTreesPeekFun(gb_trees:next(gb_trees:iterator(Db)),
-                        MaxN,
-                        []),
-    {ok, lists:reverse(Vs)}.
+sel_return({L, _Cont}) when is_list(L) ->
+    L;
+sel_return('$end_of_table') ->
+    [].
 
--spec pool_db_put(pool_db(), pool_db_key(), pool_db_value()) ->
-                         {ok, NewDb::pool_db()}.
-pool_db_put(Db, K, V) ->
-    {ok, gb_trees:enter(K, V, Db)}.
+ets_select(Pat, Limit) ->
+    ets:select(?TAB, Pat, Limit).
 
--spec pool_db_delete(pool_db(), pool_db_key()) -> {ok, NewDb::pool_db()}.
-pool_db_delete(Db, K) ->
-    {ok, gb_trees:delete_any(K, Db)}.
+-spec ets_insert({pool_db_key(), pool_db_value()}) -> true.
+ets_insert(Obj) ->
+    ets:insert(?TAB, Obj).
+
+-spec ets_delete(pool_db_key()) -> true.
+ets_delete(K) ->
+    ets:delete(?TAB, K).
+
+-spec ensure_tab() -> true.
+ensure_tab() ->
+    case ets:info(?TAB, size) of
+        undefined ->
+            ets:new(?TAB, [ordered_set, public, named_table,
+                           {heir, self(), []}]);
+        _ ->
+            true
+    end.

@@ -32,6 +32,10 @@ request_params('GetTop') ->
     [
     ];
 
+request_params('GetTxs') ->
+    [
+    ];
+
 request_params('Ping') ->
     [
         'Ping'
@@ -45,6 +49,11 @@ request_params('PostBlock') ->
 request_params('PostSpendTx') ->
     [
         'SpendTx'
+    ];
+
+request_params('PostTx') ->
+    [
+        'SignedTx'
     ];
 
 request_params(_) ->
@@ -131,6 +140,15 @@ request_param_info('PostSpendTx', 'SpendTx') ->
         ]
     };
 
+request_param_info('PostTx', 'SignedTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
 request_param_info(OperationID, Name) ->
     error({unknown_param, OperationID, Name}).
 
@@ -192,6 +210,9 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 validate_response('GetTop', 200, Body, ValidatorState) ->
     validate_response_body('Top', 'Top', Body, ValidatorState);
 
+validate_response('GetTxs', 200, Body, ValidatorState) ->
+    validate_response_body('Transactions', 'Transactions', Body, ValidatorState);
+
 validate_response('Ping', 200, Body, ValidatorState) ->
     validate_response_body('Ping', 'Ping', Body, ValidatorState);
 validate_response('Ping', 404, Body, ValidatorState) ->
@@ -208,13 +229,14 @@ validate_response('PostSpendTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 
+
 validate_response(_OperationID, _Code, _Body, _ValidatorState) ->
     ok.
 
-%% validate_response_body('list', ReturnBaseType, Body, ValidatorState) ->
-%%     [
-%%         validate(schema, ReturnBaseType, Item, ValidatorState)
-%%     || Item <- Body];
+validate_response_body('list', ReturnBaseType, Body, ValidatorState) ->
+    [
+        validate(schema, ReturnBaseType, Item, ValidatorState)
+    || Item <- Body];
 
 validate_response_body(_, ReturnBaseType, Body, ValidatorState) ->
     validate(schema, ReturnBaseType, Body, ValidatorState).
@@ -380,17 +402,17 @@ get_value(body, _Name, Req0) ->
 get_value(qs_val, Name, Req0) ->
     {QS, Req} = cowboy_req:qs_vals(Req0),
     Value = swagger_utils:get_opt(swagger_utils:to_qs(Name), QS),
+    {Value, Req};
+
+get_value(header, Name, Req0) ->
+    {Headers, Req} = cowboy_req:headers(Req0),
+    Value = swagger_utils:get_opt(swagger_utils:to_header(Name), Headers),
+    {Value, Req};
+
+get_value(binding, Name, Req0) ->
+    {Bindings, Req} = cowboy_req:bindings(Req0),
+    Value = swagger_utils:get_opt(swagger_utils:to_binding(Name), Bindings),
     {Value, Req}.
-
-%% get_value(header, Name, Req0) ->
-%%     {Headers, Req} = cowboy_req:headers(Req0),
-%%     Value = swagger_utils:get_opt(swagger_utils:to_header(Name), Headers),
-%%     {Value, Req};
-
-%% get_value(binding, Name, Req0) ->
-%%     {Bindings, Req} = cowboy_req:bindings(Req0),
-%%     Value = swagger_utils:get_opt(swagger_utils:to_binding(Name), Bindings),
-%%     {Value, Req}.
 
 prepare_body(Body) ->
     case Body of
