@@ -19,41 +19,35 @@
 new(#{account := AccountPubkey}, _Trees) ->
     {ok, #coinbase_tx{account = AccountPubkey}}.
 
--spec check(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
+-spec check(coinbase_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
-    AccountsTrees0 = aec_trees:accounts(Trees0),
-    case aec_accounts:get(AccountPubkey, AccountsTrees0) of
-        {ok, _Account} ->
-            {ok, Trees0};
-        {error, notfound} ->
-            %% Add newly referenced account (w/0 amount) to the state
-            Account = aec_accounts:new(AccountPubkey, 0, Height),
-            {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
-            Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
-            {ok, Trees}
+    case aec_tx_common:ensure_account_at_height(AccountPubkey, Trees0, Height) of
+        {ok, Trees} ->
+            {ok, Trees};
+        {error, account_height_too_far} = Error ->
+            Error
     end.
 
--spec process(coinbase_tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
+-spec process(coinbase_tx(), trees(), height()) -> {ok, trees()}.
 process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
-    case aec_accounts:get(AccountPubkey, AccountsTrees0) of
-        {ok, Account0} ->
-            Reward = aec_governance:block_mine_reward(),
-            {ok, Account} = aec_accounts:earn(Account0, Reward, Height),
-            {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
-            Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
-            {ok, Trees};
-        {error, notfound} ->
-            {error, account_not_found}
-    end.
+    {ok, Account0} = aec_accounts:get(AccountPubkey, AccountsTrees0),
 
-serialize(#coinbase_tx{account = Account, nonce = Nonce}) ->
-    #{<<"pubkey">> => base64:encode(Account),
-      <<"nonce">> => Nonce}.
+    Reward = aec_governance:block_mine_reward(),
+    {ok, Account} = aec_accounts:earn(Account0, Reward, Height),
 
-deserialize(#{<<"pubkey">> := Account, <<"nonce">> := Nonce}) -> 
-    #coinbase_tx{account = base64:decode(Account), nonce = Nonce}.
+    {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
+    Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
+    {ok, Trees}.
 
+-spec serialize(coinbase_tx()) -> map().
+serialize(#coinbase_tx{account = Account}) ->
+    #{<<"pubkey">> => base64:encode(Account)}.
+
+-spec deserialize(map()) -> coinbase_tx().
+deserialize(#{<<"pubkey">> := Account}) ->
+    #coinbase_tx{account = base64:decode(Account)}.
+
+-spec type() -> binary().
 type() ->
- <<"coinbase">>.
-
+    <<"coinbase">>.

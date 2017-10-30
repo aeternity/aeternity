@@ -19,7 +19,7 @@
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
 
 -callback process(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()} | {error, Reason :: term()}.
+    {ok, NewTrees :: trees()}.
 
 -callback serialize(Tx :: term()) -> map().
 
@@ -34,7 +34,8 @@
 fee(#spend_tx{fee = F}) ->
     F.
 
--spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
+-spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) ->
+                          {ok, trees()} | {error, term()}.
 apply_signed([], Trees, _Height) ->
     {ok, Trees};
 apply_signed([SignedTx | Rest], Trees0, Height) ->
@@ -43,12 +44,10 @@ apply_signed([SignedTx | Rest], Trees0, Height) ->
             Tx = aec_tx_sign:data(SignedTx),
             case check_single(Tx, Trees0, Height) of
                 {ok, Trees1} ->
-                    case process_single(Tx, Trees1, Height) of
-                        {ok, Trees2} ->
-                            apply_signed(Rest, Trees2, Height);
-                        {error, _Reason} = Error ->
-                            Error
-                    end
+                    {ok, Trees2} = process_single(Tx, Trees1, Height),
+                    apply_signed(Rest, Trees2, Height);
+                {error, _Reason} = Error ->
+                    Error
             end;
         {error, _Reason} = Error ->
             Error
@@ -70,8 +69,7 @@ check_single(Tx, Trees, Height) ->
 %%------------------------------------------------------------------------------
 %% Process the transaction. Accounts must already be present in the state tree
 %%------------------------------------------------------------------------------
--spec process_single(tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
+-spec process_single(tx(), trees(), non_neg_integer()) -> {ok, trees()}.
 process_single(Tx, Trees, Height) ->
     Mod = tx_dispatcher:handler(Tx),
     Mod:process(Tx, Trees, Height).
-
