@@ -133,8 +133,14 @@ serialize_to_map(B = #block{}) ->
       <<"time">> => B#block.time,
       <<"version">> => B#block.version,
       <<"pow">> => aec_headers:serialize_pow_evidence(B#block.pow_evidence),
-      <<"transactions">> => lists:map(fun aec_tx_sign:serialize/1, B#block.txs)
+      <<"transactions">> => lists:map(fun serialize_tx/1, B#block.txs)
      }.
+
+serialize_tx(Tx) ->
+    base64:encode(aec_tx_sign:serialize_to_binary(Tx)).
+
+deserialize_tx(Bin) ->
+    aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).
 
 -define(STORAGE_VERSION, 1).
 serialize_for_store(B = #block{}) ->
@@ -213,7 +219,7 @@ deserialize_from_map(#{<<"height">> := Height,
             nonce = Nonce,
             time = Time,
             version = Version,
-            txs = lists:map(fun aec_tx_sign:deserialize/1, Txs),
+            txs = lists:map(fun deserialize_tx/1, Txs),
             pow_evidence = aec_headers:deserialize_pow_evidence(PowEvidence)}}.
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.

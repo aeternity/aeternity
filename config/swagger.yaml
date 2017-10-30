@@ -135,6 +135,43 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+  /tx:
+    post:
+      tags:
+        - external
+      operationId: PostTx
+      description: 'Post a new transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Put a new transaction to node
+          required: true
+          schema:
+            $ref: '#/definitions/Tx'
+          responses:
+            '200':
+              description: Successful operation
+          security: []
+  /transactions:
+    post:
+      tags:
+        - external
+      operationId: GetTxs
+      description: 'Get transactions in the mempool'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/Transactions'
   /account/balance:
     get:
       tags:
@@ -217,7 +254,7 @@ definitions:
       transactions:
         type: array
         items:
-          $ref: '#/definitions/SignedTx'
+          $ref: '#/definitions/Tx'
   Top:
     type: object
     properties:
@@ -275,37 +312,12 @@ definitions:
       balance:
         type: integer
         format: int64
-  CoinbaseTx:
-    type: object
-    properties:
-      pubkey:
-        type: string
-  SpendTx:
-    type: object
-    properties:
-      recipient_pubkey:
-        type: string
-      amount:
-        type: integer
-        format: int64
-      fee:
-        type: integer
-        format: int64
-  SignedTx:
-    type: object
-    properties:
-      type:
-        type: string
-      data:
-        type: object
-        schema:
-          oneOf:
-            - $ref: '#/definitions/CoinbaseTx'
-            - $ref: '#/definitions/SpendTx'
-      signatures:
-        type: array
-        items:
-          type: string
+  Tx:
+    type: string
+  Transactions:
+    type: array
+    items:
+      $ref: '#/definitions/Tx'
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

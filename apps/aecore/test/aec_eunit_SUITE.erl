@@ -32,7 +32,16 @@ end_per_group(_Grp, _Config) ->
     ok.
 
 init_per_testcase(_TC, Config) ->
-    Config.
+    Apps = application:which_applications(),
+    Names = registered(),
+    [{running_apps, Apps},
+     {regnames, Names}|Config].
 
-end_per_testcase(_TC, _Config) ->
+end_per_testcase(_TC, Config) ->
+    Apps0 = ?config(running_apps, Config),
+    Names0 = ?config(regnames, Config),
+    Apps = application:which_applications(),
+    Names = registered() -- [cover_server],
+    [] = Apps -- Apps0,
+    [] = Names -- Names0,
     ok.

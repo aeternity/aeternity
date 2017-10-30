@@ -545,7 +545,8 @@ save_mined_block(Block) ->
                                       "~nHash = ~s",
                                       [Block#block.height,
                                        as_hex(Block#block.root_hash)]),
-                    aec_sync:block_created(Block);
+                    aec_events:publish(block_created, Block),
+                    ok;
                 {error, Reason} ->
                     epoch_mining:error("Block insertion failed: ~p.", [Reason])
             end;
@@ -609,7 +610,7 @@ int_post_block(Block,_State) ->
                             {ok, NewTop} = aec_chain:top(),
 
                             %% Gossip
-                            aec_sync:received_block(Block),
+                            aec_events:publish(block_received, Block),
 
                             %% Check if we have a new top block.
                             if OldTop =:= NewTop -> ok;

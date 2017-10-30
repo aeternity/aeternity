@@ -341,7 +341,7 @@ handle_cast({add_and_ping, PeerRecs}, State) ->
                   true -> ok;
                   false ->
                       %% TODO: use jobs workers instead
-                      spawn(fun() -> ping_peer(P) end)
+                      maybe_ping_peer(P, State)
               end
       end, PeerRecs),
     {noreply, State1};
@@ -361,7 +361,7 @@ handle_info({timeout, Ref, {ping_peer, Uri}}, State) ->
             {noreply, State};
         {value, _Hash, #peer{ping_tref = Ref} = Peer} ->
             %% TODO: use jobs workers instead
-            spawn(fun() -> ping_peer(Peer) end),
+            maybe_ping_peer(Peer, State),
             Peers = enter_peer(
                       Peer#peer{ping_tref = undefined},
                       State#state.peers),

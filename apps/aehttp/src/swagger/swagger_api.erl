@@ -32,6 +32,10 @@ request_params('GetTop') ->
     [
     ];
 
+request_params('GetTxs') ->
+    [
+    ];
+
 request_params('Ping') ->
     [
         'Ping'
@@ -41,6 +45,12 @@ request_params('PostBlock') ->
     [
         'Block'
     ];
+
+request_params('PostTx') ->
+    [
+        'Tx'
+    ];
+
 
 request_params('PostSpendTx') ->
     [
@@ -122,6 +132,16 @@ request_param_info('PostBlock', 'Block') ->
         ]
     };
 
+request_param_info('PostTx', 'Tx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+
 request_param_info('PostSpendTx', 'SpendTx') ->
     #{
         source =>   body,
@@ -192,6 +212,9 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 validate_response('GetTop', 200, Body, ValidatorState) ->
     validate_response_body('Top', 'Top', Body, ValidatorState);
 
+validate_response('GetTxs', 200, Body, ValidatorState) ->
+    validate_response_body('Transactions', 'Transactions', Body, ValidatorState);
+
 validate_response('Ping', 200, Body, ValidatorState) ->
     validate_response_body('Ping', 'Ping', Body, ValidatorState);
 validate_response('Ping', 404, Body, ValidatorState) ->
@@ -201,6 +224,8 @@ validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostBlock', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
@@ -381,16 +406,6 @@ get_value(qs_val, Name, Req0) ->
     {QS, Req} = cowboy_req:qs_vals(Req0),
     Value = swagger_utils:get_opt(swagger_utils:to_qs(Name), QS),
     {Value, Req}.
-
-%% get_value(header, Name, Req0) ->
-%%     {Headers, Req} = cowboy_req:headers(Req0),
-%%     Value = swagger_utils:get_opt(swagger_utils:to_header(Name), Headers),
-%%     {Value, Req};
-
-%% get_value(binding, Name, Req0) ->
-%%     {Bindings, Req} = cowboy_req:bindings(Req0),
-%%     Value = swagger_utils:get_opt(swagger_utils:to_binding(Name), Bindings),
-%%     {Value, Req}.
 
 prepare_body(Body) ->
     case Body of

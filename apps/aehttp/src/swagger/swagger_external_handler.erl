@@ -88,6 +88,14 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetTxs'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'Ping'
     }
 ) ->
@@ -97,6 +105,14 @@ allowed_methods(
     Req,
     State = #state{
         operation_id = 'PostBlock'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'PostTx'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -113,24 +129,6 @@ allowed_methods(Req, State) ->
 
 is_authorized(Req, State) ->
     {true, Req, State}.
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {{false, <<"">>}, Req, State}.
 
 -spec content_types_accepted(Req :: cowboy_req:req(), State :: state()) ->
     {
@@ -190,6 +188,16 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
+        operation_id = 'GetTxs'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
         operation_id = 'Ping'
     }
 ) ->
@@ -201,6 +209,16 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostBlock'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'PostTx'
     }
 ) ->
     Headers = [],

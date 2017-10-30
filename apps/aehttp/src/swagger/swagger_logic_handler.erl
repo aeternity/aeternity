@@ -2,6 +2,7 @@
 
 -export([handle_request/4]).
 -export([authorize_api_key/3]).
+
 -type context() :: #{binary() => any()}.
 -type handler_response() ::{
     Status :: cowboy:http_status(),
@@ -11,7 +12,11 @@
 
 -export_type([handler_response/0]).
 
-
+-callback authorize_api_key(
+    OperationID :: swagger_api:operation_id(),
+    ApiKey :: binary()
+) ->
+    Result :: boolean() | {boolean(), context()}.
 
 -callback handle_request(OperationID :: swagger_api:operation_id(), Request :: any(), Context :: context()) ->
     handler_response().
@@ -27,5 +32,7 @@
 handle_request(Handler, OperationID, Req, Context) ->
     Handler:handle_request(OperationID, Req, Context).
 
-authorize_api_key(_LogicHandler, _OperationID, _ApiKey) ->
-    false.
+-spec authorize_api_key(Handler :: atom(), OperationID :: swagger_api:operation_id(), ApiKey :: binary()) ->
+    Result :: false | {true, context()}.
+authorize_api_key(Handler, OperationID, ApiKey) ->
+    Handler:authorize_api_key(OperationID, ApiKey).

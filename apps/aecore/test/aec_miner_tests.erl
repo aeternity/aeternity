@@ -32,30 +32,29 @@ miner_test_() ->
                                  meck:passthrough([]) div 2560
                          end),
              aec_test_utils:mock_time(),
+             ok = application:ensure_started(gproc),
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-             TmpKeysDir = mktempd(),
              ok = application:ensure_started(crypto),
-             {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
              {ok, _} = ?TEST_MODULE:start_link([{autostart, true}]),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
-             ok = aec_keys:stop(),
              ok = aec_chain:stop(),
              ok = aec_tx_pool:stop(),
-             ok = application:stop(crypto),
-             {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-             %% Expect two filenames - private and public keys.
-             [_KF1, _KF2] = KeyFiles,
-             lists:foreach(
-               fun(F) ->
-                       AbsF = filename:absname_join(TmpKeysDir, F),
-                       {ok, _} = {file:delete(AbsF), {F, AbsF}}
-               end,
-               KeyFiles),
-             ok = file:del_dir(TmpKeysDir),
+             ok = application:stop(gproc),
+             aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             %% {ok, KeyFiles} = file:list_dir(TmpKeysDir),
+             %% %% Expect two filenames - private and public keys.
+             %% [_KF1, _KF2] = KeyFiles,
+             %% lists:foreach(
+             %%   fun(F) ->
+             %%           AbsF = filename:absname_join(TmpKeysDir, F),
+             %%           {ok, _} = {file:delete(AbsF), {F, AbsF}}
+             %%   end,
+             %%   KeyFiles),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              aec_test_utils:unmock_time(),
@@ -197,17 +196,16 @@ miner_test_() ->
 chain_test_() ->
     {foreach,
      fun() ->
+             application:ensure_started(gproc),
              meck:new(aec_governance, [passthrough]),
              meck:expect(aec_governance, expected_block_mine_rate,
                          fun() ->
                                  meck:passthrough([]) div 2560
                          end),
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
              aec_test_utils:mock_time(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-             TmpKeysDir = mktempd(),
-             ok = application:ensure_started(crypto),
-             {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
              {ok, _} = ?TEST_MODULE:start_link(),
              meck:new(aec_headers, [passthrough]),
              meck:new(aec_blocks, [passthrough]),
@@ -217,20 +215,20 @@ chain_test_() ->
      end,
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
-             ok = aec_keys:stop(),
              ok = aec_chain:stop(),
              ok = aec_tx_pool:stop(),
-             ok = application:stop(crypto),
-             {ok, KeyFiles} = file:list_dir(TmpKeysDir),
+             aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             ok = application:stop(gproc),
              %% Expect two filenames - private and public keys.
-             [_KF1, _KF2] = KeyFiles,
-             lists:foreach(
-               fun(F) ->
-                       AbsF = filename:absname_join(TmpKeysDir, F),
-                       {ok, _} = {file:delete(AbsF), {F, AbsF}}
-               end,
-               KeyFiles),
-             ok = file:del_dir(TmpKeysDir),
+
+             %% [_KF1, _KF2] = KeyFiles,
+             %% lists:foreach(
+             %%   fun(F) ->
+             %%           AbsF = filename:absname_join(TmpKeysDir, F),
+             %%           {ok, _} = {file:delete(AbsF), {F, AbsF}}
+             %%   end,
+             %%   KeyFiles),
+             %% ok = file:del_dir(TmpKeysDir),
              aec_test_utils:unmock_time(),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
@@ -293,12 +291,6 @@ genesis_block() ->
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
     Hash.
-
-mktempd() ->
-    mktempd(os:type()).
-
-mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).
 
 wait_for_running() ->
     aec_test_utils:wait_for_it(
