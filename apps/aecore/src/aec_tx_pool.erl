@@ -138,7 +138,12 @@ pool_db_key(SignedTx) ->
 
 -spec pool_db_peek(MaxNumber::pos_integer()) -> [pool_db_value()].
 pool_db_peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    ets_select([{ {'_', '$1'}, [], ['$1'] }], MaxN).
+    sel_return(ets_select([{ {'_', '$1'}, [], ['$1'] }], MaxN)).
+
+sel_return({L, Cont}) when is_list(L) ->
+    L;
+sel_return('$end_of_table') ->
+    [].
 
 ets_select(Pat, Limit) ->
     ets:select(?TAB, Pat, Limit).

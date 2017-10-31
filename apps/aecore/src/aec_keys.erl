@@ -27,6 +27,7 @@
          terminate/2, code_change/3]).
 
 -export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0]).
+-export([verify/2]).
 
 -define(SERVER, ?MODULE).
 -define(PUB_SIZE, 65).
@@ -73,6 +74,10 @@ stop() ->
 -spec sign(term()) -> {ok, term()} | {error, term()}.
 sign(Term) ->
     gen_server:call(?MODULE, {sign, Term}).
+
+-spec verify([binary()], term()) -> boolean().
+verify(Signatures, Term) ->
+    gen_server:call(?MODULE, {verify, Signatures, Term}).
 
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
@@ -153,7 +158,16 @@ handle_call({sign, Term}, _From, #state{priv=PrivKey, algo=Algo, digest=Digest, 
     Signature = crypto:sign(
                   Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]),
     {reply, {ok, #signed_tx{data = Term, signatures = [Signature]}}, State};
-
+handle_call({verify, Sigs, Term}, _From,
+            #state{pub=PubKey, algo=Algo,
+                   digest=Digest, curve=Curve} = State) ->
+    Bin = aec_tx:serialize_to_binary(Term),
+    Res = lists:any(
+            fun(S) ->
+                    crypto:verify(
+                      Algo, Digest, Bin, S, [PubKey, crypto:ec_curve(Curve)])
+            end, Sigs),
+    {reply, Res, State};
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{pub=PubKey} = State) ->

@@ -19,20 +19,14 @@ signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
 
 verify(failed_tx) ->
-    %% TODO: Verify signed txs
     {error, verification_failed};
 verify(#signed_tx{data = Data, signatures = Sigs}) ->
-    {ok, #signed_tx{signatures = Sigs1}} = aec_keys:sign(Data),
-    case intersection(Sigs, Sigs1) of
-        [] ->
-            lager:debug("No matching sigs (~p - ~p)", [Sigs, Sigs1]),
-            {error, signature_check_failed};
-        [_|_] ->
-            ok
+    case aec_keys:verify(Sigs, Data) of
+        true -> ok;
+        false ->
+            lager:debug("No matching sigs (~p - ~p)", [Sigs]),
+            {error, signature_check_failed}
     end.
-
-intersection(A, B) ->
-    A -- (A -- B).
 
 -define(SIG_TX_TYPE, <<"sig_tx">>).
 -define(SIG_TX_VSN, 1).

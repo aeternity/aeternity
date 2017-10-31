@@ -7,8 +7,7 @@
 %% Basic transactions
 
 -record(coinbase_tx, {
-          account = <<>> :: pubkey(),
-          nonce = 0      :: non_neg_integer()}).
+          account = <<>> :: pubkey()}).
 -type(coinbase_tx() :: #coinbase_tx{}).
 
 -record(spend_tx, {
