@@ -1,14 +1,13 @@
 -record(signed_tx, {
-          data            :: term(),
-          signatures = [] :: list(binary())}).
+          data                       :: term(),
+          signatures = ordsets:new() :: ordsets:ordset(binary())}).
 -type(signed_tx() :: #signed_tx{}).
 
 
 %% Basic transactions
 
 -record(coinbase_tx, {
-          account = <<>> :: pubkey(),
-          nonce = 0      :: non_neg_integer()}).
+          account = <<>> :: pubkey()}).
 -type(coinbase_tx() :: #coinbase_tx{}).
 
 -record(spend_tx, {

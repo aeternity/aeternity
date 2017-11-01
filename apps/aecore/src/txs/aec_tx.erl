@@ -2,11 +2,17 @@
 
 -export([fee/1,
          apply_signed/3]).
+-export([serialize/1,
+         deserialize/1,
+         serialize_to_binary/1,
+         deserialize_from_binary/1]).
 
 -include("common.hrl").
 -include("trees.hrl").
 -include("txs.hrl").
 
+-export_type([tx/0,
+              signed_tx/0]).
 
 %%%=============================================================================
 %%% aec_tx behavior callbacks
@@ -48,11 +54,34 @@ apply_signed([SignedTx | Rest], Trees0, Height) ->
                             apply_signed(Rest, Trees2, Height);
                         {error, _Reason} = Error ->
                             Error
-                    end
+                    end;
+                {error, _} = CheckError ->
+                    CheckError
             end;
         {error, _Reason} = Error ->
             Error
     end.
+
+serialize(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:serialize(Tx).
+
+deserialize(Data) ->
+    Mod = tx_dispatcher:handler_by_type(type_of(Data)),
+    Mod:deserialize(Data).
+
+serialize_to_binary(Tx) ->
+    msgpack:pack(serialize(Tx)).
+
+deserialize_from_binary(Bin) ->
+    {ok, Unpacked} = msgpack:unpack(Bin),
+    deserialize(Unpacked).
+
+type_of([#{}|_] = L) ->
+    [Type] = [T || #{<<"type">> := T} <- L],
+    Type;
+type_of([Type|_]) ->
+    Type.
 
 
 %%%=============================================================================

@@ -6,6 +6,7 @@
          get/2,
          get_with_proof/2,
          put/2,
+         nonce/1,
          earn/3,
          root_hash/1,
          verify_proof/3]).
@@ -45,6 +46,9 @@ get_with_proof(Pubkey, AccountsTree) ->
 put(Account, AccountsTree) ->
     {ok, _NewAccountsTree} =
         aec_trees:put(Account#account.pubkey, serialize(Account), AccountsTree).
+
+nonce(#account{nonce = Nonce}) ->
+    Nonce.
 
 earn(#account{balance = Balance0} = Account0, Amount, Height) ->
     {ok, Account0#account{balance = Balance0 + Amount,

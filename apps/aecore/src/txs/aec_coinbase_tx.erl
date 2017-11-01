@@ -26,6 +26,7 @@ check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
         {ok, _Account} ->
             {ok, Trees0};
         {error, notfound} ->
+            lager:debug("Account (~p) not found", [AccountPubkey]),
             %% Add newly referenced account (w/0 amount) to the state
             Account = aec_accounts:new(AccountPubkey, 0, Height),
             {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
@@ -47,13 +48,20 @@ process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
             {error, account_not_found}
     end.
 
-serialize(#coinbase_tx{account = Account, nonce = Nonce}) ->
-    #{<<"pubkey">> => base64:encode(Account),
-      <<"nonce">> => Nonce}.
+-define(CB_TX_TYPE, <<"coinbase">>).
+-define(CB_TX_VSN, 1).
 
-deserialize(#{<<"pubkey">> := Account, <<"nonce">> := Nonce}) -> 
-    #coinbase_tx{account = base64:decode(Account), nonce = Nonce}.
+serialize(#coinbase_tx{account = Account}) ->
+    [#{<<"type">> => type()}, #{<<"vsn">> => version()},
+     #{<<"acct">> => Account}].
+
+deserialize([#{<<"type">> := ?CB_TX_TYPE},
+             #{<<"vsn">>  := ?CB_TX_VSN},
+             #{<<"acct">> := Account}]) ->
+    #coinbase_tx{account = Account}.
 
 type() ->
- <<"coinbase">>.
+    ?CB_TX_TYPE.
 
+version() ->
+    ?CB_TX_VSN.
