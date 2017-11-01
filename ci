@@ -62,6 +62,12 @@ case "${1:?}"-"${2:?}" in
         Prefix=$(package_prefix "${TRAVIS_OS_NAME:?}")
         cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${Prefix:?}".tar.gz
         ;;
+    script-acceptance-test)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 as fastmining tar; )
+        make nose-env
+        make release-integration-test TARBALL=_build/fastmining/rel/epoch/epoch-0.2.0.tar.gz
+        ;;
     after_failure-check_rels)
         BuildDir="${3:?}"
         ls -l "${BuildDir:?}"/_build/{prod,local}/rel/epoch/log

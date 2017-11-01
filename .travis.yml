@@ -36,6 +36,13 @@ matrix:
       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
       language: generic
       env: JOB=package
+    - if: tag IS present
+      env: JOB=acceptance-test
+    - if: tag IS present
+      env: JOB=acceptance-test
+      os: osx
+      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+      language: generic
   allow_failures:
     - env: JOB=xref
   fast_finish: true
