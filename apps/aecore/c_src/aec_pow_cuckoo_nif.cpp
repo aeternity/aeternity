@@ -97,7 +97,27 @@ static ErlNifFunc nif_funcs[] = {
   {"get_node_size",   0, get_node_size_nif,   0}
 };
 
-ERL_NIF_INIT(aec_pow_cuckoo, nif_funcs, NULL, NULL, NULL, NULL);
+static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
+  // *priv_data is documented to be initialized to NULL when this
+  // *function is called.
+
+  // No private data to initialize.
+  return 0;
+}
+
+static int on_upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info) {
+  // *priv_data is initialized to NULL when this function is called.
+
+  // No private data to convert to a new version.
+  // *priv_data = *old_priv_data;
+  return 0;
+}
+
+static void on_unload(ErlNifEnv* env, void* priv_data) {
+  // Nothing to do.
+}
+
+ERL_NIF_INIT(aec_pow_cuckoo, nif_funcs, &on_load, NULL, &on_upgrade, &on_unload);
 
 ///=============================================================================
 /// Internal functions
