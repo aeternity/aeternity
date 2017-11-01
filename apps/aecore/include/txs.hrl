@@ -11,8 +11,8 @@
 -type(coinbase_tx() :: #coinbase_tx{}).
 
 -record(spend_tx, {
-          from = <<>> :: pubkey(),
-          to = <<>>   :: pubkey(),
+          sender = <<>> :: pubkey(),
+          recipient = <<>> :: pubkey(),
           amount = 0  :: non_neg_integer(),
           fee = 0     :: non_neg_integer(),
           nonce = 0   :: non_neg_integer()}).

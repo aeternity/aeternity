@@ -218,7 +218,7 @@ hash_internal_representation(B = #block{}) ->
 validate(Block) ->
     Validators = [fun validate_coinbase_txs_count/1,
                   fun validate_txs_hash/1],
-    aeu_validation:run(Validators, Block).
+    aeu_validation:run(Validators, [Block]).
 
 -spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
 validate_coinbase_txs_count(#block{txs = Txs}) ->

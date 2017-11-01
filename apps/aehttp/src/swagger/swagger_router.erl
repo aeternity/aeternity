@@ -84,6 +84,11 @@ get_operations() ->
             path => "/v1/block",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
+        },
+        'PostSpendTx' => #{
+            path => "/v1/spend-tx",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
         }
     }.
 

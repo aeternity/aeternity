@@ -6,7 +6,7 @@
 -include("trees.hrl").
 
 -spec ensure_account_at_height(pubkey(), trees(), height()) ->
-                                   {ok, trees()} | {error, account_height_too_far}.
+                                   {ok, trees()} | {error, account_height_too_big}.
 ensure_account_at_height(AccountPubkey, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     case aec_accounts:get(AccountPubkey, AccountsTrees0) of
@@ -15,7 +15,7 @@ ensure_account_at_height(AccountPubkey, Trees0, Height) ->
                 true ->
                     {ok, Trees0};
                 false ->
-                    {error, account_height_too_far}
+                    {error, account_height_too_big}
             end;
         {error, notfound} ->
             %% Add newly referenced account (w/0 amount) to the state

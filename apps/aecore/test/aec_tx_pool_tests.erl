@@ -144,7 +144,7 @@ all_test_() ->
       end}]}.
 
 a_signed_tx(Account, AccountNonce, Fee) ->
-    Tx = #spend_tx{from = Account, nonce = AccountNonce, fee = Fee},
+    Tx = #spend_tx{sender = Account, nonce = AccountNonce, fee = Fee},
     {ok, STx} = aec_keys:sign(Tx),
     STx.
 

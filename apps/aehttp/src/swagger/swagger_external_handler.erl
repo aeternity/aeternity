@@ -101,6 +101,14 @@ allowed_methods(
 ) ->
     {[<<"POST">>], Req, State};
 
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'PostSpendTx'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
 allowed_methods(Req, State) ->
     {[], Req, State}.
 
@@ -201,6 +209,16 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostBlock'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'PostSpendTx'
     }
 ) ->
     Headers = [],

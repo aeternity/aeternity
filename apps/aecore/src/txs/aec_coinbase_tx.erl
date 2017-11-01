@@ -24,7 +24,7 @@ check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     case aec_tx_common:ensure_account_at_height(AccountPubkey, Trees0, Height) of
         {ok, Trees} ->
             {ok, Trees};
-        {error, account_height_too_far} = Error ->
+        {error, account_height_too_big} = Error ->
             Error
     end.
 

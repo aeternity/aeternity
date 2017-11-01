@@ -108,10 +108,10 @@ handle_request('PostBlock', Req, _Context) ->
                     {200, [], #{}};
                 {{error, Reason}, _} ->
                     lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}};
+                    {404, [], #{reason => <<"validation failed">>}};
                 {ok, {error, Reason}} ->
                     lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}}
+                    {404, [], #{reason => <<"validation failed">>}}
             end
     end;
 
@@ -132,6 +132,25 @@ handle_request('GetAccountBalance', Req, _Context) ->
             {200, [], #{balance => B}};
         _ ->
             {404, [], #{reason => <<"account not found">>}}
+    end;
+
+handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
+    SenderPubkey = maps:get(<<"sender_pubkey">>, SpendTxObj),
+    RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
+    Amount = maps:get(<<"amount">>, SpendTxObj),
+    Fee = maps:get(<<"fee">>, SpendTxObj),
+
+    {ok, LastBlock} = aec_chain:top(),
+    Trees = aec_blocks:trees(LastBlock),
+    case aec_spend_tx:new(#{sender => SenderPubkey,
+                            recipient => RecipientPubkey,
+                            amount => Amount,
+                            fee => Fee}, Trees) of
+        {ok, _SpendTx} ->
+            %% TODO: sign and push to the mempool
+            {200, [], #{}};
+        {error, sender_account_not_found} ->
+            {404, [], #{reason => <<"sender account not found">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->
