@@ -42,6 +42,11 @@ request_params('PostBlock') ->
         'Block'
     ];
 
+request_params('PostSpendTx') ->
+    [
+        'SpendTx'
+    ];
+
 request_params(_) ->
     error(unknown_operation).
 
@@ -109,6 +114,15 @@ request_param_info('Ping', 'Ping') ->
     };
 
 request_param_info('PostBlock', 'Block') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostSpendTx', 'SpendTx') ->
     #{
         source =>   body,
         rules => [
@@ -185,6 +199,13 @@ validate_response('Ping', 404, Body, ValidatorState) ->
 
 validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
+validate_response('PostBlock', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostSpendTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostSpendTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 
 validate_response(_OperationID, _Code, _Body, _ValidatorState) ->

@@ -34,6 +34,14 @@ coinbase_tx_existing_account_test_() ->
                end}
       end,
       fun({PubKey, Trees0}) ->
+              {"Check coinbase trx with existing account, but with too high height",
+               fun() ->
+                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),
+                       ?assertEqual({error, account_height_too_big},
+                                    aec_coinbase_tx:check(CoinbaseTx, Trees0, 3))
+               end}
+      end,
+      fun({PubKey, Trees0}) ->
               {"Process coinbase trx with existing account",
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),

@@ -148,6 +148,12 @@
         "responses" : {
           "200" : {
             "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Block or header validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         },
         "security" : [ ]
@@ -176,6 +182,36 @@
           },
           "404" : {
             "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/spend-tx" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Create spend transaction",
+        "operationId" : "PostSpendTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new spend transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SpendTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Spend transaction validation error",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -321,9 +357,25 @@
       "properties" : {
         "pubkey" : {
           "type" : "string"
+        }
+      }
+    },
+    "SpendTx" : {
+      "type" : "object",
+      "properties" : {
+        "sender_pubkey" : {
+          "type" : "string"
         },
-        "nonce" : {
-          "type" : "integer"
+        "recipient_pubkey" : {
+          "type" : "string"
+        },
+        "amount" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       }
     },

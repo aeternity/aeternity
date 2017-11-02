@@ -2,12 +2,12 @@
 
 -export([run/2]).
 
-run([], _Arg) ->
+run([], _Args) ->
     ok;
-run([F | Rest], Arg) ->
-    case F(Arg) of
+run([F | Rest], Args) ->
+    case apply(F, Args) of
         ok ->
-            run(Rest, Arg);
+            run(Rest, Args);
         {error, _Reason} = Error ->
             Error
     end.

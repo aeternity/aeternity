@@ -203,7 +203,7 @@ validate(Header) ->
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_time/1],
-    aeu_validation:run(Validators, Header).
+    aeu_validation:run(Validators, [Header]).
 
 -spec validate_version(header()) -> ok | {error, protocol_version_mismatch}.
 validate_version(#header{version = ?PROTOCOL_VERSION}) ->

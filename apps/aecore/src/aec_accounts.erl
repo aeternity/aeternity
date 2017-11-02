@@ -7,6 +7,7 @@
          get_with_proof/2,
          put/2,
          earn/3,
+         spend/3,
          root_hash/1,
          verify_proof/3]).
 
@@ -48,6 +49,11 @@ put(Account, AccountsTree) ->
 
 earn(#account{balance = Balance0} = Account0, Amount, Height) ->
     {ok, Account0#account{balance = Balance0 + Amount,
+                          height = Height}}.
+
+spend(#account{balance = Balance0, nonce = Nonce} = Account0, Amount, Height) ->
+    {ok, Account0#account{balance = Balance0 - Amount,
+                          nonce = Nonce,
                           height = Height}}.
 
 root_hash(AccountsTree) ->
