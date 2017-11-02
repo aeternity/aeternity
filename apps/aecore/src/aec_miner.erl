@@ -213,6 +213,8 @@ running(cast, mine, #state{block_candidate = BlockCandidate,
                            max_block_candidate_nonce = MaxMiningNonce} = State) ->
     case aec_mining:mine(BlockCandidate, CycleAttemptsCount, CurrentMiningNonce, MaxMiningNonce) of
         {ok, Block} ->
+            ws_handler:broadcast(miner, mined_block, [{height,
+                                                       aec_blocks:height(Block)}]),
             ok = save_mined_block(Block),
             gen_statem:cast(?SERVER, create_block_candidate),
             {next_state, configure, State};
