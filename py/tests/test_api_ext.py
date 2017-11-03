@@ -17,6 +17,7 @@ import os
 import sys
 import unittest
 import datetime
+import base64
 
 import swagger_client
 from swagger_client.rest import ApiException
@@ -25,6 +26,7 @@ from swagger_client.api_client import ApiClient
 from swagger_client.models.block import Block
 from swagger_client.models.signed_tx import SignedTx
 from swagger_client.models.coinbase_tx import CoinbaseTx
+from swagger_client.models.ping import Ping 
 
 def utc_now():
     d = datetime.datetime.utcnow()
@@ -36,7 +38,7 @@ def signed_coinbase_tx(height):
     coinbase = CoinbaseTx(pubkey = account, nonce = height - 1)
     return SignedTx(data = coinbase, type = "coinbase",
             signatures =
-            ["Some signature"])
+            [base64.b64encode("some signature")])
 
 
 class TestExternalApi(unittest.TestCase):
@@ -94,7 +96,14 @@ class TestExternalApi(unittest.TestCase):
         
         """
         api = self.EXT_API['dev1']
-        ping = api.ping("localhost")
+        top = api.get_top()
+        ping_obj = Ping(source="localhost",
+                        genesis_hash="u7RpHLzlZ4qqp+nBVgbR+9BPIla9hcnCd3Xv/H4vUc=",
+                        best_hash=top.hash,
+                        difficulty=top.difficulty,
+                        share=0,
+                        peers=[])
+        ping = api.ping(ping_obj)
 
     def test_post_block(self):
         """

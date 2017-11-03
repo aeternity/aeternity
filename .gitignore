@@ -1,5 +1,4 @@
 .rebar3
-_*
 .eunit
 *.o
 *.beam
@@ -21,7 +20,6 @@ py/local
 py/man
 py/pip-selfcheck.json
 nosetests.xml
-py/tests/swagger_client
 *.pyc
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
