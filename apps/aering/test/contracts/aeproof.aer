@@ -137,9 +137,7 @@ fun getProofByHash(hash: UInt) : Proof =
 const fun hasProof(document: String):Bool =
         let calcHash = calculateHash(document)
              , storedProof = @state.proofs[calcHash] in
-            { return = if (storedProof.owner == #0) then false
-                       else true
-            }
+            { return = (storedProof.owner != #0) }
 
 const fun getProofsByOwner(owner: Address): UInt[] =
 	{return = @state.proofsByOwner[owner]}
