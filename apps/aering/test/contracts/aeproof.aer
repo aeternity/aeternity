@@ -84,12 +84,12 @@ contract AEProof {
 }
 *)
 
-contract aetoken
+import contract aetoken
 fun balanceOf(addr : Address) : UInt 
     
-     
-
 contract aeproof
+
+export notarize, getProof, getProofByHash, hasProof, getProofsByOwner
 
 type Proof: { .owner: Address
             , .timestamp: UInt
