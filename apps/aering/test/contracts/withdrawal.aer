@@ -36,23 +36,23 @@
 
 contract WithdrawalContract
 
-state = { richest  : address = 0,
-          mostSent : uint    = 0,
-          pendingWithdrawals : map address => uint = [] }
+state = { .richest  : Address = 0,
+          .mostSent : Uint    = 0,
+          .pendingWithdrawals : Map Address => Uint = [] }
 
-fun becomeRichest() returns (bool) =
-    if (call.value > mostSent) then
-        let totalAmount:uint = pendingWithdrawals[richest] + call.value in
-            {state = state[ pendingWithdrawals = pendingWithdrawals[richest] = call.value,
-                            richest = call.sender,
-                            mostSent = call.value],
-             return = true}
+fun becomeRichest() returns (Bool) =
+    if (@call.value > @state.mostSent) then
+        let totalAmount:Uint = pendingWithdrawals[@state.richest] + @call.value in
+            {.state = @state[ .pendingWithdrawals = @state.pendingWithdrawals[@state.richest] = @call.value,
+                             .richest = @call.sender,
+                             .mostSent = @call.value],
+             .return = true}
      else
-         {return false}
+         {.return = false}
 
 
 fun withdraw()
-    let amount:uint = pendingWithdrawals[call.sender] in
-        { state = state[ pendingWithdrawals[call.sender] = 0],
-          transactions = spend_tx(amount, call.sender)
+    let amount:Uint = @state.pendingWithdrawals[@call.sender] in
+        { .state = @state[ @state.pendingWithdrawals[@call.sender] = 0],
+          .transactions = spend_tx(amount, @call.sender)
         }
