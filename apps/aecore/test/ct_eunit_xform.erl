@@ -29,7 +29,7 @@ parse_transform(Forms, Opts) ->
     parse_trans:optionally_pretty_print(Res, Opts, Ctxt),
     Res.
 
-xform({function,_,groups,0,_} = Form, AllMods) ->
+xform({function,_,groups,0,_}, AllMods) ->
     {done, {function,?LINE,groups,0,
             [{clause, ?LINE, [], [],
               [erl_parse:abstract(
@@ -43,8 +43,10 @@ xform(F, _) ->
 add_functions(AllMods) ->
     [{function,?LINE,M,1,
       [{clause,?LINE,[{var,?LINE,'_Config'}],[],
-        [{call,?LINE,{remote,?LINE,{atom,?LINE,eunit},{atom,?LINE,test}},
-          [{atom,?LINE,M}]}]
+        [{match, ?LINE,
+          {atom, ?LINE, ok},
+          {call,?LINE,{remote,?LINE,{atom,?LINE,eunit},{atom,?LINE,test}},
+          [{atom,?LINE,M}]}}]
        }]
      } || {M, _} <- AllMods].
 
