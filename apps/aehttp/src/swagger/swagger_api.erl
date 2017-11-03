@@ -199,12 +199,12 @@ validate_response('Ping', 404, Body, ValidatorState) ->
 
 validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
-validate_response('PostBlock', 400, Body, ValidatorState) ->
+validate_response('PostBlock', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
-validate_response('PostSpendTx', 400, Body, ValidatorState) ->
+validate_response('PostSpendTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 

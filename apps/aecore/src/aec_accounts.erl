@@ -6,8 +6,11 @@
          get/2,
          get_with_proof/2,
          put/2,
+         balance/1,
+         nonce/1,
+         height/1,
          earn/3,
-         spend/3,
+         spend/4,
          root_hash/1,
          verify_proof/3]).
 
@@ -47,11 +50,20 @@ put(Account, AccountsTree) ->
     {ok, _NewAccountsTree} =
         aec_trees:put(Account#account.pubkey, serialize(Account), AccountsTree).
 
+balance(#account{balance = Balance}) ->
+    Balance.
+
+nonce(#account{nonce = Nonce}) ->
+    Nonce.
+
+height(#account{height = Height}) ->
+    Height.
+
 earn(#account{balance = Balance0} = Account0, Amount, Height) ->
     {ok, Account0#account{balance = Balance0 + Amount,
                           height = Height}}.
 
-spend(#account{balance = Balance0, nonce = Nonce} = Account0, Amount, Height) ->
+spend(#account{balance = Balance0} = Account0, Amount, Nonce, Height) ->
     {ok, Account0#account{balance = Balance0 - Amount,
                           nonce = Nonce,
                           height = Height}}.
