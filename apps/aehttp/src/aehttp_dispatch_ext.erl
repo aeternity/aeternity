@@ -136,22 +136,30 @@ handle_request('GetAccountBalance', Req, _Context) ->
     end;
 
 handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
-    SenderPubkey = maps:get(<<"sender_pubkey">>, SpendTxObj),
-    RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
-    Amount = maps:get(<<"amount">>, SpendTxObj),
-    Fee = maps:get(<<"fee">>, SpendTxObj),
+    case aec_keys:pubkey() of
+        {ok, SenderPubkey} ->
+            RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
+            Amount = maps:get(<<"amount">>, SpendTxObj),
+            Fee = maps:get(<<"fee">>, SpendTxObj),
 
-    {ok, LastBlock} = aec_chain:top(),
-    Trees = aec_blocks:trees(LastBlock),
-    case aec_spend_tx:new(#{sender => SenderPubkey,
-                            recipient => RecipientPubkey,
-                            amount => Amount,
-                            fee => Fee}, Trees) of
-        {ok, _SpendTx} ->
+            %% TODO: Nonce shall be determined not based on accounts state tree,
+            %% so remove below, when next_nonce service is ready
+            {ok, LastBlock} = aec_chain:top(),
+            Trees = aec_blocks:trees(LastBlock),
+            AccountsTrees = aec_trees:accounts(Trees),
+            {ok, Account} = aec_accounts:get(SenderPubkey, AccountsTrees),
+            Nonce = aec_accounts:nonce(Account) + 1,
+
+            {ok, _SpendTx} = aec_spend_tx:new(
+                               #{sender => SenderPubkey,
+                                 recipient => RecipientPubkey,
+                                 amount => Amount,
+                                 fee => Fee,
+                                 nonce => Nonce}, Trees),
             %% TODO: sign and push to the mempool
             {200, [], #{}};
-        {error, sender_account_not_found} ->
-            {404, [], #{reason => <<"sender account not found">>}}
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"keys not configured">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->

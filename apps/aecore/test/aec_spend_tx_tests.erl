@@ -80,6 +80,39 @@ check_test_() ->
                            ?TEST_MODULE:check(SpendTx, StateTree, BlockHeight))
       end}].
 
+process_test_() ->
+    [{"Check and process valid spend tx",
+      fun() ->
+              SenderAccount = #account{pubkey = ?SENDER_PUBKEY,
+                                       balance = 100,
+                                       nonce = 10,
+                                       height = 10},
+              RecipientAccount = #account{pubkey = ?RECIPIENT_PUBKEY,
+                                          balance = 80,
+                                          nonce = 12,
+                                          height = 11},
+              StateTree0 = create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
+                                                 recipient => ?RECIPIENT_PUBKEY,
+                                                 amount => 50,
+                                                 fee => 10,
+                                                 nonce => 11}, StateTree0),
+              {ok, StateTree0} = ?TEST_MODULE:check(SpendTx, StateTree0, 20),
+              {ok, StateTree} = ?TEST_MODULE:process(SpendTx, StateTree0, 20),
+
+              ResultAccountsTree = aec_trees:accounts(StateTree),
+              {ok, ResultSenderAccount} = aec_accounts:get(?SENDER_PUBKEY, ResultAccountsTree),
+              {ok, ResultRecipientAccount} = aec_accounts:get(?RECIPIENT_PUBKEY, ResultAccountsTree),
+
+              ?assertEqual(100 - 50 - 10, aec_accounts:balance(ResultSenderAccount)),
+              ?assertEqual(11, aec_accounts:nonce(ResultSenderAccount)),
+              ?assertEqual(20, aec_accounts:height(ResultSenderAccount)),
+              ?assertEqual(80 + 50, aec_accounts:balance(ResultRecipientAccount)),
+              ?assertEqual(12, aec_accounts:nonce(ResultRecipientAccount)),
+              ?assertEqual(20, aec_accounts:height(ResultRecipientAccount))
+      end}].
+
 
 %% Internals
 

@@ -51,6 +51,20 @@ all_test_() ->
                                                 unused_trees_argument),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
+                end},
+               {"Sign spend transaction",
+                fun() ->
+                        {ok, PubKey} = aec_keys:pubkey(),
+                        {RecipientPubkey, _PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
+                        {ok, Tx} =
+                            aec_spend_tx:new(#{sender => PubKey,
+                                               recipient => RecipientPubkey,
+                                               amount => 10,
+                                               fee => 2,
+                                               nonce => 3},
+                                             unused_trees_argument),
+                        {ok, SignedTx} = aec_keys:sign(Tx),
+                        ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
                 end}]
       end]}.
 

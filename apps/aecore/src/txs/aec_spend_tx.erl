@@ -14,22 +14,17 @@
 -include("trees.hrl").
 -include("txs.hrl").
 
--spec new(map(), trees()) -> {ok, spend_tx()} | {error, sender_account_not_found}.
+-spec new(map(), trees()) -> {ok, spend_tx()}.
 new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
-      fee := Fee}, Trees) ->
-    AccountsTrees = aec_trees:accounts(Trees),
-    case aec_accounts:get(SenderPubkey, AccountsTrees) of
-        {ok, #account{nonce = CurrentSenderNonce}} ->
-            {ok, #spend_tx{sender = SenderPubkey,
-                           recipient = RecipientPubkey,
-                           amount = Amount,
-                           fee = Fee,
-                           nonce = CurrentSenderNonce + 1}};
-        {error, notfound} ->
-            {error, sender_account_not_found}
-    end.
+      fee := Fee,
+      nonce := Nonce}, _Trees) ->
+    {ok, #spend_tx{sender = SenderPubkey,
+                   recipient = RecipientPubkey,
+                   amount = Amount,
+                   fee = Fee,
+                   nonce = Nonce}}.
 
 -spec check(spend_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
@@ -50,13 +45,15 @@ check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
 -spec process(spend_tx(), trees(), height()) -> {ok, trees()}.
 process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
-                  amount = Amount}, Trees0, Height) ->
+                  amount = Amount,
+                  fee = Fee,
+                  nonce = Nonce}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {ok, SenderAccount0} = aec_accounts:get(SenderPubkey, AccountsTrees0),
     {ok, RecipientAccount0} = aec_accounts:get(RecipientPubkey, AccountsTrees0),
 
-    {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount, Height),
+    {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce, Height),
     {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount, Height),
 
     {ok, AccountsTrees1} = aec_accounts:put(SenderAccount, AccountsTrees0),
