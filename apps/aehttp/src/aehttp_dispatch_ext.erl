@@ -133,7 +133,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                                  recipient => RecipientPubkey,
                                  amount => Amount,
                                  fee => Fee,
-                                 nonce => Nonce}, Trees),
+                                 nonce => Nonce}),
             %% TODO: sign and push to the mempool
             {200, [], #{}};
         {error, key_not_found} ->

@@ -47,8 +47,7 @@ all_test_() ->
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),
                         {ok, Tx} =
-                            aec_coinbase_tx:new(#{account => PubKey},
-                                                unused_trees_argument),
+                            aec_coinbase_tx:new(#{account => PubKey}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
                 end},
@@ -61,8 +60,7 @@ all_test_() ->
                                                recipient => RecipientPubkey,
                                                amount => 10,
                                                fee => 2,
-                                               nonce => 3},
-                                             unused_trees_argument),
+                                               nonce => 3}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
                 end},

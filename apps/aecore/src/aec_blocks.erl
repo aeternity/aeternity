@@ -19,7 +19,8 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1]).
+         validate/1,
+         cointains_coinbase_tx/1]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -77,27 +78,23 @@ set_trees(Block, Trees) ->
 txs(Block) ->
     Block#block.txs.
 
--spec new(block(), list(signed_tx()), trees()) -> {ok, block()} | {error, term()}.
+-spec new(block(), list(signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
     Height = LastBlockHeight + 1,
-    case aec_tx:apply_signed(Txs, Trees0, Height) of
-        {ok, Trees} ->
-            {ok, TxsTree} = aec_txs_trees:new(Txs),
-            {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
-            {ok, #block{height = Height,
-                        prev_hash = LastBlockHeaderHash,
-                        root_hash = aec_trees:all_trees_hash(Trees),
-                        trees = Trees,
-                        txs_hash = TxsRootHash,
-                        txs = Txs,
-                        target = target(LastBlock),
-                        time = aeu_time:now_in_msecs(),
-                        version = ?CURRENT_BLOCK_VERSION}};
-        {error, _Reason} = Error ->
-            Error
-    end.
+    {ok, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
+    {ok, TxsTree} = aec_txs_trees:new(Txs),
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
+    #block{height = Height,
+           prev_hash = LastBlockHeaderHash,
+           root_hash = aec_trees:all_trees_hash(Trees),
+           trees = Trees,
+           txs_hash = TxsRootHash,
+           txs = Txs,
+           target = target(LastBlock),
+           time = aeu_time:now_in_msecs(),
+           version = ?CURRENT_BLOCK_VERSION}.
 
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,
@@ -182,7 +179,7 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
             };
         T when tuple_size(T) > 0 ->
             case element(1, T) of
-               I when is_integer(I), I > ?STORAGE_VERSION ->
+                I when is_integer(I), I > ?STORAGE_VERSION ->
                     exit({future_storage_version, I, Bin});
                 %% Add handler of old version here when upgrading version.
                 I when is_integer(I), I < ?STORAGE_VERSION ->
@@ -232,18 +229,17 @@ validate(Block) ->
 
 -spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
 validate_coinbase_txs_count(#block{txs = Txs}) ->
-    CoinbaseTxsCount = lists:foldl(
-                         fun(SignedTx, Count) ->
-                                 Tx = aec_tx_sign:data(SignedTx),
-                                 Mod = tx_dispatcher:handler(Tx),
-                                 case Mod:type() of
-                                     <<"coinbase">> ->
-                                         Count + 1;
-                                     _Other ->
-                                         Count
-                                 end
-                         end, 0, Txs),
-    case CoinbaseTxsCount =< 1 of
+    CoinbaseTxsCount =
+        lists:foldl(
+          fun(SignedTx, Count) ->
+                  case aec_tx:is_coinbase(SignedTx) of
+                      true ->
+                          Count + 1;
+                      false ->
+                          Count
+                  end
+          end, 0, Txs),
+    case CoinbaseTxsCount == 1 of
         true ->
             ok;
         false ->
@@ -262,3 +258,7 @@ validate_txs_hash(#block{txs = Txs,
             {error, malformed_txs_hash}
     end.
 
+cointains_coinbase_tx(#block{txs = []}) ->
+    false;
+cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
+    aec_tx:is_coinbase(CoinbaseTx).

@@ -94,7 +94,7 @@ gen_block_chain(N, MinerAccount, [PreviousBlock|_] = Acc) ->
     H = 1 + aec_blocks:height(PreviousBlock),
     Trees = aec_blocks:trees(PreviousBlock),
     Txs = [signed_coinbase_tx(MinerAccount, H)],
-    {ok, B} = aec_blocks:new(PreviousBlock, Txs, Trees),
+    B = aec_blocks:new(PreviousBlock, Txs, Trees),
     gen_block_chain(N - 1, MinerAccount, [B|Acc]).
 
 extend_block_chain_by_difficulties_with_nonce_and_coinbase(
@@ -128,14 +128,13 @@ next_block_by_difficulty_with_nonce_and_coinbase(PreviousBlock,
                                                  MinerAccount) ->
     H = 1 + aec_blocks:height(PreviousBlock),
     Trees = aec_blocks:trees(PreviousBlock),
-    {ok, B} = aec_blocks:new(PreviousBlock, [signed_coinbase_tx(MinerAccount, H)], Trees),
+    B = aec_blocks:new(PreviousBlock, [signed_coinbase_tx(MinerAccount, H)], Trees),
     B#block{ target = Difficulty
            , nonce = Nonce
            }.
 
 signed_coinbase_tx(Account, _AccountNonce) ->
-    {ok, Tx} = aec_coinbase_tx:new(#{account => Account},
-                                   unused_state_trees_argument),
+    {ok, Tx} = aec_coinbase_tx:new(#{account => Account}),
     {ok, STx} = aec_keys:sign(Tx),
     STx.
 

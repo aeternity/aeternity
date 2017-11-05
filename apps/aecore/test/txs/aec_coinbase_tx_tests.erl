@@ -29,14 +29,14 @@ coinbase_tx_existing_account_test_() ->
      [fun({PubKey, Trees0}) ->
               {"Check coinbase trx with existing account: shall not change state",
                fun() ->
-                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),
+                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
                        ?assertEqual({ok, Trees0}, aec_coinbase_tx:check(CoinbaseTx, Trees0, 9))
                end}
       end,
       fun({PubKey, Trees0}) ->
               {"Check coinbase trx with existing account, but with too high height",
                fun() ->
-                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),
+                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
                        ?assertEqual({error, account_height_too_big},
                                     aec_coinbase_tx:check(CoinbaseTx, Trees0, 3))
                end}
@@ -44,7 +44,7 @@ coinbase_tx_existing_account_test_() ->
       fun({PubKey, Trees0}) ->
               {"Process coinbase trx with existing account",
                fun() ->
-                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),
+                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
                        {ok, Trees} = aec_coinbase_tx:process(CoinbaseTx, Trees0, 9),
 
                        AccountsTree = aec_trees:accounts(Trees),
@@ -62,7 +62,7 @@ create_coinbase_tx_no_account_test() ->
      fun() ->
              PubKey = <<"my_pubkey">>,
              Trees0 = create_state_tree(),
-             {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}, Trees0),
+             {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
              {PubKey, Trees0, CoinbaseTx}
      end,
      fun(_) ->

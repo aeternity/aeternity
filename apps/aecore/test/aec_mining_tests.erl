@@ -104,16 +104,6 @@ mine_block_test_() ->
                  ?assertEqual({error, nonce_range_exhausted},
                               ?TEST_MODULE:mine(BlockCandidate, 10, InitialNonce, MaxNonce))
          end}},
-       {"Cannot apply signed tx (PoW module " ++ atom_to_list(PoWMod) ++ ")",
-        fun() ->
-                meck:expect(aec_chain, top, 0, {ok, #block{}}),
-                meck:expect(aec_tx, apply_signed, 3, {error, tx_failed}),
-                meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-                meck:expect(aec_keys, sign, 1,
-                            {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                                            signatures = [<<"sig1">>]}}),
-                ?assertEqual({error, tx_failed}, ?TEST_MODULE:create_block_candidate())
-        end},
        {timeout, 60,
         {"For good mining speed mine block with the same difficulty (PoW module " ++
              atom_to_list(PoWMod) ++ ")",
@@ -123,9 +113,11 @@ mine_block_test_() ->
                  Now = 1504731164584,
                  meck:expect(aec_chain, top, 0, {ok, #block{}}),
                  meck:expect(aec_blocks, new, 3,
-                             {ok, #block{height = 30,
-                                         target = ?HIGHEST_TARGET_SCI,
-                                         time = Now}}),
+                             #block{height = 30,
+                                    target = ?HIGHEST_TARGET_SCI,
+                                    txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
+                                                      signatures = [<<"sig1">>]}],
+                                    time = Now}),
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 20,
                                           time = Now - 50000}}),
@@ -170,9 +162,11 @@ mine_block_test_() ->
 
                  meck:expect(aec_chain, top, 0, {ok, #block{}}),
                  meck:expect(aec_blocks, new, 3,
-                             {ok, #block{height = 200,
-                                         target = Target,
-                                         time = Now}}),
+                             #block{height = 200,
+                                    target = Target,
+                                    txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
+                                                      signatures = [<<"sig1">>]}],
+                                    time = Now}),
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 190,
                                           target = Target,
@@ -252,7 +246,7 @@ mine_block_from_genesis_test_() ->
                          ?assertEqual(1, aec_blocks:height(Block)),
                          ?assertEqual(1, length(Block#block.txs)),
                          ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
-                                      Block#block.txs_hash)
+                                                                        Block#block.txs_hash)
                  end}}
               ]
       end} || PoWMod <- PoWModules].
