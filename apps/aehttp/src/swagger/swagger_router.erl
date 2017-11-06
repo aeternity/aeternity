@@ -75,6 +75,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetTxs' => #{
+            path => "/v1/transactions",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'Ping' => #{
             path => "/v1/ping",
             method => <<"POST">>,
@@ -87,6 +92,11 @@ get_operations() ->
         },
         'PostSpendTx' => #{
             path => "/v1/spend-tx",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostTx' => #{
+            path => "/v1/tx",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         }

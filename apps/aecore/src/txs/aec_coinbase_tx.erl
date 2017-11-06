@@ -40,14 +40,23 @@ process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
     {ok, Trees}.
 
--spec serialize(coinbase_tx()) -> map().
-serialize(#coinbase_tx{account = Account}) ->
-    #{<<"pubkey">> => base64:encode(Account)}.
+-define(CB_TX_TYPE, <<"coinbase">>).
+-define(CB_TX_VSN, 1).
 
--spec deserialize(map()) -> coinbase_tx().
-deserialize(#{<<"pubkey">> := Account}) ->
-    #coinbase_tx{account = base64:decode(Account)}.
+-spec serialize(coinbase_tx()) -> [map()].
+serialize(#coinbase_tx{account = Account}) ->
+    [#{<<"type">> => type()}, #{<<"vsn">> => version()},
+     #{<<"acct">> => Account}].
+
+-spec deserialize([map()]) -> coinbase_tx().
+deserialize([#{<<"type">> := ?CB_TX_TYPE},
+             #{<<"vsn">>  := ?CB_TX_VSN},
+             #{<<"acct">> := Account}]) ->
+    #coinbase_tx{account = Account}.
 
 -spec type() -> binary().
 type() ->
-    <<"coinbase">>.
+    ?CB_TX_TYPE.
+
+version() ->
+    ?CB_TX_VSN.
