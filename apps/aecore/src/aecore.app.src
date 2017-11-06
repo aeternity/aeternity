@@ -22,7 +22,8 @@
     gb_merkle_trees,
     rocksdb,
     aeutils,
-    msgpack
+    msgpack,
+    ae_cuckoo_cycle_pow_executables
    ]},
   {env, [
         {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}},
