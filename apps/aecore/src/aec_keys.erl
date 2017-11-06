@@ -28,6 +28,10 @@
 
 -export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0]).
 
+-ifdef(TEST).
+-export([check_keys_pair/5]).
+-endif.
+
 -define(SERVER, ?MODULE).
 -define(PUB_SIZE, 65).
 -define(PRIV_SIZE, 32).
@@ -187,7 +191,13 @@ handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile
         {ok, Priv} = from_local_dir(PrivFile),
         Pub0 = decrypt_pubkey(Password, Pub),
         Priv0 = decrypt_privkey(Password, Priv),
-        {reply, ok, State#state{priv=Priv0, pub=Pub0, pass=Password}}
+        #state{algo=Algo, digest=Digest, curve=Curve} = State,
+        case check_keys_pair(Pub0, Priv0, Algo, Digest, Curve) of
+            true ->
+                {reply, ok, State#state{priv=Priv0, pub=Pub0, pass=Password}};
+            false ->
+                {reply, {error, wrong_password}, State}
+        end
     catch
         Err:R ->
             lager:error("Can't open keys files ~p ~p", [Err, R]),
@@ -296,3 +306,11 @@ to_local_dir(NewFile, Bin) ->
 
 from_local_dir(NewFile) ->
     file:read_file(NewFile).
+
+
+-spec check_keys_pair(binary(), binary(), atom(), atom(), atom()) -> boolean().
+check_keys_pair(PubKey, PrivKey, Algo, Digest, Curve) ->
+    SampleMsg = <<"random message">>,
+    Signature = crypto:sign(Algo, Digest, SampleMsg, [PrivKey, crypto:ec_curve(Curve)]),
+    crypto:verify(Algo, Digest, SampleMsg, Signature, [PubKey, crypto:ec_curve(Curve)]).
+

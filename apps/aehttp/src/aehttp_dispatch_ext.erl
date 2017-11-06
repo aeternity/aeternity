@@ -1,6 +1,7 @@
 -module(aehttp_dispatch_ext).
 
 -export([handle_request/3]).
+-export([cleanup_genesis/1]).
 
 -compile({parse_transform, lager_transform}).
 -include_lib("aecore/include/common.hrl").
@@ -56,7 +57,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             {200, [], Resp};
         {error, {chain_too_short, _}} ->
-            {404, [], #{reason => <<"chain too short">>}}
+            {404, [], #{reason => <<"Chain too short">>}}
     end;
 
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
@@ -64,7 +65,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
     Hash = base64:decode(maps:get('hash', Req)),
     case aec_chain:get_header_by_hash(Hash) of
         {error, {header_not_found, _}} ->
-            {404, [], #{reason => <<"block not found">>}};
+            {404, [], #{reason => <<"Block not found">>}};
         {ok, Header} ->
             {ok, HH} = aec_headers:hash_header(Header),
             case aec_chain:get_block_by_hash(HH) of
@@ -78,7 +79,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                       cleanup_genesis(aec_blocks:serialize_to_map(Block)),
                     {200, [], Resp};
                 {error, {block_not_found, _}} ->
-                    {404, [], #{reason => <<"block not found">>}}
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end;
 
@@ -108,10 +109,10 @@ handle_request('PostBlock', Req, _Context) ->
                     {200, [], #{}};
                 {{error, Reason}, _} ->
                     lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}};
+                    {404, [], #{reason => <<"validation failed">>}};
                 {ok, {error, Reason}} ->
                     lager:info("Malformed block posted to the node (~p)", [Reason]),
-                    {400, [], #{reason => <<"validation failed">>}}
+                    {404, [], #{reason => <<"validation failed">>}}
             end
     end;
 
@@ -131,7 +132,34 @@ handle_request('GetAccountBalance', Req, _Context) ->
         {ok, #account{balance = B}} ->
             {200, [], #{balance => B}};
         _ ->
-            {404, [], #{reason => <<"account not found">>}}
+            {404, [], #{reason => <<"Account not found">>}}
+    end;
+
+handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
+    case aec_keys:pubkey() of
+        {ok, SenderPubkey} ->
+            RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
+            Amount = maps:get(<<"amount">>, SpendTxObj),
+            Fee = maps:get(<<"fee">>, SpendTxObj),
+
+            %% TODO: Nonce shall be determined not based on accounts state tree,
+            %% so remove below, when next_nonce service is ready
+            {ok, LastBlock} = aec_chain:top(),
+            Trees = aec_blocks:trees(LastBlock),
+            AccountsTrees = aec_trees:accounts(Trees),
+            {ok, Account} = aec_accounts:get(SenderPubkey, AccountsTrees),
+            Nonce = aec_accounts:nonce(Account) + 1,
+
+            {ok, _SpendTx} = aec_spend_tx:new(
+                               #{sender => SenderPubkey,
+                                 recipient => RecipientPubkey,
+                                 amount => Amount,
+                                 fee => Fee,
+                                 nonce => Nonce}, Trees),
+            %% TODO: sign and push to the mempool
+            {200, [], #{}};
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"keys not configured">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->

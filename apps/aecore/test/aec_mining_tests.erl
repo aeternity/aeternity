@@ -59,8 +59,7 @@ mine_block_test_() ->
                  meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1,
-                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                 nonce = 1},
+                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                              signatures = [<<"sig1">>]}}),
 
                  {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),
@@ -80,8 +79,7 @@ mine_block_test_() ->
                  meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1,
-                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                 nonce = 1},
+                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                              signatures = [<<"sig1">>]}}),
 
                  {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),
@@ -99,8 +97,7 @@ mine_block_test_() ->
                  meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1,
-                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                 nonce = 1},
+                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                              signatures = [<<"sig1">>]}}),
 
                  {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),
@@ -113,8 +110,7 @@ mine_block_test_() ->
                 meck:expect(aec_tx, apply_signed, 3, {error, tx_failed}),
                 meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                 meck:expect(aec_keys, sign, 1,
-                            {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                nonce = 1},
+                            {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                             signatures = [<<"sig1">>]}}),
                 ?assertEqual({error, tx_failed}, ?TEST_MODULE:create_block_candidate())
         end},
@@ -139,8 +135,7 @@ mine_block_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1,
-                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                 nonce = 1},
+                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                              signatures = [<<"sig1">>]}}),
 
                  {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),
@@ -188,8 +183,7 @@ mine_block_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
                  meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
                  meck:expect(aec_keys, sign, 1,
-                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>,
-                                                                 nonce = 1},
+                             {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                              signatures = [<<"sig1">>]}}),
 
                  {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),

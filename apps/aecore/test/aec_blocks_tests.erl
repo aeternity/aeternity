@@ -65,7 +65,7 @@ validate_test_() ->
      fun() ->
              SignedCoinbase = #signed_tx{data = #coinbase_tx{}},
              CorrectTxs = [SignedCoinbase],
-             MalformedTxs = [SignedCoinbase, #signed_tx{data = #coinbase_tx{nonce = 123}}],
+             MalformedTxs = [SignedCoinbase, #signed_tx{data = #coinbase_tx{account = <<"malformed_account">>}}],
              {ok, MalformedTree} = aec_txs_trees:new(MalformedTxs),
              {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
              Block = #block{txs = CorrectTxs, txs_hash = MalformedRootHash},

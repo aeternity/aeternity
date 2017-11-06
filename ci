@@ -60,7 +60,13 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
         Prefix=$(package_prefix "${TRAVIS_OS_NAME:?}")
-        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/"${Prefix:?}"-epoch-"${Version:?}".tar.gz
+        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${Prefix:?}".tar.gz
+        ;;
+    script-acceptance-test)
+        BuildDir="${3:?}"
+        ( cd "${BuildDir:?}" && ./rebar3 as fastmining tar; )
+        make python-env
+        make release-integration-test TARBALL=_build/fastmining/rel/epoch/epoch-"${Version:?}".tar.gz
         ;;
     after_failure-check_rels)
         BuildDir="${3:?}"
