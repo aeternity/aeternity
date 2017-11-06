@@ -418,7 +418,6 @@ find_top_hash_from_genesis_node(State) ->
         not_found -> not_found;
         {ok, Genesis} ->
             case find_new_header_top_from_node(Genesis, State) of
-                [] -> not_found;
                 [TopHash] -> {ok, TopHash};
                 TopHashes ->
                     {ok, determine_new_header_top_hash(TopHashes, State)}

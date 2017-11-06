@@ -85,13 +85,24 @@ peek(MaxNumberOfTxs) ->
 update(AddedToChain, RemovedFromChain) ->
     %% Add back transactions to the pool when removed from
     %% the chain.
-    [push(Tx) || Tx <- RemovedFromChain, not is_coinbase(Tx)],
+    lists:foreach(fun(Tx) ->
+                          case is_coinbase(Tx) of
+                              true  -> ok;
+                              false -> push(Tx)
+                          end
+                  end, RemovedFromChain),
     %% Remove transactions added to the chain.
-    [delete(Tx) || Tx <- AddedToChain, not is_coinbase(Tx)],
+    lists:foreach(fun(Tx) ->
+                          case is_coinbase(Tx) of
+                              true  -> ok;
+                              false -> delete(Tx)
+                          end
+                  end, AddedToChain),
     ok.
 
 %% TODO: there should be an easier way to do this...
-is_coinbase(Tx) ->
+is_coinbase(Signed) ->
+    Tx = aec_tx_sign:data(Signed),
     Mod = tx_dispatcher:handler(Tx),
     Type = Mod:type(),
     <<"coinbase">> =:= Type.

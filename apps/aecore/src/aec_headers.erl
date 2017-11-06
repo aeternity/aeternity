@@ -89,7 +89,7 @@ serialize_for_store(H = #header{}) ->
     <<?STORAGE_TYPE_HEADER:8, Bin/binary>>.
 
 
-deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin>>) ->
+deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
     case binary_to_term(Bin) of
         {?STORAGE_VERSION,
          Height,

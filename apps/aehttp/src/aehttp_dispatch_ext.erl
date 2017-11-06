@@ -91,10 +91,8 @@ handle_request('PostBlock', Req, _Context) ->
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
     lager:debug("'PostBlock'; header hash: ~p", [HH]),
-    case  aec_miner:post_block(Block) of
-        ok -> {200, [], #{}};
-        error -> {404, [], #{reason => <<"validation failed">>}}
-    end;
+    ok = aec_miner:post_block(Block),
+    {200, [], #{}};
 
 handle_request('GetAccountBalance', Req, _Context) ->
     Pubkey =

@@ -319,7 +319,5 @@ ensure_dir_exists(Path) ->
             ok
     end.
 
-to_hexstring(L) when is_list(L) ->
-    [io_lib:format("~2.16.0B", [C]) || C <- L];
 to_hexstring(B) when is_binary(B) ->
     [io_lib:format("~2.16.0B", [C]) || C <- binary_to_list(B)].
