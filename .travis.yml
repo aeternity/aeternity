@@ -7,6 +7,8 @@ before_install:
   - if test osx = "${TRAVIS_OS_NAME:?}"; then export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"; fi
   - if test osx = "${TRAVIS_OS_NAME:?}"; then brew update; fi
   - if test osx = "${TRAVIS_OS_NAME:?}"; then brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"; fi
+  - if test osx = "${TRAVIS_OS_NAME:?}"; then brew install lynx && export PATH="$(brew --prefix lynx)"/bin:"$PATH"; fi
+  - if test linux = "${TRAVIS_OS_NAME:?}"; then sudo apt-get -y install lynx; fi
   - erl -version
   - epmd -daemon
   - ./ci before_install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"

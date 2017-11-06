@@ -74,6 +74,14 @@ case "${1:?}"-"${2:?}" in
         for F in "${BuildDir:?}"/_build/{prod,local}/rel/epoch/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
         ;;
     after_failure-*)
-        true
+        BuildDir="${3:?}"
+        LogsDir="${BuildDir}/_build/test/logs"
+        lynx -dump ${LogsDir}/index.html
+        echo "logs/ct.latest.log\n"
+        cat ${LogsDir}/ct.latest.log
+        for f in `ls -1 ${LogsDir}/ct_run*/*.logs/run*/suite.log.html`; do echo \"\"; echo \"$f:\"; lynx -dump $f; done
+        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/erlang.log.*`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/epoch.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/crash.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
         ;;
 esac

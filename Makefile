@@ -96,7 +96,7 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 do eunit,ct
+	@./rebar3 do ct
 
 venv-present:
 	@virtualenv -q $(PYTHON_DIR)
