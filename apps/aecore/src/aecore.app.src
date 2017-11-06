@@ -21,7 +21,8 @@
     lager,
     gb_merkle_trees,
     aeutils,
-    msgpack
+    msgpack,
+    aecuckoo
    ]},
   {env, [
         {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}},
