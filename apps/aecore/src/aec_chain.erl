@@ -16,23 +16,23 @@
 %%%-------------------------------------------------------------------
 -module(aec_chain).
 
--export([start_link/1,
+-export([start_link/0,
+         start_link/1,
          stop/0]).
 
 %% API
--export([top/0,
-         top_header/0,
-         get_header_by_hash/1,
+-export([common_ancestor/2,
          get_block_by_hash/1,
-         get_header_by_height/1,
          get_block_by_height/1,
+         get_header_by_hash/1,
+         get_header_by_height/1,
+         get_total_difficulty/0,
+         get_transactions_between/2,
          insert_header/1,
-         write_block/1,
-         get_total_difficulty/0
+         top/0,
+         top_header/0,
+         write_block/1 %% TODO: rename
 	]).
-
--export([export_chain/1,
-         import_chain/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -79,6 +79,18 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
+start_link() ->
+    case aec_persistence:get_chain() of
+        [] ->
+            GB = aec_block_genesis:genesis_block(),
+            aec_chain_server:start_link(GB);
+        Chain ->
+            %% TODO: This needs protection against not finding the block.
+            Hash = aec_persistence:get_top_block(),
+            TopState = aec_persistence:get_block_state(Hash),
+            aec_chain_server:start_link({Chain, Hash, TopState})
+    end.
+
 start_link(GenesisBlock) ->
     aec_chain_server:start_link(GenesisBlock).
 
@@ -101,23 +113,22 @@ top_header() -> gen_server:call(?CHAIN_SERVER, top_header,
 -spec get_header_by_hash(block_header_hash()) -> get_header_by_hash_reply().
 get_header_by_hash(HeaderHash) ->
     gen_server:call(?CHAIN_SERVER, {get_header, HeaderHash},
-		    ?DEFAULT_CALL_TIMEOUT).
+                    ?DEFAULT_CALL_TIMEOUT).
 
 -spec get_block_by_hash(block_header_hash()) -> get_block_by_hash_reply().
 get_block_by_hash(HeaderHash) ->
     gen_server:call(?CHAIN_SERVER, {get_block, HeaderHash},
-		    ?DEFAULT_CALL_TIMEOUT).
+                    ?DEFAULT_CALL_TIMEOUT).
 
 -spec get_header_by_height(height()) -> get_header_by_height_reply().
 get_header_by_height(Height) ->
     gen_server:call(?CHAIN_SERVER, {get_header_by_height, Height},
-		    ?DEFAULT_CALL_TIMEOUT).
+                    ?DEFAULT_CALL_TIMEOUT).
 
 -spec get_block_by_height(height()) -> get_block_by_height_reply().
 get_block_by_height(Height) ->
     gen_server:call(?CHAIN_SERVER, {get_block_by_height, Height},
-		    ?DEFAULT_CALL_TIMEOUT).
-   
+                    ?DEFAULT_CALL_TIMEOUT).
 
 %% Insert in the chain the specified header if it is a successor of
 %% the top header in the chain.
@@ -125,14 +136,13 @@ get_block_by_height(Height) ->
                                  insert_header_reply_error().
 insert_header(Header) ->
     gen_server:call(?CHAIN_SERVER, {insert_header, Header},
-		    ?DEFAULT_CALL_TIMEOUT).
+                    ?DEFAULT_CALL_TIMEOUT).
 
 %% Store the specified block if its header is in the chain.
 -spec write_block(write_block_argument()) -> write_block_reply_ok() |
                                                 write_block_reply_error().
 write_block(Block) ->
     gen_server:call(?CHAIN_SERVER, {write_block, Block}, ?DEFAULT_CALL_TIMEOUT).
-  
 
 %% Returns the amount of work done on the chain i.e. the total
 %% difficulty of the top header.
@@ -140,60 +150,34 @@ write_block(Block) ->
 get_total_difficulty() ->
     {ok, Top} = top_header(),
     {ok, {gen_server:call(?CHAIN_SERVER, difficulty,
-			  ?DEFAULT_CALL_TIMEOUT),
-	  {top_header, Top}}}.
+                          ?DEFAULT_CALL_TIMEOUT),
+          {top_header, Top}}}.
 
+common_ancestor(Hash1, Hash2) ->
+    gen_server:call(?CHAIN_SERVER,
+                    {common_ancestor, Hash1, Hash2}).
 
-export_chain(OutFile) ->
-    Headers = all_headers(),
-    Blocks = all_blocks(Headers),
-    file:write_file(
-      OutFile, term_to_binary({{0,1}, Headers, Blocks}, [compressed])).
-
-import_chain(File) ->
-    case file:read_file(File) of
-        {ok, Bin} ->
-            try binary_to_term(Bin) of
-                {{0,1}, Headers, Blocks} ->
-                    io:fwrite("Headers = ~p~n"
-                              "Blocks = ~p~n",
-                              [Headers, Blocks]),
-                    lists:foreach(
-                      fun(H) ->
-                              ok = insert_header(H)
-                      end, Headers),
-                    lists:foreach(
-                      fun(B) ->
-                              ok = write_block(B)
-                      end, Blocks)
-            catch
-                error:Reason ->
-                    {error, Reason}
-            end;
-        Error ->
-            Error
+get_transactions_between(Hash1, Root) ->
+    try get_transactions_between(Hash1, Root, []) of
+        Transactions ->
+            {ok, Transactions}
+    catch throw:Error -> Error
     end.
 
-
-all_headers() ->
-    all_headers(top_header(), []).
-
-all_headers({ok, H}, Acc) ->
-    case aec_headers:height(H) of
-        0 ->
-            Acc;
+get_transactions_between(Hash, Hash, Transactions) ->
+    Transactions;
+get_transactions_between(Hash, Root, Transactions) ->
+    case aec_headers:hash_header(aec_block_genesis:genesis_header()) of
+        %% Current block is genesis
+        Hash -> Transactions;
+        %% Block is not genesis
         _ ->
-            all_headers(
-              get_header_by_hash(
-                aec_headers:prev_hash(H)), [H|Acc])
-    end;
-all_headers({error, E}, _) ->
-    erlang:error(E).
+            case get_block_by_hash(Hash) of
+                {ok, #block{prev_hash = Parent,
+                            txs = BlockTransactions}} ->
+                    get_transactions_between(Parent, Root,
+                                             BlockTransactions ++ Transactions);
+                {error,_} -> throw({error, {block_off_chain, Hash}})
+            end
+    end.
 
-all_blocks(Hdrs) ->
-    lists:foldr(
-      fun(H, Acc) ->
-              {ok, HH} = aec_headers:hash_header(H),
-              {ok, B} = aec_chain:get_block_by_hash(HH),
-              [B|Acc]
-      end, [], Hdrs).

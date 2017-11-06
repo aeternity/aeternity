@@ -192,14 +192,17 @@ expect_same(Nodes, _) ->
 
 mine_one_block(N) ->
     subscribe(N, block_created),
-    ok = rpc_call(N, aec_miner, resume, []),
+    rpc_call(N, aec_miner, resume, []),
     receive
         {gproc_ps_event, block_created, Height} ->
+            rpc_call(N, aec_miner, suspend, []),
             ct:log("block created, height=~p", [Height]),
             ok
     after 20000 ->
+            rpc_call(N, aec_miner, suspend, []),
             error(timeout_waiting_for_block)
     end.
+
 
 %% ============================================================
 %% Proxy process
@@ -313,19 +316,13 @@ take(K, L, Def) ->
 %%
 %% Patches:
 %% - use fast mining NIF (aec_pow_cuckoo.erl)
-%% - turn off continuous mining in aec_miner.erl
 %%
 patch_files(Config) ->
-    ok = parse_trans_mod:transform_module(
-           aec_miner,
-           fun miner_xform/2,
-           [{pt_pp_src, true}]),
     ok = parse_trans_mod:transform_module(
            aec_pow_cuckoo,
            fun pow_cuckoo_xform/2,
            [{pt_pp_src, true}]),
-    move_files_and_compile(["aec_miner.xfm",
-                            "aec_pow_cuckoo.xfm"], Config).
+    move_files_and_compile(["aec_pow_cuckoo.xfm"], Config).
 
 move_files_and_compile(Files, Config) ->
     PrivDir = ?config(priv_dir, Config),
@@ -342,55 +339,6 @@ move_files_and_compile(Files, Config) ->
               ok = file:rename(Src, Tgt),
               cmd(["(cd ", PrivDir, " && erlc -W ", ErlF, ")"])
       end, Files).
-
-
-miner_xform(Forms, _Opts) ->
-    parse_trans:plain_transform(fun miner_xform/1, Forms).
-
-miner_xform({function,L,init,1,_}) ->
-    L1 = L+1, L2 = L+2,
-    {function,L,init,1,
-     [{clause,L1,
-       [{var,L1,'_'}],
-       [],
-       [{tuple,L2,
-         [{atom,L2,ok},
-          {atom,L2,idle},
-          {record,L2,state,[]}]}]}]};
-miner_xform({function,L,running,3,Clauses}) ->
-    Clauses1 =
-        lists:map(
-          fun({clause,_,[{atom,_,cast},{atom,_,mine},_],_,_} = C) ->
-                  [C1] =
-                      parse_trans:plain_transform(fun miner_xform_1/1, [C]),
-                  C1;
-             (Clause) ->
-                  Clause
-          end, Clauses),
-    {function,L,running,3,Clauses1};
-miner_xform(_) ->
-    continue.
-
-%% Remove all calls to gen_statem:cast(aec_miner, create_block_candidate) from the
-%% 'running' state - i.e. don't automatically re-mine
-miner_xform_1({call,L,
-               {remote,_,{atom,_,gen_statem},{atom,_,cast}},
-               [{atom,_,aec_miner},{atom,_,create_block_candidate}]}) ->
-    {atom,L,ok};
-miner_xform_1({clause,_,[{tuple,_,[{atom,_,error},
-                                   {atom,_,generation_count_exhausted}]}],
-               _,_} = C) ->
-    %% don't change next state to idle!
-    C;
-miner_xform_1({clause,_,[{tuple,_,[{atom,_,error},
-                                   {atom,_,nonce_range_exhausted}]}],
-               _,_} = C) ->
-    %% don't change next state to idle!
-    C;
-miner_xform_1({tuple,L,[{atom,_,next_state},{atom,_,configure},{var,_,S}]}) ->
-    {tuple,L,[{atom,L,next_state},{atom,L,idle},{var,L,S}]};
-miner_xform_1(_) ->
-    continue.
 
 pow_cuckoo_xform(Forms, _Options) ->
     parse_trans:plain_transform(fun pow_cuckoo_xform/1, Forms).

@@ -21,7 +21,8 @@
          stop/0]).
 -export([push/1,
          delete/1,
-         peek/1]).
+         peek/1,
+         update/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -78,6 +79,34 @@ delete(Tx) ->
 -spec peek(MaxNumberOfTxs::pos_integer()) -> {ok, [signed_tx()]}.
 peek(MaxNumberOfTxs) ->
     gen_server:call(?SERVER, {peek, MaxNumberOfTxs}).
+
+
+-spec update(AddedToChain::[signed_tx()], RemovedFromChain::[signed_tx()]) -> ok.
+update(AddedToChain, RemovedFromChain) ->
+    %% Add back transactions to the pool when removed from
+    %% the chain.
+    lists:foreach(fun(Tx) ->
+                          case is_coinbase(Tx) of
+                              true  -> ok;
+                              false -> push(Tx)
+                          end
+                  end, RemovedFromChain),
+    %% Remove transactions added to the chain.
+    lists:foreach(fun(Tx) ->
+                          case is_coinbase(Tx) of
+                              true  -> ok;
+                              false -> delete(Tx)
+                          end
+                  end, AddedToChain),
+    ok.
+
+%% TODO: there should be an easier way to do this...
+is_coinbase(Signed) ->
+    Tx = aec_tx_sign:data(Signed),
+    Mod = tx_dispatcher:handler(Tx),
+    Type = Mod:type(),
+    <<"coinbase">> =:= Type.
+
 
 %%%===================================================================
 %%% gen_server callbacks

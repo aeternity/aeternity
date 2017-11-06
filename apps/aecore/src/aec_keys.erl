@@ -26,7 +26,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0]).
+-export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0,
+         wait_for_pubkey/0]).
 
 -ifdef(TEST).
 -export([check_keys_pair/5]).
@@ -81,6 +82,18 @@ sign(Term) ->
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
     gen_server:call(?MODULE, pubkey).
+
+-spec wait_for_pubkey() -> {ok, binary()}.
+wait_for_pubkey() ->
+    wait_for_pubkey(1).
+
+wait_for_pubkey(Sleep) ->
+    case pubkey() of
+        {error, key_not_found} ->
+            timer:sleep(Sleep),
+            wait_for_pubkey(Sleep+10);
+        R -> R
+    end.
 
 -spec open(binary()) -> {ok, Password :: binary()} | {error, keys_not_loaded}.
 open(Password) ->

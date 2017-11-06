@@ -12,6 +12,10 @@
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
 
+-define(STORAGE_TYPE_BLOCK,  0).
+-define(STORAGE_TYPE_HEADER, 1).
+-define(STORAGE_TYPE_STATE,  2).
+
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).

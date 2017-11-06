@@ -20,6 +20,7 @@
          hash_header/1,
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
+         root_hash/1,
          validate/1]).
 
 -include("common.hrl").
@@ -41,6 +42,9 @@ target(Header) ->
 
 difficulty(Header) ->
     aec_pow:target_to_difficulty(target(Header)).
+
+root_hash(Header) ->
+    Header#header.root_hash.
 
 time_in_secs(Header) ->
     Time = Header#header.time,
@@ -69,23 +73,25 @@ serialize_to_map(H = #header{}) ->
       },
     {ok, Serialized}.
 
--define(STORAGEVERSION, 1).
+-define(STORAGE_VERSION, 1).
 serialize_for_store(H = #header{}) ->
-    term_to_binary({?STORAGEVERSION,
-                    height(H),
-                    prev_hash(H),
-                    H#header.root_hash,
-                    H#header.txs_hash,
-                    H#header.target,
-                    H#header.nonce,
-                    H#header.time,
-                    H#header.version,
-                    H#header.pow_evidence
-                   }, [{compressed,9}]).
+    Bin = term_to_binary({?STORAGE_VERSION,
+                          height(H),
+                          prev_hash(H),
+                          H#header.root_hash,
+                          H#header.txs_hash,
+                          H#header.target,
+                          H#header.nonce,
+                          H#header.time,
+                          H#header.version,
+                          H#header.pow_evidence
+                         }, [{compressed,9}]),
+    <<?STORAGE_TYPE_HEADER:8, Bin/binary>>.
 
-deserialize_from_store(Bin) ->
+
+deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
     case binary_to_term(Bin) of
-        {?STORAGEVERSION,
+        {?STORAGE_VERSION,
          Height,
          PrevHash,
          RootHash,
@@ -96,25 +102,29 @@ deserialize_from_store(Bin) ->
          Version,
          PowEvidence
         } ->
-            #header{
-               height = Height,
-               prev_hash = PrevHash,
-               root_hash = RootHash,
-               txs_hash = TxsHash,
-               target = Target,
-               nonce = Nonce,
-               time = Time,
-               version = Version,
-               pow_evidence = PowEvidence};
+            {ok,
+             #header{
+                height = Height,
+                prev_hash = PrevHash,
+                root_hash = RootHash,
+                txs_hash = TxsHash,
+                target = Target,
+                nonce = Nonce,
+                time = Time,
+                version = Version,
+                pow_evidence = PowEvidence}
+             };
         T when tuple_size(T) > 0 ->
             case element(1, T) of
-                I when is_integer(I), I > ?STORAGEVERSION ->
+                I when is_integer(I), I > ?STORAGE_VERSION ->
                     exit({future_storage_version, I, Bin});
                 %% Add handler of old version here when upgrading version.
-                I when is_integer(I), I < ?STORAGEVERSION ->
+                I when is_integer(I), I < ?STORAGE_VERSION ->
                     exit({old_forgotten_storage_version, I, Bin})
             end
-    end.
+    end;
+deserialize_from_store(_) -> false.
+
 
 
 -spec deserialize_from_network(binary()) -> {ok, header()}.
