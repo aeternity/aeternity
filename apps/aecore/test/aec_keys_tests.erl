@@ -65,6 +65,23 @@ all_test_() ->
                                              unused_trees_argument),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
+                end},
+               {"Keys validation (positive case)",
+                fun() ->
+                        {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
+                        ValidPair = aec_keys:check_keys_pair(Pubkey, PrivKey,
+                                                         ecdsa, sha256,
+                                                         secp256k1),
+                        ?assertEqual(true, ValidPair)
+                end},
+               {"Keys validation (negative case)",
+                fun() ->
+                        Pubkey = <<"invalid">>,
+                        Privkey = <<"key pair">>,
+                        ValidPair = aec_keys:check_keys_pair(Pubkey, Privkey,
+                                                         ecdsa, sha256,
+                                                         secp256k1),
+                        ?assertEqual(false, ValidPair)
                 end}]
       end]}.
 
