@@ -1,0 +1,15 @@
+{application, ae_cuckoo_cycle_pow_executables,
+ [{description, "OTP application wrapping build of Cuckoo Cycle proof of work executables"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
