@@ -408,7 +408,7 @@ running(cast, check_keys, State) ->
 %% Catchall, log & drop unwanted messages.
 running(_Type, _Msg, State) ->
     epoch_mining:error("Unknown event in running: ~p:~p~n", [_Type,_Msg]),
-    {keep_state, running, State}.
+    {keep_state, State}.
 
 %% -------------------------------------------------------------------
 %% The Waiting state
