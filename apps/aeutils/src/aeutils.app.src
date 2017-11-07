@@ -8,7 +8,15 @@
     lager,
     gproc,
     jobs,
-    exometer_core
+    exometer_core,
+    yamerl
    ]},
-  {env,[]}
+  {env,[
+        {'$setup_hooks',
+         [
+          {normal, [
+                    {100, {aeu_env, read_config, []}}
+                   ]}
+         ]}
+       ]}
  ]}.
