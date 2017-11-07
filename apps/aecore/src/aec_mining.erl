@@ -17,17 +17,18 @@
 create_block_candidate() ->
     {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),
-    case get_txs_to_mine(Trees) of
+    case get_txs_to_mine() of
         {error, _} = Error ->
             Error;
         {ok, Txs} ->
-            case aec_blocks:new(LastBlock, Txs, Trees) of
-                {ok, Block0} ->
+            Block0 = aec_blocks:new(LastBlock, Txs, Trees),
+            case aec_blocks:cointains_coinbase_tx(Block0) of
+                true ->
                     Block = maybe_recalculate_difficulty(Block0),
                     {InitialNonce, MaxNonce} = aec_pow:pick_nonces(),
                     {ok, Block, InitialNonce, MaxNonce};
-                {error, _Reason} = Error ->
-                    Error
+                false ->
+                    {error, coinbase_tx_rejected}
             end
     end.
 
@@ -67,10 +68,10 @@ mine(Block, Attempts, InitialNonce, MaxNonce) ->
 
 %% Internal functions
 
--spec get_txs_to_mine(trees()) -> {ok, list(signed_tx()), non_neg_integer()} | {error, term()}.
-get_txs_to_mine(Trees) ->
+-spec get_txs_to_mine() -> {ok, list(signed_tx()), non_neg_integer()} | {error, term()}.
+get_txs_to_mine() ->
     {ok, Txs0} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
-    case create_coinbase_tx(Trees) of
+    case create_coinbase_tx() of
         {ok, CoinbaseTx} ->
             case aec_keys:sign(CoinbaseTx) of
                 {ok, SignedCoinbaseTx} ->
@@ -82,11 +83,11 @@ get_txs_to_mine(Trees) ->
             Error
     end.
 
--spec create_coinbase_tx(trees()) -> {ok, coinbase_tx()} | {error, term()}.
-create_coinbase_tx(Trees) ->
+-spec create_coinbase_tx() -> {ok, coinbase_tx()} | {error, term()}.
+create_coinbase_tx() ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            aec_coinbase_tx:new(#{account => Pubkey}, Trees);
+            aec_coinbase_tx:new(#{account => Pubkey});
         {error, _} = Error ->
             Error
     end.

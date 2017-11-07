@@ -1,7 +1,7 @@
 -module(aec_spend_tx).
 
 %% API
--export([new/2,
+-export([new/1,
          check/3,
          process/3,
          serialize/1,
@@ -14,12 +14,12 @@
 -include("trees.hrl").
 -include("txs.hrl").
 
--spec new(map(), trees()) -> {ok, spend_tx()}.
+-spec new(map()) -> {ok, spend_tx()}.
 new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
       fee := Fee,
-      nonce := Nonce}, _Trees) ->
+      nonce := Nonce}) ->
     {ok, #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,

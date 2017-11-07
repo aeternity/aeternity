@@ -10,7 +10,7 @@
 ensure_account_at_height_test_() ->
     [{"Not existing account is created with 0 balance",
       fun() ->
-              Trees0 = create_state_tree(),
+              Trees0 = aec_tx_test_utils:create_state_tree(),
               AccountPubkey = <<"account_pubkey">>,
               BlockHeight = 23,
 
@@ -30,7 +30,7 @@ ensure_account_at_height_test_() ->
               Account = #account{pubkey = AccountPubkey,
                                  balance = 777,
                                  height = AccountHeight},
-              Trees = create_state_tree_with_account(Account),
+              Trees = aec_tx_test_utils:create_state_tree_with_account(Account),
 
               ?assertEqual({error, account_height_too_big},
                            ?TEST_MODULE:ensure_account_at_height(AccountPubkey, Trees, BlockHeight))
@@ -43,22 +43,9 @@ ensure_account_at_height_test_() ->
               Account = #account{pubkey = AccountPubkey,
                                  balance = 777,
                                  height = AccountHeight},
-              Trees = create_state_tree_with_account(Account),
+              Trees = aec_tx_test_utils:create_state_tree_with_account(Account),
 
               ?assertEqual({ok, Trees},
                            ?TEST_MODULE:ensure_account_at_height(AccountPubkey, Trees, BlockHeight))
       end}].
 
-
-%% Internals
-
-create_state_tree() ->
-    {ok, AccountsTree} = aec_accounts:empty(),
-    StateTrees0 = #trees{},
-    aec_trees:set_accounts(StateTrees0, AccountsTree).
-
-create_state_tree_with_account(Account) ->
-    {ok, AccountsTree0} = aec_accounts:empty(),
-    {ok, AccountsTree1} = aec_accounts:put(Account, AccountsTree0),
-    StateTrees0 = #trees{},
-    aec_trees:set_accounts(StateTrees0, AccountsTree1).

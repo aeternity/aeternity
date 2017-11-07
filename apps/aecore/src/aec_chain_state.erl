@@ -527,6 +527,9 @@ update_top_block_hash(Hash, State) ->
 apply_node_transactions([Node|Left], Trees, State) ->
     Txs = aec_blocks:txs(Node#node.content),
     Height = node_height(Node),
+    %% TODO: verify that root hash of state tree after applying transactions
+    %% is equal to #block.root_hash.
+    %% To be done in scope of "PT-152481000 Validate received block".
     {ok, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
     apply_node_transactions(Left, NewTrees, State);
 apply_node_transactions([], Trees,_State) ->

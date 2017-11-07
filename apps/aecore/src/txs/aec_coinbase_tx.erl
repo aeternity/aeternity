@@ -1,7 +1,7 @@
 -module(aec_coinbase_tx).
 
 %% API
--export([new/2,
+-export([new/1,
          check/3,
          process/3,
          serialize/1,
@@ -15,8 +15,8 @@
 -include("txs.hrl").
 
 
--spec new(map(), trees()) -> {ok, coinbase_tx()}.
-new(#{account := AccountPubkey}, _Trees) ->
+-spec new(map()) -> {ok, coinbase_tx()}.
+new(#{account := AccountPubkey}) ->
     {ok, #coinbase_tx{account = AccountPubkey}}.
 
 -spec check(coinbase_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
@@ -28,6 +28,9 @@ check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
             Error
     end.
 
+%% Only aec_governance:block_mine_reward() is granted to miner's account here.
+%% Amount from all the fees of transactions included in the block
+%% is added to miner's account in aec_tx:apply_signed/3.
 -spec process(coinbase_tx(), trees(), height()) -> {ok, trees()}.
 process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),

@@ -22,7 +22,7 @@ check_test_() ->
      {"Sender account does not exist in state trees",
       fun() ->
               SpendTx = #spend_tx{fee = 10},
-              StateTree = create_state_tree(),
+              StateTree = aec_tx_test_utils:create_state_tree(),
               ?assertEqual({error, sender_account_not_found},
                            ?TEST_MODULE:check(SpendTx, StateTree, 10))
       end},
@@ -34,7 +34,7 @@ check_test_() ->
                                   nonce = 12},
 
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 55, nonce = 5, height = 10},
-              StateTree = create_state_tree_with_accounts([SenderAccount]),
+              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, insufficient_funds},
                            ?TEST_MODULE:check(SpendTx, StateTree, 20))
       end},
@@ -46,7 +46,7 @@ check_test_() ->
                                   nonce = 12},
               AccountNonce = 15,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = AccountNonce, height = 10},
-              StateTree = create_state_tree_with_accounts([SenderAccount]),
+              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, account_nonce_too_high},
                            ?TEST_MODULE:check(SpendTx, StateTree, 20))
       end},
@@ -59,7 +59,7 @@ check_test_() ->
               AccountHeight = 100,
               BlockHeight = 20,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = AccountHeight},
-              StateTree = create_state_tree_with_accounts([SenderAccount]),
+              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, sender_account_height_too_big},
                            ?TEST_MODULE:check(SpendTx, StateTree, BlockHeight))
       end},
@@ -75,7 +75,7 @@ check_test_() ->
               BlockHeight = 20,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = SenderAccountHeight},
               RecipientAccount = #account{pubkey = ?RECIPIENT_PUBKEY, height = RecipientAccountHeight},
-              StateTree = create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+              StateTree = aec_tx_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
               ?assertEqual({error, recipient_account_height_too_big},
                            ?TEST_MODULE:check(SpendTx, StateTree, BlockHeight))
       end}].
@@ -91,13 +91,13 @@ process_test_() ->
                                           balance = 80,
                                           nonce = 12,
                                           height = 11},
-              StateTree0 = create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+              StateTree0 = aec_tx_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
                                                  recipient => ?RECIPIENT_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
-                                                 nonce => 11}, StateTree0),
+                                                 nonce => 11}),
               {ok, StateTree0} = ?TEST_MODULE:check(SpendTx, StateTree0, 20),
               {ok, StateTree} = ?TEST_MODULE:process(SpendTx, StateTree0, 20),
 
@@ -113,20 +113,3 @@ process_test_() ->
               ?assertEqual(20, aec_accounts:height(ResultRecipientAccount))
       end}].
 
-
-%% Internals
-
-create_state_tree() ->
-    {ok, AccountsTree} = aec_accounts:empty(),
-    StateTrees0 = #trees{},
-    aec_trees:set_accounts(StateTrees0, AccountsTree).
-
-create_state_tree_with_accounts(Accounts) ->
-    {ok, AccountsTree0} = aec_accounts:empty(),
-    AccountsTree1 = lists:foldl(
-                      fun(Account, Tree0) ->
-                              {ok, Tree} = aec_accounts:put(Account, Tree0),
-                              Tree
-                      end, AccountsTree0, Accounts),
-    StateTrees0 = #trees{},
-    aec_trees:set_accounts(StateTrees0, AccountsTree1).
