@@ -1,5 +1,5 @@
 %% basic handler
--module(swagger_external_handler).
+-module(swagger_internal_handler).
 
 %% Cowboy REST callbacks
 -export([allowed_methods/2]).
@@ -56,47 +56,7 @@ rest_init(Req0, {Operations, LogicHandler, ValidatorState}) ->
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'GetAccountBalance'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'GetBlockByHash'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'GetBlockByHeight'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'GetTop'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'Ping'
-    }
-) ->
-    {[<<"POST">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'PostBlock'
+        operation_id = 'PostSpendTx'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -113,21 +73,6 @@ allowed_methods(Req, State) ->
 
 is_authorized(Req, State) ->
     {true, Req, State}.
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
-
-%% is_authorized(Req, State) ->
-%%     {true, Req, State};
 
 %% is_authorized(Req, State) ->
 %%     {{false, <<"">>}, Req, State}.
@@ -150,57 +95,7 @@ content_types_accepted(Req, State) ->
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'GetAccountBalance'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'GetBlockByHash'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'GetBlockByHeight'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'GetTop'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'Ping'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'PostBlock'
+        operation_id = 'PostSpendTx'
     }
 ) ->
     Headers = [],

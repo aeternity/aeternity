@@ -21,19 +21,20 @@ NODE_SETUP_COMMANDS = [
 # node's setup
 SETUP = {
         "node1": {
-            "host": "localhost:9900/v1",
+            "host": "localhost:9813/v1",
             "name": "epoch1",
             "config": '''[
 {aecore,
  [
-  {peers, ["http://localhost:9902/",
-           "http://localhost:9903/"]}
+  {peers, ["http://localhost:9823/",
+           "http://localhost:9833/"]}
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9900},
+  {swagger_port_external, 9813},
   {internal, [
-      {websocket, [ {port, 9910},
+      {swagger_port, 9913},
+      {websocket, [ {port, 9914},
                     {handlers, 100},
                     {tasks, 200}
                 ]}
@@ -43,7 +44,7 @@ SETUP = {
 '''
                 },
         "node2": {
-            "host": "localhost:9902/v1",
+            "host": "localhost:9823/v1",
             "name": "epoch2",
             "config": '''[
 {aecore,
@@ -52,9 +53,10 @@ SETUP = {
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9902},
+  {swagger_port_external, 9823},
   {internal, [
-      {websocket, [ {port, 9912},
+      {swagger_port, 9923},
+      {websocket, [ {port, 9924},
                     {handlers, 100},
                     {tasks, 200}
                 ]}
@@ -64,7 +66,7 @@ SETUP = {
 '''
                 },
         "node3": {
-            "host": "localhost:9903/v1",
+            "host": "localhost:9833/v1",
             "name": "epoch3",
             "config": '''[
 {aecore,
@@ -73,9 +75,10 @@ SETUP = {
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9903},
+  {swagger_port_external, 9833},
   {internal, [
-      {websocket, [ {port, 9913},
+      {swagger_port, 9933},
+      {websocket, [ {port, 9934},
                     {handlers, 100},
                     {tasks, 200}
                 ]}

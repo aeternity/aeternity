@@ -20,4 +20,5 @@ from .coinbase_tx import CoinbaseTx
 from .error import Error
 from .ping import Ping
 from .signed_tx import SignedTx
+from .spend_tx import SpendTx
 from .top import Top

@@ -15,7 +15,7 @@ def error(msg):
 def read_argv(argv):
     global trace
     parser = argparse.ArgumentParser(description='Websocket test')
-    parser.add_argument('--port', type=int, default=3014,
+    parser.add_argument('--port', type=int, default=3114,
                         help='Node\'s port number')
     parser.add_argument('--log', type=str, default="INFO",
                         help='Logging level')
