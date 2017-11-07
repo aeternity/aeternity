@@ -211,25 +211,12 @@ mine_block_from_genesis_test_() ->
               meck:expect(aec_pow, pow_module, 0, PoWMod),
               meck:expect(aec_pow, pick_nonces, 0, {1, 400}),
               {ok, _} = aec_tx_pool:start_link(),
+              TmpKeysDir = aec_test_utils:aec_keys_setup(),
               {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-              TmpKeysDir = mktempd(),
-              ok = application:ensure_started(crypto),
-              {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
               TmpKeysDir
       end,
       fun(TmpKeysDir) ->
-              ok = aec_keys:stop(),
-              ok = application:stop(crypto),
-              {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-              %% Expect two filenames - private and public keys.
-              [_KF1, _KF2] = KeyFiles,
-              lists:foreach(
-                fun(F) ->
-                        AbsF = filename:absname_join(TmpKeysDir, F),
-                        {ok, _} = {file:delete(AbsF), {F, AbsF}}
-                end,
-                KeyFiles),
-              ok = file:del_dir(TmpKeysDir),
+              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
               ok = aec_chain:stop(),
               ok = aec_tx_pool:stop(),
               ?assert(meck:validate(aec_pow)),
@@ -250,11 +237,5 @@ mine_block_from_genesis_test_() ->
                  end}}
               ]
       end} || PoWMod <- PoWModules].
-
-mktempd() ->
-    mktempd(os:type()).
-
-mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).
 
 -endif.

@@ -11,10 +11,7 @@ all_test_() ->
      fun() ->
              application:ensure_started(gproc),
              ok = application:ensure_started(crypto),
-             TmpKeysDir = mktempd(),
-             {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
-             R2 = aec_keys:open("mypassword"),
-             ok = R2,
+             TmpKeysDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
@@ -22,19 +19,8 @@ all_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             ok = aec_keys:stop(),
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
-             ok = application:stop(crypto),
-             {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-             %% Expect two filenames - private and public keys.
-             [_KF1, _KF2] = KeyFiles,
-             lists:foreach(
-               fun(F) ->
-                       AbsF = filename:absname_join(TmpKeysDir, F),
-                       {ok, _} = {file:delete(AbsF), {F, AbsF}}
-               end,
-               KeyFiles),
-             ok = file:del_dir(TmpKeysDir),
              ets:delete(?TAB),
              ok = aec_tx_pool:stop()
      end,
@@ -213,12 +199,6 @@ acct(me) ->
     Key;
 acct(A) when is_binary(A) ->
     A.
-
-mktempd() ->
-    mktempd(os:type()).
-
-mktempd({unix, _}) ->
-    lib:nonl(?cmd("mktemp -d")).
 
 new_pubkey() ->
     {Pub, Priv} = keypair(),

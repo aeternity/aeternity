@@ -146,6 +146,7 @@ aec_keys_setup() ->
     TmpKeysDir = mktempd(),
     ok = application:ensure_started(crypto),
     {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
+    wait_for_it(fun() -> whereis(aec_keys) =/= undefined end, true),
     TmpKeysDir.
 
 aec_keys_cleanup(TmpKeysDir) ->
