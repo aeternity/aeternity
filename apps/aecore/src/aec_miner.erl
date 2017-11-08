@@ -638,7 +638,7 @@ update_transactions(OldTop, NewTop) ->
         aec_chain:get_transactions_between(Hash1, Ancestor),
     {ok, TransactionsOnNewChain} =
         aec_chain:get_transactions_between(Hash2, Ancestor),
-    ok = aec_tx_pool:update(TransactionsOnNewChain, TransactionsOnOldChain),
+    ok = aec_tx_pool:fork_update(TransactionsOnNewChain, TransactionsOnOldChain),
     ok.
 
 block_to_hash(Block) ->

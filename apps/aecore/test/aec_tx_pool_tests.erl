@@ -90,6 +90,32 @@ all_test_() ->
                ?assertEqual(ok, aec_tx_pool:delete(STx5)),
                ?assertMatch({ok, [_,_]}, aec_tx_pool:peek(10))
        end},
+      {"Ensure ordering",
+             fun() ->
+                 %% We should sort by fee, but preserve the order of nonces for each sender
+                 STx1 = a_signed_tx(<<"pk1">>, 1, 1),
+                 STx2 = a_signed_tx(<<"pk1">>, 2, 2),
+                 STx3 = a_signed_tx(<<"pk1">>, 3, 3),
+                 STx4 = a_signed_tx(<<"pk2">>, 2, 5),
+                 STx5 = a_signed_tx(<<"pk2">>, 1, 6),
+
+                 [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
+                 {ok, CurrentMempool} = aec_tx_pool:peek(10),
+
+                 MempoolOrder = [{Sender, Nonce} || #signed_tx{data=#spend_tx{sender=Sender, nonce=Nonce}}
+                                                    <- CurrentMempool],
+                 %% this is not-optimal order: transactions for PK1 are invalid in that order
+                 CorrectOrder = [{<<"pk2">>,1},{<<"pk2">>,2},{<<"pk1">>,3},{<<"pk1">>,2},{<<"pk1">>,1}],
+
+                 ?assertEqual(CorrectOrder, MempoolOrder),
+
+                 %% check if we track nonces correctly
+                 MaxNonce = aec_tx_pool:get_max_nonce(<<"pk1">>),
+                 ?assertEqual({ok,3}, MaxNonce),
+
+                 NotExistingSender = aec_tx_pool:get_max_nonce(<<"pk3">>),
+                 ?assertEqual(undefined, NotExistingSender)
+             end},
       {"As a miner, the node stores in mempool txs received from peers and includes txs from mempool in mined block",
        fun() ->
                %% Simplistic parameter representing maximum number of

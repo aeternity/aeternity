@@ -40,14 +40,6 @@ apply_new_txs(#block{txs = Txs} = Block) ->
         {Count, Count} ->
             {ok, Block};
         {_, _} ->
-            %% TODO: Do not create new block candidate with all txs applied again on trees.
-            %% What should be done instead is:
-            %%  1) Fetch [aec_governance:max_txs_in_block() - 1] transactions from the mempool
-            %%  2) From the fetched transaction, filter out txs
-            %%     which are already included in the current block candidate.
-            %%  3) Apply txs on the current blocks candidate.
-            %%  4) Replace in the block candidate only the subset of
-            %%     its fields, i.e. txs tree root hash, state trees, and whatnot...
             create_block_candidate()
     end.
 

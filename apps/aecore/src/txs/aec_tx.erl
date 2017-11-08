@@ -1,8 +1,12 @@
 -module(aec_tx).
 
--export([fee/1,
-         apply_signed/3,
+-export([apply_signed/3,
          is_coinbase/1]).
+
+%% TX body API: getters, helpers...
+-export([fee/1,
+         nonce/1,
+         origin/1]).
 
 -include("common.hrl").
 -include("trees.hrl").
@@ -15,6 +19,15 @@
 
 -callback new(Args :: map()) ->
     {ok, Tx :: term()} | {error, Reason :: term()}.
+
+-callback fee(Tx :: term()) ->
+    Fee :: integer().
+
+-callback nonce(Tx :: term()) ->
+    Nonce :: non_neg_integer() | undefined.
+
+-callback origin(Tx :: term()) ->
+    Origin :: pubkey() | undefined.
 
 -callback check(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
@@ -35,10 +48,17 @@
 %% API
 %%%=============================================================================
 
-fee(#coinbase_tx{}) ->
-    0;
-fee(#spend_tx{fee = F}) ->
-    F.
+fee(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:fee(Tx).
+
+nonce(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:nonce(Tx).
+
+origin(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:origin(Tx).
 
 -spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) ->
                           {ok, trees()}.
