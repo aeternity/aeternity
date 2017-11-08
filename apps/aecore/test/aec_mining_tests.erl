@@ -30,7 +30,7 @@ mine_block_test_() ->
         {"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
          fun() ->
                  meck:expect(aec_chain, top, 0, {ok, #block{target = ?HIGHEST_TARGET_SCI}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 38),
+                 meck:expect(aec_pow, pick_nonce, 0, 10),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
@@ -59,23 +59,11 @@ difficulty_recalculation_test_() ->
               setup(PoWMod),
               %% This group of tests tests the difficulty
               %% recalculation inside the aec_mining module, hence the
-              %% PoW module can be mocked.
-              meck:new(PoWMod),
-              meck:expect(PoWMod, generate,
-                          fun(_, _, Nonce) ->
-                                  Evd = case PoWMod of
-                                            aec_pow_cuckoo ->
-                                                lists:duplicate(42, 0);
-                                            aec_pow_sha256 ->
-                                                no_value
-                                        end,
-                                  {ok, {Nonce, Evd}}
-                          end),
+              %% PoW module could be mocked.
               meck:expect(aec_chain, top, 0, {ok, #block{}}),
               meck:expect(aec_governance, recalculate_difficulty_frequency, 0, 10)
       end,
       fun(_) ->
-              meck:unload(PoWMod),
               cleanup(unused_arg, PoWMod)
       end,
       [
@@ -93,6 +81,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 20,
                                           time = Now - 50000}}),
+                 meck:expect(aec_pow, pick_nonce, 0, 5),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
@@ -121,6 +110,7 @@ difficulty_recalculation_test_() ->
                              {ok, #header{height = 190,
                                           target = Target,
                                           time = Now - 11000}}),
+                 meck:expect(aec_pow, pick_nonce, 0, 98),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
@@ -135,6 +125,14 @@ difficulty_recalculation_test_() ->
      } || PoWMod <- PoWModules].
 
 setup(PoWMod) ->
+    case PoWMod of
+        aec_pow_cuckoo ->
+            meck:new(application, [unstick, passthrough]),
+            aec_test_utils:mock_fast_cuckoo_pow(),
+            application:start(erlexec);
+        aec_pow_sha256 ->
+            ok
+    end,
     application:start(crypto),
     meck:new(aec_blocks, [passthrough]),
     meck:new(aec_chain, [passthrough]),
@@ -156,7 +154,7 @@ setup(PoWMod) ->
                 {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                 signatures = [<<"sig1">>]}}).
 
-cleanup(_, _PoWMod) ->
+cleanup(_, PoWMod) ->
     application:stop(crypto),
     meck:unload(aec_blocks),
     meck:unload(aec_chain),
@@ -167,6 +165,13 @@ cleanup(_, _PoWMod) ->
     meck:unload(aec_keys),
     meck:unload(aec_trees),
     meck:unload(aeu_time),
-    ok = aec_tx_pool:stop().
+    ok = aec_tx_pool:stop(),
+    case PoWMod of
+        aec_pow_cuckoo ->
+            application:stop(erlexec),
+            meck:unload(application);
+        aec_pow_sha256 ->
+            ok
+    end.
 
 -endif.

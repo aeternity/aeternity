@@ -74,7 +74,7 @@
 %% Optional evidence for PoW verification
 -type pow_evidence() :: 'no_value' | term().
 -type pow_result() :: {'ok', {Nonce :: integer, Solution :: pow_evidence()}} |
-                      {error, no_solution}.
+                      {error, no_solution | {runtime, term()}}.
 %% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
 %% over the actual one. Always positive.
 -type difficulty() :: float().

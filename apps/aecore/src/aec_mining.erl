@@ -42,6 +42,8 @@ mine(Block, Nonce) ->
         {ok, {Nonce, Evd}} ->
             {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
         {error, no_solution} = Error ->
+            Error;
+        {error, {runtime, _}} = Error ->
             Error
     end.
 
