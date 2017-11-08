@@ -25,8 +25,9 @@ block_mine_reward() ->
     ?BLOCK_MINE_REWARD.
 
 max_txs_in_block() ->
-    %% TODO Review considering block size and different size of signed transactions.
-    10.
+    %% TODO: Consider trade-offs sync latency vs pow time
+    %%       Relate to transaction size expressed with gas (when we have channels)
+    10946.
 
 minimum_tx_fee() ->
     1.
