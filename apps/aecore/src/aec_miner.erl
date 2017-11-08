@@ -136,8 +136,9 @@ post_block(Block) ->
 %% application environment and the default.
 %%
 %% The options are:
-%%
-%%
+%%  autostart                             :: boolean()
+%%  fetch_new_txs_from_pool_during_mining :: boolean()
+%%  mining_cycle_attempts_count           :: pos_integer()
 %% @end
 %%--------------------------------------------------------------------
 init(Options) ->
@@ -408,7 +409,7 @@ running(cast, check_keys, State) ->
 %% Catchall, log & drop unwanted messages.
 running(_Type, _Msg, State) ->
     epoch_mining:error("Unknown event in running: ~p:~p~n", [_Type,_Msg]),
-    {keep_state, running, State}.
+    {keep_state, State}.
 
 %% -------------------------------------------------------------------
 %% The Waiting state
