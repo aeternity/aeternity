@@ -3,7 +3,7 @@
 %% API
 -export([create_block_candidate/0,
          apply_new_txs/1,
-         mine/4]).
+         mine/2]).
 
 
 -include("common.hrl").
@@ -13,11 +13,11 @@
 
 %% API
 
--spec create_block_candidate() -> {ok, block(), integer(), integer()} | {error, term()}.
+-spec create_block_candidate() -> {ok, block(), integer()} | {error, term()}.
 create_block_candidate() ->
     create_block_candidate(get_txs_to_mine_in_pool()).
 
--spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer(), integer()} | {error, term()}.
+-spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer()} | {error, term()}.
 apply_new_txs(#block{txs = Txs} = Block) ->
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
     CurrentTxsBlockCount = length(Txs),
@@ -33,17 +33,15 @@ apply_new_txs(#block{txs = Txs} = Block) ->
             end
     end.
 
--spec mine(block(), non_neg_integer(), integer(), integer()) -> {ok, block()} | {error, term()}.
-mine(Block, Attempts, InitialNonce, MaxNonce) ->
+-spec mine(block(), integer()) -> {ok, block()} | {error, term()}.
+mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
     {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
-    case Mod:generate(BlockBin, Target, Attempts, InitialNonce, MaxNonce) of
+    case Mod:generate(BlockBin, Target, Nonce) of
         {ok, {Nonce, Evd}} ->
             {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
-        {error, generation_count_exhausted} = Error ->
-            Error;
-        {error, nonce_range_exhausted} = Error ->
+        {error, no_solution} = Error ->
             Error
     end.
 
@@ -68,8 +66,8 @@ create_block_candidate(TxsToMineInPool) ->
             case aec_blocks:cointains_coinbase_tx(Block0) of
                 true ->
                     Block = maybe_recalculate_difficulty(Block0),
-                    {InitialNonce, MaxNonce} = aec_pow:pick_nonces(),
-                    {ok, Block, InitialNonce, MaxNonce};
+                    RandomNonce = aec_pow:pick_nonce(),
+                    {ok, Block, RandomNonce};
                 false ->
                     {error, coinbase_tx_rejected}
             end

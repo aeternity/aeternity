@@ -13,41 +13,37 @@
 
 -define(TEST_MODULE, aec_pow_cuckoo).
 
+-define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
+
 pow_test_() ->
-    [{"Fail if retry count is zero",
-      fun() ->
-              ?assertEqual({error, generation_count_exhausted},
-                           ?TEST_MODULE:generate(<<"hello there">>, 5555, 0, 188, 0))
-      end},
-     {"Fail when max nonce is reached",
-      fun() ->
-              ?assertEqual({error, nonce_range_exhausted},
-                           ?TEST_MODULE:generate(<<"hello there">>, 5555, 10, 2, 4))
-      end},
-     {"Generate with a winning nonce and high target threshold, verify it",
+    [{"Generate with a winning nonce and high target threshold, verify it",
       {timeout, 60,
        fun() ->
-               %% succeeds in a single step
-               {T1, Res} = timer:tc(?TEST_MODULE, generate,
-                                    [<<"wsffgujnjkqhduihsahswgdf">>, ?HIGHEST_TARGET_SCI, 100, 188, 0]),
+               Target = ?HIGHEST_TARGET_SCI,
+               Nonce = 188,
+               {T1, Res} =
+                   timer:tc(?TEST_MODULE, generate,
+                            [?TEST_BIN, Target, Nonce]),
                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
-               ?assertEqual(ok, element(1, Res)),
-
-               %% verify the beast
                {ok, {Nonce, Soln}} = Res,
-               {T2, Res2} = timer:tc(?TEST_MODULE, verify,
-                                     [<<"wsffgujnjkqhduihsahswgdf">>, Nonce, Soln, ?HIGHEST_TARGET_SCI]),
+               ?assertMatch(L when length(L) == 42, Soln),
+
+               %% verify the nonce and the solution
+               {ok, {Nonce, Soln}} = Res,
+               {T2, Res2} =
+                   timer:tc(?TEST_MODULE, verify,
+                            [?TEST_BIN, Nonce, Soln, Target]),
                ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
-               ?assertEqual(true, Res2)
+               ?assert(Res2)
        end}
      },
-     {"Generate with a winning nonce but low difficulty, shall fail",
+     {"Generate with a winning nonce but low target threshold, shall fail",
       {timeout, 90,
        fun() ->
-               %% Unlikely to succeed after 2 steps
-               Res = ?TEST_MODULE:generate(<<"wsffgujnjkqhduihsahswgdf">>, 16#01010000, 2, 188, 0),
-               ?debugFmt("Received result ~p~n", [Res]),
-               ?assertEqual({error, generation_count_exhausted}, Res)
+               Target = 16#01010000,
+               Nonce = 188,
+               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+               ?assertEqual({error, no_solution}, Res)
        end}
      }
     ].
