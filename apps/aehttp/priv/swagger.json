@@ -13,6 +13,9 @@
   "tags" : [ {
     "name" : "external",
     "description" : "External API"
+  }, {
+    "name" : "internal",
+    "description" : "Internal API"
   } ],
   "schemes" : [ "http" ],
   "paths" : {
@@ -192,7 +195,7 @@
     },
     "/spend-tx" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "internal" ],
         "description" : "Create spend transaction",
         "operationId" : "PostSpendTx",
         "consumes" : [ "application/json" ],
@@ -363,9 +366,6 @@
     "SpendTx" : {
       "type" : "object",
       "properties" : {
-        "sender_pubkey" : {
-          "type" : "string"
-        },
         "recipient_pubkey" : {
           "type" : "string"
         },

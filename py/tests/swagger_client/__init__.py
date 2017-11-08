@@ -20,10 +20,12 @@ from .models.coinbase_tx import CoinbaseTx
 from .models.error import Error
 from .models.ping import Ping
 from .models.signed_tx import SignedTx
+from .models.spend_tx import SpendTx
 from .models.top import Top
 
 # import apis into sdk package
 from .apis.external_api import ExternalApi
+from .apis.internal_api import InternalApi
 
 # import ApiClient
 from .api_client import ApiClient

@@ -88,7 +88,7 @@ get_operations() ->
         'PostSpendTx' => #{
             path => "/v1/spend-tx",
             method => <<"POST">>,
-            handler => 'swagger_external_handler'
+            handler => 'swagger_internal_handler'
         }
     }.
 

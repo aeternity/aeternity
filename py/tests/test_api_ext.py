@@ -33,9 +33,9 @@ def utc_now():
     epoch = datetime.datetime(1970,1,1)
     return int((d - epoch).total_seconds())
 
-def signed_coinbase_tx(height):
+def signed_coinbase_tx():
     account = "BAAggMEhrC3ODBqlYeQ6dk00F87AKMkV6kkyhgfJ/luOzGUC+4APxFkVgAYPai3TjSyLRObv0GeDACg1ZxwnfHY="
-    coinbase = CoinbaseTx(pubkey = account, nonce = height - 1)
+    coinbase = CoinbaseTx(pubkey = account)
     return SignedTx(data = coinbase, type = "coinbase",
             signatures =
             [base64.b64encode("some signature")])
@@ -138,7 +138,7 @@ class TestExternalApi(unittest.TestCase):
                     103724145,110979886,116332888,117754872,128960259,133685357
                     ],
                 ## temporary
-                transactions=[signed_coinbase_tx(block_height)]
+                transactions=[signed_coinbase_tx()]
                 )
         api.post_block(block)
         print("Posted block " + str(block.height))

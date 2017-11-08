@@ -11,6 +11,8 @@ basePath: /v1
 tags:
   - name: external
     description: External API
+  - name: internal
+    description: Internal API
 schemes:
   - http
 paths:
@@ -161,7 +163,7 @@ paths:
   /spend-tx:
     post:
       tags:
-        - external
+        - internal
       operationId: PostSpendTx
       description: 'Create spend transaction'
       consumes:
@@ -281,8 +283,6 @@ definitions:
   SpendTx:
     type: object
     properties:
-      sender_pubkey:
-        type: string
       recipient_pubkey:
         type: string
       amount:

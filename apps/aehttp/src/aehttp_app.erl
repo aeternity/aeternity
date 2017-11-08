@@ -9,8 +9,9 @@
 
 
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
+-define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
+-define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
 -define(INT_ACCEPTORS_POOLSIZE, 100).
--define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8044).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -25,6 +26,7 @@ start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     {ok, _} = ws_task_worker_sup:start_link(),
     ok = start_swagger_external(),
+    ok = start_swagger_internal(),
     ok = start_websocket_internal(),
     gproc:reg({n,l,{epoch, app, aehttp}}),
     MaxWsHandlers = proplists:get_value(handlers, get_websocket_config()),
@@ -53,8 +55,19 @@ start_swagger_external() ->
     {ok, _} = supervisor:start_child(aehttp_sup, Spec),
     ok.
 
-start_websocket_internal() ->
+start_swagger_internal() ->
     Port = get_internal_port(),
+    Spec = swagger_server:child_spec(swagger_int, #{
+                                       ip => {0, 0, 0, 0},
+                                       port => Port,
+                                       net_opts => [],
+                                       logic_handler => aehttp_dispatch_int
+                                      }),
+    {ok, _} = supervisor:start_child(aehttp_sup, Spec),
+    ok.
+
+start_websocket_internal() ->
+    Port = get_internal_websockets_port(),
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/websocket", ws_handler, []}
@@ -92,10 +105,13 @@ local_peer(Port) ->
 get_external_port() ->
     application:get_env(aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT).
 
+get_internal_port() ->
+    InternalConfig = application:get_env(aehttp, internal, []),
+    proplists:get_value(swagger_port, InternalConfig, ?DEFAULT_SWAGGER_INTERNAL_PORT).
+
 get_websocket_config() ->
     InternalConfig = application:get_env(aehttp, internal, []),
     proplists:get_value(websocket, InternalConfig, []).
 
-get_internal_port() ->
+get_internal_websockets_port() ->
     proplists:get_value(port, get_websocket_config(), ?DEFAULT_WEBSOCKET_INTERNAL_PORT).
-
