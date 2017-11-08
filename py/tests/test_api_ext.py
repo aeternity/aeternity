@@ -95,10 +95,11 @@ class TestExternalApi(unittest.TestCase):
 
         
         """
+        ## Note that the node only has the genesis block at this point.
         api = self.EXT_API['dev1']
         top = api.get_top()
         ping_obj = Ping(source="localhost",
-                        genesis_hash="u7RpHLzlZ4qqp+nBVgbR+9BPIla9hcnCd3Xv/H4vUc=",
+                        genesis_hash=top.hash,
                         best_hash=top.hash,
                         difficulty=top.difficulty,
                         share=0,
