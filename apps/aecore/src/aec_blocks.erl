@@ -20,7 +20,8 @@
          hash_internal_representation/1,
          root_hash/1,
          validate/1,
-         cointains_coinbase_tx/1]).
+         coinbase/1,
+         coinbase_pubkey/1]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -77,6 +78,7 @@ set_trees(Block, Trees) ->
 -spec txs(block()) -> list(signed_tx()).
 txs(Block) ->
     Block#block.txs.
+
 
 -spec new(block(), list(signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
@@ -258,7 +260,23 @@ validate_txs_hash(#block{txs = Txs,
             {error, malformed_txs_hash}
     end.
 
+coinbase(#block{txs = []}) ->
+    undefined;
+coinbase(#block{txs = [CoinbaseTx | _Rest]}) ->
+    case aec_tx:is_coinbase(CoinbaseTx) of
+        true -> CoinbaseTx;
+        _ -> undefined
+    end.
+
 cointains_coinbase_tx(#block{txs = []}) ->
     false;
 cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
     aec_tx:is_coinbase(CoinbaseTx).
+
+
+-spec coinbase_pubkey(list(tx())) -> pubkey() | undefined.
+coinbase_pubkey(#block{txs = []}) ->
+    undefined;
+coinbase_pubkey(#block{txs = Txs}) ->
+    [#coinbase_tx{account = AccountPubkey} | _Rest] = Txs,
+    AccountPubkey.
