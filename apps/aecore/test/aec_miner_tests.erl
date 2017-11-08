@@ -242,12 +242,8 @@ chain_test_() ->
       fun(_) ->
               {"Start mining add a block.",
                fun() ->
-                       GB = genesis_block(),
                        %% Add a couple of blocks to the chain.
-                       {ok, B0H} = aec_blocks:hash_internal_representation(GB),
-                       B1  = #block{height = 1, prev_hash = B0H},
-                       B1H = block_hash(B1),
-                       B2  = #block{height = 2, prev_hash = B1H},
+                       [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
                        BH2 = aec_blocks:to_header(B2),
                        ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
                        {State1, _Data1} = sys:get_state(aec_miner),
@@ -261,24 +257,24 @@ chain_test_() ->
       fun(_) ->
               {"Switch to an alternative chain while mining.",
                fun() ->
-                       Chain1 = build_a_chain_of_length(5),
+                       Chain1 = aec_test_utils:gen_block_chain(5),
                        [?TEST_MODULE:post_block(B)
                         || B <- Chain1],
 
-                       [_,_,_,B5] = Chain1,
+                       [_,_,_,_,B5] = Chain1,
                        BH5 = aec_blocks:to_header(B5),
                        aec_test_utils:wait_for_it(
                          fun () -> aec_chain:top_header() end,
                          {ok, BH5}),
- 
+
                        %% TODO: Add some transactions to the pool
                        %% Let the miner mine one block
 
-                       Chain2 = build_a_chain_of_length(7),
+                       Chain2 = aec_test_utils:gen_block_chain(7),
                        [?TEST_MODULE:post_block(B)
                         || B <- Chain2],
 
-                       [_,_,_,_,_,B7] = Chain2,
+                       [_,_,_,_,_,_,B7] = Chain2,
                        BH7 = aec_blocks:to_header(B7),
                        aec_test_utils:wait_for_it(
                          fun () -> aec_chain:top_header() end,
@@ -290,22 +286,6 @@ chain_test_() ->
               }
       end
      ]}.
-
-
-build_a_chain_of_length(N) ->
-    Hash = block_hash(genesis_block()),
-    build_a_chain_of_length(1, N, Hash, []).
-
-build_a_chain_of_length(N, N, _, Blocks) -> lists:reverse(Blocks);
-build_a_chain_of_length(N, Length, Parent, Blocks) ->
-    B  = #block{height = N,
-                prev_hash = Parent,
-                %% Mocked time
-                time = aeu_time:now_in_msecs(),
-                txs = [] %% TODO: Add some real transactions
-               },
-    Hash = block_hash(B),
-    build_a_chain_of_length(N+1, Length, Hash, [B|Blocks]).
 
 genesis_block() ->
     aec_block_genesis:genesis_block().
