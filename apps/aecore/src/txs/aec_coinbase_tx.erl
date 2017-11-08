@@ -2,6 +2,9 @@
 
 %% API
 -export([new/1,
+         fee/1,
+         nonce/1,
+         origin/1,
          check/3,
          process/3,
          serialize/1,
@@ -18,6 +21,18 @@
 -spec new(map()) -> {ok, coinbase_tx()}.
 new(#{account := AccountPubkey}) ->
     {ok, #coinbase_tx{account = AccountPubkey}}.
+
+-spec fee(coinbase_tx()) -> integer().
+fee(#coinbase_tx{}) ->
+    0.
+
+-spec nonce(coinbase_tx()) -> undefined.
+nonce(#coinbase_tx{}) ->
+    undefined.
+
+-spec origin(coinbase_tx()) -> undefined.
+origin(#coinbase_tx{}) ->
+    undefined.
 
 -spec check(coinbase_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->

@@ -30,6 +30,10 @@ coinbase_tx_existing_account_test_() ->
               {"Check coinbase trx with existing account: shall not change state",
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
+                       %% Dispatcher sanity check:
+                       ?assertEqual(undefined, aec_tx:origin(CoinbaseTx)),
+                       ?assertEqual(undefined, aec_tx:nonce(CoinbaseTx)),
+                       ?assertEqual(0, aec_tx:fee(CoinbaseTx)),
                        ?assertEqual({ok, Trees0}, aec_coinbase_tx:check(CoinbaseTx, Trees0, 9))
                end}
       end,

@@ -33,6 +33,11 @@ check_test_() ->
                                   amount = 50,
                                   nonce = 12},
 
+              %% Dispatcher sanity check:
+              ?assertEqual(?SENDER_PUBKEY, aec_tx:origin(SpendTx)),
+              ?assertEqual(12, aec_tx:nonce(SpendTx)),
+              ?assertEqual(10, aec_tx:fee(SpendTx)),
+
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 55, nonce = 5, height = 10},
               StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, insufficient_funds},

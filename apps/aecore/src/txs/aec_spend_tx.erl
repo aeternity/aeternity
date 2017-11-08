@@ -2,6 +2,9 @@
 
 %% API
 -export([new/1,
+         fee/1,
+         nonce/1,
+         origin/1,
          check/3,
          process/3,
          serialize/1,
@@ -25,6 +28,18 @@ new(#{sender := SenderPubkey,
                    amount = Amount,
                    fee = Fee,
                    nonce = Nonce}}.
+
+-spec fee(spend_tx()) -> integer().
+fee(#spend_tx{fee = F}) ->
+    F.
+
+-spec nonce(spend_tx()) -> non_neg_integer().
+nonce(#spend_tx{nonce = Nonce}) ->
+    Nonce.
+
+-spec origin(spend_tx()) -> pubkey().
+origin(#spend_tx{sender = Sender}) ->
+    Sender.
 
 -spec check(spend_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
