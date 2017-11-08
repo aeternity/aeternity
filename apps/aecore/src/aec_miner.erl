@@ -515,6 +515,13 @@ int_mine(BlockCandidate, CurrentMiningNonce, State) ->
             epoch_mining:info("Failed to mine block, "
                               "no solution (nonce ~p); "
                               "retrying.", [CurrentMiningNonce]),
+            gen_statem:cast(?SERVER, bump_initial_cycle_nonce);
+        {error, {runtime, Reason}} ->
+            try exometer:update([ae,epoch,aecore,mining,retries], 1)
+            catch error:_ -> ok end,
+            epoch_mining:error("Failed to mine block, runtime error; "
+                               "retrying with different nonce (was ~p). "
+                               "Error: ~p", [CurrentMiningNonce, Reason]),
             gen_statem:cast(?SERVER, bump_initial_cycle_nonce)
     end.
 

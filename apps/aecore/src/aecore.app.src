@@ -22,6 +22,7 @@
     gb_merkle_trees,
     aeutils,
     msgpack,
+    erlexec,
     aecuckoo
    ]},
   {env, [
