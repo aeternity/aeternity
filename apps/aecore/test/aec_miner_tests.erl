@@ -26,6 +26,8 @@
 miner_test_() ->
     {foreach,
      fun() ->
+             meck:new(application, [unstick, passthrough]),
+             aec_test_utils:mock_fast_cuckoo_pow(),
              meck:new(aec_governance, [passthrough]),
              meck:expect(aec_governance, expected_block_mine_rate,
                          fun() ->
@@ -33,6 +35,7 @@ miner_test_() ->
                          end),
              aec_test_utils:mock_time(),
              ok = application:ensure_started(gproc),
+             ok = application:ensure_started(erlexec),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_persistence:start_link(),
@@ -46,10 +49,12 @@ miner_test_() ->
              ok = aec_persistence:stop_and_clean(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
+             ok = application:stop(erlexec),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              aec_test_utils:unmock_time(),
-             aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+             aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             meck:unload(application)
      end,
      [fun(_) ->
               {"Suspend and resume",
@@ -120,7 +125,7 @@ miner_test_() ->
                                   {State, _} = sys:get_state(?TEST_MODULE),
                                   (State =:= idle)
                           end, true),
-                       
+
                         meck:new(aec_chain, [passthrough]),
                         TestPid = self(),
                         meck:expect(
@@ -187,6 +192,9 @@ miner_test_() ->
 chain_test_() ->
     {foreach,
      fun() ->
+             meck:new(application, [unstick, passthrough]),
+             aec_test_utils:mock_fast_cuckoo_pow(),
+             ok = application:ensure_started(erlexec),
              application:ensure_started(gproc),
              meck:new(aec_governance, [passthrough]),
              meck:expect(aec_governance, expected_block_mine_rate,
@@ -216,7 +224,9 @@ chain_test_() ->
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              meck:unload(aec_headers),
-             meck:unload(aec_blocks)
+             meck:unload(aec_blocks),
+             ok = application:stop(erlexec),
+             meck:unload(application)
      end,
      [
       fun(_) ->
