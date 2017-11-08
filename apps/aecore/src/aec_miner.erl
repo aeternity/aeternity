@@ -136,8 +136,9 @@ post_block(Block) ->
 %% application environment and the default.
 %%
 %% The options are:
-%%
-%%
+%%  autostart                             :: boolean()
+%%  fetch_new_txs_from_pool_during_mining :: boolean()
+%%  mining_cycle_attempts_count           :: pos_integer()
 %% @end
 %%--------------------------------------------------------------------
 init(Options) ->
