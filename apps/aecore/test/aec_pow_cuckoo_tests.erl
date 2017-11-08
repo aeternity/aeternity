@@ -18,49 +18,63 @@
 -define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
 
 pow_test_() ->
-    [{"Generate with a winning nonce and high target threshold, verify it",
-      {timeout, 60,
-       fun() ->
-               Target = ?HIGHEST_TARGET_SCI,
-               Nonce = 188,
-               {T1, Res} =
-                   timer:tc(?TEST_MODULE, generate,
-                            [?TEST_BIN, Target, Nonce]),
-               ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
-               {ok, {Nonce, Soln}} = Res,
-               ?assertMatch(L when length(L) == 42, Soln),
+    {setup,
+     fun() ->
+             meck:new(application, [unstick, passthrough]),
+             meck:expect(application, get_env, 3,
+                         fun(aecore, aec_pow_cuckoo, _) -> {mean16, "-t 5", 16};
+                            (App, Key, Def) ->
+                                 meck:passthrough([App, Key, Def])
+                         end),
+             application:start(erlexec)
+     end,
+     fun(_) ->
+             application:stop(erlexec),
+             meck:unload(application)
+     end,
+     [{"Generate with a winning nonce and high target threshold, verify it",
+       {timeout, 60,
+        fun() ->
+                Target = ?HIGHEST_TARGET_SCI,
+                Nonce = 122,
+                {T1, Res} = timer:tc(?TEST_MODULE, generate,
+                                     [?TEST_BIN, Target, Nonce]),
+                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
+                {ok, {Nonce, Soln}} = Res,
+                ?assertMatch(L when length(L) == 42, Soln),
 
-               %% verify the nonce and the solution
-               {ok, {Nonce, Soln}} = Res,
-               {T2, Res2} =
-                   timer:tc(?TEST_MODULE, verify,
-                            [?TEST_BIN, Nonce, Soln, Target]),
-               ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
-               ?assert(Res2)
-       end}
-     },
-     {"Generate with a winning nonce but low target threshold, shall fail",
-      {timeout, 90,
-       fun() ->
-               Target = 16#01010000,
-               Nonce = 188,
-               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
-               ?assertEqual({error, no_solution}, Res),
+                %% verify the nonce and the solution
+                {ok, {Nonce, Soln}} = Res,
+                {T2, Res2} =
+                    timer:tc(?TEST_MODULE, verify,
+                             [?TEST_BIN, Nonce, Soln, Target]),
+                ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
+                ?assert(Res2)
+        end}
+      },
+      {"Generate with a winning nonce but low target threshold, shall fail",
+       {timeout, 90,
+        fun() ->
+                Target = 16#01010000,
+                Nonce = 122,
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+                ?assertEqual({error, no_solution}, Res),
 
-               %% Any attempts to verify such nonce with a solution
-               %% found with high target threshold shall fail.
-               %%
-               %% Obtain solution with high target threshold ...
-               HighTarget = ?HIGHEST_TARGET_SCI,
-               {ok, {Nonce, Soln2}} =
-                   ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce),
-               ?assertMatch(L when length(L) == 42, Soln2),
-               %% ... then attempt to verify such solution (and nonce)
-               %% with the low target threshold (shall fail).
-               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target))
-       end}
-     }
-    ].
+                %% Any attempts to verify such nonce with a solution
+                %% found with high target threshold shall fail.
+                %%
+                %% Obtain solution with high target threshold ...
+                HighTarget = ?HIGHEST_TARGET_SCI,
+                {ok, {Nonce, Soln2}} =
+                    ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce),
+                ?assertMatch(L when length(L) == 42, Soln2),
+                %% ... then attempt to verify such solution (and
+                %% nonce) with the low target threshold (shall fail).
+                ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target))
+        end}
+      }
+     ]
+    }.
 
 misc_test_() ->
     {setup,

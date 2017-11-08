@@ -11,6 +11,7 @@
         , unmock_time/0
         , mock_difficulty_as_target/0
         , unmock_difficulty_as_target/0
+        , mock_fast_cuckoo_pow/0
         , wait_for_it/2
         , extend_block_chain_by_difficulties_with_nonce_and_coinbase/3
         , extend_block_chain_by_difficulties_with_nonce_and_coinbase/4
@@ -52,6 +53,15 @@ mock_time() ->
 
 unmock_time() ->
     meck:unload(aeu_time).
+
+mock_fast_cuckoo_pow() ->
+    meck:expect(application, get_env, 3,
+                fun
+                    (aecore, aec_pow_cuckoo, _) ->
+                        {"mean16", "-t 5", 16};
+                    (App, Key, Def) ->
+                        meck:passthrough([App, Key, Def])
+                end).
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).
