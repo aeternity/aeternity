@@ -23,6 +23,7 @@
     rocksdb,
     aeutils,
     msgpack,
+    erlexec,
     aecuckoo
    ]},
   {env, [
