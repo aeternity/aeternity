@@ -38,21 +38,6 @@ matrix:
       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
       language: generic
       env: JOB=package
-    # 2 additional JOBS for release acceptance testing
-    # these are only run when there are tags - targeting releases only
-    # both jobs use a modified version of the release (to speed up mining).
-    #
-    # this is a temporary solution until we have a configurable miner
-    # then the fastmining rebar profile will be obsolete and these jobs should
-    # be moved to the package job (to use the real release and to prevent
-    # broken releases to be deployed)
-    - if: tag IS present
-      env: JOB=acceptance-test
-    - if: tag IS present
-      env: JOB=acceptance-test
-      os: osx
-      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
   allow_failures:
     - env: JOB=xref
   fast_finish: true
