@@ -14,19 +14,26 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
             Amount = maps:get(<<"amount">>, SpendTxObj),
             Fee = maps:get(<<"fee">>, SpendTxObj),
-            {ok, Nonce} = aec_next_nonce:for_account(),
-
-            {ok, SpendTx} = aec_spend_tx:new(
-                              #{sender => SenderPubkey,
-                                recipient => RecipientPubkey,
-                                amount => Amount,
-                                fee => Fee,
-                                nonce => Nonce}),
-            {ok, SignedTx} = aec_keys:sign(SpendTx),
-            ok = aec_tx_pool:push(SignedTx),
-            %% TODO: send to peers via external API
-            %% To be done when POST /tx is implemented
-            {200, [], #{}};
+            case aec_next_nonce:pick_for_account(SenderPubkey) of
+                {ok, Nonce} ->
+                    {ok, SpendTx} =
+                        aec_spend_tx:new(
+                          #{sender => SenderPubkey,
+                            recipient => RecipientPubkey,
+                            amount => Amount,
+                            fee => Fee,
+                            nonce => Nonce}),
+                    {ok, SignedTx} = aec_keys:sign(SpendTx),
+                    ok = aec_tx_pool:push(SignedTx),
+                    %% TODO: send to peers via external API
+                    %% To be done when POST /tx is implemented
+                    {200, [], #{}};
+                {error, account_not_found} ->
+                    %% Account was not found in state trees
+                    %% so effectively there have been no funds
+                    %% ever granted to it.
+                    {404, [], #{reason => <<"No funds in an account">>}}
+            end;
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;

@@ -30,7 +30,7 @@ apply_signed_test_() ->
                                          balance = 80,
                                          nonce = 12,
                                          height = 7},
-               StateTree0 = aec_tx_test_utils:create_state_tree_with_accounts(
+               StateTree0 = aec_test_utils:create_state_tree_with_accounts(
                               [MinerAccount, AnotherAccount]),
 
                %% Create 3 signed transactions (2 valid, 1 invalid)
