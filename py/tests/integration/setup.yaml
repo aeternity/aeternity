@@ -1,0 +1,33 @@
+nodes:
+  # describe known nodes; these can be both local or remote
+  local:
+    start: True # if we should start this node or not
+    host: localhost
+    ports:
+      external_api: 3013
+      internal_api: 3113
+      internal_ws: 3114
+  dev1:
+    start: True
+    host: localhost
+    ports:
+      external_api: 3013
+      internal_api: 3113
+      internal_ws: 3114
+  dev2:
+    start: True
+    host: localhost
+    ports:
+      external_api: 3023
+      internal_api: 3123
+      internal_ws: 3124
+  dev3:
+    start: True
+    host: localhost
+    ports:
+      external_api: 3033
+      internal_api: 3133
+      internal_ws: 3134
+tests: # test specific settings
+  test_ext_api:
+    node_to_test: local

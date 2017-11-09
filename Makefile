@@ -110,6 +110,12 @@ python-tests:
 python-ws-test:
 	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3014 --log INFO --handler ws_logic
 
+python-integration-tests:
+	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/
+
+python-single-integration-test:
+	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/test_$(TEST_NAME).py
+
 release-integration-test:
 	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --maxheight=50 --version=$(VER)
 
