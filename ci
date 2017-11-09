@@ -6,7 +6,7 @@ set -x
 
 Version="$(cat VERSION)"
 
-package_prefix() {
+package_os_label() {
     case "${1:?}" in
         linux)
             echo "ubuntu"
@@ -42,33 +42,18 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 xref; )
         ;;
-    script-check_rels)
-        BuildDir="${3:?}"
-        # Check `prod` release can be started and stays up for a few seconds.
-        # TODO Remove when some form of release test setup is hooked to CI.
-        ( cd "${BuildDir:?}" && make prod-build && make prod-start && until ./_build/prod/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/prod/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
-        ( cd "${BuildDir:?}" && make prod-stop; )
-        # Check `local` release can be started and stays up for a few seconds.
-        # TODO Remove when acceptance tests are hooked to CI.
-        ( cd "${BuildDir:?}" && make local-build && make local-start && until ./_build/local/rel/epoch/bin/epoch ping; do printf "."; sleep 1; done; ./_build/local/rel/epoch/bin/epoch eval 'ok = timer:sleep(5000).'; )
-        ( cd "${BuildDir:?}" && make local-stop; )
-        ;;
     script-package)
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
-        Prefix=$(package_prefix "${TRAVIS_OS_NAME:?}")
-        cp -p "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz "${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${Prefix:?}".tar.gz
-        ;;
-    script-acceptance-test)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && ./rebar3 as fastmining tar; )
+        BuiltPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz
+        OsLabel=$(package_os_label "${TRAVIS_OS_NAME:?}")
+        FinalPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${OsLabel:?}".tar.gz
+        cp -p "${BuiltPackagePath:?}" "${FinalPackagePath:?}"
+        # Perform release acceptance testing on the built package.
+        # Configure a simpler PoW than the default one, in order to
+        # speed up mining during the tests.
         make python-env
-        make release-integration-test TARBALL=_build/fastmining/rel/epoch/epoch-"${Version:?}".tar.gz
-        ;;
-    after_failure-check_rels)
-        BuildDir="${3:?}"
-        ls -l "${BuildDir:?}"/_build/{prod,local}/rel/epoch/log
-        for F in "${BuildDir:?}"/_build/{prod,local}/rel/epoch/log/*; do echo "${F:?}"; cat "${F:?}"; echo; done
+        make release-integration-test TARBALL="${FinalPackagePath:?}"
         ;;
     after_failure-*)
         BuildDir="${3:?}"
