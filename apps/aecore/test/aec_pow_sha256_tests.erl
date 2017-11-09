@@ -42,7 +42,11 @@ pow_test_() ->
                Target = 16#01010000,
                Nonce = 1,
                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
-               ?assertEqual({error, no_solution}, Res)
+               ?assertEqual({error, no_solution}, Res),
+
+               %% Any attempts to verify such nonce shall fail.
+               ?assertNot(
+                  ?TEST_MODULE:verify(?TEST_BIN, Nonce, no_value, Target))
        end}
      ]
     }.
