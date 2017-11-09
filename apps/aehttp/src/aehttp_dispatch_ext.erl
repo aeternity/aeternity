@@ -55,6 +55,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             %% aec_blocks:serialize_to_map/1 instead of
             %% aec_blocks:serialize_for_network/1 
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
+            lager:debug("Resp = ~p", [Resp]),
             {200, [], Resp};
         {error, {chain_too_short, _}} ->
             {404, [], #{reason => <<"Chain too short">>}}
@@ -74,14 +75,19 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                     %% or map and always runs jsx:encode/1 on it - even if it
                     %% is already encoded to a binary; that's why we use
                     %% aec_blocks:serialize_to_map/1 instead of
-                    %% aec_blocks:serialize_for_network/1 
+                    %% aec_blocks:serialize_for_network/1
+                    lager:debug("Block = ~p", [Block]),
                     Resp =
                       cleanup_genesis(aec_blocks:serialize_to_map(Block)),
+                    lager:debug("Resp = ~p", [Resp]),
                     {200, [], Resp};
                 {error, {block_not_found, _}} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end
     end;
+
+handle_request('GetTxs', _Req, _Context) ->
+    error(nyi);
 
 handle_request('PostBlock', Req, _Context) ->
     SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
@@ -92,6 +98,12 @@ handle_request('PostBlock', Req, _Context) ->
     {ok, HH} = aec_headers:hash_header(Header),
     lager:debug("'PostBlock'; header hash: ~p", [HH]),
     ok = aec_miner:post_block(Block),
+    {200, [], #{}};
+
+handle_request('PostTx', Req, _Context) ->
+    SerializedTx = maps:get('SignedTx', Req),
+    SignedTx = aec_tx_sign:deserialize_from_binary(SerializedTx),
+    aec_tx_pool:push(SignedTx, tx_received),
     {200, [], #{}};
 
 handle_request('GetAccountBalance', Req, _Context) ->

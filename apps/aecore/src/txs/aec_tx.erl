@@ -1,7 +1,12 @@
 -module(aec_tx).
 
 -export([apply_signed/3,
-         is_coinbase/1]).
+         is_coinbase/1,
+         signers/1]).
+-export([serialize/1,
+         deserialize/1,
+         serialize_to_binary/1,
+         deserialize_from_binary/1]).
 
 %% TX body API: getters, helpers...
 -export([fee/1,
@@ -12,6 +17,8 @@
 -include("trees.hrl").
 -include("txs.hrl").
 
+-export_type([tx/0,
+              signed_tx/0]).
 
 %%%=============================================================================
 %%% aec_tx behavior callbacks
@@ -28,6 +35,8 @@
 
 -callback origin(Tx :: term()) ->
     Origin :: pubkey() | undefined.
+
+-callback signers(Tx :: term()) -> [pubkey()].
 
 -callback check(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
     {ok, NewTrees :: trees()} | {error, Reason :: term()}.
@@ -118,6 +127,31 @@ apply_txs_and_calculate_total_fee([Tx | Rest], Trees0, Height, TotalFee) ->
                        [Tx, Reason]),
             apply_txs_and_calculate_total_fee(Rest, Trees0, Height, TotalFee)
     end.
+
+signers(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:signers(Tx).
+
+serialize(Tx) ->
+    Mod = tx_dispatcher:handler(Tx),
+    Mod:serialize(Tx).
+
+deserialize(Data) ->
+    Mod = tx_dispatcher:handler_by_type(type_of(Data)),
+    Mod:deserialize(Data).
+
+serialize_to_binary(Tx) ->
+    msgpack:pack(serialize(Tx)).
+
+deserialize_from_binary(Bin) ->
+    {ok, Unpacked} = msgpack:unpack(Bin),
+    deserialize(Unpacked).
+
+type_of([#{}|_] = L) ->
+    [Type] = [T || #{<<"type">> := T} <- L],
+    Type;
+type_of([Type|_]) ->
+    Type.
 
 %%------------------------------------------------------------------------------
 %% Check transaction. Prepare state tree: e.g., create newly referenced account

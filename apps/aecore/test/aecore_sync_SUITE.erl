@@ -30,13 +30,14 @@
 
 all() ->
     [
-     {group, two_nodes},
-     {group, three_nodes}
+     {group, all_nodes}
     ].
 
 groups() ->
     [
-     {two_nodes, [],
+     {all_nodes, [sequence], [{group, two_nodes},
+                              {group, three_nodes}]},
+     {two_nodes, [sequence],
       [start_first_node,
        mine_on_first,
        start_second_node,
@@ -44,7 +45,7 @@ groups() ->
        mine_on_second,
        restart_second,
        restart_first]},
-     {three_nodes, [],
+     {three_nodes, [sequence],
       [start_first_node,
        mine_on_first,
        start_second_node,
@@ -194,9 +195,9 @@ mine_one_block(N) ->
     subscribe(N, block_created),
     rpc_call(N, aec_miner, resume, []),
     receive
-        {gproc_ps_event, block_created, Height} ->
+        {gproc_ps_event, block_created, Info} ->
             rpc_call(N, aec_miner, suspend, []),
-            ct:log("block created, height=~p", [Height]),
+            ct:log("block created, Info=~p", [Info]),
             ok
     after 20000 ->
             rpc_call(N, aec_miner, suspend, []),
@@ -223,12 +224,13 @@ proxy_loop(Subs) ->
                     From ! {Ref, ok},
                     proxy_loop([{From, Event}|Subs]);
                 false ->
-                    Res = (catch aec_sync:subscribe(Event)),
+                    Res = (catch aec_events:subscribe(Event)),
                     From ! {Ref, Res},
                     proxy_loop([{From, Event}|Subs])
             end;
         {From, Ref, {unsubscribe, Event}} ->
             From ! {Ref, ok},
+            catch aec_events:unsubscribe(Event),
             proxy_loop([S || S <- Subs,
                              S =/= {From, Event}]);
         {gproc_ps_event, Event, _} = Msg ->

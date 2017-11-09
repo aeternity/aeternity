@@ -7,6 +7,7 @@
          origin/1,
          check/3,
          process/3,
+         signers/1,
          serialize/1,
          deserialize/1,
          type/0]).
@@ -57,6 +58,10 @@ check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
             Error
     end.
 
+-spec signers(spend_tx()) -> [pubkey()].
+signers(#spend_tx{sender = SenderPubKey}) -> [SenderPubKey].
+
+
 -spec process(spend_tx(), trees(), height()) -> {ok, trees()}.
 process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
@@ -85,20 +90,21 @@ serialize(#spend_tx{sender = Sender,
                     amount = Amount,
                     fee = Fee,
                     nonce = Nonce}) ->
-    [#{<<"type">> => type()}, #{<<"vsn">> => version()},
-     #{<<"sender">> => Sender,
-       <<"recipient">> => Recipient,
-       <<"amount">> => Amount,
-       <<"fee">> => Fee,
-       <<"nonce">> => Nonce}].
+    [#{<<"type">> => type()},
+     #{<<"vsn">> => version()},
+     #{<<"sender">> => Sender},
+     #{<<"recipient">> => Recipient},
+     #{<<"amount">> => Amount},
+     #{<<"fee">> => Fee},
+     #{<<"nonce">> => Nonce}].
 
 deserialize([#{<<"type">> := ?SPEND_TX_TYPE},
              #{<<"vsn">>  := ?SPEND_TX_VSN},
-             #{<<"sender">> := Sender,
-               <<"recipient">> := Recipient,
-               <<"amount">> := Amount,
-               <<"fee">> := Fee,
-               <<"nonce">> := Nonce}]) ->
+             #{<<"sender">> := Sender},
+             #{<<"recipient">> := Recipient},
+             #{<<"amount">> := Amount},
+             #{<<"fee">> := Fee},
+             #{<<"nonce">> := Nonce}]) ->
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,

@@ -10,7 +10,8 @@
     lager,
     gb_merkle_trees,
     rocksdb,
-    aeutils
+    aeutils,
+    msgpack
    ]},
   {env, [
         {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}}

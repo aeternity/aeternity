@@ -4,6 +4,8 @@
 -export([ping/1,
          top/1,
          block/2,
+         transactions/1,
+         send_tx/2,
          send_block/2
         ]).
 
@@ -14,15 +16,16 @@
 -spec ping(aec_peers:peer()) -> response(map()).
 ping(Peer) ->
     Req = "ping",
+    Uri = aec_peers:uri(Peer),
     #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
     Peers = [iolist_to_binary(aec_peers:uri(P))
              || P <- aec_peers:get_random(Share, [Peer])],
-    lager:debug("ping(); Peers = ~p", [Peers]),
+    lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = PingObj0#{<<"peers">> => Peers},
     Response = process_request(Peer, post, Req, PingObj),
     case Response of
         {ok, Map} ->
-            lager:debug("ping response: ~p", [Map]),
+            lager:debug("ping response (~p): ~p", [Uri, Map]),
             aec_sync:compare_ping_objects(PingObj, Map),
             check_returned_source(Map, list_to_binary(aec_peers:uri(Peer))),
             {ok, Map};
@@ -54,11 +57,36 @@ block(Peer, Hash) ->
             Error
     end.
 
+-spec transactions(aec_peers:peer()) -> response([aec_tx:signed_tx()]).
+transactions(Peer) ->
+    Uri = aec_peers:uri(Peer),
+    Response = process_request(Uri, post, "transactions", []),
+    case Response of
+        {ok, Map} ->
+            Txs = maps:get('Transactions', Map, []),
+            {ok, lists:map(
+                   fun(T) ->
+                           aec_tx_sign:deserialize_from_binary(T)
+                   end, Txs)}
+    end.
+
 -spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
 send_block(Peer, Block) ->
     Uri = aec_peers:uri(Peer),
     BlockSerialized = aec_blocks:serialize_to_map(Block),
     Response = process_request(Uri, post, "block", BlockSerialized),
+    case Response of
+        {ok, _Map} ->
+            {ok, ok};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+-spec send_tx(aec_peers:peer(), aec_tx:signed_tx()) -> response(ok).
+send_tx(Peer, SignedTx) ->
+    Uri = aec_peers:uri(Peer),
+    TxSerialized = aec_tx_sign:serialize_to_binary(SignedTx),
+    Response = process_request(Uri, post, "tx", TxSerialized),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -119,12 +147,13 @@ process_http_return(R) ->
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
             try
+                lager:debug("Body to parse:~n~s", [Body]),
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [Result]),
                 {ok, Result}
             catch
                 error:E ->
-                    {error, {parse_error, E}}
+                    {error, {parse_error, [E, erlang:get_stacktrace()]}}
             end;
         {error, _} = _Error ->
             lager:debug("process_http_return: ~p", [_Error]),

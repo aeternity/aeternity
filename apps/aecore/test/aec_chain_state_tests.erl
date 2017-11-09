@@ -22,39 +22,46 @@
 %%%===================================================================
 
 only_genesis_test_() ->
-    [{"Insert genesis header, then genesis block"
-     , fun() ->
-               State1 = aec_chain_state:new(),
-               ?assertEqual(undefined, aec_chain_state:top_header(State1)),
-               ?assertEqual(undefined, aec_chain_state:top_block(State1)),
-               GenesisHeader = genesis_header(),
-               {ok, State2} = aec_chain_state:insert_header(GenesisHeader, State1),
-               ?assertEqual(header_hash(GenesisHeader),
-                            aec_chain_state:top_header_hash(State2)),
-               ?assertEqual(undefined,
-                            aec_chain_state:top_block_hash(State2)),
-               GenesisBlock = genesis_block(),
-               {ok, State3} = aec_chain_state:insert_block(GenesisBlock, State2),
-               ?assertEqual(header_hash(GenesisHeader),
-                            aec_chain_state:top_header_hash(State3)),
-               ?assertEqual(block_hash(GenesisBlock),
-                            aec_chain_state:top_block_hash(State3)),
-               ok
-       end},
-     {"Insert genesis block directly"
-     , fun() ->
-               State1 = aec_chain_state:new(),
-               ?assertEqual(undefined, aec_chain_state:top_header(State1)),
-               ?assertEqual(undefined, aec_chain_state:top_block(State1)),
-               GenesisBlock = genesis_block(),
-               {ok, State2} = aec_chain_state:insert_block(GenesisBlock, State1),
-               ?assertEqual(block_hash(GenesisBlock),
-                            aec_chain_state:top_header_hash(State2)),
-               ?assertEqual(block_hash(GenesisBlock),
-                            aec_chain_state:top_block_hash(State2)),
-               ok
-       end}
-    ].
+    {setup,
+     fun() ->
+             ok = application:ensure_started(gproc)
+     end,
+     fun(_) ->
+             ok = application:stop(gproc)
+     end,
+     [{"Insert genesis header, then genesis block"
+       , fun() ->
+                 State1 = aec_chain_state:new(),
+                 ?assertEqual(undefined, aec_chain_state:top_header(State1)),
+                 ?assertEqual(undefined, aec_chain_state:top_block(State1)),
+                 GenesisHeader = genesis_header(),
+                 {ok, State2} = aec_chain_state:insert_header(GenesisHeader, State1),
+                 ?assertEqual(header_hash(GenesisHeader),
+                              aec_chain_state:top_header_hash(State2)),
+                 ?assertEqual(undefined,
+                              aec_chain_state:top_block_hash(State2)),
+                 GenesisBlock = genesis_block(),
+                 {ok, State3} = aec_chain_state:insert_block(GenesisBlock, State2),
+                 ?assertEqual(header_hash(GenesisHeader),
+                              aec_chain_state:top_header_hash(State3)),
+                 ?assertEqual(block_hash(GenesisBlock),
+                              aec_chain_state:top_block_hash(State3)),
+                 ok
+         end},
+      {"Insert genesis block directly"
+       , fun() ->
+                 State1 = aec_chain_state:new(),
+                 ?assertEqual(undefined, aec_chain_state:top_header(State1)),
+                 ?assertEqual(undefined, aec_chain_state:top_block(State1)),
+                 GenesisBlock = genesis_block(),
+                 {ok, State2} = aec_chain_state:insert_block(GenesisBlock, State1),
+                 ?assertEqual(block_hash(GenesisBlock),
+                              aec_chain_state:top_header_hash(State2)),
+                 ?assertEqual(block_hash(GenesisBlock),
+                              aec_chain_state:top_block_hash(State2)),
+                 ok
+         end}
+     ]}.
 
 gc_test_() ->
     {foreach,

@@ -162,6 +162,42 @@
         "security" : [ ]
       }
     },
+    "/tx" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Post a new transaction",
+        "operationId" : "PostTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Put a new transaction to node",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Tx"
+          }
+        } ]
+      }
+    },
+    "/transactions" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get transactions in the mempool",
+        "operationId" : "GetTxs",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Transactions"
+            }
+          }
+        }
+      }
+    },
     "/account/balance" : {
       "get" : {
         "tags" : [ "external" ],
@@ -266,7 +302,7 @@
         "transactions" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/SignedTx"
+            "$ref" : "#/definitions/Tx"
           }
         }
       }
@@ -355,46 +391,13 @@
         }
       }
     },
-    "CoinbaseTx" : {
-      "type" : "object",
-      "properties" : {
-        "pubkey" : {
-          "type" : "string"
-        }
-      }
+    "Tx" : {
+      "type" : "string"
     },
-    "SpendTx" : {
-      "type" : "object",
-      "properties" : {
-        "recipient_pubkey" : {
-          "type" : "string"
-        },
-        "amount" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64"
-        }
-      }
-    },
-    "SignedTx" : {
-      "type" : "object",
-      "properties" : {
-        "type" : {
-          "type" : "string"
-        },
-        "data" : {
-          "type" : "object",
-          "properties" : { }
-        },
-        "signatures" : {
-          "type" : "array",
-          "items" : {
-            "type" : "string"
-          }
-        }
+    "Transactions" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/definitions/Tx"
       }
     }
   },

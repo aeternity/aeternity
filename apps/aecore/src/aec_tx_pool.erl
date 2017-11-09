@@ -20,7 +20,7 @@
 %% API
 -export([start_link/0,
          stop/0]).
--export([push/1,
+-export([push/1, push/2,
          delete/1,
          peek/1,
          fork_update/2,
@@ -31,6 +31,7 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(TAB, ?MODULE).
 
 -record(state, {db :: pool_db()}).
 
@@ -42,6 +43,8 @@
 -type pool_db_value() :: signed_tx().
 -type pool_db() :: atom().
 
+-type event() :: tx_created | tx_received.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -50,15 +53,23 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 stop() ->
+    %% implies also clearing the mempool
     gen_server:stop(?SERVER).
+
+-define(PUSH_EVENT(E), Event =:= tx_created; Event =:= tx_received).
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
 -spec push(signed_tx()|list(signed_tx())) -> ok.
-push(Txs) when is_list(Txs) ->
-    gen_server:call(?SERVER, {push, Txs});
 push(Tx) ->
-    gen_server:call(?SERVER, {push, [Tx]}).
+    push(Tx, tx_created).
+
+-spec push(signed_tx()|list(signed_tx()), event()) -> ok.
+push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
+    gen_server:call(?SERVER, {push, Txs, Event});
+push([], _) -> ok;
+push(Tx, Event) when ?PUSH_EVENT(Event) ->
+    gen_server:call(?SERVER, {push, [Tx], Event}).
 
 -spec delete(signed_tx()|list(signed_tx())) -> ok.
 delete(Txs) when is_list(Txs) ->
@@ -73,10 +84,9 @@ get_max_nonce(Sender) ->
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
--spec peek(MaxNumberOfTxs::pos_integer()) -> {ok, [signed_tx()]}.
-peek(MaxNumberOfTxs) ->
-    gen_server:call(?SERVER, {peek, MaxNumberOfTxs}).
-
+-spec peek(pos_integer() | infinity) -> {ok, [signed_tx()]}.
+peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    gen_server:call(?SERVER, {peek, MaxN}).
 
 -spec fork_update(AddedToChain::[signed_tx()], RemovedFromChain::[signed_tx()]) -> ok.
 fork_update(AddedToChain, RemovedFromChain) ->
@@ -89,7 +99,6 @@ fork_update(AddedToChain, RemovedFromChain) ->
     delete(AddedToChain -- RemovedFromChain),
     ok.
 
-
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -101,8 +110,8 @@ init([]) ->
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
-handle_call({push, Txs}, _From, #state{db = Mempool} = State) ->
-    [pool_db_put(Mempool, pool_db_key(Tx), Tx) || Tx <- Txs],
+handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
+    [pool_db_put(Mempool, pool_db_key(Tx), Tx, Event) || Tx <- Txs],
     {reply, ok, State};
 handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
     [pool_db_delete(Mempool, pool_db_key(Tx)) || Tx <- Txs],
@@ -120,6 +129,8 @@ handle_cast(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
+handle_info({'ETS-TRANSFER', _, _, _}, State) ->
+    {noreply, State};
 handle_info(Info, State) ->
     lager:warning("Ignoring unknown info: ~p", [Info]),
     {noreply, State}.
@@ -181,15 +192,29 @@ pool_db_peek(Mempool, Max) ->
     Txs = lists:reverse(Iterate(Iterate, First, 0, Max, [])),
     {ok, Txs}.
 
--spec pool_db_put(pool_db(), pool_db_key(), pool_db_value()) -> true.
-pool_db_put(_, undefined, _) ->
-    true; %% Ignore coinbase
-pool_db_put(Mempool, Key, Tx) ->
-    ets:insert(Mempool, {Key, Tx}).
+-spec pool_db_put(pool_db(), pool_db_key(), pool_db_value(), event()) -> true.
+pool_db_put(_, undefined, _, _) ->
+    false; %% Ignore coinbase
+pool_db_put(Mempool, Key, Tx, Event) ->
+    case ets:member(Mempool, Key) of
+        false ->
+            case aec_tx_sign:verify(Tx) of
+                ok ->
+                    ets:insert(Mempool, {Key, Tx}),
+                    aec_events:publish(Event, Tx),
+                    true;
+                {error, Reason} ->
+                    lager:error("verification error: ~p~nTx = ~p",
+                                [Reason, Tx]),
+                    false
+            end;
+        true ->
+            lager:debug("Tx already in pool (~p)", [Key]),
+            false
+    end.
 
 -spec pool_db_delete(pool_db(), pool_db_key()) -> true.
 pool_db_delete(_, undefined) ->
     true; %% Ignore coinbase
 pool_db_delete(Mempool, Key) ->
     ets:delete(Mempool, Key).
-

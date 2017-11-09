@@ -11,9 +11,7 @@
 -include("peers.hrl").
 
 %% API
--export([connect_peer/1,
-         received_block/1,
-         block_created/1
+-export([connect_peer/1
         ]).
 
 -export([subset_size/0,
@@ -21,9 +19,6 @@
 
 -export([local_ping_object/0,
          compare_ping_objects/2]).
-
--export([subscribe/1,
-         unsubscribe/1]).
 
 %% gen_server callbacks
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
@@ -45,13 +40,6 @@
 -spec connect_peer(http_uri:uri()) -> ok.
 connect_peer(Uri) ->
     gen_server:cast(?MODULE, {connect, Uri}).
-
--spec received_block(aec_blocks:block()) -> ok.
-received_block(Block) ->
-    gen_server:cast(?MODULE, {received_block, Block}).
-
-block_created(Block) ->
-    gen_server:cast(?MODULE, {block_created, Block}).
 
 -spec subset_size() -> non_neg_integer().
 subset_size() ->
@@ -130,16 +118,6 @@ compare_ping_objects(Local, Remote) ->
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
 
--spec subscribe(block_created | block_received) -> ok.
-subscribe(Event) when Event == block_created; Event == block_received ->
-    gproc_ps:subscribe(l, Event),
-    ok.
-
--spec unsubscribe(block_created | block_received) -> ok.
-unsubscribe(Event) ->
-    gproc_ps:unsubscribe(l, Event),
-    ok.
-
 %%%=============================================================================
 %%% gen_server functions
 %%%=============================================================================
@@ -155,6 +133,8 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
+    aec_events:subscribe(block_created),
+    aec_events:subscribe(tx_created),
     Peers = application:get_env(aecore, peers, []),
     aec_peers:add_and_ping_peers(Peers),
     {ok, #state{}}.
@@ -173,16 +153,22 @@ handle_cast({connect, Uri}, State) ->
 handle_cast({start_sync, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {start_sync, PeerUri}),
     {noreply, State};
-handle_cast({received_block, Block}, State) ->
-    queue_block(Block, received, forward, State),
-    {noreply, State};
-handle_cast({block_created, Block}, State) ->
-    queue_block(Block, created, forward, State),
-    publish(block_created, aec_blocks:height(Block)),
-    {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
 
+handle_info({gproc_ps_event, Event, Info}, State) ->
+    case Event of
+        block_created   -> enqueue(forward, #{status => created,
+                                              block => Info}, State);
+        block_received  -> enqueue(forward, #{status => received,
+                                              block => Info}, State);
+        tx_created      -> enqueue(forward, #{status => created,
+                                              tx => Info}, State);
+        tx_received     -> enqueue(forward, #{status => received,
+                                              tx => Info}, State);
+        _ -> ignore
+    end,
+    {noreply, State};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -207,20 +193,20 @@ process_job([{T, Job}]) ->
     case Job of
         {forward, #{block := Block}, Peer} ->
             do_forward_block(Block, Peer);
+        {forward, #{tx := Tx}, Peer} ->
+            do_forward_tx(Tx, Peer);
         {start_sync, PeerUri} ->
             do_start_sync(PeerUri);
         _Other ->
             lager:debug("unknown job", [])
     end.
 
-queue_block(Block, Status, Op, State) ->
+enqueue(Op, Msg, State) ->
     case aec_peers:get_random(State#state.subset_size) of
         [] ->
             ok;
         [_|_] = Peers ->
-            [enqueue_recv({Op, #{status => Status,
-                                 block  => Block}, Peer})
-             || Peer <- Peers]
+            [enqueue_recv({Op, Msg, Peer}) || Peer <- Peers]
     end.
 
 enqueue_recv(Job) ->
@@ -229,6 +215,10 @@ enqueue_recv(Job) ->
 do_forward_block(Block, Peer) ->
     Res = aeu_requests:send_block(Peer, Block),
     lager:debug("send_block Res (~p): ~p", [Peer, Res]).
+
+do_forward_tx(Tx, Peer) ->
+    Res = aeu_requests:send_tx(Peer, Tx),
+    lager:debug("send_tx Res (~p): ~p", [Peer, Res]).
 
 do_start_sync(PeerUri) ->
     fetch_headers(PeerUri, genesis_hash(), []).
@@ -301,24 +291,39 @@ fetch_next(Hash, PeerUri, GHash, Acc) ->
                 _ ->
                     Hdr = aec_blocks:to_header(Block),
                     {ok, HdrHash} = aec_headers:hash_header(Hdr),
-                    case aec_chain:get_block_by_hash(HdrHash) of
-                        {ok, _} ->
-                            lager:debug(
-                              "we have this block, start writing (~p)",
-                              [HdrHash]),
-                            %% we're done
-                            try_write_blocks(Acc);
-                        {error, _} ->
-                            lager:debug("new block, continue (~p)", [HdrHash]),
-                            fetch_next(
-                              aec_headers:prev_hash(Hdr), PeerUri, GHash,
-                              [{HdrHash, Block}|Acc])
+                    case Hash =:= HdrHash of
+                        true ->
+                            %% It's the block we asked for
+                            lager:debug("Verified block hash", []),
+                            process_fetched_block(
+                              HdrHash, Hdr, Block, PeerUri, GHash, Acc);
+                        false ->
+                            %% Unexpected. Should we really try to write Acc?
+                            lager:error("Hashes don't match! (~p | ~p)",
+                                        [Hash, HdrHash]),
+                            try_write_blocks(Acc)
                     end
             end;
         {error, _} ->
             %% Unexpected. Try to write the blocks we have
             try_write_blocks(Acc)
     end.
+
+process_fetched_block(HdrHash, Hdr, Block, PeerUri, GHash, Acc) ->
+    case aec_chain:get_block_by_hash(HdrHash) of
+        {ok, _} ->
+            lager:debug(
+              "we have this block, start writing (~p)",
+              [HdrHash]),
+            %% we're done
+            try_write_blocks(Acc);
+        {error, _} ->
+            lager:debug("new block, continue (~p)", [HdrHash]),
+            fetch_next(
+              aec_headers:prev_hash(Hdr), PeerUri, GHash,
+              [{HdrHash, Block}|Acc])
+    end.
+
 
 try_write_blocks([{HdrHash, Block}|Blocks]) ->
     %% block list has oldest block first
@@ -375,6 +380,3 @@ header_hash(Block) ->
 
 source_uri() ->
     list_to_binary(aec_peers:get_local_peer_uri()).
-
-publish(Event, Msg) ->
-    gproc_ps:publish(l, Event, Msg).

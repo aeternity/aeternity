@@ -83,10 +83,15 @@ do_remove_all() ->
 
 
 setup() ->
-    crypto:start(),
-    aec_peers:start_link().
+    application:ensure_started(crypto),
+    application:ensure_started(gproc),
+    gproc:reg({n,l,{epoch,app,aehttp}}),  %% tricking aec_peers
+    aec_peers:start_link(),
+    ok.
 
 teardown(_) ->
+    gen_server:stop(aec_peers),
+    application:stop(gproc),
     crypto:stop().
 
 -endif.
