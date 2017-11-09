@@ -78,9 +78,10 @@ header_chain_test_() ->
      fun() ->
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
-             ok
+             aec_test_utils:aec_keys_setup()
      end,
-     fun(_) ->
+     fun(TmpKeyDir) ->
+             aec_test_utils:aec_keys_cleanup(TmpKeyDir),
              ok = aec_chain:stop(),
              ok = aec_persistence:stop()
      end,
@@ -93,12 +94,15 @@ header_chain_test_() ->
              %% Check height of genesis - for readability of the test.
              0 = aec_headers:height(BH0),
 
+             %% Create a chain that we are going to use.
+             [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
              %% Add a couple of headers - not blocks - to the chain.
              {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-             BH1 = #header{height = 1, prev_hash = B0H},
+             BH1 = aec_blocks:to_header(B1),
              ?assertEqual(ok, aec_chain:insert_header(BH1)),
              {ok, B1H} = aec_headers:hash_header(BH1),
-             BH2 = #header{height = 2, prev_hash = B1H},
+             BH2 = aec_blocks:to_header(B2),
              ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
              %% Check highest header.
@@ -137,14 +141,18 @@ block_chain_test_() ->
      fun() ->
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
-             ok
+             aec_test_utils:aec_keys_setup()
      end,
-     fun(_) ->
+     fun(TmpKeyDir) ->
+             aec_test_utils:aec_keys_cleanup(TmpKeyDir),
              ok = aec_chain:stop(),
              ok = aec_persistence:stop()
      end,
      [{"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
@@ -155,11 +163,9 @@ block_chain_test_() ->
 
                %% Add a couple of headers - not blocks - to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               B1 = #block{height = 1, prev_hash = B0H},
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
                {ok, B1H} = aec_headers:hash_header(BH1),
-               B2 = #block{height = 2, prev_hash = B1H},
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
@@ -196,6 +202,9 @@ block_chain_test_() ->
        end},
      {"Build chain with genesis block plus 2 headers, then store block corresponding to header before top header",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
@@ -206,11 +215,9 @@ block_chain_test_() ->
 
                %% Add a couple of headers - not blocks - to the chain.
                {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               B1 = #block{height = 1, prev_hash = B0H},
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
                {ok, B1H} = aec_headers:hash_header(BH1),
-               B2 = #block{height = 2, prev_hash = B1H},
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
@@ -252,13 +259,13 @@ get_work_test_() ->
              ok = aec_test_utils:mock_difficulty_as_target(),
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
-             ok
+             aec_test_utils:aec_keys_setup()
      end,
-     fun(_) ->
+     fun(TmpKeyDir) ->
              ok = aec_chain:stop(),
              ok = aec_persistence:stop(),
              ok = aec_test_utils:unmock_difficulty_as_target(),
-             ok
+             aec_test_utils:aec_keys_cleanup(TmpKeyDir)
      end,
      [{"Get work in chain of only genesis",
        fun() ->
@@ -275,23 +282,24 @@ get_work_test_() ->
        end},
       {"Get work in chain of genesis block plus 2 headers",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Add a couple of headers to the chain.
-               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               BH1 = #header{height = 1, prev_hash = B0H, target = 2},
+               BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
-               {ok, B1H} = aec_headers:hash_header(BH1),
-               BH2 = #header{height = 2, prev_hash = B1H, target = 5},
+               BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_chain:insert_header(BH2)),
 
                %% Check work of chain at top.
                {ok, {Difficulty, {top_header, TH}}} = aec_chain:get_total_difficulty(),
                ?assertEqual(TH, BH2),
-               ?assertEqual(trunc(1000*(?GENESIS_DIFFICULTY + 7.0)),
+               ?assertEqual(trunc(1000*(?GENESIS_DIFFICULTY*3)),
                             trunc(1000*Difficulty))
 
        end}]}.
@@ -302,14 +310,19 @@ unhappy_paths_test_() ->
      fun() ->
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
-             ok
+             aec_test_utils:aec_keys_setup()
+
      end,
-     fun(_) ->
+     fun(TmpKeyDir) ->
              ok = aec_chain:stop(),
-             ok = aec_persistence:stop()
+             ok = aec_persistence:stop(),
+             aec_test_utils:aec_keys_cleanup(TmpKeyDir)
      end,
      [{"Get header by hash - case not found",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
@@ -319,13 +332,11 @@ unhappy_paths_test_() ->
                0 = aec_headers:height(BH0),
 
                %% Add a header to the chain.
-               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               BH1 = #header{height = 1, prev_hash = B0H},
+               BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
 
                %% Attempt to lookup header not added to chain.
-               {ok, B1H} = aec_headers:hash_header(BH1),
-               BH2 = #header{height = 2, prev_hash = B1H},
+               BH2 = aec_blocks:to_header(B2),
                {ok, B2H} = aec_headers:hash_header(BH2),
 
                %% Attempt to get by hash header not added to chain.
@@ -334,32 +345,23 @@ unhappy_paths_test_() ->
        end},
       {"Insert header meant to be successor of top header - case wrong previous hash",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2, B3] = aec_test_utils:gen_block_chain(4),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
+               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Check height of genesis - for readability of the test.
                0 = aec_headers:height(BH0),
 
-               %% %% Attempts to add to the chain at genesis header with
-               %% %% inconsistent previous header fail.
-               %% ?assertEqual({error, {previous_hash_is_not_top,
-               %%                      {top_header, BH0}}},
-               %% aec_chain:insert_header(BH0)), %% Genesis again.
-               %% New implementation allows new headers where hash_is_not_top
-               %%
-               %% But a new genisis should not be allowed.
-
+               %% A new genesis should not be allowed.
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
-               {ok, B0H} = aec_blocks:hash_internal_representation(B0),
-               BH1 = #header{height = 1, prev_hash = B0H},
-               {ok, B1H} = aec_headers:hash_header(BH1),
-               BH2 = #header{height = 2, prev_hash = B1H},
-               %% New implementation allows new headers where hash_is_not_top
-               %%
-               %% ?assertEqual({error, {previougs_hash_is_not_top,
-               %% {top_header, BH0}}},
+               BH1 = aec_blocks:to_header(B1),
+               BH2 = aec_blocks:to_header(B2),
+
                aec_chain:insert_header(BH2), %% far ahead.
                %% Chain BH0->[] BH2
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
@@ -369,22 +371,26 @@ unhappy_paths_test_() ->
                %% Chain BH0->BH1->BH2
                ?assertEqual({ok, BH2}, aec_chain:top_header()),
 
-
-               {ok, B2H} = aec_headers:hash_header(BH2),
-               BH3 = #header{height = 3, prev_hash = B2H},
+               BH3 = aec_blocks:to_header(B3),
                aec_chain:insert_header(BH3), %% Top
                %% Chain BH0->BH1->BH2-BH3
                ?assertEqual({ok, BH3}, aec_chain:top_header()),
-               ?assertEqual(ok,
-                            aec_chain:insert_header(BH1)), %% Block 1 again.
+               ?assertEqual(ok, aec_chain:insert_header(BH1)), %% Block 1 again.
                ?assertEqual({ok, BH3}, aec_chain:top_header()),
+
                %% Previous hash to to 2 block headers ago.
-               aec_chain:insert_header(#header{height = 2, prev_hash = B0H}),
+               aec_chain:insert_header(BH3#header{height = 2, prev_hash = B0H}),
 
                ?assertEqual({ok, BH3}, aec_chain:top_header())
        end},
       {"Insert header meant to be successor of top header - case correct previous hash but wrong height",
        fun() ->
+               %% Create a chain that we are going to use.
+               [B0, B1, B2, B3] = aec_test_utils:gen_block_chain(4),
+               BH1 = aec_blocks:to_header(B1),
+               BH2 = aec_blocks:to_header(B2),
+               BH3 = aec_blocks:to_header(B3),
+
                %% Check chain is at genesis.
                B0 = genesis_block(),
                BH0 = aec_blocks:to_header(B0),
@@ -399,16 +405,15 @@ unhappy_paths_test_() ->
                ?assertEqual({error, {height_inconsistent_with_previous_hash,
                                      {top_header, BH0}}},
                             aec_chain:insert_header(
-                              #header{height = 2, prev_hash = B0H})),
+                              BH2#header{prev_hash = B0H})),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
                ?assertEqual({error, {height_inconsistent_with_previous_hash,
                                      {top_header, BH0}}},
                             aec_chain:insert_header(
-                              #header{height = 0, prev_hash = B0H})),
+                              BH2#header{height = 0, prev_hash = B0H})),
                ?assertEqual({ok, BH0}, aec_chain:top_header()),
 
                %% Add a header to the chain.
-               BH1 = #header{height = 1, prev_hash = B0H},
                ?assertEqual(ok, aec_chain:insert_header(BH1)),
                ?assertEqual({ok, BH1}, aec_chain:top_header()),
 
@@ -418,17 +423,17 @@ unhappy_paths_test_() ->
                ?assertEqual({error, {height_inconsistent_with_previous_hash,
                                      {top_header, BH1}}},
                             aec_chain:insert_header(
-                              #header{height = 3, prev_hash = B1H})),
+                              BH3#header{prev_hash = B1H})),
                ?assertEqual({ok, BH1}, aec_chain:top_header()),
                ?assertEqual({error, {height_inconsistent_with_previous_hash,
                                      {top_header, BH1}}},
                             aec_chain:insert_header(
-                              #header{height = 1, prev_hash = B1H})),
+                              BH1#header{prev_hash = B1H})),
                ?assertEqual({ok, BH1}, aec_chain:top_header()),
                ?assertEqual({error, {height_inconsistent_with_previous_hash,
                                      {top_header, BH1}}},
                             aec_chain:insert_header(
-                              #header{height = 0, prev_hash = B1H})),
+                              BH0#header{prev_hash = B1H})),
                ?assertEqual({ok, BH1}, aec_chain:top_header())
        end}]}.
 

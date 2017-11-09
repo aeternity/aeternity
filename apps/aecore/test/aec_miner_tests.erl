@@ -36,7 +36,6 @@ miner_test_() ->
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-             ok = application:ensure_started(crypto),
              {ok, _} = ?TEST_MODULE:start_link([{autostart, true}]),
              TmpKeysDir
      end,
@@ -45,20 +44,10 @@ miner_test_() ->
              ok = aec_chain:stop(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
-             aec_test_utils:aec_keys_cleanup(TmpKeysDir),
-             %% {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-             %% %% Expect two filenames - private and public keys.
-             %% [_KF1, _KF2] = KeyFiles,
-             %% lists:foreach(
-             %%   fun(F) ->
-             %%           AbsF = filename:absname_join(TmpKeysDir, F),
-             %%           {ok, _} = {file:delete(AbsF), {F, AbsF}}
-             %%   end,
-             %%   KeyFiles),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              aec_test_utils:unmock_time(),
-             file:delete(TmpKeysDir)
+             aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
      [fun(_) ->
               {"Suspend and resume",
@@ -219,22 +208,11 @@ chain_test_() ->
              ok = aec_tx_pool:stop(),
              aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
-             %% Expect two filenames - private and public keys.
-
-             %% [_KF1, _KF2] = KeyFiles,
-             %% lists:foreach(
-             %%   fun(F) ->
-             %%           AbsF = filename:absname_join(TmpKeysDir, F),
-             %%           {ok, _} = {file:delete(AbsF), {F, AbsF}}
-             %%   end,
-             %%   KeyFiles),
-             %% ok = file:del_dir(TmpKeysDir),
              aec_test_utils:unmock_time(),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              meck:unload(aec_headers),
-             meck:unload(aec_blocks),
-             file:delete(TmpKeysDir)
+             meck:unload(aec_blocks)
      end,
      [
       fun(_) ->
@@ -284,9 +262,6 @@ chain_test_() ->
               }
       end
      ]}.
-
-genesis_block() ->
-    aec_block_genesis:genesis_block().
 
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
