@@ -212,12 +212,14 @@ mine_block_from_genesis_test_() ->
               meck:expect(aec_pow, pick_nonces, 0, {1, 400}),
               {ok, _} = aec_tx_pool:start_link(),
               TmpKeysDir = aec_test_utils:aec_keys_setup(),
+              {ok, _} = aec_persistence:start_link(),
               {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
               TmpKeysDir
       end,
       fun(TmpKeysDir) ->
               ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
               ok = aec_chain:stop(),
+              ok = aec_persistence:stop_and_clean(),
               ok = aec_tx_pool:stop(),
               ?assert(meck:validate(aec_pow)),
               meck:unload(aec_pow),

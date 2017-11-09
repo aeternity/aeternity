@@ -35,6 +35,7 @@ miner_test_() ->
              ok = application:ensure_started(gproc),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
              {ok, _} = ?TEST_MODULE:start_link([{autostart, true}]),
              TmpKeysDir
@@ -42,6 +43,7 @@ miner_test_() ->
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
              ok = aec_chain:stop(),
+             ok = aec_persistence:stop_and_clean(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
              ?assert(meck:validate(aec_governance)),
@@ -194,6 +196,7 @@ chain_test_() ->
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
              aec_test_utils:mock_time(),
              {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
              {ok, _} = ?TEST_MODULE:start_link(),
              meck:new(aec_headers, [passthrough]),
@@ -205,6 +208,7 @@ chain_test_() ->
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
              ok = aec_chain:stop(),
+             ok = aec_persistence:stop_and_clean(),
              ok = aec_tx_pool:stop(),
              aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
@@ -262,10 +266,6 @@ chain_test_() ->
               }
       end
      ]}.
-
-block_hash(B) ->
-    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
-    Hash.
 
 wait_for_running() ->
     aec_test_utils:wait_for_it(
