@@ -22,7 +22,7 @@ check_test_() ->
      {"Sender account does not exist in state trees",
       fun() ->
               SpendTx = #spend_tx{fee = 10},
-              StateTree = aec_tx_test_utils:create_state_tree(),
+              StateTree = aec_test_utils:create_state_tree(),
               ?assertEqual({error, sender_account_not_found},
                            ?TEST_MODULE:check(SpendTx, StateTree, 10))
       end},
@@ -39,7 +39,7 @@ check_test_() ->
               ?assertEqual(10, aec_tx:fee(SpendTx)),
 
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 55, nonce = 5, height = 10},
-              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
+              StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, insufficient_funds},
                            ?TEST_MODULE:check(SpendTx, StateTree, 20))
       end},
@@ -51,7 +51,7 @@ check_test_() ->
                                   nonce = 12},
               AccountNonce = 15,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = AccountNonce, height = 10},
-              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
+              StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, account_nonce_too_high},
                            ?TEST_MODULE:check(SpendTx, StateTree, 20))
       end},
@@ -64,7 +64,7 @@ check_test_() ->
               AccountHeight = 100,
               BlockHeight = 20,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = AccountHeight},
-              StateTree = aec_tx_test_utils:create_state_tree_with_account(SenderAccount),
+              StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, sender_account_height_too_big},
                            ?TEST_MODULE:check(SpendTx, StateTree, BlockHeight))
       end},
@@ -80,7 +80,7 @@ check_test_() ->
               BlockHeight = 20,
               SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = SenderAccountHeight},
               RecipientAccount = #account{pubkey = ?RECIPIENT_PUBKEY, height = RecipientAccountHeight},
-              StateTree = aec_tx_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+              StateTree = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
               ?assertEqual({error, recipient_account_height_too_big},
                            ?TEST_MODULE:check(SpendTx, StateTree, BlockHeight))
       end}].
@@ -96,7 +96,7 @@ process_test_() ->
                                           balance = 80,
                                           nonce = 12,
                                           height = 11},
-              StateTree0 = aec_tx_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+              StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
                                                  recipient => ?RECIPIENT_PUBKEY,
