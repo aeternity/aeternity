@@ -41,7 +41,14 @@ end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
     Names0 = ?config(regnames, Config),
     Apps = application:which_applications(),
-    Names = registered() -- [cover_server],
-    [] = Apps -- Apps0,
-    [] = Names -- Names0,
-    ok.
+    Names = registered() -- [cover_server, timer_server],
+    case {(Apps -- Apps0), Names -- Names0} of
+      {[], []} -> 
+        ok;
+      {NewApps, _} when NewApps =/= [] ->
+        %% New applications take precedence over new registered processes
+        {fail, {started_applications, NewApps}};
+      {_, NewReg} -> 
+        {fail, {registered_processes, NewReg}}
+    end.
+
