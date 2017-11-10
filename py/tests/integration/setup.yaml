@@ -31,7 +31,7 @@ nodes:
 tests: # test specific settings
   test_ext_api:
     # Testing the external API
-    node_to_test: dev2
+    node_to_test: dev1
     chain_data: py/tests/integration/data/bchain.txt
   test_use_cases:
     test_syncing:
@@ -48,5 +48,15 @@ tests: # test specific settings
       # only download updates to his blockchain when his node starts.
       nodes:
         bob: dev1
+      blocks_to_post: 7
+      chain_data: py/tests/integration/data/bchain.txt
+    test_node_discovery:
+      # Assuming Carol's node only knows about Bob upon startup and that Bob's
+      # node knows Alice, Carol's node should be able to discover Alice and
+      # sync with her node.
+      nodes:
+        alice: dev1
+        bob: dev2
+        carol: dev3
       blocks_to_post: 7
       chain_data: py/tests/integration/data/bchain.txt

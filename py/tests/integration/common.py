@@ -43,27 +43,41 @@ def internal_api(name):
 
 def node_online(api):
     try:
-        return api.get_top() > -1
+        top = api.get_top()
+        return top.height > -1
     except Exception as e:
         return False
 
 def start_node(name, config_filename=None):
-    config_prefix = ""
-    if config_filename != None:
-        if config_filename[0] == "/": # absolute path
-            config_prefix =  'ERL_FLAGS="-config ' + config_filename + '" ' 
-        else:
-            config_prefix =  'ERL_FLAGS="-config `pwd`/' + config_filename + '" ' 
-    os.system(config_prefix + "make " + name + "-start")
-    api = external_api(name)
-    wait(lambda: node_online(api), timeout_seconds=10, sleep_seconds=0.5)
+    if should_start_node(name):
+        print("\nNode " + name + " starting")
+        config_prefix = ""
+        if config_filename != None:
+            if config_filename[0] == "/": # absolute path
+                config_prefix =  'ERL_FLAGS="-config ' + config_filename + '" ' 
+            else:
+                config_prefix =  'ERL_FLAGS="-config `pwd`/' + config_filename + '" ' 
+
+        p = os.popen(config_prefix + "make " + name + "-start","r")
+        while 1:
+            line = p.readline()
+            if not line: break
+        api = external_api(name)
+        wait(lambda: node_online(api), timeout_seconds=10, sleep_seconds=0.5)
 
 def stop_node(name):
-    os.system("make " + name + "-stop")
-    time.sleep(3)
+    if should_start_node(name):
+        print("Node " + name + " stopping")
+        p = os.popen("make " + name + "-stop","r")
+        while 1:
+            line = p.readline()
+            if not line: break
 
 def should_start_node(name):
     return config['nodes'][name]['start']
+
+def node_config(name):
+    return config['nodes'][name]
 
 def test_settings(test_name):
     return config['tests'][test_name]

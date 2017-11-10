@@ -16,9 +16,8 @@ from __future__ import absolute_import
 # import models into model package
 from .balance import Balance
 from .block import Block
-from .coinbase_tx import CoinbaseTx
 from .error import Error
 from .ping import Ping
-from .signed_tx import SignedTx
-from .spend_tx import SpendTx
 from .top import Top
+from .transactions import Transactions
+from .tx import Tx

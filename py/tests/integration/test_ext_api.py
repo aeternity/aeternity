@@ -12,14 +12,10 @@ node = settings['node_to_test']
 chain_data_file = settings['chain_data']
 
 def setup_func():
-    if common.should_start_node(node):
-        print("Node " + node + " starting")
-        common.start_node(node)
+    common.start_node(node)
 
 def teardown_func():
-    if common.should_start_node(node):
-        print("Node " + node + " stopping")
-        common.stop_node(node)
+    common.stop_node(node)
 
 @with_setup(setup_func, teardown_func)
 def test_get_top():

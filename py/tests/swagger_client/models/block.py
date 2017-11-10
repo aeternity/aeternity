@@ -40,7 +40,7 @@ class Block(object):
         'time': 'int',
         'version': 'int',
         'pow': 'list[int]',
-        'transactions': 'list[SignedTx]'
+        'transactions': 'list[Tx]'
     }
 
     attribute_map = {
@@ -288,7 +288,7 @@ class Block(object):
         Gets the transactions of this Block.
 
         :return: The transactions of this Block.
-        :rtype: list[SignedTx]
+        :rtype: list[Tx]
         """
         return self._transactions
 
@@ -298,7 +298,7 @@ class Block(object):
         Sets the transactions of this Block.
 
         :param transactions: The transactions of this Block.
-        :type: list[SignedTx]
+        :type: list[Tx]
         """
 
         self._transactions = transactions

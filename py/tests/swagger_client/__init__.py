@@ -16,12 +16,11 @@ from __future__ import absolute_import
 # import models into sdk package
 from .models.balance import Balance
 from .models.block import Block
-from .models.coinbase_tx import CoinbaseTx
 from .models.error import Error
 from .models.ping import Ping
-from .models.signed_tx import SignedTx
-from .models.spend_tx import SpendTx
 from .models.top import Top
+from .models.transactions import Transactions
+from .models.tx import Tx
 
 # import apis into sdk package
 from .apis.external_api import ExternalApi
