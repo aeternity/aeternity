@@ -203,39 +203,4 @@ mine_block_test_() ->
       ]
      } || PoWMod <- PoWModules].
 
-mine_block_from_genesis_test_() ->
-    PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
-    [{setup,
-      fun() ->
-              meck:new(aec_pow, [passthrough]),
-              meck:expect(aec_pow, pow_module, 0, PoWMod),
-              meck:expect(aec_pow, pick_nonces, 0, {1, 400}),
-              {ok, _} = aec_tx_pool:start_link(),
-              TmpKeysDir = aec_test_utils:aec_keys_setup(),
-              {ok, _} = aec_chain:start_link(aec_block_genesis:genesis_block()),
-              TmpKeysDir
-      end,
-      fun(TmpKeysDir) ->
-              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
-              ok = aec_chain:stop(),
-              ok = aec_tx_pool:stop(),
-              ?assert(meck:validate(aec_pow)),
-              meck:unload(aec_pow),
-              file:delete(TmpKeysDir)
-      end,
-      fun(_) ->
-              [
-               {timeout, 60,
-                {"Find first block after genesis (PoW module " ++ atom_to_list(PoWMod) ++ ")",
-                 fun() ->
-                         {ok, BlockCandidate, InitialNonce, MaxNonce} = ?TEST_MODULE:create_block_candidate(),
-                         {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, 400, InitialNonce, MaxNonce),
-                         ?assertEqual(1, aec_blocks:height(Block)),
-                         ?assertEqual(1, length(Block#block.txs)),
-                         ?assertMatch(<<H:?TXS_HASH_BYTES/unit:8>> when H > 0,
-                                                                        Block#block.txs_hash)
-                 end}}
-              ]
-      end} || PoWMod <- PoWModules].
-
 -endif.
