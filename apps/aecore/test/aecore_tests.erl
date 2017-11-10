@@ -10,7 +10,7 @@ application_test() ->
   App = aecore,
   application:load(App),
   application:stop(App),
-  application:set_env(aecore, password, "Thisisweird"),
+  application:set_env(aecore, password, <<"Thisisweird">>),
   {ok, Deps} = application:get_key(App, applications), 
   AlreadyRunning = [ Name || {Name, _,_} <- application:which_applications() ],
   [ ?assertEqual(ok, application:ensure_started(Dep)) || Dep <- Deps ],

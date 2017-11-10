@@ -43,7 +43,7 @@
 -record(state, {
           pub       :: undefined | binary(),
           priv      :: undefined | binary(),
-          pass      :: undefined | binary(),
+          pass      :: password(),
           keys_dir  :: undefined | binary(),
           pub_file  :: undefined | binary(),
           priv_file :: undefined | binary(),
@@ -51,6 +51,8 @@
           algo   :: atom(),
           digest :: atom(),
           curve  :: atom()}).
+
+-type password() :: binary().
 
 %%%===================================================================
 %%% API
@@ -65,7 +67,7 @@
 %%--------------------------------------------------------------------
 start_link() ->
     %% INFO: set the password to re-use keys between restarts
-    Password = application:get_env(aecore, password, undefined),
+    {ok, Password} = application:get_env(aecore, password),
     KeysDir = application:get_env(aecore, keys_dir, filename:join(code:priv_dir(aecore), "keys")),
     Args = [Password, KeysDir],
     start_link(Args).
@@ -100,15 +102,15 @@ wait_for_pubkey(Sleep) ->
         R -> R
     end.
 
--spec open(binary()) -> {ok, Password :: binary()} | {error, keys_not_loaded}.
+-spec open(password()) -> {ok, password()} | {error, keys_not_loaded}.
 open(Password) ->
     gen_server:call(?MODULE, {open, Password}).
 
--spec new(binary()) -> {Priv :: binary(), Pub :: binary()} | error.
+-spec new(password()) -> {Priv :: binary(), Pub :: binary()} | error.
 new(Password) ->
     gen_server:call(?MODULE, {new, Password}).
 
--spec set(binary(), binary(), binary()) -> ok | error.
+-spec set(password(), binary(), binary()) -> ok | error.
 set(Password, Priv, Pub) ->
     gen_server:call(?MODULE, {set, Password, Priv, Pub}).
 
@@ -130,7 +132,7 @@ delete() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
-init([Password, KeysDir]) ->
+init([Password, KeysDir]) when is_binary(Password) ->
     lager:info("Initializing keys manager"),
     %% TODO: consider moving the crypto config to config
     Algo = ecdsa,
@@ -146,13 +148,29 @@ init([Password, KeysDir]) ->
             ok
     end,
 
-    %% INFO: previous keys are picked up from KEYS_DIR (handled in timeout)
-    {ok, #state{algo=Algo,
+    {PubFile, PrivFile} = p_gen_filename(KeysDir),
+    {Pub1, Priv1} =
+        case from_local_dir(PubFile) of
+            {error, enoent} ->
+                p_gen_new(Password, KeyType, Curve, PubFile, PrivFile);
+            {ok, Pub} ->
+                {ok, Priv} = from_local_dir(PrivFile),
+                Pub0 = decrypt_pubkey(Password, Pub),
+                Priv0 = decrypt_privkey(Password, Priv),
+                {Pub0, Priv0}
+        end,
+
+    %% For sake of simplicity, if the initialization fails the
+    %% initialization above crashes - rather than collecting failure
+    %% reason and returning `{stop, Reason::term()}`.
+    {ok, #state{priv=Priv1, pub=Pub1,
+                priv_file=PrivFile, pub_file=PubFile,
+                algo=Algo,
                 type=KeyType,
                 digest=Digest,
                 curve=Curve,
                 pass=Password,
-                keys_dir=KeysDir}, 0}.
+                keys_dir=KeysDir}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -209,7 +227,7 @@ handle_call(delete, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State)
             {reply, error, State}
     end;
 
-handle_call({new, Password}, _From, #state{type=KeyType, curve=Curve, keys_dir=KeysDir} = State) ->
+handle_call({new, Password}, _From, #state{type=KeyType, curve=Curve, keys_dir=KeysDir} = State) when is_binary(Password) ->
     try
         {NewPubFile, NewPrivFile} = p_gen_filename(KeysDir),
         {NewPubKey, NewPrivKey} = p_gen_new(Password, KeyType, Curve, NewPubFile, NewPrivFile),
@@ -221,7 +239,7 @@ handle_call({new, Password}, _From, #state{type=KeyType, curve=Curve, keys_dir=K
             {reply, error, State}
     end;
 
-handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) ->
+handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) when is_binary(Password) ->
     try
         {ok, Pub} = from_local_dir(PubFile),
         {ok, Priv} = from_local_dir(PrivFile),
@@ -240,7 +258,7 @@ handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile
             {reply, {error, keys_not_loaded}, State}
     end;
 
-handle_call({set, Password, Priv, Pub}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) ->
+handle_call({set, Password, Priv, Pub}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) when is_binary(Password) ->
     try
         EncPub = encrypt_pubkey(Password, Pub),
         EncPriv = encrypt_privkey(Password, Priv),
@@ -256,25 +274,6 @@ handle_call({set, Password, Priv, Pub}, _From, #state{pub_file=PubFile, priv_fil
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(timeout, #state{priv=undefined, pub=undefined, pass=Password,
-                           type=KeyType, curve=Curve, keys_dir=KeysDir} = State) ->
-    try
-        {PubFile, PrivFile} = p_gen_filename(KeysDir),
-        {Pub1, Priv1} = case from_local_dir(PubFile) of
-             {error, enoent} ->
-                 p_gen_new(Password, KeyType, Curve, PubFile, PrivFile);
-             {ok, Pub} ->
-                 {ok, Priv} = from_local_dir(PrivFile),
-                 Pub0 = decrypt_pubkey(Password, Pub),
-                 Priv0 = decrypt_privkey(Password, Priv),
-                 {Pub0, Priv0}
-        end,
-        {noreply, State#state{priv=Priv1, pub=Pub1, priv_file=PrivFile, pub_file=PubFile}}
-    catch
-        Err:R ->
-            lager:error("Can't open keys files ~p ~p", [Err, R]),
-            {noreply, State}
-    end;
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -326,8 +325,6 @@ p_gen_filename(KeysDir) ->
     PrivFile = filename:join(KeysDir, ?FILENAME_PRIV),
     {PubFile, PrivFile}.
 
-p_gen_new(undefined, _, _, _, _) ->
-    no_password_provided;
 p_gen_new(Password, KeyType, Curve, PubFilename, PrivFilename) ->
     {NewPubKey, NewPrivKey} = crypto:generate_key(KeyType, crypto:ec_curve(Curve)),
     EncPub = encrypt_pubkey(Password, NewPubKey),
