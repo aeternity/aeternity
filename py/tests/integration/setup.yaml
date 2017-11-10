@@ -30,4 +30,23 @@ nodes:
       internal_ws: 3134
 tests: # test specific settings
   test_ext_api:
-    node_to_test: local
+    # Testing the external API
+    node_to_test: dev2
+    chain_data: py/tests/integration/data/bchain.txt
+  test_use_cases:
+    test_syncing:
+      # Alice should be able to connect to peers on startup and download the
+      # blockchain up to the current height.
+      nodes:
+        bob: dev1
+        alice: dev2
+      blocks_to_post: 7
+      chain_data: py/tests/integration/data/bchain.txt
+
+    test_persistence:
+      # Bob's downloaded blockchain should persist between restarts. He should
+      # only download updates to his blockchain when his node starts.
+      nodes:
+        bob: dev1
+      blocks_to_post: 7
+      chain_data: py/tests/integration/data/bchain.txt

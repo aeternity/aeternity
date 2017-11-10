@@ -17,6 +17,7 @@ from py.tests.swagger_client.api_client import ApiClient
 from py.tests.swagger_client.models.block import Block
 from py.tests.swagger_client.models.signed_tx import SignedTx
 from py.tests.swagger_client.models.coinbase_tx import CoinbaseTx
+from py.tests import chain_downloader
 
 from nose.tools import assert_equals
 from testconfig import config
@@ -46,13 +47,20 @@ def node_online(api):
     except Exception as e:
         return False
 
-def start_node(name):
-    os.system("make " + name + "-start")
+def start_node(name, config_filename=None):
+    config_prefix = ""
+    if config_filename != None:
+        if config_filename[0] == "/": # absolute path
+            config_prefix =  'ERL_FLAGS="-config ' + config_filename + '" ' 
+        else:
+            config_prefix =  'ERL_FLAGS="-config `pwd`/' + config_filename + '" ' 
+    os.system(config_prefix + "make " + name + "-start")
     api = external_api(name)
-    wait(lambda: node_online(api), timeout_seconds=3, sleep_seconds=0.5)
+    wait(lambda: node_online(api), timeout_seconds=10, sleep_seconds=0.5)
 
 def stop_node(name):
     os.system("make " + name + "-stop")
+    time.sleep(3)
 
 def should_start_node(name):
     return config['nodes'][name]['start']
@@ -60,43 +68,15 @@ def should_start_node(name):
 def test_settings(test_name):
     return config['tests'][test_name]
 
-## will be obsolete once we have a downloaded chain
-def signed_coinbase_tx():
-    account = "BOmMCqJhVEExaiRCXhEj6c8CuLtZYOzJQea9b++3IVTcdgyvuXbG9r8SNoHqvrtQlifWLzjGHDnSNdpopI2FCEQ="
-    coinbase = CoinbaseTx(pubkey = account)
-    return SignedTx(data = coinbase, type = "coinbase",
-            signatures =
-            ["MEUCIEdDPJU2swc6WsuopA42WpygsjtqgCbAikA+kdCivBowAiEApaYByYyWCplLoUQjiNRLU+Qm6voe19jFWA+YRJp+uD8="])
+def tool_settings(test_name):
+    return config['tools'][test_name]
 
-def utc_now():
-    d = datetime.datetime.utcnow()
-    epoch = datetime.datetime(1970,1,1)
-    return int((d - epoch).total_seconds())
-
-
-## TODO: premine and download a chain to use here
-def post_fake_block(api):
+def post_fake_block(api, chain_file_name):
     top = api.get_top()
     block_height = top.height + 1
-    block = Block(height = block_height,
-            prev_hash = top.hash,
-            ## temporary
-            state_hash = "pMwJahZJDsHOiJvzuSGlORtevROpcyXjzCZJ+lAMRJ4=",
-            ## temporary
-            txs_hash = "6ZbhNbx+q39yS8EzyCikQ+6KjANwLVVjMaw0w4sINL8=",
-            ## temporary
-            target = 553713663,
-            ## temporary
-            nonce = 1360986163,
-            time = 1510149537578,
-            version = 1,
-            ## temporary
-            pow = [
-                2344444,2873496,23874225,26039777,31520081,35302217,38813967,46358072,48293190,53744832,53997324,54498726,55605598,58489038,59201564,60098152,61303671,70682656,74754278,83224299,83889767,85718841,88764282,89000483,94071693,101178223,106148408,106923001,107072719,107250361,107263946,111029776,111490519,113694971,114155485,115514202,120663832,121513102,124456475,126343779,126480179,129129131
-                ],
-            ## temporary
-            transactions=[signed_coinbase_tx()]
-            )
+    premined_blocks = chain_downloader.load_from_file(chain_file_name)
+    assert(len(premined_blocks) > block_height)
+    block = list(filter(lambda b: b.height == block_height, premined_blocks))[0]
     res = api.post_block(block)
     return res
 

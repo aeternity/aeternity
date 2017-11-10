@@ -122,6 +122,9 @@ python-single-integration-test:
 release-integration-test:
 	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --maxheight=50 --version=$(VER)
 
+python-download-chain:
+	@$(PYTHON) $(PYTHON_TESTS)/chain_downloader.py --host=localhost --port=3013 --export_file=$(PYTHON_TESTS)/integration/data/bchain.txt
+
 swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
