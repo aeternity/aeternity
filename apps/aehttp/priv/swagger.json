@@ -391,6 +391,25 @@
         }
       }
     },
+    "SpendTx" : {
+      "type" : "object",
+      "properties" : {
+        "sender_pubkey" : {
+          "type" : "string"
+        },
+        "recipient_pubkey" : {
+          "type" : "string"
+        },
+        "amount" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
     "Tx" : {
       "type" : "string"
     },

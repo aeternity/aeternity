@@ -6,7 +6,8 @@
          block/2,
          transactions/1,
          send_tx/2,
-         send_block/2
+         send_block/2,
+         new_spend_tx/2
         ]).
 
 -export([parse_uri/1]).
@@ -66,7 +67,8 @@ transactions(Peer) ->
             Txs = maps:get('Transactions', Map, []),
             {ok, lists:map(
                    fun(T) ->
-                           aec_tx_sign:deserialize_from_binary(T)
+                           aec_tx_sign:deserialize_from_binary(
+                             base64:decode(T))
                    end, Txs)}
     end.
 
@@ -85,8 +87,24 @@ send_block(Peer, Block) ->
 -spec send_tx(aec_peers:peer(), aec_tx:signed_tx()) -> response(ok).
 send_tx(Peer, SignedTx) ->
     Uri = aec_peers:uri(Peer),
-    TxSerialized = aec_tx_sign:serialize_to_binary(SignedTx),
+    TxSerialized = base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
     Response = process_request(Uri, post, "tx", TxSerialized),
+    case Response of
+        {ok, _Map} ->
+            {ok, ok};
+        {error, _Reason} = Error ->
+            Error
+    end.
+
+%% NOTE that this is part of the internal API, thus the standard peer
+%% uris will not work
+new_spend_tx(IntPeer, #{sender_pubkey := Ks,
+                        recipient_pubkey := Kr,
+                        amount := Am,
+                        fee := Fee} = Req)
+  when is_binary(Ks), is_binary(Kr), is_integer(Am), is_integer(Fee) ->
+    Uri = aec_peers:uri(IntPeer),
+    Response = process_request(Uri, post, "spend-tx", Req),
     case Response of
         {ok, _Map} ->
             {ok, ok};

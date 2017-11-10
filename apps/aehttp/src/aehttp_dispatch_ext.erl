@@ -87,7 +87,9 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
     end;
 
 handle_request('GetTxs', _Req, _Context) ->
-    error(nyi);
+    {ok, Txs0} = aec_tx_pool:peek(infinity),
+    Txs = [base64:encode(aec_tx_sign:serialize_to_binary(T)) || T <- Txs0],
+    {200, [], Txs};
 
 handle_request('PostBlock', Req, _Context) ->
     SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
@@ -102,7 +104,8 @@ handle_request('PostBlock', Req, _Context) ->
 
 handle_request('PostTx', Req, _Context) ->
     SerializedTx = maps:get('SignedTx', Req),
-    SignedTx = aec_tx_sign:deserialize_from_binary(SerializedTx),
+    SignedTx = aec_tx_sign:deserialize_from_binary(
+                 base64:decode(SerializedTx)),
     aec_tx_pool:push(SignedTx, tx_received),
     {200, [], #{}};
 
