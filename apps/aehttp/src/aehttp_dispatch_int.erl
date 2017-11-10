@@ -25,8 +25,6 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                             nonce => Nonce}),
                     {ok, SignedTx} = aec_keys:sign(SpendTx),
                     ok = aec_tx_pool:push(SignedTx),
-                    %% TODO: send to peers via external API
-                    %% To be done when POST /tx is implemented
                     {200, [], #{}};
                 {error, account_not_found} ->
                     %% Account was not found in state trees
