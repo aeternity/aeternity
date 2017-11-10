@@ -60,7 +60,7 @@ mine(Block, Attempts, InitialNonce, MaxNonce) ->
 
 %% Internal functions
 
--spec get_txs_to_mine() -> {ok, list(signed_tx()), non_neg_integer()} | {error, term()}.
+-spec get_txs_to_mine() -> {ok, list(signed_tx())} | {error, term()}.
 get_txs_to_mine() ->
     {ok, Txs0} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     case create_coinbase_tx() of
