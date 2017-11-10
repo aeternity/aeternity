@@ -148,7 +148,7 @@ signed_coinbase_tx(Account, _AccountNonce) ->
 aec_keys_setup() ->
     TmpKeysDir = mktempd(),
     ok = application:ensure_started(crypto),
-    {ok, _} = aec_keys:start_link(["mypassword", TmpKeysDir]),
+    {ok, _} = aec_keys:start_link([<<"mypassword">>, TmpKeysDir]),
     wait_for_it(fun() -> whereis(aec_keys) =/= undefined end, true),
     TmpKeysDir.
 

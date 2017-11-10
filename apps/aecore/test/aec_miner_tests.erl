@@ -173,7 +173,7 @@ miner_test_() ->
                                      = sys:get_state(aec_miner),
                                  MinerState
                          end, waiting_for_keys),
-                        ?assertNotEqual(error, aec_keys:new("mynewpassword")),
+                        ?assertNotEqual(error, aec_keys:new(<<"mynewpassword">>)),
                         ?show_miner_state(),
                         wait_for_running(),
                         ?show_miner_state(),
