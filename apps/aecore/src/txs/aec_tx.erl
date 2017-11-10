@@ -72,9 +72,11 @@ origin(Tx) ->
 -spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) ->
                           {ok, trees()}.
 apply_signed(SignedTxs, Trees0, Height) ->
-    Txs = verify_and_extract_txs(SignedTxs),
-    {Trees1, TotalFee} = apply_txs_and_calculate_total_fee(Txs, Trees0, Height),
-    Trees2 = grant_fee_to_miner(Txs, Trees1, Height, TotalFee),
+    %% The first transaction in valid block is Coinbase
+    [_Coinbase|Txs] = verify_and_extract_txs(SignedTxs),
+    {ok, Trees1} = apply_txs(Txs, Trees0, Height),
+    AwardDelay = aec_governance:block_mine_reward_delay(),
+    Trees2 = award_miner(Trees1, Height, AwardDelay),
     {ok, Trees2}.
 
 %% TODO: there should be an easier way to do this...
@@ -107,25 +109,18 @@ verify_and_extract_txs([SignedTx | Rest], Txs) ->
             verify_and_extract_txs(Rest, Txs)
     end.
 
--spec apply_txs_and_calculate_total_fee(list(tx()), trees(), height()) ->
-                                               {trees(), non_neg_integer()}.
-apply_txs_and_calculate_total_fee(Txs, Trees, Height) ->
-    apply_txs_and_calculate_total_fee(Txs, Trees, Height, 0).
-
--spec apply_txs_and_calculate_total_fee(list(tx()), trees(), height(), non_neg_integer()) ->
-                                               {trees(), non_neg_integer()}.
-apply_txs_and_calculate_total_fee([], Trees, _Height, TotalFee) ->
-    {Trees, TotalFee};
-apply_txs_and_calculate_total_fee([Tx | Rest], Trees0, Height, TotalFee) ->
+-spec apply_txs(list(tx()), trees(), height()) -> {ok, trees()}.
+apply_txs([], Trees, _Height) ->
+    {ok, Trees};
+apply_txs([Tx | Rest], Trees0, Height) ->
     case check_single(Tx, Trees0, Height) of
         {ok, Trees1} ->
             {ok, Trees2} = process_single(Tx, Trees1, Height),
-            TxFee = fee(Tx),
-            apply_txs_and_calculate_total_fee(Rest, Trees2, Height, TotalFee + TxFee);
+            apply_txs(Rest, Trees2, Height);
         {error, Reason} ->
             lager:info("Tx ~p cannot be applied due to an error ~p",
                        [Tx, Reason]),
-            apply_txs_and_calculate_total_fee(Rest, Trees0, Height, TotalFee)
+            apply_txs(Rest, Trees0, Height)
     end.
 
 signers(Tx) ->
@@ -169,25 +164,47 @@ process_single(Tx, Trees, Height) ->
     Mod = tx_dispatcher:handler(Tx),
     Mod:process(Tx, Trees, Height).
 
--spec grant_fee_to_miner(list(tx()), trees(), height(), non_neg_integer()) ->
-                                trees().
-grant_fee_to_miner([], Trees, _Height, 0) ->
+-spec award_miner(trees(), height(), non_neg_integer()) -> trees().
+award_miner(Trees, _Height, _AwardDelay) ->
     lager:debug("No transactions in genesis block"),
     Trees;
-grant_fee_to_miner(Txs, Trees0, Height, TotalFee) ->
+award_miner(Trees0, Height, AwardDelay) when AwardDelay > Height->
+    AwardBlockHeight = Height - AwardDelay,
+    {ok, AwardBlock} = aec_chain:get_block_by_height(AwardBlockHeight),
+    TotalFee = total_fee(AwardBlock),
+
     %% Consider creation of aec_accounts_service,
     %% which will take state trees, height and list of (pubkey, operation) pairs
     %% (valuable also during txs processing)
-    MinerPubkey = coinbase_tx_account_pubkey(Txs),
+    MinerPubkey = aec_blocks:coinbase_pubkey(AwardBlock),
+    Coinbase = case aec_blocks:coinbase(AwardBlock) of
+        undefined ->
+            lager:error("Fatal error! Missing Coinbase in ~p", AwardBlock);
+        Coinbase0 ->
+            Coinbase0
+    end,
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {ok, Account0} = aec_accounts:get(MinerPubkey, AccountsTrees0),
     {ok, Account} = aec_accounts:earn(Account0, TotalFee, Height),
-
     {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
-    Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
+    TreesWithFee = aec_trees:set_accounts(Trees0, AccountsTrees),
+
+    {ok, Trees} = apply_txs([Coinbase], TreesWithFee, Height),
+    Trees;
+award_miner(Trees, _Height, _AwardDelay) ->
+    lager:debug("Chain too short to award the miner"),
     Trees.
 
--spec coinbase_tx_account_pubkey(list(tx())) -> pubkey().
-coinbase_tx_account_pubkey([#coinbase_tx{account = AccountPubkey} | _Rest]) ->
-    AccountPubkey.
+%% TODO: consider having it stored on side in chain service and computed during
+%%       txs application
+total_fee(AwardBlock) ->
+    Txs = aec_blocks:txs(AwardBlock),
+    add_fees(Txs, 0).
+
+add_fees([], Sum) ->
+    {ok, Sum};
+add_fees([Tx|Txs], Sum) ->
+    Fee = fee(Tx),
+    add_fees(Txs, Sum + Fee).
+

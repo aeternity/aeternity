@@ -22,7 +22,7 @@ create_block_candidate() ->
             Error;
         {ok, Txs} ->
             Block0 = aec_blocks:new(LastBlock, Txs, Trees),
-            case aec_blocks:cointains_coinbase_tx(Block0) of
+            case aec_blocks:coinbase(Block0) of
                 true ->
                     Block = maybe_recalculate_difficulty(Block0),
                     {InitialNonce, MaxNonce} = aec_pow:pick_nonces(),
