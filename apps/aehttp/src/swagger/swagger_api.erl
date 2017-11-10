@@ -236,11 +236,6 @@ validate_response('PostSpendTx', 404, Body, ValidatorState) ->
 validate_response(_OperationID, _Code, _Body, _ValidatorState) ->
     ok.
 
-%% validate_response_body('list', ReturnBaseType, Body, ValidatorState) ->
-%%     [
-%%         validate(schema, ReturnBaseType, Item, ValidatorState)
-%%     || Item <- Body];
-
 validate_response_body(_, ReturnBaseType, Body, ValidatorState) ->
     validate(schema, ReturnBaseType, Body, ValidatorState).
 

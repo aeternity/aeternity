@@ -45,7 +45,7 @@ paths:
     get:
       tags:
         - external
-      operationId: GetTop 
+      operationId: GetTop
       description: 'Get the top block header'
       consumes:
         - application/json
@@ -182,7 +182,7 @@ paths:
         - application/json
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: pub_key
           description: 'Public key to extract balance for'
@@ -250,7 +250,7 @@ definitions:
       pow:
         type: array
         items:
-          type: integer 
+          type: integer
       transactions:
         type: array
         items:
@@ -310,6 +310,19 @@ definitions:
     type: object
     properties:
       balance:
+        type: integer
+        format: int64
+  SpendTx:
+    type: object
+    properties:
+      sender_pubkey:
+        type: string
+      recipient_pubkey:
+        type: string
+      amount:
+        type: integer
+        format: int64
+      fee:
         type: integer
         format: int64
   Tx:
