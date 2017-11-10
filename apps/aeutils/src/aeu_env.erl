@@ -7,13 +7,48 @@
 %%%-------------------------------------------------------------------
 -module(aeu_env).
 
--export([get_env/3]).
+-export([get_env/2, get_env/3]).
 
+-export([user_config/0, user_config/1]).
 -export([read_config/0]).
 
+-spec get_env(atom(), atom() | list()) -> undefined | {ok, any()}.
+get_env(App, [H|T]) ->
+    case setup:get_env(App, H) of
+        {ok, V} ->
+            get_env_l(T, V);
+        undefined ->
+            undefined
+    end;
+get_env(App, K) when is_atom(K) ->
+    setup:get_env(App, K).
 
 get_env(App, K, Default) ->
-    setup:get_env(App, K, Default).
+    case get_env(App, K) of
+        {ok, V}   -> V;
+        undefined -> Default
+    end.
+
+get_env_l([], V) ->
+    {ok, V};
+get_env_l([H|T], [_|_] = L) ->
+    case lists:keyfind(H, 1, L) of
+        {_, V} ->
+            get_env_l(T, V);
+        false ->
+            undefined
+    end;
+get_env_l(_, _) ->
+    undefined.
+
+user_config() ->
+    setup:get_env(aeutils, '$user_config', []).
+
+-spec user_config(list() | binary()) -> undefined | {ok, any()}.
+user_config(Key) when is_list(Key) ->
+    get_env(aeutils, ['$user_config'|Key]);
+user_config(Key) when is_binary(Key) ->
+    get_env(aeutils, ['$user_config',Key]).
 
 
 read_config() ->
@@ -81,12 +116,8 @@ nodename() ->
     end.
 
 store(Vars) ->
-    lists:foreach(fun store_var/1, Vars).
-
-store_var({K, Peers}) when K =:= <<"peers">>; K =:= "peers" ->
-    set_env(aecore, peers, [to_str(P) || P <- Peers]);
-store_var(Other) ->
-    error_logger:error_msg("Unknown config: ~p~n", [Other]).
+    io:fwrite("store(~p)~n", [Vars]),
+    set_env(aeutils, '$user_config', Vars).
 
 set_env(App, K, V) ->
     error_logger:info_msg("Set config (~p): ~p = ~p~n", [App, K, V]),
@@ -101,11 +132,17 @@ interpret_json({_K, _V} = E, _) ->
     E.
 
 read_yaml(F) ->
-    interpret_yaml(try_decode(F, fun yamerl:decode_file/1, "YAML"), F).
+    interpret_yaml(
+      try_decode(
+        F, fun(F1) ->
+                   yamerl:decode_file(F1, [{str_node_as_binary, true}])
+           end, "YAML"), F).
 
 interpret_yaml(L, F) when is_list(L) ->
     lists:flatten([interpret_yaml(Elem, F) || Elem <- L]);
-interpret_yaml({_K, _V} = E, _) ->
+interpret_yaml({K, V}, F) when is_list(V) ->
+    {K, interpret_yaml(V, F)};
+interpret_yaml(E, _) ->
     E.
 
 try_decode(F, DecF, Fmt) ->
@@ -116,5 +153,5 @@ try_decode(F, DecF, Fmt) ->
             []
     end.
 
-to_str(S) ->
-    binary_to_list(iolist_to_binary(S)).
+%% to_str(S) ->
+%%     binary_to_list(iolist_to_binary(S)).

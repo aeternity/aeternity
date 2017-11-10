@@ -26,6 +26,8 @@
          get_local_peer_uri/0,
          update_last_seen/1]).
 
+-export([check_env/0]).
+
 %% gen_server callbacks
 -export([start_link/0, init/1, handle_call/3, handle_cast/2,
          handle_info/2, terminate/2, code_change/3]).
@@ -193,6 +195,18 @@ get_local_peer_uri() ->
 -spec update_last_seen(uri()) -> ok.
 update_last_seen(Uri) ->
     gen_server:cast(?MODULE, {update_last_seen, uri(Uri), timestamp()}).
+
+%%------------------------------------------------------------------------------
+%% Check user-provided environment
+%%------------------------------------------------------------------------------
+check_env() ->
+    case aeu_env:user_config(<<"peers">>) of
+        {ok, Peers0} when is_list(Peers0) ->
+            Peers = [binary_to_list(P) || P <- Peers0],
+            application:set_env(aecore, peers, Peers);
+        undefined ->
+            ok
+    end.
 
 %%%=============================================================================
 %%% gen_server functions
