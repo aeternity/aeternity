@@ -51,7 +51,7 @@ end_per_testcase(_TC, Config) ->
       {NewApps, _, _} when NewApps =/= [] ->
         %% New applications take precedence over new registered processes
         {fail, {started_applications, NewApps}};
-      {_, NewReg, _} -> 
+      {_, NewReg, _} when NewRegs =/= [] ->
         {fail, {registered_processes, NewReg}}
     end.
 
