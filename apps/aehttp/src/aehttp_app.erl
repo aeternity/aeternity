@@ -29,7 +29,7 @@ start(_StartType, _StartArgs) ->
     ok = start_swagger_internal(),
     ok = start_websocket_internal(),
     gproc:reg({n,l,{epoch, app, aehttp}}),
-    MaxWsHandlers = proplists:get_value(handlers, get_websocket_config()),
+    MaxWsHandlers = get_internal_websockets_acceptors(),
     ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers}]),
     {ok, Pid}.
 
@@ -40,6 +40,7 @@ local_peer_uri() ->
 %%--------------------------------------------------------------------
 stop(_State) ->
     ok.
+
 
 %%====================================================================
 %% Internal functions
@@ -68,50 +69,81 @@ start_swagger_internal() ->
 
 start_websocket_internal() ->
     Port = get_internal_websockets_port(),
+    PoolSize = get_internal_websockets_acceptors(),
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/websocket", ws_handler, []}
         ]}
     ]),
-    {ok, _} = cowboy:start_http(http, ?INT_ACCEPTORS_POOLSIZE,
+    {ok, _} = cowboy:start_http(http, PoolSize,
                                  [{port, Port}, {ip, {127, 0, 0, 1}}],
                                  [{env, [{dispatch, Dispatch}]}]),
     ok.
 
 local_peer(Port) ->
-    case application:get_env(aehttp, local_peer_address) of
-        {ok, Addr} ->
-            case aeu_requests:parse_uri(Addr) of
-                {_Scheme, _Host, Port} ->    % same port as above
+    Addr = get_local_peer_address(),
+    case aeu_requests:parse_uri(Addr) of
+        {_Scheme, _Host, Port} ->    % same port as above
+            Addr;
+        {_Scheme, _Host, _OtherPort} ->
+            erlang:error({port_mismatch,
+                          [{swagger_port_external, Port},
+                           {local_peer_address, Addr}]});
+        error ->
+            case re:run(Addr, "[:/]", []) of
+                {match, _} ->
+                    erlang:error({cannot_parse, [{local_peer_address,
+                                                  Addr}]});
+                nomatch ->
+                    aec_peers:uri_from_ip_port(Addr, Port)
+            end
+    end.
+
+get_local_peer_address() ->
+    case aeu_env:user_config(
+           [<<"http">>, <<"external">>, <<"peer_address">>]) of
+        {ok, A} -> A;
+        undefined ->
+            case aeu_env:get_env(aehttp, local_peer_address) of
+                {ok, Addr} ->
                     Addr;
-                {_Scheme, _Host, _OtherPort} ->
-                    erlang:error({port_mismatch,
-                                  [{swagger_port_external, Port},
-                                   {local_peer_address, Addr}]});
-                error ->
-                    case re:run(Addr, "[:/]", []) of
-                        {match, _} ->
-                            erlang:error({cannot_parse, [{local_peer_address,
-                                                          Addr}]});
-                        nomatch ->
-                            aec_peers:uri_from_ip_port(Addr, Port)
-                    end
-            end;
-        _ ->
-            {ok, Host} = inet:gethostname(),
-            aec_peers:uri_from_ip_port(Host, Port)
+                undefined ->
+                    {ok, Host} = inet:gethostname(),
+                    Host
+            end
     end.
 
 get_external_port() ->
-    application:get_env(aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT).
+    case aeu_env:user_config([<<"http">>, <<"external">>, <<"port">>]) of
+        {ok, P} -> P;
+        undefined ->
+            aeu_env:get_env(
+              aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT)
+    end.
 
 get_internal_port() ->
-    InternalConfig = application:get_env(aehttp, internal, []),
-    proplists:get_value(swagger_port, InternalConfig, ?DEFAULT_SWAGGER_INTERNAL_PORT).
-
-get_websocket_config() ->
-    InternalConfig = application:get_env(aehttp, internal, []),
-    proplists:get_value(websocket, InternalConfig, []).
+    case aeu_env:user_config([<<"http">>, <<"internal">>, <<"port">>]) of
+        {ok, P} -> P;
+        undefined ->
+            aeu_env:get_env(
+              aehttp, [internal, swagger_port], ?DEFAULT_SWAGGER_INTERNAL_PORT)
+    end.
 
 get_internal_websockets_port() ->
-    proplists:get_value(port, get_websocket_config(), ?DEFAULT_WEBSOCKET_INTERNAL_PORT).
+    case aeu_env:user_config([<<"websocket">>, <<"internal">>, <<"port">>]) of
+        {ok, P} -> P;
+        undefined ->
+            aeu_env:get_env(
+              aehttp, [internal, websocket, port],
+              ?DEFAULT_WEBSOCKET_INTERNAL_PORT)
+    end.
+
+get_internal_websockets_acceptors() ->
+    case aeu_env:user_config(
+           [<<"websocket">>, <<"internal">>, <<"acceptors">>]) of
+        {ok, Sz} -> Sz;
+        undefined ->
+            aeu_env:get_env(
+              aehttp,
+              [internal, websocket, handlers], ?INT_ACCEPTORS_POOLSIZE)
+    end.

@@ -14,7 +14,13 @@
     msgpack
    ]},
   {env, [
-        {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}}
+        {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}},
+        {'$setup_hooks',
+         [
+          {normal, [
+                    {110, {aec_peers, check_env, []}}
+                   ]}
+         ]}
         ]},
   {modules, []},
 
