@@ -117,10 +117,10 @@ handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
     [pool_db_delete(Mempool, pool_db_key(Tx)) || Tx <- Txs],
     {reply, ok, State};
 handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
-  when is_integer(MaxNumberOfTxs), MaxNumberOfTxs > 0 ->
-    {ok, Txs} = pool_db_peek(Mempool, MaxNumberOfTxs),
-    Reply = {ok, Txs},
-    {reply, Reply, State};
+  when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
+       MaxNumberOfTxs =:= infinity ->
+    Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
+    {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -176,21 +176,14 @@ exclude_coinbase({Fee, Origin, Nonce}) ->
 pool_db_open() ->
     {ok, ets:new(?MEMPOOL, [ordered_set, public, named_table])}.
 
--spec pool_db_peek(pool_db(), MaxNumber::pos_integer()) ->
-                          {ok, [pool_db_value()]}.
+-spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity) ->
+                          [pool_db_value()].
 pool_db_peek(Mempool, Max) ->
-    First = ets:first(Mempool),
-    Iterate = fun(_, '$end_of_table', _, _, Acc) ->
-                      Acc;
-                 (_, _, MaxCounter, MaxCounter, Acc) ->
-                      Acc;
-                 (IterateFun, Key, Counter, MaxCounter, Acc) ->
-                      [{_, Val}] = ets:lookup(Mempool, Key),
-                      Next = ets:next(Mempool, Key),
-                      IterateFun(IterateFun, Next, Counter+1, MaxCounter, [Val|Acc])
-              end,
-    Txs = lists:reverse(Iterate(Iterate, First, 0, Max, [])),
-    {ok, Txs}.
+    sel_return(
+      ets:select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max)).
+
+sel_return('$end_of_table' ) -> [];
+sel_return({Matches, _Cont}) -> Matches.
 
 -spec pool_db_put(pool_db(), pool_db_key(), pool_db_value(), event()) -> true.
 pool_db_put(_, undefined, _, _) ->
