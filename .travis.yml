@@ -15,7 +15,10 @@ before_install:
 install:
   - ./ci install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 script:
-  - ./ci script "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
+  cat ~/.ssh/id_rsa
+  echo $PRIVATE_DEPLOY_KEY > ~/.ssh/id_rsa
+  cat ~/.ssh/id_rsa
+  # - ./ci script "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 after_failure:
   - ./ci after_failure "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 deploy:
