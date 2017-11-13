@@ -302,7 +302,7 @@ hash(Bin) ->
 %% INFO: keep separate APIs and encrypt both priv & pub to protect external HDs
 %%       (there is known atack vector using master pub)
 encrypt_privkey(Password, Bin) ->
-    crypto:block_encrypt(aes_ecb, hash(Password),  Bin).
+    crypto:block_encrypt(aes_ecb, hash(Password),  pad_privkey(Bin)).
 
 encrypt_pubkey(Password, Bin) ->
     %% TODO: is it safe to use 0s as padding? Consider moving to stream encryption API
@@ -318,6 +318,12 @@ decrypt_pubkey(Password, Bin) ->
 padding128(Bin) ->
     Pad = 128 - size(Bin),
     <<Bin/binary, 0:(Pad*8)>>.
+
+%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed to fit the
+%% private key. It does not pad with zeros.
+pad_privkey(Bin) ->
+    Pad = 32 - size(Bin),
+    <<0:(Pad*8), Bin/binary>>.
 
 p_gen_filename(KeysDir) ->
     %% TODO: consider checking whats in the dir and genrerating file with suffix
