@@ -18,9 +18,9 @@ create_block_candidate() ->
     create_block_candidate(get_txs_to_mine_in_pool()).
 
 -spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer(), integer()} | {error, term()}.
-apply_new_txs(#block{txs = Txs} = Block) ->
+apply_new_txs(Block) ->
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
-    CurrentTxsBlockCount = length(Txs),
+    CurrentTxsBlockCount = length(Block#block.txs),
     case {MaxTxsInBlockCount, CurrentTxsBlockCount} of
         {Count, Count} ->
             {ok, Block};
