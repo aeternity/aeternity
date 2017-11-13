@@ -31,19 +31,43 @@ class Tx(object):
                             and the value is json key in definition.
     """
     swagger_types = {
-        
+        'tx': 'str'
     }
 
     attribute_map = {
-        
+        'tx': 'tx'
     }
 
-    def __init__(self):
+    def __init__(self, tx=None):
         """
         Tx - a model defined in Swagger
         """
 
+        self._tx = None
 
+        if tx is not None:
+          self.tx = tx
+
+    @property
+    def tx(self):
+        """
+        Gets the tx of this Tx.
+
+        :return: The tx of this Tx.
+        :rtype: str
+        """
+        return self._tx
+
+    @tx.setter
+    def tx(self, tx):
+        """
+        Sets the tx of this Tx.
+
+        :param tx: The tx of this Tx.
+        :type: str
+        """
+
+        self._tx = tx
 
     def to_dict(self):
         """
