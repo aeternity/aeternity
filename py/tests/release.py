@@ -16,7 +16,8 @@ from swagger_client.api_client import ApiClient
 
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
-        "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args"
+        "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args",
+        "sed -ibkp 's/{aec_pow_cuckoo, {\"mean30\", \"-t 5\", 30}}/{aec_pow_cuckoo, {\"mean16\", \"-t 5\", 16}}/g' ./releases/{{ version }}/sys.config"
         ]
 # node's setup
 SETUP = {
