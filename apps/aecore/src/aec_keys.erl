@@ -322,7 +322,7 @@ padding128(Bin) ->
 %% crypto:generate_keys/2 gives you a binary with as many bytes as are needed to fit the
 %% private key. It does not pad with zeros.
 pad_privkey(Bin) ->
-    Pad = 32 - size(Bin),
+    Pad = ?PRIV_SIZE - size(Bin),
     <<0:(Pad*8), Bin/binary>>.
 
 p_gen_filename(KeysDir) ->
