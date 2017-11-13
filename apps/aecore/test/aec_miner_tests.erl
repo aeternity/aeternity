@@ -227,7 +227,8 @@ chain_test_() ->
                        BH2 = aec_blocks:to_header(B2),
                        ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
                        {State1, _Data1} = sys:get_state(aec_miner),
-                       ?assertEqual(configure, State1),
+                       ?assertMatch(
+                          S when (S =:= configure) or (S =:= running), State1),
                        ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
                        aec_test_utils:wait_for_it(
                          fun () -> aec_chain:top_header() end,
