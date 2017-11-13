@@ -8,7 +8,7 @@
 
 -behaviour(aec_pow).
 
--export([generate/5,
+-export([generate/3,
          verify/4]).
 
 
@@ -23,15 +23,22 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% Generate a nonce value that, when used in hash calculation of 'Data', results in
-%% a smaller value than the target. Return {error, not_found} if the condition
-%% is still not satisfied after trying 'Count' times with incremented nonce values.
+%% Return whether the specified nonce value, when used in hash
+%% calculation of 'Data', results in a smaller value than the target.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-               Count :: integer(), Nonce :: integer(),
-               MaxNonce :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Count, Nonce, MaxNonce) ->
-    generate_with_nonce(Data, Target, Nonce, MaxNonce, Count).
+               Nonce :: integer()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce) ->
+    Nonce32 = Nonce band 16#7fffffff,
+    Hash1 = aec_sha256:hash(Data),
+    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce32:?HASH_BITS>>),
+    case aec_pow:test_target(Hash2, Target) of
+        true ->
+            %% Hash satisfies condition: return nonce
+            {ok, {Nonce, no_value}};
+        false ->
+            {error, no_solution}
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with target check)
@@ -41,35 +48,13 @@ generate(Data, Target, Count, Nonce, MaxNonce) ->
                     boolean().
 verify(Data, Nonce, Evd, Target) when Evd == no_value ->
     %% Verification: just try if current Nonce satisfies target threshold
-    case generate_with_nonce(Data, Target, Nonce, -1, 1) of
+    case generate(Data, Target, Nonce) of
         {ok, _} ->
             true;
-        _ ->
+        {error, _} ->
             false
     end.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
-
--spec generate_with_nonce(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-                          Nonce :: integer(), MaxNonce :: integer(),
-                          Count :: integer()) -> aec_pow:pow_result().
-generate_with_nonce(_Data, _Target, _Nonce, _MaxNonce, 0) ->
-    %% Count exhausted: fail
-    {error, generation_count_exhausted};
-generate_with_nonce(_Data, _Target, Nonce, Nonce, _Count) ->
-    {error, nonce_range_exhausted};
-generate_with_nonce(Data, Target, Nonce, MaxNonce, Count) ->
-    Nonce32 = Nonce band 16#7fffffff,
-    Hash1 = aec_sha256:hash(Data),
-    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce32:?HASH_BITS>>),
-    case aec_pow:test_target(Hash2, Target) of
-        true ->
-            %% Hash satisfies condition: return nonce
-            {ok, {Nonce, no_value}};
-        false ->
-            %% Keep trying
-            generate_with_nonce(Data, Target, Nonce + 1, MaxNonce, Count - 1)
-    end.

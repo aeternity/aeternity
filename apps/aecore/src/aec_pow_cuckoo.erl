@@ -11,8 +11,8 @@
 
 -behaviour(aec_pow).
 
--export([generate/5,
-         generate/7,
+-export([generate/3,
+         generate/5,
          verify/4]).
 
 
@@ -41,7 +41,7 @@ init() ->
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% Proof of Work generation with default settings, multiple attempts
+%% Proof of Work generation with default settings
 %%
 %% According to my experiments, increasing the number of trims from the default
 %% 7 in John Tromp's code does not really affect speed, reducing it causes failure.
@@ -58,21 +58,20 @@ init() ->
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-               Retries :: integer(), Nonce :: integer(),
-               MaxNonce :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Retries, Nonce, MaxNonce) ->
-    generate(Data, Nonce, MaxNonce, Target, 7, 5, Retries).
+               Nonce :: integer()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce) ->
+    generate(Data, Nonce, Target, 7, 5).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation, all params adjustable
 %%------------------------------------------------------------------------------
--spec generate(Data :: aec_sha256:hashable(), Nonce :: integer(), MaxNonce :: integer(),
+-spec generate(Data :: aec_sha256:hashable(), Nonce :: integer(),
                Target :: aec_pow:sci_int(), Trims :: integer(),
-               Threads :: integer(), Retries :: integer()) ->
+               Threads :: integer()) ->
                       aec_pow:pow_result().
-generate(Data, Nonce, MaxNonce, Target, Trims, Threads, Retries) ->
+generate(Data, Nonce, Target, Trims, Threads) ->
     Hash = base64:encode_to_string(aec_sha256:hash(Data)),
-    generate_hashed(Hash, Nonce, MaxNonce, Target, Trims, Threads, Retries).
+    generate_hashed(Hash, Nonce, Target, Trims, Threads).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
@@ -94,27 +93,19 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% Proof of Work generation: use the hash provided and try consecutive nonces
+%% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
-generate_hashed(_Hash, _Nonce, _MaxNonce, _Target, _Trims, _Threads, 0) ->
-    {error, generation_count_exhausted};
-generate_hashed(_Hash, Nonce, Nonce, _Target, _Trims, _Threads, _Retries) ->
-    {error, nonce_range_exhausted};
-generate_hashed(Hash, Nonce, MaxNonce, Target, Trims, Threads, Retries) when Retries > 0 ->
+generate_hashed(Hash, Nonce, Target, Trims, Threads) ->
     Nonce32 = Nonce band 16#7fffffff,
     case generate_single(Hash, Nonce32, Trims, Threads) of
         {error, no_solutions} ->
-            generate_hashed(Hash, Nonce32 + 1, MaxNonce, Target, Trims, Threads, Retries - 1);
+            {error, no_solution};
         {ok, Soln} ->
             case test_target(Soln, Target) of
                 true ->
                     {ok, {Nonce32, Soln}};
                 false ->
-                    NewNonce = case Nonce of
-                                   16#7fffffff -> 0;
-                                   _ -> Nonce32 + 1
-                               end,
-                    generate_hashed(Hash, NewNonce, MaxNonce, Target, Trims, Threads, Retries - 1)
+                    {error, no_solution}
             end
     end.
 
