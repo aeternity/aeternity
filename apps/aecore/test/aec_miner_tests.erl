@@ -226,8 +226,6 @@ chain_test_() ->
                        [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
                        BH2 = aec_blocks:to_header(B2),
                        ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
-                       {State1, _Data1} = sys:get_state(aec_miner),
-                       ?assertEqual(configure, State1),
                        ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
                        aec_test_utils:wait_for_it(
                          fun () -> aec_chain:top_header() end,
