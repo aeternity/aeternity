@@ -24,8 +24,10 @@ smoke_test(_Config) ->
     VerBin = ?TEST_MODULE:bin("verify16"),
     LdLibPathVarName = ld_lib_path_var_name(),
     Cmd =
-        io_lib:format(
-          "env ~s='~s' '~s' -n 66 | grep '^Solution ' | env ~s='~s' '~s' -n 66 | grep '^Verified '",
+io_lib:format("env ~s='~s' '~s' -n 66 "
+              "| grep '^Solution '"
+              "| env ~s='~s' '~s' -n 66 "
+              "| grep '^Verified '",
           [LdLibPathVarName, LibDir,
            MinBin,
            LdLibPathVarName, LibDir,

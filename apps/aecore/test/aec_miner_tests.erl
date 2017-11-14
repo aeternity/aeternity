@@ -49,12 +49,12 @@ miner_test_() ->
              ok = aec_persistence:stop_and_clean(),
              ok = aec_tx_pool:stop(),
              ok = application:stop(gproc),
-             ok = application:stop(erlexec),
              ?assert(meck:validate(aec_governance)),
              meck:unload(aec_governance),
              aec_test_utils:unmock_time(),
              aec_test_utils:aec_keys_cleanup(TmpKeysDir),
-             meck:unload(application)
+             meck:unload(application),
+             ok = application:stop(erlexec)
      end,
      [fun(_) ->
               {"Suspend and resume",
@@ -225,8 +225,8 @@ chain_test_() ->
              meck:unload(aec_governance),
              meck:unload(aec_headers),
              meck:unload(aec_blocks),
-             ok = application:stop(erlexec),
-             meck:unload(application)
+             meck:unload(application),
+             ok = application:stop(erlexec)
      end,
      [
       fun(_) ->

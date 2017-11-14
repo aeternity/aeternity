@@ -24,8 +24,8 @@
 -define(DEFAULT_CUCKOO_ENV, {mean30, "-t 5", 30}). %% -m 7 caused crash
 
 -ifdef(TEST).
--define(debug(F, A), ok).
--define(info(F, A), ?debugFmt(F, A)).
+-define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
+-define(info(F, A),  ?debugFmt(F, A)).
 -define(error(F, A), ?debugFmt(F, A)).
 -else.
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
