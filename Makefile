@@ -1,6 +1,20 @@
 CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
 
+CT_TEST_FLAGS =
+EUNIT_TEST_FLAGS =
+ifdef SUITE
+CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
+endif
+
+ifdef GROUP
+CT_TEST_FLAGS += --group=$(GROUP)
+endif
+
+ifdef TEST
+CT_TEST_FLAGS += --case=$(TEST)
+EUNIT_TEST_FLAGS += --module=$(TEST)
+endif
 
 PYTHON_DIR = py
 PYTHON_BIN = $(PYTHON_DIR)/bin
@@ -96,10 +110,10 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 do ct
+	@./rebar3 do ct $(CT_TEST_FLAGS)
 
 eunit:
-	@./rebar3 do eunit
+	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 venv-present:
 	@virtualenv -q $(PYTHON_DIR)
