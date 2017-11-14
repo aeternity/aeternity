@@ -157,7 +157,7 @@ paths:
               description: Successful operation
           security: []
   /transactions:
-    post:
+    get:
       tags:
         - external
       operationId: GetTxs
@@ -326,7 +326,10 @@ definitions:
         type: integer
         format: int64
   Tx:
-    type: string
+    type: object
+    properties:
+       tx:
+         type: string
   Transactions:
     type: array
     items:

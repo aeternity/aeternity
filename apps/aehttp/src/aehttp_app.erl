@@ -16,7 +16,8 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
--export([local_peer_uri/0]).
+-export([local_peer_uri/0,
+         local_internal_http_uri/0]).
 
 %%====================================================================
 %% API
@@ -28,13 +29,17 @@ start(_StartType, _StartArgs) ->
     ok = start_swagger_external(),
     ok = start_swagger_internal(),
     ok = start_websocket_internal(),
-    gproc:reg({n,l,{epoch, app, aehttp}}),
     MaxWsHandlers = get_internal_websockets_acceptors(),
     ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers}]),
+    gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 
 local_peer_uri() ->
     Port = get_external_port(),
+    local_peer(Port).
+
+local_internal_http_uri() ->
+    Port = get_internal_port(),
     local_peer(Port).
 
 %%--------------------------------------------------------------------

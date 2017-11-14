@@ -61,21 +61,36 @@ block(Peer, Hash) ->
 -spec transactions(aec_peers:peer()) -> response([aec_tx:signed_tx()]).
 transactions(Peer) ->
     Uri = aec_peers:uri(Peer),
-    Response = process_request(Uri, post, "transactions", []),
-    case Response of
-        {ok, Map} ->
-            Txs = maps:get('Transactions', Map, []),
-            {ok, lists:map(
-                   fun(T) ->
-                           aec_tx_sign:deserialize_from_binary(
-                             base64:decode(T))
-                   end, Txs)}
+    Response = process_request(Uri, get, "transactions"),
+    lager:debug("transactions Response = ~p", [Response]),
+    try Txs = tx_response(Response),
+         try {ok, lists:map(
+                    fun(#{<<"tx">> := T}) ->
+                            aec_tx_sign:deserialize_from_binary(
+                              base64:decode(T))
+                    end, Txs)}
+         catch
+             error:Reason ->
+                 lager:error("Error decoding transactions: ~p", [Reason]),
+                 {error, Reason}
+         end
+    catch
+        error:_Reason1 ->
+            lager:error("Wrong response type: ~p", [Response]),
+            {error, wrong_response_type}
     end.
+
+tx_response({ok, #{'Transactions' := Txs}}) -> Txs;
+tx_response({ok, [#{<<"tx">> := _}|_] = Txs}) -> Txs;
+tx_response({ok, []}) -> [];
+tx_response(Other) -> error({bad_result, Other}).
+
 
 -spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
 send_block(Peer, Block) ->
     Uri = aec_peers:uri(Peer),
     BlockSerialized = aec_blocks:serialize_to_map(Block),
+    lager:debug("send_block; serialized: ~p", [BlockSerialized]),
     Response = process_request(Uri, post, "block", BlockSerialized),
     case Response of
         {ok, _Map} ->
@@ -88,7 +103,7 @@ send_block(Peer, Block) ->
 send_tx(Peer, SignedTx) ->
     Uri = aec_peers:uri(Peer),
     TxSerialized = base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
-    Response = process_request(Uri, post, "tx", TxSerialized),
+    Response = process_request(Uri, post, "tx", #{tx => TxSerialized}),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -129,7 +144,7 @@ parse_uri(Uri) ->
 
 -spec process_request(aec_peers:peer(), get, string()) ->
 			     response(B) when
-      B :: aec_blocks:block_serialized_for_network() | map().
+      B :: aec_blocks:block_serialized_for_network() | map() | [map()].
 process_request(Peer, Method, Request) ->
     process_request(Peer, Method, Request, []).
 
@@ -153,7 +168,7 @@ process_request(Peer, post, Request, Params, Header, HTTPOptions, Options) ->
                            %% JSON-encoded
                            lager:debug("JSON-encoding Params: ~p", [Params]),
                            {"application/json", jsx:encode(Params)};
-                       _ ->
+                       [] ->
                            {"application/x-www-form-urlencoded",
                             http_uri:encode(Request)}
                    end,

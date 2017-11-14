@@ -178,10 +178,17 @@ pool_db_open() ->
 
 -spec pool_db_peek(pool_db(), MaxNumber::pos_integer() | infinity) ->
                           [pool_db_value()].
+pool_db_peek(_, 0) -> [];
 pool_db_peek(Mempool, Max) ->
     sel_return(
-      ets:select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max)).
+      ets_select(Mempool, [{ {'_', '$1'}, [], ['$1'] }], Max)).
 
+ets_select(T, P, infinity) ->
+    ets:select(T, P);
+ets_select(T, P, N) when is_integer(N), N >= 1 ->
+    ets:select(T, P, N).
+
+sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 

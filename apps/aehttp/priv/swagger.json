@@ -181,7 +181,7 @@
       }
     },
     "/transactions" : {
-      "post" : {
+      "get" : {
         "tags" : [ "external" ],
         "description" : "Get transactions in the mempool",
         "operationId" : "GetTxs",
@@ -411,7 +411,12 @@
       }
     },
     "Tx" : {
-      "type" : "string"
+      "type" : "object",
+      "properties" : {
+        "tx" : {
+          "type" : "string"
+        }
+      }
     },
     "Transactions" : {
       "type" : "array",

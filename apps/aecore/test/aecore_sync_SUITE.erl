@@ -21,7 +21,9 @@
     mine_again_on_first/1,
     restart_first/1,
     restart_second/1,
-    restart_third/1
+    restart_third/1,
+    tx_first_pays_second/1,
+    ensure_tx_pools_empty/1
    ]).
 
 -export([proxy/0]).
@@ -41,8 +43,11 @@ groups() ->
       [start_first_node,
        mine_on_first,
        start_second_node,
+       tx_first_pays_second,
        mine_again_on_first,
+       ensure_tx_pools_empty,
        mine_on_second,
+       tx_first_pays_second,
        restart_second,
        restart_first]},
      {three_nodes, [sequence],
@@ -68,6 +73,7 @@ init_per_suite(Config) ->
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     patch_files(Config1),
+    create_configs(Config),
     make_multi(TopDir),
     Config1.
 
@@ -120,7 +126,45 @@ start_second_node(Config) ->
     timer:sleep(2000),
     ct:log("Peers on dev2: ~p", [rpc_call(N2, aec_peers, all, [])]),
     {ok, B1} = rpc_call(N1, aec_chain, top, []),
-    ok = expect_block(N2, B1).
+    true = expect_block(N2, B1).
+
+tx_first_pays_second(_Config) ->
+    N1 = node_(dev1),
+    N2 = node_(dev2),
+    {ok, PK1} = get_pubkey(N1),
+    ct:log("PK1 = ~p", [PK1]),
+    {ok, PK2} = get_pubkey(N2),
+    Bal1 = get_balance(N1),
+    ct:log("Balance on dev1: ~p", [Bal1]),
+    true = (is_integer(Bal1) andalso Bal1 > 0),
+    {ok, Pool11} = get_pool(N1),
+    {ok, Pool21} = get_pool(N2),
+    Pool11 = Pool21,                % tx pools are ordered
+    ok = new_tx(#{node1  => N1,
+                  node2  => N2,
+                  amount => 1,
+                  sender    => PK1,
+                  recipient => PK2,
+                  fee    => 1}),
+    {ok, Pool12} = get_pool(N1),
+    [NewTx] = Pool12 -- Pool11,
+    true = ensure_new_tx(N2, NewTx).
+
+ensure_tx_pools_empty(Config) ->
+    Ns = [N || {_,N} <- ?config(nodes, Config)],
+    retry(
+      fun() ->
+              Results = lists:map(
+                          fun(N) ->
+                                  {ok, Pool} = get_pool(N),
+                                  ct:log("Pool (~p) = ~p", [N, Pool]),
+                                  Pool
+                          end, Ns),
+              lists:all(fun([]) -> true;
+                           (_)  -> false
+                        end, Results)
+      end, {?LINE, ensure_tx_pools_empty, Ns}).
+
 
 mine_again_on_first(Config) ->
     mine_and_compare(node_(dev1), Config).
@@ -143,7 +187,7 @@ restart_node(Dev, Config) ->
     N = node_(Dev),
     connect(N),
     ct:log("~w restarted", [Dev]),
-    ok = expect_same(Config).
+    true = expect_same(Config).
 
 
 start_third_node(Config) ->
@@ -152,7 +196,7 @@ start_third_node(Config) ->
     connect(N3),
     timer:sleep(2000),
     ct:log("Peers on dev3: ~p", [rpc_call(N3, aec_peers, all, [])]),
-    expect_same(Config).
+    true = expect_same(Config).
 
 mine_on_third(Config) ->
     mine_and_compare(node_(dev3), Config).
@@ -163,14 +207,17 @@ mine_and_compare(N1, Config) ->
     ok = mine_one_block(N1),
     {ok, NewTop} = rpc_call(N1, aec_chain, top, []),
     true = (NewTop =/= PrevTop),
+    Bal1 = get_balance(N1),
+    ct:log("Balance on dev1: ~p", [Bal1]),
     lists:foreach(
       fun(Nx) ->
-              ok = expect_block(Nx, NewTop)
+              true = expect_block(Nx, NewTop)
       end, AllNodes -- [N1]).
 
 expect_same(Config) ->
     Nodes = ?config(nodes, Config),
-    expect_same(Nodes, 5).
+    expect_same(Nodes, 5),
+    expect_same_tx(Nodes).
 
 expect_same(Nodes, Tries) when Tries > 0 ->
     Blocks = lists:map(
@@ -190,6 +237,28 @@ expect_same(Nodes, _) ->
     ct:log("tries exhausted", []),
     erlang:error({top_blocks_differ, Nodes}).
 
+expect_same_tx(Nodes0) ->
+    Nodes = [N || {_, N} <- Nodes0],
+    retry(fun() ->
+                  expect_same_tx_(Nodes)
+          end, {?LINE, expect_same_tx, Nodes}).
+
+expect_same_tx_(Nodes) ->
+    Txs = lists:map(
+            fun(N) ->
+                    case rpc:call(N, aec_tx_pool, peek, [infinity], 5000) of
+                        {ok, T} ->
+                            ct:log("Txs (~p): ~p", [N, T]),
+                            T;
+                        Other ->
+                            ct:log("Txs ERROR (~p): ~p", [N, Other]),
+                            error
+                    end
+            end, Nodes),
+    case lists:usort(Txs) of
+        [X] when X =/= error -> true;
+        _ -> false
+    end.
 
 mine_one_block(N) ->
     subscribe(N, block_created),
@@ -199,7 +268,7 @@ mine_one_block(N) ->
             rpc_call(N, aec_miner, suspend, []),
             ct:log("block created, Info=~p", [Info]),
             ok
-    after 20000 ->
+    after 30000 ->
             rpc_call(N, aec_miner, suspend, []),
             error(timeout_waiting_for_block)
     end.
@@ -273,6 +342,21 @@ call_proxy(N, Req, Timeout) ->
 %% ==================================================
 %% Private functions
 %% ==================================================
+
+%% set_trace(N, Spec) ->
+%%     dbg:n(N),
+%%     lists:map(
+%%       fun(tracer) ->
+%%               {tracer,
+%%                dbg:tracer(process, {fun(Msg,_) ->
+%%                                             ct:log(">>~p~n", [Msg]), 0
+%%                                     end, 0})};
+%%          (stop) ->
+%%               {stop, dbg:stop()};
+%%          ({Op, Args} = S) when Op==tp; Op==tpl; Op==ct; Op==ctpl;
+%%                                Op==p; Op==n; Op==cn ->
+%%               {S, apply(dbg, Op, Args)}
+%%       end, Spec).
 
 stop_nodes(Config) ->
     [stop_node(N, Config) || {N,_} <- ?config(nodes, Config)].
@@ -359,7 +443,8 @@ node_(N) when N == dev1; N == dev2; N == dev3 ->
     list_to_atom("epoch_" ++ atom_to_list(N) ++ "@" ++ H).
 
 connect(N) ->
-    connect(N, 5).
+    connect(N, 5),
+    report_node_config(N).
 
 connect(N, Tries) when Tries > 0 ->
     case net_kernel:hidden_connect(N) of
@@ -371,10 +456,7 @@ connect(N, Tries) when Tries > 0 ->
                          [?MODULE, "./" ++ ?MODULE_STRING ++ ".beam", Bin]),
             ct:log("LoadRes = ~p", [LoadRes]),
             spawn(N, ?MODULE, proxy, []),
-            ct:log(
-              "await: ~p",
-              [rpc:call(N, gproc, await,
-                        [{n,l,{epoch,app,aehttp}},10000], 10500)]),
+            await_aehttp(N),
             true;
         false ->
             ct:log("hidden_connect(~p) -> false, retrying ...", [N]),
@@ -390,24 +472,157 @@ start_node_(N, Config) ->
     Flags = "-pa " ++ ?config(priv_dir, Config),
     Top = ?config(top_dir, Config),
     cmd(["(cd ", Top, " && ERL_FLAGS=\"", Flags, "\"",
+         " EPOCH_CONFIG=", epoch_config(N, Config),
          " make ", start_tgt(N),")"]).
+
+report_node_config(_N) ->
+    [ct:log("~w env: ~p", [A, application:get_all_env(A)]) ||
+        A <- [aeutil, aecore, aehttp]].
 
 start_tgt(dev1) -> "dev1-start";
 start_tgt(dev2) -> "dev2-start";
 start_tgt(dev3) -> "dev3-start".
 
 expect_block(N, B) ->
-    expect_block(N, B, undefined, 5).
+    retry(fun() -> expect_block_(N, B) end,
+          {?LINE, expect_block, N, B}).
 
-expect_block(N, B, _Prev, Tries) when Tries > 0 ->
+expect_block_(N, B) ->
     {ok, Bn} = rpc_call(N, aec_chain, top, []),
-    case B == Bn of
+    case B =:= Bn of
         true ->
-            ok;
+            Bal = get_balance(N),
+            ct:log("Got block (~p); Balance = ~p", [N, Bal]),
+            true;
+        false ->
+            {false, Bn}
+    end.
+
+await_aehttp(N) ->
+    await_gproc(N),
+    case rpc:call(N, gproc, await,
+                  [{n,l,{epoch,app,aehttp}},10000], 10500) of
+        {P, _} when is_pid(P) -> ok;
+        Other ->
+            ct:log("gproc:await(<aehttp>) -> ~p", [Other])
+    end.
+
+await_gproc(N) ->
+    retry(fun() -> case rpc:call(N, application, which_applications, []) of
+                       {badrpc, _} = Error ->
+                           error(Error);
+                       Apps ->
+                           lists:keymember(gproc, 1, Apps)
+                   end
+          end, {?LINE, await_gproc, N}).
+
+
+retry(Test, Info) ->
+    retry(Test, 5, Info).
+
+retry(Test, Retries, Info) ->
+    retry_(Test, #{prev => undefined,
+                   retries => Retries,
+                   tries => Retries,
+                   info => Info}).
+
+retry_(Test, #{tries := Tries} = S) when Tries > 0 ->
+    case Test() of
+        true ->
+            true;
         false ->
             timer:sleep(1000),
-            expect_block(N, B, Bn, Tries-1)
+            retry_(Test, S#{tries => Tries -1});
+        {false, V} ->
+            timer:sleep(1000),
+            retry_(Test, S#{tries => Tries -1, prev => V})
     end;
-expect_block(N, B, Prev, _) ->
-    ct:log("exhausted retries (~p)", [N]),
-    erlang:error({different_top_blocks, [N, B, Prev]}).
+retry_(_, S) ->
+    ct:log("exhausted retries (~p)", [S]),
+    ct:fail({retry_exhausted, S}).
+
+%% ============================================================
+%% Transaction support functions
+%% ============================================================
+
+get_pubkey(N) ->
+    rpc_call(N, aec_keys, pubkey, []).
+
+get_balance(N) ->
+    rpc_call(N, aec_miner, get_balance, []).
+
+get_pool(N) ->
+    rpc_call(N, aec_tx_pool, peek, [infinity]).
+
+new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
+    PK1 = maps_get(pk1, M, fun() -> ok(get_pubkey(N1)) end),
+    PK2 = maps_get(pk2, M, fun() -> ok(get_pubkey(N2)) end),
+    Uri = rpc_call(N1, aehttp_app, local_internal_http_uri, []),
+    {ok, ok} = aeu_requests:new_spend_tx(
+                 Uri, #{sender_pubkey => PK1,
+                        recipient_pubkey => PK2,
+                        amount => Am,
+                        fee => Fee}),
+    ok.
+
+ensure_new_tx(N, Tx) ->
+    retry(fun() -> ensure_new_tx_(N, Tx) end,
+          {?LINE, ensure_new_tx, N, Tx}).
+
+ensure_new_tx_(N, Tx) ->
+    {ok, Txs} = get_pool(N),
+    lists:member(Tx, Txs).
+
+ok({ok, V}) ->
+    V.
+
+maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
+    case maps:find(K, M) of
+        {ok, V} -> V;
+        error ->
+             Def()
+    end.
+
+create_configs(Config) ->
+    [create_config(N, Config) || N <- [dev1, dev2, dev3]].
+
+create_config(N, Config) ->
+    EpochCfg = epoch_config(N, Config),
+    ok = filelib:ensure_dir(EpochCfg),
+    write_config(EpochCfg, config(N, Config)).
+
+write_config(F, Config) ->
+    JSON = jsx:prettify(jsx:encode(Config)),
+    {ok, Fd} = file:open(F, [write]),
+    ct:log("Writing config (~p)~n~s", [F, JSON]),
+    try io:fwrite(Fd, "~s~n", [JSON])
+    after
+        file:close(Fd)
+    end.
+
+config(N, Config) ->
+    {A,B,C} = os:timestamp(),
+    [
+     #{<<"keys">> =>
+           [
+            #{<<"dir">> => bin(keys_dir(N, Config)),
+              <<"password">> => bin(io_lib:format("~w.~w.~w", [A,B,C]))}
+           ]}
+    ].
+%% data_dir(Config) ->
+%%     ?config(data_dir, Config).
+
+priv_dir(Config) ->
+    ?config(priv_dir, Config).
+
+node_dir(N, Config) ->
+    filename:join(priv_dir(Config), N).
+
+keys_dir(N, Config) ->
+    filename:join(node_dir(N, Config), "keys").
+
+epoch_config(N, Config) ->
+    filename:join(node_dir(N, Config), "epoch.json").
+
+bin(S) ->
+    iolist_to_binary(S).
