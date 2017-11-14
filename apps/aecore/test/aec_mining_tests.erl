@@ -20,6 +20,23 @@
                     145,96,71,82,28,176,23,5,128,17,245,174,170,199,54,248,167,43,185,12,108,91,
                     107,188,126,242,98,36,211,79,105,50,16,124,227,93,228,142,83,163,126,167,206>>).
 
+%% How many times to try to generate solution before giving up.
+%% aec_pow_cuckoo:generate/3 has around a 10% failure rate for
+%% existing solutions (with 5 pthreads), so trying 10 times all
+%% but guarantees that we find one when it exists.
+-define(NUM_TRIES, 10).
+
+mine(BlockCandidate, Nonce) ->
+    mine(?NUM_TRIES, BlockCandidate, Nonce).
+
+mine(0, _, _) ->
+    {error, no_solution};
+mine(N, BlockCandidate, Nonce) ->
+    case ?TEST_MODULE:mine(BlockCandidate, Nonce) of
+        {error, no_solution} -> mine(N - 1, BlockCandidate, Nonce);
+        Res                  -> Res
+    end.
+
 mine_block_test_() ->
     PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
     [{foreach,
@@ -33,7 +50,7 @@ mine_block_test_() ->
                  meck:expect(aec_pow, pick_nonce, 0, 38),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
-                 {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
+                 {ok, Block} = mine(BlockCandidate, Nonce),
 
                  ?assertEqual(1, Block#block.height),
                  ?assertEqual(1, length(Block#block.txs))
@@ -96,7 +113,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
-                 {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
+                 {ok, Block} = mine(BlockCandidate, Nonce),
 
                  ?assertEqual(30, Block#block.height),
 
@@ -124,7 +141,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
-                 {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
+                 {ok, Block} = mine(BlockCandidate, Nonce),
 
                  ?assertEqual(200, Block#block.height),
 
