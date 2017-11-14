@@ -110,6 +110,64 @@ gc_test_() ->
       || {Length, Max, Interval, KeepAll} <- gc_test_params()
      ]}.
 
+postponed_validation_test_() ->
+    {foreach,
+     fun() ->
+         setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+         teardown_meck_and_keys(TmpDir)
+     end,
+     [{"Test that an invalid block in a different fork is validated when that "
+       "fork takes over as main chain",
+       fun() ->
+               B0 = genesis_block(),
+               MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2, 2], 111)],
+               AltChain = [B1,B2] = extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 100], 222),
+
+               %% Assert that we are creating a fork
+               ?assertNotEqual(MainBC, [B0, B1, B2]),
+
+               State0 = aec_chain_state:new(),
+
+               %% Insert the main chain.
+               State1 = lists:foldl(fun(B, Acc) ->
+                                            {ok, Acc1} = aec_chain_state:insert_block(B, Acc),
+                                            Acc1
+                                    end, State0, MainBC),
+
+               %% Assert that the fork would have taken over if it was ok.
+               %% Insert the main chain.
+               State2 = lists:foldl(fun(B, Acc) ->
+                                            {ok, Acc1} = aec_chain_state:insert_block(B, Acc),
+                                            Acc1
+                                    end, State1, AltChain),
+               ?assertEqual(aec_blocks:hash_internal_representation(B2),
+                            aec_blocks:hash_internal_representation(aec_chain_state:top_block(State2))),
+
+               %% Insert the first block of the fork with a bad root hash
+               Bad = B1#block{root_hash = <<"I'm not really a hash">>},
+               {ok, State3} = aec_chain_state:insert_block(Bad, State1),
+
+               {ok, Hash} = aec_blocks:hash_internal_representation(Bad),
+               B2Bad = B2#block{prev_hash = Hash},
+
+               %% Check that the fork is not taking over
+               ?assertEqual(aec_chain_state:top_block(State1),
+                            aec_chain_state:top_block(State3)),
+
+               ?assertEqual({ok, aec_chain_state:top_block_hash(State1)},
+                            aec_blocks:hash_internal_representation(lists:last(MainBC))),
+
+               %% When the fork takes over, the bad block should be found invalid.
+               ?assertMatch({error, _},
+                            aec_chain_state:insert_block(B2Bad, State3)),
+
+               ok
+       end
+      }
+     ]}.
+
 gc_test_slogan(Length, Max, Interval, KeepAll) ->
     S = io_lib:format("Create chain, test that only"
                       " the intended snapshots are kept."
