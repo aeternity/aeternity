@@ -88,35 +88,40 @@ local_ping_object() ->
 -spec compare_ping_objects(ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(Local, Remote) ->
     lager:debug("Compare, Local: ~p~nRemote: ~p", [Local, Remote]),
-    case {maps:get(<<"genesis_hash">>, Local),
-          maps:get(<<"genesis_hash">>, Remote)} of
-        {G, G} ->
-            lager:debug("genesis blocks match", []),
-            %% same genesis block - continue
-            case {maps:get(<<"best_hash">>, Local),
-                  maps:get(<<"best_hash">>, Remote)} of
-                {T, T} ->
-                    lager:debug("same top blocks", []),
-                    %% we're in sync!
-                    ok;
-                _ ->
-                    Dl = maps:get(<<"difficulty">>, Local),
-                    Dr = maps:get(<<"difficulty">>, Remote),
-                    if Dl > Dr ->
-                            lager:debug("Our difficulty is higher", []),
-                            ok;
-                       true ->
-                            Src = maps:get(<<"source">>, Remote),
-                            start_sync(Src)
-                    end
-            end,
-            ok;
-        _ ->
-            {error, different_genesis_blocks}
-    end.
+    Src = maps:get(<<"source">>, Remote),
+    Res = case {maps:get(<<"genesis_hash">>, Local),
+                maps:get(<<"genesis_hash">>, Remote)} of
+              {G, G} ->
+                  lager:debug("genesis blocks match", []),
+                  %% same genesis block - continue
+                  case {maps:get(<<"best_hash">>, Local),
+                        maps:get(<<"best_hash">>, Remote)} of
+                      {T, T} ->
+                          lager:debug("same top blocks", []),
+                          %% we're in sync!
+                          ok;
+                      _ ->
+                          Dl = maps:get(<<"difficulty">>, Local),
+                          Dr = maps:get(<<"difficulty">>, Remote),
+                          if Dl > Dr ->
+                                  lager:debug("Our difficulty is higher", []),
+                                  ok;
+                             true ->
+                                  start_sync(Src)
+                          end
+                  end,
+                  ok;
+              _ ->
+                  {error, different_genesis_blocks}
+          end,
+    fetch_mempool(Src),
+    Res.
 
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
+
+fetch_mempool(PeerUri) ->
+    gen_server:cast(?MODULE, {fetch_mempool, PeerUri}).
 
 %%%=============================================================================
 %%% gen_server functions
@@ -152,6 +157,9 @@ handle_cast({connect, Uri}, State) ->
     {noreply, State};
 handle_cast({start_sync, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {start_sync, PeerUri}),
+    {noreply, State};
+handle_cast({fetch_mempool, PeerUri}, State) ->
+    jobs:enqueue(sync_jobs, {fetch_mempool, PeerUri}),
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
@@ -197,6 +205,8 @@ process_job([{T, Job}]) ->
             do_forward_tx(Tx, Peer);
         {start_sync, PeerUri} ->
             do_start_sync(PeerUri);
+        {fetch_mempool, PeerUri} ->
+            do_fetch_mempool(PeerUri);
         _Other ->
             lager:debug("unknown job", [])
     end.
@@ -349,18 +359,27 @@ try_write_blocks([]) ->
 try_write_block(Block, Blocks) ->
     case aec_chain:write_block(Block) of
         ok ->
-            lager:debug("block write successful (~p)", [header_hash(Block)]),
-            try_write_blocks(Blocks);
+            lager:debug("block write successful (~p)", [header_hash(Block)]);
         {error, {block_already_stored, _}} ->
             %% this is fine, continue
-            lager:debug("block already stored (~p)", [header_hash(Block)]),
-            try_write_blocks(Blocks);
-        {error, Reason} = Error ->
+            lager:debug("block already stored (~p)", [header_hash(Block)]);
+        {error, Reason} ->
             lager:debug("write_block error (~p): ~p",
-                        [header_hash(Block), Reason]),
-            %% No reason to continue? We now have a top header without a
-            %% corresponding block.
-            Error
+                        [header_hash(Block), Reason])
+    end,
+    %% Always try to write all blocks
+    try_write_blocks(Blocks).
+
+do_fetch_mempool(PeerUri) ->
+    case aeu_requests:transactions(PeerUri) of
+        {ok, Txs} ->
+            lager:debug("Mempool (~p) received, size: ~p",
+                        [PeerUri, length(Txs)]),
+            aec_tx_pool:push(Txs);
+        Other ->
+            lager:debug("Error fetching mempool from ~p: ~p",
+                        [PeerUri, Other]),
+            Other
     end.
 
 reg_worker(Job, T) ->

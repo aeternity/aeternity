@@ -137,9 +137,9 @@ serialize_to_map(B = #block{}) ->
      }.
 
 serialize_tx(Tx) ->
-    base64:encode(aec_tx_sign:serialize_to_binary(Tx)).
+    #{tx => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
 
-deserialize_tx(Bin) ->
+deserialize_tx(#{<<"tx">> := Bin}) ->
     aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).
 
 -define(STORAGE_VERSION, 1).

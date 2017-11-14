@@ -88,7 +88,9 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
 
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
-    Txs = [base64:encode(aec_tx_sign:serialize_to_binary(T)) || T <- Txs0],
+    lager:debug("GetTxs : ~p", [Txs0]),
+    Txs = [#{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(T))}
+           || T <- Txs0],
     {200, [], Txs};
 
 handle_request('PostBlock', Req, _Context) ->
@@ -102,11 +104,14 @@ handle_request('PostBlock', Req, _Context) ->
     ok = aec_miner:post_block(Block),
     {200, [], #{}};
 
-handle_request('PostTx', Req, _Context) ->
-    SerializedTx = maps:get('SignedTx', Req),
+handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
+    lager:debug("Got PostTx; Req = ~p", [Req]),
+    SerializedTx = maps:get(<<"tx">>, Tx),
     SignedTx = aec_tx_sign:deserialize_from_binary(
                  base64:decode(SerializedTx)),
-    aec_tx_pool:push(SignedTx, tx_received),
+    lager:debug("deserialized: ~p", [SignedTx]),
+    PushRes = aec_tx_pool:push(SignedTx, tx_received),
+    lager:debug("PushRes = ~p", [PushRes]),
     {200, [], #{}};
 
 handle_request('GetAccountBalance', Req, _Context) ->
