@@ -471,15 +471,18 @@ update_state_tree(Node, State) ->
         {stored,_Trees} ->
             update_next_state_tree(Node, State);
         {calculated, Trees} ->
-            RootHash = aec_trees:all_trees_hash(Trees),
-            Expected = node_root_hash(Node),
-            case RootHash =:= Expected of
-                true ->
-                    State1 = state_db_put(hash(Node), Trees, State),
-                    update_next_state_tree(Node, State1);
-                false ->
-                    internal_error({root_hash_mismatch, RootHash, Expected})
-            end
+            assert_state_hash_valid(Trees, Node),
+            State1 = state_db_put(hash(Node), Trees, State),
+            update_next_state_tree(Node, State1)
+    end.
+
+assert_state_hash_valid(Trees, Node) ->
+    RootHash = aec_trees:all_trees_hash(Trees),
+    Expected = node_root_hash(Node),
+    case RootHash =:= Expected of
+        true -> ok;
+        false ->
+            internal_error({root_hash_mismatch, RootHash, Expected})
     end.
 
 update_next_state_tree(Node, State) ->
@@ -531,6 +534,7 @@ apply_node_transactions([Node|Left], Trees, State) ->
     %% is equal to #block.root_hash.
     %% To be done in scope of "PT-152481000 Validate received block".
     {ok, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
+    assert_state_hash_valid(NewTrees, Node),
     apply_node_transactions(Left, NewTrees, State);
 apply_node_transactions([], Trees,_State) ->
     Trees.
