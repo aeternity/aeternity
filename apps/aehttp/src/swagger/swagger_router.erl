@@ -77,7 +77,7 @@ get_operations() ->
         },
         'GetTxs' => #{
             path => "/v1/transactions",
-            method => <<"POST">>,
+            method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'Ping' => #{

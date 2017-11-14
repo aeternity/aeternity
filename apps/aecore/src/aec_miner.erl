@@ -525,6 +525,7 @@ save_mined_block(Block) ->
     Header = aec_blocks:to_header(Block),
     case aec_chain:insert_header(Header) of
         ok ->
+            {ok, OldTop} = aec_chain:top(),
             case aec_chain:write_block(Block) of
                 ok ->
                     try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
@@ -534,6 +535,7 @@ save_mined_block(Block) ->
                                       [Block#block.height,
                                        as_hex(Block#block.root_hash)]),
                     aec_events:publish(block_created, Block),
+                    maybe_update_transactions(OldTop),
                     ok;
                 {error, Reason} ->
                     epoch_mining:error("Block insertion failed: ~p.", [Reason])
@@ -595,17 +597,9 @@ int_post_block(Block,_State) ->
                             {ok, OldTop} = aec_chain:top(),
                             Res = aec_chain:write_block(Block),
                             epoch_mining:debug("write_block result: ~p", [Res]),
-                            {ok, NewTop} = aec_chain:top(),
-
                             %% Gossip
                             aec_events:publish(block_received, Block),
-
-                            %% Check if we have a new top block.
-                            if OldTop =:= NewTop -> ok;
-                               true ->
-                                    update_transactions(OldTop, NewTop),
-                                    new_top
-                            end;
+                            maybe_update_transactions(OldTop);
 			{error, Reason} ->
                             lager:debug("Couldn't insert header (~p)", [Reason]),
                             ok
@@ -617,6 +611,15 @@ int_post_block(Block,_State) ->
                     lager:info("Malformed block posted to the node (~p)", [Reason]),
                     error
             end
+    end.
+
+maybe_update_transactions(OldTop) ->
+    case aec_chain:top() of
+        {ok, OldTop} ->
+            ok;
+        {ok, NewTop} ->
+            update_transactions(OldTop, NewTop),
+            new_top
     end.
 
 update_transactions(OldTop, NewTop) ->

@@ -29,6 +29,7 @@
 -export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0,
          wait_for_pubkey/0]).
 -export([verify/2]).
+-export([check_key_pair/0]).
 
 -ifdef(TEST).
 -export([check_keys_pair/5]).
@@ -40,6 +41,11 @@
 -define(FILENAME_PUB, "key.pub").
 -define(FILENAME_PRIV, "key").
 
+-record(crypto, {type   :: atom(),
+                 algo   :: atom(),
+                 digest :: atom(),
+                 curve  :: atom()}).
+
 -record(state, {
           pub       :: undefined | binary(),
           priv      :: undefined | binary(),
@@ -47,10 +53,11 @@
           keys_dir  :: undefined | binary(),
           pub_file  :: undefined | binary(),
           priv_file :: undefined | binary(),
-          type   :: atom(),
-          algo   :: atom(),
-          digest :: atom(),
-          curve  :: atom()}).
+          crypto    :: #crypto{}}).
+          %% type   :: atom(),
+          %% algo   :: atom(),
+          %% digest :: atom(),
+          %% curve  :: atom()}).
 
 -type password() :: binary().
 
@@ -67,8 +74,7 @@
 %%--------------------------------------------------------------------
 start_link() ->
     %% INFO: set the password to re-use keys between restarts
-    {ok, Password} = application:get_env(aecore, password),
-    KeysDir = application:get_env(aecore, keys_dir, filename:join(code:priv_dir(aecore), "keys")),
+    #{keys_dir := KeysDir, password := Password} = check_env(),
     Args = [Password, KeysDir],
     start_link(Args).
 
@@ -101,6 +107,10 @@ wait_for_pubkey(Sleep) ->
             wait_for_pubkey(Sleep+10);
         R -> R
     end.
+
+-spec check_key_pair() -> boolean().
+check_key_pair() ->
+    gen_server:call(?MODULE, check_key_pair).
 
 -spec open(password()) -> {ok, password()} | {error, keys_not_loaded}.
 open(Password) ->
@@ -135,10 +145,10 @@ delete() ->
 init([Password, KeysDir]) when is_binary(Password) ->
     lager:info("Initializing keys manager"),
     %% TODO: consider moving the crypto config to config
-    Algo = ecdsa,
-    KeyType = ecdh,
-    Digest = sha256,
-    Curve = secp256k1,
+    C = #crypto{algo   = ecdsa,
+                type   = ecdh,
+                digest = sha256,
+                curve = secp256k1},
 
     %% Ensure there is directory for keys
     case filelib:is_dir(KeysDir) of
@@ -152,12 +162,18 @@ init([Password, KeysDir]) when is_binary(Password) ->
     {Pub1, Priv1} =
         case from_local_dir(PubFile) of
             {error, enoent} ->
-                p_gen_new(Password, KeyType, Curve, PubFile, PrivFile);
+                p_gen_new(Password, C, PubFile, PrivFile);
             {ok, Pub} ->
                 {ok, Priv} = from_local_dir(PrivFile),
                 Pub0 = decrypt_pubkey(Password, Pub),
                 Priv0 = decrypt_privkey(Password, Priv),
-                {Pub0, Priv0}
+                case check_keys_pair(Pub0, Priv0, C) of
+                    true ->
+                        {Pub0, Priv0};
+                    false ->
+                        erlang:error({invalid_key_pair_from_local,
+                                      [PubFile, PrivFile]})
+                end
         end,
 
     %% For sake of simplicity, if the initialization fails the
@@ -165,10 +181,7 @@ init([Password, KeysDir]) when is_binary(Password) ->
     %% reason and returning `{stop, Reason::term()}`.
     {ok, #state{priv=Priv1, pub=Pub1,
                 priv_file=PrivFile, pub_file=PubFile,
-                algo=Algo,
-                type=KeyType,
-                digest=Digest,
-                curve=Curve,
+                crypto = C,
                 pass=Password,
                 keys_dir=KeysDir}}.
 
@@ -190,7 +203,9 @@ handle_call({sign, _}, _From, #state{priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call({sign, Term}, _From,
             #state{pub = PubKey, priv=PrivKey,
-                   algo=Algo, digest=Digest, curve=Curve} = State) ->
+                   crypto = #crypto{algo=Algo,
+                                    digest=Digest,
+                                    curve=Curve}} = State) ->
     Signers = aec_tx:signers(Term),
     case lists:member(PubKey, Signers) of
         false ->
@@ -203,18 +218,20 @@ handle_call({sign, Term}, _From,
             {reply, {ok, #signed_tx{data = Term,
                                     signatures = [Signature]}}, State}
     end;
-handle_call({verify, Sigs, Term}, _From, State) ->
+handle_call({verify, Sigs, Term}, _From, #state{crypto = C} = State) ->
     Signers = aec_tx:signers(Term),
     Bin = aec_tx:serialize_to_binary(Term),
     Res = lists:any(fun(Sig) ->
-                            try_verify(Bin, Sig, Signers, State)
+                            try_verify(Bin, Sig, Signers, C)
                     end, Sigs),
     {reply, Res, State};
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
-
+handle_call(check_key_pair, _From, #state{pub = PubKey, priv = PrivKey,
+                                          crypto = C} = State) ->
+    {reply, check_keys_pair(PubKey, PrivKey, C), State};
 handle_call(delete, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) ->
     try
         ok = file:delete(PubFile),
@@ -227,10 +244,10 @@ handle_call(delete, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State)
             {reply, error, State}
     end;
 
-handle_call({new, Password}, _From, #state{type=KeyType, curve=Curve, keys_dir=KeysDir} = State) when is_binary(Password) ->
+handle_call({new, Password}, _From, #state{crypto = C, keys_dir=KeysDir} = State) when is_binary(Password) ->
     try
         {NewPubFile, NewPrivFile} = p_gen_filename(KeysDir),
-        {NewPubKey, NewPrivKey} = p_gen_new(Password, KeyType, Curve, NewPubFile, NewPrivFile),
+        {NewPubKey, NewPrivKey} = p_gen_new(Password, C, NewPubFile, NewPrivFile),
         {reply, {ok, NewPubKey}, State#state{priv=NewPrivKey, pub=NewPubKey, pass=Password,
                                              pub_file=NewPubFile, priv_file=NewPrivFile}}
     catch
@@ -245,8 +262,8 @@ handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile
         {ok, Priv} = from_local_dir(PrivFile),
         Pub0 = decrypt_pubkey(Password, Pub),
         Priv0 = decrypt_privkey(Password, Priv),
-        #state{algo=Algo, digest=Digest, curve=Curve} = State,
-        case check_keys_pair(Pub0, Priv0, Algo, Digest, Curve) of
+        #state{crypto = C} = State,
+        case check_keys_pair(Pub0, Priv0, C) of
             true ->
                 {reply, ok, State#state{priv=Priv0, pub=Pub0, pass=Password}};
             false ->
@@ -287,9 +304,9 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-try_verify(Bin, S, Signers, #state{algo = Algo,
-                                   digest = Digest,
-                                   curve = Curve}) ->
+try_verify(Bin, S, Signers, #crypto{algo = Algo,
+                                    digest = Digest,
+                                    curve = Curve}) ->
     lists:any(
       fun(PubKey) ->
               crypto:verify(
@@ -331,15 +348,22 @@ p_gen_filename(KeysDir) ->
     PrivFile = filename:join(KeysDir, ?FILENAME_PRIV),
     {PubFile, PrivFile}.
 
-p_gen_new(Password, KeyType, Curve, PubFilename, PrivFilename) ->
-    {NewPubKey, NewPrivKey} = crypto:generate_key(KeyType, crypto:ec_curve(Curve)),
-    EncPub = encrypt_pubkey(Password, NewPubKey),
-    lager:debug("New PubKey: ~p", [EncPub]),
-    EncPriv = encrypt_privkey(Password, NewPrivKey),
-    lager:debug("New PrivKey: ~p", [EncPriv]),
-    ok = to_local_dir(PubFilename, EncPub),
-    ok = to_local_dir(PrivFilename, EncPriv),
-    {NewPubKey, NewPrivKey}.
+p_gen_new(Password, #crypto{type = KeyType, curve = Curve} = C,
+          PubFilename, PrivFilename) ->
+    {NewPubKey, NewPrivKey} =
+        crypto:generate_key(KeyType, crypto:ec_curve(Curve)),
+    case check_keys_pair(NewPubKey, NewPrivKey, C) of
+        true ->
+            EncPub = encrypt_pubkey(Password, NewPubKey),
+            lager:debug("New PubKey: ~p", [EncPub]),
+            EncPriv = encrypt_privkey(Password, NewPrivKey),
+            lager:debug("New PrivKey: ~p", [EncPriv]),
+            ok = to_local_dir(PubFilename, EncPub),
+            ok = to_local_dir(PrivFilename, EncPriv),
+            {NewPubKey, NewPrivKey};
+        false ->
+            error({generated_key_pair_check_failed, [NewPubKey, NewPrivKey]})
+    end.
 
 to_local_dir(NewFile, Bin) ->
     lager:debug("Saving keys to ~p", [NewFile]),
@@ -357,9 +381,36 @@ from_local_dir(NewFile) ->
     file:read_file(NewFile).
 
 
--spec check_keys_pair(binary(), binary(), atom(), atom(), atom()) -> boolean().
+-spec check_keys_pair(binary(), binary(), #crypto{}) -> boolean().
+check_keys_pair(PubKey, PrivKey, #crypto{algo   = Algo,
+                                         digest = Digest,
+                                         curve  = Curve}) ->
+    check_keys_pair(PubKey, PrivKey, Algo, Digest, Curve).
+
 check_keys_pair(PubKey, PrivKey, Algo, Digest, Curve) ->
     SampleMsg = <<"random message">>,
-    Signature = crypto:sign(Algo, Digest, SampleMsg, [PrivKey, crypto:ec_curve(Curve)]),
-    crypto:verify(Algo, Digest, SampleMsg, Signature, [PubKey, crypto:ec_curve(Curve)]).
+    Signature = crypto:sign(Algo, Digest, SampleMsg,
+                            [PrivKey, crypto:ec_curve(Curve)]),
+    crypto:verify(Algo, Digest, SampleMsg, Signature,
+                  [PubKey, crypto:ec_curve(Curve)]).
 
+
+check_env() ->
+    KeysDir =
+        case aeu_env:user_config([<<"keys">>, <<"dir">>]) of
+            undefined ->
+                application:get_env(
+                  aecore, keys_dir,
+                  filename:join(code:priv_dir(aecore), "keys"));
+            {ok, Dir} ->
+                binary_to_list(Dir)
+        end,
+    Pwd =
+        case aeu_env:user_config([<<"keys">>, <<"password">>]) of
+            undefined ->
+                {ok, P} = application:get_env(aecore, password),
+                P;
+            {ok, P} ->
+                P
+        end,
+    #{keys_dir => KeysDir, password => Pwd}.

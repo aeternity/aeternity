@@ -28,8 +28,8 @@ apply_new_txs(#block{txs = Txs} = Block) ->
             case get_txs_to_mine_in_pool() of
                 [] ->
                     {ok, Block};
-                [_|_] = Txs ->
-                    create_block_candidate(Txs)
+                [_|_] = NewTxs ->
+                    create_block_candidate(NewTxs)
             end
     end.
 

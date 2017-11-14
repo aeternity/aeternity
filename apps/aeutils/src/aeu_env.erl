@@ -128,7 +128,9 @@ read_json(F) ->
 
 interpret_json(L, F) when is_list(L) ->
     lists:flatten([interpret_json(Elem, F) || Elem <- L]);
-interpret_json({_K, _V} = E, _) ->
+interpret_json({K, V}, F) when is_list(V) ->
+    {K, interpret_json(V, F)};
+interpret_json(E, _) ->
     E.
 
 read_yaml(F) ->
