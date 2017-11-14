@@ -17,6 +17,23 @@
 
 -define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
 
+%% How many times to try to generate solution before giving up.
+%% aec_pow_cuckoo:generate/3 has around a 10% failure rate for
+%% existing solutions (with 5 pthreads), so trying 10 times all
+%% but guarantees that we find one when it exists.
+-define(NUM_TRIES, 10).
+
+generate(Bin, Target, Nonce) ->
+    generate(?NUM_TRIES, Bin, Target, Nonce).
+
+generate(0, _, _, _) ->
+    {error, no_solution};
+generate(N, Bin, Target, Nonce) ->
+    case ?TEST_MODULE:generate(Bin, Target, Nonce) of
+        {error, no_solution} -> generate(N - 1, Bin, Target, Nonce);
+        Res                  -> Res
+    end.
+
 pow_test_() ->
     [{"Generate with a winning nonce and high target threshold, verify it",
       {timeout, 60,
@@ -24,14 +41,12 @@ pow_test_() ->
                Target = ?HIGHEST_TARGET_SCI,
                Nonce = 188,
                {T1, Res} =
-                   timer:tc(?TEST_MODULE, generate,
-                            [?TEST_BIN, Target, Nonce]),
+                   timer:tc(fun() -> generate(?TEST_BIN, Target, Nonce) end),
                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
                {ok, {Nonce, Soln}} = Res,
                ?assertMatch(L when length(L) == 42, Soln),
 
                %% verify the nonce and the solution
-               {ok, {Nonce, Soln}} = Res,
                {T2, Res2} =
                    timer:tc(?TEST_MODULE, verify,
                             [?TEST_BIN, Nonce, Soln, Target]),
@@ -44,7 +59,7 @@ pow_test_() ->
        fun() ->
                Target = 16#01010000,
                Nonce = 188,
-               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+               Res = generate(?TEST_BIN, Target, Nonce),
                ?assertEqual({error, no_solution}, Res),
 
                %% Any attempts to verify such nonce with a solution
@@ -52,8 +67,7 @@ pow_test_() ->
                %%
                %% Obtain solution with high target threshold ...
                HighTarget = ?HIGHEST_TARGET_SCI,
-               {ok, {Nonce, Soln2}} =
-                   ?TEST_MODULE:generate(?TEST_BIN, HighTarget, Nonce),
+               {ok, {Nonce, Soln2}} = generate(?TEST_BIN, HighTarget, Nonce),
                ?assertMatch(L when length(L) == 42, Soln2),
                %% ... then attempt to verify such solution (and nonce)
                %% with the low target threshold (shall fail).
