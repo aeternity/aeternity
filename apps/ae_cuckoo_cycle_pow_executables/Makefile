@@ -9,19 +9,25 @@ EXECUTABLES = \
 	priv/bin/lean30 \
 	priv/bin/verify30
 
+LIBBLAKE = priv/lib/libblake2b.so
+
+SRC_EXECUTABLES = $(subst priv/bin, c_src/src, $(EXECUTABLES))
+
+SRC_LIBBLAKE = $(subst priv/lib, c_src/src, $(LIBBLAKE))
+
 REPO = https://github.com/aeternity/cuckoo.git
 COMMIT = fddbf60
 
-.PHONY: all
-all: \
-	priv/lib/libblake2b.so \
-	$(EXECUTABLES)
+.PHONY: all clean distclean
+all: 	$(LIBBLAKE) $(EXECUTABLES)
 
-.PHONY: clean
 clean:
+	rm -f $(SRC_EXECUTABLES) $(EXECUTABLES) $(SRC_LIBBLAKE) $(LIBBLAKE)
+
+distclean:
 	rm -rf c_src priv
 
-priv/lib/libblake2b.so: c_src/src/libblake2b.so priv/lib
+$(LIBBLAKE): $(SRC_LIBBLAKE) priv/lib
 	cp -p $< $@
 
 $(EXECUTABLES): priv/bin/%: c_src/src/% priv/bin
@@ -30,13 +36,12 @@ $(EXECUTABLES): priv/bin/%: c_src/src/% priv/bin
 priv/lib priv/bin:
 	mkdir -p $@
 
-c_src/src/libblake2b.so: c_src/.git
+$(SRC_LIBBLAKE): c_src/.git priv/lib priv/bin
 	( cd $(<D) && git checkout -q $(COMMIT); )
-	( cd $(@D) && $(MAKE) -s libblake2b.so; )
+	( cd $(@D) && $(MAKE) -s $(@F); )
 
-c_src/src/%: c_src/.git
-	( cd $(<D) && git checkout -q $(COMMIT); )
-	( cd $(@D) && $(MAKE) -s libblake2b.so $*; )
+c_src/src/%: c_src/.git priv/lib priv/bin
+	( cd $(@D) && $(MAKE) $*; )
 
 c_src/.git:
 	git clone $(REPO) $(@D)

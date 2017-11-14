@@ -220,8 +220,7 @@ wait_for_result(#state{os_pid = OsPid,
                       end,
             ?error("OS process died: ~p~n", [Reason2]),
             {error, {execution_failed, Reason2}};
-        Other ->
-            ?debug("Ignoring message ~p~n", [Other]),
+        _Other ->
             wait_for_result(State)
     end.
 
