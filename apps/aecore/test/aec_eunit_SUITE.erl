@@ -44,14 +44,14 @@ end_per_testcase(_TC, Config) ->
     Apps = application:which_applications(),
     Names = registered() -- [cover_server, timer_server],
     case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
-      {[], [], []} -> 
-        ok;
-      {_, _, Log} when Log =/= []->
-        {fail, errors_in_lager_log};
-      {NewApps, _, _} when NewApps =/= [] ->
-        %% New applications take precedence over new registered processes
-        {fail, {started_applications, NewApps}};
-      {_, NewReg, _} -> 
-        {fail, {registered_processes, NewReg}}
+        {[], [], []} ->
+            ok;
+        {_, _, Log} when Log =/= []->
+            {fail, {errors_in_lager_log, lists:flatten(io_lib:format("~s~n", [Log]))}};
+        {NewApps, _, _} when NewApps =/= [] ->
+            %% New applications take precedence over new registered processes
+            {fail, {started_applications, NewApps}};
+        {_, NewReg, _} -> 
+            {fail, {registered_processes, NewReg}}
     end.
 
