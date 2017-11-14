@@ -1,0 +1,70 @@
+---
+- name: Deploy epoch package
+  hosts: all
+  remote_user: epoch
+
+  vars:
+    project_root: "{{ ansible_env.HOME }}/node"
+
+  tasks:
+    - name: "Required variables"
+      fail: msg="Either remote_package or local_package variables must be defined"
+      when: remote_package is not defined and local_package is not defined
+
+    - name: "Make sure {{ project_root }} exists"
+      file:
+          path: "{{ project_root }}"
+          state: directory
+          mode: 0700
+
+    - name: Download epoch package
+      get_url:
+        url: "{{ remote_package }}"
+        dest: "{{ project_root }}/{{ remote_package | basename }}"
+      when: remote_package is defined
+
+    - name: Check if epoch binary exists
+      stat:
+        path: "{{ project_root }}/bin/epoch"
+      register: epoch
+
+    - name: Ping epoch daemon
+      command: "{{ project_root }}/bin/epoch ping"
+      failed_when: no
+      register: ping
+      when: epoch.stat.exists == True
+      tags: [daemon]
+
+    - name: Stop epoch daemon
+      command: "{{ project_root }}/bin/epoch stop"
+      when: epoch.stat.exists == True and ping.stdout == "pong"
+      tags: [daemon]
+
+    - name: Extract remote epoch package into {{ project_root }}
+      unarchive:
+        remote_src: yes
+        keep_newer: true
+        src: "{{ project_root }}/{{ remote_package | basename }}"
+        dest: "{{ project_root }}"
+      when: remote_package is defined
+
+    - name: Extract local epoch package into {{ project_root }}
+      unarchive:
+        remote_src: no
+        keep_newer: true
+        src: "{{ local_package }}"
+        dest: "{{ project_root }}"
+      when: local_package is defined
+
+    - name: Update configuration
+      template:
+        src: templates/epoch.config.j2
+        dest: "{{ project_root }}/epoch.config"
+        mode: '0600'
+      tags: [config]
+
+    - name: Start epoch daemon
+      command: "{{ project_root }}/bin/epoch start"
+      environment:
+        ERL_FLAGS: "-config {{ project_root }}/epoch.config"
+      tags: [daemon]
