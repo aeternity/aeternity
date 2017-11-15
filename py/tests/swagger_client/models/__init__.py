@@ -18,6 +18,7 @@ from .balance import Balance
 from .block import Block
 from .error import Error
 from .ping import Ping
+from .spend_tx import SpendTx
 from .top import Top
 from .transactions import Transactions
 from .tx import Tx

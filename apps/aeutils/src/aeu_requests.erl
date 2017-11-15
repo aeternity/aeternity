@@ -113,11 +113,10 @@ send_tx(Peer, SignedTx) ->
 
 %% NOTE that this is part of the internal API, thus the standard peer
 %% uris will not work
-new_spend_tx(IntPeer, #{sender_pubkey := Ks,
-                        recipient_pubkey := Kr,
+new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
                         amount := Am,
                         fee := Fee} = Req)
-  when is_binary(Ks), is_binary(Kr), is_integer(Am), is_integer(Fee) ->
+  when is_binary(Kr), is_integer(Am), is_integer(Fee) ->
     Uri = aec_peers:uri(IntPeer),
     Response = process_request(Uri, post, "spend-tx", Req),
     case Response of

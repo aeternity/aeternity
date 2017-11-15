@@ -28,6 +28,7 @@ nodes:
       external_api: 3033
       internal_api: 3133
       internal_ws: 3134
+coinbase_reward: 10
 tests: # test specific settings
   test_ext_api:
     # Testing the external API
@@ -60,3 +61,25 @@ tests: # test specific settings
         carol: dev3
       blocks_to_post: 7
       chain_data: py/tests/integration/data/bchain.txt
+  test_spend_tx:
+    test_successful:
+      # Alice should be able to create a spend transaction to send tokens to
+      # Bob. In a controlled environment, Alice should see her transaction
+      # appear in the next block or two that are added to the blockchain. 
+      #
+      # Once that happens, Alice should see her account debited and Bob's
+      # account credited with the same number of tokens.
+      #
+      # The debit/credit should not happen until the transaction is confirmed,
+      # e.g. included in at least one block in the chain.
+      nodes:
+        alice: dev1
+      blocks_to_post: 7
+      chain_data: py/tests/integration/data/bchain.txt
+      keys:
+        dir: py/tests/integration/data/keys
+        password: secret
+      spend_tx:
+        bob_pubkey: bob_address
+        amount: 3
+        fee: 2

@@ -526,7 +526,7 @@ class ExternalApi(object):
         # Authentication setting
         auth_settings = []
 
-        return self.api_client.call_api('/transactions', 'POST',
+        return self.api_client.call_api('/transactions', 'GET',
                                         path_params,
                                         query_params,
                                         header_params,

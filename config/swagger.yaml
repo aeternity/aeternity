@@ -315,8 +315,6 @@ definitions:
   SpendTx:
     type: object
     properties:
-      sender_pubkey:
-        type: string
       recipient_pubkey:
         type: string
       amount:

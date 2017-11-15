@@ -18,6 +18,7 @@ from .models.balance import Balance
 from .models.block import Block
 from .models.error import Error
 from .models.ping import Ping
+from .models.spend_tx import SpendTx
 from .models.top import Top
 from .models.transactions import Transactions
 from .models.tx import Tx

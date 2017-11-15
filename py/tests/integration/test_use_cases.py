@@ -7,8 +7,8 @@ import time
 from nose.tools import assert_equals, assert_not_equals, with_setup
 import common
 from waiting import wait
-from py.tests import chain_downloader
 from py.tests.swagger_client.models.ping import Ping 
+from py.tests.swagger_client.models.spend_tx import SpendTx
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -27,7 +27,7 @@ def test_syncing():
 
     # Insert some blocks in Bob's chain
     blocks_to_post = test_settings["blocks_to_post"]
-    post_blocks(bob_api, blocks_to_post, chain_data_file)
+    common.post_blocks(bob_api, blocks_to_post, chain_data_file)
     bob_top = bob_api.get_top()
     assert_equals(bob_top.height, blocks_to_post)
     # Now Bob has blocks_to_post blocks
@@ -76,7 +76,7 @@ def test_persistence():
 
     # Insert some blocks in Bob's chain
     blocks_to_post = test_settings["blocks_to_post"]
-    post_blocks(bob_api, blocks_to_post, chain_data_file)
+    common.post_blocks(bob_api, blocks_to_post, chain_data_file)
     bob_top = bob_api.get_top()
     assert_equals(bob_top.height, blocks_to_post)
     # Now Bob has blocks_to_post blocks
@@ -127,7 +127,7 @@ def test_node_discovery():
 
     # Insert some blocks in Alice's chain
     blocks_to_post = test_settings["blocks_to_post"]
-    post_blocks(alice_api, blocks_to_post, chain_data_file)
+    common.post_blocks(alice_api, blocks_to_post, chain_data_file)
     alice_top = alice_api.get_top()
     assert_equals(alice_top.height, blocks_to_post)
     # Now Alice has blocks_to_post blocks
@@ -161,13 +161,6 @@ def test_node_discovery():
     common.stop_node(carol_node)
 
     shutil.rmtree(root_dir)
-
-def post_blocks(api, blocks_cnt, chain_data_file):
-    premined_blocks = chain_downloader.load_from_file(chain_data_file)
-    for i in range(1, blocks_cnt + 1):
-        block = chain_downloader.get_block(premined_blocks, height=i)
-        api.post_block(block)
-        wait(lambda: api.get_top().height == i, timeout_seconds=3, sleep_seconds=0.25)
 
 def make_peers_config(root_dir, file_name, node_url, peers0):
     sys_config = os.path.join(root_dir, file_name)
