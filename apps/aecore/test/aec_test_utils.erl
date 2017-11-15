@@ -12,6 +12,7 @@
         , mock_difficulty_as_target/0
         , unmock_difficulty_as_target/0
         , mock_fast_cuckoo_pow/0
+        , mock_fast_and_deterministic_cuckoo_pow/0
         , wait_for_it/2
         , extend_block_chain_by_difficulties_with_nonce_and_coinbase/3
         , extend_block_chain_by_difficulties_with_nonce_and_coinbase/4
@@ -55,10 +56,16 @@ unmock_time() ->
     meck:unload(aeu_time).
 
 mock_fast_cuckoo_pow() ->
+    mock_fast_cuckoo_pow({"lean16", "-t 5", 16}).
+
+mock_fast_and_deterministic_cuckoo_pow() ->
+    mock_fast_cuckoo_pow({"lean16", "", 16}).
+
+mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
     meck:expect(application, get_env, 3,
                 fun
                     (aecore, aec_pow_cuckoo, _) ->
-                        {"lean16", "-t 5", 16};
+                        Cfg;
                     (App, Key, Def) ->
                         meck:passthrough([App, Key, Def])
                 end).

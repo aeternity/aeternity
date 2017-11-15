@@ -21,7 +21,7 @@ pow_test_() ->
     {setup,
      fun() ->
              meck:new(application, [unstick, passthrough]),
-             aec_test_utils:mock_fast_cuckoo_pow(),
+             aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
              application:start(erlexec)
      end,
      fun(_) ->

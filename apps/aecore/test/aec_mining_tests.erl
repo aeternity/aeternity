@@ -128,7 +128,7 @@ setup(PoWMod) ->
     case PoWMod of
         aec_pow_cuckoo ->
             meck:new(application, [unstick, passthrough]),
-            aec_test_utils:mock_fast_cuckoo_pow(),
+            aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
             application:start(erlexec);
         aec_pow_sha256 ->
             ok
