@@ -65,14 +65,9 @@ create_block_candidate(TxsToMineInPool) ->
             {ok, LastBlock} = aec_chain:top(),
             Trees = aec_blocks:trees(LastBlock),
             Block0 = aec_blocks:new(LastBlock, Txs, Trees),
-            case aec_blocks:cointains_coinbase_tx(Block0) of
-                true ->
-                    Block = maybe_recalculate_difficulty(Block0),
-                    RandomNonce = aec_pow:pick_nonce(),
-                    {ok, Block, RandomNonce};
-                false ->
-                    {error, coinbase_tx_rejected}
-            end
+            Block = maybe_recalculate_difficulty(Block0),
+            RandomNonce = aec_pow:pick_nonce(),
+            {ok, Block, RandomNonce}
     end.
 
 -spec create_signed_coinbase_tx() -> {ok, signed_tx()} | {error, term()}.

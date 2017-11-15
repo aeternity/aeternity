@@ -19,8 +19,7 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1,
-         cointains_coinbase_tx/1]).
+         validate/1]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -263,8 +262,3 @@ validate_txs_hash(#block{txs = Txs,
         _Other ->
             {error, malformed_txs_hash}
     end.
-
-cointains_coinbase_tx(#block{txs = []}) ->
-    false;
-cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
-    aec_tx:is_coinbase(CoinbaseTx).
