@@ -602,13 +602,13 @@ write_config(F, Config) ->
 
 config(N, Config) ->
     {A,B,C} = os:timestamp(),
-    [
      #{<<"keys">> =>
-           [
-            #{<<"dir">> => bin(keys_dir(N, Config)),
-              <<"password">> => bin(io_lib:format("~w.~w.~w", [A,B,C]))}
-           ]}
-    ].
+           #{<<"dir">> => bin(keys_dir(N, Config)),
+             <<"password">> => bin(io_lib:format("~w.~w.~w", [A,B,C]))},
+       <<"logging">> =>
+           #{<<"hwm">> => 500}
+      }.
+
 %% data_dir(Config) ->
 %%     ?config(data_dir, Config).
 
