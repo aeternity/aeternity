@@ -70,11 +70,7 @@ miner_test_() ->
                        ?show_miner_state(),
                        ?assertEqual(ok, ?TEST_MODULE:suspend()),
                        ?show_miner_state(),
-                       aec_test_utils:wait_for_it(
-                         fun() ->
-                                 {State, _} = sys:get_state(?TEST_MODULE),
-                                 (State =:= idle)
-                         end, true),
+                       wait_for_idle(),
                        ?assertEqual(ok, ?TEST_MODULE:resume()),
                        ?show_miner_state(),
                        ?TEST_MODULE:resume(),
@@ -100,11 +96,7 @@ miner_test_() ->
                        ?assertEqual(ok, ?TEST_MODULE:resume()),
                        ?assertEqual(ok, ?TEST_MODULE:suspend()),
                        ?show_miner_state(),
-                       aec_test_utils:wait_for_it(
-                         fun() ->
-                                 {State, _} = sys:get_state(?TEST_MODULE),
-                                 State
-                         end, idle)
+                       wait_for_idle()
                        %% ?show_miner_state(),
 
                        %% ?assertEqual(ok, ?TEST_MODULE:suspend())
@@ -115,12 +107,7 @@ miner_test_() ->
                {"Run miner for a while",
                 fun() ->
                         ?assertEqual(ok, ?TEST_MODULE:suspend()),
-                        aec_test_utils:wait_for_it(
-                          fun() ->
-                                  {State, _} = sys:get_state(?TEST_MODULE),
-                                  (State =:= idle)
-                          end, true),
-                       
+                        wait_for_idle(),
                         meck:new(aec_chain, [passthrough]),
                         TestPid = self(),
                         meck:expect(
@@ -264,6 +251,13 @@ chain_test_() ->
               }
       end
      ]}.
+
+wait_for_idle() ->
+    aec_test_utils:wait_for_it(
+      fun() ->
+              {State, _} = sys:get_state(?TEST_MODULE),
+              State
+      end, idle).
 
 wait_for_running() ->
     aec_test_utils:wait_for_it(
