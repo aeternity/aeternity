@@ -131,11 +131,11 @@ target_to_difficulty(Th) ->
 
 -spec pick_nonce() -> integer().
 pick_nonce() ->
-    rand:uniform(?NONCE_RANGE) band 16#7fffffff.
+    rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
 
 -spec next_nonce(integer()) -> integer().
 next_nonce(N) ->
-    (N + 1) band 16#7fffffff.
+    (N + 1) band ?MAX_NONCE.
 
 %%------------------------------------------------------------------------------
 %% Adjust difficulty so that generation of new blocks proceeds at the expected pace
