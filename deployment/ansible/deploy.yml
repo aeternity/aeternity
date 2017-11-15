@@ -9,7 +9,7 @@
     config:
       chain:
         persist: true
-        db_path: "./db4"
+        db_path: "./db5"
 
   tasks:
     - name: "Required variables"

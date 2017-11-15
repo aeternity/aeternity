@@ -13,8 +13,8 @@
 %% The mining has two states of operation 'running' and 'stopped'
 %% Passing the option {autostart, bool()} to the initialization
 %% controls which mode to start in. In the running mode, block candidates
-%% are generated and mined in separate workers. When mining is successful, 
-%% the mined block is published and added to the chain if the state of the 
+%% are generated and mined in separate workers. When mining is successful,
+%% the mined block is published and added to the chain if the state of the
 %% chain allows that. In the stopped mode only blocks arriving from other
 %% miners are added to the chain.
 %%
@@ -87,8 +87,8 @@
 -type mining_state() :: 'running' | 'stopped'.
 
 -record(candidate, {block     :: block(),
-                    nonce     :: integer(),
-                    max_nonce :: integer(),
+                    nonce     :: aec_pow:nonce(),
+                    max_nonce :: aec_pow:nonce(),
                     top_hash  :: binary()
                    }).
 

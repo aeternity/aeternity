@@ -7,7 +7,7 @@
          target/1,
          txs/1,
          difficulty/1,
-         set_nonce/3,
+         set_pow/3,
          set_trees/2,
          set_target/2,
          new/3,
@@ -65,8 +65,8 @@ root_hash(Block) ->
     Block#block.root_hash.
 
 %% Sets the evidence of PoW,too,  for Cuckoo Cycle
--spec set_nonce(block(), non_neg_integer(), aec_pow:pow_evidence()) -> block().
-set_nonce(Block, Nonce, Evd) ->
+-spec set_pow(block(), aec_pow:nonce(), aec_pow:pow_evidence()) -> block().
+set_pow(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
 
@@ -174,7 +174,8 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
          Time,
          Version,
          PowEvidence,
-         Txs} ->
+         Txs} when Nonce >= 0,
+                   Nonce =< ?MAX_NONCE ->
             {ok,
              #block{
                 height = Height,
@@ -205,6 +206,11 @@ deserialize_from_store(_) -> false.
 deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
+deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
+                                                   Nonce >= ?MAX_NONCE ->
+    %% Prevent forging a solution without performing actual work by prefixing digits
+    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
+    {error, bad_nonce};
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
