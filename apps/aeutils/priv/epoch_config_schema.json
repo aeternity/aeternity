@@ -1,0 +1,39 @@
+{
+    "$schema" : "http://json-schema.org/draft-04/schema#",
+    "type" : "object",
+    "properties" : {
+        "peers" : {
+            "type" : "array",
+            "items" : {
+                "type" : "string"
+            }
+        },
+        "keys" : {
+            "type" : "object",
+            "properties" : {
+                "dir"      : { "type" : "string" },
+                "password" : { "type" : "string" }
+            }
+        },
+        "chain" : {
+            "type" : "object",
+            "persist" : { "type" : "boolean" },
+            "db_path"   : { "type" : "string" }
+        },
+        "mining" : {
+            "type" : "object",
+            "properties" : {
+                "autostart" : { "type" : "boolean" }
+            }
+        },
+        "logging" : {
+            "type"    : "object",
+            "hwm"     : { "type" : "integer",
+                          "minimum" : 50 },
+            "console" : {
+                "type" : "string",
+                "enum" : [ "debug", "info", "notice", "warning",
+                           "error", "critical", "alert", "emergency" ]}
+        }
+    }
+}
