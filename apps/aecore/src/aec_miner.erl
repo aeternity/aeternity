@@ -18,6 +18,9 @@
          get_balance/0,
          post_block/1
         ]).
+-ifdef(TEST).
+-export([miner_from_data/1]).
+-endif.
 
 %%------------------------------------------------------------------------------
 %% gen_statem callbacks
@@ -106,6 +109,11 @@ get_balance() ->
 -spec post_block(block()) -> ok.
 post_block(Block) ->
     gen_statem:cast(?SERVER, {post_block, Block}).
+
+-ifdef(TEST).
+miner_from_data(State) ->
+    State#state.miner.
+-endif.
 
 %%%===================================================================
 %%% gen_statem callbacks
@@ -515,6 +523,13 @@ int_mine(BlockCandidate, CurrentMiningNonce, State) ->
             epoch_mining:info("Failed to mine block, "
                               "no solution (nonce ~p); "
                               "retrying.", [CurrentMiningNonce]),
+            gen_statem:cast(?SERVER, bump_initial_cycle_nonce);
+        {error, {runtime, Reason}} ->
+            try exometer:update([ae,epoch,aecore,mining,retries], 1)
+            catch error:_ -> ok end,
+            epoch_mining:error("Failed to mine block, runtime error; "
+                               "retrying with different nonce (was ~p). "
+                               "Error: ~p", [CurrentMiningNonce, Reason]),
             gen_statem:cast(?SERVER, bump_initial_cycle_nonce)
     end.
 

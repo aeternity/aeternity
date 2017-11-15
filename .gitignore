@@ -21,8 +21,8 @@ py/man
 py/pip-selfcheck.json
 nosetests.xml
 *.pyc
-apps/aecore/c_src/*.[1-9][0-9]o
-apps/aecore/c_src/cuckoo
-apps/aecore/priv/*.so
+apps/aecuckoo/c_src
+apps/aecuckoo/priv/bin
+apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 .chain
