@@ -18,6 +18,9 @@
          get_balance/0,
          post_block/1
         ]).
+-ifdef(TEST).
+-export([miner_from_data/1]).
+-endif.
 
 %%------------------------------------------------------------------------------
 %% gen_statem callbacks
@@ -106,6 +109,11 @@ get_balance() ->
 -spec post_block(block()) -> ok.
 post_block(Block) ->
     gen_statem:cast(?SERVER, {post_block, Block}).
+
+-ifdef(TEST).
+miner_from_data(State) ->
+    State#state.miner.
+-endif.
 
 %%%===================================================================
 %%% gen_statem callbacks
