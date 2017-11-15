@@ -8,6 +8,10 @@
   {git,"https://github.com/ninenines/cowlib.git",
        {ref,"d544a494af4dbc810fc9c15eaf5cc050cced1501"}},
   1},
+ {<<"erlexec">>,
+  {git,"https://github.com/saleyn/erlexec.git",
+       {ref,"97a5188da1d37c7d2f62e4589be6237394d40811"}},
+  0},
  {<<"exometer_core">>,{pkg,<<"exometer_core">>,<<"1.5.2">>},0},
  {<<"folsom">>,{pkg,<<"folsom">>,<<"0.8.5">>},1},
  {<<"gb_merkle_trees">>,
@@ -41,7 +45,6 @@
   {git,"git://github.com/andreineculau/rfc3339.git",
        {ref,"dcc77d66430490620677de8140a3415dfbd3fa61"}},
   1},
- {<<"rocksdb">>,{pkg,<<"rocksdb">>,<<"0.12.0">>},0},
  {<<"setup">>,{pkg,<<"setup">>,<<"1.8.4">>},1},
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.5.0">>},0}]}.
 [
@@ -56,7 +59,6 @@
  {<<"msgpack">>, <<"128AE0A2227C7E7A2847C0F0F73551C268464F8C1EE96BFFB920BC0A5712B295">>},
  {<<"parse_trans">>, <<"9E96B1C9C3A0DF54E7B76F8F685D38BFA1EB21B31E042B1D1A5A70258E4DB1E3">>},
  {<<"poolboy">>, <<"6B46163901CFD0A1B43D692657ED9D7E599853B3B21B95AE5AE0A777CF9B6CA8">>},
- {<<"rocksdb">>, <<"CD59EE3B6CB33D0AF8C17126AD055420AD2A625C5AE50913619D4FA1ADD85D54">>},
  {<<"setup">>, <<"738DB0685DC1741F45C6A9BF78478E0D5877F3D0876C0B50FD02F0210EDB5AA4">>},
  {<<"yamerl">>, <<"6EC55A5D830F6F0D65A4030F5C5DB24B0E72B813DFBDE32FEA44B4951ED9417C">>}]}
 ].

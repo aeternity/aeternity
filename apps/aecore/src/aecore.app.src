@@ -20,9 +20,10 @@
     yamerl,
     lager,
     gb_merkle_trees,
-    rocksdb,
     aeutils,
-    msgpack
+    msgpack,
+    erlexec,
+    aecuckoo
    ]},
   {env, [
         {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}},
