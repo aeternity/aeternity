@@ -18,5 +18,3 @@ application_test() ->
   ok = application:stop(App),
   [ ok = application:stop(D) || D <- lists:reverse(Deps -- AlreadyRunning) ],
   ok.
-
-

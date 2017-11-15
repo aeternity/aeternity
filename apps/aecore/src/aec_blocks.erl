@@ -9,6 +9,7 @@
          difficulty/1,
          set_nonce/3,
          set_trees/2,
+         set_target/2,
          new/3,
          to_header/1,
          serialize_for_network/1,
@@ -72,6 +73,10 @@ set_nonce(Block, Nonce, Evd) ->
 -spec set_trees(block(), aec_trees:trees()) -> block().
 set_trees(Block, Trees) ->
     Block#block{trees = Trees}.
+
+-spec set_target(block(), non_neg_integer()) -> block().
+set_target(Block, Target) ->
+    Block#block{target = Target}.
 
 %% TODO: have a spec for list of transactions
 -spec txs(block()) -> list(signed_tx()).

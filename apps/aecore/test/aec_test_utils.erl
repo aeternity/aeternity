@@ -11,11 +11,13 @@
         , unmock_time/0
         , mock_difficulty_as_target/0
         , unmock_difficulty_as_target/0
+        , mock_block_target_validation/0
+        , unmock_block_target_validation/0
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
         , wait_for_it/2
-        , extend_block_chain_by_difficulties_with_nonce_and_coinbase/3
-        , extend_block_chain_by_difficulties_with_nonce_and_coinbase/4
+        , extend_block_chain_by_targets_with_nonce_and_coinbase/3
+        , extend_block_chain_by_targets_with_nonce_and_coinbase/4
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         , gen_block_chain/1
@@ -65,10 +67,10 @@ mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
     meck:expect(application, get_env, 3,
                 fun
                     (aecore, aec_pow_cuckoo, _) ->
-                        Cfg;
+                       Cfg;
                     (App, Key, Def) ->
-                        meck:passthrough([App, Key, Def])
-                end).
+                       meck:passthrough([App, Key, Def])
+               end).
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).
@@ -89,17 +91,36 @@ wait_for_it(Fun, Value, Sleep) ->
 
 %% @doc Meck difficulty as target. And startup keys server
 
+%% Make mecked difficulty calculation realistic:
+%% - when target increases, difficulty decreases
+%% - when target decreases, difficulty increases
+-define(FACTOR, 1000000000).
 mock_difficulty_as_target() ->
     meck:new(aec_headers, [passthrough]),
     meck:new(aec_blocks, [passthrough]),
     meck:expect(aec_headers, difficulty,
-                fun(#header{target = T}) when is_integer(T) -> float(T) end),
+                fun(#header{target = T}) when is_integer(T) ->
+                        float(trunc(?FACTOR / T))
+                end),
     meck:expect(aec_blocks, difficulty,
-                fun(#block{target = T}) when is_integer(T) -> float(T) end).
+                fun(#block{target = T}) when is_integer(T) ->
+                        float(trunc(?FACTOR / T))
+                end).
 
 unmock_difficulty_as_target() ->
     meck:unload(aec_headers),
     meck:unload(aec_blocks).
+
+
+mock_block_target_validation() ->
+    meck:new(aec_governance, [passthrough]),
+    meck:new(aec_target, [passthrough]),
+    meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 1),
+    meck:expect(aec_target, verify, 2, ok).
+
+unmock_block_target_validation() ->
+    meck:unload(aec_governance),
+    meck:unload(aec_target).
 
 
 %% Generic blockchain with only coinbase transactions
@@ -117,39 +138,39 @@ gen_block_chain(N, MinerAccount, [PreviousBlock|_] = Acc) ->
     B = aec_blocks:new(PreviousBlock, Txs, Trees),
     gen_block_chain(N - 1, MinerAccount, [B|Acc]).
 
-extend_block_chain_by_difficulties_with_nonce_and_coinbase(
+extend_block_chain_by_targets_with_nonce_and_coinbase(
   PreviousBlock,
-  Difficulties, Nonce) ->
+  Targets, Nonce) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
-    extend_block_chain_by_difficulties_with_nonce_and_coinbase(
-      PreviousBlock, Difficulties, Nonce,
+    extend_block_chain_by_targets_with_nonce_and_coinbase(
+      PreviousBlock, Targets, Nonce,
       MinerAccount).
 
-extend_block_chain_by_difficulties_with_nonce_and_coinbase(
+extend_block_chain_by_targets_with_nonce_and_coinbase(
   PreviousBlock,
-  Difficulties, Nonce,
+  Targets, Nonce,
   MinerAccount) ->
     [PreviousBlock | BlockChainExtension] =
         lists:reverse(
           lists:foldl(
-            fun(D, [PrevB | _] = BC) ->
-                    B = next_block_by_difficulty_with_nonce_and_coinbase(
+            fun(T, [PrevB | _] = BC) ->
+                    B = next_block_by_target_with_nonce_and_coinbase(
                           PrevB,
-                          D, Nonce,
+                          T, Nonce,
                           MinerAccount),
                     [B | BC]
             end,
             [PreviousBlock],
-            Difficulties)),
+            Targets)),
     BlockChainExtension.
 
-next_block_by_difficulty_with_nonce_and_coinbase(PreviousBlock,
-                                                 Difficulty, Nonce,
-                                                 MinerAccount) ->
+next_block_by_target_with_nonce_and_coinbase(PreviousBlock,
+                                             Target, Nonce,
+                                             MinerAccount) ->
     H = 1 + aec_blocks:height(PreviousBlock),
     Trees = aec_blocks:trees(PreviousBlock),
     B = aec_blocks:new(PreviousBlock, [signed_coinbase_tx(MinerAccount, H)], Trees),
-    B#block{ target = Difficulty
+    B#block{ target = Target
            , nonce = Nonce
            }.
 

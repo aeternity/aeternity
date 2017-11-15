@@ -66,7 +66,7 @@ difficulty_recalculation_test_() ->
               %% recalculation inside the aec_mining module, hence the
               %% PoW module could be mocked.
               meck:expect(aec_chain, top, 0, {ok, #block{}}),
-              meck:expect(aec_governance, recalculate_difficulty_frequency, 0, 10)
+              meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10)
       end,
       fun(_) ->
               cleanup(unused_arg, PoWMod)
@@ -77,6 +77,7 @@ difficulty_recalculation_test_() ->
              atom_to_list(PoWMod) ++ ")",
          fun() ->
                  Now = 1504731164584,
+                 OneBlockExpectedMineTime = 300000,
                  meck:expect(aec_blocks, new, 3,
                              #block{height = 30,
                                     target = ?HIGHEST_TARGET_SCI,
@@ -85,18 +86,17 @@ difficulty_recalculation_test_() ->
                                     time = Now}),
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 20,
-                                          time = Now - 50000}}),
+                                          time = Now - (10 * OneBlockExpectedMineTime)}}),
                  meck:expect(aec_pow, pick_nonce, 0, 108),
-                 meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
-
+                 meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
+                 meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(30, Block#block.height),
 
                  ?assertEqual(?HIGHEST_TARGET_SCI, Block#block.target),
-                 ?assertEqual(2, meck:num_calls(aec_governance, recalculate_difficulty_frequency, 0)),
-                 ?assertEqual(1, meck:num_calls(aec_governance, expected_block_mine_rate, 0))
+                 ?assertEqual(2, meck:num_calls(aec_governance, blocks_to_check_difficulty_count, 0))
          end}},
        {timeout, 60,
         {"Too few blocks mined in time increases new block's target threshold (PoW module " ++
@@ -117,7 +117,9 @@ difficulty_recalculation_test_() ->
                                           target = CurrentTarget,
                                           time = TenBlocksBeforeTime}}),
                  meck:expect(aec_pow, pick_nonce, 0, 104),
-                 meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
+                 meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
+                 %% One block should be mined every 5 mins
+                 meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
