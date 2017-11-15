@@ -37,7 +37,7 @@ do_execute(chain, get, QueryPayload) ->
                 {aec_chain:get_block_by_hash(Hash), {hash, Hash0}}
         end,
     case BlockFound of
-        {error, {ErrMsg, _Top}} ->
+        {error, ErrMsg} ->
             {error, ErrMsg};
         {ok, Block} ->
             Val0 =

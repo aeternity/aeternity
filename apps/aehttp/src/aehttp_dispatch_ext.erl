@@ -57,7 +57,11 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             lager:debug("Resp = ~p", [Resp]),
             {200, [], Resp};
-        {error, {chain_too_short, _}} ->
+        {error, no_top_header} ->
+            {404, [], #{reason => <<"No top header">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, chain_too_short} ->
             {404, [], #{reason => <<"Chain too short">>}}
     end;
 
