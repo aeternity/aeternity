@@ -229,7 +229,7 @@ idle({call, From}, _Msg, State) ->
 idle(cast, {post_block, Block}, State) ->
     idle_post_block(Block, State);
 idle(cast, {miner_done, Miner}, #state{ miner = Miner } = State) ->
-    {next_state, configure, State#state{ miner = none }};
+    {keep_state, State#state{ miner = none }};
 idle(cast, {miner_done, Miner}, #state{ miner = OtherMiner } = State) ->
     epoch_mining:error("Unknown miner finished: ~p~n", [Miner]),
     {keep_state, State#state{ miner = OtherMiner }};
@@ -266,7 +266,7 @@ configure(cast, {post_block, Block}, State) ->
     configure_post_block(Block, State);
 configure(cast, {miner_done, Miner}, #state{ miner = Miner } = State) ->
     %% The current miner is done. Rmove it from the state.
-    {next_state, configure, State#state{ miner = none }};
+    {keep_state, State#state{ miner = none }};
 configure(cast, {miner_done, Miner}, #state{ miner = OtherMiner } = State) ->
     epoch_mining:error("Unknown miner finished: ~p~n", [Miner]),
     {keep_state, State#state{ miner = OtherMiner }};
