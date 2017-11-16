@@ -22,7 +22,7 @@
     :: {assign, line(), aer_id(), aer_exp()}.
 
 -type aer_exp()
-    :: aer_constant().
+    :: aer_constant()
      | {app, line(), aer_exp(), aer_exp()}
      | {infix, line(), aer_exp(), aer_id(), aer_exp()}
      | {record, line(), [aer_field_assign()]}
@@ -33,6 +33,8 @@
 
 -type aer_dec()
     :: {'fun', line(), aer_modifier(), aer_id(), [aer_id()], aer_exp()}.
+
+-type aer_export() :: [aer_id()].
 
 -type aer_contract()
     :: {contract, aer_id(), [aer_export()], [aer_dec()]}.
