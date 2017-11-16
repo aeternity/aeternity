@@ -11,6 +11,51 @@
                 "example" : "http://a.b.c:123/"
             }
         },
+        "http" : {
+            "type" : "object",
+            "properties" : {
+                "external" : {
+                    "type" : "object",
+                    "properties" : {
+                        "peer_address" : {
+                            "description" :
+                            "The peer address that the node will present itself with. If port part given, it must match 'port' user config.",
+                            "type" : "string",
+                            "example" : "http://a.b.c:123/"
+                        },
+                        "port" : {
+                            "description" :
+                            "Listen port for external HTTP interface.",
+                            "type" : "integer"
+                        }
+                    }
+                },
+                "internal" : {
+                    "type" : "object",
+                    "properties" : {
+                        "port" : {
+                            "description" :
+                            "Listen port for external HTTP interface.",
+                            "type" : "integer"
+                        }
+                    }
+                }
+            }
+        },
+        "websocket" : {
+            "type" : "object",
+            "properties" : {
+                "port" : {
+                    "description" :
+                    "Listen port for websocket interface.",
+                    "type" : "integer"
+                },
+                "acceptors" : {
+                    "description" : "Number of acceptors in pool",
+                    "type" : "integer"
+                }
+            }
+        },
         "keys" : {
             "type" : "object",
             "properties" : {
@@ -28,14 +73,16 @@
         },
         "chain" : {
             "type" : "object",
-            "persist" : {
-                "description" :
-                "If true, all changes to the chain are written to disk.",
-                "type" : "boolean" },
-            "db_path"   : {
-                "description" :
-                "The directory where the chain is persisted to disk.",
-                "type" : "string"
+            "properties" : {
+                "persist" : {
+                    "description" :
+                    "If true, all changes to the chain are written to disk.",
+                    "type" : "boolean" },
+                "db_path"   : {
+                    "description" :
+                    "The directory where the chain is persisted to disk.",
+                    "type" : "string"
+                }
             }
         },
         "mining" : {
@@ -50,17 +97,19 @@
         },
         "logging" : {
             "type"    : "object",
-            "hwm"     : {
-                "description" :
-                "Controls the overload protection in the logs. Default=50.",
-                "type" : "integer",
-                "minimum" : 50 },
-            "console" : {
-                "description" :
-                "Sets the log level in the Erlang shell. Default=none.",
-                "type" : "string",
-                "enum" : [ "debug", "info", "notice", "warning",
-                           "error", "critical", "alert", "emergency" ]}
+            "properties" : {
+                "hwm"     : {
+                    "description" :
+                    "Controls the overload protection in the logs. Default=50.",
+                    "type" : "integer",
+                    "minimum" : 50 },
+                "console" : {
+                    "description" :
+                    "Sets the log level in the Erlang shell. Default=none.",
+                    "type" : "string",
+                    "enum" : [ "debug", "info", "notice", "warning",
+                               "error", "critical", "alert", "emergency" ]}
+            }
         }
     }
 }
