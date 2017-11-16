@@ -568,6 +568,8 @@ idle_post_block(Block, State) ->
         new_top ->
             start_if_auto(State),
             {next_state, idle, State};
+        error ->
+            {next_state, idle, State};
         ok ->
             {next_state, idle, State}
     end.
@@ -576,6 +578,8 @@ configure_post_block(Block, State) ->
     case int_post_block(Block, State) of
         new_top ->
             start_if_auto(State),
+            {next_state, configure, State};
+        error ->
             {next_state, configure, State};
         ok ->
             {next_state, configure, State}
@@ -586,6 +590,8 @@ running_post_block(Block, State) ->
         new_top ->
             start_if_auto(State),
             {next_state, configure, State};
+        error ->
+            {next_state, running, State};
         ok ->
             epoch_mining:info("Post block not on top of chain"),
             {next_state, running, State}
@@ -595,6 +601,7 @@ waiting_post_block(Block, State) ->
     int_post_block(Block, State),
     {next_state, waiting_for_keys, State}.
 
+-spec int_post_block(#block{}, #state{}) -> ok | new_top | error.
 int_post_block(Block,_State) ->
     epoch_mining:info("write_block: ~p", [Block]),
     Header = aec_blocks:to_header(Block),
