@@ -25,7 +25,7 @@ def test_successful():
     # e.g. included in at least one block in the chain.
     test_settings = settings["test_successful"]
     coinbase_reward = common.coinbase_reward() 
-    (root_dir, alice_node, alice_api, alice_top) = setup_node_with_tokens(test_settings) 
+    (root_dir, alice_node, alice_api, alice_top) = setup_node_with_tokens(test_settings, "alice") 
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
@@ -63,24 +63,24 @@ def test_successful():
         assert_equals(e.status, 404) # Bob has no account yet
 
     # wait for a block to be mined
-    # NB: as long as we're using a big graph Cuckoo PoW - this will take some
-    # time
     print("Waiting for a next block to be mined")
-    wait(lambda: alice_api.get_top().height == alice_top.height + 1, \
-                timeout_seconds=60*60,\
-                sleep_seconds=1)
+    common.wait_until_height(alice_api, alice_top.height + 1)
 
+    alice_new_top = alice_api.get_top()
     alice_new_balance = alice_api.get_account_balance()
+    
+    blocks_mined = alice_new_top.height - alice_top.height
 
     # Since Alice had mined the block she is receiving the fee and the
     # coinbase_reward
     # Alice should have
     # tokens = old_balance - spent_amt - spend_tx + spent_fee + coinbase_reward
-    expected_balance = alice_balance.balance - spend_tx_amt  + coinbase_reward
+    expected_balance = alice_balance.balance - spend_tx_amt  + coinbase_reward * blocks_mined
     assert_equals(alice_new_balance.balance, expected_balance)
 
     bob_balance = alice_api.get_account_balance(pub_key=test_settings["spend_tx"]["bob_pubkey"])
-    print("Coinbase reward is " + str(coinbase_reward))
+    print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
+            str(blocks_mined) + " blocks")
     print("Alice's balance (with a coinbase reward) is now " + str(alice_new_balance.balance))
     print("Bob's balance is now " + str(bob_balance.balance))
     assert_equals(bob_balance.balance, spend_tx_amt)
@@ -88,52 +88,34 @@ def test_successful():
     common.stop_node(alice_node)
     shutil.rmtree(root_dir)
 
-def make_keys_config(root_dir, file_name, password, keys_dir):
+def make_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{keys_dir, "' + keys_dir + '/"},' +\
-                    ' {password, <<"' + password + '">>},' + \
-                    ' {autostart, true}]}].' 
+    conf ='[{aecore, [{autostart, true},' + \
+                    ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}]}].' 
     f.write(conf)
     f.close()
     return sys_config
 
-def setup_node_with_tokens(test_settings):
-    preset_keys_dir = test_settings["keys"]["dir"]
-    keys_password = test_settings["keys"]["password"]
-    chain_data_file = test_settings["chain_data"]
-
+def setup_node_with_tokens(test_settings, node_name):
     # prepare a dir to hold the configs and the keys
     root_dir = tempfile.mkdtemp()
 
-    # setup the dir with Alice's key pair; later on we will post blocks to the
-    # chain and the blocks will be mined by Alice - that's how she will have
-    # some tokens to spend
-    keys_dir = os.path.join(root_dir, "keys")
-    os.mkdir(keys_dir)
-    shutil.copyfile(os.path.join(preset_keys_dir, "key"),\
-                    os.path.join(keys_dir, "key"))
-    shutil.copyfile(os.path.join(preset_keys_dir, "key.pub"),\
-                    os.path.join(keys_dir, "key.pub"))
-    time.sleep(1)
-
-
-    # start the node
-    alice_node = test_settings["nodes"]["alice"]
-    sys_config = make_keys_config(root_dir, "sys.config",
-                                keys_password, keys_dir)
-    common.start_node(alice_node, sys_config)
-    alice_api = common.external_api(alice_node)
+    # setup the dir with Alice's node mining
+    node = test_settings["nodes"][node_name]
+    sys_config = make_mining_config(root_dir, "sys.config")
+    common.start_node(node, sys_config)
+    api = common.external_api(node)
 
     # populate the chain so Alice had mined some blocks and has tokens
     # to spend
-    blocks_to_post = test_settings["blocks_to_post"]
-    common.post_blocks(alice_api, blocks_to_post, chain_data_file)
-    alice_top = alice_api.get_top()
-    assert_equals(alice_top.height, blocks_to_post)
-    # Now the node has blocks_to_post blocks mined by Alice and her keys
+    blocks_to_mine = test_settings["blocks_to_mine"]
+    common.wait_until_height(api, blocks_to_mine)
+    top = api.get_top()
+    assert_equals(top.height >= blocks_to_mine, True)
+    # Now the node has at least blocks_to_mine blocks mined by Alice 
 
-    return (root_dir, alice_node, alice_api, alice_top)
+    return (root_dir, node, api, top)
 
 

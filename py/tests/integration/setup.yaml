@@ -41,16 +41,14 @@ tests: # test specific settings
       nodes:
         bob: dev1
         alice: dev2
-      blocks_to_post: 7
-      chain_data: py/tests/integration/data/bchain.txt
+      blocks_to_mine: 20
 
     test_persistence:
       # Bob's downloaded blockchain should persist between restarts. He should
       # only download updates to his blockchain when his node starts.
       nodes:
         bob: dev1
-      blocks_to_post: 7
-      chain_data: py/tests/integration/data/bchain.txt
+      blocks_to_mine: 7
     test_node_discovery:
       # Assuming Carol's node only knows about Bob upon startup and that Bob's
       # node knows Alice, Carol's node should be able to discover Alice and
@@ -59,8 +57,7 @@ tests: # test specific settings
         alice: dev1
         bob: dev2
         carol: dev3
-      blocks_to_post: 7
-      chain_data: py/tests/integration/data/bchain.txt
+      blocks_to_mine: 7
   test_spend_tx:
     test_successful:
       # Alice should be able to create a spend transaction to send tokens to
@@ -74,12 +71,8 @@ tests: # test specific settings
       # e.g. included in at least one block in the chain.
       nodes:
         alice: dev1
-      blocks_to_post: 7
-      chain_data: py/tests/integration/data/bchain.txt
-      keys:
-        dir: py/tests/integration/data/keys
-        password: secret
+      blocks_to_mine: 7
       spend_tx:
         bob_pubkey: bob_address
-        amount: 3
+        amount: 42
         fee: 2
