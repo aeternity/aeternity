@@ -28,7 +28,7 @@ check_env() ->
                {[<<"logging">>, <<"console">>] , fun set_console/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
-               {[<<"chain">>, <<"autostart">>] , {set_env, autostart}}]).
+               {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]).
 
 check_env(Spec) ->
     lists:foreach(
