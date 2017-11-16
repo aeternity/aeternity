@@ -225,14 +225,22 @@ validate_version(_Header) ->
 validate_pow(#header{nonce = Nonce,
                      pow_evidence = Evd,
                      target = Target} = Header) ->
-    Mod = aec_pow:pow_module(),
-    %% Zero nonce and pow_evidence before hashing, as this is how the mined block got hashed.
-    Header1 = Header#header{nonce = 0, pow_evidence = no_value},
-    {ok, HeaderBinary} = serialize_to_binary(Header1),
-    case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
+    case Nonce >= 0 andalso Nonce =< ?MAX_NONCE of
         true ->
-            ok;
+            Mod = aec_pow:pow_module(),
+            %% Zero nonce and pow_evidence before hashing, as this is how the mined block
+            %% got hashed.
+            Header1 = Header#header{nonce = 0, pow_evidence = no_value},
+            {ok, HeaderBinary} = serialize_to_binary(Header1),
+            case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
+                true ->
+                    ok;
+                false ->
+                    {error, incorrect_pow}
+            end;
         false ->
+            %% Prevent generation a solution without performing work by prefixing digits
+            %% to a valid nonce (produces valid PoW after truncating to the allowed range)
             {error, incorrect_pow}
     end.
 
