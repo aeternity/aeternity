@@ -1,16 +1,9 @@
-sudo: false
+sudo: required
 dist: trusty
 language: erlang
 otp_release:
   - 20.0.1
 before_install:
-  - if test osx = "${TRAVIS_OS_NAME:?}"; then export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"; fi
-  - if test osx = "${TRAVIS_OS_NAME:?}"; then brew update; fi
-  - if test osx = "${TRAVIS_OS_NAME:?}"; then brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"; fi
-  - if test osx = "${TRAVIS_OS_NAME:?}"; then brew install lynx && export PATH="$(brew --prefix lynx)"/bin:"$PATH"; fi
-  - if test linux = "${TRAVIS_OS_NAME:?}"; then sudo apt-get -y install lynx; fi
-  - erl -version
-  - epmd -daemon
   - ./ci before_install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 install:
   - ./ci install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
@@ -19,19 +12,36 @@ script:
 after_failure:
   - ./ci after_failure "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 deploy:
-  provider: releases
-  api_key:
-    # See https://docs.travis-ci.com/user/deployment/releases/#Authenticating-with-an-OAuth-token
-    secure: B4Yl81oyddyE2TQVmVggOgZFN3aZTIt5XjV4mQsy91ctqRxQskIa4nl+vLpNRDHMS+6P9cbEfWdYRXamrOm3PsPOm6KQcoekKbmHH45PdKhHkMbAiUxjXW/QTlufeEPs8ugplAv8anj/d2cb7D2mfzjP6PY1QIbCPbYJGGC0O/zeYHOUxwODyYZQzO6xsBQfOQdHwoT4D/2c1Oo6Mz31j8hxXXJZgXGtEoYjJnxZVHdU1Y7irs8CWlwW7pAjTjEs4cpBVCaM/3W2VQ1I/bW0ZGmZYv8g4Av3uBA6SypAXrqo1yzB2teOUPtxP/WvDzOl/wfZnLQH0u/6uaCt3/XInIYINY8F/Tck31rErPeCrV520WbGebG/ou2uzCHei9cl138doO8qemRf544nrCoSxz39gC2EMcl6PVH3mKpEnj8yLtXuqrfT36mKEzAILb0PQXNFD9Ccx48dGCVa86AZ2zxPnWO9s+veZN4/i9IjW+8sdTIekX96KkAadC/FmMMltbbKHnudEKh2wUujO1ra+OlF6GO7y5E0fEQ8/2C5uwnyMMFwrPAw6snf3pM7z8cEcC/KaqnqjGrOlQ1ze8Ra4NXuMNLwIqquQYxcBx6pJcGU+FavWTFflowzWlTmr5qHj5j3SoRmHqrjEezhHqDr/pvPZp4MNRuJMUOHtcNP4Y4=
-  file_glob: true
-  file: _build/prod/rel/epoch/epoch-*-*.tar.gz
-  skip_cleanup: true
-  on:
-    # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
-    repo: aeternity/epoch
-    tags: true
-    all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
-    condition: "${JOB:?} = package"
+  - provider: releases
+    api_key:
+      # See https://docs.travis-ci.com/user/deployment/releases/#Authenticating-with-an-OAuth-token
+      secure: B4Yl81oyddyE2TQVmVggOgZFN3aZTIt5XjV4mQsy91ctqRxQskIa4nl+vLpNRDHMS+6P9cbEfWdYRXamrOm3PsPOm6KQcoekKbmHH45PdKhHkMbAiUxjXW/QTlufeEPs8ugplAv8anj/d2cb7D2mfzjP6PY1QIbCPbYJGGC0O/zeYHOUxwODyYZQzO6xsBQfOQdHwoT4D/2c1Oo6Mz31j8hxXXJZgXGtEoYjJnxZVHdU1Y7irs8CWlwW7pAjTjEs4cpBVCaM/3W2VQ1I/bW0ZGmZYv8g4Av3uBA6SypAXrqo1yzB2teOUPtxP/WvDzOl/wfZnLQH0u/6uaCt3/XInIYINY8F/Tck31rErPeCrV520WbGebG/ou2uzCHei9cl138doO8qemRf544nrCoSxz39gC2EMcl6PVH3mKpEnj8yLtXuqrfT36mKEzAILb0PQXNFD9Ccx48dGCVa86AZ2zxPnWO9s+veZN4/i9IjW+8sdTIekX96KkAadC/FmMMltbbKHnudEKh2wUujO1ra+OlF6GO7y5E0fEQ8/2C5uwnyMMFwrPAw6snf3pM7z8cEcC/KaqnqjGrOlQ1ze8Ra4NXuMNLwIqquQYxcBx6pJcGU+FavWTFflowzWlTmr5qHj5j3SoRmHqrjEezhHqDr/pvPZp4MNRuJMUOHtcNP4Y4=
+    file_glob: true
+    file: _build/prod/rel/epoch/epoch-*-*.tar.gz
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      tags: true
+      all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
+      condition: "${JOB:?} = package"
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" integration
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      branch: master
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" uat
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      tags: true
+      all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
 matrix:
   include:
     - os: osx
@@ -54,3 +64,4 @@ cache:
   directories:
     - $HOME/.cache/rebar3
     - $HOME/Library/Caches/Homebrew
+    - $HOME/.cache/pip
