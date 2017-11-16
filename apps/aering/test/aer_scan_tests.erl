@@ -28,14 +28,23 @@ identy_fun_test_() ->
      end,
      [{"Scan a contract with an identity function.",
        fun() ->
-               Text = "contract one
-
-"                     "export one/1
-
-"                     "let one () =
-"                     "  1
-",
-               {ok,_Tokens, 7} = aer_scan:string(Text),
+               Text = "contract one\n"
+                      "export one;\n"
+                      "fun pure one x =\n"
+                      "  x;",
+               {ok, Tokens, _} = aer_scan:string(Text),
+               [{contract,1},
+                {symbol,{symbol,1,<<"one">>}},
+                {export,2},
+                {symbol,{symbol,2,<<"one">>}},
+                {';',2},
+                {symbol,{symbol,3,<<"fun">>}},
+                {symbol,{symbol,3,<<"pure">>}},
+                {symbol,{symbol,3,<<"one">>}},
+                {symbol,{symbol,3,<<"x">>}},
+                {assign,3},
+                {symbol,{symbol,4,<<"x">>}},
+                {';',4}] = Tokens,
                ok
        end}
      ]}.
