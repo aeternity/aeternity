@@ -65,7 +65,7 @@ Terminals
 
 comment_line comment_lines
 
-module export import
+contract export import
 import_type export_type
 
 type_declare type_constructor type_var val
@@ -356,23 +356,23 @@ const -> boolean : '$1'.
 
 const -> minus int :
   {int, L, Val} = '$2',
-  alpaca_ast:int(L, 0-Val).
+  aer_ast:int(L, 0-Val).
 const -> plus int :
   {int, L, Val} = '$2',
-  alpaca_ast:int(L, Val).
+  aer_ast:int(L, Val).
 const -> int :
   {int, L, Val} = '$1',
-  alpaca_ast:int(L, Val).
+  aer_ast:int(L, Val).
 
 const -> minus float :
   {float, L, Val} = '$2',
-  alpaca_ast:float(L, 0-Val).
+  aer_ast:float(L, 0-Val).
 const -> float :
   {float, L, Val} = '$1',
-  alpaca_ast:float(L, Val).
+  aer_ast:float(L, Val).
 const -> plus float :
   {float, L, Val} = '$2',
-  alpaca_ast:float(L, Val).
+  aer_ast:float(L, Val).
 
 const -> atom : '$1'.
 const -> chars : '$1'.
@@ -450,10 +450,10 @@ bin_qualifiers -> bin_qualifier bin_qualifiers : ['$1' | '$2'].
 
 bin_segment -> float :
   {float, L, V} = '$1',
-  #alpaca_bits{value=alpaca_ast:float(L, V), type=float, line=term_line('$1')}.
+  #alpaca_bits{value=aer_ast:float(L, V), type=float, line=term_line('$1')}.
 bin_segment -> int :
   {int, L, V} = '$1',
-  #alpaca_bits{value=alpaca_ast:int(L, V), type=int, line=term_line('$1')}.
+  #alpaca_bits{value=aer_ast:int(L, V), type=int, line=term_line('$1')}.
 bin_segment -> symbol :
   #alpaca_bits{value=unwrap('$1'), line=line(unwrap('$1'))}.
 bin_segment -> binary : #alpaca_bits{value='$1', line=term_line('$1'), type=binary}.
@@ -676,12 +676,12 @@ definfix -> let '(' infixl ')' terms assign simple_expr :
   %% native AST is to let Alpaca code work with the AST.  This means that symbol
   %% names do need to be legitimate Alpaca strings in UTF-8, not Erlang strings.
   InfixName = infix_name(C),
-  make_define([alpaca_ast:symbol(L, InfixName) | '$5'], '$7', 'top').
+  make_define([aer_ast:symbol(L, InfixName) | '$5'], '$7', 'top').
 
 definfix -> let '(' infixr ')' terms assign simple_expr :
   {infixr, L, C} = '$3',
   InfixName = infix_name(C),
-  make_define([alpaca_ast:symbol(L, InfixName) | '$5'], '$7', 'top').
+  make_define([ari_ast:symbol(L, InfixName) | '$5'], '$7', 'top').
 
 binding -> let defn in simple_expr : make_binding('$2', '$4').
 
@@ -694,9 +694,9 @@ ffi_call -> beam atom atom cons with match_clauses:
             args='$4',
             clauses='$6'}.
 
-module_def -> module symbol :
+module_def -> contract symbol :
 {L, Name} = symbol_line_name('$2'),
-{module, binary_to_atom(Name, utf8), L}.
+{contract, binary_to_atom(Name, utf8), L}.
 
 export_def -> export export_list : {export, '$2'}.
 %% Imported functions come out of the parser in the following tuple format:
@@ -757,7 +757,7 @@ all_infix -> infixr : '$1'.
 
 import_export_fun -> '(' all_infix ')' :
   {_, L, C} = '$2',
-  alpaca_ast:symbol(L, infix_name(C)).
+  aer_ast:symbol(L, infix_name(C)).
 
 fun_and_arity -> import_export_fun '/' int :
   Name = symbol_name('$1'),
@@ -788,7 +788,7 @@ case '$1' of
         #alpaca_apply{line=line(S), expr=S, args=T};
     [#alpaca_far_ref{line=L, module=Mod, name=Fun} | T] ->
         FunName = unicode:characters_to_binary(Fun, utf8),
-        Name = {Mod, alpaca_ast:symbol(L, FunName), length(T)},
+        Name = {Mod, aer_ast:symbol(L, FunName), length(T)},
         #alpaca_apply{line=L, expr=Name, args=T};
     [Term|Args] ->
         #alpaca_apply{line=term_line(Term), expr=Term, args=Args}
@@ -830,9 +830,9 @@ Erlang code.
 make_infix(Op, A, B) ->
     Name = case Op of
       {infixl, L, C} ->
-                   alpaca_ast:symbol(L, infix_name(C));
+                   aer_ast:symbol(L, infix_name(C));
       {infixr, L, C} ->
-                   alpaca_ast:symbol(L, infix_name(C));
+                   aer_ast:symbol(L, infix_name(C));
 
       {int_math, L, "%"} -> {bif, '%', L, erlang, 'rem'};
 
@@ -962,7 +962,7 @@ make_binding(Def, Expr) ->
     end.
 
 term_line(Term) ->
-    alpaca_ast_gen:term_line(Term).
+    aer_ast_gen:term_line(Term).
 
 bin_to_atom(B) when is_binary(B) ->
     binary_to_atom(B, utf8).
@@ -992,21 +992,21 @@ type_arity_error(L, Typ, Params) ->
     return_error(L, {wrong_type_arity, Typ, length(Params)}).
 
 symbol_name({symbol, S}) ->
-    alpaca_ast:symbol_name(S);
+    aer_ast:symbol_name(S);
 symbol_name({'Symbol', _}=S) ->
-    alpaca_ast:symbol_name(S).
+    aer_ast:symbol_name(S).
 
 symbol_line_name({symbol, S}) ->
-    {alpaca_ast:line(S), alpaca_ast:symbol_name(S)};
+    {aer_ast:line(S), aer_ast:symbol_name(S)};
 symbol_line_name({infixl, L, N}) ->
     {L, infix_name(N)};
 symbol_line_name({infixr, L, N}) ->
     {L, infix_name(N)}.
 
 line({symbol, S}) ->
-    alpaca_ast:line(S);
+    aer_ast:line(S);
 line(X) ->
-    alpaca_ast:line(X).
+    aer_ast:line(X).
 
 infix_name(C) ->
   BinC = unicode:characters_to_binary(C, utf8),
