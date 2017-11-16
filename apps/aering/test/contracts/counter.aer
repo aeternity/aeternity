@@ -1,0 +1,12 @@
+contract counter
+
+export get, tick
+
+STATE : uint = 0
+
+let const get () = STATE
+
+let tick () = {state = inc STATE}
+
+let pure inc (x : uint) = x + 1
+
