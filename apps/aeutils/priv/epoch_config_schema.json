@@ -3,34 +3,61 @@
     "type" : "object",
     "properties" : {
         "peers" : {
-            "type" : "array",
+            "description" :
+            "Pre-configured addresses of epoch nodes to contact",
+            "type"  : "array",
             "items" : {
-                "type" : "string"
+                "type"    : "string",
+                "example" : "http://a.b.c:123/"
             }
         },
         "keys" : {
             "type" : "object",
             "properties" : {
-                "dir"      : { "type" : "string" },
-                "password" : { "type" : "string" }
+                "dir"      : {
+                    "description" :
+                    "Location (directory) of the public/private key pair",
+                    "type" : "string"
+                },
+                "password" : {
+                    "description" :
+                    "Password used to encrypt the key-pair files",
+                    "type" : "string"
+                }
             }
         },
         "chain" : {
             "type" : "object",
-            "persist" : { "type" : "boolean" },
-            "db_path"   : { "type" : "string" }
+            "persist" : {
+                "description" :
+                "If true, all changes to the chain are written to disk.",
+                "type" : "boolean" },
+            "db_path"   : {
+                "description" :
+                "The directory where the chain is persisted to disk.",
+                "type" : "string"
+            }
         },
         "mining" : {
             "type" : "object",
             "properties" : {
-                "autostart" : { "type" : "boolean" }
+                "autostart" : {
+                    "description" :
+                    "If true, the node will start mining automatically.",
+                    "type" : "boolean"
+                }
             }
         },
         "logging" : {
             "type"    : "object",
-            "hwm"     : { "type" : "integer",
-                          "minimum" : 50 },
+            "hwm"     : {
+                "description" :
+                "Controls the overload protection in the logs. Default=50.",
+                "type" : "integer",
+                "minimum" : 50 },
             "console" : {
+                "description" :
+                "Sets the log level in the Erlang shell. Default=none.",
                 "type" : "string",
                 "enum" : [ "debug", "info", "notice", "warning",
                            "error", "critical", "alert", "emergency" ]}
