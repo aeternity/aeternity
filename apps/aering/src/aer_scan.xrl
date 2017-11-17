@@ -83,7 +83,7 @@ _           : {token, {'_', TokenLine}}.
 {WS} : skip_token.
 
 %% Comments (TODO: nested comments, line comments)
-(\*.*\*) : skip_token.
+\(\*.*\*\) : skip_token.
 
 . : {error, "Unexpected token: " ++ TokenChars}.
 
