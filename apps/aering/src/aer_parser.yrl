@@ -30,7 +30,7 @@ int
 
 %% Symbols
 ',' '=' '(' ')' '_' '{' '}'
-'+' '-' '*' '/' '%'
+'+' '-' '*' '/' mod
 .
 
 Rootsymbol 'Contract'.
@@ -102,9 +102,9 @@ Rootsymbol 'Contract'.
 'AddOp' -> '+' : '+'.
 'AddOp' -> '-' : '-'.
 
-'MulOp' -> '*' : '*'.
-'MulOp' -> '/' : '/'.
-'MulOp' -> '%' : '%'.
+'MulOp' -> '*'   : '*'.
+'MulOp' -> '/'   : '/'.
+'MulOp' -> 'mod' : mod.
 
 Erlang code.
 -include("aering_ast.hrl").

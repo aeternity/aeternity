@@ -50,16 +50,6 @@ val        : {token, {val, TokenLine}}.
 with       : {token, {with, TokenLine}}.
 true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 
-{ID}        : {token, {id, TokenLine, TokenChars}}.
-_           : {token, {'_', TokenLine}}.
-{CON}       : {token, {con, TokenLine, TokenChars}}.
-@{ID}       : {token, {param, TokenLine, lists:nthtail(1, TokenChars)}}.
-{INT}       : {token, {int, TokenLine, list_to_integer(TokenChars)}}.
-{HEX}       : {token, {hex, TokenLine, parse_hex(TokenChars)}}.
-{HASH}      : {token, {hash, TokenLine, parse_hash(TokenChars)}}.
-
-"{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
-
 %% Operators
 =    : {token, {'=', TokenLine}}.
 ==   : {token, {'==', TokenLine}}.
@@ -72,11 +62,22 @@ _           : {token, {'_', TokenLine}}.
 \+   : {token, {'+', TokenLine}}.
 \*   : {token, {'*', TokenLine}}.
 /    : {token, {'/', TokenLine}}.
-\%   : {token, {'%', TokenLine}}.
+mod  : {token, {mod, TokenLine}}.
 \:   : {token, {':', TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 ->   : {token, {'->', TokenLine}}.
 =>   : {token, {'=>', TokenLine}}.
+
+%% Identifiers and literals
+{ID}        : {token, {id, TokenLine, TokenChars}}.
+_           : {token, {'_', TokenLine}}.
+{CON}       : {token, {con, TokenLine, TokenChars}}.
+@{ID}       : {token, {param, TokenLine, lists:nthtail(1, TokenChars)}}.
+{INT}       : {token, {int, TokenLine, list_to_integer(TokenChars)}}.
+{HEX}       : {token, {hex, TokenLine, parse_hex(TokenChars)}}.
+{HASH}      : {token, {hash, TokenLine, parse_hash(TokenChars)}}.
+
+"{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
 
 %% Whitespace ignore
 {WS} : skip_token.
