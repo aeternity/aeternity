@@ -1,11 +1,17 @@
 ---
-{% if 'epoch' in group_names %}[
+{% if 'epoch' in group_names %}
 peers:
-    {%- for host in ansible_play_hosts | difference([inventory_hostname]) -%}
-        - "http://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:3013/"
-    {%- endfor -%}
-{% endif %}
+    {%for host in ansible_play_hosts | difference([inventory_hostname]) %}
+- "http://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:3013/"
+    {% endfor %}
+{%- endif %}
+
+http:
+    external:
+        peer_address: {{ ansible_default_ipv4.address }}
+
 mining:
     autostart: true
+
 chain:
     persist: true

@@ -10,6 +10,7 @@
     - name: "Required variables"
       fail: msg="Either remote_package or local_package variables must be defined"
       when: remote_package is not defined and local_package is not defined
+      tags: [package]
 
     - name: "Make sure {{ project_root }} exists"
       file:
@@ -22,6 +23,7 @@
         url: "{{ remote_package }}"
         dest: "{{ project_root }}/{{ remote_package | basename }}"
       when: remote_package is defined
+      tags: [package]
 
     - name: Check if epoch binary exists
       stat:
@@ -54,6 +56,7 @@
         src: "{{ project_root }}/{{ remote_package | basename }}"
         dest: "{{ project_root }}"
       when: remote_package is defined
+      tags: [package]
 
     - name: Extract local epoch package into {{ project_root }}
       unarchive:
@@ -62,6 +65,7 @@
         src: "{{ local_package }}"
         dest: "{{ project_root }}"
       when: local_package is defined
+      tags: [package]
 
     - name: Update configuration
       template:
@@ -72,6 +76,4 @@
 
     - name: Start epoch daemon
       command: "{{ project_root }}/bin/epoch start"
-      environment:
-        ERL_FLAGS: "-config {{ project_root }}/epoch.config"
       tags: [daemon]
