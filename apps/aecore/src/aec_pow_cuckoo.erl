@@ -20,8 +20,13 @@
 -compile([export_all, nowarn_export_all]).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-include("pow.hrl").
 
 -define(DEFAULT_CUCKOO_ENV, {"mean30", "-t 5", 30}). %% -m 7 caused crash
+%% Cuckoo buffer size, see
+%% https://github.com/tromp/cuckoo/blob/fddbf60103dec43c7a5c3dc33e5f16426b6256a9/src/mean_miner.cpp#L23
+%% https://github.com/tromp/cuckoo/blob/fddbf60103dec43c7a5c3dc33e5f16426b6256a9/src/lean_miner.cpp#L17
+-define(CUCKOO_BUFSIZE, 80).
 
 -ifdef(TEST).
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
@@ -65,9 +70,10 @@
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
                Nonce :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) ->
+generate(Data, Target, Nonce) when Nonce >= 0,
+                                   Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
-    Hash = base64:encode_to_string(aec_sha256:hash(Data)),
+    Hash = aec_sha256:hash(Data),
     generate_int(Hash, Nonce, Target).
 
 %%------------------------------------------------------------------------------
@@ -76,8 +82,10 @@ generate(Data, Target, Nonce) ->
 -spec verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
-verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
-    Hash = base64:encode_to_string(aec_sha256:hash(Data)),
+verify(Data, Nonce, Evd, Target) when is_list(Evd),
+                                      Nonce >= 0,
+                                      Nonce =< ?MAX_NONCE ->
+    Hash = aec_sha256:hash(Data),
     case test_target(Evd, Target) of
         true ->
             verify(Hash, Nonce, Evd);
@@ -92,11 +100,13 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
--spec generate_int(Hash :: string(), Nonce :: integer(), Target :: aec_pow:sci_int()) ->
+-spec generate_int(Hash :: binary(), Nonce :: integer(), Target :: aec_pow:sci_int()) ->
                           {'ok', Nonce2 :: integer(), Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
 generate_int(Hash, Nonce, Target) ->
-    case generate_single(Hash, Nonce, Target) of
+    Header = pack_header_and_nonce(Hash, Nonce),
+
+    case generate_int(Header, Target) of
         {ok, Soln} ->
             {ok, {Nonce, Soln}};
         {error, no_value} ->
@@ -109,28 +119,27 @@ generate_int(Hash, Nonce, Target) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Proof of Work generation, a single attempt
+%%   Proof of Work generation from a hex-encoded 80-byte buffer
 %% @end
 %%------------------------------------------------------------------------------
--spec generate_single(Hash :: string(), Nonce :: integer(), Target :: aec_pow:sci_int()) ->
-                             {'ok', Solution :: pow_cuckoo_solution()} |
-                             {'error', term()}.
-generate_single(Hash, Nonce, Target) ->
+-spec generate_int(Headr :: string(), Target :: aec_pow:sci_int()) ->
+                          {'ok', Solution :: pow_cuckoo_solution()} |
+                          {'error', term()}.
+generate_int(Header, Target) ->
     BinDir = aecuckoo:bin_dir(),
     {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
     %% -s makes mean miner print out the solution. We do not make it
     %% Algo-dependent in order to avoid wiring-in executable names. Lean miner
     %% will complain but ignores it.
-    ?info("Executing cmd: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra])]),
-    try exec:run(
-          lists:concat(export_ld_lib_path() ++
-                           ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra]),
-          [{stdout, self()},
-           {stderr, self()},
-           {kill_timeout, 1},
-           {cd, BinDir},
-           {env, [{"SHELL", "/bin/sh"}]},
-           monitor]) of
+    Cmd = lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Header, " -s ", Extra]),
+    ?info("Executing cmd: ~p~n", [Cmd]),
+    try exec:run(Cmd,
+                 [{stdout, self()},
+                  {stderr, self()},
+                  {kill_timeout, 1},
+                  {cd, BinDir},
+                  {env, [{"SHELL", "/bin/sh"}]},
+                  monitor]) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
                                    buffer = [],
@@ -150,23 +159,23 @@ generate_single(Hash, Nonce, Target) ->
 %%   of the PoW (e.g. verifier terminates abnormally).
 %% @end
 %%------------------------------------------------------------------------------
--spec verify(Hash :: string(), Nonce :: integer(),
+-spec verify(Hash :: binary(), Nonce :: integer(),
              Soln :: aec_pow:pow_evidence()) -> boolean().
 verify(Hash, Nonce, Soln) ->
     BinDir = aecuckoo:bin_dir(),
     {_, _, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
+    Header = pack_header_and_nonce(Hash, Nonce),
     SolnStr = solution_to_hex(Soln),
-    ?info("Executing: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./verify", Size, " -h ", Hash, " -n ", Nonce])]),
-    try exec:run(
-              lists:concat(export_ld_lib_path() ++
-                               ["./verify", Size, " -h ", Hash, " -n ", Nonce]),
-              [{stdout, self()},
-               {stderr, self()},
-               stdin,
-               {kill_timeout, 1}, %% Kills exe with SIGTERM, then with SIGKILL if needed
-               {cd, BinDir},
-               {env, [{"SHELL", "/bin/sh"}]},
-               monitor]) of
+    Cmd = lists:concat(export_ld_lib_path() ++ ["./verify", Size, " -h ", Header]),
+    ?info("Executing: ~p~n", [Cmd]),
+    try exec:run(Cmd,
+                 [{stdout, self()},
+                  {stderr, self()},
+                  stdin,
+                  {kill_timeout, 1}, %% Kills exe with SIGTERM, then with SIGKILL if needed
+                  {cd, BinDir},
+                  {env, [{"SHELL", "/bin/sh"}]},
+                  monitor]) of
         {ok, _ErlPid, OsPid} ->
             exec:send(OsPid, list_to_binary(SolnStr)),
             exec:send(OsPid, eof),
@@ -184,6 +193,43 @@ verify(Hash, Nonce, Soln) ->
             {error, {unknown, {C, E}}}
     end.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%%   Creates the 80-byte Cuckoo buffer (hex encoded) from a base64-encoded
+%%   hash and a uint64 nonce.
+%% @end
+%%------------------------------------------------------------------------------
+-spec pack_header_and_nonce(binary(), integer()) -> string().
+pack_header_and_nonce(Hash, Nonce) ->
+    %% Cuckoo originally uses 32-bit nonces inserted at the end of its 80-byte buffer.
+    %% This buffer is hashed into the keys used by the main algorithm.
+    %%
+    %% We insert our base64-encoded 64-bit Nonce before that (i.e., from byte 65)
+    %% and pass 0 as nonce  for cuckoo. (We use the -x option to write the full buffer.)
+    %% The SHA256 hash is 32 bytes, 44 bytes base64-encoded. There is still room for
+    %% zero characters between header and nonce.
+    %%
+    %% (Base64 encoding: see RFC 3548, Section 3:
+    %% https://tools.ietf.org/html/rfc3548#page-4
+    %% converts every triplet of bytes to 4 characters: from N bytes to 4*ceil(N/3)
+    %% bytes.)
+    NonceStr = base64:encode_to_string(<<Nonce:64/little-unsigned-integer>>),
+    NonceStart = ?CUCKOO_BUFSIZE - length(NonceStr) - 4,
+    HashStr = base64:encode_to_string(Hash),
+    case length(HashStr) of
+        Len when Len < NonceStart ->
+            ZLen = NonceStart - Len,  %% padding between header and nonce
+            HashStr ++ lists:duplicate(ZLen, $0) ++ NonceStr;
+        _ ->
+            string:substr(HashStr, 1, NonceStart) ++ NonceStr
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%%   Prefix setting load path to command so that blake2b.so is found in priv/lib
+%% @end
+%%------------------------------------------------------------------------------
+-spec export_ld_lib_path() -> list(string()).
 export_ld_lib_path() ->
     LdPathVar = case os:type() of
                  {unix, darwin} -> "DYLD_LIBRARY_PATH";
@@ -349,7 +395,6 @@ test_target(Soln, Target) ->
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
     Hash = aec_sha256:hash(Bin),
     aec_pow:test_target(Hash, Target).
-
 
 %%------------------------------------------------------------------------------
 %% Convert solution (a list of 42 numbers) to a binary

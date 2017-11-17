@@ -17,6 +17,7 @@
 -endif.
 
 -include("sha256.hrl").
+-include("pow.hrl").
 
 %%%=============================================================================
 %%% API
@@ -28,10 +29,10 @@
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
                Nonce :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) ->
-    Nonce32 = Nonce band 16#7fffffff,
+generate(Data, Target, Nonce) when Nonce >= 0,
+                                   Nonce =< ?MAX_NONCE ->
     Hash1 = aec_sha256:hash(Data),
-    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce32:?HASH_BITS>>),
+    Hash2 = aec_sha256:hash(<<Hash1/binary, Target:16, Nonce:?NONCE_BITS>>),
     case aec_pow:test_target(Hash2, Target) of
         true ->
             %% Hash satisfies condition: return nonce
@@ -46,7 +47,9 @@ generate(Data, Target, Nonce) ->
 -spec verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
-verify(Data, Nonce, Evd, Target) when Evd == no_value ->
+verify(Data, Nonce, Evd, Target) when Evd == no_value,
+                                      Nonce >= 0,
+                                      Nonce =< ?MAX_NONCE ->
     %% Verification: just try if current Nonce satisfies target threshold
     case generate(Data, Target, Nonce) of
         {ok, _} ->
