@@ -78,7 +78,7 @@ def post_blocks(api, blocks_cnt, chain_data_file):
     for i in range(1, blocks_cnt + 1):
         block = chain_downloader.get_block(premined_blocks, height=i)
         api.post_block(block)
-        wait(lambda: api.get_top().height == i, timeout_seconds=3, sleep_seconds=0.25)
+        wait(lambda: api.get_top().height >= i, timeout_seconds=3, sleep_seconds=0.25)
 
 def coinbase_reward():
     return config["coinbase_reward"]
@@ -112,3 +112,6 @@ def genesis_hash(api):
     while block.height != 1:
         block = api.get_block_by_hash(block.prev_hash)
     return block.prev_hash
+
+def wait_until_height(api, height):
+    wait(lambda: api.get_top().height >= height, timeout_seconds=30, sleep_seconds=0.25)
