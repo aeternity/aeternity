@@ -36,8 +36,8 @@ simple_contracts_test_() ->
             ?assertEqual(parse_expr("a + b + c"),
                          parse_expr("(a + b) + c")),
             %% Check precedences
-            ?assertEqual(parse_expr("a * b % c + d * e / f - g"),
-                         parse_expr("(((a * b) % c) + ((d * e) / f)) - g")),
+            ?assertEqual(parse_expr("a * b mod c + d * e / f - g"),
+                         parse_expr("(((a * b) mod c) + ((d * e) / f)) - g")),
             ok
         end}
      ]}.
