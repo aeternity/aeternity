@@ -22,6 +22,7 @@
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
+        , wait_for_erlexec_children/0
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -210,3 +211,37 @@ create_state_tree_with_accounts(Accounts) ->
                       end, AccountsTree0, Accounts),
     StateTrees0 = #trees{},
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
+
+%%%=============================================================================
+%%% erlexec cleanup
+%%%=============================================================================
+
+wait_for_erlexec_children() ->
+    wait_for_erlexec_children(erlexec_children()).
+
+%% Ref https://github.com/saleyn/erlexec/blob/97a5188da1d37c7d2f62e4589be6237394d40811/src/exec.erl#L850
+-spec erlexec_children() -> [{pid(), OsPid::term()}].
+erlexec_children() ->
+    lists:filter(
+      fun
+          ({ErlPid, OsPid}) when is_pid(ErlPid), (not is_pid(OsPid)) ->
+              true;
+          ({OsPid, ErlPid}) when is_pid(ErlPid), (not is_pid(OsPid)) ->
+              false
+      end,
+      ets:tab2list(exec_mon)).
+
+wait_for_erlexec_children(Children) ->
+    ?ifDebugFmt("erlexec children are: ~p~n", [Children]),
+    lists:foreach(fun wait_for_erlexec_child/1, Children),
+    ok.
+
+wait_for_erlexec_child({ErlPid, OsPid}) when is_pid(ErlPid),
+                                             (not is_pid(OsPid)) ->
+    ?ifDebugFmt("Waiting for erlexec child ~p (OS pid ~p) "
+                "to terminate normally (~p)~n",
+                [ErlPid, OsPid, os:timestamp()]),
+    aec_test_utils:wait_for_it(fun() -> is_process_alive(ErlPid) end, false),
+    ?ifDebugFmt("erlexec child ~p (OS pid ~p) terminated (~p)~n",
+                [ErlPid, OsPid, os:timestamp()]),
+    ok.
