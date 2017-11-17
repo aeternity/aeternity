@@ -104,18 +104,28 @@ local_peer(Port) ->
             end
     end.
 
+
+-spec get_local_peer_address() -> string().
 get_local_peer_address() ->
-    case aeu_env:user_config(
-           [<<"http">>, <<"external">>, <<"peer_address">>]) of
-        {ok, A} -> A;
-        undefined ->
-            case aeu_env:get_env(aehttp, local_peer_address) of
-                {ok, Addr} ->
-                    Addr;
-                undefined ->
-                    {ok, Host} = inet:gethostname(),
-                    Host
-            end
+    H =
+        case aeu_env:user_config(
+              [<<"http">>, <<"external">>, <<"peer_address">>]) of
+            {ok, A} ->
+                binary_to_list(A);
+            undefined ->
+                case aeu_env:get_env(aehttp, local_peer_address) of
+                    {ok, Addr} ->
+                        Addr;
+                    undefined ->
+                        {ok, Host} = inet:gethostname(),
+                        Host
+                end
+        end,
+    case io_lib:deep_latin1_char_list(H) of
+        true ->
+            H;
+        false ->
+            erlang:error(unsupported_external_peer_address)
     end.
 
 get_external_port() ->
