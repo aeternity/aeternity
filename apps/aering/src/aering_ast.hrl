@@ -19,6 +19,8 @@
 -type aer_id() :: {id, line(), aer_name()}
                 | {param, line(), aer_name()}.    %% implicit parameter (like @state or @balance)
 
+-type aer_op() :: '+' | '-' | '*' | '/' | '%'.
+
 -type aer_modifier() :: pure | const.
 
 -type aer_field_assign()
@@ -27,7 +29,7 @@
 -type aer_exp()
     :: aer_constant()
      | {app, line(), aer_exp(), aer_exp()}
-     | {infix, line(), aer_exp(), aer_id(), aer_exp()}
+     | {infix, line(), aer_exp(), aer_op(), aer_exp()}
      | {record, line(), [aer_field_assign()]}
      | {record_sel, line(), aer_exp(), aer_id()}
      | {list, line(), [aer_exp()]}

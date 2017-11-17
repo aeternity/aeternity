@@ -69,7 +69,7 @@ all_tokens() ->
     %% Symbols
     lists:map(Lit, [',', '.', ';', '|', ':', '(', ')', '[', ']', '{', '}']) ++
     %% Operators
-    lists:map(Lit, ['=', '==', '!=', '>', '<', '>=', '<=', '-', '+', '*', '/', ':', '::', '->', '=>']) ++
+    lists:map(Lit, ['=', '==', '!=', '>', '<', '>=', '<=', '-', '+', '*', '/', '%', ':', '::', '->', '=>']) ++
     %% Keywords
     lists:map(Lit, [const, contract, export, fn, 'fun', import, in, 'let', match, pure, type, val, with]) ++
     %% Comment token (not an actual token), just for tests
