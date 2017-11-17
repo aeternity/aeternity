@@ -20,12 +20,8 @@ empty_contract_test_() ->
 
 simple_contracts_test_() ->
     {foreach,
-     fun() ->
-             ok
-     end,
-     fun(_) ->
-             ok
-     end,
+     fun() -> ok end,
+     fun(_) -> ok end,
      [{"Scan a contract with an identity function.",
        fun() ->
                Text = "contract one\n"
@@ -44,8 +40,13 @@ simple_contracts_test_() ->
                 {'=',3},
                 {id,4,"x"}] = Tokens,
                ok
-       end}
-     ]}.
+       end},
+      {"Scan the counter contract.",
+        fun() ->
+            Text = aer_test_utils:read_contract(counter),
+            {ok, _Tokens, _} = aer_scan:string(Text),
+            ok
+       end}]}.
 
 all_tokens_test_() ->
     {foreach, fun() -> ok end,

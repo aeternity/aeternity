@@ -2,11 +2,12 @@ contract counter
 
 export get, tick
 
-STATE : uint = 0
+(* How to do state initialisation? *)
+@state : int = 0
 
-let const get () = STATE
+const fun get () = @state
 
-let tick () = {state = inc STATE}
+fun tick () = {state = inc @state}
 
-let pure inc (x : uint) = x + 1
+pure fun inc (x : int) = x + 1
 
