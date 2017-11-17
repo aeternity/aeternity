@@ -72,6 +72,8 @@ all_tokens() ->
     lists:map(Lit, ['=', '==', '!=', '>', '<', '>=', '<=', '-', '+', '*', '/', ':', '::', '->', '=>']) ++
     %% Keywords
     lists:map(Lit, [const, contract, export, fn, 'fun', import, in, 'let', match, pure, type, val, with]) ++
+    %% Comment token (not an actual token), just for tests
+    [{comment, 0, "*Comment!\""}] ++
     %% Literals
     [ Tok(bool, true), Tok(bool, false)
     , Tok(id, "foo"), Lit('_'), Tok(con, "Foo"), Tok(param, "state")
@@ -82,6 +84,8 @@ all_tokens() ->
 
 compare_tokens([], []) -> true;
 compare_tokens([T | Ts1], [T | Ts2]) ->
+    compare_tokens(Ts1, Ts2);
+compare_tokens([{comment, _, _} | Ts1], Ts2) ->
     compare_tokens(Ts1, Ts2);
 compare_tokens(Ts1, Ts2) ->
     case length(Ts1) == length(Ts2) of
@@ -103,5 +107,6 @@ show_token({string, _, S}) -> fmt(binary_to_list(S));
 show_token({int, _, N}) -> fmt(N);
 show_token({hex, _, N}) -> fmt("0x~.16b", N);
 show_token({hash, _, <<N:256>>}) -> fmt("#~.16b", N);
+show_token({comment, _, S}) -> "(*" ++ S ++ "*)";
 show_token({_, _, _}) -> "TODO".
 
