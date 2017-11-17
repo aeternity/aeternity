@@ -26,7 +26,7 @@ contract export 'fun' pure const
 
 %% Identifiers and literals
 id con param
-int
+int hex bool hash string
 
 %% Symbols
 ',' '=' '(' ')' '_' '{' '}'
@@ -89,8 +89,12 @@ Rootsymbol 'Contract'.
 'Expr900' -> 'ExprAtom' : '$1'.
 
 'ExprAtom' -> int   : '$1'.
+'ExprAtom' -> hex   : setelement(1, int, '$1'). %% Remember that it was in hex?
+'ExprAtom' -> bool  : '$1'.
 'ExprAtom' -> id    : '$1'.
 'ExprAtom' -> param : '$1'.
+'ExprAtom' -> hash  : '$1'.
+'ExprAtom' -> string : '$1'.
 'ExprAtom' -> '{' 'FieldAssignments' '}' : {record, get_line('$1'), '$2'}.
 'ExprAtom' -> '(' 'Expr' ')' : '$2'.
 
