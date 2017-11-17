@@ -82,7 +82,7 @@ _           : {token, {'_', TokenLine}}.
 %% Whitespace ignore
 {WS} : skip_token.
 
-%% Comments
+%% Comments (TODO: nested comments, line comments)
 (\*.*\*) : skip_token.
 
 . : {error, "Unexpected token: " ++ TokenChars}.
