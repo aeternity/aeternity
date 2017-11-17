@@ -27,6 +27,7 @@
       stat:
         path: "{{ project_root }}/bin/epoch"
       register: epoch
+      tags: [daemon]
 
     - name: Ping epoch daemon
       command: "{{ project_root }}/bin/epoch ping"
@@ -39,6 +40,12 @@
       command: "{{ project_root }}/bin/epoch stop"
       when: epoch.stat.exists == True and ping.stdout == "pong"
       tags: [daemon]
+
+    - name: Remove "{{ project_root }}/.chain" directory
+      file:
+        state: absent
+        path: "{{ project_root }}/.chain"
+      tags: [empty-chain]
 
     - name: Extract remote epoch package into {{ project_root }}
       unarchive:
@@ -58,8 +65,8 @@
 
     - name: Update configuration
       template:
-        src: templates/epoch.config.j2
-        dest: "{{ project_root }}/epoch.config"
+        src: templates/epoch.yaml.j2
+        dest: "{{ project_root }}/epoch.yaml"
         mode: '0600'
       tags: [config]
 
