@@ -22,6 +22,7 @@
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
+        , stop_erlexec_children/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -210,3 +211,48 @@ create_state_tree_with_accounts(Accounts) ->
                       end, AccountsTree0, Accounts),
     StateTrees0 = #trees{},
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
+
+%%%=============================================================================
+%%% erlexec cleanup
+%%%=============================================================================
+
+-spec stop_erlexec_children(timeout()) -> {ok, { [StopSuccess::term()],
+                                                 [StopError::term()]}}.
+stop_erlexec_children(TimeoutMs) ->
+    stop_erlexec_children(_OsPids = exec:which_children(), TimeoutMs).
+
+stop_erlexec_children(OsPids, TimeoutMs) ->
+    ?ifDebugFmt("erlexec children are: ~p~n", [OsPids]),
+    {StoppedOks, StoppedErrs} =
+        lists:foldl(
+          fun(C, {OksIn, ErrorsIn}) ->
+                  ?ifDebugFmt("Stopping child "
+                              "~p (~p)~n", [C, os:timestamp()]),
+                  case exec:stop_and_wait(C, TimeoutMs) of
+                      {error, not_found} = Ok ->
+                          ?ifDebugFmt("Child not found "
+                                      "(it is likely it had already stopped) "
+                                      "~p (~p)~n", [C, os:timestamp()]),
+                          { [{C, Ok} | OksIn],
+                            ErrorsIn};
+                      {error, timeout} = Err ->
+                          ?ifDebugFmt("Timed out while stopping child "
+                                      "~p (~p)~n", [C, os:timestamp()]),
+                          { OksIn,
+                            [{C, Err} | ErrorsIn]};
+                      {error, _} = Err ->
+                          ?ifDebugFmt("Errored while stopping child "
+                                      "~p (~p)~n", [C, os:timestamp()]),
+                          { OksIn,
+                            [{C, Err} | ErrorsIn]};
+                      StoppedInfo ->
+                          ?ifDebugFmt("Stopped child "
+                                      "~p with ~p (~p)~n",
+                                      [C, StoppedInfo, os:timestamp()]),
+                          { [{C, StoppedInfo} | OksIn],
+                            ErrorsIn}
+                  end
+          end,
+          {[], []},
+          OsPids),
+    {ok, {StoppedOks, StoppedErrs}}.
