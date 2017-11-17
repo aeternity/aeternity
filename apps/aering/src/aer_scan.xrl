@@ -11,10 +11,8 @@ DIGIT    = [0-9]
 HEXDIGIT = [0-9a-fA-F]
 LOWER    = [a-z]
 UPPER    = [A-Z]
-OPCHAR   = [\+\-\*\/<>=\.:?\|!#\^&@\\%]
 ID       = {LOWER}[a-zA-Z0-9_]*
 CON      = {UPPER}[a-zA-Z0-9_]*
-OP       = {OPCHAR}+
 INT      = {DIGIT}+
 HEX      = 0x{HEXDIGIT}+
 HASH     = #{HEXDIGIT}+
@@ -74,6 +72,7 @@ _           : {token, {'_', TokenLine}}.
 \+   : {token, {'+', TokenLine}}.
 \*   : {token, {'*', TokenLine}}.
 /    : {token, {'/', TokenLine}}.
+\%   : {token, {'%', TokenLine}}.
 \:   : {token, {':', TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 ->   : {token, {'->', TokenLine}}.
