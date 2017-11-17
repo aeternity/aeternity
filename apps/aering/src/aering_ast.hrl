@@ -14,9 +14,12 @@
      | {hash, line(), binary()}
      | {string, line(), binary()}.
 
--type aer_id() :: {id, line(), string()}.
+-type aer_name() :: string().
 
--type aer_modifier() :: pure | const | none.
+-type aer_id() :: {id, line(), aer_name()}
+                | {param, line(), aer_name()}.    %% implicit parameter (like @state or @balance)
+
+-type aer_modifier() :: pure | const.
 
 -type aer_field_assign()
     :: {assign, line(), aer_id(), aer_exp()}.
@@ -31,11 +34,16 @@
      | {'let', line(), aer_id(), aer_exp(), aer_exp()}
      | {'if', line(), aer_exp(), aer_exp(), aer_exp()}.
 
+-type aer_pat()
+    :: aer_id()
+     | {'_', line()}
+     | {unit, line()}.
+
 -type aer_dec()
-    :: {'fun', line(), aer_modifier(), aer_id(), [aer_id()], aer_exp()}.
+    :: {'fun', line(), [aer_modifier()], aer_id(), [aer_pat()], aer_exp()}.
 
 -type aer_export() :: [aer_id()].
 
 -type aer_contract()
-    :: {contract, aer_id(), [aer_export()], [aer_dec()]}.
+    :: {contract, line(), aer_name(), [aer_export()], [aer_dec()]}.
 
