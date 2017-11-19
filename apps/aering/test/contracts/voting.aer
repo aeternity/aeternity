@@ -1,0 +1,64 @@
+(* Example from Solidity by Example
+   http://solidity.readthedocs.io/en/develop/solidity-by-example.html *)
+
+contract ballot
+
+type Voter = { weight : uint, voted : bool, delegate : address, vote : uint }
+type Proposal = { name : string, voteCount : uint }
+
+state = { chairPerson : address
+        , voters : map address => Voter
+        , proposals : list Proposal }
+
+fun init (proposalNames : list string) =
+  proposals = map mk_proposal proposalNames,
+  initVote  = Vote{ weight = 1 }
+  { state = { chairPerson = @call.sender
+            , voters = Map.add @call.sender initVote Map.empty
+            , proposals = List.map mk_proposal proposalNames } }
+
+fun giveRightToVote (voter : address) =
+  if (@call.sender == @state.chairPerson) then
+    if !(Map.is_key voter @state.voters) then
+      { state = { voters = Map.add address Voter{ weight = 1 } @state.voters } }
+
+fun delegate (delegateTo : address)
+  when delegateTo != @call.sender =
+  (* Map.get should fail if key is not in map... *)
+  voter = Map.get @call.sender @state.voters,
+  finalDelegateTo = delegate_chain delegateTo
+  voter' = voter{ voted = true, delegate = final_delegateTo },
+  delegate_vote finalDelegateTo voter.weight,
+  {state = { voters = Map.update @call.sender voter' @state.voters } }
+
+fun delegate_vote (delegateTo : address) (count : uint) =
+  voter = Map.get delegateTo @state.voters
+  if voter.voted then
+    add_vote voter.vote count
+  else
+    { state = { voters = Map.update delegateTo voter{ weight = voter.weight + count } @state.voters } }
+
+fun vote (candidate : uint) =
+  voter = Map.get @call.sender @state.voters
+  if !voter.voted then
+    add_vote candidate voter.weight,
+    { state = { voters = Map.update @call.sender voter{ voted = true, vote = candidate } @state.voters } }
+
+fun add_vote (candidate : uint) (count : uint) =
+  proposal = List.nth candidate @state.proposals
+  proposal' = proposal{ voteCount = proposal.voteCount + count }
+  { state = { proposals = List.set_nth candidate proposal' @state.proposals } }
+
+const fun winning_proposal () =
+  (* TODO: Need to destruct a list here?! *)
+  {}
+
+(* Helper funs *)
+pure fun mk_proposal (name' : string) =
+  Proposal{ name = name', voteCount = 0 }
+
+const fun delegate_chain (delegateTo : address)
+  if delegateTo == @call.sender then 0 else
+    voter = Map.get delegateTo @state.voters,
+    if voter.delegate != 0 then delegate_chain voter.delegate else delegateTo
+
