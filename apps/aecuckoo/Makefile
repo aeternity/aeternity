@@ -22,6 +22,7 @@ COMMIT = d1b8b77
 
 .PHONY: all
 all: $(LIBBLAKE) $(EXECUTABLES)
+	@: # Silence the `Nothing to be done for 'all'.` message when running `make all`.
 
 .PHONY: clean
 clean:
@@ -31,28 +32,41 @@ clean:
 distclean:
 	rm -rf c_src priv
 
-$(LIBBLAKE): $(SRC_LIBBLAKE) priv/lib
+# Use `.LOW_RESOLUTION_TIME` for preventing unnecessary target
+# recomputation caused by inability of `cp -p `to set high resolution
+# timestamp on certain filesystems.
+.LOW_RESOLUTION_TIME: $(LIBBLAKE)
+$(LIBBLAKE): $(SRC_LIBBLAKE) | priv/lib
 	cp -p $< $@
 
-$(EXECUTABLES): priv/bin/%: c_src/src/% priv/bin
+# Use `.LOW_RESOLUTION_TIME` for preventing unnecessary target
+# recomputation caused by inability of `cp -p `to set high resolution
+# timestamp on certain filesystems.
+.LOW_RESOLUTION_TIME: $(EXECUTABLES)
+$(EXECUTABLES): priv/bin/%: c_src/src/% | priv/bin
 	cp -p $< $@
 
 priv/lib priv/bin:
 	mkdir -p $@
 
-$(SRC_LIBBLAKE): c_src/.git
-	( cd $(<D) && git checkout -q $(COMMIT); )
+# Do not silence the recursive make call, in order to show compiler
+# flags used.
+$(SRC_LIBBLAKE): | c_src/.git
 	( cd $(@D) && \
 		$(MAKE) $(@F) \
 			GCC_ARCH_FLAGS=$(SRC_ARCH_FLAGS) \
 			GPP_ARCH_FLAGS=$(SRC_ARCH_FLAGS); )
 
-$(SRC_EXECUTABLES): c_src/src/%: c_src/.git
-	( cd $(<D) && git checkout -q $(COMMIT); )
+# Do not silence the recursive make call, in order to show compiler
+# flags used.
+$(SRC_EXECUTABLES): c_src/src/%: | c_src/.git
 	( cd $(@D) && \
 		$(MAKE) libblake2b.so $* \
 			GCC_ARCH_FLAGS=$(SRC_ARCH_FLAGS) \
 			GPP_ARCH_FLAGS=$(SRC_ARCH_FLAGS); )
 
+# Clone without checking out, so that recipe interrupted after clone
+# does not leave working directory distinct from the expected commit.
 c_src/.git:
-	git clone $(REPO) $(@D)
+	git clone -n $(REPO) $(@D)
+	( cd $(@D) && git checkout $(COMMIT); )
