@@ -28,21 +28,21 @@ export init, set, get
     @call  contains information from the issuer of the (top-level) call
 
   - Each function produces a result, the result type is complex, but roughly
-    Result 'A = { result       : 'A
-                , state        : State
-                , transactions : List Transaction
-                , events       : List Event }
+    Result 'a = { .result       : 'a
+                , .state        : State
+                , .transactions : List Transaction
+                , .events       : List Event }
 
     Transaction is static and defined by us. State and/or Event should be given by
     the contract implementer.
 
-    A pure/const function only has type 'A while other functions has type Result 'A
+    A pure/const function only has type 'a while other functions has type Result 'a
 
     The 'init' function is a special case, it should have type State ?!
 *)
 
 type Event = ()
-type State = { data : UInt }
+type State = { .data : UInt }
 
 fun init (value : UInt) : State = { .data = value }
 
