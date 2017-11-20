@@ -14,4 +14,5 @@ mining:
     autostart: true
 
 chain:
-    persist: true
+    persist: {{ config.chain.persist | bool | lower }}
+    db_path: {{ config.chain.db_path }}
