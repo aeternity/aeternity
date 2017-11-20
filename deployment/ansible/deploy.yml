@@ -5,6 +5,10 @@
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
+    config:
+      chain:
+        persist: true
+        db_path: .
 
   tasks:
     - name: "Required variables"
@@ -42,12 +46,6 @@
       command: "{{ project_root }}/bin/epoch stop"
       when: epoch.stat.exists == True and ping.stdout == "pong"
       tags: [daemon]
-
-    - name: Remove "{{ project_root }}/.chain" directory
-      file:
-        state: absent
-        path: "{{ project_root }}/.chain"
-      tags: [empty-chain]
 
     - name: Extract remote epoch package into {{ project_root }}
       unarchive:
