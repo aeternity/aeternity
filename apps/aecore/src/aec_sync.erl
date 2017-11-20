@@ -67,7 +67,7 @@ set_subset_size(Sz) when is_integer(Sz), Sz > 0 ->
 -type ping_object() :: map().
 -spec local_ping_object() -> ping_object().
 local_ping_object() ->
-    GHdr = aec_block_genesis:genesis_header(),
+    {ok, GHdr} = aec_chain:genesis_header(),
     {ok, GHash} = aec_headers:hash_header(GHdr),
     {ok, TopHdr} = aec_chain:top_header(),
     {ok, TopHash} = aec_headers:hash_header(TopHdr),
@@ -234,7 +234,7 @@ do_start_sync(PeerUri) ->
     fetch_headers(PeerUri, genesis_hash(), []).
 
 genesis_hash() ->
-    GHdr = aec_block_genesis:genesis_header(),
+    {ok, GHdr} = aec_chain:genesis_header(),
     {ok, GHash} = aec_headers:hash_header(GHdr),
     GHash.
 

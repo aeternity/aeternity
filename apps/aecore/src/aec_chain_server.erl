@@ -65,12 +65,14 @@ stop() ->
 
 init(_Args = [GenesisBlock]) ->
     process_flag(trap_exit, true),
-    {_, State} = insert_block(GenesisBlock, new_state()),
+    {ok, State} = insert_block(GenesisBlock, new_state()),
+    assert_genesis_set(State),
     {ok, State};
 init({Chain, TopBlockHash, TopBlockStateTrees}) ->
     process_flag(trap_exit, true),
     StateTrees = [{TopBlockHash, TopBlockStateTrees}],
-    {_, State} = init_chain(Chain, new_state(Chain, StateTrees)),
+    {ok, State} = init_chain(Chain, new_state(Chain, StateTrees)),
+    assert_genesis_set(State),
     {ok, State}.
 
 init_chain([#block{} = Block | Rest], State) ->
@@ -107,6 +109,14 @@ handle_call(difficulty, _From, State) ->
 handle_call({common_ancestor, Hash1, Hash2}, _From, State) ->
     {reply,
      aec_chain_state:find_common_ancestor(Hash1, Hash2,State), State};
+handle_call(get_genesis_header, _From, State) ->
+    GenesisHash = aec_chain_state:get_genesis_hash(State),
+    Resp = {ok, _} = aec_chain_state:get_header(GenesisHash, State), 
+    {reply, Resp, State};
+handle_call(get_genesis_block, _From, State) ->
+    GenesisHash = aec_chain_state:get_genesis_hash(State),
+    Resp = {ok, _} = aec_chain_state:get_block(GenesisHash, State),
+    {reply, Resp, State};
 
 %% Update functions
 handle_call({insert_header, H}, _From, State) ->
@@ -247,3 +257,11 @@ persist_state_trees(StateBefore, StateAfter) ->
                           aec_persistence:write_block_state(Hash, Trees)
                   end, Persist).
 
+assert_genesis_set(State) ->
+    case aec_chain_state:get_genesis_hash(State) of
+        undefined -> erlang:error(genesis_not_set);
+        GenesisHash ->
+            {ok, GenesisBlock} = aec_chain_state:get_block(GenesisHash,
+                                                           State),
+            0 = aec_blocks:height(GenesisBlock)
+    end.

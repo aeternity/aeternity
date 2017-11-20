@@ -26,3 +26,4 @@ apps/aecuckoo/priv/bin
 apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 .chain
+REVISION

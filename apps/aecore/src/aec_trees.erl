@@ -31,7 +31,7 @@ all_trees_hash(Trees) ->
       {error, empty} -> <<0:?STATE_HASH_BYTES/unit:8>>
     end.
 
--spec accounts(trees()) -> tree().
+-spec accounts(trees()) -> tree() | undefined.
 accounts(Trees) ->
     Trees#trees.accounts.
 
