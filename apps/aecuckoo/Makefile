@@ -15,8 +15,10 @@ SRC_EXECUTABLES = $(subst priv/bin, c_src/src, $(EXECUTABLES))
 
 SRC_LIBBLAKE = $(subst priv/lib, c_src/src, $(LIBBLAKE))
 
+SRC_ARCH_FLAGS = -m64
+
 REPO = https://github.com/aeternity/cuckoo.git
-COMMIT = fddbf60
+COMMIT = d1b8b77
 
 .PHONY: all
 all: $(LIBBLAKE) $(EXECUTABLES)
@@ -40,11 +42,17 @@ priv/lib priv/bin:
 
 $(SRC_LIBBLAKE): c_src/.git
 	( cd $(<D) && git checkout -q $(COMMIT); )
-	( cd $(@D) && $(MAKE) -s $(@F); )
+	( cd $(@D) && \
+		$(MAKE) $(@F) \
+			GCC_ARCH_FLAGS=$(SRC_ARCH_FLAGS) \
+			GPP_ARCH_FLAGS=$(SRC_ARCH_FLAGS); )
 
 $(SRC_EXECUTABLES): c_src/src/%: c_src/.git
 	( cd $(<D) && git checkout -q $(COMMIT); )
-	( cd $(@D) && $(MAKE) -s libblake2b.so $*; )
+	( cd $(@D) && \
+		$(MAKE) libblake2b.so $* \
+			GCC_ARCH_FLAGS=$(SRC_ARCH_FLAGS) \
+			GPP_ARCH_FLAGS=$(SRC_ARCH_FLAGS); )
 
 c_src/.git:
 	git clone $(REPO) $(@D)
