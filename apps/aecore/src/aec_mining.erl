@@ -36,7 +36,7 @@ apply_new_txs(#block{txs = Txs} = Block) ->
 -spec mine(block(), integer()) -> {ok, block()} | {error, term()}.
 mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
-    {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
+    BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
     case Mod:generate(BlockBin, Target, Nonce) of
         {ok, {Nonce, Evd}} ->
