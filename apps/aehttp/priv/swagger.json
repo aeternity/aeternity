@@ -258,6 +258,31 @@
         },
         "security" : [ ]
       }
+    },
+    "/account/pub-key" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get user's public key address",
+        "operationId" : "GetPubKey",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PubKey"
+            }
+          },
+          "404" : {
+            "description" : "No key pair",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
     }
   },
   "definitions" : {
@@ -394,9 +419,6 @@
     "SpendTx" : {
       "type" : "object",
       "properties" : {
-        "sender_pubkey" : {
-          "type" : "string"
-        },
         "recipient_pubkey" : {
           "type" : "string"
         },
@@ -422,6 +444,14 @@
       "type" : "array",
       "items" : {
         "$ref" : "#/definitions/Tx"
+      }
+    },
+    "PubKey" : {
+      "type" : "object",
+      "properties" : {
+        "pub_key" : {
+          "type" : "string"
+        }
       }
     }
   },

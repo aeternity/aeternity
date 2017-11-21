@@ -4,6 +4,8 @@
 -export([request_param_info/2]).
 -export([populate_request/3]).
 -export([validate_response/4]).
+%% exported to silence swagger complains
+-export([get_value/3, validate_response_body/4]).
 
 -type operation_id() :: atom().
 -type request_param() :: atom().
@@ -51,6 +53,10 @@ request_params('PostTx') ->
         'Tx'
     ];
 
+
+request_params('GetPubKey') ->
+    [
+    ];
 
 request_params('PostSpendTx') ->
     [
@@ -227,6 +233,11 @@ validate_response('PostBlock', 404, Body, ValidatorState) ->
 
 
 
+validate_response('GetPubKey', 200, Body, ValidatorState) ->
+    validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
+validate_response('GetPubKey', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostSpendTx', 404, Body, ValidatorState) ->
@@ -235,6 +246,11 @@ validate_response('PostSpendTx', 404, Body, ValidatorState) ->
 
 validate_response(_OperationID, _Code, _Body, _ValidatorState) ->
     ok.
+
+validate_response_body('list', ReturnBaseType, Body, ValidatorState) ->
+    [
+        validate(schema, ReturnBaseType, Item, ValidatorState)
+    || Item <- Body];
 
 validate_response_body(_, ReturnBaseType, Body, ValidatorState) ->
     validate(schema, ReturnBaseType, Body, ValidatorState).
@@ -314,7 +330,7 @@ validate(Rule = {enum, Values}, Name, Value, _ValidatorState) ->
     end;
 
 validate(Rule = {max, Max}, Name, Value, _ValidatorState) ->
-    case Value >= Max of
+    case Value =< Max of
         true -> ok;
         false -> validation_error(Rule, Name)
     end;
@@ -326,7 +342,7 @@ validate(Rule = {exclusive_max, ExclusiveMax}, Name, Value, _ValidatorState) ->
     end;
 
 validate(Rule = {min, Min}, Name, Value, _ValidatorState) ->
-    case Value =< Min of
+    case Value >= Min of
         true -> ok;
         false -> validation_error(Rule, Name)
     end;
@@ -392,6 +408,8 @@ validation_error(ViolatedRule, Name) ->
 validation_error(ViolatedRule, Name, Info) ->
     throw({wrong_param, Name, ViolatedRule, Info}).
 
+-spec get_value(body | qs_val | header | binding, Name :: any(), Req0 :: cowboy_req:req()) ->
+    {Value :: any(), Req :: cowboy_req:req()}.
 get_value(body, _Name, Req0) ->
     {ok, Body, Req} = cowboy_req:body(Req0),
     Value = prepare_body(Body),
@@ -400,6 +418,16 @@ get_value(body, _Name, Req0) ->
 get_value(qs_val, Name, Req0) ->
     {QS, Req} = cowboy_req:qs_vals(Req0),
     Value = swagger_utils:get_opt(swagger_utils:to_qs(Name), QS),
+    {Value, Req};
+
+get_value(header, Name, Req0) ->
+    {Headers, Req} = cowboy_req:headers(Req0),
+    Value = swagger_utils:get_opt(swagger_utils:to_header(Name), Headers),
+    {Value, Req};
+
+get_value(binding, Name, Req0) ->
+    {Bindings, Req} = cowboy_req:bindings(Req0),
+    Value = swagger_utils:get_opt(swagger_utils:to_binding(Name), Bindings),
     {Value, Req}.
 
 prepare_body(Body) ->

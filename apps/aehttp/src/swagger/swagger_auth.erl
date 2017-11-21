@@ -24,8 +24,6 @@ authorize_api_key(LogicHandler, OperationID, From, KeyParam, Req0) ->
                 ApiKey
             ),
             case Result of
-                {true, Context}  ->
-                    {true, Context, Req};
                 false ->
                     AuthHeader = <<"">>,
                     {false, AuthHeader, Req}

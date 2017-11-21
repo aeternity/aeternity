@@ -95,6 +95,11 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'GetPubKey' => #{
+            path => "/v1/account/pub-key",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'PostSpendTx' => #{
             path => "/v1/spend-tx",
             method => <<"POST">>,

@@ -127,6 +127,14 @@ allowed_methods(Req, State) ->
         State :: state()
     }.
 
+
+
+
+
+
+
+
+
 is_authorized(Req, State) ->
     {true, Req, State}.
 
@@ -308,7 +316,6 @@ handle_request_json(
         context = Context
     }
 ) ->
-    lager:debug("handle_request_json(~p)", [Req0]),
     case swagger_api:populate_request(OperationID, Req0, ValidatorState) of
         {ok, Populated, Req1} ->
             {Code, Headers, Body} = swagger_logic_handler:handle_request(
@@ -317,8 +324,6 @@ handle_request_json(
                 Populated,
                 Context
             ),
-            lager:debug("OpId = ~p; Code = ~p~nBody = ~p",
-                        [OperationID, Code, Body]),
             _ = swagger_api:validate_response(
                 OperationID,
                 Code,
