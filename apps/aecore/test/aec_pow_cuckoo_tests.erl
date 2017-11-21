@@ -22,10 +22,9 @@ pow_test_() ->
      fun() ->
              meck:new(application, [unstick, passthrough]),
              aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
-             application:start(erlexec)
+             ok = application:ensure_started(erlexec)
      end,
      fun(_) ->
-             application:stop(erlexec),
              meck:unload(application)
      end,
      [{"Generate with a winning nonce and high target threshold, verify it",
