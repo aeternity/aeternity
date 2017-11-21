@@ -99,9 +99,9 @@ handle_call({get_header, Hash}, _From, State) ->
 handle_call({get_block, Hash}, _From, State) ->
     {reply, get_block(Hash, State), State};
 handle_call({get_header_by_height, H}, _From, State) ->
-    {reply, get_header_by_height(H, State), State};
+    {reply, aec_chain_state:get_header_by_height(H, State), State};
 handle_call({get_block_by_height, H}, _From, State) ->
-    {reply, get_block_by_height(H, State), State};
+    {reply, aec_chain_state:get_block_by_height(H, State), State};
 handle_call(difficulty, _From, State) ->
     {reply, difficulty(State), State};
 handle_call({common_ancestor, Hash1, Hash2}, _From, State) ->
@@ -193,44 +193,8 @@ difficulty(State) ->
     {ok, X} = aec_chain_state:difficulty_at_top_header(State),
     X.
 
-
-%% WARNING WARNING WARNING WARNING WARNING WARNING
-%% Temporary implementation beyond this point.
-%% Should be moved to aec_chain_state.
-
-get_block_by_height(H, State) ->
-    case get_header_by_height(H, State) of
-        {error, _} = E -> E;
-        {ok, Header} ->
-            {ok, HeaderHash} = aec_headers:hash_header(Header),
-            get_block(HeaderHash, State)
-    end.
-
-find_header_at_height(H, HeaderHash, State) ->
-    {ok, Header} = aec_chain_state:get_header(HeaderHash, State),
-    Current = aec_headers:height(Header),
-    if Current > H ->
-            find_header_at_height(H, aec_headers:prev_hash(Header), State);
-       Current =:= H ->
-            {ok, Header}
-    end.
-
-get_header_by_height(H, State) ->
-    TopHeader  = aec_chain_state:top_header(State),
-    CH = aec_headers:height(TopHeader),
-    if CH < H ->
-
-            {error, {chain_too_short,
-                     {{chain_height, CH},
-                      {top_header, TopHeader}}}};
-       CH > H ->
-            find_header_at_height(H, aec_headers:prev_hash(TopHeader), State);
-       true ->
-            {ok, TopHeader}
-    end.
-
 %%%===================================================================
-%%% Helper functions for persitence
+%%% Helper functions for persistence
 %%%===================================================================
 
 store_block(Block, StateBefore, State) ->

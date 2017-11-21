@@ -51,15 +51,9 @@
         {ok, block()} |
         {error, Reason::{block_not_found, {top_header, header()}}}.
 -type get_header_by_height_reply() ::
-        {ok, header()} |
-        {error, Reason::{chain_too_short, {{chain_height, height()},
-                                           {top_header, header()}}}}.
+        {ok, header()} | {error, atom()}.
 -type get_block_by_height_reply() ::
-        {ok, block()} |
-        {error, Reason::{chain_too_short, {{chain_height, height()},
-                                           {top_header, header()}}} |
-                        {block_not_found, {top_header, header()}}
-        }.
+        {ok, block()} | {error, atom()}.
 -type insert_header_reply_ok() :: ok.
 -type insert_header_reply_error() ::
         {error, Reason::{previous_hash_is_not_top, {top_header, header()}} |

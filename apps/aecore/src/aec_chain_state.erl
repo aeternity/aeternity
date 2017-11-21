@@ -12,7 +12,9 @@
         , difficulty_at_top_block/1
         , find_common_ancestor/3
         , get_block/2
+        , get_block_by_height/2
         , get_header/2
+        , get_header_by_height/2
         , get_state_trees_for_persistance/1
         , insert_block/2
         , insert_header/2
@@ -133,6 +135,39 @@ get_header(Hash, ?assert_state() = State) ->
         error -> error
     end.
 
+-spec get_header_by_height(non_neg_integer(), state()) ->
+                                  {'ok', #header{}} | {'error', atom()}.
+get_header_by_height(Height, ?assert_state() = State) when is_integer(Height),
+                                                           Height >= 0 ->
+    case get_top_header_hash(State) of
+        undefined -> {error, no_top_header};
+        Hash ->
+            Node = blocks_db_get(Hash, State),
+            case find_node_at_height(Height, Node, State) of
+                not_found -> {error, chain_too_short};
+                {ok, Internal} -> {ok, export_header(Internal)}
+            end
+    end.
+
+-spec get_block_by_height(non_neg_integer(), state()) ->
+                                  {'ok', #block{}} | {'error', atom()}.
+get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
+                                                           Height >= 0 ->
+    case get_top_header_hash(State) of
+        undefined -> {error, no_top_header};
+        Hash ->
+            Node = blocks_db_get(Hash, State),
+            case find_node_at_height(Height, Node, State) of
+                not_found -> {error, chain_too_short};
+                {ok, ResNode} ->
+                    case node_is_block(ResNode) of
+                        true  -> {ok, export_block(ResNode, State)};
+                        false -> {error, block_not_found}
+                    end
+            end
+    end.
+
+
 -spec difficulty_at_top_block(state()) -> {'ok', float()} | {'error', atom()}.
 difficulty_at_top_block(?assert_state() = State) ->
     case get_top_block_hash(State) of
@@ -196,6 +231,12 @@ set_top_header_hash(H, State) when is_binary(H) -> State#{top_header_hash => H}.
 
 get_top_block_hash(#{top_block_hash := H}) -> H.
 set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
+
+get_genesis_hash(State) ->
+    case find_genesis_node(State) of
+        not_found -> undefined;
+        {ok, Node} -> hash(Node)
+    end.
 
 %%%-------------------------------------------------------------------
 %%% Internal ADT for differing between blocks and headers
@@ -362,8 +403,13 @@ determine_chain_relation(Node, State) ->
         Hash ->
             in_chain; %% This is the top header
         TopHash when is_binary(TopHash), Height =:= 0 ->
-            %% A new genesis block. TODO: This
-            internal_error(rejecting_new_genesis_block);
+            %% This is a genesis block.
+            TopBlockHash = get_top_block_hash(State),
+            case Hash =:= get_genesis_hash(State) of
+                true when TopBlockHash =:= undefined -> in_chain;
+                true -> in_chain;
+                false -> internal_error(rejecting_new_genesis_block)
+            end;
         TopHash when is_binary(TopHash) ->
             case is_node_in_main_chain(Node, State) of
                 true -> in_chain;

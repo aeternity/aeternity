@@ -123,17 +123,15 @@ header_chain_test_() ->
              ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
              ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
              ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
-             ?assertEqual({error, {block_not_found, {top_header, BH2}
-                                  }}, aec_chain:get_block_by_height(1)),
+             ?assertEqual({error, block_not_found},
+                          aec_chain:get_block_by_height(1)),
              ?assertEqual({ok, BH2}, aec_chain:get_header_by_height(2)),
-             ?assertEqual({error, {block_not_found, {top_header, BH2}
-                                  }}, aec_chain:get_block_by_height(2)),
-             ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                     {top_header, BH2}}
-                                  }}, aec_chain:get_header_by_height(3)),
-             ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                     {top_header, BH2}}
-                                  }}, aec_chain:get_block_by_height(3))
+             ?assertEqual({error, block_not_found},
+                          aec_chain:get_block_by_height(2)),
+             ?assertEqual({error, chain_too_short},
+                          aec_chain:get_header_by_height(3)),
+             ?assertEqual({error, chain_too_short},
+                          aec_chain:get_block_by_height(3))
      end}.
 
 block_chain_test_() ->
@@ -189,16 +187,14 @@ block_chain_test_() ->
                ?assertEqual({ok, BH0}, aec_chain:get_header_by_height(0)),
                ?compareBlockResults({ok, B0}, aec_chain:get_block_by_height(0)),
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
-               ?assertEqual({error, {block_not_found, {top_header, BH2}
-                                    }}, aec_chain:get_block_by_height(1)),
+               ?assertEqual({error, block_not_found},
+                            aec_chain:get_block_by_height(1)),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_height(2)),
                ?assertEqual({ok, B2}, aec_chain:get_block_by_height(2)),
-               ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                       {top_header, BH2}}
-                                    }}, aec_chain:get_header_by_height(3)),
-               ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                       {top_header, BH2}}
-                                    }}, aec_chain:get_block_by_height(3))
+               ?assertEqual({error, chain_too_short},
+                            aec_chain:get_header_by_height(3)),
+               ?assertEqual({error, chain_too_short},
+                            aec_chain:get_block_by_height(3))
        end},
      {"Build chain with genesis block plus 2 headers, then store block corresponding to header before top header",
        fun() ->
@@ -243,14 +239,12 @@ block_chain_test_() ->
                ?assertEqual({ok, BH1}, aec_chain:get_header_by_height(1)),
                ?compareBlockResults({ok, B1}, aec_chain:get_block_by_height(1)),
                ?assertEqual({ok, BH2}, aec_chain:get_header_by_height(2)),
-               ?assertEqual({error, {block_not_found, {top_header, BH2}
-                                    }}, aec_chain:get_block_by_height(2)),
-               ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                       {top_header, BH2}}
-                                    }}, aec_chain:get_header_by_height(3)),
-               ?assertEqual({error, {chain_too_short, {{chain_height, 2},
-                                                       {top_header, BH2}}
-                                    }}, aec_chain:get_block_by_height(3))
+               ?assertEqual({error, block_not_found},
+                            aec_chain:get_block_by_height(2)),
+               ?assertEqual({error, chain_too_short},
+                            aec_chain:get_header_by_height(3)),
+               ?assertEqual({error, chain_too_short},
+                            aec_chain:get_block_by_height(3))
        end}]}.
 
 get_work_test_() ->
