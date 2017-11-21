@@ -2,7 +2,7 @@
 
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.2.0-good-peers) is focused on syncing two or more nodes, sharing blocks and building a distributed blockchain. 
 
-The best way to see this in action is to [set up 3 local nodes](https://github.com/aeternity/epoch/blob/a9611e4/doc/CUSTOMIZATION.md) and see how they communicate. 
+The best way to see this in action is to [set up 3 local nodes](https://github.com/aeternity/epoch/blob/v0.2.0-good-peers/doc/CUSTOMIZATION.md) and see how they communicate.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -161,4 +161,4 @@ Please remember to stop all 3 nodes by running the following commands in each of
 
 ### Danger! Expert zone!
 
-Do not [customize the configuration of this release](https://github.com/aeternity/epoch/blob/master/doc/CUSTOMIZATION.md) unless you know what you are doing!
+Do not [customize the configuration of this release](https://github.com/aeternity/epoch/blob/v0.2.0-good-peers/doc/CUSTOMIZATION.md) unless you know what you are doing!
