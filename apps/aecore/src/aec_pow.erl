@@ -10,7 +10,7 @@
          pick_nonce/0,
          next_nonce/1,
          target_to_difficulty/1,
-         recalculate_difficulty/3,
+         recalculate_target/3,
 
          scientific_to_integer/1,
          integer_to_scientific/1]).
@@ -138,22 +138,22 @@ next_nonce(N) ->
     (N + 1) band 16#7fffffff.
 
 %%------------------------------------------------------------------------------
-%% Adjust difficulty so that generation of new blocks proceeds at the expected pace
-%% Expected and Actual are rates (if Actual is too small, we need to increase
-%% difficulty).
+%% Adjust target so that generation of new blocks proceeds at the expected pace
+%% Expected and Actual are rates (if Actual is too small, we need to decrease
+%% target).
 %%------------------------------------------------------------------------------
--spec recalculate_difficulty(sci_int(), integer(), integer()) -> sci_int().
-recalculate_difficulty(Difficulty, _Expected, 0) ->
+-spec recalculate_target(sci_int(), integer(), integer()) -> sci_int().
+recalculate_target(Target, _Expected, 0) ->
     %% In the unexpected case the the two blocks used for rate calculation
-    %% have the same timestamp, do not update difficulty (as rate is meaningless).
+    %% have the same timestamp, do not update target (as rate is meaningless).
     %% TODO: handle this case. Most likely that this is case we failed to enforce
     %% increasing timestaps in headers.
-    Difficulty;
-recalculate_difficulty(Difficulty, Expected, Actual) ->
-    DiffInt = scientific_to_integer(Difficulty),
+    Target;
+recalculate_target(Target, Expected, Actual) ->
+    TargetInt = scientific_to_integer(Target),
     %% Prevent 0 difficulty: 0 can never be increased
     integer_to_scientific(min(?HIGHEST_TARGET_INT,
-                              max(1, ((DiffInt * Expected) div Actual)))).
+                              max(1, ((TargetInt * Actual) div Expected)))).
 
 
 %%------------------------------------------------------------------------------
