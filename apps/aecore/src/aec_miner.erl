@@ -383,7 +383,8 @@ running({call, From}, start, State) ->
     {keep_state, State, [{reply, From, ok}]};
 running({call, From}, suspend, State) ->
     epoch_mining:info("Mining suspended by user.", []),
-    {next_state, idle, State, [{reply, From, ok}]};
+    kill_miner(State#state.miner),
+    {next_state, idle, State#state{miner = none}, [{reply, From, ok}]};
 
 %% Casts: post_block | miner_done | create_block_candidate |
 %%        bump_initial_cycle_nonce | mine | check_keys
@@ -395,9 +396,11 @@ running(cast, {miner_done, Miner}, #state{ miner = OtherMiner } = State) ->
     epoch_mining:error("Unknown miner finished: ~p~n", [Miner]),
     {keep_state, State#state{ miner = OtherMiner }};
 running(cast, create_block_candidate, State) ->
-    {next_state, configure, State, [postpone]};
+    kill_miner(State#state.miner),
+    {next_state, configure, State#state{miner = none}, [postpone]};
 running(cast, bump_initial_cycle_nonce, State) ->
-    {next_state, configure, State, [postpone]};
+    kill_miner(State#state.miner),
+    {next_state, configure, State#state{miner = none}, [postpone]};
 running(cast, mine, #state{block_candidate = BlockCandidate,
                            initial_cycle_nonce = CurrentMiningNonce,
                            miner = none}
@@ -589,7 +592,10 @@ running_post_block(Block, State) ->
     case int_post_block(Block, State) of
         new_top ->
             start_if_auto(State),
-            {next_state, configure, State};
+            epoch_mining:info("Received block interrupts ongoing mining ~p",
+                              [State#state.initial_cycle_nonce]),
+            kill_miner(State#state.miner),
+            {next_state, configure, State#state{miner = none}};
         error ->
             {next_state, running, State};
         ok ->
@@ -672,3 +678,9 @@ candidate_event()     -> cast_event(create_block_candidate).
 mine_event()          -> cast_event(mine).
 cast_event(Msg)       -> next_event(cast, Msg).
 next_event(Type, Msg) -> {next_event, Type, Msg}.
+
+kill_miner(none) ->
+    ok;
+kill_miner(P) when is_pid(P) ->
+    exit(P, normal),
+    ok.
