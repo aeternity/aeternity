@@ -125,7 +125,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
               {ok, PK} = aec_keys:pubkey(),
               PK;
           PK ->
-              PK
+              base64:decode(PK)
       end,
     {ok, LastBlock} = aec_chain:top(),
     Trees = aec_blocks:trees(LastBlock),

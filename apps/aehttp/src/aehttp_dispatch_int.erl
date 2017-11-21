@@ -12,7 +12,8 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     case aec_keys:pubkey() of
         {ok, SenderPubkey} ->
             lager:debug("SenderPubKey matches ours", []),
-            RecipientPubkey = maps:get(<<"recipient_pubkey">>, SpendTxObj),
+            RecipientPubkey = base64:decode(maps:get(<<"recipient_pubkey">>,
+                                                     SpendTxObj)),
             Amount = maps:get(<<"amount">>, SpendTxObj),
             Fee = maps:get(<<"fee">>, SpendTxObj),
             case aec_next_nonce:pick_for_account(SenderPubkey) of
