@@ -1,0 +1,123 @@
+(* Multi-signature wallet from
+   https://github.com/ethereum/dapp-bin/blob/master/wallet/wallet.sol
+
+*)
+
+contract multi_sig
+
+type PendingState = { .yetNeeded : UInt, .ownersDone : UInt, .index : UInt }
+
+type Event =
+    Confirmation of { .owner : Address, .operation : Hash }
+  | Revoke       of { .owner : Address, .operation : Hash }
+  | OwnerChanged of { .oldOwner : Address, .newOwner : Address }
+  | OwnerAdded   of { .newOwner : Address }
+  | OwnerRemoved of { .removedOwner : Address }
+  | ReqChanged   of { .newReq : UInt }
+
+constant maxOwners : UInt = 250
+
+type State = { .nRequired : UInt
+             , .nOwners : UInt
+             , .owners : Map UInt Address
+             , .ownerIndex : Map Address UInt
+             , .pending : Map Hash PendingState
+             , .pendingIndex : List Address }
+
+fun init (owners : List Address) (nRequired : UInt) =
+  let n = (length owners) + 1 in
+  { .state = { .nRequired = nRequired
+             , .nOwners = n
+             , .owners = Map.from_list (List.zip [1..n] (@caller :: owners))
+             , .ownerIndex = Map.from_list (List.zip (@caller :: owners) [1..n]  ) } }
+
+pure fun lookup map key =
+  match map[key] with
+  | None -> abort
+  | Some value -> value
+
+fun revoke (operation : Hash) =
+  let ownerIx = lookup @state.ownerIndex @caller
+  and pending = lookup @state.pendingIndex operation
+  and ownerIxBit = 1 << (ownerIx - 1)
+  and _ = require(pending.ownersDone & ownerIxBit > 0)
+  and pending' = pending with { .yetNeeded  = pending.yetNeeded + 1
+                              , .ownersDone = pending.ownersDone - ownerIxBit } in
+  { .state  = { .pendingIndex = @state.pendingIndex with { operation = pending' } }
+  , .events = [Revoke { .owner = @caller, .operation = operation }] }
+
+
+type CheckPending = CheckOk State
+                  | CheckFail State
+
+fun changeOwner (fromOwner : Address) (toOwner : Address) =
+  match check_pending @callhash with
+  | CheckFail state' -> { .state = state' }
+  | CheckOk state' ->
+    if (isOwner toOwner) then { .state = state' } else
+      match @state.ownerIndex[fromOwner] with
+      | None -> { .state = state' }
+      | Some ownerIx ->
+        { .state = state' with { .owners = state'.owners with { ownerIx = toOwner }
+                               , .ownerIndex = state'.ownerIndex with { fromOwner = _, toOwner = ownerIx }
+                               , .pending = Map.empty
+                               , .pendingIx = [] }
+
+        , .events = [OwnerChanged { .oldOwner = fromOwner, .newOwner = toOwner }] }
+
+fun addOwner (newOwner : Address) =
+  let _ = require (!isOwner newOwner) in
+  match check_pending @callhash with
+  | CheckFail state' -> { .state = state' }
+  | CheckOk state' ->
+    if (@state.nOwners >= maxOwners) then {} (* TODO *) else
+      let nOwners' = state'.nOwners + 1 in
+      { .state = state' with { .owners = state'.owners with { nOwners' = newOwner }
+                             , .ownerIndex = state'.ownerIndex with { newOwner = nOwners' }
+                             , .pending = Map.empty
+                             , .pendingIx = [] }
+      , .event = [OwnerAdded { .newOwner = newOwner }] }
+
+
+fun removeOwner (oldOwner : Address) =
+  let _ = require (isOwner oldOwner) in
+  let _ = require (@state.nRequired > @state.nOwners - 1) in
+  match check_pending @callhash with
+  | CheckFail state' -> { .state = state' }
+  | CheckOk state' ->
+    let ownerIx = lookup state'.ownerIndex oldOwner in
+    { .state = state' with { .owners = state'.owners with { ownerIx = _ }
+                           , .ownerIndex = state'.ownerIndex with { newOwner = _ }
+                           , .pending = Map.empty
+                           , .pendingIx = [] }
+    , .event = [OwnerRemoved { .removedOwner = oldOwner }] }
+
+fun changeRequirement (newReq : UInt) =
+  let _ = require (newReq <= @state.nOwners) in
+  match check_pending @callhash with
+  | CheckFail state' -> { .state = state' }
+  | CheckOk state' ->
+      { .state = state' with { .nRequired = newReq
+                             , .pending = Map.empty
+                             , .pendingIx = [] }
+      , .event = [ReqChanged { .newReq = newReq }] }
+
+
+const fun getOwner (ownerIx0 : UInt) =
+  lookup @state.owners (ownerIx0 + 1)
+
+const fun isOwner (owner : Address) =
+  match @state.ownerIndex[owner] with
+  | None -> false
+  | Some _ix -> true
+
+const fun hasConfirmed (operation : Hash) (owner : Address) =
+  match @state.pending[operation] with
+  | None -> false
+  | Some pending ->
+    let _ = require (isOwner owner)
+    and ownerIx = lookup @state.ownerIndex owner
+    and ownerIxBit = 1 << (ownerIx - 1) in
+    (pending.ownersDone & ownerIxBit) != 0
+
+(* Leave the rest for now... *)
