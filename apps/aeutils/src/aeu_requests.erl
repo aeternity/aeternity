@@ -115,9 +115,10 @@ send_tx(Peer, SignedTx) ->
 %% uris will not work
 new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
                         amount := Am,
-                        fee := Fee} = Req)
+                        fee := Fee} = Req0)
   when is_binary(Kr), is_integer(Am), is_integer(Fee) ->
     Uri = aec_peers:uri(IntPeer),
+    Req = maps:put(recipient_pubkey, base64:encode(Kr), Req0),
     Response = process_request(Uri, post, "spend-tx", Req),
     case Response of
         {ok, _Map} ->
