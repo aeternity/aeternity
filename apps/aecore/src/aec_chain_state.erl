@@ -15,6 +15,7 @@
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
+        , get_missing_block_hashes/1
         , get_state_trees_for_persistance/1
         , insert_block/2
         , insert_header/2
@@ -236,6 +237,16 @@ new_from_persistance(Chain, StateTreesList) ->
 get_genesis_hash(?match_state(genesis_block_hash := GH)) ->
     GH.
 
+-spec get_missing_block_hashes(state()) -> [binary()].
+%% @doc Get hashes for missing blocks on the main chain, i.e.,
+%%      hashes that we know about since they are in the header chain,
+%%      but we still don't have the blocks for them.
+%%      Useful for the sync protocol.
+get_missing_block_hashes(?assert_state() = State) ->
+    TopHeaderHash = get_top_header_hash(State),
+    TopBlockHash  = get_top_block_hash(State),
+    get_missing_block_hashes(TopHeaderHash, TopBlockHash, State).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -322,6 +333,28 @@ export_block(#node{type = block, hash = H, content = B}, State) ->
         {ok, ExportBlock} -> ExportBlock;
         error -> B
     end.
+
+%%%-------------------------------------------------------------------
+%%% Find missing blocks
+%%%-------------------------------------------------------------------
+
+get_missing_block_hashes(undefined, _, _State) ->
+    [];
+get_missing_block_hashes(TopHash, undefined, State) ->
+    {ok, GenesisNode} = find_genesis_node(State),
+    get_missing_block_hashes(TopHash, hash(GenesisNode), State);
+get_missing_block_hashes(FromHash, ToHash, State) ->
+    Hashes = get_hashes_between(FromHash, ToHash, State),
+    lists:filter(fun(H) -> not node_is_block(blocks_db_get(H, State))end,
+                 Hashes).
+
+get_hashes_between(FromHash, ToHash, State) ->
+    get_hashes_between(FromHash, ToHash, State, []).
+
+get_hashes_between(Hash, Hash,_State, Acc) -> [Hash|Acc];
+get_hashes_between(Current, Stop, State, Acc) ->
+    Node = blocks_db_get(Current, State),
+    get_hashes_between(prev_hash(Node), Stop, State, [Current|Acc]).
 
 %%%-------------------------------------------------------------------
 %%% Handling difficulty
