@@ -134,7 +134,7 @@ tx_first_pays_second(_Config) ->
     {ok, PK1} = get_pubkey(N1),
     ct:log("PK1 = ~p", [PK1]),
     {ok, PK2} = get_pubkey(N2),
-    Bal1 = get_balance(N1),
+    {ok, Bal1} = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
     true = (is_integer(Bal1) andalso Bal1 > 0),
     {ok, Pool11} = get_pool(N1),
@@ -262,14 +262,14 @@ expect_same_tx_(Nodes) ->
 
 mine_one_block(N) ->
     subscribe(N, block_created),
-    rpc_call(N, aec_miner, resume, []),
+    rpc_call(N, aec_conductor, start_mining, []),
     receive
         {gproc_ps_event, block_created, Info} ->
-            rpc_call(N, aec_miner, suspend, []),
+            rpc_call(N, aec_conductor, stop_mining, []),
             ct:log("block created, Info=~p", [Info]),
             ok
     after 30000 ->
-            rpc_call(N, aec_miner, suspend, []),
+            rpc_call(N, aec_conductor, stop_mining, []),
             error(timeout_waiting_for_block)
     end.
 
@@ -549,7 +549,7 @@ get_pubkey(N) ->
     rpc_call(N, aec_keys, pubkey, []).
 
 get_balance(N) ->
-    rpc_call(N, aec_miner, get_balance, []).
+    rpc_call(N, aec_conductor, get_miner_account_balance, []).
 
 get_pool(N) ->
     rpc_call(N, aec_tx_pool, peek, [infinity]).

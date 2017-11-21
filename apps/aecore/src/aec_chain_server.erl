@@ -92,6 +92,8 @@ init_chain([], State) -> {ok, State}.
 %% State preserving functions
 handle_call(top, _From, State) ->
     {reply, top(State), State};
+handle_call(top_block_hash, _From, State) ->
+    {reply, top_block_hash(State), State};
 handle_call(top_header, _From, State) ->
     {reply, top_header(State), State};
 handle_call({get_header, Hash}, _From, State) ->
@@ -169,6 +171,9 @@ insert_header(Header, State) ->
 
 top(State) ->
     {ok, aec_chain_state:top_block(State)}.
+
+top_block_hash(State) ->
+    aec_chain_state:top_block_hash(State).
 
 get_block(Hash, State) ->
      case aec_chain_state:get_block(Hash, State) of

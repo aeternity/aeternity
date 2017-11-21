@@ -30,6 +30,7 @@
          get_transactions_between/2,
          insert_header/1,
          top/0,
+         top_block_hash/0,
          top_header/0,
          write_block/1 %% TODO: rename
 	]).
@@ -97,6 +98,10 @@ stop() ->
 %% in the chain as returned by `top_header/0`.
 -spec top() -> {ok, block()}.
 top() -> gen_server:call(?CHAIN_SERVER, top, ?DEFAULT_CALL_TIMEOUT).
+
+-spec top_block_hash() -> binary() | 'undefined'.
+top_block_hash() ->
+    gen_server:call(?CHAIN_SERVER, top_block_hash, ?DEFAULT_CALL_TIMEOUT).
 
 %% Returns the highest block header in the chain.
 -spec top_header() -> top_header_reply().
