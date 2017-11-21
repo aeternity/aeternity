@@ -17,7 +17,7 @@
          suspend/0,
          get_balance/0,
          post_block/1, post_block/2,
-         get_missing_blocks/0
+         get_missing_block_hashes/0
         ]).
 -ifdef(TEST).
 -export([miner_from_data/1]).
@@ -125,11 +125,12 @@ miner_from_data(State) ->
 -endif.
 
 %%------------------------------------------------------------------------------
-%% Post a block
+%% Get missing hashes for missing blocks in the header chain.
 %%------------------------------------------------------------------------------
--spec get_missing_blocks() -> [block_header_hash()].
-get_missing_blocks() ->
-    [].
+-spec get_missing_block_hashes() -> [block_header_hash()].
+get_missing_block_hashes() ->
+    %% For now, call the chain server for this.
+    aec_chain:get_missing_block_hashes().
 
 %%%===================================================================
 %%% gen_statem callbacks
