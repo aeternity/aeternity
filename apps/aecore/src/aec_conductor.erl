@@ -433,8 +433,8 @@ handle_worker_reply(Pid, Reply, State) ->
     Workers = State#state.workers,
     Blocked = State#state.blocked_tags,
     case orddict:find(Pid, Workers) of
-        {ok, Tag} ->
-            demonitor(Pid, [flush]),
+        {ok, {Tag, Ref}} ->
+            demonitor(Ref, [flush]),
             State1 = State#state{workers = orddict:erase(Pid, Workers),
                                  blocked_tags = ordsets:del_element(Tag, Blocked)
                                 },
