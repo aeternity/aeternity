@@ -173,7 +173,7 @@ top(State) ->
     {ok, aec_chain_state:top_block(State)}.
 
 top_block_hash(State) ->
-    {ok, aec_chain_state:top_block_hash(State)}.
+    aec_chain_state:top_block_hash(State).
 
 get_block(Hash, State) ->
      case aec_chain_state:get_block(Hash, State) of
