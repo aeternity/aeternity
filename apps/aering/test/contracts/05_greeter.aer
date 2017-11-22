@@ -1,4 +1,4 @@
-(* https://github.com/fivedogit/solidity-baby-steps/blob/master/contracts/05_greeter.sol
+/* https://github.com/fivedogit/solidity-baby-steps/blob/master/contracts/05_greeter.sol
 
    /* 
 	The following is an extremely basic example of a solidity contract. 
@@ -43,24 +43,33 @@
 
   }
 
-*)
+*/
 
 contract greeter
 
- (* The creator of the contract will automatically
-    be set in @creator by the transaction creating the contract. *)         
-type State = { .greeting : String }
+
+ /* The creator of the contract will automatically
+   be set in creator() by the transaction creating the contract. */
+let blockheight: () => uint;
+type transaction = { tx: string };
+type state = { mutable greeting: string };
+type retval = { mutable state: state,
+                mutable transactions: list(transaction)};
+
+let state = { greeting : "Hello" };
+
+let setGreeting = (greeting: string) =>
+  state.greeting = greeting;
 
 
-fun setGreeting(greeting: String) =
-  { state = @state{ .greeting = greeting }}
 
-(* this doesn't have anything to do with the act of greeting
-   just demonstrating return of some global variable *)
-fun getBlockNumber() :UInt = return @block.height
+/* this doesn't have anything to do with the act of greeting
+   just demonstrating return of some global variable */
+let getBlockNumber = ()  => blockheight();
 
-(* There is no suicide functionallity in Ring *)                
-fun kill() =
-  if (@caller == @creator) (* only allow this action if the account sending the signal is the creator *)
-     and (@balance > 0) (* only creata a transaction if there is something to send *)     
-         { transactions = [spend_tx(@creator, @balance)] }
+/* There is no suicide functionallity in Ring */
+let kill = () =>
+  if ((caller() == creator()) /* only allow this action if the account sending the signal is the creator */
+      && (balance() > 0)) /* only creata a transaction if there is something to send */
+  { state.transactions = [spend_tx(creator(), balance())] } else { state }
+  
