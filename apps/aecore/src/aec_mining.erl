@@ -126,7 +126,7 @@ calculate_difficulty(NewBlock, BlocksToCheckCount) ->
     CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
     %% rate in millisecs per block
     ExpectedRate = 1000 * aec_governance:expected_block_mine_rate(),
-    aec_pow:recalculate_difficulty(CurrentTarget, ExpectedRate, CurrentRate).
+    aec_pow:recalculate_target(CurrentTarget, ExpectedRate, CurrentRate).
 
 -spec get_current_rate(block(), pos_integer()) -> non_neg_integer().
 get_current_rate(Block, BlocksToCheckCount) ->

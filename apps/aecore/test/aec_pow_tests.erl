@@ -174,12 +174,15 @@ recalc_test_() ->
     {setup,
      fun setup/0,
      fun teardown/1,
-     [{"Adjust difficulty",
+     [{"Block building progressing twice as slow as expected, double target to make mining easier",
        fun() ->
-               %% block building progressed twice as fast as expected, double difficulty
-               D1 = ?TEST_MODULE:integer_to_scientific(16#400000),
-               D2 = ?TEST_MODULE:integer_to_scientific(16#800000),
-               ?assertEqual(D2, ?TEST_MODULE:recalculate_difficulty(D1, 1000, 500))
+               ExpectedTimeDiffBetweenBlocks = 500,
+               CurrentTimeDiffBetweenBlocks = 1000,
+               CurrentTarget = ?TEST_MODULE:integer_to_scientific(16#400000),
+               ExpectedTarget = ?TEST_MODULE:integer_to_scientific(16#800000),
+               ?assertEqual(ExpectedTarget,
+                            ?TEST_MODULE:recalculate_target(
+                               CurrentTarget, ExpectedTimeDiffBetweenBlocks, CurrentTimeDiffBetweenBlocks))
        end}
      ]
     }.

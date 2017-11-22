@@ -98,18 +98,19 @@ difficulty_recalculation_test_() ->
              atom_to_list(PoWMod) ++ ")",
          fun() ->
                  Now = 1504731164584,
-                 Target = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
+                 TenBlocksBeforeTime = 100, %% Only 10 blocks mined in over 17415 days
+                 CurrentTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
 
                  meck:expect(aec_blocks, new, 3,
                              #block{height = 200,
-                                    target = Target,
+                                    target = CurrentTarget,
                                     txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                                       signatures = [<<"sig1">>]}],
                                     time = Now}),
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 190,
-                                          target = Target,
-                                          time = Now - 11000}}),
+                                          target = CurrentTarget,
+                                          time = TenBlocksBeforeTime}}),
                  meck:expect(aec_pow, pick_nonce, 0, 98),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
 
@@ -118,7 +119,7 @@ difficulty_recalculation_test_() ->
 
                  ?assertEqual(200, Block#block.height),
 
-                 ?assertEqual(true, Target < Block#block.target),
+                 ?assertEqual(true, CurrentTarget < Block#block.target),
                  ?assertEqual(true, ?HIGHEST_TARGET_SCI >= Block#block.target)
          end}}
       ]
