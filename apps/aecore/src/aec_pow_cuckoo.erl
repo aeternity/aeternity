@@ -219,9 +219,7 @@ wait_for_result(#state{os_pid = OsPid,
                           _                     -> Reason
                       end,
             ?error("OS process died: ~p~n", [Reason2]),
-            {error, {execution_failed, Reason2}};
-        _Other ->
-            wait_for_result(State)
+            {error, {execution_failed, Reason2}}
     end.
 
 %%------------------------------------------------------------------------------
