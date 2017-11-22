@@ -85,18 +85,21 @@ init(Options) ->
     process_flag(trap_exit, true),
     State1 = set_option(autostart, Options, #state{}),
     State2 = set_option(fetch_new_txs_from_pool, Options, State1),
-    epoch_mining:info("Miner process initilized ~p~n", [State2]),
+    State3 = State2#state{seen_top_block_hash = aec_chain:top_block_hash()},
+    epoch_mining:info("Miner process initilized ~p~n", [State3]),
     %% NOTE: The init continues at handle_info(timeout, State).
-    {ok, State2, 0}.
+    {ok, State3, 0}.
 
 handle_call({post_block, Block}, From, State) ->
     State1 = handle_post_block(Block, From, State),
     {noreply, State1};
 handle_call(suspend_mining,_From, State) ->
     %% TODO: Is this what we expect from suspend?
+    epoch_mining:info("Mining suspended"),
     State1 = kill_all_workers_with_tag(mining, State),
     {reply, ok, State1};
 handle_call(resume_mining,_From, State) ->
+    epoch_mining:info("Mining resumed"),
     State1 = start_mining(State),
     {reply, ok, State1};
 handle_call(Request, _From, State) ->
@@ -194,6 +197,7 @@ start_mining(#state{block_candidate = undefined} = State) ->
     %% We need to generate a new block candidate first.
     create_block_candidate(State);
 start_mining(#state{} = State) ->
+    epoch_mining:info("Starting mining"),
     {Block, Nonce,_MaxNonce} = State#state.block_candidate,
     Fun = fun() -> {aec_mining:mine(Block, Nonce),
                     State#state.block_candidate}
@@ -207,8 +211,10 @@ handle_mining_reply({{ok, Block},{_OldBlock, _Nonce,_MaxNonce}}, State) ->
     epoch_mining:info("Miner ~p finished with ~p ~n", [self(), {ok, Block}]),
     State1 = save_mined_block(Block, State),
     State2 = State1#state{block_candidate = undefined},
-    State3 = check_for_new_top(State2),
-    start_if_autostart(State3);
+    case preempt_if_new_top(State2) of
+        no_change         -> start_if_autostart(State2);
+        {changed, State3} -> start_if_autostart(State3)
+    end;
 handle_mining_reply({{error, no_solution}, {Block, Nonce, MaxNonce}},
                     State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
@@ -292,6 +298,7 @@ handle_wait_for_keys_reply(timeout, State) ->
 %%% Block candidates
 
 create_block_candidate(State) ->
+    epoch_mining:info("Creating block candidate"),
     Fun = fun aec_mining:create_block_candidate/0,
     dispatch_worker(create_block_candidate, Fun, State).
 
@@ -318,6 +325,7 @@ handle_block_candidate_reply(Result, State) ->
 %%% A block was given to us from the outside world
 
 handle_post_block(Block, From, State) ->
+    epoch_mining:info("Handling post block"),
     Fun = fun() -> post_block_worker(From, Block) end,
     dispatch_worker(post_block, Fun, State).
 
@@ -351,7 +359,10 @@ post_block_worker(From, Block) ->
 handle_post_block_reply({block_added, Block, From}, State) ->
     aec_events:publish(block_received, Block),
     gen_server:reply(From, ok),
-    check_for_new_top(State);
+    case preempt_if_new_top(State) of
+        no_change         -> State;
+        {changed, State1} -> start_if_autostart(State1)
+    end;
 handle_post_block_reply({ok, From}, State) ->
     gen_server:reply(From, ok),
     State;
@@ -363,15 +374,26 @@ handle_post_block_reply({error, Reason, From}, State) ->
 %%%===================================================================
 %%% Hup for the server if the top block changes
 
-check_for_new_top(#state{seen_top_block_hash = TopHash} = State) ->
+preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State) ->
     case aec_chain:top_block_hash() of
-        TopHash -> State;
+        TopHash -> no_change;
         TopBlockHash ->
+            update_transactions(TopHash, TopBlockHash),
             State1 = State#state{seen_top_block_hash = TopBlockHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(create_block_candidate, State2),
-            start_if_autostart(State3)
+            {changed, State3}
     end.
+
+update_transactions(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
+    epoch_mining:info("Updating transactions ~p ~p", [Hash1, Hash2]),
+    {ok, Ancestor} = aec_chain:common_ancestor(Hash1, Hash2),
+    {ok, TransactionsOnOldChain} =
+        aec_chain:get_transactions_between(Hash1, Ancestor),
+    {ok, TransactionsOnNewChain} =
+        aec_chain:get_transactions_between(Hash2, Ancestor),
+    ok = aec_tx_pool:fork_update(TransactionsOnNewChain, TransactionsOnOldChain),
+    ok.
 
 %%%===================================================================
 %%% Worker handling
