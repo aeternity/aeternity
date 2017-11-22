@@ -69,13 +69,13 @@ stop() ->
     gen_server:stop(?SERVER).
 
 suspend_mining() ->
-    gen_server:call(?SERVER, suspend).
+    gen_server:call(?SERVER, suspend_mining).
 
 resume_mining() ->
-    gen_server:call(?SERVER, resume).
+    gen_server:call(?SERVER, resume_mining).
 
 post_block(Block) ->
-    gen_server:cast(?SERVER, {post_block, Block}).
+    gen_server:call(?SERVER, {post_block, Block}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -94,7 +94,7 @@ handle_call({post_block, Block}, From, State) ->
     {noreply, State1};
 handle_call(suspend_mining,_From, State) ->
     %% TODO: Is this what we expect from suspend?
-    State1 = kill_all_workers_with_tag(miner, State),
+    State1 = kill_all_workers_with_tag(mining, State),
     {reply, ok, State1};
 handle_call(resume_mining,_From, State) ->
     State1 = start_mining(State),
@@ -200,14 +200,15 @@ start_mining(#state{} = State) ->
           end,
     dispatch_worker(mining, Fun, State).
 
-handle_mining_reply({{ok, Block},_OldBlock,_Nonce,_MaxNonce}, State) ->
+handle_mining_reply({{ok, Block},{_OldBlock, _Nonce,_MaxNonce}}, State) ->
     %% TODO: This should listen on some event instead
     ws_handler:broadcast(miner, mined_block,
                          [{height, aec_blocks:height(Block)}]),
     epoch_mining:info("Miner ~p finished with ~p ~n", [self(), {ok, Block}]),
     State1 = save_mined_block(Block, State),
     State2 = State1#state{block_candidate = undefined},
-    check_for_new_top(State2);
+    State3 = check_for_new_top(State2),
+    start_if_autostart(State3);
 handle_mining_reply({{error, no_solution}, {Block, Nonce, MaxNonce}},
                     State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
@@ -301,7 +302,8 @@ handle_block_candidate_reply(Result, State) ->
             epoch_mining:info("Created block candidate and nonce "
                               "(max ~p, current ~p).",
                               [RandomNonce, Nonce]),
-            State#state{block_candidate = {BlockCandidate, Nonce, RandomNonce}};
+            State1 = State#state{block_candidate = {BlockCandidate, Nonce, RandomNonce}},
+            start_mining(State1);
         {error, key_not_found} ->
             report_suspended(),
             wait_for_keys(State);
@@ -337,7 +339,7 @@ post_block_worker(From, Block) ->
                             {block_added, Block, From};
 			{error, Reason} ->
                             lager:debug("Couldn't insert header (~p)", [Reason]),
-                            {ok, From}
+                            {error, Reason, From}
                     end;
                 {{error, Reason}, _} ->
                     {error, Reason, From};
@@ -367,8 +369,8 @@ check_for_new_top(#state{seen_top_block_hash = TopHash} = State) ->
         TopBlockHash ->
             State1 = State#state{seen_top_block_hash = TopBlockHash},
             State2 = kill_all_workers_with_tag(mining, State1),
-            State2 = kill_all_workers_with_tag(create_block_candidate, State2),
-            start_if_autostart(State2)
+            State3 = kill_all_workers_with_tag(create_block_candidate, State2),
+            start_if_autostart(State3)
     end.
 
 %%%===================================================================
