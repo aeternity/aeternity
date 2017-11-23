@@ -262,14 +262,14 @@ expect_same_tx_(Nodes) ->
 
 mine_one_block(N) ->
     subscribe(N, block_created),
-    rpc_call(N, aec_miner, resume, []),
+    rpc_call(N, aec_conductor, start_mining, []),
     receive
         {gproc_ps_event, block_created, Info} ->
-            rpc_call(N, aec_miner, suspend, []),
+            rpc_call(N, aec_conductor, stop_mining, []),
             ct:log("block created, Info=~p", [Info]),
             ok
     after 30000 ->
-            rpc_call(N, aec_miner, suspend, []),
+            rpc_call(N, aec_conductor, stop_mining, []),
             error(timeout_waiting_for_block)
     end.
 
