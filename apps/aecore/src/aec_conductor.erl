@@ -17,8 +17,8 @@
 
 %% API
 -export([ post_block/1
-        , resume_mining/0
-        , suspend_mining/0
+        , start_mining/0
+        , stop_mining/0
         ]).
 
 %% gen_server API
@@ -47,12 +47,12 @@
                       CurrentNonce :: integer(),
                       MaxNonce :: integer()}.
 
--record(state, {autostart               = true :: boolean(),
-                block_candidate                :: candidate() | 'undefined',
-                blocked_tags            = []   :: ordsets:ordsets(atom()),
-                fetch_new_txs_from_pool = true :: boolean(),
-                seen_top_block_hash            :: binary() | 'undefined',
-                workers                 = []   :: workers()
+-record(state, {block_candidate                   :: candidate() | 'undefined',
+                blocked_tags            = []      :: ordsets:ordsets(atom()),
+                fetch_new_txs_from_pool = true    :: boolean(),
+                mining_state            = running :: 'running' | 'stopped',
+                seen_top_block_hash               :: binary() | 'undefined',
+                workers                 = []      :: workers()
                }).
 
 %%%===================================================================
@@ -68,11 +68,11 @@ start_link(Options) ->
 stop() ->
     gen_server:stop(?SERVER).
 
-suspend_mining() ->
-    gen_server:call(?SERVER, suspend_mining).
+start_mining() ->
+    gen_server:call(?SERVER, start_mining).
 
-resume_mining() ->
-    gen_server:call(?SERVER, resume_mining).
+stop_mining() ->
+    gen_server:call(?SERVER, stop_mining).
 
 post_block(Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
@@ -93,14 +93,13 @@ init(Options) ->
 handle_call({post_block, Block}, From, State) ->
     State1 = handle_post_block(Block, From, State),
     {noreply, State1};
-handle_call(suspend_mining,_From, State) ->
-    %% TODO: Is this what we expect from suspend?
-    epoch_mining:info("Mining suspended"),
-    State1 = kill_all_workers_with_tag(mining, State),
-    {reply, ok, State1};
-handle_call(resume_mining,_From, State) ->
-    epoch_mining:info("Mining resumed"),
-    State1 = start_mining(State),
+handle_call(stop_mining,_From, State) ->
+    epoch_mining:info("Mining stopped"),
+    State1 = kill_all_workers_except_tag(post_block, State),
+    {reply, ok, State1#state{mining_state = 'stopped'}};
+handle_call(start_mining,_From, State) ->
+    epoch_mining:info("Mining started"),
+    State1 = start_mining(State#state{mining_state = 'running'}),
     {reply, ok, State1};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
@@ -113,7 +112,7 @@ handle_cast(Other, State) ->
 
 handle_info(timeout, State) ->
     %% Initial timeout
-    {noreply, start_if_autostart(State)};
+    {noreply, start_mining(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
     {noreply, State1};
@@ -132,16 +131,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-report_suspended() ->
-    epoch_mining:error("Mining suspended as no keys "
-                       "are avaiable for signing.", []).
-
-start_if_autostart(State) ->
-    case State#state.autostart of
-        true  -> start_mining(State);
-        false -> State
-    end.
 
 %% NOTE: State is passed through in preparation for a functional chain State.
 save_mined_block(Block, State) ->
@@ -175,8 +164,9 @@ as_hex(S) ->
 
 set_option(autostart, Options, State) ->
     case get_option(autostart, Options) of
-        undefined -> State;
-        {ok, Val} -> State#state{autostart = Val}
+        undefined   -> State;
+        {ok, true}  -> State#state{mining_state = running};
+        {ok, false} -> State#state{mining_state = stopped}
     end;
 set_option(fetch_new_txs_from_pool, Options, State) ->
     case get_option(fetch_new_txs_from_pool, Options) of
@@ -193,6 +183,8 @@ get_option(Opt, Options) ->
 %%%===================================================================
 %%% Start mining
 
+start_mining(#state{mining_state = 'stopped'} = State) ->
+    State;
 start_mining(#state{block_candidate = undefined} = State) ->
     %% We need to generate a new block candidate first.
     create_block_candidate(State);
@@ -212,8 +204,8 @@ handle_mining_reply({{ok, Block},{_OldBlock, _Nonce,_MaxNonce}}, State) ->
     State1 = save_mined_block(Block, State),
     State2 = State1#state{block_candidate = undefined},
     case preempt_if_new_top(State2) of
-        no_change         -> start_if_autostart(State2);
-        {changed, State3} -> start_if_autostart(State3)
+        no_change         -> start_mining(State2);
+        {changed, State3} -> start_mining(State3)
     end;
 handle_mining_reply({{error, no_solution}, {Block, Nonce, MaxNonce}},
                     State) ->
@@ -312,7 +304,6 @@ handle_block_candidate_reply(Result, State) ->
             State1 = State#state{block_candidate = {BlockCandidate, Nonce, RandomNonce}},
             start_mining(State1);
         {error, key_not_found} ->
-            report_suspended(),
             wait_for_keys(State);
         {error, Reason} ->
             epoch_mining:error("Creation of block candidate failed: ~p",
@@ -361,7 +352,7 @@ handle_post_block_reply({block_added, Block, From}, State) ->
     gen_server:reply(From, ok),
     case preempt_if_new_top(State) of
         no_change         -> State;
-        {changed, State1} -> start_if_autostart(State1)
+        {changed, State1} -> start_mining(State1)
     end;
 handle_post_block_reply({ok, From}, State) ->
     gen_server:reply(From, ok),
@@ -437,6 +428,14 @@ kill_worker(Pid, Tag, Ref, State) ->
 kill_all_workers(#state{workers = Workers} = State) ->
     lists:foldl(fun({Pid, {Tag, Ref}}, S) -> kill_worker(Pid, Tag, Ref, S)end,
                 State, Workers).
+
+kill_all_workers_except_tag(Tag, #state{workers = Workers} = State) ->
+    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
+                        case Tag =/= PidTag of
+                            true  -> kill_worker(Pid, Tag, Ref, S);
+                            false -> S
+                        end
+                end, State, Workers).
 
 kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
     lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
