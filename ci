@@ -62,6 +62,27 @@ case "${1:?}"-"${2:?}" in
         make python-env
         make release-integration-test TARBALL="${FinalPackagePath:?}"
         ;;
+    script-python-tests)
+        make multi-build
+        make multi-start
+        make python-env
+        make python-tests
+        make multi-stop
+        ;;
+    script-python-ws-test)
+        make multi-build
+        make multi-start
+        make python-env
+        make python-ws-test
+        make multi-stop
+        ;;
+    script-python-integration-tests)
+        make multi-build
+        make multi-start
+        make python-env
+        make python-integration-tests
+        make multi-stop
+        ;;
     after_failure-*)
         BuildDir="${3:?}"
         LogsDir="${BuildDir}/_build/test/logs"
