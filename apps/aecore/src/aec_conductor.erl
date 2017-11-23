@@ -46,7 +46,9 @@
 -type workers() :: orddict:orddict(pid(), atom()).
 -type candidate() :: {block(),
                       CurrentNonce :: integer(),
-                      MaxNonce :: integer()}.
+                      MaxNonce :: integer(),
+                      TopHash  :: binary()
+                     }.
 
 -record(state, {block_candidate                   :: candidate() | 'undefined',
                 blocked_tags            = []      :: ordsets:ordsets(atom()),
