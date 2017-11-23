@@ -15,7 +15,7 @@ Information (e.g. height) on the top block of the longest chain as seen by the c
 
 ### Downloading the binaries
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.0-big-spenders) corresponding to your platform, e.g. `epoch-0.3.0-osx-10.12.6.tar.gz`. You would normally find the downloaded package in `~/Downloads`.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.0-big-spenders) corresponding to your platform, e.g. `epoch-0.3.0-osx-10.12.6.tar.gz`. You would normally find the downloaded package in `~/Downloads` on macOS.
 
 Open a Terminal window or get to the command-line.
 
@@ -30,8 +30,8 @@ Create a directory and unpack the downloaded package.
 
 Adjust the configuration for the node as documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).  An example is provided below.
 
-Let us assume that your public IP address is `1.2.3.4` (replace it with your real IP address) and the listening TCP port on that public address is `9999` (replace it with your real TCP port - considering also your router / NAT configuration if any).
-Create a file at /tmp/node1/epoch.yaml with the following content:
+Let's assume that your public IP address is `1.2.3.4` (replace it with your real IP address) and the listening TCP port on that public address is `9999` (replace it with your real TCP port - considering also your router / NAT configuration if any).
+Create the file `/tmp/node1/epoch.yaml` with the following content:
 
 ```yaml
 ---
