@@ -49,10 +49,6 @@ case "${1:?}"-"${2:?}" in
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && make dialyzer; )
         ;;
-    script-xref)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && ./rebar3 xref; )
-        ;;
     script-package)
         BuildDir="${3:?}"
         ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
