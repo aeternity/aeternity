@@ -60,6 +60,9 @@ env:
   - JOB=dialyzer
   - JOB=xref
   - JOB=package
+  - JOB=python-tests
+  - JOB=python-ws-test
+  - JOB=python-integration-tests
 cache:
   directories:
     - $HOME/.cache/rebar3
