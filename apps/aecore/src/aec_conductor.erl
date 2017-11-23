@@ -16,7 +16,8 @@
 -behaviour(gen_server).
 
 %% API
--export([ post_block/1
+-export([ get_mining_state/0
+        , post_block/1
         , start_mining/0
         , stop_mining/0
         ]).
@@ -74,6 +75,9 @@ start_mining() ->
 stop_mining() ->
     gen_server:call(?SERVER, stop_mining).
 
+get_mining_state() ->
+    gen_server:call(?SERVER, get_mining_state).
+
 post_block(Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
 
@@ -101,6 +105,8 @@ handle_call(start_mining,_From, State) ->
     epoch_mining:info("Mining started"),
     State1 = start_mining(State#state{mining_state = 'running'}),
     {reply, ok, State1};
+handle_call(get_mining_state,_From, State) ->
+    {reply, State#state.mining_state, State};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
