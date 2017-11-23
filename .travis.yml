@@ -68,10 +68,20 @@ matrix:
       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
       language: generic
       env: JOB=package
+  allow_failures:
+    - env: JOB=python-integration-tests
+    - env: JOB=python-single-integration-test-ext_api
+    - env: JOB=python-single-integration-test-spend_tx
+    - env: JOB=python-single-integration-test-use_cases
+  fast_finish: true
 env:
   - JOB=test
   - JOB=dialyzer
   - JOB=package
+  - JOB=python-integration-tests
+  - JOB=python-single-integration-test-ext_api
+  - JOB=python-single-integration-test-spend_tx
+  - JOB=python-single-integration-test-use_cases
 cache:
   directories:
     - $HOME/.cache/rebar3
