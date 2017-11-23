@@ -121,10 +121,10 @@ generate_single(Hash, Nonce, Target) ->
     %% -s makes mean miner print out the solution. We do not make it
     %% Algo-dependent in order to avoid wiring-in executable names. Lean miner
     %% will complain but ignores it.
-    ?info("Executing cmd: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra])]),
+    ?info("Executing cmd: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Hash, " -n ", Nonce, " ", Extra])]),
     try exec:run(
           lists:concat(export_ld_lib_path() ++
-                           ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra]),
+                           ["./", Exe, " -h ", Hash, " -n ", Nonce, " ", Extra]),
           [{stdout, self()},
            {stderr, self()},
            {kill_timeout, 1},

@@ -333,19 +333,19 @@ configure(cast, bump_initial_cycle_nonce,
             %% No new txs applied to the block.
             %% Continue incrementing nonce, without block candidate modifications.
             Nonce = aec_pow:next_nonce(Nonce0),
-            epoch_mining:info("No new txs available; "
-                              "continuing mining with bumped nonce "
-                              "(was ~p, is ~p).", [Nonce0, Nonce]),
+            epoch_mining:debug("No new txs available; "
+                               "continuing mining with bumped nonce "
+                               "(was ~p, is ~p).", [Nonce0, Nonce]),
             {next_state, running,
              State#state{initial_cycle_nonce = Nonce},
              [mine_event()]
             };
         {ok, NewBlockCandidate, RandomNonce} ->
             CurrentMiningNonce = aec_pow:next_nonce(RandomNonce),
-            epoch_mining:info("New txs added for mining; "
-                              "regenerated block candidate and nonce "
-                              "(max ~p, current ~p).",
-                              [RandomNonce, CurrentMiningNonce]),
+            epoch_mining:debug("New txs added for mining; "
+                               "regenerated block candidate and nonce "
+                               "(max ~p, current ~p).",
+                               [RandomNonce, CurrentMiningNonce]),
             {next_state, running,
              State#state{block_candidate = NewBlockCandidate,
                          initial_cycle_nonce = CurrentMiningNonce,
@@ -364,9 +364,9 @@ configure(cast, bump_initial_cycle_nonce,
           #state{fetch_new_txs_from_pool = false,
                  initial_cycle_nonce = Nonce0} = State) ->
     Nonce = aec_pow:next_nonce(Nonce0),
-    epoch_mining:info("Not fetching new txs; "
-                      "continuing mining with bumped nonce "
-                      "(was ~p, is ~p).", [Nonce0, Nonce]),
+    epoch_mining:debug("Not fetching new txs; "
+                       "continuing mining with bumped nonce "
+                       "(was ~p, is ~p).", [Nonce0, Nonce]),
     {next_state, running,
      State#state{initial_cycle_nonce = Nonce},
      [{next_event, cast, mine}]
@@ -517,25 +517,24 @@ callback_mode() ->
 %%%===================================================================
 
 mine(BlockCandidate, CurrentMiningNonce, State) ->
-    epoch_mining:info("Start mining~n", []),
+    %% epoch_mining:info("Start mining~n", []),
     %% Run the mining concurrently.
     Miner =
         spawn_link(fun () ->
                            int_mine(BlockCandidate, CurrentMiningNonce, State)
                    end),
-    epoch_mining:info("Miner ~p with nonce ~p~n", [Miner, CurrentMiningNonce]),
+    epoch_mining:info("Start miner ~p with nonce ~p~n", [Miner, CurrentMiningNonce]),
     Miner.
 
 int_mine(BlockCandidate, CurrentMiningNonce, State) ->
     Res = aec_mining:mine(BlockCandidate, CurrentMiningNonce),
-    epoch_mining:info("Miner ~p finished with ~p ~n", [self(), Res]),
-
     gen_statem:cast(?SERVER, {miner_done, self()}),
     case Res of
         {ok, Block} ->
             ws_handler:broadcast(miner, mined_block, [{height,
                                                        aec_blocks:height(Block)}]),
             ok = save_mined_block(Block),
+            epoch_mining:info("Miner ~p finished with ~p ~n", [self(), Res]),
             start_if_auto(State);
         {error, no_solution} ->
             try exometer:update([ae,epoch,aecore,mining,retries], 1)
@@ -625,8 +624,16 @@ waiting_post_block(Block, Opts, State) ->
     {next_state, waiting_for_keys, State}.
 
 -spec int_post_block(#block{}, options(), #state{}) -> ok | new_top | error.
-int_post_block(Block,Opts,_State) ->
-    epoch_mining:info("write_block: ~p", [Block]),
+int_post_block(Block,Opts,State) ->
+    try int_post_block_(Block,Opts,State)
+    catch
+        C:E ->
+            epoch_mining:error("EXCEPTION int_post_block: ~p:~p", [C,E]),
+            error
+    end.
+
+int_post_block_(Block,Opts,_State) ->
+    epoch_mining:info("int_post_block: ~p", [Block]),
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
     case aec_chain:get_block_by_hash(HH) of

@@ -117,7 +117,7 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 do ct $(CT_TEST_FLAGS)
+	@./rebar3 as test do release, ct $(CT_TEST_FLAGS)
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)

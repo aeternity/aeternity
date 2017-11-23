@@ -23,9 +23,6 @@ case "${1:?}"-"${2:?}" in
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
             brew update
             brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
-            brew install lynx && export PATH="$(brew --prefix lynx)"/bin:"$PATH"
-        elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
-            sudo apt-get -y install lynx
             sudo -H pip install -r deployment/ansible/pip-requirements.txt
             ansible --version
         fi
@@ -55,13 +52,18 @@ case "${1:?}"-"${2:?}" in
         ;;
     after_failure-*)
         LogsDir="${BuildDir}/_build/test/logs"
-        lynx -dump ${LogsDir}/index.html
         echo "logs/ct.latest.log\n"
         cat ${LogsDir}/ct.latest.log
-        for f in `ls -1 ${LogsDir}/ct_run*/*.logs/run*/suite.log.html`; do echo \"\"; echo \"$f:\"; lynx -dump $f; done
-        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/erlang.log.*`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
-        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/epoch.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
-        for f in `ls ${BuildDir}/_build/dev*/rel/epoch/log/crash.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        ls -l ${LogsDir}/latest.sync
+        for f in `ls -1 ${LogsDir}/ct_run*/lib.*.logs/run*/suite.log`; do escript failed_logs.escript $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/data/epoch.json`; do echo \"\"; echo \"$f:\"; echo \"\"; ls -l $f; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/releases/*/sys.config`; do echo \"\"; echo \"$f:\"; echo \"\"; ls -l $f; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/releases/*/vm.args`; do echo \"\"; echo \"$f:\"; echo \"\"; ls -l $f; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/*.config`; do echo \"\"; echo \"$f:\"; echo \"\"; ls -l $f; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/log/erlang.log.*`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/log/epoch.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/log/epoch_mining.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
+        for f in `ls ${BuildDir}/_build/test/logs/latest.sync/dev*/log/crash.log`; do echo \"\"; echo \"$f:\"; echo \"\"; cat $f; done
         ;;
     deploy-package)
         # Free Travis version does not support SSH key pairs, thus using encrypted files for SSH deploy key

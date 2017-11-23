@@ -3,6 +3,8 @@
 -export([handle_request/3]).
 -export([cleanup_genesis/1]).
 
+-import(aeu_debug, [pp/1]).
+
 -compile({parse_transform, lager_transform}).
 -include_lib("aecore/include/common.hrl").
 -include_lib("aecore/include/trees.hrl").
@@ -55,7 +57,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             %% aec_blocks:serialize_to_map/1 instead of
             %% aec_blocks:serialize_for_network/1 
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
-            lager:debug("Resp = ~p", [Resp]),
+            lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
         {error, no_top_header} ->
             {404, [], #{reason => <<"No top header">>}};
@@ -66,7 +68,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
     end;
 
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
-    lager:debug("got ~p; Req = ~p", [_Method, Req]),
+    lager:debug("got ~p; Req = ~p", [_Method, pp(Req)]),
     Hash = base64:decode(maps:get('hash', Req)),
     case aec_chain:get_header_by_hash(Hash) of
         {error, {header_not_found, _}} ->
@@ -80,10 +82,10 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                     %% is already encoded to a binary; that's why we use
                     %% aec_blocks:serialize_to_map/1 instead of
                     %% aec_blocks:serialize_for_network/1
-                    lager:debug("Block = ~p", [Block]),
+                    lager:debug("Block = ~p", [pp(Block)]),
                     Resp =
                       cleanup_genesis(aec_blocks:serialize_to_map(Block)),
-                    lager:debug("Resp = ~p", [Resp]),
+                    lager:debug("Resp = ~p", [pp(Resp)]),
                     {200, [], Resp};
                 {error, {block_not_found, _}} ->
                     {404, [], #{reason => <<"Block not found">>}}
@@ -92,7 +94,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
 
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
-    lager:debug("GetTxs : ~p", [Txs0]),
+    lager:debug("GetTxs : ~p", [pp(Txs0)]),
     Txs = [#{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(T))}
            || T <- Txs0],
     {200, [], Txs};
@@ -113,13 +115,13 @@ handle_request('PostBlock', Req, _Context) ->
     end;
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
-    lager:debug("Got PostTx; Req = ~p", [Req]),
+    lager:debug("Got PostTx; Req = ~p", [pp(Req)]),
     SerializedTx = maps:get(<<"tx">>, Tx),
     SignedTx = aec_tx_sign:deserialize_from_binary(
                  base64:decode(SerializedTx)),
-    lager:debug("deserialized: ~p", [SignedTx]),
+    lager:debug("deserialized: ~p", [pp(SignedTx)]),
     PushRes = aec_tx_pool:push(SignedTx, tx_received),
-    lager:debug("PushRes = ~p", [PushRes]),
+    lager:debug("PushRes = ~p", [pp(PushRes)]),
     {200, [], #{}};
 
 handle_request('GetAccountBalance', Req, _Context) ->
