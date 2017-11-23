@@ -17,6 +17,7 @@
 
 %% API
 -export([ get_mining_state/0
+        , get_miner_account_balance/0
         , post_block/1
         , start_mining/0
         , stop_mining/0
@@ -86,6 +87,20 @@ stop_mining() ->
 
 get_mining_state() ->
     gen_server:call(?SERVER, get_mining_state).
+
+%% TODO: Added for backwards compability.
+get_miner_account_balance() ->
+    {ok, Pubkey} = aec_keys:pubkey(),
+    {ok, LastBlock} = aec_chain:top(),
+    Trees = aec_blocks:trees(LastBlock),
+    AccountsTree = aec_trees:accounts(Trees),
+    case aec_accounts:get(Pubkey, AccountsTree) of
+        {ok, #account{balance = B}} ->
+            B;
+        _ ->
+            {error, account_not_found}
+    end.
+
 
 post_block(Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
