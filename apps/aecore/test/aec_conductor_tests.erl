@@ -233,13 +233,10 @@ wait_for_block_created() ->
     ok.
 
 wait_for_start_mining(Hash) ->
-    ?debugFmt("Waiting for: ~p", [Hash]),
     Info = wait_for_gproc(start_mining, 1000),
     case proplists:get_value(top_block_hash, Info) of
         Hash -> ok;
-        Other ->
-            ?debugFmt("Other: ~p", [Other]),
-            wait_for_start_mining(Hash)
+        _Other -> wait_for_start_mining(Hash)
     end.
 
 wait_for_gproc(Event, Timeout) ->
