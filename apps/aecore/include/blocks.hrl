@@ -46,6 +46,5 @@
           pow_evidence = no_value :: aec_pow:pow_evidence()}).
 -type(header() :: #header{}).
 
-%% TODO: make deterministic and based on the canonical serialization of
-%% the header.
 -type(header_binary() :: binary()).
+-type(deterministic_header_binary() :: binary()).

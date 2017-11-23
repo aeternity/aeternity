@@ -29,21 +29,26 @@ mine_block_test_() ->
        {timeout, 60,
         {"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
          fun() ->
-                 meck:expect(aec_chain, top, 0, {ok, #block{target = ?HIGHEST_TARGET_SCI}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 10),
+                 meck:expect(aec_chain, top, 0,
+                             {ok, #block{height = 0,
+                                         target = ?HIGHEST_TARGET_SCI}}),
+                 meck:expect(aec_pow, pick_nonce, 0, 18),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(1, Block#block.height),
-                 ?assertEqual(1, length(Block#block.txs))
+                 ?assertEqual(1, length(Block#block.txs)),
+
+                 ?assertEqual(ok, aec_headers:validate(
+                                    aec_blocks:to_header(Block)))
          end}},
        {timeout, 60,
         {"Proof of work fails with no_solution (PoW module " ++
              atom_to_list(PoWMod) ++ ")",
          fun() ->
                  meck:expect(aec_chain, top, 0, {ok, #block{target = ?LOWEST_TARGET_SCI}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 67),
+                 meck:expect(aec_pow, pick_nonce, 0, 18),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  ?assertEqual({error, no_solution},
@@ -81,7 +86,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 20,
                                           time = Now - 50000}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 5),
+                 meck:expect(aec_pow, pick_nonce, 0, 108),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 5),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
@@ -111,7 +116,7 @@ difficulty_recalculation_test_() ->
                              {ok, #header{height = 190,
                                           target = CurrentTarget,
                                           time = TenBlocksBeforeTime}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 98),
+                 meck:expect(aec_pow, pick_nonce, 0, 104),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 100000),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),

@@ -158,6 +158,7 @@ serialize_to_binary(H) ->
     {ok, Map} = serialize_to_map(H),
     {ok, jsx:encode(Map)}.
 
+-spec serialize_for_hash(header()) -> deterministic_header_binary().
 serialize_for_hash(H) ->
     PowEvidence = serialize_pow_evidence_for_hash(H#header.pow_evidence),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
@@ -228,7 +229,7 @@ validate_pow(#header{nonce = Nonce,
     Mod = aec_pow:pow_module(),
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
-    {ok, HeaderBinary} = serialize_to_binary(Header1),
+    HeaderBinary = serialize_for_hash(Header1),
     case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
