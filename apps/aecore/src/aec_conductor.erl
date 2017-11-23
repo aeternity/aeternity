@@ -50,6 +50,13 @@
                       TopHash  :: binary()
                      }.
 
+-record(candidate, {block     :: block(),
+                    nonce     :: integer(),
+                    max_nonce :: integer(),
+                    top_hash  :: binary()
+                   }).
+
+
 -record(state, {block_candidate                   :: candidate() | 'undefined',
                 blocked_tags            = []      :: ordsets:ordsets(atom()),
                 fetch_new_txs_from_pool = true    :: boolean(),
@@ -196,7 +203,7 @@ start_mining(#state{mining_state = 'stopped'} = State) ->
 start_mining(#state{block_candidate = undefined} = State) ->
     %% We need to generate a new block candidate first.
     create_block_candidate(State);
-start_mining(#state{block_candidate = {_, _, _, OldHash},
+start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
                     seen_top_block_hash = SeenHash
                    } = State) when OldHash =/= SeenHash ->
     %% Candidate generated with stale top hash.
@@ -204,7 +211,8 @@ start_mining(#state{block_candidate = {_, _, _, OldHash},
     create_block_candidate(State#state{block_candidate = undefined});
 start_mining(#state{} = State) ->
     epoch_mining:info("Starting mining"),
-    {Block, Nonce,_MaxNonce,_OldHash} = State#state.block_candidate,
+    #candidate{block = Block,
+               nonce = Nonce} = State#state.block_candidate,
     Info = [{top_block_hash, State#state.seen_top_block_hash}],
     aec_events:publish(start_mining, Info),
     Fun = fun() -> {aec_mining:mine(Block, Nonce),
@@ -212,8 +220,7 @@ start_mining(#state{} = State) ->
           end,
     dispatch_worker(mining, Fun, State).
 
-handle_mining_reply({{ok, Block},{_OldBlock, _Nonce,_MaxNonce, _OldHash}},
-                    State) ->
+handle_mining_reply({{ok, Block},_Candidate}, State) ->
     %% TODO: This should listen on some event instead
     ws_handler:broadcast(miner, mined_block,
                          [{height, aec_blocks:height(Block)}]),
@@ -224,56 +231,59 @@ handle_mining_reply({{ok, Block},{_OldBlock, _Nonce,_MaxNonce, _OldHash}},
         no_change         -> start_mining(State2);
         {changed, State3} -> start_mining(State3)
     end;
-handle_mining_reply({{error, no_solution}, {Block, Nonce, MaxNonce, OldHash}},
-                    State) ->
+handle_mining_reply({{error, no_solution}, Candidate}, State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
     catch error:_ -> ok end,
     epoch_mining:info("Failed to mine block, no solution (nonce ~p); "
-                      "retrying.", [Nonce]),
-    retry_mining(Block, Nonce, MaxNonce, OldHash, State);
-handle_mining_reply({{error, {runtime, Reason}}, {Block, Nonce, MaxNonce, OldHash}},
-                    State) ->
+                      "retrying.", [Candidate#candidate.nonce]),
+    retry_mining(Candidate, State);
+handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
     catch error:_ -> ok end,
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce (was ~p). "
-                       "Error: ~p", [Nonce, Reason]),
-    retry_mining(Block, Nonce, MaxNonce, OldHash, State).
+                       "Error: ~p", [Candidate#candidate.nonce, Reason]),
+    retry_mining(Candidate, State).
 
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(Block, Nonce, MaxNonce, OldHash,
-             #state{fetch_new_txs_from_pool = true} = State) ->
+retry_mining(#candidate{top_hash = Hash1},
+             #state{seen_top_block_hash = Hash2} =State) when Hash1 =/= Hash2 ->
+    %% Stale hash for candidate. Rebuild it.
+    start_mining(State#state{block_candidate = undefined});
+retry_mining(Candidate, #state{fetch_new_txs_from_pool = true} = State) ->
+    Block = Candidate#candidate.block,
     %% We should first see if we can get a new candidate.
     case aec_mining:apply_new_txs(Block) of
         {ok, Block} ->
             epoch_mining:info("No new txs available"),
-            retry_mining_with_new_nonce(Block, Nonce, MaxNonce, OldHash, State);
+            retry_mining_with_new_nonce(Candidate, State);
         {ok, NewBlock, RandomNonce} ->
             epoch_mining:info("New txs added for mining"),
             NewNonce = aec_pow:next_nonce(RandomNonce),
-            NewCandidate = {NewBlock, NewNonce, RandomNonce, OldHash},
+            NewCandidate = new_candidate(NewBlock, NewNonce, RandomNonce, State),
             start_mining(State#state{block_candidate = NewCandidate});
         {error, What} ->
             epoch_mining:error("Retrying with new nonce after unexpected error"
                                " in applying new txs: ~p", [What]),
-            retry_mining_with_new_nonce(Block, Nonce, MaxNonce, OldHash, State)
+            retry_mining_with_new_nonce(Candidate, State)
     end;
-retry_mining(Block, Nonce, MaxNonce, OldHash, State) ->
-    retry_mining_with_new_nonce(Block, Nonce, MaxNonce, OldHash, State).
+retry_mining(Candidate, State) ->
+    retry_mining_with_new_nonce(Candidate, State).
 
-retry_mining_with_new_nonce(_Block, MaxNonce, MaxNonce,_OldHash, State) ->
+retry_mining_with_new_nonce(#candidate{nonce = N, max_nonce = N}, State) ->
     epoch_mining:info("Failed to mine block, "
-                      "nonce range exhausted (was ~p)", [MaxNonce]),
+                      "nonce range exhausted (was ~p)", [N]),
     start_mining(State#state{block_candidate = undefined});
-retry_mining_with_new_nonce(Block, Nonce, MaxNonce, OldHash, State) ->
+retry_mining_with_new_nonce(Candidate, State) ->
+    Nonce = Candidate#candidate.nonce,
     NewNonce = aec_pow:next_nonce(Nonce),
     epoch_mining:info("Not fetching new txs; "
                       "continuing mining with bumped nonce "
                       "(was ~p, is ~p).", [Nonce, NewNonce]),
-    Candidate = {Block, NewNonce, MaxNonce, OldHash},
-    start_mining(State#state{block_candidate = Candidate}).
+    NewCandidate = Candidate#candidate{nonce = NewNonce},
+    start_mining(State#state{block_candidate = NewCandidate}).
 
 %%%===================================================================
 %%% Wait for keys to appear
@@ -307,6 +317,13 @@ handle_wait_for_keys_reply(timeout, State) ->
 %%%===================================================================
 %%% Block candidates
 
+new_candidate(Block, Nonce, MaxNonce, State) ->
+    #candidate{block = Block,
+               nonce = Nonce,
+               max_nonce = MaxNonce,
+               top_hash = State#state.seen_top_block_hash
+              }.
+
 create_block_candidate(State) ->
     epoch_mining:info("Creating block candidate"),
     Fun = fun() -> {aec_mining:create_block_candidate(),
@@ -325,10 +342,8 @@ handle_block_candidate_reply({Result,_OldTopHash}, State) ->
             epoch_mining:info("Created block candidate and nonce "
                               "(max ~p, current ~p).",
                               [RandomNonce, Nonce]),
-            Candidate = {BlockCandidate,
-                         Nonce,
-                         RandomNonce,
-                         State#state.seen_top_block_hash},
+            Candidate = new_candidate(BlockCandidate, Nonce,
+                                      RandomNonce, State),
             State1 = State#state{block_candidate = Candidate},
             start_mining(State1);
         {error, key_not_found} ->
