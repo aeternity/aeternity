@@ -261,7 +261,7 @@ handle_monitor_message(Ref, Pid, Why, State) ->
 %%% staleness. TODO: This could be done by the framework.
 
 lookup_worker(Ref, Pid, State) ->
-    case orddict:lookup(Pid, State#state.workers) of
+    case orddict:find(Pid, State#state.workers) of
         {ok, {Tag, Ref}} -> {ok, Tag};
         error -> not_found
     end.
