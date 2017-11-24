@@ -75,7 +75,8 @@ case "${Step}"-"${Job}" in
         ssh-add /tmp/deploy_rsa
 
         cd deployment/ansible
-        ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv}" --extra-vars "local_package=${FinalPackagePath}" deploy.yml
+        ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv}" \
+            --extra-vars "local_package=${FinalPackagePath} env=${DeployEnv}" deploy.yml
         ;;
     deploy-*)
         true

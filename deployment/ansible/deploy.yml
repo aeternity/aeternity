@@ -5,6 +5,7 @@
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
+    env: unknown
     config:
       chain:
         persist: true
@@ -63,6 +64,12 @@
         src: "{{ local_package }}"
         dest: "{{ project_root }}"
       when: local_package is defined
+      tags: [package]
+
+    - name: Plant ENV file
+      copy:
+        content: "{{ env }}\n"
+        dest: "{{ project_root }}/ENV"
       tags: [package]
 
     - name: "Make sure chain path ( {{ config.chain.db_path }} ) exists"
