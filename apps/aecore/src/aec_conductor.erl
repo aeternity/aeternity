@@ -464,8 +464,8 @@ handle_mining_reply({{ok, Block},_Candidate}, State) ->
 handle_mining_reply({{error, no_solution}, Candidate}, State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
     catch error:_ -> ok end,
-    epoch_mining:info("Failed to mine block, no solution (nonce ~p); "
-                      "retrying.", [Candidate#candidate.nonce]),
+    epoch_mining:debug("Failed to mine block, no solution (nonce ~p); "
+                       "retrying.", [Candidate#candidate.nonce]),
     retry_mining(Candidate, State);
 handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
@@ -514,10 +514,10 @@ retry_mining(Candidate, #state{fetch_new_txs_from_pool = true} = State) ->
     %% We should first see if we can get a new candidate.
     case aec_mining:apply_new_txs(Block) of
         {ok, Block} ->
-            epoch_mining:info("No new txs available"),
+            epoch_mining:debug("No new txs available"),
             retry_mining_with_new_nonce(Candidate, State);
         {ok, NewBlock, RandomNonce} ->
-            epoch_mining:info("New txs added for mining"),
+            epoch_mining:debug("New txs added for mining"),
             NewNonce = aec_pow:next_nonce(RandomNonce),
             NewCandidate = new_candidate(NewBlock, NewNonce, RandomNonce, State),
             start_mining(State#state{block_candidate = NewCandidate});
@@ -536,9 +536,9 @@ retry_mining_with_new_nonce(#candidate{nonce = N, max_nonce = N}, State) ->
 retry_mining_with_new_nonce(Candidate, State) ->
     Nonce = Candidate#candidate.nonce,
     NewNonce = aec_pow:next_nonce(Nonce),
-    epoch_mining:info("Not fetching new txs; "
-                      "continuing mining with bumped nonce "
-                      "(was ~p, is ~p).", [Nonce, NewNonce]),
+    epoch_mining:debug("Not fetching new txs; "
+                       "continuing mining with bumped nonce "
+                       "(was ~p, is ~p).", [Nonce, NewNonce]),
     NewCandidate = Candidate#candidate{nonce = NewNonce},
     start_mining(State#state{block_candidate = NewCandidate}).
 
