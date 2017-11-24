@@ -8,7 +8,7 @@
     config:
       chain:
         persist: true
-        db_path: .
+        db_path: "."
 
   tasks:
     - name: "Required variables"
