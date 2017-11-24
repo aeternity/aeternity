@@ -1,6 +1,6 @@
 ### About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.3.0-big-spenders) is focused on sending tokens from an account to another.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.3.1-big-spenders) is focused on sending tokens from an account to another.
 
 The best way to see this in action is to set up a local node and connect it to the public test network of nodes.
 
@@ -15,7 +15,7 @@ Information (e.g. height) on the top block of the longest chain as seen by the c
 
 ### Downloading the binaries
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.0-big-spenders) corresponding to your platform, e.g. `epoch-0.3.0-osx-10.12.6.tar.gz`. You would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.1-big-spenders) corresponding to your platform, e.g. `epoch-0.3.1-osx-10.12.6.tar.gz`. You would normally find the downloaded package in `~/Downloads` on macOS.
 
 Open a Terminal window or get to the command-line.
 
@@ -24,7 +24,7 @@ Create a directory and unpack the downloaded package.
     cd /tmp
     mkdir node1
     cd node1
-    tar xf ~/Downloads/epoch-0.3.0-osx-10.12.6.tar.gz
+    tar xf ~/Downloads/epoch-0.3.1-osx-10.12.6.tar.gz
 
 ### Configuring
 
