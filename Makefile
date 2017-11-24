@@ -40,6 +40,9 @@ local-stop: internal-stop
 local-attach: KIND=local
 local-attach: internal-attach
 
+prod-package: KIND=prod
+prod-package: internal-package
+
 prod-build: KIND=prod
 prod-build: internal-build
 
@@ -105,6 +108,10 @@ dev3-attach: internal-attach
 
 dev3-clean: KIND=dev3
 dev3-clean: internal-clean
+
+dialyzer-install:
+	@./rebar3 tree
+	@./rebar3 dialyzer -u true -s false
 
 dialyzer:
 	@./rebar3 dialyzer
@@ -177,7 +184,12 @@ multi-build: dev1-build
 
 .SECONDEXPANSION:
 
+internal-package: $$(KIND)
+	git rev-parse HEAD > REVISION
+	@./rebar3 as $(KIND) tar
+
 internal-build: $$(KIND)
+	git rev-parse HEAD > REVISION
 	@./rebar3 as $(KIND) release
 
 internal-start: $$(KIND)
@@ -198,7 +210,7 @@ internal-clean: $$(KIND)
 
 .PHONY: \
 	local-build local-start local-stop local-attach \
-	prod-build prod-start prod-stop prod-attach \
+	prod-build prod-start prod-stop prod-attach prod-package \
 	multi-build, multi-start, multi-stop, multi-clean \
 	dev1-start, dev1-stop, dev1-attach, dev1-clean \
 	dev2-start, dev2-stop, dev2-attach, dev2-clean \

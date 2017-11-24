@@ -3,20 +3,19 @@
 set -ev # Ref https://docs.travis-ci.com/user/customizing-the-build/#Implementing-Complex-Build-Steps
 set -x
 
+OsLabel="ubuntu"
+if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
+    OsLabel="osx-$(sw_vers -productVersion)"
+fi
 
-Version="$(cat VERSION)"
+BuildDir=${3:?}
+DeployEnv=${4:-test}
+Version=$(cat VERSION)
+BuiltPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz
+FinalPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${OsLabel:?}".tar.gz
 
-package_os_label() {
-    case "${1:?}" in
-        linux)
-            echo "ubuntu"
-            ;;
-        osx)
-            echo "osx-$(sw_vers -productVersion)"
-            ;;
-    esac
-}
-
+# Set default working directory
+cd $BuildDir
 
 case "${1:?}"-"${2:?}" in
     before_install-*)
@@ -34,27 +33,19 @@ case "${1:?}"-"${2:?}" in
         epmd -daemon
         ;;
     install-dialyzer)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && ./rebar3 tree; )
-        ( cd "${BuildDir:?}" && ./rebar3 dialyzer -u true -s false; )
+        make dialyzer-install
         ;;
     install-*)
         true
         ;;
     script-test)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && make test; )
+        make test
         ;;
     script-dialyzer)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && make dialyzer; )
+        make dialyzer
         ;;
     script-package)
-        BuildDir="${3:?}"
-        ( cd "${BuildDir:?}" && ./rebar3 as prod tar; )
-        BuiltPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}".tar.gz
-        OsLabel=$(package_os_label "${TRAVIS_OS_NAME:?}")
-        FinalPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${OsLabel:?}".tar.gz
+        make prod-package
         mv "${BuiltPackagePath:?}" "${FinalPackagePath:?}"
         # Perform release acceptance testing on the built package.
         # Configure a simpler PoW than the default one, in order to
@@ -63,7 +54,6 @@ case "${1:?}"-"${2:?}" in
         make release-integration-test TARBALL="${FinalPackagePath:?}"
         ;;
     after_failure-*)
-        BuildDir="${3:?}"
         LogsDir="${BuildDir}/_build/test/logs"
         lynx -dump ${LogsDir}/index.html
         echo "logs/ct.latest.log\n"
@@ -82,11 +72,9 @@ case "${1:?}"-"${2:?}" in
         eval "$(ssh-agent -s)"
         ssh-add /tmp/deploy_rsa
 
-        BuildDir="${3:?}"
-        DeployEnv="${4:?}"
-        OsLabel=$(package_os_label "${TRAVIS_OS_NAME:?}")
-        TARBALL="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${OsLabel:?}".tar.gz
-        ( cd deployment/ansible && ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv}" --extra-vars "local_package=${TARBALL}" deploy.yml )
+        cd deployment/ansible
+        ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv:?}" \
+            --extra-vars "local_package=${FinalPackagePath:?} env=${DeployEnv:?}" deploy.yml
         ;;
     deploy-*)
         true
