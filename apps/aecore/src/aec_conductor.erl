@@ -181,6 +181,9 @@ handle_info(timeout, State) ->
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
     {noreply, State1};
+handle_info({'DOWN', Ref, process, Pid, Why}, State) when Why =/= normal->
+    State1 = handle_monitor_message(Ref, Pid, Why, State),
+    {noreply, State1};
 handle_info(Other, State) ->
     %% TODO: Handle monitoring messages
     epoch_mining:error("Received unknown info message: ~p", [Other]),
@@ -219,6 +222,20 @@ get_option(Opt, Options) ->
     end.
 
 %%%===================================================================
+%%% Handle monitor messages
+
+handle_monitor_message(Ref, Pid, Why, State) ->
+    case lookup_worker(Ref, Pid, State) of
+        not_found ->
+            epoch_mining:info("Got unknown monitor DOWN message: ~p",
+                              [{Ref, Pid, Why}]),
+            State;
+        {ok, Tag} ->
+            epoch_mining:error("Worker died: ~p", [{Tag, Pid, Why}]),
+            maybe_restart_worker(Tag, State)
+    end.
+
+%%%===================================================================
 %%% Worker handling
 %%% @private
 %%% @doc
@@ -242,6 +259,12 @@ get_option(Opt, Options) ->
 %%% chain) based on tag. Note that since the worker might have sent an
 %%% answer before it is killed, it is good to check answers for
 %%% staleness. TODO: This could be done by the framework.
+
+lookup_worker(Ref, Pid, State) ->
+    case orddict:lookup(Pid, State#state.workers) of
+        {ok, {Tag, Ref}} -> {ok, Tag};
+        error -> not_found
+    end.
 
 dispatch_worker(Tag, Fun, State) ->
     case is_worker_allowed(Tag, State) of
@@ -302,6 +325,17 @@ worker_reply(mining, Res, State) ->
     handle_mining_reply(Res, State);
 worker_reply(wait_for_keys, Res, State) ->
     handle_wait_for_keys_reply(Res, State).
+
+maybe_restart_worker(Tag, State) ->
+    case worker_restart_strategy(Tag) of
+        restart_mining -> start_mining(State);
+        do_nothing     -> State
+    end.
+
+worker_restart_strategy(create_block_candidate) -> restart_mining;
+worker_restart_strategy(post_block)             -> do_nothing;
+worker_restart_strategy(mining)                 -> restart_mining;
+worker_restart_strategy(wait_for_keys)          -> restart_mining.
 
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
