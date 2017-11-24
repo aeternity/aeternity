@@ -67,7 +67,7 @@
 
     - name: "Make sure chain path ( {{ config.chain.db_path }} ) exists"
       file:
-        path: "{{ config.chain.db_path }}"
+        path: "{{ project_root }}/{{ config.chain.db_path }}"
         state: directory
         mode: 0600
       tags: [config]
