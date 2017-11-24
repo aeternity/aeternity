@@ -48,7 +48,7 @@ mining:
 
 chain:
     persist: true
-    db_path: .
+    db_path: "."
 ```
 
 ### Starting node

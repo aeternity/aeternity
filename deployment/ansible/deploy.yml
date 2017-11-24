@@ -8,7 +8,7 @@
     config:
       chain:
         persist: true
-        db_path: .
+        db_path: "./db2"
 
   tasks:
     - name: "Required variables"
@@ -64,6 +64,13 @@
         dest: "{{ project_root }}"
       when: local_package is defined
       tags: [package]
+
+    - name: "Make sure chain path ( {{ config.chain.db_path }} ) exists"
+      file:
+        path: "{{ config.chain.db_path }}"
+        state: directory
+        mode: 0600
+      tags: [config]
 
     - name: Update configuration
       template:
