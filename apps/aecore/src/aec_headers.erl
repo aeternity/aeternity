@@ -246,4 +246,3 @@ validate_time(#header{time = Time}) ->
         false ->
             {error, block_from_the_future}
     end.
-

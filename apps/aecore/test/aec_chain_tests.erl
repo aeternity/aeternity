@@ -5,7 +5,7 @@
 -include("blocks.hrl").
 
 -import(aec_test_utils,
-        [ extend_block_chain_by_difficulties_with_nonce_and_coinbase/3
+        [ extend_block_chain_by_targets_with_nonce_and_coinbase/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         ]).
@@ -15,7 +15,11 @@
         ?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
                      aec_blocks:serialize_for_network(element(2,B2)))).
 
--define(GENESIS_DIFFICULTY, 553713663.0).
+-define(FACTOR, 1000000000).
+-define(GENESIS_TARGET, 553713663).
+
+%% GENESIS DIFFICULTY = float(trunc(?FACTOR / 553713663))
+-define(GENESIS_DIFFICULTY, 1.0).
 
 genesis_block() ->
     aec_block_genesis:genesis_block().
@@ -441,6 +445,7 @@ longest_header_chain_test_() ->
              %% with test signed coinbase txs - as a node would do.
              TmpKeysDir = aec_keys_setup(),
              ok = aec_test_utils:mock_difficulty_as_target(),
+             ok = aec_test_utils:mock_block_target_validation(),
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
              TmpKeysDir
@@ -449,7 +454,8 @@ longest_header_chain_test_() ->
              ok = aec_keys_cleanup(TmpKeysDir),
              ok = aec_persistence:stop(),
              ok = aec_chain:stop(),
-             ok = aec_test_utils:unmock_difficulty_as_target()
+             ok = aec_test_utils:unmock_difficulty_as_target(),
+             ok = aec_test_utils:unmock_block_target_validation()
      end,
      [{"The alternative header chain has a different genesis hence its amount of work cannot be compared",
        fun() ->
@@ -481,10 +487,10 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2, 2], 111)],
-               AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
-               MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
-               _AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 2, 3], 111)],
+               AltBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 2], 222)],
+               MainHC = [H0, _, _, HM2] = header_chain_from_block_chain(MainBC),
+               AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -493,12 +499,13 @@ longest_header_chain_test_() ->
                lists:foreach(
                  fun(H) -> ok = aec_chain:insert_header(H) end,
                  lists:nthtail(1, MainHC)),
+               %% Insert the alt chain.
+               lists:foreach(
+                 fun(H) -> ok = aec_chain:insert_header(H) end,
+                 lists:nthtail(1, AltHC)),
 
                %% Check top is main chain.
-               ?assertEqual({ok, HM2}, aec_chain:top_header()),
-
-               %% Give up updating chain because existing chain has more work.
-               ok
+               ?assertEqual({ok, HM2}, aec_chain:top_header())
        end},
       {"The alternative header chain does not have more work - case alternative chain is higher",
        fun() ->
@@ -506,10 +513,10 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 111)],
-               AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
-               MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               _AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 3, 3], 222)],
+               MainHC = [H0, _, HM1] = header_chain_from_block_chain(MainBC),
+               AltHC = [H0, _, _, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -518,37 +525,13 @@ longest_header_chain_test_() ->
                lists:foreach(
                  fun(H) -> ok = aec_chain:insert_header(H) end,
                  lists:nthtail(1, MainHC)),
-
-               %% Check top is main chain.
-               ?assertEqual({ok, HM1}, aec_chain:top_header()),
-
-               %% Give up updating chain because existing chain has more work.
-               ok
-       end},
-      {"The alternative chain has the same amount of work, hence is to be ignored because received later",
-       fun() ->
-               %% Generate the two header chains.
-               B0 = genesis_block(),
-               0 = aec_blocks:height(B0), %% For readability of the test.
-               assert_genesis_difficulty(B0),
-               MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
-               AltBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 222)],
-               MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               _AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
-
-               %% Check chain is at genesis.
-               ?assertEqual({ok, H0}, aec_chain:top_header()),
-
-               %% Insert the main chain.
+               %% Insert the alt chain.
                lists:foreach(
                  fun(H) -> ok = aec_chain:insert_header(H) end,
-                 lists:nthtail(1, MainHC)),
+                 lists:nthtail(1, AltHC)),
 
                %% Check top is main chain.
-               ?assertEqual({ok, HM1}, aec_chain:top_header()),
-
-               %% Give up updating chain because existing chain has same work.
-               ok
+               ?assertEqual({ok, HM1}, aec_chain:top_header())
        end},
       {"The alternative header chain has more work - case alternative chain is higher. Force chain excluding genesis.",
        fun() ->
@@ -556,10 +539,10 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
-               AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
-               MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_,_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 2, 3, 2], 222)],
+               MainHC = [H0, _, HM1] = header_chain_from_block_chain(MainBC),
+               AltHC = [H0, _, _, _, HA3] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -584,10 +567,10 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [2], 111)],
-               AltBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
-               MainHC = [H0, HM1] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 2], 111)],
+               AltBC = [_,_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1, 1, 1], 222)],
+               MainHC = [H0, _, HM1] = header_chain_from_block_chain(MainBC),
+               AltHC = [H0, _, _, _, HA3] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -612,10 +595,10 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
-               AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
-               MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
-               AltHC = [H0, HA1] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 3, 3], 111)],
+               AltBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 222)],
+               MainHC = [H0, _, _, HM2] = header_chain_from_block_chain(MainBC),
+               AltHC = [H0, _, HA1] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -645,11 +628,11 @@ longest_header_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_,_,_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 2], 111)],
-               AltBC = [_,_] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [3], 222)],
-               _MainHC = [H0, HM1, HM2, HM3] = header_chain_from_block_chain(MainBC),
-               InitialMainHC = [H0, HM1, HM2],
-               _AltHC = [H0, _] = header_chain_from_block_chain(AltBC),
+               MainBC = [_,_,_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 3, 3, 2], 111)],
+               AltBC = [_,_,_] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 222)],
+               _MainHC = [H0, HM1, HM2, HM3, HM4] = header_chain_from_block_chain(MainBC),
+               InitialMainHC = [H0, HM1, HM2, HM3],
+               AltHC = [H0, _, _] = header_chain_from_block_chain(AltBC),
 
                %% Check chain is at genesis.
                ?assertEqual({ok, H0}, aec_chain:top_header()),
@@ -658,13 +641,17 @@ longest_header_chain_test_() ->
                lists:foreach(
                  fun(H) -> ok = aec_chain:insert_header(H) end,
                  lists:nthtail(1, InitialMainHC)),
-               ?assertEqual({ok, HM2}, aec_chain:top_header()),
+               ?assertEqual({ok, HM3}, aec_chain:top_header()),
 
+               %% Insert the alt chain.
+               lists:foreach(
+                 fun(H) -> ok = aec_chain:insert_header(H) end,
+                 lists:nthtail(1, AltHC)),
 
                %% Concurrent actor increases amount of work in tracked
                %% chain.
-               ok = aec_chain:insert_header(HM3),
-               ?assertEqual({ok, HM3}, aec_chain:top_header())
+               ok = aec_chain:insert_header(HM4),
+               ?assertEqual({ok, HM4}, aec_chain:top_header())
        end}]}.
 
 longest_block_chain_test_() ->
@@ -674,6 +661,7 @@ longest_block_chain_test_() ->
              %% with test signed coinbase txs - as a node would do.
              TmpKeysDir = aec_keys_setup(),
              ok = aec_test_utils:mock_difficulty_as_target(),
+             ok = aec_test_utils:mock_block_target_validation(),
              {ok, _} = aec_persistence:start_link(),
              {ok, _} = aec_chain:start_link(genesis_block()),
 	     TmpKeysDir
@@ -682,7 +670,8 @@ longest_block_chain_test_() ->
              ok = aec_chain:stop(),
              ok = aec_persistence:stop(),
              ok = aec_keys_cleanup(TmpKeysDir),
-             ok = aec_test_utils:unmock_difficulty_as_target()
+             ok = aec_test_utils:unmock_difficulty_as_target(),
+             ok = aec_test_utils:unmock_block_target_validation()
      end,
      [{"The alternative block chain has more work - case both main and alternative chains with all blocks. Only genesis block in common.",
        fun() ->
@@ -690,8 +679,8 @@ longest_block_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
-               AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
+               MainBC = [_, _, B2] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
                AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
 
@@ -751,8 +740,8 @@ longest_block_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_, B1, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
-               AltBC = [_, _, _, BA3] = [B0, B1 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B1, [1, 1], 222)],
+               MainBC = [_, B1, B2] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_, _, _, BA3] = [B0, B1 | extend_block_chain_by_targets_with_nonce_and_coinbase(B1, [?GENESIS_TARGET, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
                AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
 
@@ -816,8 +805,8 @@ longest_block_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_, _, B2] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
-               AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
+               MainBC = [_, _, B2] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_, _, _, BA3] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
                AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
 
@@ -870,8 +859,8 @@ longest_block_chain_test_() ->
                B0 = genesis_block(),
                0 = aec_blocks:height(B0), %% For readability of the test.
                assert_genesis_difficulty(B0),
-               MainBC = [_, B1, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1], 111)],
-               AltBC = [_, BA1, BA2, _] = [B0 | extend_block_chain_by_difficulties_with_nonce_and_coinbase(B0, [1, 1, 1], 222)],
+               MainBC = [_, B1, _] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1], 111)],
+               AltBC = [_, BA1, BA2, _] = [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, [?GENESIS_TARGET, 1, 1], 222)],
                MainHC = [H0, _, HM2] = header_chain_from_block_chain(MainBC),
                AltHC = [H0, _, _, HA3] = header_chain_from_block_chain(AltBC),
 

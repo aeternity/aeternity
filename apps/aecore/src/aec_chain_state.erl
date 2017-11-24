@@ -65,7 +65,7 @@
 
 -spec new() -> state().
 new() ->
-  new(default_opts()).
+    new(default_opts()).
 
 -spec new(opts()) -> state().
 new(OptsIn) ->
@@ -263,6 +263,8 @@ node_is_block(#node{type = Type}) -> Type =:= block.
 node_root_hash(#node{type = header, content = X}) -> aec_headers:root_hash(X);
 node_root_hash(#node{type = block , content = X}) -> aec_blocks:root_hash(X).
 
+node_target(#node{type = header, content = X}) -> aec_headers:target(X);
+node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
 
 find_genesis_node(State) ->
     case [X || X <- blocks_db_find_at_height(0, State),
@@ -380,11 +382,13 @@ check_update_after_insert(Node, State) ->
                 false ->
                     %% The fork is the new main chain. We must update state
                     %% from the fork point.
+                    assert_target_of_nodes_between(hash(ForkNode), NewTopHash, State),
                     State1 = set_top_header_hash(NewTopHash, State),
                     update_state_tree(ForkNode, State1)
             end;
         new_top ->
             [NewTopHash] = find_new_header_top_from_node(Node, State),
+            assert_target_of_nodes_until_current_top(NewTopHash, State),
             State1 = set_top_header_hash(NewTopHash, State),
             update_state_tree(Node, State1)
     end.
@@ -488,14 +492,77 @@ children(Nodes, Hash) ->
 children([],_Hash, Acc)  -> Acc;
 children([N|Ns], ParentHash, Acc) ->
     case prev_hash(N) =:= ParentHash of
-	true  -> children(Ns, ParentHash, [N|Acc]);
-	false -> children(Ns, ParentHash, Acc)
+        true  -> children(Ns, ParentHash, [N|Acc]);
+        false -> children(Ns, ParentHash, Acc)
     end.
 
 determine_new_header_top_hash(Hashes, State) ->
     {_D, H}  = lists:max([{total_difficulty_at_hash(H, State), H}
                           || H <- Hashes]),
     H.
+
+assert_target_of_nodes_until_current_top(NodeHash, State) ->
+    CurrentTopHash = get_top_header_hash(State),
+    assert_target_of_nodes_between(CurrentTopHash, NodeHash, State).
+
+assert_target_of_nodes_between(ForkNodeHash, NodeHash, State) ->
+    Node = blocks_db_get(NodeHash, State),
+    Header = export_header(Node),
+    ForkHeight = node_height_by_hash(ForkNodeHash, State),
+    case aec_target:determine_delta_header_height(Header) of
+        {ok, Height} ->
+            {ok, DeltaVerificationNode} = find_node_at_height(Height, Node, State),
+            assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State);
+        {error, chain_too_short_to_recalculate_target} ->
+            assert_target_equal_to_parent(Node, ForkHeight, State)
+    end.
+
+node_height_by_hash(undefined, _State) ->
+    0;
+node_height_by_hash(ForkNodeHash, State) ->
+    ForkNode = blocks_db_get(ForkNodeHash, State),
+    node_height(ForkNode).
+
+assert_target_equal_to_parent(Node, ForkHeight, State) ->
+    case node_height(Node) =:= ForkHeight of
+        true ->
+            ok;
+        false ->
+            PrevNode = blocks_db_get(prev_hash(Node), State),
+            case node_target(Node) =:= node_target(PrevNode) of
+                true ->
+                    assert_target_equal_to_parent(PrevNode, ForkHeight, State);
+                false ->
+                    internal_error({target_not_equal_to_parent, Node, PrevNode})
+            end
+    end.
+
+assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
+    case node_height(Node) =:= ForkHeight of
+        true ->
+            ok;
+        false ->
+            case node_is_genesis(DeltaVerificationNode) of
+                true ->
+                    assert_target_equal_to_parent(Node, ForkHeight, State);
+                false ->
+                    do_assert_calculated_target(
+                      Node, DeltaVerificationNode, ForkHeight, State)
+            end
+    end.
+
+do_assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
+    Header = export_header(Node),
+    DeltaHeader = export_header(DeltaVerificationNode),
+    case aec_target:verify(Header, DeltaHeader) of
+        ok ->
+            PrevNode = blocks_db_get(prev_hash(Node), State),
+            PrevDeltaNode = blocks_db_get(prev_hash(DeltaVerificationNode), State),
+            assert_calculated_target(PrevNode, PrevDeltaNode, ForkHeight, State);
+        {error, target_too_high} ->
+            internal_error({target_too_high, Node, DeltaVerificationNode})
+    end.
+
 
 genesis_state_tree(Node) ->
     %% TODO: This should be handled somewhere else.
@@ -576,9 +643,6 @@ update_top_block_hash(Hash, State) ->
 apply_node_transactions([Node|Left], Trees, State) ->
     Txs = aec_blocks:txs(Node#node.content),
     Height = node_height(Node),
-    %% TODO: verify that root hash of state tree after applying transactions
-    %% is equal to #block.root_hash.
-    %% To be done in scope of "PT-152481000 Validate received block".
     {ok, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
     assert_state_hash_valid(NewTrees, Node),
     apply_node_transactions(Left, NewTrees, State);

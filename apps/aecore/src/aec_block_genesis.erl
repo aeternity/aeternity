@@ -25,7 +25,8 @@
 %% API
 -export([genesis_header/0,
          genesis_block_as_deserialized_from_network/0,
-         genesis_block/0]).
+         genesis_block/0,
+         height/0]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -68,3 +69,6 @@ genesis_block() ->
     B = genesis_block_as_deserialized_from_network(),
     {ok, T} = aec_trees:all_trees_new(),
     B#block{trees = T}.
+
+height() ->
+    ?GENESIS_HEIGHT.
