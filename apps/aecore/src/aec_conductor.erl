@@ -9,7 +9,37 @@
 %% @private
 %% @doc
 %% The aec_conductor is the main hub of the mining engine.
-%%--------------------------------------------------------------------
+%%
+%% The mining has two states of operation 'running' and 'stopped'
+%% Passing the option {autostart, bool()} to the initialization
+%% controls which mode to start in.
+%%
+%% The mining can be controlled by the API functions start_mining/0
+%% and stop_mining/0. The stop_mining is preemptive (i.e., any workers
+%% involved with the mining is killed).
+%%
+%% The aec_conductor operates by delegating all heavy operations to
+%% worker processes in order to be responsive. (See doc at the worker
+%% handling section.)
+%%
+%% The work flow in mining is divided into stages:
+%%  - wait for keys (of the miner)
+%%  - generate block candidate
+%%  - start mining
+%%  - retry mining
+%%
+%% The principle is to optimistically try to start mining, and fall
+%% back to an earlier stage if the preconditions are not met. The next
+%% stage of mining should be triggered in the worker reply for each
+%% stage based on the postconditions of that stage.
+%%
+%% E.g. If the start_mining stage is attempted without having a block
+%% candidate, it should fall back to generating a block candidate.
+%%
+%% E.g. When the mining worker returns it should either start mining a
+%% new block or retry mining based on the return of the mining.
+%%
+%% --------------------------------------------------------------------
 
 -module(aec_conductor).
 
@@ -163,33 +193,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-%% NOTE: State is passed through in preparation for a functional chain State.
-save_mined_block(Block, State) ->
-    Header = aec_blocks:to_header(Block),
-    case aec_chain:insert_header(Header) of
-        ok ->
-            case aec_chain:write_block(Block) of
-                ok ->
-                    try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
-                    catch error:_ -> ok end,
-                    epoch_mining:info("Block inserted: Height = ~p"
-                                      "~nHash = ~s",
-                                      [Block#block.height,
-                                       as_hex(Block#block.root_hash)]),
-                    aec_events:publish(block_created, Block),
-                    State;
-                {error, Reason} ->
-                    epoch_mining:error("Block insertion failed: ~p.", [Reason]),
-                    State
-            end;
-        {error, Reason} ->
-            epoch_mining:error("Header insertion failed: ~p.", [Reason]),
-            State
-    end.
-
-as_hex(S) ->
-    [io_lib:format("~2.16.0b",[X]) || <<X:8>> <= S].
-
 %%%===================================================================
 %%% Handle init options
 
@@ -212,7 +215,180 @@ get_option(Opt, Options) ->
     end.
 
 %%%===================================================================
-%%% Start mining
+%%% Worker handling
+%%% @private
+%%% @doc
+%%%
+%%% Worker functions are funs of arity 0 with a tag to determine the
+%%% type of worker. Tags are enforced to be 'singleton' (only one worker
+%%% allowed) or 'concurrent' (allow concurrent processes).
+%%%
+%%% The worker processes are monitored, and provides return values
+%%% through message passing. Return values are passed as messages, and
+%%% the reply is handled based on the tag. The worker fun does not
+%%% need to handle the message passing itself. This is taken care of
+%%% by the dispatcher.
+%%%
+%%% Note that when the reply is handled, the state is the current
+%%% server state, not the state in which the worker was
+%%% dispatched. Any consistency checks for staleness must be handled
+%%% in the reply handler.
+%%%
+%%% Workers can be killed (e.g., on preemption because of a changed
+%%% chain) based on tag. Note that since the worker might have sent an
+%%% answer before it is killed, it is good to check answers for
+%%% staleness. TODO: This could be done by the framework.
+
+dispatch_worker(Tag, Fun, State) ->
+    case is_worker_allowed(Tag, State) of
+        true ->
+            Wrapper = wrap_worker_fun(Fun),
+            {Pid, Ref} = spawn_monitor(Wrapper),
+            State1 = maybe_block_tag(Tag, State),
+            Workers = orddict:store(Pid, {Tag, Ref}, State1#state.workers),
+            State#state{workers = Workers};
+        false ->
+            epoch_mining:error("Disallowing dispatch of aditional ~p worker",
+                               [Tag]),
+            State
+    end.
+
+is_worker_allowed(Tag, State) ->
+    not ordsets:is_element(Tag, State#state.blocked_tags).
+
+maybe_block_tag(Tag, #state{blocked_tags = B} = State) ->
+    case tag_concurrency(Tag) of
+        concurrent -> State;
+        singleton  -> State#state{blocked_tags = ordsets:add_element(Tag, B)}
+    end.
+
+tag_concurrency(create_block_candidate) -> singleton;
+tag_concurrency(mining)                 -> singleton;
+tag_concurrency(post_block)             -> concurrent;
+tag_concurrency(wait_for_keys)          -> singleton.
+
+wrap_worker_fun(Fun) ->
+    Server = self(),
+    fun() ->
+            Result = Fun(),
+            Server ! {worker_reply, self(), Result}
+    end.
+
+handle_worker_reply(Pid, Reply, State) ->
+    Workers = State#state.workers,
+    Blocked = State#state.blocked_tags,
+    case orddict:find(Pid, Workers) of
+        {ok, {Tag, Ref}} ->
+            demonitor(Ref, [flush]),
+            State1 = State#state{workers = orddict:erase(Pid, Workers),
+                                 blocked_tags = ordsets:del_element(Tag, Blocked)
+                                },
+            worker_reply(Tag, Reply, State1);
+        error ->
+            epoch_mining:error("Got unsolicited worker reply: ~p",
+                               [{Pid, Reply}]),
+            State
+    end.
+
+worker_reply(create_block_candidate, Res, State) ->
+    handle_block_candidate_reply(Res, State);
+worker_reply(post_block, Res, State) ->
+    handle_post_block_reply(Res, State);
+worker_reply(mining, Res, State) ->
+    handle_mining_reply(Res, State);
+worker_reply(wait_for_keys, Res, State) ->
+    handle_wait_for_keys_reply(Res, State).
+
+%%%===================================================================
+%%% Preemption of workers if the top of the chain changes.
+
+preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State) ->
+    case aec_chain:top_block_hash() of
+        TopHash -> no_change;
+        TopBlockHash ->
+            aec_events:publish(mining_preempted, [{old_hash, TopHash},
+                                                  {new_hash, TopBlockHash}]),
+            update_tx_pool_on_top_change(TopHash, TopBlockHash),
+            State1 = State#state{seen_top_block_hash = TopBlockHash},
+            State2 = kill_all_workers_with_tag(mining, State1),
+            State3 = kill_all_workers_with_tag(create_block_candidate, State2),
+            {changed, State3}
+    end.
+
+kill_worker(Pid, Tag, Ref, State) ->
+    Workers = State#state.workers,
+    Blocked = State#state.blocked_tags,
+    demonitor(Ref, [flush]),
+    exit(Pid, kill),
+    State#state{workers = orddict:erase(Pid, Workers),
+                blocked_tags = ordsets:del_element(Tag, Blocked)
+               }.
+
+kill_all_workers(#state{workers = Workers} = State) ->
+    lists:foldl(fun({Pid, {Tag, Ref}}, S) -> kill_worker(Pid, Tag, Ref, S)end,
+                State, Workers).
+
+kill_all_workers_except_tag(Tag, #state{workers = Workers} = State) ->
+    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
+                        case Tag =/= PidTag of
+                            true  -> kill_worker(Pid, Tag, Ref, S);
+                            false -> S
+                        end
+                end, State, Workers).
+
+kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
+    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
+                        case Tag =:= PidTag of
+                            true  -> kill_worker(Pid, Tag, Ref, S);
+                            false -> S
+                        end
+                end, State, Workers).
+
+%%%===================================================================
+%%% Handling update in transaction pool
+
+update_tx_pool_on_top_change(Hash1, Hash2) when is_binary(Hash1),
+                                                is_binary(Hash2) ->
+    epoch_mining:info("Updating transactions ~p ~p", [Hash1, Hash2]),
+    {ok, Ancestor} = aec_chain:common_ancestor(Hash1, Hash2),
+    {ok, TransactionsOnOldChain} =
+        aec_chain:get_transactions_between(Hash1, Ancestor),
+    {ok, TransactionsOnNewChain} =
+        aec_chain:get_transactions_between(Hash2, Ancestor),
+    ok = aec_tx_pool:fork_update(TransactionsOnNewChain, TransactionsOnOldChain),
+    ok.
+
+%%%===================================================================
+%%% Worker: Wait for keys to appear
+
+-define(WAIT_FOR_KEYS_RETRIES, 10).
+
+wait_for_keys(State) ->
+    Fun = fun wait_for_keys_worker/0,
+    dispatch_worker(wait_for_keys, Fun, State).
+
+wait_for_keys_worker() ->
+    wait_for_keys_worker(?WAIT_FOR_KEYS_RETRIES).
+
+wait_for_keys_worker(0) ->
+    timeout;
+wait_for_keys_worker(N) ->
+    case aec_keys:pubkey() of
+        {ok, _Pubkey} -> keys_ready; %% TODO: We could keep the key in the state
+        {error, _} ->
+            timer:sleep(500),
+            wait_for_keys_worker(N - 1)
+    end.
+
+handle_wait_for_keys_reply(keys_ready, State) ->
+    create_block_candidate(State);
+handle_wait_for_keys_reply(timeout, State) ->
+    %% TODO: We should probably die hard at some point instead of retrying.
+    epoch_mining:error("Timed out waiting for keys. Retrying."),
+    wait_for_keys(State).
+
+%%%===================================================================
+%%% Worker: Start mining
 
 start_mining(#state{mining_state = 'stopped'} = State) ->
     State;
@@ -261,6 +437,33 @@ handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
                        "Error: ~p", [Candidate#candidate.nonce, Reason]),
     retry_mining(Candidate, State).
 
+%% NOTE: State is passed through in preparation for a functional chain State.
+save_mined_block(Block, State) ->
+    Header = aec_blocks:to_header(Block),
+    case aec_chain:insert_header(Header) of
+        ok ->
+            case aec_chain:write_block(Block) of
+                ok ->
+                    try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
+                    catch error:_ -> ok end,
+                    epoch_mining:info("Block inserted: Height = ~p"
+                                      "~nHash = ~s",
+                                      [Block#block.height,
+                                       as_hex(Block#block.root_hash)]),
+                    aec_events:publish(block_created, Block),
+                    State;
+                {error, Reason} ->
+                    epoch_mining:error("Block insertion failed: ~p.", [Reason]),
+                    State
+            end;
+        {error, Reason} ->
+            epoch_mining:error("Header insertion failed: ~p.", [Reason]),
+            State
+    end.
+
+as_hex(S) ->
+    [io_lib:format("~2.16.0b",[X]) || <<X:8>> <= S].
+
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
@@ -302,36 +505,7 @@ retry_mining_with_new_nonce(Candidate, State) ->
     start_mining(State#state{block_candidate = NewCandidate}).
 
 %%%===================================================================
-%%% Wait for keys to appear
-
--define(WAIT_FOR_KEYS_RETRIES, 10).
-
-wait_for_keys(State) ->
-    Fun = fun wait_for_keys_worker/0,
-    dispatch_worker(wait_for_keys, Fun, State).
-
-wait_for_keys_worker() ->
-    wait_for_keys_worker(?WAIT_FOR_KEYS_RETRIES).
-
-wait_for_keys_worker(0) ->
-    timeout;
-wait_for_keys_worker(N) ->
-    case aec_keys:pubkey() of
-        {ok, _Pubkey} -> keys_ready; %% TODO: We could keep the key in the state
-        {error, _} ->
-            timer:sleep(500),
-            wait_for_keys_worker(N - 1)
-    end.
-
-handle_wait_for_keys_reply(keys_ready, State) ->
-    create_block_candidate(State);
-handle_wait_for_keys_reply(timeout, State) ->
-    %% TODO: We should probably die hard at some point instead of retrying.
-    epoch_mining:error("Timed out waiting for keys. Retrying."),
-    wait_for_keys(State).
-
-%%%===================================================================
-%%% Block candidates
+%%% Worker: Generate new block candidates
 
 new_candidate(Block, Nonce, MaxNonce, State) ->
     #candidate{block = Block,
@@ -372,7 +546,7 @@ handle_block_candidate_reply({Result,_OldTopHash}, State) ->
     end.
 
 %%%===================================================================
-%%% A block was given to us from the outside world
+%%% Worker: Post block. A block was given to us from the outside world
 
 handle_post_block(Block, From, State) ->
     epoch_mining:info("Handling post block"),
@@ -421,119 +595,3 @@ handle_post_block_reply({error, Reason, From}, State) ->
     gen_server:reply(From, {error, Reason}),
     State.
 
-%%%===================================================================
-%%% Hup for the server if the top block changes
-
-preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State) ->
-    case aec_chain:top_block_hash() of
-        TopHash -> no_change;
-        TopBlockHash ->
-            aec_events:publish(mining_preempted, [{old_hash, TopHash},
-                                                  {new_hash, TopBlockHash}]),
-            update_transactions(TopHash, TopBlockHash),
-            State1 = State#state{seen_top_block_hash = TopBlockHash},
-            State2 = kill_all_workers_with_tag(mining, State1),
-            State3 = kill_all_workers_with_tag(create_block_candidate, State2),
-            {changed, State3}
-    end.
-
-update_transactions(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
-    epoch_mining:info("Updating transactions ~p ~p", [Hash1, Hash2]),
-    {ok, Ancestor} = aec_chain:common_ancestor(Hash1, Hash2),
-    {ok, TransactionsOnOldChain} =
-        aec_chain:get_transactions_between(Hash1, Ancestor),
-    {ok, TransactionsOnNewChain} =
-        aec_chain:get_transactions_between(Hash2, Ancestor),
-    ok = aec_tx_pool:fork_update(TransactionsOnNewChain, TransactionsOnOldChain),
-    ok.
-
-%%%===================================================================
-%%% Worker handling
-
-dispatch_worker(Tag, Fun, State) ->
-    case is_worker_allowed(Tag, State) of
-        true ->
-            Wrapper = wrap_worker_fun(Fun),
-            {Pid, Ref} = spawn_monitor(Wrapper),
-            State1 = maybe_block_tag(Tag, State),
-            Workers = orddict:store(Pid, {Tag, Ref}, State1#state.workers),
-            State#state{workers = Workers};
-        false ->
-            epoch_mining:error("Disallowing dispatch of aditional ~p worker",
-                               [Tag]),
-            State
-    end.
-
-is_worker_allowed(Tag, State) ->
-    not ordsets:is_element(Tag, State#state.blocked_tags).
-
-maybe_block_tag(Tag, State) ->
-    Blocked = ordsets:add_element(Tag, State#state.blocked_tags),
-    BlockedState = State#state{blocked_tags = Blocked},
-    case Tag of
-        wait_for_keys          -> BlockedState;
-        mining                 -> BlockedState;
-        create_block_candidate -> BlockedState;
-        post_block             -> State
-    end.
-
-kill_worker(Pid, Tag, Ref, State) ->
-    Workers = State#state.workers,
-    Blocked = State#state.blocked_tags,
-    demonitor(Ref, [flush]),
-    exit(Pid, kill),
-    State#state{workers = orddict:erase(Pid, Workers),
-                blocked_tags = ordsets:del_element(Tag, Blocked)
-               }.
-
-kill_all_workers(#state{workers = Workers} = State) ->
-    lists:foldl(fun({Pid, {Tag, Ref}}, S) -> kill_worker(Pid, Tag, Ref, S)end,
-                State, Workers).
-
-kill_all_workers_except_tag(Tag, #state{workers = Workers} = State) ->
-    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
-                        case Tag =/= PidTag of
-                            true  -> kill_worker(Pid, Tag, Ref, S);
-                            false -> S
-                        end
-                end, State, Workers).
-
-kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
-    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
-                        case Tag =:= PidTag of
-                            true  -> kill_worker(Pid, Tag, Ref, S);
-                            false -> S
-                        end
-                end, State, Workers).
-
-wrap_worker_fun(Fun) ->
-    Server = self(),
-    fun() ->
-            Result = Fun(),
-            Server ! {worker_reply, self(), Result}
-    end.
-
-handle_worker_reply(Pid, Reply, State) ->
-    Workers = State#state.workers,
-    Blocked = State#state.blocked_tags,
-    case orddict:find(Pid, Workers) of
-        {ok, {Tag, Ref}} ->
-            demonitor(Ref, [flush]),
-            State1 = State#state{workers = orddict:erase(Pid, Workers),
-                                 blocked_tags = ordsets:del_element(Tag, Blocked)
-                                },
-            worker_reply(Tag, Reply, State1);
-        error ->
-            epoch_mining:error("Got unsolicited worker reply: ~p",
-                               [{Pid, Reply}]),
-            State
-    end.
-
-worker_reply(create_block_candidate, Res, State) ->
-    handle_block_candidate_reply(Res, State);
-worker_reply(post_block, Res, State) ->
-    handle_post_block_reply(Res, State);
-worker_reply(mining, Res, State) ->
-    handle_mining_reply(Res, State);
-worker_reply(wait_for_keys, Res, State) ->
-    handle_wait_for_keys_reply(Res, State).
