@@ -185,9 +185,11 @@ multi-build: dev1-build
 .SECONDEXPANSION:
 
 internal-package: $$(KIND)
+	git rev-parse HEAD > REVISION
 	@./rebar3 as $(KIND) tar
 
 internal-build: $$(KIND)
+	git rev-parse HEAD > REVISION
 	@./rebar3 as $(KIND) release
 
 internal-start: $$(KIND)
