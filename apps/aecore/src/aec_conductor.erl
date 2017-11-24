@@ -12,11 +12,15 @@
 %%
 %% The mining has two states of operation 'running' and 'stopped'
 %% Passing the option {autostart, bool()} to the initialization
-%% controls which mode to start in.
+%% controls which mode to start in. In the running mode, block candidates
+%% are generated and mined in separate workers. When mining is successful, 
+%% the mined block is published and added to the chain if the state of the 
+%% chain allows that. In the stopped mode only blocks arriving from other
+%% miners are added to the chain.
 %%
 %% The mining can be controlled by the API functions start_mining/0
-%% and stop_mining/0. The stop_mining is preemptive (i.e., any workers
-%% involved with the mining is killed).
+%% and stop_mining/0. The stop_mining is preemptive (i.e., all workers
+%% involved in mining are killed).
 %%
 %% The aec_conductor operates by delegating all heavy operations to
 %% worker processes in order to be responsive. (See doc at the worker
@@ -559,7 +563,7 @@ post_block_worker(From, Block) ->
     {ok, HH} = aec_headers:hash_header(Header),
     case aec_chain:get_block_by_hash(HH) of
         {ok, _Existing} ->
-            epoch_mining:debug("Aleady have block", []),
+            epoch_mining:debug("Posted block already in chain", []),
             {ok, From};
         {error, _} ->
             case {aec_headers:validate(Header), aec_blocks:validate(Block)} of
