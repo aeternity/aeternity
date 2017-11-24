@@ -65,6 +65,13 @@
       when: local_package is defined
       tags: [package]
 
+    - name: "Make sure chain path ( {{ config.chain.db_path }} ) exists"
+      file:
+        path: "{{ config.chain.db_path }}"
+        state: directory
+        mode: 0600
+      tags: [config]
+
     - name: Update configuration
       template:
         src: templates/epoch.yaml.j2
