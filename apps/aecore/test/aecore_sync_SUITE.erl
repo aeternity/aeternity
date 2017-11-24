@@ -134,7 +134,7 @@ tx_first_pays_second(_Config) ->
     {ok, PK1} = get_pubkey(N1),
     ct:log("PK1 = ~p", [PK1]),
     {ok, PK2} = get_pubkey(N2),
-    Bal1 = get_balance(N1),
+    {ok, Bal1} = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
     true = (is_integer(Bal1) andalso Bal1 > 0),
     {ok, Pool11} = get_pool(N1),

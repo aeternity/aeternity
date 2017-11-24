@@ -45,11 +45,7 @@
 -define(FETCH_NEW_TXS_FROM_POOL, true).
 
 -type workers() :: orddict:orddict(pid(), atom()).
--type candidate() :: {block(),
-                      CurrentNonce :: integer(),
-                      MaxNonce :: integer(),
-                      TopHash  :: binary()
-                     }.
+-type mining_state() :: 'running' | 'stopped'.
 
 -record(candidate, {block     :: block(),
                     nonce     :: integer(),
@@ -58,10 +54,10 @@
                    }).
 
 
--record(state, {block_candidate                   :: candidate() | 'undefined',
+-record(state, {block_candidate                   :: #candidate{} | 'undefined',
                 blocked_tags            = []      :: ordsets:ordsets(atom()),
                 fetch_new_txs_from_pool = true    :: boolean(),
-                mining_state            = running :: 'running' | 'stopped',
+                mining_state            = running :: mining_state(),
                 seen_top_block_hash               :: binary() | 'undefined',
                 workers                 = []      :: workers()
                }).
@@ -79,16 +75,21 @@ start_link(Options) ->
 stop() ->
     gen_server:stop(?SERVER).
 
+-spec start_mining() -> 'ok'.
 start_mining() ->
     gen_server:call(?SERVER, start_mining).
 
+-spec stop_mining() -> 'ok'.
 stop_mining() ->
     gen_server:call(?SERVER, stop_mining).
 
+-spec get_mining_state() -> mining_state().
 get_mining_state() ->
     gen_server:call(?SERVER, get_mining_state).
 
 %% TODO: Added for backwards compability.
+-spec get_miner_account_balance() ->   {'ok', integer()}
+                                     | {'error', 'account_not_found'}.
 get_miner_account_balance() ->
     {ok, Pubkey} = aec_keys:pubkey(),
     {ok, LastBlock} = aec_chain:top(),
@@ -96,12 +97,12 @@ get_miner_account_balance() ->
     AccountsTree = aec_trees:accounts(Trees),
     case aec_accounts:get(Pubkey, AccountsTree) of
         {ok, #account{balance = B}} ->
-            B;
+            {ok, B};
         _ ->
             {error, account_not_found}
     end.
 
-
+-spec post_block(#block{}) -> 'ok' | {'error', any()}.
 post_block(Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
 
