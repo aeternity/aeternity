@@ -34,5 +34,6 @@ init([]) ->
                                  ?CHILD(aec_tx_pool, 5000, worker),
                                  ?CHILD(aec_chain, 5000, worker),
                                  ?CHILD(aec_sync, 5000, worker),
-                                 ?CHILD(aec_miner, 5000, worker)]
+                                 ?CHILD(aec_conductor, 5000, worker)
+                                ]
          }}.
