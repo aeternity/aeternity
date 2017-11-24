@@ -19,12 +19,12 @@ cd $BuildDir
 
 case "${1:?}"-"${2:?}" in
     before_install-*)
-        if [ "${TRAVIS_OS_NAME}" = "osx" ]; then
+        if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
             brew update
             brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
             brew install lynx && export PATH="$(brew --prefix lynx)"/bin:"$PATH"
-        elif [ "${TRAVIS_OS_NAME}" = "linux" ]; then
+        elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
             sudo apt-get -y install lynx
             sudo -H pip install -r deployment/ansible/pip-requirements.txt
             ansible --version
