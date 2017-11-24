@@ -76,7 +76,6 @@
       file:
         path: "{{ project_root }}/{{ config.chain.db_path }}"
         state: directory
-        mode: 0600
       tags: [config]
 
     - name: Update configuration
