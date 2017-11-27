@@ -1,5 +1,6 @@
 
 open Rte;
+open Voting;
 
 let creator = "0x123";
 let voter1  = "0x1001";
