@@ -25,6 +25,7 @@
         , top_block_hash/1
         , top_header/1
         , top_header_hash/1
+        , get_genesis_hash/1
         ]).
 
 -include("common.hrl"). %% Just for types
@@ -38,6 +39,7 @@
                     , 'max_snapshot_height' => pos_integer()
                     , 'sparse_snapshots_interval' => pos_integer()
                     , 'keep_all_snapshots_height' => pos_integer()
+                    , 'genesis_block_hash' => 'undefined' | binary()
                     }).
 
 -type(opts() :: #{ 'max_snapshot_height' := pos_integer()
@@ -78,6 +80,7 @@ new(OptsIn) ->
      , max_snapshot_height => maps:get(max_snapshot_height, Opts)
      , sparse_snapshots_interval => maps:get(sparse_snapshots_interval, Opts)
      , keep_all_snapshots_height => maps:get(keep_all_snapshots_height, Opts)
+     , genesis_block_hash => undefined
      }.
 
 default_opts() ->
@@ -106,8 +109,20 @@ top_block(?match_state(top_block_hash := X) = State) ->
     export_block(blocks_db_get(X, State), State).
 
 -spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
-insert_block(Block, ?assert_state() = State) ->
-    try {ok, internal_insert(wrap_block(Block), State)}
+insert_block(Block, ?assert_state() = State0) ->
+    try 
+        ?match_state(genesis_block_hash := GH) = State1
+            = internal_insert(wrap_block(Block), State0),
+        State =
+            case Block#block.height of
+                0 when GH =:= undefined ->
+                    {ok, GenesisHash} =
+                        aec_blocks:hash_internal_representation(Block),
+                    State1#{genesis_block_hash => GenesisHash};
+                _ ->
+                    State1
+            end,
+        {ok, State}
     catch throw:?internal_error(What) -> {error, What}
     end.
 
@@ -217,6 +232,10 @@ new_from_persistance(Chain, StateTreesList) ->
             end
     end.
 
+-spec get_genesis_hash(state()) -> undefined | binary().
+get_genesis_hash(?match_state(genesis_block_hash := GH)) ->
+    GH.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -232,18 +251,12 @@ set_top_header_hash(H, State) when is_binary(H) -> State#{top_header_hash => H}.
 get_top_block_hash(#{top_block_hash := H}) -> H.
 set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
 
-get_genesis_hash(State) ->
-    case find_genesis_node(State) of
-        not_found -> undefined;
-        {ok, Node} -> hash(Node)
-    end.
-
 %%%-------------------------------------------------------------------
 %%% Internal ADT for differing between blocks and headers
 %%%-------------------------------------------------------------------
 
 -record(node, { type    :: 'block' | 'header'
-              , content :: any() %% aec_block | aec_header
+              , content :: any() %% aec_blocks | aec_headers
               , difficulty :: float()
               , hash    :: binary()
               }).
@@ -267,27 +280,20 @@ node_target(#node{type = header, content = X}) -> aec_headers:target(X);
 node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
 
 find_genesis_node(State) ->
-    case [X || X <- blocks_db_find_at_height(0, State),
-               node_is_genesis(X)] of
-        [] -> not_found;
-        [Genesis] -> {ok, Genesis}
+    case get_block(get_genesis_hash(State), State) of
+        error -> not_found;
+        {ok, Genesis} -> {ok, wrap_block(Genesis)}
     end.
 
-node_is_genesis(Node) ->
-    node_is_genesis_block(Node)
-        orelse node_is_genesis_header(Node).
+%% this is when we insert the genesis block the first time
+node_is_genesis(Node, ?match_state(genesis_block_hash := undefined)) ->
+   node_height(Node) =:= 0; 
+node_is_genesis(Node, State) ->
+    hash(Node) =:= get_genesis_hash(State).
 
-node_is_genesis_header(Node) ->
-    %% TODO: This is very blunt
-    (node_height(Node) =:= 0)
-        andalso (Node#node.type =:= header)
-        andalso (aec_block_genesis:genesis_header() =:= export_header(Node)).
-
-node_is_genesis_block(Node) ->
-    %% TODO: This is very blunt
-    (node_height(Node) =:= 0)
-        andalso (Node#node.type =:= block)
-        andalso (aec_block_genesis:genesis_header() =:= export_header(Node)).
+node_is_genesis_block(Node, State) ->
+    (node_is_genesis(Node, State))
+        andalso (Node#node.type =:= block).
 
 wrap_block_or_header(#header{} = H) -> wrap_header(H);
 wrap_block_or_header(#block{}  = B) -> wrap_block(B).
@@ -329,7 +335,7 @@ total_difficulty_at_hash(Hash, Acc, State) ->
         {ok, Node} ->
             NewAcc = Acc + node_difficulty(Node),
             PrevHash = prev_hash(Node),
-            case node_is_genesis(Node) of
+            case node_is_genesis(Node, State) of
                 true -> {ok, NewAcc};
                 false -> total_difficulty_at_hash(PrevHash, NewAcc, State)
             end;
@@ -409,9 +415,11 @@ determine_chain_relation(Node, State) ->
         TopHash when is_binary(TopHash), Height =:= 0 ->
             %% This is a genesis block.
             TopBlockHash = get_top_block_hash(State),
-            case Hash =:= get_genesis_hash(State) of
+            GenesisHash = get_genesis_hash(State),
+            case Hash =:= GenesisHash of
                 true when TopBlockHash =:= undefined -> in_chain;
                 true -> in_chain;
+                false when GenesisHash =:= undefined -> in_chain; 
                 false -> internal_error(rejecting_new_genesis_block)
             end;
         TopHash when is_binary(TopHash) ->
@@ -542,7 +550,7 @@ assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
         true ->
             ok;
         false ->
-            case node_is_genesis(DeltaVerificationNode) of
+            case node_is_genesis(DeltaVerificationNode, State) of
                 true ->
                     assert_target_equal_to_parent(Node, ForkHeight, State);
                 false ->
@@ -569,11 +577,10 @@ genesis_state_tree(Node) ->
     Trees = aec_blocks:trees(Node#node.content),
     %% Assert current assumption.
     [] = aec_blocks:txs(Node#node.content),
-    case aec_trees:is_trees(aec_trees:accounts(Trees)) of
-        false  ->
-            {ok, Empty} = aec_trees:new(),
-            aec_trees:set_accounts(Trees, Empty);
-        true -> Trees
+    case aec_trees:accounts(Trees) of
+        undefined  -> % persistence
+            aec_block_genesis:populated_trees();
+        _ -> Trees
     end.
 
 %% Transitively compute the new state trees in the main chain
@@ -618,17 +625,19 @@ calculate_state_trees(#node{type = header},_Acc,_State) ->
     %% calculate the state of the block.
     error;
 calculate_state_trees(Node, Acc, State) ->
-    IsGenesis = node_is_genesis_block(Node),
     case state_db_find(hash(Node), State) of
         {ok, Trees} when Acc =:= [] -> {stored, Trees};
         {ok, Trees} -> {calculated, apply_node_transactions(Acc, Trees, State)};
-        error when IsGenesis  ->
-            Trees = genesis_state_tree(Node),
-            {calculated, apply_node_transactions([Node|Acc], Trees, State)};
         error ->
-            case blocks_db_find(prev_hash(Node), State) of
-                error -> error;
-                {ok, Prev} -> calculate_state_trees(Prev, [Node|Acc], State)
+            case node_is_genesis_block(Node, State) of
+                true ->
+                    Trees = genesis_state_tree(Node),
+                    {calculated, apply_node_transactions([Node|Acc], Trees, State)};
+                false ->
+                    case blocks_db_find(prev_hash(Node), State) of
+                        error -> error;
+                        {ok, Prev} -> calculate_state_trees(Prev, [Node|Acc], State)
+                    end
             end
     end.
 
@@ -689,7 +698,7 @@ find_top_block_from_top_header(Node, State, Candidate) ->
             true -> Candidate;
             false -> not_found
         end,
-    case node_is_genesis(Node) of
+    case node_is_genesis(Node, State) of
         true -> NewCandidate;
         false ->
             PrevNode = blocks_db_get(prev_hash(Node), State),
@@ -794,9 +803,12 @@ blocks_db_get(Key, #{blocks_db := Store}) ->
     db_get(Key, Store).
 
 blocks_db_init_from_list(List, State) ->
+    [GenesisNode] = [N || N <- List, node_height(N) =:= 0],
+    GenesisHash = hash(GenesisNode),
     Fun = fun(Node, Acc) -> db_put(hash(Node), Node, Acc)end,
     DB = lists:foldl(Fun, db_new(), List),
-    State#{blocks_db => DB}.
+
+    State#{blocks_db => DB, genesis_block_hash => GenesisHash}.
 
 
 state_db_put(Hash, Trees, #{state_db := DB} = State) ->

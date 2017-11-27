@@ -162,7 +162,6 @@ mk_num(B) when is_binary(B) ->
 
 empty_fields_in_genesis() ->
     [ <<"prev_hash">>,
-      <<"state_hash">>,
       <<"pow">>,
       <<"txs_hash">>,
       <<"transactions">>].
@@ -174,8 +173,8 @@ cleanup_genesis(Val) ->
     Val.
 
 add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
-    GB = aec_blocks:serialize_to_map(
-           aec_block_genesis:genesis_block_as_deserialized_from_network()),
+    {ok, GenesisBlock} = aec_chain:genesis_block(),
+    GB = aec_blocks:serialize_to_map(GenesisBlock),
     EmptyFields = maps:with(empty_fields_in_genesis(), GB),
     maps:merge(Block, EmptyFields);
 add_missing_to_genesis_block(Val) ->

@@ -32,7 +32,9 @@
          top/0,
          top_block_hash/0,
          top_header/0,
-         write_block/1 %% TODO: rename
+         write_block/1, %% TODO: rename
+         genesis_header/0,
+         genesis_block/0
 	]).
 
 -include("common.hrl").
@@ -143,6 +145,12 @@ insert_header(Header) ->
 write_block(Block) ->
     gen_server:call(?CHAIN_SERVER, {write_block, Block}, ?DEFAULT_CALL_TIMEOUT).
 
+genesis_header() ->
+    gen_server:call(?CHAIN_SERVER, get_genesis_header, ?DEFAULT_CALL_TIMEOUT).
+
+genesis_block() ->
+    gen_server:call(?CHAIN_SERVER, get_genesis_block, ?DEFAULT_CALL_TIMEOUT).
+
 %% Returns the amount of work done on the chain i.e. the total
 %% difficulty of the top header.
 -spec get_total_difficulty() -> get_total_difficulty_reply().
@@ -157,26 +165,26 @@ common_ancestor(Hash1, Hash2) ->
                     {common_ancestor, Hash1, Hash2}).
 
 get_transactions_between(Hash1, Root) ->
-    try get_transactions_between(Hash1, Root, []) of
+    {ok, GenesisHeader} = genesis_header(),
+    {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
+    try get_transactions_between(Hash1, Root, GenesisHash, []) of
         Transactions ->
             {ok, Transactions}
     catch throw:Error -> Error
     end.
 
-get_transactions_between(Hash, Hash, Transactions) ->
+get_transactions_between(Hash, Hash, _GenesisHash, Transactions) ->
     Transactions;
-get_transactions_between(Hash, Root, Transactions) ->
-    case aec_headers:hash_header(aec_block_genesis:genesis_header()) of
-        %% Current block is genesis
-        Hash -> Transactions;
-        %% Block is not genesis
-        _ ->
-            case get_block_by_hash(Hash) of
-                {ok, #block{prev_hash = Parent,
-                            txs = BlockTransactions}} ->
-                    get_transactions_between(Parent, Root,
-                                             BlockTransactions ++ Transactions);
-                {error,_} -> throw({error, {block_off_chain, Hash}})
-            end
+get_transactions_between(Hash, _Root, GenesisHash, Transactions)
+    when Hash =:= GenesisHash ->
+    %% Current block is genesis
+    Transactions;
+get_transactions_between(Hash, Root, GenesisHash, Transactions) ->
+    case get_block_by_hash(Hash) of
+        {ok, #block{prev_hash = Parent,
+                    txs = BlockTransactions}} ->
+            get_transactions_between(Parent, Root, GenesisHash,
+                                      BlockTransactions ++ Transactions);
+        {error,_} -> throw({error, {block_off_chain, Hash}})
     end.
 
