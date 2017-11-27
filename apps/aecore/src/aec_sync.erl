@@ -347,7 +347,7 @@ headers_fetched(Acc, PeerUri) ->
     aec_events:publish(chain_sync, {client_done, PeerUri}).
 
 do_get_missing_blocks(PeerUri) ->
-    Missing = aec_miner:get_missing_block_hashes(),
+    Missing = aec_conductor:get_missing_block_hashes(),
     lager:debug("Missing block hashes: ~p", [pp(Missing)]),
     fetch_missing_blocks(Missing, PeerUri).
 
@@ -357,7 +357,7 @@ try_write_blocks(Blocks) ->
 sync_post_block({_Hash, Block}) ->
     %% No event publication for now (esp. not block_received!)
     lager:debug("Calling post_block(~p)", [pp(Block)]),
-    aec_miner:post_block(Block, []).
+    aec_conductor:add_synced_block(Block).
 
 fetch_missing_blocks(Hashes, PeerUri) ->
     Blocks =

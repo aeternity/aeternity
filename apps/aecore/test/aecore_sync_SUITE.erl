@@ -245,6 +245,7 @@ mine_and_compare(N1, Config) ->
 
 expect_same(T0, Config) ->
     Nodes = [N || {_, N} <- ?config(nodes, Config)],
+    [subscribe(N, chain_sync) || N <- Nodes],
     AllEvents = lists:flatten(
                   [events_since(N, chain_sync, T0) || N <- Nodes]),
     ct:log("AllEvents = ~p", [AllEvents]),
