@@ -105,8 +105,12 @@ handle_request('PostBlock', Req, _Context) ->
     Header = aec_blocks:to_header(Block),
     {ok, HH} = aec_headers:hash_header(Header),
     lager:debug("'PostBlock'; header hash: ~p", [HH]),
-    ok = aec_miner:post_block(Block),
-    {200, [], #{}};
+    case aec_conductor:post_block(Block) of
+        ok -> {200, [], #{}};
+        {error, Reason} ->
+            lager:error("Post block failed: ~p", [Reason]),
+            {200, [], #{}}
+    end;
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
     lager:debug("Got PostTx; Req = ~p", [Req]),
