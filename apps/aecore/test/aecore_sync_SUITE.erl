@@ -12,6 +12,7 @@
 %% test case exports
 -export(
    [
+    test_subscription/1,
     start_first_node/1,
     start_second_node/1,
     start_third_node/1,
@@ -41,6 +42,7 @@ groups() ->
                               {group, three_nodes}]},
      {two_nodes, [sequence],
       [start_first_node,
+       test_subscription,
        mine_on_first,
        start_second_node,
        tx_first_pays_second,
@@ -52,6 +54,7 @@ groups() ->
        restart_first]},
      {three_nodes, [sequence],
       [start_first_node,
+       test_subscription,
        mine_on_first,
        start_second_node,
        start_third_node,
@@ -69,6 +72,7 @@ init_per_suite(Config) ->
     DataDir = ?config(data_dir, Config),
     TopDir = top_dir(DataDir),
     Config1 = [{top_dir, TopDir}|Config],
+    make_shortcut(Config1),
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
@@ -115,6 +119,26 @@ start_first_node(Config) ->
     start_node_(dev1, Config),
     connect(node_(dev1)),
     ok.
+
+test_subscription(_Config) ->
+    N = node_(dev1),
+    subscribe(N, app_started),
+    Debug0 = call_proxy(N, debug),
+    ct:log("After subscription (~p, app_started): ~p", [self(), Debug0]),
+    true = rpc:call(N, setup, patch_app, [sasl]),
+    {ok, _} = rpc:call(N, setup, reload_app, [sasl]),
+    ok = rpc:call(N, application, start, [sasl]),
+    receive
+        {app_started, #{info := sasl}} ->
+            ct:log("got app_started: sasl", []),
+            ok
+    after 1000 ->
+            Debug = call_proxy(N, debug),
+            Since = events_since(N, app_started, 0),
+            ct:log("Debug = ~p~n"
+                   "Since = ~p", [Debug, Since]),
+            ok
+    end.
 
 mine_on_first(_Config) ->
     N = node_(dev1),
@@ -327,10 +351,15 @@ proxy() ->
     process_flag(trap_exit, true),
     aec_test_event_handler:install(),
     error_logger:info_msg("starting test suite proxy~n", []),
-    proxy_loop([], dict:new()).
+    proxy_loop([{marker, app_started}], dict:new()).
 
 proxy_loop(Subs, Events) ->
     receive
+        {From, Ref, debug} ->
+            From ! {Ref, #{pid => self(),
+                           subs => Subs,
+                           events => Events}},
+            proxy_loop(Subs, Events);
         {From, Ref, {subscribe, Event}} ->
             case lists:keymember(Event, 2, Subs) of
                 true ->
@@ -345,7 +374,9 @@ proxy_loop(Subs, Events) ->
                             case catch aec_events:subscribe(Event) of
                                 ok ->
                                     From ! {Ref, ok},
-                                    proxy_loop([{From, Event}|Subs], Events);
+                                    proxy_loop(
+                                      [{From, Event}|
+                                       ensure_markers([Event], Subs)], Events);
                                 Other ->
                                     From ! {Ref, Other},
                                     proxy_loop(Subs, Events)
@@ -354,10 +385,6 @@ proxy_loop(Subs, Events) ->
             end;
         {From, Ref, {unsubscribe, Event}} ->
             From ! {Ref, ok},
-            Res = (catch aec_events:unsubscribe(Event)),
-            error_logger:info_report([{?MODULE, proxy_unsubscribe},
-                                      {event, Event},
-                                      {result, Res}]),
             proxy_loop([S || S <- Subs,
                              S =/= {From, Event}], Events);
         {From, Ref, {events, E, Since}} ->
@@ -375,12 +402,13 @@ proxy_loop(Subs, Events) ->
         {application_started, T, App} ->
             Info = #{time => T, info => App},
             tell_subscribers(Subs, app_started, {app_started, Info}),
-            case App of
-                gproc ->
-                    set_subscriptions();
-                _ -> ok
-            end,
-            proxy_loop(Subs, dict:append(
+            Subs1 = case App of
+                        gproc ->
+                            Es = set_subscriptions(),
+                            ensure_markers(Es, Subs);
+                        _ -> Subs
+                    end,
+            proxy_loop(Subs1, dict:append(
                                app_started,
                                #{time => T, info => App}, Events));
         Other ->
@@ -390,15 +418,27 @@ proxy_loop(Subs, Events) ->
 
 tell_subscribers(Subs, Event, Msg) ->
     lists:foreach(
-      fun({P, E}) when E =:= Event ->
+      fun({P, E}) when E =:= Event, is_pid(P) ->
               P ! Msg;
          (_) ->
               ok
       end, Subs).
 
 set_subscriptions() ->
-    [aec_events:subscribe(E) || E <- events()],
-    ok.
+    Es = events(),
+    [aec_events:subscribe(E) || E <- Es],
+    Es.
+
+ensure_markers(Es, Subs) ->
+    lists:foldl(
+      fun(E, Acc) ->
+              case lists:member({marker, E}, Acc) of
+                  true ->
+                      Acc;
+                  false ->
+                      [{marker, E}|Acc]
+              end
+      end, Subs, Es).
 
 events() -> [block_created, chain_sync].
 
@@ -459,7 +499,7 @@ stop_nodes(Config) ->
     [stop_node(N, Config) || {N,_} <- ?config(nodes, Config)].
 
 stop_node(N, Config) ->
-    cmd(["(cd ", node_dir(N, Config),
+    cmd(["(cd ", node_shortcut(N, Config),
          " && ./bin/epoch stop)"]).
 
 %% stop_node(N, Config) ->
@@ -468,55 +508,78 @@ stop_node(N, Config) ->
 
 %% Split the DataDir path at "_build"
 top_dir(DataDir) ->
-    [Top, _] = re:split(DataDir, "_build", []),
+    [Top, _] = re:split(DataDir, "_build", [{return, list}]),
     Top.
 
 make_multi(Config) ->
     Top = ?config(top_dir, Config),
+    ct:log("Top = ~p", [Top]),
     Epoch = filename:join(Top, "_build/test/rel/epoch"),
-    file:make_symlink(
-      priv_dir(Config),
-      filename:join(Top, "_build/test/logs/latest.sync")),
     [setup_node(N, Top, Epoch, Config) || N <- [dev1, dev2, dev3]].
 
 setup_node(N, Top, Epoch, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
-    DDir = node_dir(N, Config),
+    DDir = node_shortcut(N, Config),
     filelib:ensure_dir(filename:join(DDir, "foo")),
-    Ops1 = [{Op, filename:join(Epoch, D), filename:join(DDir, D)}
-            || {Op, D}
-                   <- [{cp, "releases"},
-                       {cp, "bin"},
-                       {ln, "lib"}]],
-    CpRes1 = copy_files(Ops1),
-    ct:log("Ops1 = ~p -> ~p", [Ops1, CpRes1]),
+    cp_dir(filename:join(Epoch, "releases"), DDir ++ "/"),
+    cp_dir(filename:join(Epoch, "bin"), DDir ++ "/"),
+    symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
+    %%
     CfgD = filename:join([Top, "config/", N]),
     RelD = filename:dirname(
              hd(filelib:wildcard(
                     filename:join(DDir, "releases/*/epoch.rel")))),
-    Ops2 = [{Op, filename:join(CfgD, F), filename:join(RelD, F)}
-            || {Op, F} <- [{cp, "sys.config"},
-                           {cp, "vm.args"}]],
-    CpRes2 = copy_files(Ops2),
-    ct:log("Ops2 = ~p -> ~p", [Ops2, CpRes2]),
+    cp_file(filename:join(CfgD, "sys.config"),
+            filename:join(RelD, "sys.config")),
+    cp_file(filename:join(CfgD, "vm.args"),
+            filename:join(RelD, "vm.args")),
+    %% cp_and_mod(filename:join(CfgD, "vm.args"),
+    %%            filename:join(RelD, "vm.args"),
+    %%            fun(Data) -> change_sname(Data, N) end),
+    delete_file(filename:join(RelD, "vm.args.orig")),
+    delete_file(filename:join(RelD, "sys.config.orig")),
     TestD = filename:join(filename:dirname(code:which(?MODULE)), "data"),
-    Ops3 = [{cp, filename:join(TestD, "sync_SUITE.config"),
-             filename:join(DDir, "sync_SUITE.config")}],
-    CpRes3 = copy_files(Ops3),
-    ct:log("Ops3 = ~p -> ~p", [Ops3, CpRes3]),
-    modify_vm_args(N, filename:join(RelD, "vm.args")).
+    cp_file(filename:join(TestD, "sync_SUITE.config"),
+            filename:join(DDir , "sync_SUITE.config")).
+    %% modify_vm_args(N, filename:join(RelD, "vm.args")).
     %% modify_sys_config(filename:join(RelD, "sys.config")).
     %% cmd(["(cd ", TopDir, " && make multi-build)"]).
 
-modify_vm_args(dev1, _) ->
-    ok;
-modify_vm_args(N, F) ->
-    {ok, Bin} = file:read_file(F),
-    Bin1 = re:replace(Bin, "epoch_dev1", "epoch_" ++ atom_to_list(N),
-                      [{return, binary}]),
-    ct:log("modify vm.args (~p):~n"
-           "~p ->~n   ~p", [filename:dirname(F), Bin, Bin1]),
-    file:write_file(F, Bin1).
+
+cp_dir(From, To) ->
+    cmd(["cp -r ", From, " ", To]).
+
+cp_file(From, To) ->
+    {ok, _} = file:copy(From, To),
+    ct:log("Copied ~s to ~s", [From, To]),
+    ok.
+
+symlink(From, To) ->
+    ok = file:make_symlink(From, To),
+    ct:log("symlinked ~s to ~s", [From, To]),
+    ok.
+
+%% cp_and_mod(From, To, F) ->
+%%     {ok, B} = file:read_file(From),
+%%     B1 = F(B),
+%%     ok = file:write_file(To, B1),
+%%     ct:log("Wrote to ~s:~n"
+%%            "\"~s\"", [To, B1]),
+%%     ok.
+
+%% change_sname(Data, N) ->
+%%     re:replace(Data, "epoch_dev1", "epoch_" ++ atom_to_list(N),
+%%                [{return, binary}]).
+
+%% modify_vm_args(dev1, _) ->
+%%     ok;
+%% modify_vm_args(N, F) ->
+%%     {ok, Bin} = file:read_file(F),
+%%     Bin1 = re:replace(Bin, "epoch_dev1", "epoch_" ++ atom_to_list(N),
+%%                       [{return, binary}]),
+%%     ct:log("modify vm.args (~p):~n"
+%%            "~p ->~n   ~p", [filename:dirname(F), Bin, Bin1]),
+%%     file:write_file(F, Bin1).
 
 
 %% modify_sys_config(SysCfg) ->
@@ -578,13 +641,13 @@ modify_vm_args(N, F) ->
 %%         end,
 %%     lists:keystore(setup, 1, Terms, Setup).
 
-copy_files(Ops) ->
-    lists:map(
-      fun({ln, From, To}) ->
-              file:make_symlink(From, To);
-         ({cp, From, To}) ->
-              cmd(["cp -r ", From, " ", To])
-      end, Ops).
+%% copy_files(Ops) ->
+%%     lists:map(
+%%       fun({ln, From, To}) ->
+%%               file:make_symlink(From, To);
+%%          ({cp, From, To}) ->
+%%               cmd(["cp -r ", From, " ", To])
+%%       end, Ops).
 
 cmd(C) ->
     Cmd = binary_to_list(iolist_to_binary(C)),
@@ -648,10 +711,10 @@ connect(N, _) ->
 start_node_(N, Config) ->
     %% Flags = "-pa " ++ ?config(priv_dir, Config),
     MyDir = filename:dirname(code:which(?MODULE)),
-    Flags = ["-pa ", MyDir, " -config ${PWD:-.}/sync_SUITE"],
-    cmd(["(cd ", node_dir(N, Config),
+    Flags = ["-pa ", MyDir, " -config ./sync_SUITE"],
+    cmd(["(cd ", node_shortcut(N, Config),
          " && ERL_FLAGS=\"", Flags, "\"",
-         " EPOCH_CONFIG=`pwd`/data/epoch.json"
+         " EPOCH_CONFIG=./data/epoch.json"
          " RUNNER_LOG_DIR=`pwd`/log"
          " CODE_LOADING_MODE=interactive"
          " ./bin/epoch start)"]).
@@ -682,6 +745,7 @@ expect_block_(N, B) ->
 await_aehttp(N) ->
     subscribe(N, app_started),
     Events = events_since(N, app_started, 0),
+    ct:log("`app_started` Events since 0: ~p", [Events]),
     case [true || #{info := aehttp} <- Events] of
         [] ->
             receive
@@ -803,11 +867,35 @@ config(N, Config) ->
 priv_dir(Config) ->
     ?config(priv_dir, Config).
 
-node_dir(N, Config) ->
-    filename:join(priv_dir(Config), N).
+%% node_dir(N, Config) ->
+%%     filename:join(priv_dir(Config), N).
+
+make_shortcut(Config) ->
+    PrivDir  = priv_dir(Config),
+    Shortcut = shortcut_dir(Config),
+    delete_file(Shortcut),
+    ok = file:make_symlink(PrivDir, Shortcut),
+    ct:log("Made symlink ~s to ~s", [PrivDir, Shortcut]),
+    ok.
+
+delete_file(F) ->
+    case file:delete(F) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        Other ->
+            erlang:error(Other, [F])
+    end.
+
+node_shortcut(N, Config) ->
+    filename:join(shortcut_dir(Config), N).
+
+shortcut_dir(Config) ->
+    Top = ?config(top_dir, Config),
+    filename:join(Top, "_build/test/logs/latest.sync").
+
 
 data_dir(N, Config) ->
-    filename:join(node_dir(N, Config), "data").
+    filename:join(node_shortcut(N, Config), "data").
 
 keys_dir(N, Config) ->
     filename:join(data_dir(N, Config), "keys").
