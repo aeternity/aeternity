@@ -18,6 +18,8 @@
         , get_missing_block_hashes/1
         , get_state_trees_for_persistance/1
         , hash_is_connected_to_genesis/2
+        , has_block/2
+        , has_header/2
         , insert_block/2
         , insert_header/2
         , new/0
@@ -135,6 +137,20 @@ get_block(Hash, ?assert_state() = State) ->
                 false -> error
             end;
         error -> error
+    end.
+
+-spec has_block(binary(), state()) -> boolean().
+has_block(Hash, ?assert_state() = State) ->
+    case blocks_db_find(Hash, State) of
+        {ok, Node} -> node_is_block(Node);
+        error      -> false
+    end.
+
+-spec has_header(binary(), state()) -> boolean().
+has_header(Hash, ?assert_state() = State) ->
+    case blocks_db_find(Hash, State) of
+        {ok,_Node} -> true;
+        error      -> false
     end.
 
 -spec get_header(binary(), state()) -> {'ok', #header{}} | 'error'.
