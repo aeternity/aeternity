@@ -7,8 +7,9 @@ default : voting_test
 %.ml : %.re
 	refmt -p ml $< > $@
 
-%.o : %.ml
-	ocamlopt -c $<
 
-voting_test : rte.o voting.o voting_test.o
+voting_test : rte.ml voting.ml voting_test.ml
 	ocamlopt -o $@ $^
+
+clean :
+	rm -f *.cmi *.cmx *.ml *.o voting_test
