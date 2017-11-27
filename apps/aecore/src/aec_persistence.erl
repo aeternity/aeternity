@@ -102,13 +102,15 @@ init_dir(#aecp_state{path = Path
                     , state_db = States} = S) ->
     case application:get_env(aecore, persist, false) of
         true ->
-            ok = file:make_dir(Path),
-            ok = file:make_dir(Blocks),
-            ok = file:make_dir(States),
-            ok = file:write_file(Header,
-                                 term_to_binary(undefined, [compressed])),
-            ok = file:write_file(Block,
-                                 term_to_binary(undefined, [compressed])),
+            {ok, _} = {file:make_dir(Path), Path},
+            {ok, _} = {file:make_dir(Blocks), Blocks},
+            {ok, _} = {file:make_dir(States), States},
+            {ok, _} = {file:write_file(Header,
+                                       term_to_binary(undefined, [compressed])),
+                       Header},
+            {ok, _} = {file:write_file(Block,
+                                       term_to_binary(undefined, [compressed])),
+                       Block},
             {ok, S};
         false ->
             {ok, S}
