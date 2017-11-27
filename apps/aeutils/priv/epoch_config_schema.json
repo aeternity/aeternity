@@ -102,13 +102,7 @@
                     "description" :
                     "Controls the overload protection in the logs. Default=50.",
                     "type" : "integer",
-                    "minimum" : 50 },
-                "console" : {
-                    "description" :
-                    "Sets the log level in the Erlang shell. Default=none.",
-                    "type" : "string",
-                    "enum" : [ "debug", "info", "notice", "warning",
-                               "error", "critical", "alert", "emergency" ]}
+                    "minimum" : 50 }
             }
         }
     }
