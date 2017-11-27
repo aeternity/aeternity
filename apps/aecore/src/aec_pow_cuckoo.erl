@@ -79,15 +79,15 @@ generate(Data, Target, Nonce) when Nonce >= 0,
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
 verify(Data, Nonce, Evd, Target) when is_list(Evd),
-                                      Nonce >= 0,
-                                      Nonce =< ?MAX_NONCE ->
+                                      Nonce >= 0, Nonce =< ?MAX_NONCE ->
     Hash = aec_sha256:hash(Data),
     case test_target(Evd, Target) of
         true ->
-            verify(Hash, Nonce, Evd);
+            verify_proof(Hash, Nonce, Evd);
         false ->
             false
     end.
+
 
 %%%=============================================================================
 %%% Internal functions
@@ -144,48 +144,110 @@ generate_int(Header, Target) ->
             {error, {unknown, {C, E}}}
     end.
 
+-define(POW_OK, ok).
+-define(POW_TOO_BIG, {error, nonce_too_big}).
+-define(POW_TOO_SMALL, {error, nonces_not_ascending}).
+-define(POW_NON_MATCHING, {error, endpoints_do_not_match_up}).
+-define(POW_BRANCH, {error, branch_in_cycle}).
+-define(POW_DEAD_END, {error, cycle_dead_ends}).
+-define(POW_SHORT_CYCLE, {error, cycle_too_short}).
+-define(PROOFSIZE, 42).
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Proof of Work verification (without difficulty check)
-%%
-%%   This function returns {error, term()} in the unlikely case that
-%%   it does not manage to determine an outcome for the verification
-%%   of the PoW (e.g. verifier terminates abnormally).
+%%   Proof of Work verification (difficulty check should be done before calling
+%%   this function)
 %% @end
 %%------------------------------------------------------------------------------
--spec verify(Hash :: binary(), Nonce :: aec_pow:nonce(),
-             Soln :: aec_pow:pow_evidence()) -> boolean().
-verify(Hash, Nonce, Soln) ->
-    BinDir = aecuckoo:bin_dir(),
-    {_, _, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    Header = pack_header_and_nonce(Hash, Nonce),
-    SolnStr = solution_to_hex(Soln),
-    Cmd = lists:concat(export_ld_lib_path() ++ ["./verify", Size, " -h ", Header]),
-    ?info("Executing: ~p~n", [Cmd]),
-    try exec:run(Cmd,
-                 [{stdout, self()},
-                  {stderr, self()},
-                  stdin,
-                  {kill_timeout, 1}, %% Kills exe with SIGTERM, then with SIGKILL if needed
-                  {cd, BinDir},
-                  {env, [{"SHELL", "/bin/sh"}]},
-                  monitor]) of
-        {ok, _ErlPid, OsPid} ->
-            exec:send(OsPid, list_to_binary(SolnStr)),
-            exec:send(OsPid, eof),
-            ParserState = #state{os_pid = OsPid,
-                                        buffer = [],
-                                        parser = fun parse_verification_result/2},
-            case wait_for_result(ParserState) of
-                {ok, Value} when is_boolean(Value) ->
-                    Value;
-                {error, _Reason} = Err ->
-                    Err
-            end
+-spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
+                   Solution :: aec_pow:pow_evidence()) -> boolean().
+verify_proof(Hash, Nonce, Solution) ->
+    {_Exe, _Extra, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
+
+    %% Cuckoo has an 80 byte header, we have to use that as well
+    %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
+    Header0 = pack_header_and_nonce(Hash, Nonce),
+    Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
+    {K0, K1} = aeu_siphash24:create_keypair(Header),
+
+    EdgeMask = (1 bsl (Size - 1)) - 1,
+    try
+        %% Generate Uv pairs representing endpoints by hashing the proof
+        %% XOR points together: for a closed cycle they must match somewhere
+        %% making one of the XORs zero.
+        {Xor0, Xor1, _, Uvs} =
+            lists:foldl(
+              fun(N, _) when N > EdgeMask ->
+                      throw({?POW_TOO_BIG, N});
+                 (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
+                      throw({?POW_TOO_SMALL, N, PrevN});
+                 (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
+                      Uv0 = sipnode(K0, K1, N, 0, EdgeMask),
+                      Uv1 = sipnode(K0, K1, N, 1, EdgeMask),
+                      {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
+               end, {16#0, 16#0, -1, []}, Solution),
+        case Xor0 bor Xor1 of
+            0 ->
+                %% check cycle
+                case check_cycle(Uvs) of
+                    ok -> true;
+                    {error, E} -> throw(E)
+                end;
+            _ ->
+                %% matching endpoints imply zero xors
+                throw(?POW_NON_MATCHING)
+        end
     catch
-        C:E ->
-            {error, {unknown, {C, E}}}
+        throw:{error, Reason} ->
+            epoch_pow_cuckoo:error("Proof verification failed for ~p: ~p", [Solution, Reason]),
+            false
     end.
+
+sipnode(K0, K1, Proof, UOrV, EdgeMask) ->
+    SipHash = aeu_siphash24:hash(K0, K1, 2*Proof + UOrV) band EdgeMask,
+    (SipHash bsl 1) bor UOrV.
+
+check_cycle(Nodes0) ->
+  Nodes = lists:keysort(2, Nodes0),
+  {Evens0, Odds} = lists:unzip(Nodes),
+  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+  UEvens = lists:usort(Evens),
+  UOdds  = lists:usort(Odds),
+  %% Check that all nodes appear exactly twice (i.e. each node has
+  %% exactly two edges).
+  case length(UEvens) == (?PROOFSIZE div 2) andalso
+        length(UOdds) == (?PROOFSIZE div 2) andalso
+        UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
+      false ->
+          {error, ?POW_BRANCH};
+      true  ->
+          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+          check_cycle(X0, X1, Nodes1)
+  end.
+
+%% If we reach the end in the last step everything is fine
+check_cycle(X, X, []) ->
+    ok;
+%% If we reach the end too early the cycle is too short
+check_cycle(X, X, _)  ->
+    {error, ?POW_SHORT_CYCLE};
+check_cycle(XEnd, XNext, Nodes) ->
+    %% Find the outbound edge for XNext and follow that edge
+    %% to an odd node and back again to NewXNext
+    case find_node(XNext, Nodes, []) of
+        Err = {error, _}            -> Err;
+        {XNext, NewXNext, NewNodes} -> check_cycle(XEnd, NewXNext, NewNodes)
+    end.
+
+find_node(_, [], _Acc) ->
+    {error, ?POW_DEAD_END};
+find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
+    {X, X1, Nodes ++ Acc};
+find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
+    {X, X1, Nodes ++ Acc};
+find_node(X, [{X, _Y} | _], _Acc) ->
+  {error, ?POW_DEAD_END};
+find_node(X, [N1, N2 | Nodes], Acc) ->
+  find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -194,7 +256,7 @@ verify(Hash, Nonce, Soln) ->
 %% @end
 %%------------------------------------------------------------------------------
 -spec pack_header_and_nonce(binary(), aec_pow:nonce()) -> string().
-pack_header_and_nonce(Hash, Nonce) ->
+pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
     %% Cuckoo originally uses 32-bit nonces inserted at the end of its 80-byte buffer.
     %% This buffer is hashed into the keys used by the main algorithm.
     %%
@@ -213,9 +275,10 @@ pack_header_and_nonce(Hash, Nonce) ->
     %%
     %% Like Cuckoo, we use little-endian for the nonce here.
     NonceStr = base64:encode_to_string(<<Nonce:64/little-unsigned-integer>>),
-    HashStr = base64:encode_to_string(Hash),
+    HashStr  = base64:encode_to_string(Hash),
     %% Cuckoo will automatically fill bytes not given with -h option to 0, thus
     %% we need only return the two base64 encoded strings concatenated.
+    %% 44 + 12 = 56 bytes
     HashStr ++ NonceStr.
 
 %%------------------------------------------------------------------------------
@@ -321,27 +384,6 @@ parse_generation_result([Msg | T], State) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Parse verifyer output
-%% @end
-%%------------------------------------------------------------------------------
--spec parse_verification_result(list(string()), #state{}) ->
-                                       {'ok', boolean()} | {'error', term()}.
-parse_verification_result([], State) ->
-    wait_for_result(State);
-parse_verification_result(["Verified with cyclehash" ++ _ | _Rest], #state{os_pid = OsPid}) ->
-    ?debug("PoW verified.~n", []),
-    stop_execution(OsPid),
-    {ok, true};
-parse_verification_result(["FAILED due to" ++ Reason | _Rest], #state{os_pid = OsPid}) ->
-    ?error("PoW verification failed: ~s~n", [Reason]),
-    stop_execution(OsPid),
-    {ok, false};
-parse_verification_result([Msg | T], State) ->
-    ?debug("~s~n", [Msg]),
-    parse_verification_result(T, State).
-
-%%------------------------------------------------------------------------------
-%% @doc
 %%   Ask erlexec to stop the OS process
 %% @end
 %%------------------------------------------------------------------------------
@@ -399,12 +441,3 @@ solution_to_binary([], _Bits, Acc) ->
 solution_to_binary([H | T], Bits, Acc) ->
     solution_to_binary(T, Bits, <<Acc/binary, H:Bits>>).
 
--spec solution_to_hex(list(integer())) -> string().
-solution_to_hex(Sol) ->
-    solution_to_hex(Sol, []).
-
--spec solution_to_hex(list(integer()), list(string())) -> string().
-solution_to_hex([], Acc) ->
-    string:join(lists:reverse(Acc), " ");
-solution_to_hex([H | T], Acc) when is_integer(H) ->
-    solution_to_hex(T, [lists:flatten(io_lib:format("~8.16.0b", [H])) | Acc]).
