@@ -107,8 +107,7 @@ compare_ping_objects(Local, Remote) ->
                           Dr = maps:get(<<"difficulty">>, Remote),
                           if Dl > Dr ->
                                   lager:debug("Our difficulty is higher", []),
-                                  aec_events:publish(
-                                    chain_sync, {server_waiting, Src}),
+                                  server_get_missing_blocks(Src),
                                   ok;
                              true ->
                                   start_sync(Src)
@@ -123,6 +122,9 @@ compare_ping_objects(Local, Remote) ->
 
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
+
+server_get_missing_blocks(PeerUri) ->
+    gen_server:cast(?MODULE, {server_get_missing, PeerUri}).
 
 fetch_mempool(PeerUri) ->
     gen_server:cast(?MODULE, {fetch_mempool, PeerUri}).
@@ -161,6 +163,9 @@ handle_cast({connect, Uri}, State) ->
     {noreply, State};
 handle_cast({start_sync, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {start_sync, PeerUri}),
+    {noreply, State};
+handle_cast({server_get_missing, PeerUri}, State) ->
+    jobs:enqueue(sync_jobs, {server_get_missing, PeerUri}),
     {noreply, State};
 handle_cast({fetch_mempool, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {fetch_mempool, PeerUri}),
@@ -209,6 +214,8 @@ process_job([{T, Job}]) ->
             do_forward_tx(Tx, Peer);
         {start_sync, PeerUri} ->
             do_start_sync(PeerUri);
+        {server_get_missing, PeerUri} ->
+            do_server_get_missing(PeerUri);
         {fetch_mempool, PeerUri} ->
             do_fetch_mempool(PeerUri);
         _Other ->
@@ -237,6 +244,11 @@ do_forward_tx(Tx, Peer) ->
 do_start_sync(PeerUri) ->
     aec_events:publish(chain_sync, {client_start, PeerUri}),
     fetch_headers(PeerUri, genesis_hash()).
+
+do_server_get_missing(PeerUri) ->
+    aec_events:publish(chain_sync, {server_start, PeerUri}),
+    do_get_missing_blocks(PeerUri),
+    aec_events:publish(chain_sync, {server_done, PeerUri}).
 
 genesis_hash() ->
     {ok, GHdr} = aec_chain:genesis_header(),
@@ -331,10 +343,13 @@ fetch_hdrs_block_recvd(HdrHash, Block, PeerUri, GHash, Acc) ->
 
 headers_fetched(Acc, PeerUri) ->
     try_write_blocks(Acc),
+    do_get_missing_blocks(PeerUri),
+    aec_events:publish(chain_sync, {client_done, PeerUri}).
+
+do_get_missing_blocks(PeerUri) ->
     Missing = aec_miner:get_missing_block_hashes(),
     lager:debug("Missing block hashes: ~p", [pp(Missing)]),
-    fetch_missing_blocks(Missing, PeerUri),
-    aec_events:publish(chain_sync, {client_done, PeerUri}).
+    fetch_missing_blocks(Missing, PeerUri).
 
 try_write_blocks(Blocks) ->
     lists:foreach(fun sync_post_block/1, Blocks).

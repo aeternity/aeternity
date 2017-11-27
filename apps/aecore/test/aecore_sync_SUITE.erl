@@ -272,7 +272,7 @@ collect_sync_events(Nodes) ->
 
 check_sync_event(#{sender := From, info := Info}, Nodes) ->
     case Info of
-        {E, _} when E =:= server_waiting; E =:= client_done ->
+        {E, _} when E =:= server_done; E =:= client_done ->
             lists:delete(node(From), Nodes);
         _ ->
             Nodes
