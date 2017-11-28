@@ -219,6 +219,12 @@
               "$ref" : "#/definitions/Balance"
             }
           },
+          "400" : {
+            "description" : "Invalid address",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
           "404" : {
             "description" : "Account not found",
             "schema" : {

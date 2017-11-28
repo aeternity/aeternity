@@ -202,6 +202,8 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
 
 validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
     validate_response_body('Balance', 'Balance', Body, ValidatorState);
+validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
