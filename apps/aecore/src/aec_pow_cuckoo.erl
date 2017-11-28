@@ -21,7 +21,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(DEFAULT_CUCKOO_ENV, {"lean30", "-t 5", 30}).
+-define(DEFAULT_CUCKOO_ENV, {"lean28", "-t 5", 28}).
 
 -ifdef(TEST).
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
