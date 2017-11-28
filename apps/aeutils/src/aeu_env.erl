@@ -122,16 +122,6 @@ lists_map_key_find(_, []) ->
 
 
 read_config() ->
-    try read_config_()
-    catch
-        error:E ->
-            error_logger:error_report(
-              [{?MODULE, read_config},
-               {error, E},
-               {stacktrace, erlang:get_stacktrace()}])
-    end.
-
-read_config_() ->
     case config_file() of
         undefined ->
             error_logger:info_msg(
@@ -253,9 +243,9 @@ normalize_yaml(E, _) ->
 try_decode(F, DecF, Fmt) ->
     try DecF(F)
     catch
-        error:_E ->
+        error:E ->
             error_logger:error_msg("Error reading ~s file: ~s~n", [Fmt, F]),
-            []
+            erlang:error(E)
     end.
 
 %% to_str(S) ->
@@ -271,7 +261,7 @@ vinfo(Res, F) ->
     error_logger:info_report([{validation, F},
                               {result, Res}]).
 
-check_validation(Res, JSON, F) ->
+check_validation(Res, _JSON, F) ->
     vinfo(Res, F),
     case lists:foldr(
            fun({ok, M}, {Ok,Err}) when is_map(M) ->
@@ -282,9 +272,6 @@ check_validation(Res, JSON, F) ->
         {Ok, []} ->
             Ok;
         {_, Errors} ->
-            error_logger:error_report([{?MODULE, validation_failed},
-                                       {input, JSON},
-                                       {errors, Errors}]),
             erlang:error({validation_failed, Errors})
     end.
 

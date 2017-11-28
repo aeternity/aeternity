@@ -1,6 +1,7 @@
 {
     "$schema" : "http://json-schema.org/draft-04/schema#",
     "type" : "object",
+    "additionalProperties" : false,
     "properties" : {
         "peers" : {
             "description" :
@@ -13,9 +14,11 @@
         },
         "http" : {
             "type" : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "external" : {
                     "type" : "object",
+                    "additionalProperties" : false,
                     "properties" : {
                         "peer_address" : {
                             "description" :
@@ -32,6 +35,7 @@
                 },
                 "internal" : {
                     "type" : "object",
+                    "additionalProperties" : false,
                     "properties" : {
                         "port" : {
                             "description" :
@@ -44,6 +48,7 @@
         },
         "websocket" : {
             "type" : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "port" : {
                     "description" :
@@ -58,6 +63,7 @@
         },
         "keys" : {
             "type" : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "dir"      : {
                     "description" :
@@ -73,6 +79,7 @@
         },
         "chain" : {
             "type" : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "persist" : {
                     "description" :
@@ -87,6 +94,7 @@
         },
         "mining" : {
             "type" : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "autostart" : {
                     "description" :
@@ -97,6 +105,7 @@
         },
         "logging" : {
             "type"    : "object",
+            "additionalProperties" : false,
             "properties" : {
                 "hwm"     : {
                     "description" :
