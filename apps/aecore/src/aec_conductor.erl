@@ -615,7 +615,7 @@ post_block_worker(From, Block) ->
                     case aec_chain:insert_header(Header) of
                         ok ->
                             Res = aec_chain:write_block(Block),
-                            epoch_mining:debug("write_block result: ~p", [Res]),
+                            epoch_mining:info("write_block result: ~p", [Res]),
                             {block_added, Block, From};
 			{error, Reason} ->
                             lager:debug("Couldn't insert header (~p)", [Reason]),
