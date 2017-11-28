@@ -42,6 +42,22 @@ deploy:
       tags: true
       all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
       condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" dev1
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      branch: env/dev1
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" dev2
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      branch: env/dev2
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
 matrix:
   include:
     - os: osx
