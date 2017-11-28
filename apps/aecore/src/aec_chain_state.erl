@@ -111,25 +111,17 @@ top_block(?match_state(top_block_hash := X) = State) ->
 
 -spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_block(Block, ?assert_state() = State0) ->
-    try 
-        ?match_state(genesis_block_hash := GH) = State1
-            = internal_insert(wrap_block(Block), State0),
-        State =
-            case Block#block.height of
-                0 when GH =:= undefined ->
-                    {ok, GenesisHash} =
-                        aec_blocks:hash_internal_representation(Block),
-                    State1#{genesis_block_hash => GenesisHash};
-                _ ->
-                    State1
-            end,
-        {ok, State}
+    Node = wrap_block(Block),
+    try internal_insert(Node, State0) of
+        State1 -> {ok, maybe_add_genesis_hash(State1, Node)}
     catch throw:?internal_error(What) -> {error, What}
     end.
 
 -spec insert_header(#header{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_header(Header, ?assert_state() = State) ->
-    try {ok, internal_insert(wrap_header(Header), State)}
+    Node = wrap_header(Header),
+    try internal_insert(Node, State) of
+        State1 -> {ok, maybe_add_genesis_hash(State1, Node)}
     catch throw:?internal_error(What) -> {error, What}
     end.
 
@@ -290,6 +282,14 @@ node_root_hash(#node{type = block , content = X}) -> aec_blocks:root_hash(X).
 node_target(#node{type = header, content = X}) -> aec_headers:target(X);
 node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
 
+maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
+    case node_height(Node) =:= 0 of
+        true  -> State#{genesis_block_hash => hash(Node)};
+        false -> State
+    end;
+maybe_add_genesis_hash(State,_Node) ->
+    State.
+
 find_genesis_node(State) ->
     case get_block(get_genesis_hash(State), State) of
         error -> not_found;
@@ -341,8 +341,10 @@ export_block(#node{type = block, hash = H, content = B}, State) ->
 get_missing_block_hashes(undefined, _, _State) ->
     [];
 get_missing_block_hashes(TopHash, undefined, State) ->
-    {ok, GenesisNode} = find_genesis_node(State),
-    get_missing_block_hashes(TopHash, hash(GenesisNode), State);
+    case get_genesis_hash(State) of
+        undefined -> [];
+        Hash      -> get_missing_block_hashes(TopHash, Hash, State)
+    end;
 get_missing_block_hashes(FromHash, ToHash, State) ->
     Hashes = get_hashes_between(FromHash, ToHash, State),
     lists:filter(fun(H) -> not node_is_block(blocks_db_get(H, State))end,
