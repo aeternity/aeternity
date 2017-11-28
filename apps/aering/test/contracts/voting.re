@@ -6,11 +6,13 @@ module type Voting = {
   type state;
   type args = list(string);
   let stateRep : state_rep(state);
+
   let init            : args => state;
   let giveRightToVote : address => unit;
   let delegate        : address => unit;
   let vote            : int => unit;
   let winnerName      : unit => string;
+  let currentTally    : unit => list((string, int));
 };
 
 /* Contract implementation */
@@ -116,5 +118,9 @@ module Voting : Voting = {
 
   /* const */
   let winnerName() = winningProposal().name;
+
+  /* const */
+  let currentTally() =
+    List.map((p) => (p.name, p.voteCount), state().proposals);
 
 }

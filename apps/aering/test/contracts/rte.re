@@ -16,7 +16,7 @@ let abort() = raise(Abort);
 
 let call(who, fn) = {
   env._caller = who;
-  let res = fn();
+  let res = try(fn()) { | e => env._caller = ""; raise(e) };
   env._caller = "";
   res
 };
@@ -55,5 +55,6 @@ module type Contract = {
 module Setup = (C : Contract) => {
   let init(creator, args) =
     setState(C.stateRep, call(creator, () => C.init(args)));
+  let reset() = C.stateRep.state = None;
 };
 
