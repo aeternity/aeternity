@@ -263,7 +263,7 @@ collect_sync_events([]) ->
     done;
 collect_sync_events(Nodes) ->
     receive
-        {gproc_ps, event, chain_sync, Msg} ->
+        {gproc_ps_event, chain_sync, Msg} ->
             collect_sync_events(check_sync_event(Msg, Nodes))
     after 20000 ->
             ct:log("Timeout in collect_sync_events: ~p~n"
@@ -397,8 +397,9 @@ proxy_loop(Subs, Events) ->
                   end,
             From ! {Ref, Res},
             proxy_loop(Subs, Events);
-        {gproc_ps_event, Event, Info} = Msg ->
-            tell_subscribers(Subs, Event, Msg),
+        {gproc_ps_event, Event, Info0} ->
+            Info = Info0#{test_node => node()}, % for easier debugging
+            tell_subscribers(Subs, Event, {gproc_ps_event, Event, Info}),
             proxy_loop(Subs, dict:append(Event, Info, Events));
         {application_started, T, App} ->
             Info = #{time => T, info => App},

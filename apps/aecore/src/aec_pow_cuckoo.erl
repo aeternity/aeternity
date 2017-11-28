@@ -118,9 +118,6 @@ generate_int(Hash, Nonce, Target) ->
 generate_single(Hash, Nonce, Target) ->
     BinDir = aecuckoo:bin_dir(),
     {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    %% -s makes mean miner print out the solution. We do not make it
-    %% Algo-dependent in order to avoid wiring-in executable names. Lean miner
-    %% will complain but ignores it.
     ?info("Executing cmd: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Hash, " -n ", Nonce, " ", Extra])]),
     try exec:run(
           lists:concat(export_ld_lib_path() ++

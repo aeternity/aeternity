@@ -100,8 +100,11 @@ compare_ping_objects(Local, Remote) ->
                         maps:get(<<"best_hash">>, Remote)} of
                       {T, T} ->
                           lager:debug("same top blocks", []),
-                          %% we're in sync!
-                          ok;
+                          %% headers in sync; check missing blocks
+                          %% Note that in this case, both will publish
+                          %% events as if they're the server (basically
+                          %% meaning that they were tied for server position).
+                          server_get_missing_blocks(Src);
                       _ ->
                           Dl = maps:get(<<"difficulty">>, Local),
                           Dr = maps:get(<<"difficulty">>, Remote),
@@ -314,7 +317,7 @@ do_fetch_block(Hash, PeerUri) ->
 
 fetch_next_hdr(GHash, PeerUri, GHash, Acc) ->
     %% No need to fetch the genesis block
-    headers_fetched(Acc, PeerUri);
+    headers_fetched(PeerUri, Acc);
 fetch_next_hdr(Hash, PeerUri, GHash, Acc) ->
     case do_fetch_block(Hash, PeerUri) of
         {ok, Block} ->
@@ -341,7 +344,7 @@ fetch_hdrs_block_recvd(HdrHash, Block, PeerUri, GHash, Acc) ->
               [{HdrHash, Block}|Acc])
     end.
 
-headers_fetched(Acc, PeerUri) ->
+headers_fetched(PeerUri, Acc) ->
     try_write_blocks(Acc),
     do_get_missing_blocks(PeerUri),
     aec_events:publish(chain_sync, {client_done, PeerUri}).
