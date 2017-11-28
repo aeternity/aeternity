@@ -8,7 +8,7 @@
 
 -module(aer_test_utils).
 
--export([read_contract/1]).
+-export([read_contract/1, contract_path/0]).
 
 %% TODO: does eunit have some path machinery?
 contract_path() ->
