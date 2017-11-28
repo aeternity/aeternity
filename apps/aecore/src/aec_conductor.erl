@@ -275,6 +275,7 @@ dispatch_worker(Tag, Fun, State) ->
         true ->
             Wrapper = wrap_worker_fun(Fun),
             {Pid, Ref} = spawn_monitor(Wrapper),
+            epoch_mining:debug("Dispatched worker ~p (~p)", [Pid, Ref]),
             State1 = maybe_block_tag(Tag, State),
             Workers = orddict:store(Pid, {Tag, Ref}, State1#state.workers),
             State1#state{workers = Workers};
@@ -314,20 +315,20 @@ handle_worker_reply(Pid, Reply, State) ->
             State1 = State#state{workers = orddict:erase(Pid, Workers),
                                  blocked_tags = ordsets:del_element(Tag, Blocked)
                                 },
-            worker_reply(Tag, Reply, State1);
+            worker_reply(Pid, Tag, Reply, State1);
         error ->
             epoch_mining:error("Got unsolicited worker reply: ~p",
                                [{Pid, Reply}]),
             State
     end.
 
-worker_reply(create_block_candidate, Res, State) ->
+worker_reply(_Pid, create_block_candidate, Res, State) ->
     handle_block_candidate_reply(Res, State);
-worker_reply(post_block, Res, State) ->
+worker_reply(_Pid, post_block, Res, State) ->
     handle_post_block_reply(Res, State);
-worker_reply(mining, Res, State) ->
-    handle_mining_reply(Res, State);
-worker_reply(wait_for_keys, Res, State) ->
+worker_reply(Pid, mining, Res, State) ->
+    handle_mining_reply(Pid, Res, State);
+worker_reply(_Pid, wait_for_keys, Res, State) ->
     handle_wait_for_keys_reply(Res, State).
 
 maybe_restart_worker(Tag, State) ->
@@ -457,29 +458,29 @@ start_mining(#state{} = State) ->
           end,
     dispatch_worker(mining, Fun, State).
 
-handle_mining_reply({{ok, Block},_Candidate}, State) ->
+handle_mining_reply(Pid, {{ok, Block}, _Candidate}, State) ->
     %% TODO: This should listen on some event instead
     ws_handler:broadcast(miner, mined_block,
                          [{height, aec_blocks:height(Block)}]),
-    epoch_mining:info("Miner ~p finished with ~p ~n", [self(), {ok, Block}]),
+    epoch_mining:info("Miner ~p finished with ~p ~n", [Pid, {ok, Block}]),
     State1 = save_mined_block(Block, State),
     State2 = State1#state{block_candidate = undefined},
     case preempt_if_new_top(State2) of
         no_change         -> start_mining(State2);
         {changed, State3} -> start_mining(State3)
     end;
-handle_mining_reply({{error, no_solution}, Candidate}, State) ->
+handle_mining_reply(Pid, {{error, no_solution}, Candidate}, State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
     catch error:_ -> ok end,
-    epoch_mining:debug("Failed to mine block, no solution (nonce ~p); "
-                       "retrying.", [Candidate#candidate.nonce]),
+    epoch_mining:debug("Miner ~p failed to mine block, no solution (nonce ~p); "
+                       "retrying.", [Pid, Candidate#candidate.nonce]),
     retry_mining(Candidate, State);
-handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
+handle_mining_reply(Pid, {{error, {runtime, Reason}}, Candidate},State) ->
     try exometer:update([ae,epoch,aecore,mining,retries], 1)
     catch error:_ -> ok end,
-    epoch_mining:error("Failed to mine block, runtime error; "
+    epoch_mining:error("Miner ~p failed to mine block, runtime error; "
                        "retrying with different nonce (was ~p). "
-                       "Error: ~p", [Candidate#candidate.nonce, Reason]),
+                       "Error: ~p", [Pid, Candidate#candidate.nonce, Reason]),
     retry_mining(Candidate, State).
 
 %% NOTE: State is passed through in preparation for a functional chain State.
@@ -615,7 +616,7 @@ post_block_worker(From, Block) ->
                     case aec_chain:insert_header(Header) of
                         ok ->
                             Res = aec_chain:write_block(Block),
-                            epoch_mining:debug("write_block result: ~p", [Res]),
+                            epoch_mining:info("write_block result: ~p", [Res]),
                             {block_added, Block, From};
 			{error, Reason} ->
                             lager:debug("Couldn't insert header (~p)", [Reason]),
