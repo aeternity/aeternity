@@ -130,15 +130,22 @@ generate_int(Header, Target) ->
     try exec:run(Cmd,
                  [{stdout, self()},
                   {stderr, self()},
-                  {kill_timeout, 1},
+                  {kill_timeout, 0},
                   {cd, BinDir},
                   {env, [{"SHELL", "/bin/sh"}]},
                   monitor]) of
         {ok, _ErlPid, OsPid} ->
-            wait_for_result(#state{os_pid = OsPid,
-                                   buffer = [],
-                                   parser = fun parse_generation_result/2,
-                                   target = Target})
+            Old = process_flag(trap_exit, true),
+            Res = wait_for_result(#state{os_pid = OsPid,
+                                         buffer = [],
+                                         parser = fun parse_generation_result/2,
+                                         target = Target}),
+            process_flag(trap_exit, Old),
+            receive
+                {'EXIT',_From, shutdown} -> exit(shutdown)
+            after 0 -> ok
+            end,
+            Res
     catch
         C:E ->
             {error, {unknown, {C, E}}}
@@ -312,6 +319,10 @@ wait_for_result(#state{os_pid = OsPid,
         {stderr, OsPid, Msg} ->
             ?error("ERROR: ~s~n", [Msg]),
             wait_for_result(State);
+        {'EXIT',_From, shutdown} ->
+            %% Someone is telling us to stop
+            stop_execution(OsPid),
+            exit(shutdown);
         {'DOWN', OsPid, process, _, normal} ->
             %% Process ended but no value found
             {error, no_value};
