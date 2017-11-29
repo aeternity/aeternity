@@ -87,9 +87,9 @@ start_websocket_internal() ->
 
 local_peer(Port) ->
     Addr = get_local_peer_address(),
-    case aeu_requests:parse_uri(Addr) of
-        {_Scheme, _Host, Port} ->    % same port as above
-            Addr;
+    case aeu_requests:parse_uri(Addr, Port) of
+        {Scheme, Host, Port} ->    % same port as above
+            aec_peers:uri_from_scheme_ip_port(Scheme, Host, Port);
         {_Scheme, _Host, _OtherPort} ->
             erlang:error({port_mismatch,
                           [{swagger_port_external, Port},

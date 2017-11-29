@@ -10,7 +10,8 @@
          new_spend_tx/2
         ]).
 
--export([parse_uri/1]).
+-export([parse_uri/1,
+         parse_uri/2]).
 -import(aeu_debug, [pp/1]).
 
 -type response(Type) :: {ok, Type} | {error, string()}.
@@ -130,7 +131,16 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
 
 -spec parse_uri(http_uri:uri()) -> {string(), string(), integer()} | error.
 parse_uri(Uri) ->
-    case http_uri:parse(Uri) of
+  internal_parse_uri(Uri, http_uri:scheme_defaults()).
+
+parse_uri(Uri, DefaultPort) ->
+  internal_parse_uri(Uri, [{http, DefaultPort},
+                           {https, DefaultPort}]).
+
+%% Internal functions
+
+internal_parse_uri(Uri, SchemeDefaults) ->
+    case http_uri:parse(Uri, [{scheme_defaults, SchemeDefaults}]) of
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
             {Scheme, Host, Port};
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
@@ -140,8 +150,6 @@ parse_uri(Uri) ->
             error
     end.
 
-
-%% Internal functions
 
 -spec process_request(aec_peers:peer(), get, string()) ->
 			     response(B) when
