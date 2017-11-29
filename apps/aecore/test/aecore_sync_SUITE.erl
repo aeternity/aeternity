@@ -461,13 +461,24 @@ subscribe(N, Event) ->
 unsubscribe(N, Event) ->
     call_proxy(N, {unsubscribe, Event}).
 
+-define(PROXY_CALL_RETRIES, 5).
+
 call_proxy(N, Req) ->
-    call_proxy(N, Req, 3000).
+    call_proxy(N, Req, ?PROXY_CALL_RETRIES, 3000).
 
 call_proxy(N, Req, Timeout) ->
+    call_proxy(N, Req, ?PROXY_CALL_RETRIES, Timeout).
+
+call_proxy(N, Req, Tries, Timeout) when Tries > 0 ->
     Ref = erlang:monitor(process, {?PROXY, N}),
     {?PROXY, N} ! {self(), Ref, Req},
     receive
+        {'DOWN', Ref, _, _, noproc} ->
+            ct:log("proxy not yet there, retrying in 1 sec...", []),
+            receive
+            after 1000 ->
+                    call_proxy(N, Req, Tries-1, Timeout)
+            end;
         {'DOWN', Ref, _, _, Reason} ->
             error({proxy_died, N, Reason});
         {Ref, Result} ->
@@ -475,7 +486,10 @@ call_proxy(N, Req, Timeout) ->
             Result
     after Timeout ->
             error(proxy_call_timeout)
-    end.
+    end;
+call_proxy(N, _, _, _) ->
+    erlang:error({proxy_not_running, N}).
+
 
 
 %% ==================================================
