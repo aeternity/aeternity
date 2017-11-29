@@ -118,7 +118,7 @@ mock_block_target_validation() ->
     meck:new(aec_governance, [passthrough]),
     meck:new(aec_target, [passthrough]),
     meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 1),
-    meck:expect(aec_target, verify, 2, ok).
+    meck:expect(aec_target, verify, 3, ok).
 
 unmock_block_target_validation() ->
     meck:unload(aec_governance),

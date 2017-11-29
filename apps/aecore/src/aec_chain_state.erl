@@ -595,11 +595,13 @@ assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
     end.
 
 do_assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
+    PrevNode = blocks_db_get(prev_hash(Node), State),
+
     Header = export_header(Node),
+    PrevHeader = export_header(PrevNode),
     DeltaHeader = export_header(DeltaVerificationNode),
-    case aec_target:verify(Header, DeltaHeader) of
+    case aec_target:verify(Header, PrevHeader, DeltaHeader) of
         ok ->
-            PrevNode = blocks_db_get(prev_hash(Node), State),
             PrevDeltaNode = blocks_db_get(prev_hash(DeltaVerificationNode), State),
             assert_calculated_target(PrevNode, PrevDeltaNode, ForkHeight, State);
         {error, target_too_high} ->
