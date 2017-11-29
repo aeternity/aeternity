@@ -15,8 +15,6 @@
          deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
-         serialize_to_binary/1,
-         deserialize_from_binary/1,
          hash_header/1,
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
@@ -154,11 +152,6 @@ deserialize_from_map(H = #{}) ->
                  pow_evidence = deserialize_pow_evidence(PowEvidence),
                  txs_hash = base64:decode(TxsHash)}}.
 
--spec serialize_to_binary(header()) -> {ok, header_binary()}.
-serialize_to_binary(H) ->
-    {ok, Map} = serialize_to_map(H),
-    {ok, jsx:encode(Map)}.
-
 -spec serialize_for_hash(header()) -> deterministic_header_binary().
 serialize_for_hash(H) ->
     PowEvidence = serialize_pow_evidence_for_hash(H#header.pow_evidence),
@@ -173,10 +166,6 @@ serialize_for_hash(H) ->
       (H#header.nonce):64,
       (H#header.time):64
     >>.
-
--spec deserialize_from_binary(header_binary()) -> {ok, header()}.
-deserialize_from_binary(B) ->
-    deserialize_from_map(jsx:decode(B, [return_maps])).
 
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
