@@ -3,7 +3,7 @@
 %% API
 -export([recalculate/2,
          determine_delta_header_height/1,
-         verify/2]).
+         verify/3]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -35,10 +35,16 @@ recalculate(Header, InitialHeader) ->
     CurrentRate = mining_rate_between(InitialHeader, Header),
     aec_pow:recalculate_target(HeaderTarget, ExpectedRate, CurrentRate).
 
--spec verify(header(), header()) -> ok | {error, target_too_high}.
-verify(Header, InitialHeader) ->
+-spec verify(header(), header(), header()) -> ok | {error, target_too_high}.
+verify(Header, PrevHeader, InitialHeader) ->
     HeaderTarget = aec_headers:target(Header),
-    ExpectedTarget = recalculate(Header, InitialHeader),
+    PrevTarget   = aec_headers:target(PrevHeader),
+
+    %% Block candidate target was computed using the target of the previous block
+    %% we have to do the same thing here.
+    ExpectedTarget = recalculate(aec_headers:set_target(Header, PrevTarget),
+                                 InitialHeader),
+
     %% Currently we don't verify if target was too low (difficulty was too high),
     %% so that someone might have tried to send a block
     %% with too high difficulty (too low target).

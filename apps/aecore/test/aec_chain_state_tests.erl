@@ -482,13 +482,9 @@ target_verified_based_on_calculations() ->
               [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, 2, 1], 222),
     [BH0, BH1, BH2, BH3, BH4, BH5] = [aec_blocks:to_header(B) || B <- Chain],
 
-    %% Pretend that:
-    %% - target=8 should be below 4 (fails validation)
-    %% - target=1 should be below 5 (ok for validation)
     meck:expect(aec_pow, recalculate_target,
-                fun(8, _, _) -> 4;
-                   (1, _, _) -> 5;
-                   (_, _, _) -> 1000
+                fun(?GENESIS_TARGET, _, _) -> 5; %% Expect target of block 4 to be <=5
+                   (2, _, _) -> 4
                 end),
 
     {ok, S0} = insert_header(BH0, new_state()),
@@ -503,10 +499,6 @@ target_verified_based_on_calculations() ->
 
     %% Insert header with height=4 with expected target
     {ok, S4} = insert_header(BH4, S3),
-
-    %% Insertion of header with target lower than recalculated target succeeds (1 < 5)
-    ?assertEqual(1, aec_headers:target(BH5)),
-    ?assertEqual(5, aec_target:recalculate(BH5, BH2)),
     {ok, S5} = insert_header(BH5, S4),
 
     ?assertEqual(block_hash(lists:last(Chain)), top_header_hash(S5)),
@@ -514,15 +506,15 @@ target_verified_based_on_calculations() ->
 
 test_postponed_target_verification() ->
     MainBC = gen_block_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET,
-                                        3, 5, 5], 111),
+                                        4, 6, 5], 111),
     AltChain = [_, B1, B2, B3, B4, B5, B6] = gen_block_chain_by_target(
                                                [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET,
-                                                3, 100, 1], 222),
+                                                4, 100, 1], 222),
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
 
     meck:expect(aec_pow, recalculate_target,
-                fun(100, _, _) -> 1; %% For target 100 expect it to be 1, hence validation failure
+                fun(4, _, _) -> 10; %% Expect target of block 5 to be <=10
                    (_, _, _) -> 1000
                 end),
 
