@@ -148,6 +148,8 @@ init([]) ->
     aec_events:subscribe(block_created),
     aec_events:subscribe(tx_created),
     Peers = application:get_env(aecore, peers, []),
+    BlockedPeers = application:get_env(aecore, blocked_peers, []),
+    [aec_peers:block_peer(P) || P <- BlockedPeers],
     aec_peers:add_and_ping_peers(Peers),
     {ok, #state{}}.
 

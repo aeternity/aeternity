@@ -26,6 +26,19 @@ ping(Peer) ->
     PingObj = PingObj0#{<<"peers">> => Peers},
     Response = process_request(Peer, post, Req, PingObj),
     case Response of
+        {ok, #{<<"reason">> := Reason}} ->
+            lager:debug("Got an error return: Reason = ~p", [Reason]),
+            case Reason of
+                <<"Different genesis", _/binary>> ->
+                    aec_peers:block_peer(Uri);
+                <<"Not allowed", _/binary>> ->
+                    aec_peers:block_peer(Uri);
+                _ -> ok
+            end,
+            aec_events:publish(chain_sync,
+                               {sync_aborted, #{uri => Uri,
+                                                reason => Reason}}),
+            {error, Reason};
         {ok, Map} ->
             lager:debug("ping response (~p): ~p", [Uri, pp(Map)]),
             aec_sync:compare_ping_objects(PingObj, Map),

@@ -16,29 +16,7 @@
        ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
 
 handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
-    LocalPingObj = aec_sync:local_ping_object(),
-    case aec_sync:compare_ping_objects(LocalPingObj, PingObj) of
-        {error, different_genesis_blocks} ->
-            {404, [], #{reason => <<"Different genesis blocks">>}};
-        ok ->
-            Source = maps:get(<<"source">>, PingObj),
-            aec_peers:update_last_seen(Source),
-            TheirPeers = maps:get(<<"peers">>, PingObj, []),
-            aec_peers:add_and_ping_peers(TheirPeers),
-            Ok = LocalPingObj#{<<"pong">> => <<"pong">>},
-            Share = maps:get(<<"share">>, PingObj),
-            Res = case mk_num(Share) of
-                      N when is_integer(N), N > 0 ->
-                          Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                          PeerUris = [iolist_to_binary(aec_peers:uri(P))
-                                      || P <- Peers],
-                          lager:debug("PeerUris = ~p~n", [PeerUris]),
-                          Ok#{<<"peers">> => PeerUris};
-                      _ ->
-                          Ok
-                  end,
-            {200, [], Res}
-    end;
+    handle_ping(PingObj);
 
 handle_request('GetTop', _, _Context) ->
     Header = aec_conductor:top_header(),
@@ -188,3 +166,48 @@ add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
     maps:merge(Block, EmptyFields);
 add_missing_to_genesis_block(Val) ->
     Val.
+
+handle_ping(#{<<"source">> := Src} = PingObj) ->
+    IsBlocked = aec_peers:is_blocked(Src),
+    case IsBlocked of
+        false -> handle_ping_(PingObj);
+        true  ->
+            abort_sync(Src, <<"Not allowed">>)
+    end;
+handle_ping(_) ->
+    Reason = <<"Missing source attribute">>,
+    abort_sync(undefined, Reason).
+
+handle_ping_(PingObj) ->
+    LocalPingObj = aec_sync:local_ping_object(),
+    case aec_sync:compare_ping_objects(LocalPingObj, PingObj) of
+        {error, different_genesis_blocks} ->
+            Source = maps:get(<<"source">>, PingObj),
+            aec_peers:block_peer(Source),
+            abort_sync(Source,  <<"Different genesis blocks">>);
+        ok ->
+            Source = maps:get(<<"source">>, PingObj),
+            aec_peers:update_last_seen(Source),
+            TheirPeers = maps:get(<<"peers">>, PingObj, []),
+            aec_peers:add_and_ping_peers(TheirPeers),
+            Ok = LocalPingObj#{<<"pong">> => <<"pong">>},
+            Share = maps:get(<<"share">>, PingObj),
+            Res = case mk_num(Share) of
+                      N when is_integer(N), N > 0 ->
+                          Peers = aec_peers:get_random(N, [Source|TheirPeers]),
+                          PeerUris = [iolist_to_binary(aec_peers:uri(P))
+                                      || P <- Peers],
+                          lager:debug("PeerUris = ~p~n", [PeerUris]),
+                          Ok#{<<"peers">> => PeerUris};
+                      _ ->
+                          Ok
+                  end,
+            {200, [], Res}
+    end.
+
+abort_sync(Uri, Reason) ->
+    aec_events:publish(
+      chain_sync,
+      {sync_aborted, #{uri => Uri,
+                       reason => Reason}}),
+      {404, [], #{reason => Reason}}.

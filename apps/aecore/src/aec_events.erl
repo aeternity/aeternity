@@ -24,6 +24,7 @@
                | start_mining
                | tx_created
                | tx_received
+               | peers
                | chain_sync
                | mempool_sync.
 
