@@ -135,10 +135,17 @@ generate_int(Header, Target) ->
                   {env, [{"SHELL", "/bin/sh"}]},
                   monitor]) of
         {ok, _ErlPid, OsPid} ->
-            wait_for_result(#state{os_pid = OsPid,
-                                   buffer = [],
-                                   parser = fun parse_generation_result/2,
-                                   target = Target})
+            Old = process_flag(trap_exit, true),
+            Res = wait_for_result(#state{os_pid = OsPid,
+                                         buffer = [],
+                                         parser = fun parse_generation_result/2,
+                                         target = Target}),
+            process_flag(trap_exit, Old),
+            receive
+                {'EXIT',_From, shutdown} -> exit(shutdown)
+            after 0 -> ok
+            end,
+            Res
     catch
         C:E ->
             {error, {unknown, {C, E}}}
@@ -241,7 +248,6 @@ export_ld_lib_path() ->
 -spec wait_for_result(#state{}) -> {'ok', term()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
                        buffer = Buffer} = State) ->
-    process_flag(trap_exit, true),
     receive
         {stdout, OsPid, Msg} ->
             Str = binary_to_list(Msg),
