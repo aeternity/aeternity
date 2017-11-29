@@ -47,14 +47,30 @@ new_block_test_() ->
               ?assertEqual(1, NewBlock#block.version)
       end}}.
 
-network_serialization_test() ->
-    Block = #block{trees = #trees{accounts = foo}},
-    {ok, SerializedBlock} = ?TEST_MODULE:serialize_for_network(Block),
-    {ok, DeserializedBlock} =
-        ?TEST_MODULE:deserialize_from_network(SerializedBlock),
-    ?assertEqual(Block#block{trees = #trees{}}, DeserializedBlock),
-    ?assertEqual({ok, SerializedBlock},
-                 ?TEST_MODULE:serialize_for_network(DeserializedBlock)).
+network_serialization_test_() ->
+    [{"Serialize/deserialize block",
+      fun() ->
+             Block = #block{trees = #trees{accounts = foo}},
+             {ok, SerializedBlock} = ?TEST_MODULE:serialize_for_network(Block),
+             {ok, DeserializedBlock} =
+                 ?TEST_MODULE:deserialize_from_network(SerializedBlock),
+             ?assertEqual(Block#block{trees = #trees{}}, DeserializedBlock),
+             ?assertEqual({ok, SerializedBlock},
+                          ?TEST_MODULE:serialize_for_network(DeserializedBlock))
+     end},
+     {"try to deserialize a blocks with out-of-range nonce",
+      fun() ->
+             Block1 = #block{trees = #trees{accounts = foo}, nonce = ?MAX_NONCE + 1},
+             {ok, SerializedBlock1} = ?TEST_MODULE:serialize_for_network(Block1),
+             ?assertEqual({error,bad_nonce},
+                          ?TEST_MODULE:deserialize_from_network(SerializedBlock1)),
+
+              Block2 = #block{trees = #trees{accounts = foo}, nonce = -1},
+             {ok, SerializedBlock2} = ?TEST_MODULE:serialize_for_network(Block2),
+             ?debugFmt("serialized block: ~p~n", [SerializedBlock2]),
+             ?assertEqual({error,bad_nonce},
+                          ?TEST_MODULE:deserialize_from_network(SerializedBlock2))
+     end}].
 
 validate_test_() ->
     [fun() ->

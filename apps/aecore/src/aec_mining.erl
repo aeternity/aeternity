@@ -13,11 +13,11 @@
 
 %% API
 
--spec create_block_candidate() -> {ok, block(), integer()} | {error, term()}.
+-spec create_block_candidate() -> {ok, block(), aec_pow:nonce()} | {error, term()}.
 create_block_candidate() ->
     create_block_candidate(get_txs_to_mine_in_pool()).
 
--spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer()} | {error, term()}.
+-spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), aec_pow:nonce()} | {error, term()}.
 apply_new_txs(#block{txs = Txs} = Block) ->
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
     CurrentTxsBlockCount = length(Txs),
@@ -33,14 +33,14 @@ apply_new_txs(#block{txs = Txs} = Block) ->
             end
     end.
 
--spec mine(block(), integer()) -> {ok, block()} | {error, term()}.
+-spec mine(block(), aec_pow:nonce()) -> {ok, block()} | {error, term()}.
 mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
     BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
     case Mod:generate(BlockBin, Target, Nonce) of
         {ok, {Nonce, Evd}} ->
-            {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
+            {ok, aec_blocks:set_pow(Block, Nonce, Evd)};
         {error, no_solution} = Error ->
             Error;
         {error, {runtime, _}} = Error ->
@@ -55,7 +55,7 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(signed_tx())) -> {ok, block(), integer(), integer()} | {error, term()}.
+-spec create_block_candidate(list(signed_tx())) -> {ok, block(), aec_pow:nonce()} | {error, term()}.
 create_block_candidate(TxsToMineInPool) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->

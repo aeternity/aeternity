@@ -32,7 +32,7 @@ mine_block_test_() ->
                  meck:expect(aec_chain, top, 0,
                              {ok, #block{height = 0,
                                          target = ?HIGHEST_TARGET_SCI}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 18),
+                 meck:expect(aec_pow, pick_nonce, 0, 12),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
@@ -87,9 +87,10 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_chain, get_header_by_height, 1,
                              {ok, #header{height = 20,
                                           time = Now - (10 * OneBlockExpectedMineTime)}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 108),
+                 meck:expect(aec_pow, pick_nonce, 0, 32),
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
+
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
@@ -116,7 +117,7 @@ difficulty_recalculation_test_() ->
                              {ok, #header{height = 190,
                                           target = CurrentTarget,
                                           time = TenBlocksBeforeTime}}),
-                 meck:expect(aec_pow, pick_nonce, 0, 104),
+                 meck:expect(aec_pow, pick_nonce, 0, 22),
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  %% One block should be mined every 5 mins
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),

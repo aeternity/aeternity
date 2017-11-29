@@ -261,7 +261,7 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: int64
+        format: uint64
       time:
         type: integer
         format: int64
@@ -295,7 +295,7 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: int64
+        format: uint64
       time:
         type: integer
         format: int64
