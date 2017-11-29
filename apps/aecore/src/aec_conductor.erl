@@ -386,7 +386,7 @@ kill_worker(Pid, Tag, Ref, State) ->
     Workers = State#state.workers,
     Blocked = State#state.blocked_tags,
     demonitor(Ref, [flush]),
-    exit(Pid, kill),
+    exit(Pid, shutdown),
     State#state{workers = orddict:erase(Pid, Workers),
                 blocked_tags = ordsets:del_element(Tag, Blocked)
                }.

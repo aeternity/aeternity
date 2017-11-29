@@ -130,7 +130,7 @@ generate_int(Header, Target) ->
     try exec:run(Cmd,
                  [{stdout, self()},
                   {stderr, self()},
-                  {kill_timeout, 1},
+                  {kill_timeout, 0},
                   {cd, BinDir},
                   {env, [{"SHELL", "/bin/sh"}]},
                   monitor]) of
@@ -241,6 +241,7 @@ export_ld_lib_path() ->
 -spec wait_for_result(#state{}) -> {'ok', term()} | {'error', term()}.
 wait_for_result(#state{os_pid = OsPid,
                        buffer = Buffer} = State) ->
+    process_flag(trap_exit, true),
     receive
         {stdout, OsPid, Msg} ->
             Str = binary_to_list(Msg),
@@ -249,6 +250,10 @@ wait_for_result(#state{os_pid = OsPid,
         {stderr, OsPid, Msg} ->
             ?error("ERROR: ~s~n", [Msg]),
             wait_for_result(State);
+        {'EXIT',_From, shutdown} ->
+            %% Someone is telling us to stop
+            stop_execution(OsPid),
+            exit(shutdown);
         {'DOWN', OsPid, process, _, normal} ->
             %% Process ended but no value found
             {error, no_value};
