@@ -164,8 +164,10 @@ search_default_config() ->
             setup:home()],
     lists:foldl(
       fun(D, undefined) ->
-              case filelib:wildcard(
-                     "epoch.{json,yaml}", D) of
+              W = "epoch.{json,yaml}",
+              error_logger:info_msg("Searching for default config file ~s "
+                                    "in directory ~s~n", [W, D]),
+              case filelib:wildcard(W, D) of
                   [] -> undefined;
                   [F|_] -> filename:join(D, F)
               end;
