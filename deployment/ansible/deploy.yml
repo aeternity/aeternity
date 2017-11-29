@@ -12,6 +12,9 @@
       chain:
         persist: true
         db_path: "./db7"
+      keypair:
+        dir: "keys"
+        password: "{{ keys_password|default('secret') }}"
 
   tasks:
     - name: "Required variables"
@@ -80,6 +83,22 @@
         state: directory
       tags: [config]
 
+    - name: "Make sure keys dir ( {{ config.keypair.dir }} ) exists"
+      file:
+        path: "{{ project_root }}/{{ config.keypair.dir }}"
+        state: directory
+        mode: 0700
+      tags: [config]
+
+    - name: "Copy node keys to {{ project_root }}/{{ config.keypair.dir }}"
+      copy:
+        src: "{{ item }}"
+        dest: "{{ project_root }}/{{ config.keypair.dir }}"
+        mode: 0600
+      with_items: "{{ keypair }}"
+      when: keypair is defined
+      tags: [config]
+
     - name: Update epoch configuration
       template:
         src: templates/epoch.yaml.j2
@@ -91,6 +110,7 @@
       copy:
         content: "{{ genesis_accounts | to_nice_json }}"
         dest: "{{ genesis_accounts_path }}"
+      when: genesis_accounts is defined
       tags: [config]
 
     - name: Start epoch daemon
