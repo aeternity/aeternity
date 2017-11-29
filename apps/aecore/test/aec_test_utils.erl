@@ -24,6 +24,8 @@
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
+        , create_temp_key_dir/0
+        , remove_temp_key_dir/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -184,7 +186,7 @@ signed_coinbase_tx(Account, _AccountNonce) ->
 %%%=============================================================================
 
 aec_keys_setup() ->
-    TmpKeysDir = mktempd(),
+    TmpKeysDir = create_temp_key_dir(),
     ok = application:ensure_started(crypto),
     {ok, _} = aec_keys:start_link([<<"mypassword">>, TmpKeysDir]),
     wait_for_it(fun() -> whereis(aec_keys) =/= undefined end, true),
@@ -193,6 +195,9 @@ aec_keys_setup() ->
 aec_keys_cleanup(TmpKeysDir) ->
     ok = aec_keys:stop(),
     ok = application:stop(crypto),
+    remove_temp_key_dir(TmpKeysDir).
+
+remove_temp_key_dir(TmpKeysDir) ->
     {ok, KeyFiles} = file:list_dir(TmpKeysDir),
     %% Expect two filenames - private and public keys.
     [_KF1, _KF2] = KeyFiles,
@@ -204,7 +209,7 @@ aec_keys_cleanup(TmpKeysDir) ->
       KeyFiles),
     ok = file:del_dir(TmpKeysDir).
 
-mktempd() ->
+create_temp_key_dir() ->
     mktempd(os:type()).
 
 mktempd({unix, _}) ->
