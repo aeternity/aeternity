@@ -13,8 +13,8 @@
 %% The mining has two states of operation 'running' and 'stopped'
 %% Passing the option {autostart, bool()} to the initialization
 %% controls which mode to start in. In the running mode, block candidates
-%% are generated and mined in separate workers. When mining is successful, 
-%% the mined block is published and added to the chain if the state of the 
+%% are generated and mined in separate workers. When mining is successful,
+%% the mined block is published and added to the chain if the state of the
 %% chain allows that. In the stopped mode only blocks arriving from other
 %% miners are added to the chain.
 %%
@@ -53,6 +53,8 @@
 -export([ get_mining_state/0
         , get_miner_account_balance/0
         , post_block/1
+        , add_synced_block/1
+        , get_missing_block_hashes/0
         , start_mining/0
         , stop_mining/0
         ]).
@@ -71,8 +73,13 @@
         , terminate/2
         , code_change/3]).
 
+-export_type([options/0]).
+
 -include("common.hrl").
 -include("blocks.hrl").
+
+-type(option()  :: {atom(), any()}).
+-type(options() :: [option()]).
 
 -define(SERVER, ?MODULE).
 
@@ -80,8 +87,8 @@
 -type mining_state() :: 'running' | 'stopped'.
 
 -record(candidate, {block     :: block(),
-                    nonce     :: integer(),
-                    max_nonce :: integer(),
+                    nonce     :: aec_pow:nonce(),
+                    max_nonce :: aec_pow:nonce(),
                     top_hash  :: binary()
                    }).
 
@@ -139,6 +146,18 @@ get_miner_account_balance() ->
 post_block(Block) ->
     gen_server:call(?SERVER, {post_block, Block}).
 
+-spec add_synced_block(#block{}) -> 'ok' | {'error', any()}.
+add_synced_block(Block) ->
+    gen_server:call(?SERVER, {add_synced_block, Block}).
+
+%%------------------------------------------------------------------------------
+%% Get missing hashes for missing blocks in the header chain.
+%%------------------------------------------------------------------------------
+-spec get_missing_block_hashes() -> [block_header_hash()].
+get_missing_block_hashes() ->
+    %% For now, call the chain server for this.
+    aec_chain:get_missing_block_hashes().
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -154,6 +173,9 @@ init(Options) ->
 
 handle_call({post_block, Block}, From, State) ->
     State1 = handle_post_block(Block, From, State),
+    {noreply, State1};
+handle_call({add_synced_block, Block}, From, State) ->
+    State1 = handle_synced_block(Block, From, State),
     {noreply, State1};
 handle_call(stop_mining,_From, State) ->
     epoch_mining:info("Mining stopped"),
@@ -296,6 +318,7 @@ maybe_block_tag(Tag, #state{blocked_tags = B} = State) ->
 tag_concurrency(create_block_candidate) -> singleton;
 tag_concurrency(mining)                 -> singleton;
 tag_concurrency(post_block)             -> concurrent;
+tag_concurrency(synced_block)           -> concurrent;
 tag_concurrency(wait_for_keys)          -> singleton.
 
 wrap_worker_fun(Fun) ->
@@ -325,6 +348,8 @@ worker_reply(create_block_candidate, Res, State) ->
     handle_block_candidate_reply(Res, State);
 worker_reply(post_block, Res, State) ->
     handle_post_block_reply(Res, State);
+worker_reply(synced_block, Res, State) ->
+    handle_synced_block_reply(Res, State);
 worker_reply(mining, Res, State) ->
     handle_mining_reply(Res, State);
 worker_reply(wait_for_keys, Res, State) ->
@@ -601,6 +626,11 @@ handle_post_block(Block, From, State) ->
     Fun = fun() -> post_block_worker(From, Block) end,
     dispatch_worker(post_block, Fun, State).
 
+handle_synced_block(Block, From, State) ->
+    epoch_mining:info("Handling synced block"),
+    Fun = fun() -> post_block_worker(From, Block) end,
+    dispatch_worker(synced_block, Fun, State).
+
 post_block_worker(From, Block) ->
     epoch_mining:info("write_block: ~p", [Block]),
     Header = aec_blocks:to_header(Block),
@@ -628,13 +658,14 @@ post_block_worker(From, Block) ->
             end
     end.
 
+handle_synced_block_reply({block_added, _Block, From}, State) ->
+    common_block_added_reply(From, State);
+handle_synced_block_reply(Result, State) ->
+    handle_post_block_reply(Result, State).
+
 handle_post_block_reply({block_added, Block, From}, State) ->
     aec_events:publish(block_received, Block),
-    gen_server:reply(From, ok),
-    case preempt_if_new_top(State) of
-        no_change         -> State;
-        {changed, State1} -> start_mining(State1)
-    end;
+    common_block_added_reply(From, State);
 handle_post_block_reply({ok, From}, State) ->
     gen_server:reply(From, ok),
     State;
@@ -643,3 +674,9 @@ handle_post_block_reply({error, Reason, From}, State) ->
     gen_server:reply(From, {error, Reason}),
     State.
 
+common_block_added_reply(From, State) ->
+    gen_server:reply(From, ok),
+    case preempt_if_new_top(State) of
+        no_change         -> State;
+        {changed, State1} -> start_mining(State1)
+    end.

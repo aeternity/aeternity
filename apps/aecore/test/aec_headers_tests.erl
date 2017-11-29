@@ -57,4 +57,14 @@ validate_test_() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
               Header = #header{},
               ?assertEqual(ok, ?TEST_MODULE:validate(Header))
+      end,
+      fun() ->
+              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              Header = #header{nonce = -1},
+              ?assertError(function_clause, ?TEST_MODULE:validate(Header))
+      end,
+      fun() ->
+              meck:expect(aec_pow_cuckoo, verify, 4, true),
+              Header = #header{nonce = 16#1ffffffffffffffff},
+              ?assertError(function_clause, ?TEST_MODULE:validate(Header))
       end]}.

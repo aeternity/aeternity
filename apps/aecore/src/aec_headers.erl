@@ -101,7 +101,8 @@ deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
          Time,
          Version,
          PowEvidence
-        } ->
+        } when Nonce >= 0,
+               Nonce =< ?MAX_NONCE ->
             {ok,
              #header{
                 height = Height,
@@ -225,9 +226,11 @@ validate_version(_Header) ->
 -spec validate_pow(header()) -> ok | {error, incorrect_pow}.
 validate_pow(#header{nonce = Nonce,
                      pow_evidence = Evd,
-                     target = Target} = Header) ->
+                     target = Target} = Header) when Nonce >= 0,
+                                                     Nonce =< ?MAX_NONCE ->
     Mod = aec_pow:pow_module(),
-    %% Zero nonce and pow_evidence before hashing, as this is how the mined block got hashed.
+    %% Zero nonce and pow_evidence before hashing, as this is how the mined block
+    %% got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
     HeaderBinary = serialize_for_hash(Header1),
     case Mod:verify(HeaderBinary, Nonce, Evd, Target) of

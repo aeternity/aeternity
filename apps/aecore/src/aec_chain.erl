@@ -26,6 +26,7 @@
          get_block_by_height/1,
          get_header_by_hash/1,
          get_header_by_height/1,
+         get_missing_block_hashes/0,
          get_total_difficulty/0,
          get_transactions_between/2,
          insert_header/1,
@@ -159,6 +160,11 @@ get_total_difficulty() ->
     {ok, {gen_server:call(?CHAIN_SERVER, difficulty,
                           ?DEFAULT_CALL_TIMEOUT),
           {top_header, Top}}}.
+
+get_missing_block_hashes() ->
+    gen_server:call(?CHAIN_SERVER,
+                    get_missing_block_hashes,
+                    ?DEFAULT_CALL_TIMEOUT).
 
 common_ancestor(Hash1, Hash2) ->
     gen_server:call(?CHAIN_SERVER,

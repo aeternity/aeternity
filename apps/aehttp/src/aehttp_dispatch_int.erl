@@ -2,6 +2,8 @@
 
 -export([handle_request/3]).
 
+-import(aeu_debug, [pp/1]).
+
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
         Req :: cowboy_req:req(),
@@ -26,10 +28,11 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                             amount => Amount,
                             fee => Fee,
                             nonce => Nonce}),
-                    lager:debug("SpendTx = ~p", [SpendTx]),
+                    lager:debug("SpendTx = ~p", [pp(SpendTx)]),
                     {ok, SignedTx} = aec_keys:sign(SpendTx),
                     ok = aec_tx_pool:push(SignedTx),
-                    lager:debug("pushed; peek() -> ~p", [aec_tx_pool:peek(10)]),
+                    lager:debug("pushed; peek() -> ~p",
+                                [pp(aec_tx_pool:peek(10))]),
                     {200, [], #{}};
                 {error, account_not_found} ->
                     lager:debug("account not found", []),

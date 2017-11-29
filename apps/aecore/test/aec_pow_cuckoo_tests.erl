@@ -8,6 +8,7 @@
 %%%=============================================================================
 -module(aec_pow_cuckoo_tests).
 
+
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -31,7 +32,7 @@ pow_test_() ->
        {timeout, 60,
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
-                Nonce = 122,
+                Nonce = 33,
                 {T1, Res} = timer:tc(?TEST_MODULE, generate,
                                      [?TEST_BIN, Target, Nonce]),
                 ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
@@ -51,7 +52,7 @@ pow_test_() ->
        {timeout, 90,
         fun() ->
                 Target = 16#01010000,
-                Nonce = 122,
+                Nonce = 33,
                 Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 ?assertEqual({error, no_solution}, Res),
 

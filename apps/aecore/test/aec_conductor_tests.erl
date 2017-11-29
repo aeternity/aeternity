@@ -241,7 +241,7 @@ wait_for_start_mining(Hash) ->
 
 wait_for_gproc(Event, Timeout) ->
     receive
-        {gproc_ps_event, Event, Info} -> Info
+        {gproc_ps_event, Event, #{info := Info}} -> Info
     after Timeout -> error({timeout, block_created})
     end.
 

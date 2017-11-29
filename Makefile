@@ -117,7 +117,7 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 do ct $(CT_TEST_FLAGS)
+	@./rebar3 as test do release, ct $(CT_TEST_FLAGS)
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
@@ -185,11 +185,9 @@ multi-build: dev1-build
 .SECONDEXPANSION:
 
 internal-package: $$(KIND)
-	git rev-parse HEAD > REVISION
 	@./rebar3 as $(KIND) tar
 
 internal-build: $$(KIND)
-	git rev-parse HEAD > REVISION
 	@./rebar3 as $(KIND) release
 
 internal-start: $$(KIND)

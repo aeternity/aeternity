@@ -10,6 +10,8 @@
 -compile({parse_transform, lager_transform}).
 -include("peers.hrl").
 
+-import(aeu_debug, [pp/1]).
+
 %% API
 -export([connect_peer/1
         ]).
@@ -87,7 +89,7 @@ local_ping_object() ->
 %%    - Otherwise, trigger a sync, return 'ok'.
 -spec compare_ping_objects(ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(Local, Remote) ->
-    lager:debug("Compare, Local: ~p~nRemote: ~p", [Local, Remote]),
+    lager:debug("Compare, Local: ~p~nRemote: ~p", [pp(Local), pp(Remote)]),
     Src = maps:get(<<"source">>, Remote),
     Res = case {maps:get(<<"genesis_hash">>, Local),
                 maps:get(<<"genesis_hash">>, Remote)} of
@@ -98,13 +100,17 @@ compare_ping_objects(Local, Remote) ->
                         maps:get(<<"best_hash">>, Remote)} of
                       {T, T} ->
                           lager:debug("same top blocks", []),
-                          %% we're in sync!
-                          ok;
+                          %% headers in sync; check missing blocks
+                          %% Note that in this case, both will publish
+                          %% events as if they're the server (basically
+                          %% meaning that they were tied for server position).
+                          server_get_missing_blocks(Src);
                       _ ->
                           Dl = maps:get(<<"difficulty">>, Local),
                           Dr = maps:get(<<"difficulty">>, Remote),
                           if Dl > Dr ->
                                   lager:debug("Our difficulty is higher", []),
+                                  server_get_missing_blocks(Src),
                                   ok;
                              true ->
                                   start_sync(Src)
@@ -119,6 +125,9 @@ compare_ping_objects(Local, Remote) ->
 
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
+
+server_get_missing_blocks(PeerUri) ->
+    gen_server:cast(?MODULE, {server_get_missing, PeerUri}).
 
 fetch_mempool(PeerUri) ->
     gen_server:cast(?MODULE, {fetch_mempool, PeerUri}).
@@ -158,13 +167,16 @@ handle_cast({connect, Uri}, State) ->
 handle_cast({start_sync, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {start_sync, PeerUri}),
     {noreply, State};
+handle_cast({server_get_missing, PeerUri}, State) ->
+    jobs:enqueue(sync_jobs, {server_get_missing, PeerUri}),
+    {noreply, State};
 handle_cast({fetch_mempool, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {fetch_mempool, PeerUri}),
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, Event, Info}, State) ->
+handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     case Event of
         block_created   -> enqueue(forward, #{status => created,
                                               block => Info}, State);
@@ -192,7 +204,7 @@ code_change(_FromVsn, State, _Extra) ->
 
 sync_worker() ->
     Res = jobs:dequeue(sync_jobs, 1),
-    lager:debug("dequed job ~p", [Res]),
+    lager:debug("dequed job ~p", [pp(Res)]),
     process_job(Res).
 
 %% Note: we always dequeue exactly ONE job
@@ -205,6 +217,8 @@ process_job([{T, Job}]) ->
             do_forward_tx(Tx, Peer);
         {start_sync, PeerUri} ->
             do_start_sync(PeerUri);
+        {server_get_missing, PeerUri} ->
+            do_server_get_missing(PeerUri);
         {fetch_mempool, PeerUri} ->
             do_fetch_mempool(PeerUri);
         _Other ->
@@ -231,24 +245,30 @@ do_forward_tx(Tx, Peer) ->
     lager:debug("send_tx Res (~p): ~p", [Peer, Res]).
 
 do_start_sync(PeerUri) ->
-    fetch_headers(PeerUri, genesis_hash(), []).
+    aec_events:publish(chain_sync, {client_start, PeerUri}),
+    fetch_headers(PeerUri, genesis_hash()).
+
+do_server_get_missing(PeerUri) ->
+    aec_events:publish(chain_sync, {server_start, PeerUri}),
+    do_get_missing_blocks(PeerUri),
+    aec_events:publish(chain_sync, {server_done, PeerUri}).
 
 genesis_hash() ->
     {ok, GHdr} = aec_chain:genesis_header(),
     {ok, GHash} = aec_headers:hash_header(GHdr),
     GHash.
 
-fetch_headers(PeerUri, GHash, Acc) ->
+fetch_headers(PeerUri, GHash) ->
     case aeu_requests:top(PeerUri) of
         {ok, Hdr} ->
-            lager:debug("Top hdr (~p): ~p", [PeerUri, Hdr]),
+            lager:debug("Top hdr (~p): ~p", [PeerUri, pp(Hdr)]),
             {ok, HdrHash} = aec_headers:hash_header(Hdr),
             case HdrHash of
                 GHash ->
                     %% already the genesis hash
                     ok;
                 _ ->
-                    fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, Acc)
+                    fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, [])
             end;
         {error, Reason} ->
             lager:debug("fetching top block (~p) failed: ~p", [PeerUri, Reason])
@@ -257,117 +277,97 @@ fetch_headers(PeerUri, GHash, Acc) ->
 fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, Acc) ->
     case aec_chain:get_header_by_hash(HdrHash) of
         {ok, _} ->
-            case aec_chain:get_block_by_hash(HdrHash) of
-                {ok, _} ->
-                    lager:debug("we have the top block - done", []),
-                    %% We're done already!
-                    ok;
-                {error, _} ->
-                    lager:debug("fetching top block (~p)", [HdrHash]),
-                    Acc1 = fetch_block(HdrHash, PeerUri, Acc),
-                    fetch_next(aec_headers:prev_hash(Hdr),
-                               PeerUri, GHash, Acc1)
-            end;
+            %% we have a continuous header chain
+            headers_fetched(PeerUri, Acc);
         {error, _} ->
             lager:debug("we don't have the top block header,"
-                        " fetching block (~p)", [HdrHash]),
+                        " fetching block (~p)", [pp(HdrHash)]),
             Acc1 = fetch_block(HdrHash, PeerUri, Acc),
-            fetch_next(aec_headers:prev_hash(Hdr), PeerUri, GHash, Acc1)
+            fetch_next_hdr(aec_headers:prev_hash(Hdr), PeerUri, GHash, Acc1)
     end.
 
-
 fetch_block(Hash, PeerUri, Acc) ->
-    case aeu_requests:block(PeerUri, Hash) of
+    case do_fetch_block(Hash, PeerUri) of
         {ok, Block} ->
-            lager:debug("block fetched from ~p (~p)", [PeerUri, Hash]),
+            lager:debug("Block (~p|~p) fetched", [PeerUri, pp(Hash)]),
             [{Hash, Block}|Acc];
-        {error, _} = Error ->
-            lager:debug("failed to fetch block from ~p,~nHash = ~p~nError = ~p",
-                        [PeerUri, Hash, Error]),
+        {error,_} = Err ->
             %% What is the right course of action here? Continue? Abort?
+            lager:error("Error fetching block (~p|~p): ~p",
+                        [PeerUri, Hash, Err]),
             Acc
     end.
 
-fetch_next(GHash, _, GHash, Acc) ->
-    %% No need to fetch the genesis block
-    try_write_blocks(Acc);
-fetch_next(Hash, PeerUri, GHash, Acc) ->
+do_fetch_block(Hash, PeerUri) ->
     case aeu_requests:block(PeerUri, Hash) of
         {ok, Block} ->
-            case aec_blocks:height(Block) of
-                0 ->
-                    lager:debug("fetched the genesis block", []),
-                    try_write_blocks(Acc);
-                _ ->
-                    Hdr = aec_blocks:to_header(Block),
-                    {ok, HdrHash} = aec_headers:hash_header(Hdr),
-                    case Hash =:= HdrHash of
-                        true ->
-                            %% It's the block we asked for
-                            lager:debug("Verified block hash", []),
-                            process_fetched_block(
-                              HdrHash, Hdr, Block, PeerUri, GHash, Acc);
-                        false ->
-                            %% Unexpected. Should we really try to write Acc?
-                            lager:error("Hashes don't match! (~p | ~p)",
-                                        [Hash, HdrHash]),
-                            try_write_blocks(Acc)
-                    end
+            case header_hash(Block) =:= Hash of
+                true ->
+                    lager:debug("block fetched from ~p (~p)~n~p",
+                                [PeerUri, pp(Hash), pp(Block)]),
+                    {ok, Block};
+                false ->
+                    {error, hash_mismatch}
             end;
-        {error, _} ->
-            %% Unexpected. Try to write the blocks we have
-            try_write_blocks(Acc)
+        {error, _} = Error ->
+            lager:debug("failed to fetch block from ~p,~nHash = ~p~nError = ~p",
+                        [PeerUri, pp(Hash), Error]),
+            Error
     end.
 
-process_fetched_block(HdrHash, Hdr, Block, PeerUri, GHash, Acc) ->
+fetch_next_hdr(GHash, PeerUri, GHash, Acc) ->
+    %% No need to fetch the genesis block
+    headers_fetched(PeerUri, Acc);
+fetch_next_hdr(Hash, PeerUri, GHash, Acc) ->
+    case do_fetch_block(Hash, PeerUri) of
+        {ok, Block} ->
+            fetch_hdrs_block_recvd(
+              Hash, Block, PeerUri, GHash, Acc);
+        {error, _} ->
+            %% Unexpected. Try to write the blocks we have
+            headers_fetched(PeerUri, Acc)
+    end.
+
+fetch_hdrs_block_recvd(HdrHash, Block, PeerUri, GHash, Acc) ->
     case aec_chain:get_block_by_hash(HdrHash) of
         {ok, _} ->
             lager:debug(
-              "we have this block, start writing (~p)",
-              [HdrHash]),
+              "we have this block, go to next phase (~p)",
+              [pp(HdrHash)]),
             %% we're done
-            try_write_blocks(Acc);
+            headers_fetched(PeerUri, Acc);
         {error, _} ->
-            lager:debug("new block, continue (~p)", [HdrHash]),
-            fetch_next(
+            lager:debug("new block, continue (~p)", [pp(HdrHash)]),
+            Hdr = aec_blocks:to_header(Block),
+            fetch_next_hdr(
               aec_headers:prev_hash(Hdr), PeerUri, GHash,
               [{HdrHash, Block}|Acc])
     end.
 
+headers_fetched(PeerUri, Acc) ->
+    try_write_blocks(Acc),
+    do_get_missing_blocks(PeerUri),
+    aec_events:publish(chain_sync, {client_done, PeerUri}).
 
-try_write_blocks([{HdrHash, Block}|Blocks]) ->
-    %% block list has oldest block first
-    Hdr = aec_blocks:to_header(Block),
-    case aec_chain:insert_header(Hdr) of
-        ok ->
-            lager:debug("header insert successful (~p)", [HdrHash]),
-            try_write_block(Block, Blocks);
-        {error, _} ->
-            case aec_chain:get_header_by_hash(HdrHash) of
-                {ok, _} ->
-                    try_write_block(Block, Blocks);
-                {error, Reason} = Error ->
-                    lager:debug(
-                      "insert_chain(~p) error: ~p", [HdrHash, Reason]),
-                    Error
-            end
-    end;
-try_write_blocks([]) ->
-    lager:debug("no more blocks to write", []),
-    ok.
+do_get_missing_blocks(PeerUri) ->
+    Missing = aec_conductor:get_missing_block_hashes(),
+    lager:debug("Missing block hashes: ~p", [pp(Missing)]),
+    fetch_missing_blocks(Missing, PeerUri).
 
-try_write_block(Block, Blocks) ->
-    case aec_chain:write_block(Block) of
-        ok ->
-            lager:debug("block write successful (~p)", [header_hash(Block)]);
-        {error, {block_already_stored, _}} ->
-            %% this is fine, continue
-            lager:debug("block already stored (~p)", [header_hash(Block)]);
-        {error, Reason} ->
-            lager:debug("write_block error (~p): ~p",
-                        [header_hash(Block), Reason])
-    end,
-    %% Always try to write all blocks
+try_write_blocks(Blocks) ->
+    lists:foreach(fun sync_post_block/1, Blocks).
+
+sync_post_block({_Hash, Block}) ->
+    %% No event publication for now (esp. not block_received!)
+    lager:debug("Calling post_block(~p)", [pp(Block)]),
+    aec_conductor:add_synced_block(Block).
+
+fetch_missing_blocks(Hashes, PeerUri) ->
+    Blocks =
+        lists:foldl(
+          fun(Hash, Acc) ->
+                  fetch_block(Hash, PeerUri, Acc)
+          end, [], Hashes),
     try_write_blocks(Blocks).
 
 do_fetch_mempool(PeerUri) ->
@@ -375,7 +375,8 @@ do_fetch_mempool(PeerUri) ->
         {ok, Txs} ->
             lager:debug("Mempool (~p) received, size: ~p",
                         [PeerUri, length(Txs)]),
-            aec_tx_pool:push(Txs);
+            aec_tx_pool:push(Txs),
+            aec_events:publish(mempool_sync, {fetched, PeerUri});
         Other ->
             lager:debug("Error fetching mempool from ~p: ~p",
                         [PeerUri, Other]),
