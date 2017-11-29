@@ -11,6 +11,7 @@
         ]).
 
 -export([parse_uri/1]).
+-import(aeu_debug, [pp/1]).
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
@@ -26,7 +27,7 @@ ping(Peer) ->
     Response = process_request(Peer, post, Req, PingObj),
     case Response of
         {ok, Map} ->
-            lager:debug("ping response (~p): ~p", [Uri, Map]),
+            lager:debug("ping response (~p): ~p", [Uri, pp(Map)]),
             aec_sync:compare_ping_objects(PingObj, Map),
             check_returned_source(Map, list_to_binary(aec_peers:uri(Peer))),
             {ok, Map};
@@ -62,7 +63,7 @@ block(Peer, Hash) ->
 transactions(Peer) ->
     Uri = aec_peers:uri(Peer),
     Response = process_request(Uri, get, "transactions"),
-    lager:debug("transactions Response = ~p", [Response]),
+    lager:debug("transactions Response = ~p", [pp(Response)]),
     try Txs = tx_response(Response),
          try {ok, lists:map(
                     fun(#{<<"tx">> := T}) ->
@@ -90,7 +91,7 @@ tx_response(Other) -> error({bad_result, Other}).
 send_block(Peer, Block) ->
     Uri = aec_peers:uri(Peer),
     BlockSerialized = aec_blocks:serialize_to_map(Block),
-    lager:debug("send_block; serialized: ~p", [BlockSerialized]),
+    lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
     Response = process_request(Uri, post, "block", BlockSerialized),
     case Response of
         {ok, _Map} ->
@@ -166,13 +167,14 @@ process_request(Peer, post, Request, Params, Header, HTTPOptions, Options) ->
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
                            %% JSON-encoded
-                           lager:debug("JSON-encoding Params: ~p", [Params]),
+                           lager:debug("JSON-encoding Params: ~p",
+                                       [pp(Params)]),
                            {"application/json", jsx:encode(Params)};
                        [] ->
                            {"application/x-www-form-urlencoded",
                             http_uri:encode(Request)}
                    end,
-    lager:debug("Type = ~p~nBody = ~p", [Type, Body]),
+    %% lager:debug("Type = ~p~nBody = ~p", [Type, Body]),
     R = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
     process_http_return(R).
 
@@ -180,9 +182,9 @@ process_http_return(R) ->
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
             try
-                lager:debug("Body to parse:~n~s", [Body]),
+                %% lager:debug("Body to parse:~n~s", [Body]),
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
-                lager:debug("Decoded response: ~p", [Result]),
+                lager:debug("Decoded response: ~p", [pp(Result)]),
                 {ok, Result}
             catch
                 error:E ->

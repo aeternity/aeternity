@@ -11,7 +11,7 @@
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(INT_ACCEPTORS_POOLSIZE, 100).
+-define(INT_ACCEPTORS_POOLSIZE, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).

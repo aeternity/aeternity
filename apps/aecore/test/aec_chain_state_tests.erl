@@ -60,6 +60,7 @@ basic_access_test_() ->
      fun aec_test_utils:aec_keys_cleanup/1,
      [ {"Access for header chain", fun basic_access_test_header_chain/0}
      , {"Access for block chain", fun basic_access_test_block_chain/0}
+     , {"Access for missing blocks", fun basic_access_missing_blocks/0}
      ]}.
 
 basic_access_test_header_chain() ->
@@ -151,6 +152,29 @@ basic_access_test_block_chain() ->
     ?compareBlockResults({ok, B1}, get_block_by_height(1, State2)),
     ?compareBlockResults({ok, B2}, get_block_by_height(2, State2)),
     ?assertEqual({error, chain_too_short}, get_block_by_height(3, State2)).
+
+basic_access_missing_blocks() ->
+    Chain = [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+    [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
+    [B0H, B1H, B2H] = [block_hash(H) || H <- Chain],
+
+    %% Add some headers
+    State0 = write_headers_to_chain([BH0, BH1], new_state()),
+    ?assertEqual(ordsets:from_list([B0H, B1H]),
+                 ordsets:from_list(aec_chain_state:get_missing_block_hashes(State0))),
+    State1 = write_headers_to_chain([BH2], State0),
+    ?assertEqual(ordsets:from_list([B0H, B1H, B2H]),
+                 ordsets:from_list(aec_chain_state:get_missing_block_hashes(State1))),
+    State2 = write_blocks_to_chain([B2], State1),
+    ?assertEqual(ordsets:from_list([B0H, B1H]),
+                 ordsets:from_list(aec_chain_state:get_missing_block_hashes(State2))),
+    State3 = write_blocks_to_chain([B0], State2),
+    ?assertEqual(ordsets:from_list([B1H]),
+                 ordsets:from_list(aec_chain_state:get_missing_block_hashes(State3))),
+    State4 = write_blocks_to_chain([B1], State3),
+    ?assertEqual(ordsets:from_list([]),
+                 ordsets:from_list(aec_chain_state:get_missing_block_hashes(State4))),
+    ok.
 
 %%%===================================================================
 %%% GC tests

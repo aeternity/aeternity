@@ -15,6 +15,7 @@
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
+        , get_missing_block_hashes/1
         , get_state_trees_for_persistance/1
         , insert_block/2
         , insert_header/2
@@ -110,25 +111,17 @@ top_block(?match_state(top_block_hash := X) = State) ->
 
 -spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_block(Block, ?assert_state() = State0) ->
-    try 
-        ?match_state(genesis_block_hash := GH) = State1
-            = internal_insert(wrap_block(Block), State0),
-        State =
-            case Block#block.height of
-                0 when GH =:= undefined ->
-                    {ok, GenesisHash} =
-                        aec_blocks:hash_internal_representation(Block),
-                    State1#{genesis_block_hash => GenesisHash};
-                _ ->
-                    State1
-            end,
-        {ok, State}
+    Node = wrap_block(Block),
+    try internal_insert(Node, State0) of
+        State1 -> {ok, maybe_add_genesis_hash(State1, Node)}
     catch throw:?internal_error(What) -> {error, What}
     end.
 
 -spec insert_header(#header{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_header(Header, ?assert_state() = State) ->
-    try {ok, internal_insert(wrap_header(Header), State)}
+    Node = wrap_header(Header),
+    try internal_insert(Node, State) of
+        State1 -> {ok, maybe_add_genesis_hash(State1, Node)}
     catch throw:?internal_error(What) -> {error, What}
     end.
 
@@ -236,6 +229,16 @@ new_from_persistance(Chain, StateTreesList) ->
 get_genesis_hash(?match_state(genesis_block_hash := GH)) ->
     GH.
 
+-spec get_missing_block_hashes(state()) -> [binary()].
+%% @doc Get hashes for missing blocks on the main chain, i.e.,
+%%      hashes that we know about since they are in the header chain,
+%%      but we still don't have the blocks for them.
+%%      Useful for the sync protocol.
+get_missing_block_hashes(?assert_state() = State) ->
+    TopHeaderHash = get_top_header_hash(State),
+    TopBlockHash  = get_top_block_hash(State),
+    get_missing_block_hashes(TopHeaderHash, TopBlockHash, State).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -278,6 +281,14 @@ node_root_hash(#node{type = block , content = X}) -> aec_blocks:root_hash(X).
 
 node_target(#node{type = header, content = X}) -> aec_headers:target(X);
 node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
+
+maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
+    case node_height(Node) =:= 0 of
+        true  -> State#{genesis_block_hash => hash(Node)};
+        false -> State
+    end;
+maybe_add_genesis_hash(State,_Node) ->
+    State.
 
 find_genesis_node(State) ->
     case get_block(get_genesis_hash(State), State) of
@@ -322,6 +333,30 @@ export_block(#node{type = block, hash = H, content = B}, State) ->
         {ok, ExportBlock} -> ExportBlock;
         error -> B
     end.
+
+%%%-------------------------------------------------------------------
+%%% Find missing blocks
+%%%-------------------------------------------------------------------
+
+get_missing_block_hashes(undefined, _, _State) ->
+    [];
+get_missing_block_hashes(TopHash, undefined, State) ->
+    case get_genesis_hash(State) of
+        undefined -> [];
+        Hash      -> get_missing_block_hashes(TopHash, Hash, State)
+    end;
+get_missing_block_hashes(FromHash, ToHash, State) ->
+    Hashes = get_hashes_between(FromHash, ToHash, State),
+    lists:filter(fun(H) -> not node_is_block(blocks_db_get(H, State))end,
+                 Hashes).
+
+get_hashes_between(FromHash, ToHash, State) ->
+    get_hashes_between(FromHash, ToHash, State, []).
+
+get_hashes_between(Hash, Hash,_State, Acc) -> [Hash|Acc];
+get_hashes_between(Current, Stop, State, Acc) ->
+    Node = blocks_db_get(Current, State),
+    get_hashes_between(prev_hash(Node), Stop, State, [Current|Acc]).
 
 %%%-------------------------------------------------------------------
 %%% Handling difficulty

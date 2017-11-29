@@ -14,6 +14,7 @@
 -export([user_config/0, user_config/1]).
 -export([user_map/0, user_map/1]).
 -export([read_config/0]).
+-export([check_config/1]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -139,8 +140,11 @@ read_config_() ->
             ok;
         F ->
             error_logger:info_msg("Reading config file ~s~n", [F]),
-            do_read_config(F)
+            do_read_config(F, store)
     end.
+
+check_config(F) ->
+    do_read_config(F, check).
 
 config_file() ->
     case os:getenv("EPOCH_CONFIG") of
@@ -168,12 +172,12 @@ search_default_config() ->
          (_, Acc) -> Acc
       end, undefined, Dirs).
 
-do_read_config(F) ->
-    case filename:extension(F) of
-        ".json" ->
-            store(read_json(F));
-        ".yaml" ->
-            store(read_yaml(F))
+do_read_config(F, Action) ->
+    case {filename:extension(F), Action} of
+        {".json", store} -> store(read_json(F));
+        {".yaml", store} -> store(read_yaml(F));
+        {".json", check} -> check_config_(catch read_json(F));
+        {".yaml", check} -> check_config_(catch read_yaml(F))
     end.
 
 nodename() ->
@@ -188,6 +192,12 @@ store([Vars0]) ->
     Vars = to_tree(Vars0),
     set_env(aeutils, '$user_config', Vars),
     set_env(aeutils, '$user_map', Vars0).
+
+check_config_({'EXIT', Reason}) ->
+    {error, Reason};
+check_config_([Vars]) ->
+    {ok, to_tree_(expand_maps(Vars))}.
+
 
 to_tree(Vars) ->
     to_tree_(expand_maps(Vars)).
