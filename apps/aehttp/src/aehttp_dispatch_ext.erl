@@ -130,17 +130,24 @@ handle_request('GetAccountBalance', Req, _Context) ->
           undefined ->
               {ok, PK} = aec_keys:pubkey(),
               PK;
-          PK ->
-              base64:decode(PK)
+          PK when is_binary(PK) ->
+              try base64:decode(PK)
+              catch _:_ -> not_base64_encoded
+              end
       end,
-    {ok, LastBlock} = aec_chain:top(),
-    Trees = aec_blocks:trees(LastBlock),
-    AccountsTree = aec_trees:accounts(Trees),
-    case aec_accounts:get(Pubkey, AccountsTree) of
-        {ok, #account{balance = B}} ->
-            {200, [], #{balance => B}};
-        _ ->
-            {404, [], #{reason => <<"Account not found">>}}
+    case Pubkey of
+        not_base64_encoded ->
+            {400, [], #{reason => <<"Invalid address">>}};
+        _ when is_binary(Pubkey) ->
+            {ok, LastBlock} = aec_chain:top(),
+            Trees = aec_blocks:trees(LastBlock),
+            AccountsTree = aec_trees:accounts(Trees),
+            case aec_accounts:get(Pubkey, AccountsTree) of
+                {ok, #account{balance = B}} ->
+                    {200, [], #{balance => B}};
+                _ ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end
     end;
 
 handle_request(OperationID, Req, Context) ->
