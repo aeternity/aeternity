@@ -5,6 +5,7 @@
          height/1,
          nonce/1,
          target/1,
+         set_target/2,
          difficulty/1,
          time_in_secs/1,
          time_in_msecs/1,
@@ -39,6 +40,9 @@ nonce(Header) ->
 
 target(Header) ->
     Header#header.target.
+
+set_target(Header, NewTarget) ->
+    Header#header{ target = NewTarget }.
 
 difficulty(Header) ->
     aec_pow:target_to_difficulty(target(Header)).
