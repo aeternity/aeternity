@@ -5,11 +5,16 @@
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
+    genesis_accounts_path: "{{ project_root }}/lib/aecore-0.1.0/priv/.genesis/accounts.json"
+
     env: unknown
     config:
       chain:
         persist: true
-        db_path: "./db7"
+        db_path: "./db8"
+      keypair:
+        dir: "keys"
+        password: "{{ keys_password|default('secret') }}"
 
   tasks:
     - name: "Required variables"
@@ -78,11 +83,34 @@
         state: directory
       tags: [config]
 
-    - name: Update configuration
+    - name: "Make sure keys dir ( {{ config.keypair.dir }} ) exists"
+      file:
+        path: "{{ project_root }}/{{ config.keypair.dir }}"
+        state: directory
+        mode: 0700
+      tags: [config]
+
+    - name: "Copy node keys to {{ project_root }}/{{ config.keypair.dir }}"
+      copy:
+        src: "{{ item }}"
+        dest: "{{ project_root }}/{{ config.keypair.dir }}"
+        mode: 0600
+      with_items: "{{ keypair }}"
+      when: keypair is defined
+      tags: [config]
+
+    - name: Update epoch configuration
       template:
         src: templates/epoch.yaml.j2
         dest: "{{ project_root }}/epoch.yaml"
         mode: '0600'
+      tags: [config]
+
+    - name: Update accounts configuration
+      copy:
+        content: "{{ genesis_accounts | to_nice_json }}"
+        dest: "{{ genesis_accounts_path }}"
+      when: genesis_accounts is defined
       tags: [config]
 
     - name: Start epoch daemon
