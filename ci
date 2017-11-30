@@ -51,6 +51,30 @@ case "${1:?}"-"${2:?}" in
         make python-env
         make release-integration-test TARBALL="${FinalPackagePath:?}"
         ;;
+    script-python-integration-tests)
+        make multi-build
+        make python-env
+        make python-integration-tests
+        make multi-stop
+        ;;
+    script-python-single-integration-test-ext_api)
+        make multi-build
+        make python-env
+        make python-single-integration-test TEST_NAME=ext_api
+        make multi-stop
+        ;;
+    script-python-single-integration-test-spend_tx)
+        make multi-build
+        make python-env
+        make python-single-integration-test TEST_NAME=spend_tx
+        make multi-stop
+        ;;
+    script-python-single-integration-test-use_cases)
+        make multi-build
+        make python-env
+        make python-single-integration-test TEST_NAME=use_cases
+        make multi-stop
+        ;;
     after_failure-*)
         LogsDir="${BuildDir}/_build/test/logs"
         echo "logs/ct.latest.log\n"
