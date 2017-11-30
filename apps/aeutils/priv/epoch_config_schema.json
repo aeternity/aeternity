@@ -23,7 +23,7 @@
                     "properties" : {
                         "peer_address" : {
                             "description" :
-                            "The peer address that the node will present itself with. If port part given, it must match 'port' user config.",
+                            "The peer address that the node will present itself with. It must include scheme, host/ip and a port followed by a trailing slash",
                             "type" : "string",
                             "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$", 
                             "example" : "http://a.b.c:123/"
