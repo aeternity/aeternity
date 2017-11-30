@@ -146,18 +146,25 @@ release-integration-test:
 python-download-chain:
 	@$(PYTHON) $(PYTHON_TESTS)/chain_downloader.py --host=localhost --port=3013 --export_file=$(PYTHON_TESTS)/integration/data/bchain.txt
 
-swagger: config/swagger.yaml
-	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
+SWAGGER_CODEGEN_CLI_V = 2.2.3
+SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
+SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
+
+swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
+	$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
 	@rm -fr $(SWTEMP)
 
-swagger-python: config/swagger.yaml
-	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
+swagger-python: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
+	$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP)
 	@echo "Swagger python tempdir: $(SWTEMP)"
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@rm -fr $(SWTEMP)
+
+$(SWAGGER_CODEGEN_CLI):
+	curl -fsS --create-dirs -o $@ http://central.maven.org/maven2/io/swagger/swagger-codegen-cli/$(SWAGGER_CODEGEN_CLI_V)/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 
 kill:
 	@echo "Kill all beam processes only from this directory tree"
@@ -216,3 +223,4 @@ internal-clean: $$(KIND)
 	dialyzer \
 	test \
 	kill killall \
+	swagger swagger-python
