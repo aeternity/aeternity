@@ -40,7 +40,7 @@ local_peer_uri() ->
 
 local_internal_http_uri() ->
     Port = get_internal_port(),
-    local_peer(Port).
+    aec_peers:uri_from_ip_port("127.0.0.1", Port).
 
 %%--------------------------------------------------------------------
 stop(_State) ->
@@ -87,13 +87,9 @@ start_websocket_internal() ->
 
 local_peer(Port) ->
     Addr = get_local_peer_address(),
-    case aeu_requests:parse_uri(Addr, Port) of
-        {Scheme, Host, Port} ->    % same port as above
-            aec_peers:uri_from_scheme_ip_port(Scheme, Host, Port);
-        {_Scheme, _Host, _OtherPort} ->
-            erlang:error({port_mismatch,
-                          [{swagger_port_external, Port},
-                           {local_peer_address, Addr}]});
+    case aeu_requests:parse_uri(Addr) of
+        {_Scheme, _Host, _Port} -> % a valid address
+            Addr;
         error ->
             case re:run(Addr, "[:/]", []) of
                 {match, _} ->
