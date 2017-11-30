@@ -125,30 +125,29 @@ generate_int(Hash, Nonce, Target) ->
 generate_int(Header, Target) ->
     BinDir = aecuckoo:bin_dir(),
     {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    Cmd = lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Header, " ", Extra]),
+    Cmd = lists:concat([ld_lib_env(), " ",  "./", Exe, " -h ", Header, " ", Extra]),
     ?info("Executing cmd: ~p~n", [Cmd]),
+    Old = process_flag(trap_exit, true),
     try exec:run(Cmd,
                  [{stdout, self()},
                   {stderr, self()},
-                  {kill_timeout, 0},
                   {cd, BinDir},
                   {env, [{"SHELL", "/bin/sh"}]},
                   monitor]) of
         {ok, _ErlPid, OsPid} ->
-            Old = process_flag(trap_exit, true),
-            Res = wait_for_result(#state{os_pid = OsPid,
-                                         buffer = [],
-                                         parser = fun parse_generation_result/2,
-                                         target = Target}),
-            process_flag(trap_exit, Old),
-            receive
-                {'EXIT',_From, shutdown} -> exit(shutdown)
-            after 0 -> ok
-            end,
-            Res
+            wait_for_result(#state{os_pid = OsPid,
+                                   buffer = [],
+                                   parser = fun parse_generation_result/2,
+                                   target = Target})
     catch
         C:E ->
             {error, {unknown, {C, E}}}
+    after
+        process_flag(trap_exit, Old),
+        receive
+            {'EXIT',_From, shutdown} -> exit(shutdown)
+        after 0 -> ok
+        end
     end.
 
 -define(POW_OK, ok).
@@ -293,13 +292,13 @@ pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
 %%   Prefix setting load path to command so that blake2b.so is found in priv/lib
 %% @end
 %%------------------------------------------------------------------------------
--spec export_ld_lib_path() -> list(string()).
-export_ld_lib_path() ->
+-spec ld_lib_env() -> string().
+ld_lib_env() ->
     LdPathVar = case os:type() of
                  {unix, darwin} -> "DYLD_LIBRARY_PATH";
                  {unix, _}      -> "LD_LIBRARY_PATH"
                 end,
-    ["export ", LdPathVar, "=../lib:$", LdPathVar, "; "].
+    "env " ++ LdPathVar ++ "=../lib:$" ++ LdPathVar.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -400,7 +399,7 @@ parse_generation_result([Msg | T], State) ->
 %%------------------------------------------------------------------------------
 -spec stop_execution(integer()) -> ok.
 stop_execution(OsPid) ->
-    case exec:stop(OsPid) of
+    case exec:kill(OsPid, 9) of
         {error, Reason} ->
             ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).~n",
                    [OsPid, Reason]);
