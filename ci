@@ -24,7 +24,7 @@ case "${1:?}"-"${2:?}" in
             brew update
             brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
         elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
-            sudo -H pip install -r deployment/ansible/pip-requirements.txt
+            pip install --user -r deployment/ansible/pip-requirements.txt
             ansible --version
         fi
         erl -version
