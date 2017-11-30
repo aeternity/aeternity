@@ -112,11 +112,14 @@ kill_ospid_miner_test_() ->
             timer:sleep(200),                        %% give some time to start the miner OS pid
             ?assertEqual(1, length(exec:which_children())),  %% We did create a new one.
             exit(Pid, shutdown),
-            timer:sleep(200),                       %% give it some time to kill the miner OS pid
-            ?assertEqual([], exec:which_children()) %% at least erlexec believes it died
+            timer:sleep(1000),                       %% give it some time to kill the miner OS pid
+            ?assertEqual([], exec:which_children()), %% at least erlexec believes it died
+
+            Res = os:cmd("ps | grep lean28 | grep -v grep"),
+            ?assertMatch([], Res)
         end}
      ]
     }.
-  
+
 
 -endif.
