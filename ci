@@ -77,7 +77,8 @@ case "${1:?}"-"${2:?}" in
 
         cd deployment/ansible
         ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv:?}" \
-            --extra-vars "local_package=${FinalPackagePath:?} env=${DeployEnv:?}" deploy.yml
+            --extra-vars "local_package=${FinalPackagePath:?} env=${DeployEnv:?} tester_keys_password={$tester_keys_password:?}" \
+            deploy.yml
         ;;
     deploy-*)
         true
