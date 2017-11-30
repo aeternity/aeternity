@@ -21,6 +21,7 @@
          get_random/1,
          get_random/2,
          uri_from_ip_port/2,
+         uri_from_scheme_ip_port/3,
          uri/1,
          set_local_peer_uri/1,
          get_local_peer_uri/0,
@@ -161,7 +162,11 @@ get_random(N, Exclude) when is_integer(N), N >= 0, is_list(Exclude) ->
 %%------------------------------------------------------------------------------
 -spec uri_from_ip_port(IP :: string(), Port :: number()) -> uri().
 uri_from_ip_port(IP, Port) ->
-    "http://" ++ IP ++ ":" ++ integer_to_list(Port) ++ "/".
+    uri_from_scheme_ip_port(http, IP, Port).
+
+-spec uri_from_scheme_ip_port(Scheme :: atom(), IP :: string(), Port :: number()) -> uri().
+uri_from_scheme_ip_port(Scheme, IP, Port) ->
+    atom_to_list(Scheme) ++ "://" ++ IP ++ ":" ++ integer_to_list(Port) ++ "/".
 
 %%------------------------------------------------------------------------------
 %% Get uri of peer

@@ -9,6 +9,7 @@
             "type"  : "array",
             "items" : {
                 "type"    : "string",
+                "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$", 
                 "example" : "http://a.b.c:123/"
             }
         },
@@ -24,6 +25,7 @@
                             "description" :
                             "The peer address that the node will present itself with. If port part given, it must match 'port' user config.",
                             "type" : "string",
+                            "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$", 
                             "example" : "http://a.b.c:123/"
                         },
                         "port" : {
@@ -39,7 +41,7 @@
                     "properties" : {
                         "port" : {
                             "description" :
-                            "Listen port for external HTTP interface.",
+                            "Listen port for internal HTTP interface.",
                             "type" : "integer"
                         }
                     }
