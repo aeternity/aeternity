@@ -428,7 +428,13 @@ check_update_after_insert(Node, State) ->
                     update_state_tree(ForkNode, State1)
             end;
         new_top ->
-            [NewTopHash] = find_new_header_top_from_node(Node, State),
+            %% This could still be a fork if it is the connecting block
+            NewTopHash =
+                case find_new_header_top_from_node(Node, State) of
+                    [H] -> H;
+                    NewTopHashes ->
+                        determine_new_header_top_hash(NewTopHashes, State)
+                end,
             assert_target_of_nodes_until_current_top(NewTopHash, State),
             State1 = set_top_header_hash(NewTopHash, State),
             update_state_tree(Node, State1)
