@@ -275,11 +275,13 @@ fetch_headers(PeerUri, GHash) ->
     end.
 
 fetch_headers_1(HdrHash, Hdr, PeerUri, GHash, Acc) ->
-    case aec_chain:get_header_by_hash(HdrHash) of
-        {ok, _} ->
+    {ResTag, _} = aec_chain:get_header_by_hash(HdrHash),
+    case ((ResTag =:= ok)
+          andalso aec_chain:hash_is_connected_to_genesis(HdrHash)) of
+        true ->
             %% we have a continuous header chain
             headers_fetched(PeerUri, Acc);
-        {error, _} ->
+        false ->
             lager:debug("we don't have the top block header,"
                         " fetching block (~p)", [pp(HdrHash)]),
             Acc1 = fetch_block(HdrHash, PeerUri, Acc),
@@ -329,14 +331,16 @@ fetch_next_hdr(Hash, PeerUri, GHash, Acc) ->
     end.
 
 fetch_hdrs_block_recvd(HdrHash, Block, PeerUri, GHash, Acc) ->
-    case aec_chain:get_block_by_hash(HdrHash) of
-        {ok, _} ->
+    {ResTag, _} = aec_chain:get_block_by_hash(HdrHash),
+    case ((ResTag =:= ok)
+          andalso aec_chain:hash_is_connected_to_genesis(HdrHash)) of
+        true ->
             lager:debug(
               "we have this block, go to next phase (~p)",
               [pp(HdrHash)]),
             %% we're done
             headers_fetched(PeerUri, Acc);
-        {error, _} ->
+        false ->
             lager:debug("new block, continue (~p)", [pp(HdrHash)]),
             Hdr = aec_blocks:to_header(Block),
             fetch_next_hdr(

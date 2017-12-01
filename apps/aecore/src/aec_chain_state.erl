@@ -17,6 +17,7 @@
         , get_header_by_height/2
         , get_missing_block_hashes/1
         , get_state_trees_for_persistance/1
+        , hash_is_connected_to_genesis/2
         , insert_block/2
         , insert_header/2
         , new/0
@@ -175,6 +176,17 @@ get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
             end
     end.
 
+-spec hash_is_connected_to_genesis(binary(), state()) -> boolean().
+hash_is_connected_to_genesis(Hash, ?assert_state() = State) when is_binary(Hash) ->
+    case blocks_db_find(Hash, State) of
+        error -> false;
+        {ok, Node} ->
+            try determine_chain_relation(Node, State) of
+                off_chain -> false;
+                _         -> true
+            catch throw:?internal_error(rejecting_new_genesis_block) -> false
+            end
+    end.
 
 -spec difficulty_at_top_block(state()) -> {'ok', float()} | {'error', atom()}.
 difficulty_at_top_block(?assert_state() = State) ->
@@ -460,7 +472,7 @@ determine_chain_relation(Node, State) ->
             case Hash =:= GenesisHash of
                 true when TopBlockHash =:= undefined -> in_chain;
                 true -> in_chain;
-                false when GenesisHash =:= undefined -> in_chain; 
+                false when GenesisHash =:= undefined -> in_chain;
                 false -> internal_error(rejecting_new_genesis_block)
             end;
         TopHash when is_binary(TopHash) ->

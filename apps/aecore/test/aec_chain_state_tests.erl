@@ -25,6 +25,7 @@
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
+        , hash_is_connected_to_genesis/2
         , insert_block/2
         , insert_header/2
         , top_block/1
@@ -257,6 +258,8 @@ out_of_order_test_() ->
         fun out_of_order_test_block_chain/0}
      , {"Out of order insert of mixed chain",
         fun out_of_order_test_mixed_chain/0}
+     , {"Out of order check if a block is connected",
+        fun out_of_order_test_connected/0}
      ]}.
 
 out_of_order_test_header_chain() ->
@@ -323,6 +326,26 @@ out_of_order_test_mixed_chain() ->
     {ok, State5} = insert_block(B1, State4),
     ?assertEqual(B2H, top_header_hash(State5)),
     ?assertEqual(B2H, top_block_hash(State5)),
+    ok.
+
+out_of_order_test_connected() ->
+    %% Create a chain that we are going to use.
+    Chain = [B0, B1, B2, B3] = aec_test_utils:gen_block_chain(4),
+    [B0H, B1H, B2H, B3H] = [block_hash(H) || H <- Chain],
+
+    %% Insert a broken chain and test connectivity
+    S1 = write_blocks_to_chain([B0, B1, B3], new_state()),
+    ?assertEqual(true, hash_is_connected_to_genesis(B0H, S1)),
+    ?assertEqual(true, hash_is_connected_to_genesis(B1H, S1)),
+    ?assertEqual(false, hash_is_connected_to_genesis(B2H, S1)),
+    ?assertEqual(false, hash_is_connected_to_genesis(B3H, S1)),
+
+    %% Write the missing block
+    S2 = write_blocks_to_chain([B2], S1),
+    ?assertEqual(true, hash_is_connected_to_genesis(B0H, S2)),
+    ?assertEqual(true, hash_is_connected_to_genesis(B1H, S2)),
+    ?assertEqual(true, hash_is_connected_to_genesis(B2H, S2)),
+    ?assertEqual(true, hash_is_connected_to_genesis(B3H, S2)),
     ok.
 
 %%%===================================================================
