@@ -29,6 +29,7 @@
          get_missing_block_hashes/0,
          get_total_difficulty/0,
          get_transactions_between/2,
+         hash_is_connected_to_genesis/1,
          insert_header/1,
          top/0,
          top_block_hash/0,
@@ -130,6 +131,11 @@ get_header_by_height(Height) ->
 -spec get_block_by_height(height()) -> get_block_by_height_reply().
 get_block_by_height(Height) ->
     gen_server:call(?CHAIN_SERVER, {get_block_by_height, Height},
+                    ?DEFAULT_CALL_TIMEOUT).
+
+-spec hash_is_connected_to_genesis(binary()) -> boolean().
+hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
+    gen_server:call(?CHAIN_SERVER, {hash_is_connected_to_genesis, Hash},
                     ?DEFAULT_CALL_TIMEOUT).
 
 %% Insert in the chain the specified header if it is a successor of

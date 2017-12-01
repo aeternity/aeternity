@@ -883,13 +883,14 @@ config(N, Config) ->
 %%     ?config(data_dir, Config).
 
 priv_dir(Config) ->
-    ?config(priv_dir, Config).
+    filename:join(?config(priv_dir, Config), ?MODULE_STRING).
 
 %% node_dir(N, Config) ->
 %%     filename:join(priv_dir(Config), N).
 
 make_shortcut(Config) ->
     PrivDir  = priv_dir(Config),
+    ok = filelib:ensure_dir(filename:join(PrivDir, "foo")),
     Shortcut = shortcut_dir(Config),
     delete_file(Shortcut),
     ok = file:make_symlink(PrivDir, Shortcut),

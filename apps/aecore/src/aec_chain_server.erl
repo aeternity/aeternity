@@ -108,6 +108,8 @@ handle_call({get_block_by_height, H}, _From, State) ->
     {reply, aec_chain_state:get_block_by_height(H, State), State};
 handle_call(get_missing_block_hashes, _From, State) ->
     {reply, aec_chain_state:get_missing_block_hashes(State), State};
+handle_call({hash_is_connected_to_genesis, Hash}, _From, State) ->
+    {reply, aec_chain_state:hash_is_connected_to_genesis(Hash, State), State};
 handle_call(difficulty, _From, State) ->
     {reply, difficulty(State), State};
 handle_call({common_ancestor, Hash1, Hash2}, _From, State) ->
