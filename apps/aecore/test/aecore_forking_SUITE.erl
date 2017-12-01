@@ -421,7 +421,6 @@ shortcut_dir(Config) ->
     Top = ?config(top_dir, Config),
     filename:join(Top, "_build/test/logs/latest.fork").
 
-
 data_dir(N, Config) ->
     filename:join(node_shortcut(N, Config), "data").
 
