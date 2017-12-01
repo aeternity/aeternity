@@ -623,7 +623,7 @@ cp_file(From, To) ->
     ok.
 
 symlink(From, To) ->
-    ok = file:make_symlink(From, To),
+    {ok, _} = {file:make_symlink(From, To), {From, To}},
     ct:log("symlinked ~s to ~s", [From, To]),
     ok.
 
@@ -991,7 +991,7 @@ make_shortcut(Config) ->
     ok = filelib:ensure_dir(filename:join(PrivDir, "foo")),
     Shortcut = shortcut_dir(Config),
     delete_file(Shortcut),
-    ok = file:make_symlink(PrivDir, Shortcut),
+    symlink(PrivDir, Shortcut),
     ct:log("Made symlink ~s to ~s", [PrivDir, Shortcut]),
     ok.
 
