@@ -58,16 +58,16 @@ deploy:
       repo: aeternity/epoch
       branch: env/dev2
       condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
-matrix:
-  include:
-    - os: osx
-      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
-      env: JOB=test
-    - os: osx
-      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
-      env: JOB=package
+# matrix:
+#   include:
+#     - os: osx
+#       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+#       language: generic
+#       env: JOB=test
+#     - os: osx
+#       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+#       language: generic
+#       env: JOB=package
 env:
   - JOB=test
   - JOB=dialyzer
