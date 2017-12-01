@@ -594,6 +594,7 @@ forking_test_() ->
      [ {"Fork on genesis", fun fork_on_genesis/0}
      , {"Fork on shorter chain because of difficulty", fun fork_on_shorter/0}
      , {"Fork on last block", fun fork_on_last_block/0}
+     , {"Fork and out of order", fun fork_out_of_order/0}
      ]}.
 
 fork_on_genesis() ->
@@ -660,6 +661,23 @@ fork_common_headers(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     State4 = write_headers_to_chain(EasyChain, State3),
     ?assertEqual(TopHashHard, top_header_hash(State3)),
     ?assertEqual(TopHashHard, top_header_hash(State4)),
+    ok.
+
+fork_out_of_order() ->
+    CommonChain = gen_block_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = extend_chain(CommonChain, [2], 111),
+    HardChain = extend_chain(CommonChain, [1], 222),
+
+    %% Add the chain with the fork node as the last entry.
+    InitState = new_state(),
+
+    State1 = write_blocks_to_chain(lists:droplast(CommonChain), InitState),
+    {ok, State2} = insert_block(lists:last(EasyChain), State1),
+    {ok, State3} = insert_block(lists:last(HardChain), State2),
+
+    %% The last block to enter is the last common node.
+    {ok, State4} = insert_block(lists:last(CommonChain), State3),
+    ?assertEqual(block_hash(lists:last(HardChain)), top_block_hash(State4)),
     ok.
 
 %%%===================================================================
