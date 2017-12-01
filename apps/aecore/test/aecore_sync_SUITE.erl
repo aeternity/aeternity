@@ -874,7 +874,9 @@ config(N, Config) ->
        <<"mining">> =>
            #{<<"autostart">> => false},
        <<"websocket">> =>
-           #{<<"acceptors">> => 10}
+           #{<<"internal">> =>
+                 #{<<"acceptors">> => 10}
+            }
       }.
 
 %% data_dir(Config) ->

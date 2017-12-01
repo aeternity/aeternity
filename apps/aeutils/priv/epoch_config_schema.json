@@ -52,14 +52,20 @@
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
-                "port" : {
-                    "description" :
-                    "Listen port for websocket interface.",
-                    "type" : "integer"
-                },
-                "acceptors" : {
-                    "description" : "Number of acceptors in pool",
-                    "type" : "integer"
+                "internal" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "port" : {
+                            "description" :
+                            "Listen port for websocket interface.",
+                            "type" : "integer"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in pool",
+                            "type" : "integer"
+                        }
+                    }
                 }
             }
         },
