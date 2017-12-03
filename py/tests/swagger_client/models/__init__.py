@@ -14,6 +14,8 @@
 from __future__ import absolute_import
 
 # import models into model package
+from .account_balance import AccountBalance
+from .accounts_balances import AccountsBalances
 from .balance import Balance
 from .block import Block
 from .error import Error

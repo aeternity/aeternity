@@ -128,6 +128,21 @@ handle_request('GetAccountBalance', Req, _Context) ->
             end
     end;
 
+handle_request('GetAccountsBalances', _Req, _Context) ->
+    case application:get_env(aehttp, enable_debug_endpoints, false) of
+        true ->
+            AccountsBalances = aec_conductor:get_all_accounts_balances(),
+            FormattedAccountsBalances =
+                lists:foldl(
+                  fun({Pubkey, Balance}, Acc) ->
+                          [#{pub_key => base64:encode(Pubkey),
+                             balance => Balance} | Acc]
+                  end, [], AccountsBalances),
+            {200, [], #{accounts_balances => FormattedAccountsBalances}};
+        false ->
+            {404, [], #{}}
+    end;
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

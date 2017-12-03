@@ -14,6 +14,8 @@
 from __future__ import absolute_import
 
 # import models into sdk package
+from .models.account_balance import AccountBalance
+from .models.accounts_balances import AccountsBalances
 from .models.balance import Balance
 from .models.block import Block
 from .models.error import Error
