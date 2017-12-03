@@ -15,7 +15,8 @@
          is_trees/1,
          put/3,
          root_hash/1,
-         verify_proof/4]).
+         verify_proof/4,
+         to_orddict/1]).
 
 -type tree() :: gb_merkle_trees:tree().
 
@@ -78,3 +79,7 @@ root_hash(Tree) ->
 
 verify_proof(Key, Value, RootHash, Proof) ->
     gb_merkle_trees:verify_merkle_proof(Key, Value, RootHash, Proof).
+
+-spec to_orddict(tree()) -> list({binary(), binary()}).
+to_orddict(Tree) ->
+    gb_merkle_trees:to_orddict(Tree).

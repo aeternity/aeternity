@@ -32,3 +32,15 @@ proof_test() ->
     %% Assert proof starts from leaf and leads to root hash.
     ?assertEqual({ok, verified}, aec_accounts:verify_proof(A1, H1, P1)),
     ok.
+
+get_all_accounts_balances_test() ->
+    {ok, T0} = aec_accounts:empty(),
+
+    A1 = #account{pubkey = <<"k1">>, balance = 11},
+    A2 = #account{pubkey = <<"k2">>, balance = 13},
+
+    {ok, T1} = aec_accounts:put(A1, T0),
+    {ok, T2} = aec_accounts:put(A2, T1),
+
+    ?assertEqual([{<<"k2">>, 13}, {<<"k1">>, 11}],
+                 aec_accounts:get_all_accounts_balances(T2)).

@@ -5,6 +5,7 @@
          new/3,
          get/2,
          get_with_proof/2,
+         get_all_accounts_balances/1,
          put/2,
          balance/1,
          nonce/1,
@@ -45,6 +46,15 @@ get_with_proof(Pubkey, AccountsTree) ->
         {error, notfound} = E ->
             E
     end.
+
+-spec get_all_accounts_balances(aec_trees:trees()) -> list({pubkey(), non_neg_integer()}).
+get_all_accounts_balances(AccountsTree) ->
+    AccountsDump = aec_trees:to_orddict(AccountsTree),
+    lists:foldl(
+      fun({Pubkey, SerializedAccount}, Acc) ->
+              #account{balance = B} = deserialize(SerializedAccount),
+              [{Pubkey, B} | Acc]
+      end, [], AccountsDump).
 
 put(Account, AccountsTree) ->
     {ok, _NewAccountsTree} =
