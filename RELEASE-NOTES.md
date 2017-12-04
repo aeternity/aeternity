@@ -180,9 +180,13 @@ Retrieve the balance associated to the retrieved public key (replace the public 
 ```
 curl -G http://127.0.0.1:3003/v1/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
 ```
-You shall read output like the following:
+You shall read output like the following...
 ```
 {"balance":80}
+```
+... or - if you have not yet mined a block successfully - the following:
+```
+{"reason":"Account not found"}
 ```
 
 #### Send tokens to another account
