@@ -29,12 +29,11 @@ mine_block_test_() ->
        {timeout, 60,
         {"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
          fun() ->
-                 meck:expect(aec_chain, top, 0,
-                             {ok, #block{height = 0,
-                                         target = ?HIGHEST_TARGET_SCI}}),
+                 TopBlock = #block{height = 0,
+                                   target = ?HIGHEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 12),
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(1, Block#block.height),
@@ -47,10 +46,10 @@ mine_block_test_() ->
         {"Proof of work fails with no_solution (PoW module " ++
              atom_to_list(PoWMod) ++ ")",
          fun() ->
-                 meck:expect(aec_chain, top, 0, {ok, #block{target = ?LOWEST_TARGET_SCI}}),
+                 TopBlock = #block{target = ?LOWEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock),
                  ?assertEqual({error, no_solution},
                               ?TEST_MODULE:mine(BlockCandidate, Nonce))
          end}}
@@ -65,7 +64,6 @@ difficulty_recalculation_test_() ->
               %% This group of tests tests the difficulty
               %% recalculation inside the aec_mining module, hence the
               %% PoW module could be mocked.
-              meck:expect(aec_chain, top, 0, {ok, #block{}}),
               meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10)
       end,
       fun(_) ->
@@ -84,14 +82,15 @@ difficulty_recalculation_test_() ->
                                     txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                                       signatures = [<<"sig1">>]}],
                                     time = Now}),
-                 meck:expect(aec_chain, get_header_by_height, 1,
+                 meck:expect(aec_conductor, get_header_by_height, 1,
                              {ok, #header{height = 20,
                                           time = Now - (10 * OneBlockExpectedMineTime)}}),
                  meck:expect(aec_pow, pick_nonce, 0, 32),
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
+                 TopBlock = #block{},
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(30, Block#block.height),
@@ -113,7 +112,7 @@ difficulty_recalculation_test_() ->
                                     txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
                                                       signatures = [<<"sig1">>]}],
                                     time = Now}),
-                 meck:expect(aec_chain, get_header_by_height, 1,
+                 meck:expect(aec_conductor, get_header_by_height, 1,
                              {ok, #header{height = 190,
                                           target = CurrentTarget,
                                           time = TenBlocksBeforeTime}}),
@@ -122,7 +121,8 @@ difficulty_recalculation_test_() ->
                  %% One block should be mined every 5 mins
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(),
+                 TopBlock = #block{},
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(200, Block#block.height),
@@ -144,7 +144,7 @@ setup(PoWMod) ->
     end,
     application:start(crypto),
     meck:new(aec_blocks, [passthrough]),
-    meck:new(aec_chain, [passthrough]),
+    meck:new(aec_conductor, [passthrough]),
     meck:new(aec_headers, [passthrough]),
     meck:new(aec_pow, [passthrough]),
     meck:new(aec_tx, [passthrough]),
@@ -166,7 +166,7 @@ setup(PoWMod) ->
 cleanup(_, PoWMod) ->
     application:stop(crypto),
     meck:unload(aec_blocks),
-    meck:unload(aec_chain),
+    meck:unload(aec_conductor),
     meck:unload(aec_headers),
     meck:unload(aec_pow),
     meck:unload(aec_tx),

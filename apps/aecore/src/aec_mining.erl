@@ -1,8 +1,8 @@
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/0,
-         apply_new_txs/1,
+-export([create_block_candidate/1,
+         need_to_regenerate/1,
          mine/2]).
 
 
@@ -13,25 +13,17 @@
 
 %% API
 
--spec create_block_candidate() -> {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate() ->
-    create_block_candidate(get_txs_to_mine_in_pool()).
+-spec create_block_candidate(block()) -> {ok, block(), aec_pow:nonce()} | {error, term()}.
+create_block_candidate(TopBlock) ->
+    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock).
 
--spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), aec_pow:nonce()} | {error, term()}.
-apply_new_txs(#block{txs = Txs} = Block) ->
+-spec need_to_regenerate(block()) -> boolean().
+need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
+    %% TODO: This should be an access function in tx pool
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
-    CurrentTxsBlockCount = length(Txs),
-    case {MaxTxsInBlockCount, CurrentTxsBlockCount} of
-        {Count, Count} ->
-            {ok, Block};
-        {_, _} ->
-            case get_txs_to_mine_in_pool() of
-                [] ->
-                    {ok, Block};
-                [_|_] = NewTxs ->
-                    create_block_candidate(NewTxs)
-            end
-    end.
+    CurrentTxsBlockCount = length(Txs) + 1,
+    (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
+        andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
 
 -spec mine(block(), aec_pow:nonce()) -> {ok, block()} | {error, term()}.
 mine(Block, Nonce) ->
@@ -55,16 +47,15 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(signed_tx())) -> {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate(TxsToMineInPool) ->
+-spec create_block_candidate(list(signed_tx()), block()) -> {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
+create_block_candidate(TxsToMineInPool, TopBlock) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            {ok, LastBlock} = aec_chain:top(),
-            Trees = aec_blocks:trees(LastBlock),
-            Block0 = aec_blocks:new(LastBlock, Txs, Trees),
+            Trees = aec_blocks:trees(TopBlock),
+            Block0 = aec_blocks:new(TopBlock, Txs, Trees),
             case aec_blocks:cointains_coinbase_tx(Block0) of
                 true ->
                     Block = adjust_target(Block0),
@@ -104,8 +95,10 @@ adjust_target(Block) ->
     case aec_target:determine_delta_header_height(Header) of
         {ok, InitialHeaderHeight} ->
             %% For mining we can grab the header at height=DeltaHeight from
-            %% the current main chain, hence aec_chain:get_header_by_height/1 call.
-            {ok, InitialHeader} = aec_chain:get_header_by_height(InitialHeaderHeight),
+            %% the current main chain, hence aec_conductor:get_header_by_height/1 call.
+            %% TODO: It is not good to call back to aec_conductor
+            %%       but we do this for now.
+            {ok, InitialHeader} = aec_conductor:get_header_by_height(InitialHeaderHeight),
             CalculatedTarget = aec_target:recalculate(Header, InitialHeader),
             aec_blocks:set_target(Block, CalculatedTarget);
         {error, chain_too_short_to_recalculate_target} ->

@@ -96,7 +96,7 @@ create_dev2_chain(Config) ->
     N2 = node_(dev2),
     connect(N2),
     mine_one_block(N2),
-    {ok, ForkTop} = rpc_call(N2, aec_chain, top, []),
+    ForkTop = rpc_call(N2, aec_conductor, top, []),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     stop_node(dev2, Config),
     ok.
@@ -105,14 +105,14 @@ sync_fork_in_wrong_order(Config) ->
     start_node_(dev1, Config),
     N1 = node_(dev1),
     connect(N1),
-    {ok, N1Top} = rpc_call(N1, aec_chain, top, []),
+    N1Top = rpc_call(N1, aec_conductor, top, []),
     ct:log("top of chain dev1: ~p", [ N1Top ]),
     stop_node(dev1, Config),
    
     start_node_(dev2, Config),
     N2 = node_(dev2),
     connect(N2),
-    {ok, ForkTop} = rpc_call(N2, aec_chain, top, []),
+    ForkTop = rpc_call(N2, aec_conductor, top, []),
     ct:log("top of chain dev2: ~p", [ ForkTop ]),
     
     false = (ForkTop == N1Top),
@@ -124,9 +124,9 @@ sync_fork_in_wrong_order(Config) ->
     connect(N1),
     timer:sleep(200),
 
-    {ok, N2Top} = rpc_call(N2, aec_chain, top, []),
+    N2Top = rpc_call(N2, aec_conductor, top, []),
     ct:log("top of chain dev2: ~p", [ N2Top ]),
-    true = (N1Top == N2Top),
+    {N1Top, N2Top} = {N2Top, N1Top},
     ok.
 
 

@@ -152,7 +152,7 @@ start_second_node(Config) ->
     connect(N2),
     timer:sleep(2000),
     ct:log("Peers on dev2: ~p", [rpc_call(N2, aec_peers, all, [])]),
-    {ok, B1} = rpc_call(N1, aec_chain, top, []),
+    B1 = rpc_call(N1, aec_conductor, top, []),
     true = expect_block(N2, B1).
 
 tx_first_pays_second(_Config) ->
@@ -232,9 +232,9 @@ mine_on_third(Config) ->
 
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
-    {ok, PrevTop} = rpc_call(N1, aec_chain, top, []),
+    PrevTop = rpc_call(N1, aec_conductor, top, []),
     ok = mine_one_block(N1),
-    {ok, NewTop} = rpc_call(N1, aec_chain, top, []),
+    NewTop = rpc_call(N1, aec_conductor, top, []),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
@@ -282,7 +282,7 @@ check_sync_event(#{sender := From, info := Info}, Nodes) ->
 expect_same_top(Nodes, Tries) when Tries > 0 ->
     Blocks = lists:map(
                fun(N) ->
-                       {ok, B} = rpc_call(N, aec_chain, top, []),
+                       B = rpc_call(N, aec_conductor, top, []),
                        {N, B}
                end, Nodes),
     case lists:ukeysort(2, Blocks) of
@@ -748,7 +748,7 @@ expect_block(N, B) ->
           {?LINE, expect_block, N, B}).
 
 expect_block_(N, B) ->
-    {ok, Bn} = rpc_call(N, aec_chain, top, []),
+    Bn = rpc_call(N, aec_conductor, top, []),
     case B =:= Bn of
         true ->
             Bal = get_balance(N),

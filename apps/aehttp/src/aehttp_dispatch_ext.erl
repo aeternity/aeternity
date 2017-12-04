@@ -41,7 +41,7 @@ handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
     end;
 
 handle_request('GetTop', _, _Context) ->
-    {ok, Header} = aec_chain:top_header(),
+    Header = aec_conductor:top_header(),
     {ok, HH} = aec_headers:hash_header(Header),
     {ok, Top} = aec_headers:serialize_to_map(Header),
     Resp = cleanup_genesis(Top),
@@ -49,7 +49,7 @@ handle_request('GetTop', _, _Context) ->
 
 handle_request('GetBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aec_chain:get_block_by_height(Height) of
+    case aec_conductor:get_block_by_height(Height) of
         {ok, Block} ->
             %% swagger generated code expects the Resp to be proplist or map
             %% and always runs jsx:encode/1 on it - even if it is already
@@ -70,12 +70,12 @@ handle_request('GetBlockByHeight', Req, _Context) ->
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
     lager:debug("got ~p; Req = ~p", [_Method, pp(Req)]),
     Hash = base64:decode(maps:get('hash', Req)),
-    case aec_chain:get_header_by_hash(Hash) of
-        {error, {header_not_found, _}} ->
+    case aec_conductor:get_header_by_hash(Hash) of
+        {error, header_not_found} ->
             {404, [], #{reason => <<"Block not found">>}};
         {ok, Header} ->
             {ok, HH} = aec_headers:hash_header(Header),
-            case aec_chain:get_block_by_hash(HH) of
+            case aec_conductor:get_block_by_hash(HH) of
                 {ok, Block} ->
                     %% swagger generated code expects the Resp to be proplist
                     %% or map and always runs jsx:encode/1 on it - even if it
@@ -87,7 +87,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                       cleanup_genesis(aec_blocks:serialize_to_map(Block)),
                     lager:debug("Resp = ~p", [pp(Resp)]),
                     {200, [], Resp};
-                {error, {block_not_found, _}} ->
+                {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end
     end;
@@ -139,7 +139,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
         not_base64_encoded ->
             {400, [], #{reason => <<"Invalid address">>}};
         _ when is_binary(Pubkey) ->
-            {ok, LastBlock} = aec_chain:top(),
+            LastBlock = aec_conductor:top(),
             Trees = aec_blocks:trees(LastBlock),
             AccountsTree = aec_trees:accounts(Trees),
             case aec_accounts:get(Pubkey, AccountsTree) of
@@ -182,7 +182,7 @@ cleanup_genesis(Val) ->
     Val.
 
 add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
-    {ok, GenesisBlock} = aec_chain:genesis_block(),
+    {ok, GenesisBlock} = aec_conductor:genesis_block(),
     GB = aec_blocks:serialize_to_map(GenesisBlock),
     EmptyFields = maps:with(empty_fields_in_genesis(), GB),
     maps:merge(Block, EmptyFields);

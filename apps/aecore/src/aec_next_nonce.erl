@@ -1,8 +1,9 @@
 -module(aec_next_nonce).
 
--export([pick_for_account/1]).
+-export([pick_for_account/2]).
 
 -include("common.hrl").
+-include("blocks.hrl").
 
 %% It assumes that in order to pick a nonce for a transaction
 %% account has to be present in state tree.
@@ -11,9 +12,9 @@
 %% - some funds are transferred to user's account
 %% or
 %% - user mined a block, which was already added to the chain.
--spec pick_for_account(pubkey()) -> {ok, non_neg_integer()} | {error, account_not_found}.
-pick_for_account(AccountPubkey) ->
-    case get_state_tree_nonce(AccountPubkey) of
+-spec pick_for_account(pubkey(), block()) -> {ok, non_neg_integer()} | {error, account_not_found}.
+pick_for_account(AccountPubkey, TopBlock) ->
+    case get_state_tree_nonce(AccountPubkey, TopBlock) of
         {ok, StateTreeNonce} ->
             MempoolNonce = get_mempool_nonce(AccountPubkey),
             NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
@@ -25,10 +26,9 @@ pick_for_account(AccountPubkey) ->
 
 %% Internals
 
--spec get_state_tree_nonce(pubkey()) -> {ok, non_neg_integer()} | {error, account_not_found}.
-get_state_tree_nonce(AccountPubkey) ->
-    {ok, LastBlock} = aec_chain:top(),
-    Trees = aec_blocks:trees(LastBlock),
+-spec get_state_tree_nonce(pubkey(), block()) -> {ok, non_neg_integer()} | {error, account_not_found}.
+get_state_tree_nonce(AccountPubkey, TopBlock) ->
+    Trees = aec_blocks:trees(TopBlock),
     AccountsTrees = aec_trees:accounts(Trees),
     case aec_accounts:get(AccountPubkey, AccountsTrees) of
         {ok, Account} ->

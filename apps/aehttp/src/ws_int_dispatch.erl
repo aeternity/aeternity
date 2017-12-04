@@ -31,10 +31,10 @@ do_execute(chain, get, QueryPayload) ->
     {BlockFound, Query} =
         case QueryPayload of
             #{<<"height">> := Height} ->
-                {aec_chain:get_block_by_height(Height), {height, Height}};
+                {aec_conductor:get_block_by_height(Height), {height, Height}};
             #{<<"hash">> := Hash0} ->
                 Hash = base64:decode(Hash0),
-                {aec_chain:get_block_by_hash(Hash), {hash, Hash0}}
+                {aec_conductor:get_block_by_hash(Hash), {hash, Hash0}}
         end,
     case BlockFound of
         {error, ErrMsg} ->
