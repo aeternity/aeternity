@@ -12,7 +12,7 @@
 -include("blocks.hrl").
 
 -import(aec_test_utils,
-        [ extend_block_chain_by_targets_with_nonce_and_coinbase/3
+        [ extend_block_chain/2
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         ]).
@@ -495,30 +495,33 @@ constant_target_at_the_beginning_of_the_chain() ->
     %% For header with height 4, header with height 1 is taken for difficulty recalculations
     ?assertNotMatch({error, {target_not_equal_to_parent, _, _}},
                     insert_header(BH4, S3)),
-    ?assertMatch({error, {target_too_high, _, _}},
+    ?assertMatch({error, {wrong_target, _, _, _}},
                  insert_header(BH4, S3)),
 
     ?assertEqual(block_hash(B3), top_header_hash(S3)),
     ok.
 
 target_verified_based_on_calculations() ->
-    Chain = gen_block_chain_by_target(
-              [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, 2, 1], 222),
-    [BH0, BH1, BH2, BH3, BH4, BH5] = [aec_blocks:to_header(B) || B <- Chain],
+    Good4 = 536926835,
+    Bad4  = 536926853,
+    Good5 = 520235910,
+    T0    = aeu_time:now_in_msecs(),
+    ChainData =
+        #{ targets    => [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, Good4, Good5],
+           nonce      => 12345,
+           timestamps => [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000] },
 
-    meck:expect(aec_pow, recalculate_target,
-                fun(?GENESIS_TARGET, _, _) -> 5; %% Expect target of block 4 to be <=5
-                   (2, _, _) -> 4
-                end),
+    Chain = gen_block_chain(ChainData),
+    [BH0, BH1, BH2, BH3, BH4, BH5] = [aec_blocks:to_header(B) || B <- Chain],
 
     {ok, S0} = insert_header(BH0, new_state()),
     {ok, S1} = insert_header(BH1, S0),
     {ok, S2} = insert_header(BH2, S1),
     {ok, S3} = insert_header(BH3, S2),
 
-    %% Try to insert header with height=4 with target=8
-    BadBH4 = BH4#header{target = 8},
-    ?assertMatch({error, {target_too_high, _, _}},
+    %% Try to insert header with height=4 with an incorrect target
+    BadBH4 = BH4#header{target = Bad4},
+    ?assertMatch({error, {wrong_target, _, _, _}},
                  insert_header(BadBH4, S3)),
 
     %% Insert header with height=4 with expected target
@@ -529,18 +532,18 @@ target_verified_based_on_calculations() ->
     ok.
 
 test_postponed_target_verification() ->
-    MainBC = gen_block_chain_by_target([?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET,
-                                        4, 6, 5], 111),
-    AltChain = [_, B1, B2, B3, B4, B5, B6] = gen_block_chain_by_target(
-                                               [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET,
-                                                4, 100, 1], 222),
+    CommonTargets = [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET],
+    MainTargets = CommonTargets ++ [536926835, 520235910, 503676955],
+    AltTargets  = CommonTargets ++ [536926835, 168427524, 503676955],
+
+    T0 = aeu_time:now_in_msecs(),
+    TS = [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000, T0 + 50000],
+    MainBC = gen_block_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS }),
+    AltChain = [_, B1, B2, B3, B4, B5, B6] =
+        gen_block_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS }),
+
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
-
-    meck:expect(aec_pow, recalculate_target,
-                fun(4, _, _) -> 10; %% Expect target of block 5 to be <=10
-                   (_, _, _) -> 1000
-                end),
 
     %% Insert the main chain
     S0 = write_blocks_to_chain(MainBC, new_state()),
@@ -556,7 +559,7 @@ test_postponed_target_verification() ->
 
     %% Insert B4, which should make AltChain take over,
     %% but already inserted B5 has too high target (it was mined too easily)
-    ?assertMatch({error, {target_too_high, _, _}},
+    ?assertMatch({error, {wrong_target, _, _, _}},
                  insert_block(B4, S5)),
 
     %% Assert alt chain did not take over
@@ -803,14 +806,17 @@ gc_opts(KeepAll, Max, Interval) ->
      , keep_all_snapshots_height => KeepAll
      }.
 
+gen_block_chain(Data) ->
+    B0 = genesis_block(),
+    [B0 | extend_block_chain(B0, Data)].
+
 gen_block_chain_by_target(Targets, Nonce) ->
     B0 = genesis_block(),
-    [B0 | extend_block_chain_by_targets_with_nonce_and_coinbase(B0, Targets, Nonce)].
+    [B0 | extend_block_chain(B0, #{ targets => Targets, nonce => Nonce })].
 
 extend_chain(Base, Targets, Nonce) ->
     B = lists:last(Base),
-    Base ++
-        extend_block_chain_by_targets_with_nonce_and_coinbase(B, Targets, Nonce).
+    Base ++ extend_block_chain(B, #{ targets => Targets, nonce => Nonce }).
 
 genesis_block() ->
     aec_block_genesis:genesis_block().

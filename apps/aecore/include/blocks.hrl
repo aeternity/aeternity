@@ -1,9 +1,9 @@
 -include("trees.hrl").
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 1).
+-define(PROTOCOL_VERSION, 2).
 
--define(GENESIS_VERSION, 1).
+-define(GENESIS_VERSION, 2).
 -define(GENESIS_HEIGHT, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).

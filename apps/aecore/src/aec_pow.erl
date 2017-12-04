@@ -10,7 +10,6 @@
          pick_nonce/0,
          next_nonce/1,
          target_to_difficulty/1,
-         recalculate_target/3,
 
          scientific_to_integer/1,
          integer_to_scientific/1]).
@@ -137,25 +136,6 @@ pick_nonce() ->
 -spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
     (N + 1) band ?MAX_NONCE.
-
-%%------------------------------------------------------------------------------
-%% Adjust target so that generation of new blocks proceeds at the expected pace
-%% Expected and Actual are rates (if Actual is too small, we need to decrease
-%% target).
-%%------------------------------------------------------------------------------
--spec recalculate_target(sci_int(), integer(), integer()) -> sci_int().
-recalculate_target(Target, _Expected, 0) ->
-    %% In the unexpected case the the two blocks used for rate calculation
-    %% have the same timestamp, do not update target (as rate is meaningless).
-    %% TODO: handle this case. Most likely that this is case we failed to enforce
-    %% increasing timestaps in headers.
-    Target;
-recalculate_target(Target, Expected, Actual) ->
-    TargetInt = scientific_to_integer(Target),
-    %% Prevent 0 difficulty: 0 can never be increased
-    integer_to_scientific(min(?HIGHEST_TARGET_INT,
-                              max(1, ((TargetInt * Actual) div Expected)))).
-
 
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold

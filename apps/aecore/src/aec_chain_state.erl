@@ -17,6 +17,7 @@
         , get_header_by_height/2
         , get_missing_block_hashes/1
         , get_top_N_blocks_time_summary/2
+        , get_n_headers_from_top/2
         , get_state_trees_for_persistance/1
         , hash_is_connected_to_genesis/2
         , has_block/2
@@ -113,6 +114,13 @@ top_block(?match_state(top_block_hash := undefined)) -> undefined;
 top_block(?match_state(top_block_hash := X) = State) ->
     export_block(blocks_db_get(X, State), State).
 
+-spec get_n_headers_from_top(non_neg_integer(), state()) ->
+                          {'ok', list(#header{})} | {error, atom()}.
+get_n_headers_from_top(_N, ?match_state(top_header_hash := undefined)) ->
+    {error, chain_too_short};
+get_n_headers_from_top(N, ?match_state(top_header_hash := X) = State) ->
+    get_n_headers_from(blocks_db_get(X, State), N, State).
+
 -spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
 insert_block(Block, ?assert_state() = State0) ->
     Node = wrap_block(Block),
@@ -165,32 +173,22 @@ get_header(Hash, ?assert_state() = State) ->
                                   {'ok', #header{}} | {'error', atom()}.
 get_header_by_height(Height, ?assert_state() = State) when is_integer(Height),
                                                            Height >= 0 ->
-    case get_top_header_hash(State) of
-        undefined -> {error, no_top_header};
-        Hash ->
-            Node = blocks_db_get(Hash, State),
-            case find_node_at_height(Height, Node, State) of
-                not_found -> {error, chain_too_short};
-                {ok, Internal} -> {ok, export_header(Internal)}
-            end
+    case get_node_by_height(Height, State) of
+        {ok, Node} -> {ok, export_header(Node)};
+        Error -> Error
     end.
 
 -spec get_block_by_height(non_neg_integer(), state()) ->
                                   {'ok', #block{}} | {'error', atom()}.
 get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
                                                            Height >= 0 ->
-    case get_top_header_hash(State) of
-        undefined -> {error, no_top_header};
-        Hash ->
-            Node = blocks_db_get(Hash, State),
-            case find_node_at_height(Height, Node, State) of
-                not_found -> {error, chain_too_short};
-                {ok, ResNode} ->
-                    case node_is_block(ResNode) of
-                        true  -> {ok, export_block(ResNode, State)};
-                        false -> {error, block_not_found}
-                    end
-            end
+    case get_node_by_height(Height, State) of
+        {ok, Node} ->
+            case node_is_block(Node) of
+                true  -> {ok, export_block(Node, State)};
+                false -> {error, block_not_found}
+            end;
+        Error -> Error
     end.
 
 -spec hash_is_connected_to_genesis(binary(), state()) -> boolean().
@@ -318,9 +316,6 @@ node_is_block(#node{type = Type}) -> Type =:= block.
 node_root_hash(#node{type = header, content = X}) -> aec_headers:root_hash(X);
 node_root_hash(#node{type = block , content = X}) -> aec_blocks:root_hash(X).
 
-node_target(#node{type = header, content = X}) -> aec_headers:target(X);
-node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
-
 node_time(#node{type = header, content = X}) -> aec_headers:time_in_msecs(X);
 node_time(#node{type = block , content = X}) -> aec_blocks:time_in_msecs(X).
 
@@ -374,6 +369,33 @@ export_block(#node{type = block, hash = H, content = B}, State) ->
     case add_state_tree_to_block(B, H, State) of
         {ok, ExportBlock} -> ExportBlock;
         error -> B
+    end.
+
+-spec get_node_by_height(non_neg_integer(), state()) ->
+                                  {'ok', #node{}} | {'error', atom()}.
+get_node_by_height(Height, State)  ->
+    case get_top_header_hash(State) of
+        undefined -> {error, no_top_header};
+        Hash ->
+            Node = blocks_db_get(Hash, State),
+            case find_node_at_height(Height, Node, State) of
+                not_found -> {error, chain_too_short};
+                OkNode    -> OkNode
+            end
+    end.
+
+get_n_headers_from(Node, N, State) ->
+    get_n_headers_from(Node, N-1, State, []).
+
+get_n_headers_from(Node, 0, _, Acc) ->
+    {ok, lists:reverse([export_header(Node) | Acc])};
+get_n_headers_from(Node, N, State, Acc) ->
+    case blocks_db_find(prev_hash(Node), State) of
+        {ok, PrevNode} ->
+            get_n_headers_from(PrevNode, N-1, State,
+                               [export_header(Node) | Acc]);
+        error ->
+            {error, chain_too_short}
     end.
 
 %%%-------------------------------------------------------------------
@@ -598,15 +620,8 @@ assert_target_of_nodes_until_current_top(NodeHash, State) ->
 
 assert_target_of_nodes_between(ForkNodeHash, NodeHash, State) ->
     Node = blocks_db_get(NodeHash, State),
-    Header = export_header(Node),
     ForkHeight = node_height_by_hash(ForkNodeHash, State),
-    case aec_target:determine_delta_header_height(Header) of
-        {ok, Height} ->
-            {ok, DeltaVerificationNode} = find_node_at_height(Height, Node, State),
-            assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State);
-        {error, chain_too_short_to_recalculate_target} ->
-            assert_target_equal_to_parent(Node, ForkHeight, State)
-    end.
+    assert_calculated_target(Node, ForkHeight, State).
 
 node_height_by_hash(undefined, _State) ->
     0;
@@ -614,48 +629,57 @@ node_height_by_hash(ForkNodeHash, State) ->
     ForkNode = blocks_db_get(ForkNodeHash, State),
     node_height(ForkNode).
 
-assert_target_equal_to_parent(Node, ForkHeight, State) ->
-    case node_height(Node) =:= ForkHeight of
+%% To assert the target calculation we need DeltaHeight headers counted
+%% backwards from the node we want to assert. If ForkHeight <= DeltaHeight
+%% we will need all headers back to genesis.
+assert_calculated_target(TopNode, ForkHeight, State) ->
+    DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
+    TopHeight   = node_height(TopNode),
+    N = case ForkHeight > DeltaHeight of
+            true  -> TopHeight - ForkHeight + DeltaHeight;
+            false -> TopHeight + 1
+        end,
+    case get_n_headers_from(TopNode, N, State) of
+        {ok, Headers} ->
+            do_assert_calculated_target(Headers, ForkHeight, DeltaHeight);
+        {error, Err} ->
+            internal_error(Err)
+    end.
+
+do_assert_calculated_target([Header | Headers], ForkHeight, DeltaHeight) ->
+    HeaderHeight = aec_headers:height(Header),
+    case HeaderHeight =:= ForkHeight of
         true ->
             ok;
         false ->
-            PrevNode = blocks_db_get(prev_hash(Node), State),
-            case node_target(Node) =:= node_target(PrevNode) of
+            %% For blocks above DeltaHeight we should call verify, otherwise
+            %% just check that target is the same as previous block.
+            case HeaderHeight - DeltaHeight =< 0 of
                 true ->
-                    assert_target_equal_to_parent(PrevNode, ForkHeight, State);
+                    do_assert_target_equal_to_parent(Header, Headers, ForkHeight);
                 false ->
-                    internal_error({target_not_equal_to_parent, Node, PrevNode})
+                    case aec_target:verify(Header, lists:sublist(Headers, DeltaHeight)) of
+                        ok ->
+                            do_assert_calculated_target(Headers, ForkHeight, DeltaHeight);
+                        {error, {wrong_target, Target, ExpTarget}} ->
+                            internal_error({wrong_target, [Header | Headers], Target, ExpTarget})
+                    end
             end
     end.
 
-assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
-    case node_height(Node) =:= ForkHeight of
+do_assert_target_equal_to_parent(Header, PrevHeaders0, ForkHeight) ->
+    case aec_headers:height(Header) =:= ForkHeight of
         true ->
             ok;
         false ->
-            case node_is_genesis(DeltaVerificationNode, State) of
+            [PrevHeader | PrevHeaders] = PrevHeaders0,
+            case aec_headers:target(Header) =:= aec_headers:target(PrevHeader) of
                 true ->
-                    assert_target_equal_to_parent(Node, ForkHeight, State);
+                    do_assert_target_equal_to_parent(PrevHeader, PrevHeaders, ForkHeight);
                 false ->
-                    do_assert_calculated_target(
-                      Node, DeltaVerificationNode, ForkHeight, State)
+                    internal_error({target_not_equal_to_parent, Header, PrevHeader})
             end
     end.
-
-do_assert_calculated_target(Node, DeltaVerificationNode, ForkHeight, State) ->
-    PrevNode = blocks_db_get(prev_hash(Node), State),
-
-    Header = export_header(Node),
-    PrevHeader = export_header(PrevNode),
-    DeltaHeader = export_header(DeltaVerificationNode),
-    case aec_target:verify(Header, PrevHeader, DeltaHeader) of
-        ok ->
-            PrevDeltaNode = blocks_db_get(prev_hash(DeltaVerificationNode), State),
-            assert_calculated_target(PrevNode, PrevDeltaNode, ForkHeight, State);
-        {error, target_too_high} ->
-            internal_error({target_too_high, Node, DeltaVerificationNode})
-    end.
-
 
 genesis_state_tree(Node) ->
     %% TODO: This should be handled somewhere else.

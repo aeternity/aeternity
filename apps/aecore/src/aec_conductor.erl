@@ -670,9 +670,10 @@ create_block_candidate(#state{keys_ready = false} = State) ->
     wait_for_keys(State);
 create_block_candidate(State) ->
     TopBlock = aec_conductor_chain:get_top_block(State),
+    AdjChain = aec_conductor_chain:get_adjustment_headers(State),
     epoch_mining:info("Creating block candidate"),
     Fun = fun() ->
-                  {aec_mining:create_block_candidate(TopBlock),
+                  {aec_mining:create_block_candidate(TopBlock, AdjChain),
                     State#state.seen_top_block_hash}
           end,
     dispatch_worker(create_block_candidate, Fun, State).
