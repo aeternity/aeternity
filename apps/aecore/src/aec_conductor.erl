@@ -162,7 +162,7 @@ next_nonce_for_account(PubKey) ->
 genesis_block() ->
     gen_server:call(?SERVER, genesis_block).
 
--spec genesis_hash() -> {'ok', binary()} | 'error'.
+-spec genesis_hash() -> binary().
 genesis_hash() ->
     gen_server:call(?SERVER, genesis_hash).
 
@@ -236,7 +236,7 @@ top_header_hash() ->
 
 init(Options) ->
     process_flag(trap_exit, true),
-    State1 = set_option(autostart, Options, #state{}),
+    State1 = set_option(autostart, Options, #state{chain_state = aec_chain_state:new()}),
     State2 = set_option(fetch_new_txs_from_pool, Options, State1),
     State3 = aec_conductor_chain:init(State2),
     TopBlockHash = aec_conductor_chain:get_top_block_hash(State3),

@@ -19,6 +19,7 @@
 
 -type event() :: block_created
                | block_received
+               | header_received
                | mining_preempted
                | start_mining
                | tx_created
