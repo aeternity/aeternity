@@ -194,7 +194,7 @@ You shall read output like the following...
 In order to send tokens, you need to have tokens i.e. a positive (non-zero) balance.
 You obtain tokens after having mined successfully.
 
-You need to know the public key to send token to.
+You need to know the public key to send tokens to.
 
 In order to instruct your node to sign and broadcast a transaction sending tokens to the public key of the other account (recipient - replace the public key):
 ```
