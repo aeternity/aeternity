@@ -163,7 +163,6 @@ conversion_test_() ->
        fun() ->
                %% More than 3 nonzero bytes
                Diff = ?TEST_MODULE:target_to_difficulty(16#1b0404cb),
-               ?debugFmt("Diff: ~p~n", [Diff]),
                ?assert(Diff > 70039839613066.1),
                ?assert(Diff < 70039839613066.2)
        end}
