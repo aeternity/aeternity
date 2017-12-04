@@ -33,18 +33,13 @@ pow_test_() ->
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
                 Nonce = 33,
-                {T1, Res} = timer:tc(?TEST_MODULE, generate,
-                                     [?TEST_BIN, Target, Nonce]),
-                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
                 %% verify the nonce and the solution
                 {ok, {Nonce, Soln}} = Res,
-                {T2, Res2} =
-                    timer:tc(?TEST_MODULE, verify,
-                             [?TEST_BIN, Nonce, Soln, Target]),
-                ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
+                Res2 = ?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target),
                 ?assert(Res2)
         end}
       },
@@ -87,7 +82,6 @@ misc_test_() ->
                        112561693,118817859,118965199,121744219,122178237,
                        132944539,133889045],
                NodeSize = ?TEST_MODULE:get_node_size(),
-               ?debugFmt("node_t size: ~p~n", [NodeSize]),
                ?assertEqual(42*NodeSize, size(?TEST_MODULE:solution_to_binary(
                                                  lists:sort(Soln), NodeSize * 8, <<>>)))
        end}

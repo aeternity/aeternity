@@ -24,15 +24,9 @@
 
 -define(DEFAULT_CUCKOO_ENV, {"lean28", "-t 5", 28}).
 
--ifdef(TEST).
--define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
--define(info(F, A),  ?debugFmt(F, A)).
--define(error(F, A), ?debugFmt(F, A)).
--else.
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
--endif.
 
 -record(state, {os_pid :: integer() | undefined,
                 buffer = [] :: string(),

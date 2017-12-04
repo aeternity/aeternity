@@ -67,7 +67,6 @@ network_serialization_test_() ->
 
               Block2 = #block{trees = #trees{accounts = foo}, nonce = -1},
              {ok, SerializedBlock2} = ?TEST_MODULE:serialize_for_network(Block2),
-             ?debugFmt("serialized block: ~p~n", [SerializedBlock2]),
              ?assertEqual({error,bad_nonce},
                           ?TEST_MODULE:deserialize_from_network(SerializedBlock2))
      end}].
