@@ -9,7 +9,7 @@
          all_trees_hash/1,
          accounts/1,
          set_accounts/2,
-         new/0,
+         new_merkle_tree/0,
          get/2,
          get_with_proof/2,
          is_trees/1,
@@ -21,7 +21,7 @@
 
 -spec all_trees_new() -> {ok, trees()}.
 all_trees_new() ->
-    {ok, A} = new(),
+    {ok, A} = new_merkle_tree(),
     {ok, #trees{accounts = A}}.
 
 all_trees_hash(Trees) ->
@@ -39,8 +39,8 @@ accounts(Trees) ->
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
 
--spec new() -> {ok, tree()}.
-new() ->
+-spec new_merkle_tree() -> {ok, tree()}.
+new_merkle_tree() ->
     {ok, gb_merkle_trees:empty()}.
 
 get(Key, Tree) when is_binary(Key) ->
