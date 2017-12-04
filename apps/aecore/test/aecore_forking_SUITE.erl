@@ -168,7 +168,7 @@ check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
 
 mine_one_block(N) ->
     subscribe(N, block_created),
-    rpc_call(N, application, set_env, [aecore, aec_pow_cuckoo, {"lean16", "-t 5", 16}]), 
+    rpc_call(N, application, set_env, [aecore, aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}]), 
     StartRes = rpc_call(N, aec_conductor, start_mining, []),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [N, StartRes]),
     receive

@@ -1,24 +1,42 @@
 EXECUTABLES = \
-	priv/bin/mean16 \
-	priv/bin/lean16 \
-	priv/bin/verify16 \
-	priv/bin/mean28 \
-	priv/bin/lean28 \
-	priv/bin/verify28 \
-	priv/bin/mean30 \
+	priv/bin/mean30s-generic \
+	priv/bin/mean28s-generic \
+	priv/bin/mean16s-generic \
+	priv/bin/mean30s-avx2 \
+	priv/bin/mean28s-avx2 \
+	priv/bin/mean16s-avx2 \
 	priv/bin/lean30 \
-	priv/bin/verify30
+	priv/bin/lean28 \
+	priv/bin/lean16 \
+	priv/bin/verify30 \
+	priv/bin/verify28 \
+	priv/bin/verify16
 
 LIBBLAKE = priv/lib/libblake2b.so
 
-SRC_EXECUTABLES = $(subst priv/bin, c_src/src, $(EXECUTABLES))
+SRC_EXECUTABLES = $(patsubst %,c_src/src/%,$(foreach ex,$(patsubst priv/bin/%,%,$(EXECUTABLES)),$(SRC_EXECUTABLE_NOTDIR_$(ex))))
 
-SRC_LIBBLAKE = $(subst priv/lib, c_src/src, $(LIBBLAKE))
+# Distinguish by self-explanatory name the mean miner binaries
+# requiring AVX2 instructions.
+SRC_EXECUTABLE_NOTDIR_mean30s-generic = mean30sx1
+SRC_EXECUTABLE_NOTDIR_mean28s-generic = mean28sx1
+SRC_EXECUTABLE_NOTDIR_mean16s-generic = mean16sx1
+SRC_EXECUTABLE_NOTDIR_mean30s-avx2    = mean30sx8
+SRC_EXECUTABLE_NOTDIR_mean28s-avx2    = mean28sx8
+SRC_EXECUTABLE_NOTDIR_mean16s-avx2    = mean16sx8
+SRC_EXECUTABLE_NOTDIR_lean30          = lean30
+SRC_EXECUTABLE_NOTDIR_lean28          = lean28
+SRC_EXECUTABLE_NOTDIR_lean16          = lean16
+SRC_EXECUTABLE_NOTDIR_verify30        = verify30
+SRC_EXECUTABLE_NOTDIR_verify28        = verify28
+SRC_EXECUTABLE_NOTDIR_verify16        = verify16
+
+SRC_LIBBLAKE = $(patsubst priv/lib/%,c_src/src/%,$(LIBBLAKE))
 
 SRC_ARCH_FLAGS = -m64
 
 REPO = https://github.com/aeternity/cuckoo.git
-COMMIT = d1b8b77
+COMMIT = 5a03872d0e9ad908adac1b14ee64cf3c2d5967af
 
 .PHONY: all
 all: $(LIBBLAKE) $(EXECUTABLES)
@@ -37,13 +55,6 @@ distclean:
 # timestamp on certain filesystems.
 .LOW_RESOLUTION_TIME: $(LIBBLAKE)
 $(LIBBLAKE): $(SRC_LIBBLAKE) | priv/lib
-	cp -p $< $@
-
-# Use `.LOW_RESOLUTION_TIME` for preventing unnecessary target
-# recomputation caused by inability of `cp -p `to set high resolution
-# timestamp on certain filesystems.
-.LOW_RESOLUTION_TIME: $(EXECUTABLES)
-$(EXECUTABLES): priv/bin/%: c_src/src/% | priv/bin
 	cp -p $< $@
 
 priv/lib priv/bin:
@@ -70,3 +81,21 @@ $(SRC_EXECUTABLES): c_src/src/%: | c_src/.git
 c_src/.git:
 	git clone -n $(REPO) $(@D)
 	( cd $(@D) && git checkout $(COMMIT); )
+
+.SECONDEXPANSION:
+# For each target defined after the special target `.SECONDEXPANSION`,
+# expand all the prerequisites a second time.
+
+# Use `.LOW_RESOLUTION_TIME` for preventing unnecessary target
+# recomputation caused by inability of `cp -p `to set high resolution
+# timestamp on certain filesystems.
+.LOW_RESOLUTION_TIME: $(EXECUTABLES)
+# Rely on secondary expansion to expand the prerequisite a second
+# time, in order to determine the name of the source executable from
+# the (stem of the) pattern.  E.g. target `priv/bin/mean30s-generic`
+# has stem `mean30s-generic` and prerequisite
+# `c_src/src/$(SRC_EXECUTABLE_NOTDIR_mean30s-generic)` (because `$` is
+# escaped as `$$`) that, during secondary expansion, becomes
+# `c_src/src/mean30sx1`.
+$(EXECUTABLES): priv/bin/%: c_src/src/$$(SRC_EXECUTABLE_NOTDIR_%) | priv/bin
+	cp -p $< $@

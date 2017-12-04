@@ -109,7 +109,7 @@ kill_ospid_miner_test_() ->
             timer:sleep(1000),                       %% give it some time to kill the miner OS pid
             ?assertEqual([], exec:which_children()), %% at least erlexec believes it died
 
-            Res = os:cmd("ps | grep lean28 | grep -v grep"),
+            Res = os:cmd("ps | grep mean28s-generic | grep -v grep"),
             ?assertMatch([], Res)
         end}
      ]
