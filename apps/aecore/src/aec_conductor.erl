@@ -51,10 +51,14 @@
 
 %% Mining API
 -export([ get_mining_state/0
-        , get_miner_account_balance/0
-        , next_nonce_for_account/1
         , start_mining/0
         , stop_mining/0
+        ]).
+
+%% State trees API
+-export([ get_miner_account_balance/0
+        , next_nonce_for_account/1
+        , get_all_accounts_balances/0
         ]).
 
 %% Chain API
@@ -154,6 +158,13 @@ get_miner_account_balance() ->
 next_nonce_for_account(PubKey) ->
     Top = top(),
     aec_next_nonce:pick_for_account(PubKey, Top).
+
+-spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
+get_all_accounts_balances() ->
+    Top = top(),
+    Trees = aec_blocks:trees(Top),
+    AccountsTree = aec_trees:accounts(Trees),
+    aec_accounts:get_all_accounts_balances(AccountsTree).
 
 %%%===================================================================
 %%% Chain API

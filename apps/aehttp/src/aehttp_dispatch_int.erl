@@ -47,11 +47,10 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
 handle_request('GetPubKey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            {200, [], #{pub_key => base64:encode(Pubkey)}}; 
+            {200, [], #{pub_key => base64:encode(Pubkey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
-
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
