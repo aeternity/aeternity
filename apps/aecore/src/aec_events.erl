@@ -18,10 +18,8 @@
 -include("blocks.hrl").
 
 -type event() :: block_created
-               | block_received
-               | header_received
-               | mining_preempted
                | start_mining
+               | top_changed
                | tx_created
                | tx_received
                | peers

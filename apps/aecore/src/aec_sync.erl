@@ -146,6 +146,7 @@ start_link() ->
 
 init([]) ->
     aec_events:subscribe(block_created),
+    aec_events:subscribe(top_changed),
     aec_events:subscribe(tx_created),
     Peers = application:get_env(aecore, peers, []),
     BlockedPeers = application:get_env(aecore, blocked_peers, []),
@@ -180,7 +181,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     case Event of
         block_created   -> enqueue(forward, #{status => created,
                                               block => Info}, State);
-        block_received  -> enqueue(forward, #{status => received,
+        top_changed     -> enqueue(forward, #{status => top_changed,
                                               block => Info}, State);
         tx_created      -> enqueue(forward, #{status => created,
                                               tx => Info}, State);
