@@ -452,18 +452,35 @@ worker_reply(wait_for_keys, Res, State) ->
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
 
-preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State) ->
+preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State, Publish) ->
     case aec_conductor_chain:get_top_block_hash(State) of
         TopHash -> no_change;
         TopBlockHash ->
-            aec_events:publish(mining_preempted, [{old_hash, TopHash},
-                                                  {new_hash, TopBlockHash}]),
+            maybe_publish_top(Publish, TopBlockHash, State),
             update_tx_pool_on_top_change(TopHash, TopBlockHash, State),
             State1 = State#state{seen_top_block_hash = TopBlockHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(create_block_candidate, State2),
             {changed, State3#state{block_candidate = undefined}}
     end.
+
+maybe_publish_top(none,_TopHash,_State) -> ok;
+maybe_publish_top(block_created,_TopHash,_State) ->
+    %% A new block we created is published unconditionally below.
+    ok;
+maybe_publish_top(block_received, TopHash, State) ->
+    %% The received block changed the top. Publish the new top.
+    {ok, Block} = aec_conductor_chain:get_block(TopHash, State),
+    aec_events:publish(top_changed, Block).
+
+maybe_publish_block(none,_Block) -> ok;
+maybe_publish_block(block_received,_Block) ->
+    %% We don't publish all blocks, only if it changes the top.
+    ok;
+maybe_publish_block(block_created = T, Block) ->
+    %% This is a block we created ourselves. Always publish.
+    aec_events:publish(T, Block).
+
 
 kill_worker(Pid, Tag, Ref, State) ->
     Workers = State#state.workers,
@@ -701,7 +718,7 @@ handle_add_block(Block, State, Publish) ->
                     case aec_conductor_chain:insert_block(Block, State) of
                         {ok, State1} ->
                             maybe_publish_block(Publish, Block),
-                            case preempt_if_new_top(State1) of
+                            case preempt_if_new_top(State1, Publish) of
                                 no_change -> {ok, State1};
                                 {changed, State2} -> {ok, start_mining(State2)}
                             end;
@@ -718,10 +735,6 @@ handle_add_block(Block, State, Publish) ->
             end
     end.
 
-maybe_publish_block(none,_Block) -> ok;
-maybe_publish_block(block_received = T, Block) -> aec_events:publish(T, Block);
-maybe_publish_block(block_created = T, Block)  -> aec_events:publish(T, Block).
-
 %%%===================================================================
 %%% In server context: A header was given to us from the outside world
 
@@ -737,9 +750,8 @@ handle_post_header(Header, State) ->
                 ok ->
                     case aec_conductor_chain:insert_header(Header, State) of
                         {ok, State1} ->
-                            aec_events:publish(header_received, Header),
                             %% This might have caused a fork
-                            case preempt_if_new_top(State1) of
+                            case preempt_if_new_top(State1, none) of
                                 no_change -> {ok, State1};
                                 {changed, State2} -> {ok, start_mining(State2)}
                             end;
