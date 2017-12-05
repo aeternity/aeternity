@@ -185,7 +185,7 @@ process_request(Peer, post, Request, Params, Header, HTTPOptions, Options) ->
                            {"application/x-www-form-urlencoded",
                             http_uri:encode(Request)}
                    end,
-    %% lager:debug("Type = ~p~nBody = ~p", [Type, Body]),
+    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     R = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
     process_http_return(R).
 
@@ -193,7 +193,7 @@ process_http_return(R) ->
     case R of
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
             try
-                %% lager:debug("Body to parse:~n~s", [Body]),
+                %% lager:debug("Body to parse: ~s", [Body]),
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [pp(Result)]),
                 {ok, Result}

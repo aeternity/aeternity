@@ -241,7 +241,7 @@ init(Options) ->
     State3 = aec_conductor_chain:init(State2),
     TopBlockHash = aec_conductor_chain:get_top_block_hash(State3),
     State4 = State3#state{seen_top_block_hash = TopBlockHash},
-    epoch_mining:info("Miner process initilized ~p~n", [State4]),
+    epoch_mining:info("Miner process initilized ~p", [State4]),
     %% NOTE: The init continues at handle_info(timeout, State).
     {ok, State4, 0}.
 
@@ -678,7 +678,7 @@ handle_post_block(Block, State) ->
     handle_add_block(Block, State, block_received).
 
 handle_mined_block(Block, State) ->
-    epoch_mining:info("Block mined: Height = ~p~nHash = ~s",
+    epoch_mining:info("Block mined: Height = ~p; Hash = ~s",
                       [aec_blocks:height(Block),
                        as_hex(aec_blocks:root_hash(Block))]),
     handle_add_block(Block, State, block_created).
