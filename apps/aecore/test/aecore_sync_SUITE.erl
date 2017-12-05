@@ -16,6 +16,7 @@
     start_first_node/1,
     start_second_node/1,
     start_third_node/1,
+    start_blocked_second/1,
     mine_on_first/1,
     mine_on_second/1,
     mine_on_third/1,
@@ -39,7 +40,8 @@ all() ->
 groups() ->
     [
      {all_nodes, [sequence], [{group, two_nodes},
-                              {group, three_nodes}]},
+                              {group, three_nodes},
+                              {group, one_blocked}]},
      {two_nodes, [sequence],
       [start_first_node,
        test_subscription,
@@ -61,7 +63,11 @@ groups() ->
        mine_again_on_first,
        mine_on_second,
        mine_on_third,
-       restart_third]}
+       restart_third]},
+      {one_blocked, [sequence],
+       [start_first_node,
+        mine_on_first,
+        start_blocked_second]}
     ].
 
 suite() ->
@@ -87,13 +93,15 @@ end_per_suite(Config) ->
     ok.
 
 init_per_group(two_nodes, Config) ->
-    [{nodes, [n(dev1),
-              n(dev2)]} | Config];
+    config(two_nodes, Config);
 init_per_group(three_nodes, Config) ->
-    Config1 = [{nodes, [n(dev1),
-                        n(dev2),
-                        n(dev3)]} | Config],
+    Config1 = config(three_nodes, Config),
     stop_nodes(Config1),
+    Config1;
+init_per_group(one_blocked, Config) ->
+    Config1 = config(two_nodes, Config),
+    stop_nodes(config(three_nodes, Config)),
+    preblock_second(Config1),
     Config1;
 init_per_group(_Group, Config) ->
     Config.
@@ -154,6 +162,18 @@ start_second_node(Config) ->
     ct:log("Peers on dev2: ~p", [rpc_call(N2, aec_peers, all, [])]),
     B1 = rpc_call(N1, aec_conductor, top, []),
     true = expect_block(N2, B1).
+
+start_blocked_second(Config) ->
+    N1 = node_(dev1),
+    N2 = node_(dev2),
+    T0 = os:timestamp(),
+    start_node_(dev2, Config),
+    connect(N2),
+    timer:sleep(2000),
+    ct:log("Peers on dev1: ~p", [rpc_call(N1, aec_peers, all, [])]),
+    ct:log("Unblocked peers on dev1: ~p",
+           [rpc_call(N1, aec_peers, get_random, [10])]),
+    await_sync_abort(T0, [N1, N2]).
 
 tx_first_pays_second(_Config) ->
     N1 = node_(dev1),
@@ -274,6 +294,38 @@ collect_sync_events(Nodes) ->
 check_sync_event(#{sender := From, info := Info}, Nodes) ->
     case Info of
         {E, _} when E =:= server_done; E =:= client_done ->
+            lists:delete(node(From), Nodes);
+        _ ->
+            Nodes
+    end.
+
+await_sync_abort(T0, Nodes) ->
+    [subscribe(N, chain_sync) || N <- Nodes],
+    AllEvents = lists:flatten(
+                  [events_since(N, chain_sync, T0) || N <- Nodes]),
+    Nodes1 =
+        lists:foldl(
+          fun(Msg, Acc) ->
+                  check_sync_abort_event(Msg, Acc)
+          end, Nodes, AllEvents),
+    ct:log("Nodes1 = ~p", [Nodes1]),
+    await_sync_abort_(Nodes1).
+
+await_sync_abort_([]) ->
+    ok;
+await_sync_abort_(Nodes) ->
+    receive
+        {gproc_ps_event, chain_sync, Msg} ->
+            await_sync_abort_(check_sync_abort_event(Msg, Nodes))
+    after 20000 ->
+            ct:log("Timeout in await_sync_abort: ~p~n"
+                   "~p", [Nodes, process_info(self(), messages)]),
+            error(timeout)
+    end.
+
+check_sync_abort_event(#{sender := From, info := Info}, Nodes) ->
+    case Info of
+        {sync_aborted, _} ->
             lists:delete(node(From), Nodes);
         _ ->
             Nodes
@@ -466,8 +518,8 @@ unsubscribe(N, Event) ->
 call_proxy(N, Req) ->
     call_proxy(N, Req, ?PROXY_CALL_RETRIES, 3000).
 
-call_proxy(N, Req, Timeout) ->
-    call_proxy(N, Req, ?PROXY_CALL_RETRIES, Timeout).
+%% call_proxy(N, Req, Timeout) ->
+%%     call_proxy(N, Req, ?PROXY_CALL_RETRIES, Timeout).
 
 call_proxy(N, Req, Tries, Timeout) when Tries > 0 ->
     Ref = erlang:monitor(process, {?PROXY, N}),
@@ -844,13 +896,36 @@ maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
              Def()
     end.
 
-create_configs(Config) ->
-    [create_config(N, Config) || N <- [dev1, dev2, dev3]].
+preblock_second(Config) ->
+    EpochConfig = epoch_config(dev1, Config),
+    [OrigCfg] = jsx:consult(EpochConfig, [return_maps]),
+    backup_config(EpochConfig),
+    create_config(dev1, {block, [dev2]}, [{orig_cfg, OrigCfg}|Config]).
 
-create_config(N, Config) ->
+backup_config(EpochConfig) ->
+    Dir = filename:dirname(EpochConfig),
+    Ext = filename:extension(EpochConfig),
+    {A,B,C} = os:timestamp(),
+    BackupBase = lists:flatten(
+                   ["epoch-",
+                    integer_to_list(A),
+                    "-",
+                    integer_to_list(B),
+                    "-",
+                    integer_to_list(C),
+                    Ext]),
+    Backup = filename:join(Dir, BackupBase),
+    ct:log("Back up ~p to ~p", [EpochConfig, Backup]),
+    cp_file(EpochConfig, Backup).
+
+
+create_configs(Config) ->
+    [create_config(N, standard, Config) || N <- [dev1, dev2, dev3]].
+
+create_config(N, Type, Config) ->
     EpochCfg = epoch_config(N, Config),
     ok = filelib:ensure_dir(EpochCfg),
-    write_config(EpochCfg, config(N, Config)).
+    write_config(EpochCfg, config(N, Type, Config)).
 
 write_config(F, Config) ->
     JSON = jsx:prettify(jsx:encode(Config)),
@@ -864,20 +939,43 @@ write_config(F, Config) ->
     ct:log("Config (~p) check: ~p", [F, VRes]),
     {ok,_} = VRes.
 
-config(N, Config) ->
+config(N, {block, Ns}, Config) ->
+    C1 = case proplists:get_value(orig_cfg, Config) of
+             undefined -> config(N, standard, Config);
+             OrigCfg -> OrigCfg
+         end,
+    C1#{<<"blocked_peers">> => [peer_uri(P) || P <- Ns]};
+config(N, standard, Config) ->
     {A,B,C} = os:timestamp(),
-     #{<<"keys">> =>
-           #{<<"dir">> => bin(keys_dir(N, Config)),
-             <<"password">> => bin(io_lib:format("~w.~w.~w", [A,B,C]))},
-       <<"logging">> =>
-           #{<<"hwm">> => 500},
-       <<"mining">> =>
-           #{<<"autostart">> => false},
-       <<"websocket">> =>
-           #{<<"internal">> =>
-                 #{<<"acceptors">> => 10}
-            }
-      }.
+    #{<<"peers">> =>
+          [peer_uri(N1) || N1 <- [dev1, dev2, dev3] -- [N]],
+      <<"keys">> =>
+          #{<<"dir">> => bin(keys_dir(N, Config)),
+            <<"password">> => bin(io_lib:format("~w.~w.~w", [A,B,C]))},
+      <<"logging">> =>
+          #{<<"hwm">> => 500},
+      <<"mining">> =>
+          #{<<"autostart">> => false},
+      <<"http">> =>
+          #{<<"external">> =>
+                #{<<"peer_address">> => peer_uri(N),
+                  <<"port">> => port_number(N)}},
+      <<"websocket">> =>
+          #{<<"internal">> =>
+                #{<<"acceptors">> => 10}}
+     }.
+
+hostname() ->
+    {ok, H} = inet:gethostname(),
+    H.
+
+peer_uri(N) ->
+    iolist_to_binary(
+      ["http://", hostname(), ":", integer_to_list(port_number(N)), "/"]).
+
+port_number(dev1) -> 3013;
+port_number(dev2) -> 3023;
+port_number(dev3) -> 3033.
 
 %% data_dir(Config) ->
 %%     ?config(data_dir, Config).
@@ -924,3 +1022,12 @@ epoch_config(N, Config) ->
 
 bin(S) ->
     iolist_to_binary(S).
+
+
+config(two_nodes, Config) ->
+    [{nodes, [n(dev1),
+              n(dev2)]} | Config];
+config(three_nodes, Config) ->
+    [{nodes, [n(dev1),
+              n(dev2),
+              n(dev3)]} | Config].
