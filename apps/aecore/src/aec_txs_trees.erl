@@ -4,7 +4,7 @@
          root_hash/1]).
 
 new(Txs = [_|_]) ->
-    {ok, EmptyTree} = aec_trees:new(),
+    {ok, EmptyTree} = aec_trees:new_merkle_tree(),
     TxsTree =
         lists:foldl(
           fun(SignedTx, TreeIn) ->

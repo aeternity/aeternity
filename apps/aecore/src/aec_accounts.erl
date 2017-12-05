@@ -19,7 +19,7 @@
 
 %% TODO: remove? We should not need such API (init via trees)
 empty() ->
-    {ok, _AccountsTree} = aec_trees:new().
+    {ok, _AccountsTree} = aec_trees:new_merkle_tree().
 
 new(Pubkey, Balance, Height) ->
     #account{pubkey = Pubkey, balance = Balance, height = Height}.
