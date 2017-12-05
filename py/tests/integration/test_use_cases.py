@@ -79,7 +79,7 @@ def test_persistence():
     f.write('[{aecore, [{db_path, "' + root_dir + '"},' + \
                       ' {persist, true},' + \
                       ' {autostart, true},' + \
-                      ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}' + \
+                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}' + \
                       ']}].')
     f.close()
 
@@ -201,7 +201,7 @@ def make_peers_config(root_dir, file_name, node_url, peers0, mining=False):
     mining_str = ""
     if mining:
         mining_str = ' {autostart, true},' + \
-                     ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}'
+                     ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}'
     else: 
         mining_str = ' {autostart, false}'
     f = open(sys_config, "w")
@@ -223,7 +223,7 @@ def make_fast_mining_config(root_dir, file_name):
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
     conf ='[{aecore, [{autostart, true},' + \
-                    ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}]}].' 
+                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
     f.write(conf)
     f.close()
     return sys_config

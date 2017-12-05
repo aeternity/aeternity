@@ -148,7 +148,7 @@ def make_mining_config(root_dir, file_name):
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
     conf ='[{aecore, [{autostart, true},' + \
-                    ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}]}].' 
+                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
     f.write(conf)
     f.close()
     return sys_config

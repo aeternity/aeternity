@@ -22,7 +22,7 @@
 -endif.
 -include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"lean28", "-t 5", 28}).
+-define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28}).
 
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).

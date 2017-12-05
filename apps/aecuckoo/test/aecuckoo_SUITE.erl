@@ -6,7 +6,11 @@
 -module(aecuckoo_SUITE).
 
 %% common_test exports
--export([all/0]).
+-export(
+   [
+    all/0, groups/0,
+    init_per_group/2, end_per_group/2
+   ]).
 
 %% test case exports
 -export([smoke_test/1]).
@@ -16,24 +20,51 @@
 -define(TEST_MODULE, aecuckoo).
 
 all() ->
-    [smoke_test].
+    [
+     {group, smoke_tests_16}
+    ].
 
-smoke_test(_Config) ->
+groups() ->
+    [
+     {smoke_tests_16, [{group, mean16},
+                       {group, lean16}]},
+     {mean16, [smoke_test]},
+     {lean16, [smoke_test]}
+    ].
+
+init_per_group(smoke_tests_16, Config) ->
+    [{nonce, 66},
+     {cyclehash, "4851c33f03e1a1403ac902b921f8551e35aedeae5bf0a76a0815fb83597ad653"},
+     {verifier, verify16} | Config];
+init_per_group(mean16, Config) ->
+    [{miner, 'mean16s-generic'} | Config];
+init_per_group(lean16, Config) ->
+    [{miner, 'lean16'} | Config].
+
+end_per_group(_Group, _Config) ->
+    ok.
+
+smoke_test(Config) ->
+    Nonce = ?config(nonce, Config),
+    ExpectedVerifierCycleHash = ?config(cyclehash, Config),
+    Verifier = ?config(verifier, Config),
+    Miner = ?config(miner, Config),
+
     LibDir = ?TEST_MODULE:lib_dir(),
-    MinBin = ?TEST_MODULE:bin("lean16"),
-    VerBin = ?TEST_MODULE:bin("verify16"),
+    MinBin = ?TEST_MODULE:bin(atom_to_list(Miner)),
+    VerBin = ?TEST_MODULE:bin(atom_to_list(Verifier)),
     LdLibPathVarName = ld_lib_path_var_name(),
-    Cmd = io_lib:format("env ~s='~s' '~s' -n 66 "
+    Cmd = io_lib:format("env ~s='~s' '~s' -n ~B "
                         "| grep '^Solution '"
-                        "| env ~s='~s' '~s' -n 66 "
+                        "| env ~s='~s' '~s' -n ~B "
                         "| grep '^Verified '",
                         [LdLibPathVarName, LibDir,
-                         MinBin,
+                         MinBin, Nonce,
                          LdLibPathVarName, LibDir,
-                         VerBin]),
+                         VerBin, Nonce]),
     ct:log("Command: ~s~n", [Cmd]),
     CmdRes = lib:nonl(os:cmd(Cmd)),
-    ExpCmdRes = "Verified with cyclehash 4851c33f03e1a1403ac902b921f8551e35aedeae5bf0a76a0815fb83597ad653",
+    ExpCmdRes = "Verified with cyclehash " ++ ExpectedVerifierCycleHash,
     ct:log("Command result: ~s~n", [CmdRes]),
     ct:log("Expected command result: ~s~n", [ExpCmdRes]),
     ExpCmdRes = CmdRes,
