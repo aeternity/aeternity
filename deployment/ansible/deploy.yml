@@ -26,7 +26,8 @@
       file:
           path: "{{ project_root }}"
           state: directory
-          mode: 0700
+          # allow group read for integration purposes  (e.g. logs)
+          mode: 0750
 
     - name: Download epoch package
       get_url:
