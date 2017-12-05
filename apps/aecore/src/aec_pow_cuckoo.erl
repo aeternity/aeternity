@@ -101,7 +101,7 @@ generate_int(Hash, Nonce, Target) ->
         {ok, Soln} ->
             {ok, {Nonce, Soln}};
         {error, no_value} ->
-            ?debug("No cuckoo solution found~n", []),
+            ?debug("No cuckoo solution found", []),
             {error, no_solution};
         {error, Reason} ->
             %% Executable failed (segfault, not found, etc.): let miner decide
@@ -120,7 +120,7 @@ generate_int(Header, Target) ->
     BinDir = aecuckoo:bin_dir(),
     {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
     Cmd = lists:concat([ld_lib_env(), " ",  "./", Exe, " -h ", Header, " ", Extra]),
-    ?info("Executing cmd: ~p~n", [Cmd]),
+    ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
     try exec:run(Cmd,
                  [{stdout, self()},
@@ -310,7 +310,7 @@ wait_for_result(#state{os_pid = OsPid,
             {Lines, NewBuffer} = handle_fragmented_lines(Str, Buffer),
             (State#state.parser)(Lines, State#state{buffer = NewBuffer});
         {stderr, OsPid, Msg} ->
-            ?error("ERROR: ~s~n", [Msg]),
+            ?error("ERROR: ~s", [Msg]),
             wait_for_result(State);
         {'EXIT',_From, shutdown} ->
             %% Someone is telling us to stop
@@ -325,7 +325,7 @@ wait_for_result(#state{os_pid = OsPid,
                           {exit_status, ExStat} -> exec:status(ExStat);
                           _                     -> Reason
                       end,
-            ?error("OS process died: ~p~n", [Reason2]),
+            ?error("OS process died: ~p", [Reason2]),
             {error, {execution_failed, Reason2}}
     end.
 
@@ -374,16 +374,16 @@ parse_generation_result(["Solution" ++ ValuesStr | Rest], #state{os_pid = OsPid,
     Soln = [list_to_integer(V, 16) || V <- string:tokens(ValuesStr, " ")],
     case test_target(Soln, Target) of
         true ->
-            ?debug("Solution found: ~p~n", [Soln]),
+            ?debug("Solution found: ~p", [Soln]),
             stop_execution(OsPid),
             {ok, Soln};
         false ->
             %% failed to meet target: go on, we may find another solution
-            ?debug("Failed to meet target~n", []),
+            ?debug("Failed to meet target", []),
             parse_generation_result(Rest, State)
     end;
 parse_generation_result([Msg | T], State) ->
-    ?debug("~s~n", [Msg]),
+    ?debug("~s", [Msg]),
     parse_generation_result(T, State).
 
 %%------------------------------------------------------------------------------
@@ -395,10 +395,10 @@ parse_generation_result([Msg | T], State) ->
 stop_execution(OsPid) ->
     case exec:kill(OsPid, 9) of
         {error, Reason} ->
-            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).~n",
+            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).",
                    [OsPid, Reason]);
         R ->
-            ?debug("Mining OS process ~p stopped successfully: ~p~n",
+            ?debug("Mining OS process ~p stopped successfully: ~p",
                    [OsPid, R])
     end.
 

@@ -346,7 +346,7 @@ handle_cast({source, SrcUri, Alias} = _R,
             As1 = gb_trees:enter(Alias, SrcUri, As),
             {noreply, metrics(State#state{peers = Peers1, aliases = As1})};
         _Other ->
-            lager:debug("unexpected result (source):~n~p", [_Other]),
+            lager:debug("unexpected result (source): ~p", [_Other]),
             {noreply, State}
     end;
 handle_cast({add_and_ping, PeerRecs}, State) ->

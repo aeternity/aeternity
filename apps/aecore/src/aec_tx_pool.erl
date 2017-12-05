@@ -204,7 +204,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
                     aec_events:publish(Event, Tx),
                     true;
                 {error, Reason} ->
-                    lager:error("verification error: ~p~nTx = ~p",
+                    lager:error("verification error: ~p; Tx = ~p",
                                 [Reason, Tx]),
                     false
             end;

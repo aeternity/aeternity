@@ -87,7 +87,7 @@ local_ping_object() ->
 %%    - Otherwise, trigger a sync, return 'ok'.
 -spec compare_ping_objects(ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(Local, Remote) ->
-    lager:debug("Compare, Local: ~p~nRemote: ~p", [pp(Local), pp(Remote)]),
+    lager:debug("Compare, Local: ~p; Remote: ~p", [pp(Local), pp(Remote)]),
     Src = maps:get(<<"source">>, Remote),
     Res = case {maps:get(<<"genesis_hash">>, Local),
                 maps:get(<<"genesis_hash">>, Remote)} of
@@ -302,14 +302,14 @@ do_fetch_block(Hash, PeerUri) ->
         {ok, Block} ->
             case header_hash(Block) =:= Hash of
                 true ->
-                    lager:debug("block fetched from ~p (~p)~n~p",
+                    lager:debug("block fetched from ~p (~p); ~p",
                                 [PeerUri, pp(Hash), pp(Block)]),
                     {ok, Block};
                 false ->
                     {error, hash_mismatch}
             end;
         {error, _} = Error ->
-            lager:debug("failed to fetch block from ~p,~nHash = ~p~nError = ~p",
+            lager:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
                         [PeerUri, pp(Hash), Error]),
             Error
     end.
