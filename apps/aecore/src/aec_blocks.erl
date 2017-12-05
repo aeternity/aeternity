@@ -7,6 +7,7 @@
          target/1,
          txs/1,
          difficulty/1,
+         time_in_msecs/1,
          set_pow/3,
          set_trees/2,
          set_target/2,
@@ -59,6 +60,9 @@ target(Block) ->
 -spec difficulty(block()) -> float().
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
+
+time_in_msecs(Block) ->
+    Block#block.time.
 
 -spec root_hash(block()) -> binary().
 root_hash(Block) ->

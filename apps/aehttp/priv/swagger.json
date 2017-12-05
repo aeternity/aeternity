@@ -308,6 +308,25 @@
         },
         "security" : [ ]
       }
+    },
+    "/info" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get node info",
+        "operationId" : "GetInfo",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Info"
+            }
+          }
+        },
+        "security" : [ ]
+      }
     }
   },
   "definitions" : {
@@ -497,6 +516,43 @@
           "type" : "string"
         },
         "balance" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "Info" : {
+      "type" : "object",
+      "properties" : {
+        "version" : {
+          "type" : "string"
+        },
+        "revision" : {
+          "type" : "string"
+        },
+        "genesis_hash" : {
+          "type" : "string"
+        },
+        "last_30_blocks_time" : {
+          "type" : "array",
+          "items" : {
+            "$ref" : "#/definitions/BlockTimeSummary"
+          }
+        }
+      }
+    },
+    "BlockTimeSummary" : {
+      "type" : "object",
+      "properties" : {
+        "height" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "time" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "time_delta_to_parent" : {
           "type" : "integer",
           "format" : "int64"
         }

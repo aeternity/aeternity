@@ -16,6 +16,7 @@
         , get_header/2
         , get_header_by_height/2
         , get_missing_block_hashes/1
+        , get_top_N_blocks_time_summary/2
         , get_state_trees_for_persistance/1
         , hash_is_connected_to_genesis/2
         , has_block/2
@@ -267,6 +268,16 @@ get_missing_block_hashes(?assert_state() = State) ->
     TopBlockHash  = get_top_block_hash(State),
     get_missing_block_hashes(TopHeaderHash, TopBlockHash, State).
 
+get_top_N_blocks_time_summary(?assert_state() = State, N)
+  when is_integer(N) andalso N > 0->
+    TopBlockHash = top_block_hash(State),
+    case blocks_db_find(TopBlockHash, State) of
+        {ok, TopNode} ->
+            get_N_nodes_time_summary(TopNode, State, N);
+        error ->
+            []
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -310,6 +321,9 @@ node_root_hash(#node{type = block , content = X}) -> aec_blocks:root_hash(X).
 node_target(#node{type = header, content = X}) -> aec_headers:target(X);
 node_target(#node{type = block , content = X}) -> aec_blocks:target(X).
 
+node_time(#node{type = header, content = X}) -> aec_headers:time_in_msecs(X);
+node_time(#node{type = block , content = X}) -> aec_blocks:time_in_msecs(X).
+
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= 0 of
         true  -> State#{genesis_block_hash => hash(Node)};
@@ -326,7 +340,7 @@ find_genesis_node(State) ->
 
 %% this is when we insert the genesis block the first time
 node_is_genesis(Node, ?match_state(genesis_block_hash := undefined)) ->
-   node_height(Node) =:= 0; 
+    node_height(Node) =:= aec_block_genesis:height();
 node_is_genesis(Node, State) ->
     hash(Node) =:= get_genesis_hash(State).
 
@@ -775,6 +789,45 @@ find_top_block_from_top_header(Node, State, Candidate) ->
             PrevNode = blocks_db_get(prev_hash(Node), State),
             find_top_block_from_top_header(PrevNode, State, NewCandidate)
     end.
+
+get_N_nodes_time_summary(undefined, _State, _N) ->
+    [];
+get_N_nodes_time_summary(TopNode, State, N) ->
+    Time = node_time(TopNode),
+    case node_is_genesis(TopNode, State) of
+        true ->
+            [{node_height(TopNode), Time}];
+        false ->
+            PrevHash = prev_hash(TopNode),
+            case blocks_db_find(PrevHash, State) of
+                error ->
+                    [];
+                {ok, PrevNode} ->
+                    Summary = get_N_nodes_time_summary(PrevNode, Time, State, [], N),
+                    lists:reverse(Summary)
+            end
+
+    end.
+
+get_N_nodes_time_summary(_Node, _ParentTime, _State, Acc, 0) ->
+    Acc;
+get_N_nodes_time_summary(Node, ParentTime, State, Acc0, N) ->
+    Height = node_height(Node),
+    Time = node_time(Node),
+    Acc = [{Height + 1, ParentTime, ParentTime - Time} | Acc0],
+    case node_is_genesis(Node, State) of
+        true ->
+            [{Height, Time} | Acc];
+        false ->
+            PrevHash = prev_hash(Node),
+            case blocks_db_find(PrevHash, State) of
+                error ->
+                    Acc;
+                {ok, PrevNode} ->
+                    get_N_nodes_time_summary(PrevNode, Time, State, Acc, N - 1)
+            end
+    end.
+
 
 %%%-------------------------------------------------------------------
 %%% Garbage collection of state trees

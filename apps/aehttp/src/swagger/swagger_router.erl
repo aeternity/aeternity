@@ -75,6 +75,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetInfo' => #{
+            path => "/v1/info",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetTop' => #{
             path => "/v1/top",
             method => <<"GET">>,
