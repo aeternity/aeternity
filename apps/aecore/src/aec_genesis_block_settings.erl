@@ -4,14 +4,14 @@
          preset_accounts/0]).
 
 dir() ->
-    filename:join(code:priv_dir(aecore), ".genesis").
+    filename:join(aeu_env:data_dir(aecore), ".genesis").
 
 preset_accounts() ->
     PresetAccountsFile = filename:join([dir(), "accounts.json"]),
     case file:read_file(PresetAccountsFile) of
         {error, _Err} ->
             % no setup, no preset accounts
-            erlang:error(genesis_accounts_file_missing);
+            erlang:error({genesis_accounts_file_missing, PresetAccountsFile});
         {ok, JSONData} ->
             Accounts =
                 lists:map(

@@ -26,6 +26,7 @@
         , create_state_tree_with_accounts/1
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
+        , copy_genesis_dir/2
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -180,6 +181,29 @@ signed_coinbase_tx(Account, _AccountNonce) ->
     {ok, Tx} = aec_coinbase_tx:new(#{account => Account}),
     {ok, STx} = aec_keys:sign(Tx),
     STx.
+
+%% function to setup the .genesis file for test SUITE-s
+%% SourceGenesisDir is the test release directory from which to take the .genesis
+%% DestRelDir is the release being set up
+copy_genesis_dir(SourceRelDir, DestRelDir) ->
+    GenesisDir = aec_genesis_block_settings:dir(), % ex data/aecore/.genesis
+    GenesisName = filename:basename(GenesisDir),
+    DataAecoreRoot = filename:dirname(GenesisDir), % ex. data/aecore
+    DataRoot = filename:dirname(DataAecoreRoot), % ex. data
+    AecoreName = filename:basename(DataAecoreRoot),
+    DataRootName = filename:basename(DataRoot),
+    DestGenesisDir = filename:join([DestRelDir, DataRootName, AecoreName, GenesisName]),
+    ok = filelib:ensure_dir(DestGenesisDir ++ "/"),
+    SourceGenesisDir = filename:join([SourceRelDir, DataRootName, AecoreName, GenesisName]),
+    {ok, AllFiles} = file:list_dir_all(SourceGenesisDir),
+    lists:foreach(
+        fun(FileName) ->
+            {ok, _} = file:copy(filename:join(SourceGenesisDir, FileName),
+                                filename:join(DestGenesisDir, FileName))
+        end,
+        AllFiles).
+
+
 
 %%%=============================================================================
 %%% Key server setup/teardown
