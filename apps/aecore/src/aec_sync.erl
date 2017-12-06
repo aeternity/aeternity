@@ -19,6 +19,7 @@
 -export([subset_size/0,
          set_subset_size/1]).
 
+-export([schedule_ping/2]).
 -export([local_ping_object/0,
          compare_ping_objects/2]).
 
@@ -130,6 +131,9 @@ server_get_missing_blocks(PeerUri) ->
 fetch_mempool(PeerUri) ->
     gen_server:cast(?MODULE, {fetch_mempool, PeerUri}).
 
+schedule_ping(PeerUri, PingF) when is_function(PingF, 1) ->
+    gen_server:cast(?MODULE, {schedule_ping, PeerUri, PingF}).
+
 %%%=============================================================================
 %%% gen_server functions
 %%%=============================================================================
@@ -173,6 +177,9 @@ handle_cast({server_get_missing, PeerUri}, State) ->
     {noreply, State};
 handle_cast({fetch_mempool, PeerUri}, State) ->
     jobs:enqueue(sync_jobs, {fetch_mempool, PeerUri}),
+    {noreply, State};
+handle_cast({schedule_ping, PeerUri, PingF}, State) ->
+    jobs:enqueue(sync_jobs, {ping, PeerUri, PingF}),
     {noreply, State};
 handle_cast(_, State) ->
     {noreply, State}.
@@ -222,6 +229,8 @@ process_job([{T, Job}]) ->
             do_server_get_missing(PeerUri);
         {fetch_mempool, PeerUri} ->
             do_fetch_mempool(PeerUri);
+        {ping, PeerUri, PingF} ->
+            PingF(PeerUri);
         _Other ->
             lager:debug("unknown job", [])
     end.
