@@ -170,6 +170,9 @@ killall:
 clean:
 	@./rebar3 clean
 
+distclean: clean
+	( cd apps/aecuckoo && $(MAKE) distclean; )
+
 multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
 	@for x in dev2 dev3; do \
@@ -216,3 +219,4 @@ internal-clean: $$(KIND)
 	dialyzer \
 	test \
 	kill killall \
+	clean distclean
