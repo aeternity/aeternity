@@ -141,7 +141,7 @@ python-single-integration-test:
 	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/test_$(TEST_NAME).py
 
 release-integration-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --maxheight=10 --version=$(VER)
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --blocks=100 --version=$(VER)
 
 python-download-chain:
 	@$(PYTHON) $(PYTHON_TESTS)/chain_downloader.py --host=localhost --port=3013 --export_file=$(PYTHON_TESTS)/integration/data/bchain.txt
