@@ -13,12 +13,16 @@
 
 -export([user_config/0, user_config/1]).
 -export([user_map/0, user_map/1]).
+-export([user_config_or_env/4]).
 -export([read_config/0]).
 -export([check_config/1]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
 -type config_tree() :: [{binary(), config_tree() | basic_or_list()}].
+
+-type env_key() :: atom() | list().
+-type config_key() :: binary() | [binary()].
 
 %% This function is similar to application:get_env/2, except
 %% 1. It uses the setup:get_env/2 function, which supports a number
@@ -67,6 +71,15 @@ user_config(Key) when is_list(Key) ->
     get_env(aeutils, ['$user_config'|Key]);
 user_config(Key) when is_binary(Key) ->
     get_env(aeutils, ['$user_config',Key]).
+
+-spec user_config_or_env(config_key(), atom(), env_key(), any()) -> any().
+user_config_or_env(CfgKey, App, EnvKey, Default) ->
+    case user_config(CfgKey) of
+        undefined ->
+            get_env(App, EnvKey, Default);
+        {ok, Value} ->
+            Value
+    end.
 
 %% The user_map() functions are equivalent to user_config(), but
 %% operate on a tree of maps rather than a tree of {K,V} tuples.
