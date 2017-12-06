@@ -15,6 +15,11 @@ The instructions below also describe the simplest way to test sending tokens bet
 
 Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.3-big-spenders) corresponding to your platform, e.g. `epoch-0.3.3-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
+The binaries are tested on the following platforms:
+* Ubuntu 16.04.3 LTS;
+* macOS Sierra;
+* macOS High Sierra.
+
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
 ## Join the testnet
@@ -104,6 +109,15 @@ mkdir /tmp/node/db
 ```
 
 #### Start node
+
+It is recommended that at least 1024 files can be opened in the session where you start the node: this is needed not only for files on disk (e.g. persisted chain) but also for network connections with peers.
+You can check your max number of open files:
+* On Ubuntu, by running `ulimit -n`;
+* On macOS, by running `ulimit -n`.
+
+If your max number of open files is lower than 1024, you are recommended to raise such configuration:
+* On Ubuntu, `ulimit -n 1024` shall be sufficient;
+* On macOS, `ulimit -n 1024` shall be sufficient; if not sufficient on your OS, please report also the output of `sysctl -a | grep files`.
 
 Start the node:
 ```
