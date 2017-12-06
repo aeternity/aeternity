@@ -107,7 +107,7 @@ chain_test_() ->
     {foreach,
      fun() ->
              TmpKeysDir = setup_common(),
-             {ok, _} = ?TEST_MODULE:start_link(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
              meck:new(aec_headers, [passthrough]),
              meck:new(aec_blocks, [passthrough]),
              meck:expect(aec_headers, validate, fun(_) -> ok end),
@@ -128,7 +128,10 @@ chain_test_() ->
      ]}.
 
 test_start_mining_add_block() ->
-    %% Add a couple of blocks to the chain.
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
+
+    ?TEST_MODULE:start_mining(),
     [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
@@ -138,9 +141,8 @@ test_start_mining_add_block() ->
       BH2).
 
 test_preemption() ->
-    %% Stop the miner to be in a controlled environment
-    aec_conductor:stop_mining(),
-    wait_for_stopped(),
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
     Chain = aec_test_utils:gen_block_chain(7),
@@ -175,9 +177,8 @@ test_preemption() ->
 -define(error_atom, {error, A} when is_atom(A)).
 
 test_chain_api() ->
-    %% Stop the miner to be in a controlled environment
-    aec_conductor:stop_mining(),
-    wait_for_stopped(),
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
 
     %% Test that we have a genesis block to start out from.
     {ok, GenesisHeader} = ?TEST_MODULE:genesis_header(),
@@ -225,9 +226,8 @@ test_chain_api() ->
     ok.
 
 test_block_publishing() ->
-    %% Stop the miner to be in a controlled environment
-    aec_conductor:stop_mining(),
-    wait_for_stopped(),
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
     [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_block_chain(6),
@@ -263,7 +263,7 @@ test_block_publishing() ->
     %% The first block cannot have taken over, so it should have no event
     %% We should have top_changed events for at least the last block.
     %% No top events should have been given for anything else than the headers
-    TopHashes = expect_top_event_hashes([H3, H4, H5], [H3, H4]),
+    ok = expect_top_event_hashes([H3, H4, H5], [H3, H4]),
 
     %% And no other events should have been emitted.
     ?assertEqual([], flush_gproc()),
@@ -272,6 +272,11 @@ test_block_publishing() ->
 %%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+assert_stopped_and_genesis_at_top() ->
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    ?assertEqual(?TEST_MODULE:top_block_hash(),
+                 header_hash(aec_block_genesis:genesis_header())).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
