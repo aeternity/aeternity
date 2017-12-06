@@ -23,6 +23,26 @@
                 "example" : "http://somehost.somedomain:123/"
             }
         },
+        "sync" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "ping_interval" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "min" : {
+                            "description" : "Minimum ping interval (ms)",
+                            "type" : "integer"
+                        },
+                        "max" : {
+                            "description" : "Maximum ping interval (ms)",
+                            "type" : "integer"
+                        }
+                    }
+                }
+            }
+        },
         "http" : {
             "type" : "object",
             "additionalProperties" : false,
@@ -41,6 +61,14 @@
                         "port" : {
                             "description" :
                             "Listen port for external HTTP interface.",
+                            "type" : "integer"
+                        },
+                        "request_timeout" : {
+                            "description" : "HTTP Request timeout.",
+                            "type" : "integer"
+                        },
+                        "connect_timeout" : {
+                            "description" : "HTTP Request connect timeout.",
                             "type" : "integer"
                         }
                     }

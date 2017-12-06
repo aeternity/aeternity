@@ -242,6 +242,7 @@ check_env() ->
     [check_env_(UKey, AKey) ||
         {UKey, AKey} <- [{<<"peers">>, peers},
                          {<<"blocked_peers">>, blocked_peers}]],
+    check_ping_interval_env(),
     ok.
 
 check_env_(UKey, AKey) ->
@@ -252,6 +253,23 @@ check_env_(UKey, AKey) ->
         undefined ->
             ok
     end.
+
+check_ping_interval_env() ->
+    {DefMin, DefMax} =
+        aeu_env:get_env(aecore, ping_interval_limits, ping_interval_default()),
+    Min = case aeu_env:user_config(
+                 [<<"sync">>,<<"ping_interval">>,<<"min">>]) of
+              {ok, Min1} -> Min1;
+              undefined  -> DefMin
+          end,
+    Max = case aeu_env:user_config(
+                 [<<"sync">>,<<"ping_interval">>,<<"max">>]) of
+              {ok, Max1} -> Max1;
+              undefined  -> DefMax
+          end,
+    application:set_env(aecore, ping_interval_limits, {Min, Max}).
+
+ping_interval_default() -> {3000, 120000}.
 
 %%%=============================================================================
 %%% gen_server functions
@@ -816,8 +834,8 @@ calc_retry(_, Min) ->
     Min.
 
 ping_interval_limits() ->
-    Default = {3000, 60000},
-    case application:get_env(aecore, ping_interval_limits, {3000, 60000}) of
+    Default = ping_interval_default(),
+    case aeu_env:get_env(aecore, ping_interval_limits, Default) of
         {Min, Max} = Res when is_integer(Min),
                               is_integer(Max),
                               Max >= Min ->
@@ -836,7 +854,8 @@ maybe_ping_peer(#peer{uri = Uri} = Peer, #state{} = State) ->
     case is_local_uri(Uri, State) of
         false ->
             lager:debug("will ping peer ~p", [Uri]),
-            spawn(fun() -> ping_peer(Peer) end);
+            aec_sync:schedule_ping(Peer, fun ping_peer/1);
+            %% spawn(fun() -> ping_peer(Peer) end);
         _Other ->
             lager:debug("will not ping ~p (~p)", [Uri, _Other]),
             ignore

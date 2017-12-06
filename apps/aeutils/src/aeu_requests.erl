@@ -161,8 +161,14 @@ process_request(Peer, Method, Request) ->
     process_request(Peer, Method, Request, []).
 
 process_request(Peer, Method, Request, Params) ->
+    Timeout = aeu_env:user_config_or_env(
+                [<<"http">>, <<"external">>,<<"request_timeout">>],
+                aehttp, http_request_timeout, 1000),
+    CTimeout = aeu_env:user_config_or_env(
+                 [<<"http">>, <<"external">>, <<"connect_timeout">>],
+                 aehttp, http_connect_timeout, min(Timeout, 1000)),
     Header = [],
-    HTTPOptions = [],
+    HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
     Options = [],
     process_request(Peer, Method, Request, Params, Header, HTTPOptions, Options).
 
@@ -201,9 +207,9 @@ process_http_return(R) ->
                 error:E ->
                     {error, {parse_error, [E, erlang:get_stacktrace()]}}
             end;
-        {error, _} = _Error ->
-            lager:debug("process_http_return: ~p", [_Error]),
-            {error, "A problem occured"}  %TODO investigate responses and make errors meaningfull
+        {error, _} = Error ->
+            lager:debug("process_http_return: ~p", [Error]),
+            Error
     end.
 
 encode_get_params(#{} = Ps) ->
