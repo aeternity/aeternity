@@ -26,6 +26,7 @@ stop(_State) ->
 check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
+               {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
                {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]).
 

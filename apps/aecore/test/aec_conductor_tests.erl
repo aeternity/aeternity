@@ -16,10 +16,7 @@
 
 -define(TEST_MODULE, aec_conductor).
 
-setup_common() ->
-    meck:new(application, [unstick, passthrough]),
-    aec_test_utils:mock_fast_cuckoo_pow(),
-    ok = application:ensure_started(erlexec),
+setup_minimal() ->
     ok = application:ensure_started(gproc),
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
@@ -32,8 +29,7 @@ setup_common() ->
     {ok, _} = aec_persistence:start_link(),
     TmpKeysDir.
 
-teardown_common(TmpKeysDir) ->
-    ok = ?TEST_MODULE:stop(),
+teardown_minimal(TmpKeysDir) ->
     ok = aec_persistence:stop_and_clean(),
     ok = aec_tx_pool:stop(),
     ok = application:stop(gproc),
@@ -42,7 +38,25 @@ teardown_common(TmpKeysDir) ->
     meck:unload(aec_governance),
     aec_test_utils:unmock_time(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+    ok.
+
+setup_cuckoo_pow() ->
+    meck:new(application, [unstick, passthrough]),
+    aec_test_utils:mock_fast_cuckoo_pow(),
+    ok = application:ensure_started(erlexec).
+
+teardown_cuckoo_pow(_) ->
     meck:unload(application),
+    ok.
+
+setup_common() ->
+    setup_cuckoo_pow(),
+    _TmpKeysDir = setup_minimal().
+
+teardown_common(TmpKeysDir) ->
+    ok = ?TEST_MODULE:stop(),
+    teardown_minimal(TmpKeysDir),
+    teardown_cuckoo_pow(unused_argument),
     ok.
 
 %%%===================================================================
@@ -97,6 +111,63 @@ test_run_miner() ->
     wait_for_block_created(),
     ?assert(0 < get_top_height()),
     ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
+    ok.
+
+miner_timeout_test_() ->
+    {foreach,
+     fun() ->
+             ok = meck:new(aec_pow_cuckoo, [passthrough]),
+             ok = meck:new(application, [unstick, passthrough]),
+             ok = meck:expect(application, get_env, 3,
+                              fun
+                                  (aecore, mining_attempt_timeout, _) ->
+                                      500;
+                                  (App, Key, Def) ->
+                                      meck:passthrough([App, Key, Def])
+                              end),
+             TmpKeysDir = setup_minimal(),
+             {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+             TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+             ok = ?TEST_MODULE:stop(),
+             teardown_minimal(TmpKeysDir),
+             ok = meck:unload(application),
+             ok = meck:unload(aec_pow_cuckoo)
+     end,
+     [{"Time out miner that does not return", fun test_time_out_miner/0}
+     ]}.
+
+test_time_out_miner() ->
+    TestPid = self(),
+    ok = meck:expect(
+           aec_pow_cuckoo, generate,
+           fun(_, _, _) ->
+                   TestPid ! {self(), called},
+                   receive after infinity -> never_reached end
+           end),
+
+    %% Assert preconditions
+    assert_stopped(),
+    ok = receive {_, called} -> never_reached after 0 -> ok end,
+
+    ?TEST_MODULE:start_mining(),
+
+    %% First mining worker spawned hangs.
+    receive {_, called} -> ok end,
+    %% Retrieve mining worker pid before aec_conductor timer stops it.
+    %% TODO Make retrieval of mining worker pid not time-dependent
+    %% hence making test less fragile and removing need for large
+    %% timeout that slows test down.
+    [PowPid] = ?TEST_MODULE:get_mining_workers(),
+    PowMonRef = monitor(process, PowPid),
+    PowExitReason =
+        receive {'DOWN', PowMonRef, process, _, Info} -> Info end,
+    ?assertEqual(shutdown, PowExitReason),
+
+    %% A second distinct mining worker is spawned.
+    receive {_, called} -> ok end,
+
     ok.
 
 %%%===================================================================
@@ -273,8 +344,11 @@ test_block_publishing() ->
 %%% Helpers
 %%%===================================================================
 
+assert_stopped() ->
+    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()).
+
 assert_stopped_and_genesis_at_top() ->
-    ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()),
+    assert_stopped(),
     ?assertEqual(?TEST_MODULE:top_block_hash(),
                  header_hash(aec_block_genesis:genesis_header())).
 
