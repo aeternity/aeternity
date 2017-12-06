@@ -51,10 +51,14 @@
 
 %% Mining API
 -export([ get_mining_state/0
-        , get_miner_account_balance/0
-        , next_nonce_for_account/1
         , start_mining/0
         , stop_mining/0
+        ]).
+
+%% State trees API
+-export([ get_miner_account_balance/0
+        , next_nonce_for_account/1
+        , get_all_accounts_balances/0
         ]).
 
 %% Chain API
@@ -67,6 +71,7 @@
         , get_header_by_hash/1
         , get_header_by_height/1
         , get_missing_block_hashes/0
+        , get_top_30_blocks_time_summary/0
         , get_total_difficulty/0
         , has_block/1
         , hash_is_connected_to_genesis/1
@@ -155,6 +160,13 @@ next_nonce_for_account(PubKey) ->
     Top = top(),
     aec_next_nonce:pick_for_account(PubKey, Top).
 
+-spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
+get_all_accounts_balances() ->
+    Top = top(),
+    Trees = aec_blocks:trees(Top),
+    AccountsTree = aec_trees:accounts(Trees),
+    aec_accounts:get_all_accounts_balances(AccountsTree).
+
 %%%===================================================================
 %%% Chain API
 
@@ -210,6 +222,10 @@ get_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 get_missing_block_hashes() ->
     gen_server:call(?SERVER, get_missing_block_hashes).
 
+-spec get_top_30_blocks_time_summary() -> [{height(), non_neg_integer(), non_neg_integer()}].
+get_top_30_blocks_time_summary() ->
+    gen_server:call(?SERVER, get_top_30_blocks_time_summary).
+
 -spec get_total_difficulty() -> {'ok', float()} | {'error', atom()}.
 get_total_difficulty() ->
     gen_server:call(?SERVER, get_total_difficulty).
@@ -264,6 +280,8 @@ handle_call({get_header_by_height, Height},_From, State) ->
     {reply, aec_conductor_chain:get_header_by_height(Height, State), State};
 handle_call(get_missing_block_hashes,_From, State) ->
     {reply, aec_conductor_chain:get_missing_block_hashes(State), State};
+handle_call(get_top_30_blocks_time_summary,_From, State) ->
+    {reply, aec_conductor_chain:get_top_30_blocks_time_summary(State), State};
 handle_call(get_top_block,_From, State) ->
     {reply, aec_conductor_chain:get_top_block(State), State};
 handle_call(get_top_block_hash,_From, State) ->

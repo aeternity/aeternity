@@ -22,6 +22,7 @@
         , get_header/2
         , get_header_by_height/2
         , get_missing_block_hashes/1
+        , get_top_30_blocks_time_summary/1
         , get_top_block/1
         , get_top_block_hash/1
         , get_top_header/1
@@ -93,6 +94,9 @@ get_header(Hash, State) ->
 
 get_missing_block_hashes(State) ->
     aec_chain_state:get_missing_block_hashes(State#state.chain_state).
+
+get_top_30_blocks_time_summary(State) ->
+    aec_chain_state:get_top_N_blocks_time_summary(State#state.chain_state, 30).
 
 get_top_block(State) ->
     aec_chain_state:top_block(State#state.chain_state).

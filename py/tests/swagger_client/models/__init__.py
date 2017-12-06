@@ -14,9 +14,13 @@
 from __future__ import absolute_import
 
 # import models into model package
+from .account_balance import AccountBalance
+from .accounts_balances import AccountsBalances
 from .balance import Balance
 from .block import Block
+from .block_time_summary import BlockTimeSummary
 from .error import Error
+from .info import Info
 from .ping import Ping
 from .pub_key import PubKey
 from .spend_tx import SpendTx

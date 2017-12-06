@@ -60,6 +60,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetAccountsBalances' => #{
+            path => "/v1/balances",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetBlockByHash' => #{
             path => "/v1/block-by-hash",
             method => <<"GET">>,
@@ -67,6 +72,11 @@ get_operations() ->
         },
         'GetBlockByHeight' => #{
             path => "/v1/block-by-height",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
+        'GetInfo' => #{
+            path => "/v1/info",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },

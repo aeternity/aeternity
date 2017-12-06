@@ -20,6 +20,10 @@ request_params('GetAccountBalance') ->
         'pub_key'
     ];
 
+request_params('GetAccountsBalances') ->
+    [
+    ];
+
 request_params('GetBlockByHash') ->
     [
         'hash'
@@ -28,6 +32,10 @@ request_params('GetBlockByHash') ->
 request_params('GetBlockByHeight') ->
     [
         'height'
+    ];
+
+request_params('GetInfo') ->
+    [
     ];
 
 request_params('GetTop') ->
@@ -207,6 +215,9 @@ validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
 validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
+    validate_response_body('AccountsBalances', 'AccountsBalances', Body, ValidatorState);
+
 validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
 validate_response('GetBlockByHash', 404, Body, ValidatorState) ->
@@ -216,6 +227,9 @@ validate_response('GetBlockByHeight', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
 validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetInfo', 200, Body, ValidatorState) ->
+    validate_response_body('Info', 'Info', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
     validate_response_body('Top', 'Top', Body, ValidatorState);

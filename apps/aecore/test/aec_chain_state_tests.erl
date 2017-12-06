@@ -25,6 +25,7 @@
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
+        , get_top_30_blocks_time_summary/1
         , hash_is_connected_to_genesis/2
         , insert_block/2
         , insert_header/2
@@ -701,6 +702,67 @@ fork_out_of_order() ->
     %% The last block to enter is the last common node.
     {ok, State4} = insert_block(lists:last(CommonChain), State3),
     ?assertEqual(block_hash(lists:last(HardChain)), top_block_hash(State4)),
+    ok.
+
+
+%%%===================================================================
+%%% Blocks time summary tests
+
+block_time_summary_test_() ->
+    {foreach,
+     fun setup_meck_and_keys/0,
+     fun teardown_meck_and_keys/1,
+     [ {"Empty list on no genesis", fun time_summary_no_genesis/0}
+     , {"Time summary on only genesis block", fun time_summary_only_genesis/0}
+     , {"Time summary N blocks", fun time_summary_N_blocks/0}
+     ]}.
+
+time_summary_no_genesis() ->
+    InitState = new_state(),
+
+    ?assertEqual([], aec_chain_state:get_top_N_blocks_time_summary(InitState, 30)),
+    ok.
+
+time_summary_only_genesis() ->
+    InitState = new_state(),
+    Genesis = genesis_block(),
+    {ok, State} = insert_block(Genesis, InitState),
+
+    ?assertEqual([{aec_blocks:height(Genesis),
+                   aec_blocks:time_in_msecs(Genesis)}],
+                 aec_chain_state:get_top_N_blocks_time_summary(State, 30)),
+    ok.
+
+time_summary_N_blocks() ->
+    InitState = new_state(),
+    [B0, B1, B2, B3, B4] = Chain =
+        gen_block_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    State = write_blocks_to_chain(Chain, InitState),
+
+    B0Time = aec_blocks:time_in_msecs(B0),
+    B1Time = aec_blocks:time_in_msecs(B1),
+    B2Time = aec_blocks:time_in_msecs(B2),
+    B3Time = aec_blocks:time_in_msecs(B3),
+    B4Time = aec_blocks:time_in_msecs(B4),
+
+    Expected30Blocks = Expected5Blocks =
+        [{aec_blocks:height(B4), B4Time, B4Time - B3Time},
+         {aec_blocks:height(B3), B3Time, B3Time - B2Time},
+         {aec_blocks:height(B2), B2Time, B2Time - B1Time},
+         {aec_blocks:height(B1), B1Time, B1Time - B0Time},
+         {aec_blocks:height(B0), B0Time}],
+
+    ?assertEqual(Expected30Blocks,
+                 aec_chain_state:get_top_N_blocks_time_summary(State, 30)),
+    ?assertEqual(Expected5Blocks,
+                 aec_chain_state:get_top_N_blocks_time_summary(State, 5)),
+
+    Expected2Blocks =
+        [{aec_blocks:height(B4), B4Time, B4Time - B3Time},
+         {aec_blocks:height(B3), B3Time, B3Time - B2Time}],
+
+    ?assertEqual(Expected2Blocks,
+                 aec_chain_state:get_top_N_blocks_time_summary(State, 2)),
     ok.
 
 %%%===================================================================
