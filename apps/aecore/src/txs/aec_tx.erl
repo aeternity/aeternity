@@ -69,6 +69,8 @@ origin(Tx) ->
     Mod = tx_dispatcher:handler(Tx),
     Mod:origin(Tx).
 
+
+%% @doc Note that we drop invalid transactions, but we allow them in the block.
 -spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) ->
                           {ok, trees()}.
 apply_signed(SignedTxs, Trees0, Height) ->
@@ -178,16 +180,18 @@ grant_fee_to_miner(Txs, Trees0, Height, TotalFee) ->
     %% Consider creation of aec_accounts_service,
     %% which will take state trees, height and list of (pubkey, operation) pairs
     %% (valuable also during txs processing)
-    MinerPubkey = coinbase_tx_account_pubkey(Txs),
-    AccountsTrees0 = aec_trees:accounts(Trees0),
+    case [ AccountPubkey || #coinbase_tx{account = AccountPubkey} <- Txs] of
+      [] ->
+        lager:info("Invalid coinbase_tx transaction in block -- no fee"),
+        Trees0;
+      [MinerPubkey] ->
+        AccountsTrees0 = aec_trees:accounts(Trees0),
 
-    {ok, Account0} = aec_accounts:get(MinerPubkey, AccountsTrees0),
-    {ok, Account} = aec_accounts:earn(Account0, TotalFee, Height),
+        {ok, Account0} = aec_accounts:get(MinerPubkey, AccountsTrees0),
+        {ok, Account} = aec_accounts:earn(Account0, TotalFee, Height),
 
-    {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
-    Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
-    Trees.
+        {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
+        Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
+        Trees
+    end.
 
--spec coinbase_tx_account_pubkey(list(tx())) -> pubkey().
-coinbase_tx_account_pubkey([#coinbase_tx{account = AccountPubkey} | _Rest]) ->
-    AccountPubkey.
