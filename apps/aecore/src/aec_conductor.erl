@@ -652,9 +652,6 @@ handle_mining_reply({{ok, Block},_Candidate}, State) ->
     State1 = State#state{block_candidate = undefined},
     case handle_mined_block(Block, State1) of
         {ok, State2} ->
-            %% TODO: This should listen on some event instead
-            ws_handler:broadcast(miner, mined_block,
-                                 [{height, aec_blocks:height(Block)}]),
             State2;
         {{error, Reason}, State2} ->
             epoch_mining:error("Block insertion failed: ~p.", [Reason]),

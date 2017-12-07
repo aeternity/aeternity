@@ -134,7 +134,7 @@ python-tests:
 	@$(NOSE) --nocapture -c $(PYTHON_TESTS)/nose.cfg $(PYTHON_TESTS)
 
 python-ws-test:
-	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3014 --log INFO --handler ws_logic
+	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3114 --log INFO --handler ws_logic
 
 python-integration-tests:
 	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/
