@@ -239,15 +239,15 @@ expect(Expected, Info, Other) ->
 
 init_statsd() ->
     %% copied from exometer_report_statsd
-    {ok, Host} = inet:gethostbyname(default_host()),
+    DefaultHost = default_host(),
+    {{ok, Host},_} = {inet:gethostbyname(DefaultHost), DefaultHost},
     [IP|_]     = Host#hostent.h_addr_list,
     AddrType   = Host#hostent.h_addrtype,
     Port       = default_port(),
 
     S = #statsd{reconnect_interval = reconnect_interval(),
                 addr_type = AddrType, address = IP, port = Port},
-    S1 = try_connect(S),
-    {ok, S1}.
+    #statsd{} = try_connect(S).
 
 statsd_handle_data({statsd, Msg} = Data, S) ->
     case Msg of
@@ -271,6 +271,9 @@ try_send(Data, #statsd{socket = Sock, address = Addr, port = Port}) ->
                         [Addr, Port, Sock, Err])
     end.
 
+try_connect(#statsd{port = 0} = St) ->
+    lager:debug("metrics port = 0 - don't try to connect to statsd", []),
+    St#statsd{socket = undefined};
 try_connect(#statsd{addr_type = AddrType} = St) ->
     case gen_udp:open(0, [AddrType]) of
         {ok, Sock} ->
@@ -297,7 +300,11 @@ reconnect_after(#statsd{reconnect_interval = Interval} = S) ->
 
 default_host() ->
     aeu_env:user_config_or_env(
-      [<<"metrics">>, <<"host">>], aecore, metrics_host, inet:gethostname()).
+      [<<"metrics">>, <<"host">>], aecore, metrics_host, gethostname()).
+
+gethostname() ->
+    {ok, H} = inet:gethostname(),
+    H.
 
 default_port() ->
     aeu_env:user_config_or_env(

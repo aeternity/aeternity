@@ -33,7 +33,10 @@ publish(Event, Info) ->
              time => os:timestamp(),
              info => Info},
     Res = gproc_ps:publish(l, Event, Data),
-    lager:debug("publish(~p, ~p)", [Event, pp(Data)]),
+    if Event =/= metric ->
+            lager:debug("publish(~p, ~p)", [Event, pp(Data)]);
+       true -> ok
+    end,
     Res.
 
 -spec subscribe(event()) -> true.

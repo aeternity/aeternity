@@ -8,6 +8,8 @@
  {[ae,epoch,aecore,mining,blocks_mined] , counter, []},
  {[ae,epoch,aecore,mining,retries]      , counter, []},
  {[ae,epoch,aecore,peers,count]         , gauge  , []},
+ {[ae,epoch,aecore,peers,blocked]       , gauge  , []},
+ {[ae,epoch,aecore,peers,errored]       , gauge  , []},
  {[ae,epoch,aecore,peers,ping,success]  , counter, []},
  {[ae,epoch,aecore,peers,ping,failure]  , counter, []}
 ].

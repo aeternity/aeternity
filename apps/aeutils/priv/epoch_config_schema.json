@@ -183,7 +183,7 @@
                 "reconnect_interval" : {
                     "description" :
                     "How often (in ms) to try reconnecting to the daemon",
-                    "type" : integer,
+                    "type" : "integer",
                     "minimum" : 0
                 }
             }
