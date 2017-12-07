@@ -5,7 +5,7 @@
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
-    genesis_accounts_path: "{{ project_root }}/lib/aecore-0.1.0/priv/.genesis/accounts.json"
+    genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
 
     env: unknown
     config:

@@ -119,7 +119,7 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 as test do release, ct $(CT_TEST_FLAGS)
+	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)

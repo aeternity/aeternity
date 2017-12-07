@@ -401,7 +401,7 @@ check_env() ->
             undefined ->
                 application:get_env(
                   aecore, keys_dir,
-                  filename:join(code:priv_dir(aecore), "keys"));
+                  filename:join(aeu_env:data_dir(aecore), "keys"));
             {ok, Dir} ->
                 binary_to_list(Dir)
         end,

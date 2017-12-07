@@ -608,10 +608,12 @@ setup_node(N, Top, Epoch, Config) ->
     delete_file(filename:join(RelD, "sys.config.orig")),
     TestD = filename:join(filename:dirname(code:which(?MODULE)), "data"),
     cp_file(filename:join(TestD, "sync_SUITE.config"),
-            filename:join(DDir , "sync_SUITE.config")).
+            filename:join(DDir , "sync_SUITE.config")),
     %% modify_vm_args(N, filename:join(RelD, "vm.args")).
     %% modify_sys_config(filename:join(RelD, "sys.config")).
     %% cmd(["(cd ", TopDir, " && make multi-build)"]).
+    %%
+    aec_test_utils:copy_genesis_dir(Epoch, DDir).
 
 
 cp_dir(From, To) ->

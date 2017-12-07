@@ -16,6 +16,7 @@
 -export([user_config_or_env/4]).
 -export([read_config/0]).
 -export([check_config/1]).
+-export([data_dir/1]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -161,6 +162,9 @@ config_file() ->
         F ->
             F
     end.
+
+data_dir(Name) when is_atom(Name) ->
+  filename:join([setup:data_dir(), Name]).
 
 search_default_config() ->
     Dirs = [filename:join([os:getenv("HOME"), ".epoch", nodename()]),
