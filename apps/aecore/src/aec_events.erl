@@ -23,6 +23,7 @@
                | tx_created
                | tx_received
                | peers
+               | metric
                | chain_sync
                | mempool_sync.
 

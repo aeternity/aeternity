@@ -164,6 +164,29 @@
                     "type" : "integer",
                     "minimum" : 50 }
             }
+        },
+        "metrics" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "host" : {
+                    "description" :
+                    "Hostname to use when reporting to the statsd daemon",
+                    "type" : "string"
+                },
+                "port" : {
+                    "description" :
+                    "Port number of the (typically) statsd daemon.",
+                    "type" : "integer",
+                    "minimum" : 0
+                },
+                "reconnect_interval" : {
+                    "description" :
+                    "How often (in ms) to try reconnecting to the daemon",
+                    "type" : integer,
+                    "minimum" : 0
+                }
+            }
         }
     }
 }
