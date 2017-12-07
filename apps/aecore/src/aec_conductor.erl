@@ -51,6 +51,7 @@
 
 %% Mining API
 -export([ get_mining_state/0
+        , get_mining_workers/0
         , start_mining/0
         , stop_mining/0
         ]).
@@ -105,6 +106,8 @@
 
 -define(SERVER, ?MODULE).
 
+-define(DEFAULT_MINING_ATTEMPT_TIMEOUT, 60 * 60 * 1000). %% milliseconds
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -135,6 +138,10 @@ stop_mining() ->
 -spec get_mining_state() -> mining_state().
 get_mining_state() ->
     gen_server:call(?SERVER, get_mining_state).
+
+-spec get_mining_workers() -> [pid()].
+get_mining_workers() ->
+    gen_server:call(?SERVER, get_mining_workers).
 
 %%%===================================================================
 %%% State trees API
@@ -313,6 +320,8 @@ handle_call(start_mining,_From, State) ->
     {reply, ok, State1};
 handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
+handle_call(get_mining_workers, _From, State) ->
+    {reply, worker_pids_by_tag(mining, State), State};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
@@ -396,11 +405,14 @@ handle_monitor_message(Ref, Pid, Why, State) ->
 %%% type of worker. Tags are enforced to be 'singleton' (only one worker
 %%% allowed) or 'concurrent' (allow concurrent processes).
 %%%
-%%% The worker processes are monitored, and provides return values
-%%% through message passing. Return values are passed as messages, and
-%%% the reply is handled based on the tag. The worker fun does not
-%%% need to handle the message passing itself. This is taken care of
-%%% by the dispatcher.
+%%% The worker processes are monitored. Some types of worker are
+%%% killed after a timeout.
+%%%
+%%% The worker processes provide return values through message
+%%% passing. Return values are passed as messages, and the reply is
+%%% handled based on the tag. The worker fun does not need to handle
+%%% the message passing itself. This is taken care of by the
+%%% dispatcher.
 %%%
 %%% Note that when the reply is handled, the state is the current
 %%% server state, not the state in which the worker was
@@ -414,9 +426,15 @@ handle_monitor_message(Ref, Pid, Why, State) ->
 
 lookup_worker(Ref, Pid, State) ->
     case orddict:find(Pid, State#state.workers) of
-        {ok, {Tag, Ref}} -> {ok, Tag};
+        {ok, #worker_info{mon = Ref} = Info} -> {ok, Info#worker_info.tag};
         error -> not_found
     end.
+
+worker_pids_by_tag(Tag, State) ->
+    orddict:fetch_keys(
+      orddict:filter(
+        fun(_, Info) -> Info#worker_info.tag == Tag end,
+        State#state.workers)).
 
 dispatch_worker(Tag, Fun, State) ->
     case is_tag_blocked(Tag, State) of
@@ -425,10 +443,9 @@ dispatch_worker(Tag, Fun, State) ->
                                [Tag]),
             State;
         false ->
-            Wrapper = wrap_worker_fun(Fun),
-            {Pid, Ref} = spawn_monitor(Wrapper),
+            {Pid, Info} = spawn_worker(Tag, Fun),
             State1 = block_tag(Tag, State),
-            Workers = orddict:store(Pid, {Tag, Ref}, State1#state.workers),
+            Workers = orddict:store(Pid, Info, State1#state.workers),
             State1#state{workers = Workers}
     end.
 
@@ -437,6 +454,29 @@ is_tag_blocked(Tag, State) ->
 
 block_tag(Tag, #state{blocked_tags = B} = State) ->
     State#state{blocked_tags = ordsets:add_element(Tag, B)}.
+
+spawn_worker(Tag, Fun) ->
+    Timeout = worker_timeout(Tag),
+    spawn_worker(Tag, Fun, Timeout).
+
+worker_timeout(create_block_candidate) ->
+    infinity;
+worker_timeout(mining) ->
+    application:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
+worker_timeout(wait_for_keys) ->
+    infinity.
+
+spawn_worker(Tag, Fun, Timeout) ->
+    Wrapper = wrap_worker_fun(Fun),
+    {Pid, Ref} = spawn_monitor(Wrapper),
+    Timer = case Timeout of
+                infinity ->
+                    no_timer;
+                TimeMs when is_integer(TimeMs), TimeMs > 0 ->
+                    {ok, TRef} = timer:exit_after(TimeMs, Pid, shutdown),
+                    {t, TRef}
+            end,
+    {Pid, #worker_info{tag = Tag, mon = Ref, timer = Timer}}.
 
 wrap_worker_fun(Fun) ->
     Server = self(),
@@ -448,8 +488,9 @@ handle_worker_reply(Pid, Reply, State) ->
     Workers = State#state.workers,
     Blocked = State#state.blocked_tags,
     case orddict:find(Pid, Workers) of
-        {ok, {Tag, Ref}} ->
-            demonitor(Ref, [flush]),
+        {ok, Info} ->
+            cleanup_after_worker(Info),
+            Tag = Info#worker_info.tag,
             State1 = State#state{workers = orddict:erase(Pid, Workers),
                                  blocked_tags = ordsets:del_element(Tag, Blocked)
                                 },
@@ -499,27 +540,40 @@ maybe_publish_block(block_created = T, Block) ->
     %% This is a block we created ourselves. Always publish.
     aec_events:publish(T, Block).
 
+cleanup_after_worker(Info) ->
+    case Info#worker_info.timer of
+        no_timer -> ok;
+        {t, TRef} -> timer:cancel(TRef)
+    end,
+    demonitor(Info#worker_info.mon, [flush]),
+    ok.
 
-kill_worker(Pid, Tag, Ref, State) ->
+kill_worker(Pid, Info, State) ->
     Workers = State#state.workers,
     Blocked = State#state.blocked_tags,
-    demonitor(Ref, [flush]),
+    cleanup_after_worker(Info),
     exit(Pid, shutdown),
     State#state{workers = orddict:erase(Pid, Workers),
-                blocked_tags = ordsets:del_element(Tag, Blocked)
+                blocked_tags = ordsets:del_element(
+                                 Info#worker_info.tag,
+                                 Blocked)
                }.
 
 kill_all_workers(#state{workers = Workers} = State) ->
-    lists:foldl(fun({Pid, {Tag, Ref}}, S) -> kill_worker(Pid, Tag, Ref, S)end,
-                State, Workers).
+    lists:foldl(
+      fun({Pid, Info}, S) ->
+              kill_worker(Pid, Info, S)
+      end,
+      State, Workers).
 
 kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
-    lists:foldl(fun({Pid, {PidTag, Ref}}, S) ->
-                        case Tag =:= PidTag of
-                            true  -> kill_worker(Pid, Tag, Ref, S);
-                            false -> S
-                        end
-                end, State, Workers).
+    lists:foldl(
+      fun({Pid, Info}, S) ->
+              case Tag =:= Info#worker_info.tag of
+                  true  -> kill_worker(Pid, Info, S);
+                  false -> S
+              end
+      end, State, Workers).
 
 %%%===================================================================
 %%% Handling update in transaction pool

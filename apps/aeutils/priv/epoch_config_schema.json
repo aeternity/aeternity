@@ -146,6 +146,11 @@
                     "description" :
                     "If true, the node will start mining automatically.",
                     "type" : "boolean"
+                },
+                "attempt_timeout" : {
+                    "description" :
+                    "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
+                    "type" : "integer"
                 }
             }
         },

@@ -7,7 +7,12 @@
 -type(options() :: [option()]).
 
 
--type workers() :: orddict:orddict(pid(), atom()).
+-record(worker_info, {tag   :: atom(),
+                      mon   :: reference(),
+                      timer :: {t, timer:tref()} | 'no_timer'}).
+
+-type worker_info() :: #worker_info{}.
+-type workers() :: orddict:orddict(pid(), worker_info()).
 -type mining_state() :: 'running' | 'stopped'.
 
 -record(candidate, {block     :: block(),
