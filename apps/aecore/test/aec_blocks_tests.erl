@@ -44,7 +44,7 @@ new_block_test_() ->
               ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),
               ?assertEqual([], NewBlock#block.txs),
               ?assertEqual(17, NewBlock#block.target),
-              ?assertEqual(1, NewBlock#block.version)
+              ?assertEqual(?PROTOCOL_VERSION, NewBlock#block.version)
       end}}.
 
 network_serialization_test_() ->

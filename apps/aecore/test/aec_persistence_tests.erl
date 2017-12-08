@@ -8,8 +8,6 @@
         ?assertEqual(aec_blocks:serialize_for_network(B1),
                      aec_blocks:serialize_for_network(B2))).
 
--define(GENESIS_DIFFICULTY, 553713663.0).
-
 genesis_block() ->
     aec_block_genesis:genesis_block().
 

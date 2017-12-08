@@ -27,6 +27,7 @@
         , get_top_block_hash/1
         , get_top_header/1
         , get_top_header_hash/1
+        , get_adjustment_headers/1
         , get_total_difficulty/1
         , get_transactions_between/3
         , hash_is_connected_to_genesis/2
@@ -109,6 +110,13 @@ get_top_header(State) ->
 
 get_top_header_hash(State) ->
     aec_chain_state:top_header_hash(State#state.chain_state).
+
+get_adjustment_headers(State) ->
+    N = aec_governance:blocks_to_check_difficulty_count() + 1,
+    case aec_chain_state:get_n_headers_from_top(N, State#state.chain_state) of
+        {ok, [_ | Headers]} -> Headers;
+        {error, _} -> []
+    end.
 
 get_total_difficulty(State) ->
     aec_chain_state:difficulty_at_top_header(State#state.chain_state).

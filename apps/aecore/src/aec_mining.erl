@@ -1,10 +1,13 @@
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/1,
+-export([create_block_candidate/2,
          need_to_regenerate/1,
          mine/2]).
 
+-ifdef(TEST).
+-export([adjust_target/2]).
+-endif.
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -13,9 +16,10 @@
 
 %% API
 
--spec create_block_candidate(block()) -> {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate(TopBlock) ->
-    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock).
+-spec create_block_candidate(block(), list(header())) ->
+                        {ok, block(), aec_pow:nonce()} | {error, term()}.
+create_block_candidate(TopBlock, AdjHeaders) ->
+    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock, AdjHeaders).
 
 -spec need_to_regenerate(block()) -> boolean().
 need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
@@ -47,20 +51,19 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(signed_tx()), block()) -> {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
-create_block_candidate(TxsToMineInPool, TopBlock) ->
+-spec create_block_candidate(list(signed_tx()), block(), list(header())) ->
+                  {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
+create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
             Trees = aec_blocks:trees(TopBlock),
-            Block0 = aec_blocks:new(TopBlock, Txs, Trees),
-            case aec_blocks:cointains_coinbase_tx(Block0) of
+            Block = aec_blocks:new(TopBlock, Txs, Trees),
+            case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
-                    Block = adjust_target(Block0),
-                    RandomNonce = aec_pow:pick_nonce(),
-                    {ok, Block, RandomNonce};
+                    adjust_target(Block, AdjHeaders);
                 false ->
                     {error, coinbase_tx_rejected}
             end
@@ -89,18 +92,19 @@ create_coinbase_tx() ->
             Error
     end.
 
--spec adjust_target(block()) -> block().
-adjust_target(Block) ->
+-spec adjust_target(block(), list(header())) ->
+            {ok, block(), aec_pow:nonce()} | {error, term()}.
+adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
-    case aec_target:determine_delta_header_height(Header) of
-        {ok, InitialHeaderHeight} ->
-            %% For mining we can grab the header at height=DeltaHeight from
-            %% the current main chain, hence aec_conductor:get_header_by_height/1 call.
-            %% TODO: It is not good to call back to aec_conductor
-            %%       but we do this for now.
-            {ok, InitialHeader} = aec_conductor:get_header_by_height(InitialHeaderHeight),
-            CalculatedTarget = aec_target:recalculate(Header, InitialHeader),
-            aec_blocks:set_target(Block, CalculatedTarget);
-        {error, chain_too_short_to_recalculate_target} ->
-            Block
+    DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
+    case aec_headers:height(Header) =< DeltaHeight of
+        true ->
+            %% For the first DeltaHeight blocks, use pre-defined target
+            {ok, Block, aec_pow:pick_nonce()};
+        false when DeltaHeight == length(AdjHeaders) ->
+            CalculatedTarget = aec_target:recalculate(Header, AdjHeaders),
+            Block1 = aec_blocks:set_target(Block, CalculatedTarget),
+            {ok, Block1, aec_pow:pick_nonce()};
+        false -> %% Wrong number of headers in AdjHeaders...
+            {error, wrong_headers_for_target_adjustment}
     end.

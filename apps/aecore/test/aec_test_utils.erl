@@ -16,8 +16,7 @@
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
         , wait_for_it/2
-        , extend_block_chain_by_targets_with_nonce_and_coinbase/3
-        , extend_block_chain_by_targets_with_nonce_and_coinbase/4
+        , extend_block_chain/2
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         , gen_block_chain/1
@@ -119,7 +118,7 @@ mock_block_target_validation() ->
     meck:new(aec_governance, [passthrough]),
     meck:new(aec_target, [passthrough]),
     meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 1),
-    meck:expect(aec_target, verify, 3, ok).
+    meck:expect(aec_target, verify, 2, ok).
 
 unmock_block_target_validation() ->
     meck:unload(aec_governance),
@@ -141,41 +140,26 @@ gen_block_chain(N, MinerAccount, [PreviousBlock|_] = Acc) ->
     B = aec_blocks:new(PreviousBlock, Txs, Trees),
     gen_block_chain(N - 1, MinerAccount, [B|Acc]).
 
-extend_block_chain_by_targets_with_nonce_and_coinbase(
-  PreviousBlock,
-  Targets, Nonce) ->
+extend_block_chain(PrevBlock, Data) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
-    extend_block_chain_by_targets_with_nonce_and_coinbase(
-      PreviousBlock, Targets, Nonce,
-      MinerAccount).
+    Targets    = maps:get(targets, Data),
+    Nonce      = maps:get(nonce, Data, 12345),
+    Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
+    extend_block_chain(PrevBlock, Targets, Timestamps, Nonce, MinerAccount, []).
 
-extend_block_chain_by_targets_with_nonce_and_coinbase(
-  PreviousBlock,
-  Targets, Nonce,
-  MinerAccount) ->
-    [PreviousBlock | BlockChainExtension] =
-        lists:reverse(
-          lists:foldl(
-            fun(T, [PrevB | _] = BC) ->
-                    B = next_block_by_target_with_nonce_and_coinbase(
-                          PrevB,
-                          T, Nonce,
-                          MinerAccount),
-                    [B | BC]
-            end,
-            [PreviousBlock],
-            Targets)),
-    BlockChainExtension.
 
-next_block_by_target_with_nonce_and_coinbase(PreviousBlock,
-                                             Target, Nonce,
-                                             MinerAccount) ->
-    H = 1 + aec_blocks:height(PreviousBlock),
-    Trees = aec_blocks:trees(PreviousBlock),
-    B = aec_blocks:new(PreviousBlock, [signed_coinbase_tx(MinerAccount, H)], Trees),
-    B#block{ target = Target
-           , nonce = Nonce
-           }.
+extend_block_chain(_, [], _, _, _, Chain) ->
+    lists:reverse(Chain);
+extend_block_chain(PrevBlock, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
+    Block = next_block(PrevBlock, Tgt, Ts, Nonce, MinerAcc),
+    extend_block_chain(Block, Tgts, Tss, Nonce, MinerAcc, [Block | Chain]).
+
+next_block(PrevBlock, Target, Time0, Nonce, MinerAcc) ->
+    H = 1 + aec_blocks:height(PrevBlock),
+    Trees = aec_blocks:trees(PrevBlock),
+    B = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc, H)], Trees),
+    B#block{ target = Target, nonce  = Nonce,
+             time   = case Time0 of undefined -> B#block.time; _ -> Time0 end }.
 
 signed_coinbase_tx(Account, _AccountNonce) ->
     {ok, Tx} = aec_coinbase_tx:new(#{account => Account}),
