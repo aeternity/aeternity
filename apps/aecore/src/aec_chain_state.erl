@@ -867,6 +867,9 @@ garbage_collect_state_trees(State) ->
         undefined -> State;
         Hash when is_binary(Hash) ->
             Node = blocks_db_get(Hash, State),
+            %% NOTE: Order is important for the nodes in Keep.
+            %%       They must be in increasing height to avoid
+            %%       quadratic complexity.
             Keep = gc_collect(Node, 0, State, []),
             gc_init(Keep, State)
     end.
@@ -879,7 +882,12 @@ gc_init([], State, Acc) ->
 gc_init([Node|Left], State, Acc) ->
     case calculate_state_trees(Node, State) of
         {stored, Trees} -> gc_init(Left, State, [{hash(Node), Trees}|Acc]);
-        {calculated, Trees} -> gc_init(Left, State, [{hash(Node), Trees}|Acc])
+        {calculated, Trees} ->
+            %% We must store the current state so that we don't need
+            %% to calculate it again if we need the next state as well.
+            Hash = hash(Node),
+            State1 = state_db_put(Hash, Trees, State),
+            gc_init(Left, State1, [{Hash, Trees}|Acc])
     end.
 
 gc_collect(Node, HeightFromTop, State, Acc) ->
