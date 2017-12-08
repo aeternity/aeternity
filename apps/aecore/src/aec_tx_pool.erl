@@ -40,7 +40,7 @@
 
 -type pool_db_key() ::
         {negated_fee(), pubkey(), non_neg_integer()} | undefined.
--type pool_db_value() :: signed_tx().
+-type pool_db_value() :: aec_tx_sign:signed_tx().
 -type pool_db() :: atom().
 
 -type event() :: tx_created | tx_received.
@@ -60,18 +60,18 @@ stop() ->
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
--spec push(signed_tx()|list(signed_tx())) -> ok.
+-spec push(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx())) -> ok.
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push(signed_tx()|list(signed_tx()), event()) -> ok.
+-spec push(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx()), event()) -> ok.
 push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
     gen_server:call(?SERVER, {push, Txs, Event});
 push([], _) -> ok;
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
     gen_server:call(?SERVER, {push, [Tx], Event}).
 
--spec delete(signed_tx()|list(signed_tx())) -> ok.
+-spec delete(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx())) -> ok.
 delete(Txs) when is_list(Txs) ->
     gen_server:call(?SERVER, {delete, Txs});
 delete(Tx) ->
@@ -84,11 +84,11 @@ get_max_nonce(Sender) ->
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
--spec peek(pos_integer() | infinity) -> {ok, [signed_tx()]}.
+-spec peek(pos_integer() | infinity) -> {ok, [aec_tx_sign:signed_tx()]}.
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec fork_update(AddedToChain::[signed_tx()], RemovedFromChain::[signed_tx()]) -> ok.
+-spec fork_update(AddedToChain::[aec_tx_sign:signed_tx()], RemovedFromChain::[aec_tx_sign:signed_tx()]) -> ok.
 fork_update(AddedToChain, RemovedFromChain) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
@@ -192,7 +192,7 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
--spec pool_db_put(pool_db(), pool_db_key(), pool_db_value(), event()) -> true.
+-spec pool_db_put(pool_db(), pool_db_key(), aec_tx_sign:signed_tx(), event()) -> true.
 pool_db_put(_, undefined, _, _) ->
     false; %% Ignore coinbase
 pool_db_put(Mempool, Key, Tx, Event) ->

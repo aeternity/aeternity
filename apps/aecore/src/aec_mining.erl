@@ -46,12 +46,12 @@ mine(Block, Nonce) ->
 
 %% Internal functions
 
--spec get_txs_to_mine_in_pool() -> list(signed_tx()).
+-spec get_txs_to_mine_in_pool() -> list(aec_tx_sign:signed_tx()).
 get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(signed_tx()), block(), list(header())) ->
+-spec create_block_candidate(list(aec_tx_sign:signed_tx()), block(), list(header())) ->
                   {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
     case create_signed_coinbase_tx() of
@@ -69,7 +69,7 @@ create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
             end
     end.
 
--spec create_signed_coinbase_tx() -> {ok, signed_tx()} | {error, term()}.
+-spec create_signed_coinbase_tx() -> {ok, aec_tx_sign:signed_tx()} | {error, term()}.
 create_signed_coinbase_tx() ->
     case create_coinbase_tx() of
         {ok, CoinbaseTx} ->

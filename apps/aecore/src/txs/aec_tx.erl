@@ -18,8 +18,7 @@
 -include("trees.hrl").
 -include("txs.hrl").
 
--export_type([tx/0,
-              signed_tx/0]).
+-export_type([tx/0]).
 
 %%%=============================================================================
 %%% aec_tx behavior callbacks
@@ -70,15 +69,15 @@ origin(Tx) ->
     Mod = tx_dispatcher:handler(Tx),
     Mod:origin(Tx).
 
--spec filter_out_invalid_signatures(list(signed_tx())) -> list(signed_tx()).
+-spec filter_out_invalid_signatures(list(aec_tx_sign:signed_tx())) -> list(aec_tx_sign:signed_tx()).
 filter_out_invalid_signatures(SignedTxs) ->
     lists:filter(
       fun(SignedTx) ->
               ok =:= aec_tx_sign:verify(SignedTx)
       end, SignedTxs).
 
--spec apply_signed(list(signed_tx()), trees(), non_neg_integer()) ->
-                          {ok, list(signed_tx()), trees()}.
+-spec apply_signed(list(aec_tx_sign:signed_tx()), trees(), non_neg_integer()) ->
+                          {ok, list(aec_tx_sign:signed_tx()), trees()}.
 apply_signed(SignedTxs, Trees0, Height) ->
     {ok, SignedTxs1, Trees1} = apply_on_state_trees(SignedTxs, Trees0, Height),
     TotalFee = calculate_total_fee(SignedTxs1),
@@ -86,7 +85,7 @@ apply_signed(SignedTxs, Trees0, Height) ->
     {ok, SignedTxs1, Trees2}.
 
 %% TODO: there should be an easier way to do this...
--spec is_coinbase(signed_tx()) -> boolean().
+-spec is_coinbase(aec_tx_sign:signed_tx()) -> boolean().
 is_coinbase(Signed) ->
     Tx = aec_tx_sign:data(Signed),
     Mod = tx_dispatcher:handler(Tx),
@@ -161,7 +160,7 @@ process_single(Tx, Trees, Height) ->
     Mod = tx_dispatcher:handler(Tx),
     Mod:process(Tx, Trees, Height).
 
--spec grant_fee_to_miner(list(signed_tx()), trees(), non_neg_integer(), height()) ->
+-spec grant_fee_to_miner(list(aec_tx_sign:signed_tx()), trees(), non_neg_integer(), height()) ->
                                 trees().
 grant_fee_to_miner([], Trees, 0, _Height) ->
     lager:info("Empty block -- no fee"),

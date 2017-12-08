@@ -31,7 +31,7 @@ mine_block_test_() ->
          fun() ->
                  TopBlock = #block{height = 0,
                                    target = ?HIGHEST_TARGET_SCI},
-                 meck:expect(aec_pow, pick_nonce, 0, 9),
+                 meck:expect(aec_pow, pick_nonce, 0, 10),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, []),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
@@ -79,8 +79,9 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_blocks, new, 3,
                              #block{height = 30,
                                     target = ?HIGHEST_TARGET_SCI,
-                                    txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                                                      signatures = [<<"sig1">>]}],
+                                    txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
+                                    %% [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
+                                    %%                  signatures = [<<"sig1">>]}],
                                     time = Now}),
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
@@ -110,8 +111,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_blocks, new, 3,
                              #block{height = 200,
                                     target = PastTarget,
-                                    txs = [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                                                      signatures = [<<"sig1">>]}],
+                                    txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
                                     time = Now}),
 
                  case PoWMod of
@@ -156,15 +156,23 @@ setup(PoWMod) ->
     meck:new(aeu_time, [passthrough]),
     meck:expect(aeu_time, now_in_msecs, 0, 1510253222889),
     {ok, _} = aec_tx_pool:start_link(),
-    SignedTx = #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                          signatures = [<<"sig1">>]},
+    SignedTx = {signed_tx,{coinbase_tx,<<"pubkey">>},
+                         [<<48,69,2,32,44,5,112,89,79,175,39,38,68,238,0,83,
+                            234,249,73,148,30,94,88,10,210,129,137,122,164,
+                            221,55,4,187,21,52,128,2,33,0,158,123,167,116,
+                            215,21,130,172,94,58,168,240,32,124,242,147,171,
+                            183,186,62,21,253,155,101,132,121,17,72,89,101,
+                            145,206>>]},
     Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
     meck:expect(aec_trees, all_trees_hash, 1, <<>>),
     meck:expect(aec_tx, filter_out_invalid_signatures, fun(X) -> X end),
     meck:expect(aec_tx, apply_signed, 3, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+    %% We hardcode the signed_tx because crypto adds salt and gives
+    %% non-deterministic result.
     meck:expect(aec_keys, sign, 1,
                 {ok, SignedTx}).
+
 
 cleanup(_, PoWMod) ->
     application:stop(crypto),

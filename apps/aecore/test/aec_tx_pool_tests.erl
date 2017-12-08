@@ -98,9 +98,11 @@ all_test_() ->
                  STx5 = a_signed_tx(PK2, me, 1, 6),
 
                  [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
-                 {ok, CurrentMempool} = aec_tx_pool:peek(10),
+                 {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
+                 %% extract transactions without verification
+                 CurrentMempool = [ aec_tx_sign:data(STx) || STx <- CurrentMempoolSigned ],
 
-                 MempoolOrder = [{Sender, Nonce} || #signed_tx{data=#spend_tx{sender=Sender, nonce=Nonce}}
+                 MempoolOrder = [{Sender, Nonce} || #spend_tx{sender=Sender, nonce=Nonce}
                                                     <- CurrentMempool],
                  %% this is not-optimal order: transactions for PK1 are invalid in that order
                  CorrectOrder = [{PK2,1},{PK2,2},{PK1,3},{PK1,2},{PK1,1}],
@@ -175,24 +177,17 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     STx.
 
 sign(me, Tx) ->
-    aec_keys:sign(Tx);
+    aec_keys:sign(Tx);  %% why via keys here?
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),
         Signers = aec_tx:signers(Tx),
         true = lists:member(PubKey, Signers),
-        Bin = aec_tx:serialize_to_binary(Tx),
-        Sig = crypto:sign(algo(), digest(), Bin, [PrivKey, curve()]),
-        {ok, #signed_tx{data = Tx,
-                        signatures = [Sig]}}
+        {ok, aec_tx_sign:sign(Tx, PrivKey)}
     catch
         error:Err ->
             erlang:error({Err, erlang:stacktrace()})
     end.
-
-algo()   -> ecdsa.
-digest() -> sha256.
-curve()  -> crypto:ec_curve(secp256k1).
 
 acct(me) ->
     {ok, Key} = aec_keys:pubkey(),
