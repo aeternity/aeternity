@@ -20,6 +20,9 @@ The binaries are tested on the following platforms:
 * macOS Sierra;
 * macOS High Sierra.
 
+The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
+In case you have installed it in a non-default path, you could use a symlink to work around the issue.
+
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
 ## Join the testnet
