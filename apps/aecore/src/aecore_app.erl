@@ -3,7 +3,9 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2,
+         start_phase/3,
+         stop/1]).
 -export([check_env/0]).
 
 %%====================================================================
@@ -13,6 +15,9 @@
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     aecore_sup:start_link().
+
+start_phase(start_reporters, _StartType, _PhaseArgs) ->
+    aec_metrics:start_reporters().
 
 stop(_State) ->
     ok.

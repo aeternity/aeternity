@@ -496,10 +496,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%=============================================================================
 
-metrics(#state{peers = Peers} = State) ->
-    try exometer:update([ae,epoch,aecore,peers,count],
-                        gb_trees:size(Peers))
-    catch _:_ -> ok end,
+metrics(#state{peers = Peers, blocked = Blocked,
+               errored = Errored} = State) ->
+    aec_metrics:try_update([ae,epoch,aecore,peers,count],
+                           gb_trees:size(Peers)),
+    aec_metrics:try_update([ae,epoch,aecore,peers,blocked],
+                           gb_sets:size(Blocked)),
+    aec_metrics:try_update([ae,epoch,aecore,peers,errored],
+                           gb_sets:size(Errored)),
     State.
 
 enter_peer(#peer{uri = Uri} = P, Peers) ->
@@ -796,8 +800,7 @@ update_ping_metrics(Res) ->
                ok    -> [ae,epoch,aecore,peers,ping,success];
                error -> [ae,epoch,aecore,peers,ping,failure]
            end,
-    try exometer:update(Name, 1)
-    catch _:_ -> ok end.
+    aec_metrics:try_update(Name, 1).
 
 update_errored(ok, Uri, Errored) ->
     gb_sets:delete_any(Uri, Errored);

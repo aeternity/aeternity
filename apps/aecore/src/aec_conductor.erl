@@ -647,8 +647,7 @@ start_mining(#state{} = State) ->
     dispatch_worker(mining, Fun, State).
 
 handle_mining_reply({{ok, Block},_Candidate}, State) ->
-    try exometer:update([ae,epoch,aecore,mining,blocks_mined], 1)
-    catch error:_ -> ok end,
+    aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
     State1 = State#state{block_candidate = undefined},
     case handle_mined_block(Block, State1) of
         {ok, State2} ->
@@ -658,14 +657,12 @@ handle_mining_reply({{ok, Block},_Candidate}, State) ->
             start_mining(State2)
     end;
 handle_mining_reply({{error, no_solution}, Candidate}, State) ->
-    try exometer:update([ae,epoch,aecore,mining,retries], 1)
-    catch error:_ -> ok end,
+    aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:debug("Failed to mine block, no solution (nonce ~p); "
                        "retrying.", [Candidate#candidate.nonce]),
     retry_mining(Candidate, State);
 handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
-    try exometer:update([ae,epoch,aecore,mining,retries], 1)
-    catch error:_ -> ok end,
+    aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce (was ~p). "
                        "Error: ~p", [Candidate#candidate.nonce, Reason]),

@@ -1,9 +1,12 @@
-%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 {application, aecore,
  [{description, "Blockchain for aeapps"},
   {vsn, "0.1.0"},
   {registered, []},
   {mod, { aecore_app, []}},
+  {start_phases, [
+                  {start_reporters, []}
+                 ]},
   {applications,
    [kernel,
     stdlib,
@@ -27,7 +30,14 @@
     aecuckoo
    ]},
   {env, [
-        {exometer_predefined, {script, "$PRIV_DIR/exometer_predefined.script"}},
+         {exometer_predefined,
+          {script, "$PRIV_DIR/exometer_predefined.script"}},
+         {exometer_subscribers,
+          [
+           {select,
+            {[{{[ae,epoch|'_'],'_',enabled},[],['$_']}],
+             aec_metrics_main, default, default, true}}
+          ]},
         {'$setup_hooks',
          [
           {normal, [
