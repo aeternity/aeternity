@@ -212,7 +212,7 @@ thing_to_list(X) when is_binary(X) -> X;
 thing_to_list(X) when is_list(X) -> X.
 
 value(V) when is_integer(V) -> integer_to_list(V);
-value(V) when is_float(V)   -> float_to_list(V);
+value(V) when is_float(V)   -> io_lib:fwrite("~.3f", [V]);
 value(_)                    -> 0.
 
 intersperse(_, [])         -> [];
