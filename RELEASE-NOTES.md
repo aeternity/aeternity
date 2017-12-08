@@ -446,7 +446,7 @@ Instruct node #1 to sign and broadcast a transaction sending tokens to the publi
 curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3113/v1/spend-tx
 ```
 
-Node #1 will share the transaction with other nodes in the block and also consider it for inclusion block for future mining.
+Node #1 will share the transaction with other nodes in the block and also consider it for inclusion in block for future mining.
 
 Inspect the main log file of node #1:
 ```
