@@ -761,11 +761,21 @@ update_top_block_hash(Hash, State) ->
 apply_node_transactions([Node|Left], Trees, State) ->
     Txs = aec_blocks:txs(Node#node.content),
     Height = node_height(Node),
-    {ok, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
+    {ok, FilteredTxs, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
+    assert_transactions_valid(FilteredTxs, Txs),
     assert_state_hash_valid(NewTrees, Node),
     apply_node_transactions(Left, NewTrees, State);
 apply_node_transactions([], Trees,_State) ->
     Trees.
+
+assert_transactions_valid(ValidTxs, Txs) ->
+    %% Expect to have only valid transactions in a block we're adding to the chain
+    case ValidTxs =:= Txs of
+        true ->
+            ok;
+        false ->
+            internal_error(invalid_transactions_in_block)
+    end.
 
 is_node_in_main_chain(Node, State) ->
     case get_top_header_hash(State) of

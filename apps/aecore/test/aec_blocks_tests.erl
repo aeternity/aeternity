@@ -72,27 +72,50 @@ network_serialization_test_() ->
      end}].
 
 validate_test_() ->
-    [fun() ->
-             SignedCoinbase = #signed_tx{data = #coinbase_tx{}},
-             Block = #block{txs = [SignedCoinbase, SignedCoinbase]},
-             ?assertEqual({error, multiple_coinbase_txs}, ?TEST_MODULE:validate(Block))
-     end,
-     fun() ->
-             SignedCoinbase = #signed_tx{data = #coinbase_tx{}},
-             CorrectTxs = [SignedCoinbase],
-             MalformedTxs = [SignedCoinbase, #signed_tx{data = #coinbase_tx{account = <<"malformed_account">>}}],
-             {ok, MalformedTree} = aec_txs_trees:new(MalformedTxs),
-             {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
-             Block = #block{txs = CorrectTxs, txs_hash = MalformedRootHash},
-             ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block))
-     end,
-     fun() ->
-             SignedCoinbase = #signed_tx{data = #coinbase_tx{}},
-             Txs = [SignedCoinbase],
-             {ok, Tree} = aec_txs_trees:new(Txs),
-             {ok, RootHash} = aec_txs_trees:root_hash(Tree),
-             Block = #block{txs = Txs, txs_hash = RootHash},
-             ?assertEqual(ok, ?TEST_MODULE:validate(Block))
-     end].
+    {setup,
+     fun aec_test_utils:aec_keys_setup/0,
+     fun aec_test_utils:aec_keys_cleanup/1,
+     [ {"Multiple coinbase txs in the block",
+        fun validate_test_multiple_coinbase/0}
+     , {"Malformed txs merkle tree hash",
+        fun validate_test_malformed_txs_root_hash/0}
+     , {"Malformed tx signature",
+        fun validate_test_malformed_tx_signature/0}
+     , {"Pass validation",
+        fun validate_test_pass_validation/0}
+     ]}.
+
+validate_test_multiple_coinbase() ->
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    Block = #block{txs = [SignedCoinbase, SignedCoinbase]},
+
+    ?assertEqual({error, multiple_coinbase_txs}, ?TEST_MODULE:validate(Block)).
+
+validate_test_malformed_txs_root_hash() ->
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    MalformedTxs = [SignedCoinbase, #signed_tx{data = #coinbase_tx{account = <<"malformed_account">>}}],
+    {ok, MalformedTree} = aec_txs_trees:new(MalformedTxs),
+    {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
+    Block = #block{txs = [SignedCoinbase], txs_hash = MalformedRootHash},
+
+    ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block)).
+
+validate_test_malformed_tx_signature() ->
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    Txs = [SignedCoinbase#signed_tx{signatures = []}],
+    {ok, Tree} = aec_txs_trees:new(Txs),
+    {ok, RootHash} = aec_txs_trees:root_hash(Tree),
+    Block = #block{txs = Txs, txs_hash = RootHash},
+
+    ?assertEqual({error, invalid_transaction_signature}, ?TEST_MODULE:validate(Block)).
+
+validate_test_pass_validation() ->
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    Txs = [SignedCoinbase],
+    {ok, Tree} = aec_txs_trees:new(Txs),
+    {ok, RootHash} = aec_txs_trees:root_hash(Tree),
+    Block = #block{txs = Txs, txs_hash = RootHash},
+
+    ?assertEqual(ok, ?TEST_MODULE:validate(Block)).
 
 -endif.

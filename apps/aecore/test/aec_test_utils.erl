@@ -26,6 +26,8 @@
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
         , copy_genesis_dir/2
+        , signed_coinbase_tx/0
+        , signed_spend_tx/1
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -134,9 +136,8 @@ gen_block_chain(0,_MinerAccount, Acc) -> lists:reverse(Acc);
 gen_block_chain(N, MinerAccount, []) ->
     gen_block_chain(N - 1, MinerAccount, [aec_block_genesis:genesis_block()]);
 gen_block_chain(N, MinerAccount, [PreviousBlock|_] = Acc) ->
-    H = 1 + aec_blocks:height(PreviousBlock),
     Trees = aec_blocks:trees(PreviousBlock),
-    Txs = [signed_coinbase_tx(MinerAccount, H)],
+    Txs = [signed_coinbase_tx(MinerAccount)],
     B = aec_blocks:new(PreviousBlock, Txs, Trees),
     gen_block_chain(N - 1, MinerAccount, [B|Acc]).
 
@@ -155,16 +156,26 @@ extend_block_chain(PrevBlock, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) 
     extend_block_chain(Block, Tgts, Tss, Nonce, MinerAcc, [Block | Chain]).
 
 next_block(PrevBlock, Target, Time0, Nonce, MinerAcc) ->
-    H = 1 + aec_blocks:height(PrevBlock),
     Trees = aec_blocks:trees(PrevBlock),
-    B = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc, H)], Trees),
+    B = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
     B#block{ target = Target, nonce  = Nonce,
              time   = case Time0 of undefined -> B#block.time; _ -> Time0 end }.
 
-signed_coinbase_tx(Account, _AccountNonce) ->
+signed_coinbase_tx() ->
+    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
+    signed_coinbase_tx(MinerAccount).
+
+signed_coinbase_tx(Account) ->
     {ok, Tx} = aec_coinbase_tx:new(#{account => Account}),
     {ok, STx} = aec_keys:sign(Tx),
     STx.
+
+signed_spend_tx(ArgsMap) ->
+    {ok, SenderAccount} = aec_keys:wait_for_pubkey(),
+    ArgsMap1 = maps:put(sender, SenderAccount, ArgsMap),
+    {ok, SpendTx} = aec_spend_tx:new(ArgsMap1),
+    {ok, SSTx} = aec_keys:sign(SpendTx),
+    SSTx.
 
 %% function to setup the .genesis file for test SUITE-s
 %% SourceGenesisDir is the test release directory from which to take the .genesis

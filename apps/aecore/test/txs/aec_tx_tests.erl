@@ -52,7 +52,8 @@ apply_signed_test_() ->
                {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
                SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
 
-               {ok, StateTree} = ?TEST_MODULE:apply_signed(SignedTxs, StateTree0, 30),
+               {ok, ValidSignedTxs, StateTree} = ?TEST_MODULE:apply_signed(SignedTxs, StateTree0, 30),
+               ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),
                {ok, ResultMinerAccount} = aec_accounts:get(MinerPubkey, ResultAccountsTree),
