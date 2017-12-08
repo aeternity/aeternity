@@ -1,7 +1,7 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.3.3-big-spenders) is focused on sending tokens from an account to another.
-It also marks the launch of the testnet - the public test network of nodes.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.3.4-big-spenders) is focused on stability of the testnet - the public test network of nodes.
+It also introduces a backward incompatible change in the chain format.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -13,12 +13,15 @@ The instructions below also describe the simplest way to test sending tokens bet
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.3-big-spenders) corresponding to your platform, e.g. `epoch-0.3.3-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.4-big-spenders) corresponding to your platform, e.g. `epoch-0.3.4-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS;
 * macOS Sierra;
 * macOS High Sierra.
+
+The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
+In case you have installed it in a non-default path, you could use a symlink to work around the issue.
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
@@ -28,7 +31,7 @@ This section describes how to run a node as part of the testnet.
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.3.3-big-spenders/config/swagger.yaml).
+The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.3.4-big-spenders/config/swagger.yaml).
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://31.13.248.103:3013/v1/top
@@ -45,7 +48,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.3.3-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.3.4-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -100,13 +103,34 @@ mining:
 
 chain:
     persist: true
-    db_path: ./db
+    db_path: ./mydb
 ```
 
 Ensure the configured path for storing the blockchain exists:
 ```
-mkdir /tmp/node/db
+mkdir /tmp/node/mydb
 ```
+As of release "v0.3.4-big-spenders", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous release "v0.3.3-big-spenders".
+
+You can validate the configuration file before starting the node:
+```
+cd /tmp/node
+( export PATH="$(pwd)/$(ls -dr erts-* | head -n 1)/bin:$PATH" && bin/check_config epoch.yaml; )
+```
+You shall read output like the following:
+```
+Res = {ok,[{<<"chain">>,[{<<"db_path">>,<<"./mydb">>},{<<"persist">>,true}]},
+           {<<"http">>,
+            [{<<"external">>,
+              [{<<"peer_address">>,<<"http://1.2.3.4:8080/">>},
+               {<<"port">>,3003}]},
+             {<<"internal">>,[{<<"port">>,3103}]}]},
+           {<<"keys">>,[{<<"dir">>,<<"keys">>},{<<"password">>,<<"secret">>}]},
+           {<<"mining">>,[{<<"autostart">>,true}]},
+           {<<"peers">>,[<<"http://31.13.248.102:3013/">>]},
+           {<<"websocket">>,[{<<"internal">>,[{<<"port">>,3104}]}]}]}
+```
+If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
 
 #### Start node
 
@@ -146,17 +170,15 @@ less /tmp/node/log/epoch_mining.log
 
 If the node is mining, you shall read log entries like the following:
 ```
-2017-11-30 18:02:40.705 [info] <0.833.0>@aec_conductor:create_block_candidate:591 Creating block candidate
-2017-11-30 18:02:40.708 [info] <0.833.0>@aec_conductor:handle_block_candidate_reply:605 Created block candidate and nonce (max 17995532323347653506, current 17995532323347653507).
-2017-11-30 18:02:40.708 [info] <0.833.0>@aec_conductor:start_mining:475 Starting mining
-2017-11-30 18:02:51.804 [info] <0.833.0>@aec_conductor:start_mining:475 Starting mining
+2017-12-08 16:41:54.179 [info] <0.847.0>@aec_conductor:create_block_candidate:731 Creating block candidate
+2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:handle_block_candidate_reply:746 Created block candidate and nonce (max 12950827015446283813, current 12950827015446283814).
+2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
+2017-12-08 16:41:57.265 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
 ```
 
 If the node successfully mines a block, you shall read log entries like the following:
 ```
-2017-11-30 18:04:41.131 [info] <0.833.0>@aec_conductor:handle_mining_reply:489 Miner <0.833.0> finished with {ok,{block,1,...
-2017-11-30 18:04:41.138 [info] <0.833.0>@aec_conductor:save_mined_block:519 Block inserted: Height = 1
-Hash = 19261bf11ff381b45c756b6fba907d9812a42c078cc71e6ef9d592d82982ea42
+2017-12-08 16:42:03.524 [info] <0.847.0>@aec_conductor:handle_mined_block:774 Block mined: Height = 1; Hash = 02764f5478587e34c04428e1b985925ca87a35258324412cf4749cce8e568136
 ```
 
 #### Verify that node connected to the testnet
@@ -235,14 +257,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node1
 cd /tmp/node1
-tar xf ~/Downloads/epoch-0.3.3-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.3.4-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #1
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.3.3/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.3.4/vm.args
 ```
 
 Create the file `/tmp/node1/epoch.yaml` with the following content:
@@ -302,17 +324,15 @@ less /tmp/node1/log/epoch_mining.log
 
 If node #1 is mining, you shall read log entries like the following:
 ```
-2017-11-30 18:02:40.705 [info] <0.833.0>@aec_conductor:create_block_candidate:591 Creating block candidate
-2017-11-30 18:02:40.708 [info] <0.833.0>@aec_conductor:handle_block_candidate_reply:605 Created block candidate and nonce (max 17995532323347653506, current 17995532323347653507).
-2017-11-30 18:02:40.708 [info] <0.833.0>@aec_conductor:start_mining:475 Starting mining
-2017-11-30 18:02:51.804 [info] <0.833.0>@aec_conductor:start_mining:475 Starting mining
+2017-12-08 16:41:54.179 [info] <0.847.0>@aec_conductor:create_block_candidate:731 Creating block candidate
+2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:handle_block_candidate_reply:746 Created block candidate and nonce (max 12950827015446283813, current 12950827015446283814).
+2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
+2017-12-08 16:41:57.265 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
 ```
 
 If node #1 successfully mines a block, you shall read log entries like the following:
 ```
-2017-11-30 18:04:41.131 [info] <0.833.0>@aec_conductor:handle_mining_reply:489 Miner <0.833.0> finished with {ok,{block,1,...
-2017-11-30 18:04:41.138 [info] <0.833.0>@aec_conductor:save_mined_block:519 Block inserted: Height = 1
-Hash = 19261bf11ff381b45c756b6fba907d9812a42c078cc71e6ef9d592d82982ea42
+2017-12-08 16:42:03.524 [info] <0.847.0>@aec_conductor:handle_mined_block:774 Block mined: Height = 1; Hash = 02764f5478587e34c04428e1b985925ca87a35258324412cf4749cce8e568136
 ```
 
 #### Verify that node #1 grows the blockchain
@@ -323,7 +343,7 @@ curl http://127.0.0.1:3013/v1/top
 ```
 You should read output like the following (notice the height):
 ```
-{"hash":"wIQE6fLDYRddMstJ2KJnS7WL9xobu11Hsl8yBJCA1VY=","height":5,"nonce":11228710977662701344,"pow":[3163772,12622152,13180320,15172567,23396377,27602022,32189820,37035758,37219800,45743288,46212250,50413716,50723534,51550929,52693542,53736624,60372878,62355084,62785601,63504943,66574526,68170296,69524762,71373548,73825657,75657983,79925230,81501898,92408340,93673484,96204078,97231847,97408180,99544106,100677140,113558365,116131039,121840818,122009850,123677375,127920354,128442764],"prev_hash":"/uJnyiA9VtjGyG/YF6A4JDaVjJ60tzqVkClAufN0AcE=","state_hash":"GClPJ6CP8FMLZtQ6bAUTF5NvKJ2Wzo1zaCdox82Wm7Y=","target":553713663,"time":1512065872371,"txs_hash":"Gq26FjZwTY8ESDLZ3bHHE3G+94IR3FY2yAgnMw3L8vo=","version":1}
+{"hash":"qqPLyK093XaWOZe4YcTbcwzPHkQK5TGcU+vp5Qw3Fag=","height":5,"nonce":7821096667232785961,"pow":[340321,2769210,3673699,8891706,11786207,13326693,13672516,18699923,22569678,23898960,27664733,30643973,35647379,38895200,38980078,42616399,48396844,49052362,55932950,61508848,64933095,65724370,69325927,75341060,78321416,78959171,79339559,94170176,99040323,101302936,105773261,106189191,113842187,117224226,118763679,120291864,121221440,126743329,127038311,129825088,131231728,131287996],"prev_hash":"fXCizRK2xE6Nz6XgwqE1RB0F5qlBTndQA8FdOf2REsg=","state_hash":"YvAGFaJPchSwgqrnT8P2nU+FmIV27Dbo7g3jrrNzWq8=","target":553713663,"time":1512751562955,"txs_hash":"KY3iFlEKQ6FrTx+64YLzEuJdxQYE46Gp4/zEwroSY3I=","version":2}
 ```
 
 Ensure the height of the chain is positive before moving forward in the instructions.
@@ -361,14 +381,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node2
 cd /tmp/node2
-tar xf ~/Downloads/epoch-0.3.3-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.3.4-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #2
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.3.3/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.3.4/vm.args
 ```
 
 Create the file `/tmp/node2/epoch.yaml` with the following content:
@@ -446,7 +466,7 @@ Instruct node #1 to sign and broadcast a transaction sending tokens to the publi
 curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3113/v1/spend-tx
 ```
 
-Node #1 will share the transaction with other nodes in the block and also consider it for inclusion block for future mining.
+Node #1 will share the transaction with other nodes in the block and also consider it for inclusion in block for future mining.
 
 Inspect the main log file of node #1:
 ```
@@ -454,7 +474,7 @@ less /tmp/node1/log/epoch.log
 ```
 You shall read a log entry like the following:
 ```
-2017-11-30 20:31:21.805 [info] <0.1702.0> Attempt to process operation: 'PostSpendTx'
+2017-12-08 16:49:24.057 [info] <0.1611.0> Attempt to process operation: 'PostSpendTx'
 ```
 
 Inspect the main log file of node #1:
@@ -463,7 +483,7 @@ less /tmp/node2/log/epoch.log
 ```
 You shall read a log entry like the following:
 ```
-2017-11-30 20:31:21.828 [info] <0.1644.0> Attempt to process operation: 'PostTx'
+2017-12-08 16:49:24.080 [info] <0.1644.0> Attempt to process operation: 'PostTx'
 ```
 
 Retrieve the balance of node #1 until you notice that tokens have been subtracted i.e. 2 tokens to account of node #2 and 1 token to the miner - either node #1 or #2 (replace the public key retrieved by command `curl http://127.0.0.1:3113/v1/account/pub-key`):
