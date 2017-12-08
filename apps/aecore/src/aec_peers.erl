@@ -66,7 +66,7 @@ add(Peer, Connect) when is_boolean(Connect) ->
     ok.
 
 %%------------------------------------------------------------------------------
-%% Register an reported source address of known peer P. Ignored if P is unknown
+%% Register a reported source address of known peer P. Ignored if P is unknown
 %%
 %% This is mainly intended to handle cases where a pinging peer and the
 %% pinged peer use different uris (peer uri vs "source" elem in ping obj).
@@ -672,19 +672,21 @@ ping_peer(Peer) ->
     %% needed for the ping itself, but given that a ping can quickly
     %% lead to a greater discovery, we should be prepared to handle pings
     %% ourselves at this point.
-    await_aehttp(),
-    Res = aeu_requests:ping(Peer),
-    lager:debug("ping result (~p): ~p", [Peer, Res]),
-    case Res of
-        {ok, Map} ->
-            log_good_ping(Peer#peer.uri),
-            Peers = maps:get(<<"peers">>, Map, []),
-            add_and_ping_peers(Peers),
-            %% [add(P, true) || P <- Peers],
-            ok;
-        _ ->
-            log_ping_error(Peer#peer.uri),
-            ok
+    case await_aehttp() of
+        ok ->
+            Res = aeu_requests:ping(Peer),
+            lager:debug("ping result (~p): ~p", [Peer, Res]),
+            case Res of
+                {ok, Map} ->
+                    log_good_ping(Peer#peer.uri),
+                    Peers = maps:get(<<"peers">>, Map, []),
+                    add_and_ping_peers(Peers);
+                _ ->
+                    log_ping_error(Peer#peer.uri)
+            end;
+        {error, timeout} ->
+            lager:debug("timeout waiting for aehttp - no ping (~p) will retry", [Peer#peer.uri]),
+            ping_peer(Peer)
     end.
 
 %% The gproc name below is registered in the start function of
@@ -692,7 +694,12 @@ ping_peer(Peer) ->
 %% large enough to reflect only error conditions. Expected wait time
 %% should be a fraction of a second, if any.
 await_aehttp() ->
-    gproc:await({n,l,{epoch,app,aehttp}}, 10000). % should never timeout
+    try
+      gproc:await({n,l,{epoch,app,aehttp}}, 10000), % should (almost) never timeout
+      ok
+    catch error:{_Reason, _Args} ->
+      {error, timeout}
+    end.
 
 lookup_peer(Uri, #state{aliases = As, peers = Peers}) ->
     case gb_trees:lookup(Uri, As) of
@@ -885,7 +892,6 @@ maybe_ping_peer(#peer{uri = Uri} = Peer, #state{} = State) ->
         false ->
             lager:debug("will ping peer ~p", [Uri]),
             aec_sync:schedule_ping(Peer, fun ping_peer/1);
-            %% spawn(fun() -> ping_peer(Peer) end);
         _Other ->
             lager:debug("will not ping ~p (~p)", [Uri, _Other]),
             ignore
