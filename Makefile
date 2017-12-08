@@ -27,6 +27,8 @@ PIP = $(PYTHON_BIN)/pip
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
+all:	local-build
+
 console:
 	@./rebar3 shell --config config/sys.config --sname epoch
 
@@ -212,7 +214,7 @@ internal-clean: $$(KIND)
 
 
 .PHONY: \
-	console \
+	all console \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package \
 	multi-build, multi-start, multi-stop, multi-clean \
