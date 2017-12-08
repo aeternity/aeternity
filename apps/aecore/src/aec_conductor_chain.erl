@@ -112,9 +112,9 @@ get_top_header_hash(State) ->
     aec_chain_state:top_header_hash(State#state.chain_state).
 
 get_adjustment_headers(State) ->
-    N = aec_governance:blocks_to_check_difficulty_count() + 1,
+    N = aec_governance:blocks_to_check_difficulty_count(),
     case aec_chain_state:get_n_headers_from_top(N, State#state.chain_state) of
-        {ok, [_ | Headers]} -> Headers;
+        {ok, Headers} -> Headers;
         {error, _} -> []
     end.
 

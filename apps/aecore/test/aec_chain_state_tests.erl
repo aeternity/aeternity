@@ -26,6 +26,7 @@
         , get_header/2
         , get_header_by_height/2
         , get_top_30_blocks_time_summary/1
+        , get_n_headers_from_top/2
         , hash_is_connected_to_genesis/2
         , insert_block/2
         , insert_header/2
@@ -437,6 +438,41 @@ broken_chain_wrong_state_hash() ->
     ?assertMatch({error, {root_hash_mismatch, _, _}},
                  insert_block(B2#block{root_hash = Bogus}, State0)),
     ok.
+
+%%%===================================================================
+%%% Block candidate test
+
+n_headers_from_top_test_() ->
+    {foreach,
+     fun() ->
+         aec_test_utils:aec_keys_setup()
+     end,
+     fun(TmpDir) ->
+         aec_test_utils:aec_keys_cleanup(TmpDir)
+     end,
+     [{"Ensure the right headers are returned.",
+       fun n_headers_from_top/0}]}.
+
+n_headers_from_top() ->
+    Chain = gen_block_chain_by_target(
+               [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 1),
+
+    Hdrs = lists:reverse([ aec_blocks:to_header(B) || B <- Chain ]),
+
+
+    S = write_blocks_to_chain(Chain, new_state()),
+
+    {ok, Hdrs0} = get_n_headers_from_top(2, S),
+
+    ?assertMatch(X when length(X) == 2, Hdrs0),
+    ?assertEqual(lists:sublist(Hdrs, 2), Hdrs0),
+
+
+    {ok, Hdrs1} = get_n_headers_from_top(4, S),
+
+    ?assertMatch(X when length(X) == 4, Hdrs1),
+    ?assertEqual(lists:sublist(Hdrs, 4), Hdrs1).
+
 
 %%%===================================================================
 %%% Target validation tests
