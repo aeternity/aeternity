@@ -32,10 +32,27 @@
   {env, [
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},
+         {exometer_defaults,
+          [
+           {['_'], chain_probe, [
+                                 {module, aec_chain_metrics_probe},
+                                 {cache, 5000},
+                                 {options, [{sample_interval, 5000}]}
+                                ]}
+          ]},
          {exometer_subscribers,
           [
            {select,
-            {[{{[ae,epoch|'_'],'_',enabled},[],['$_']}],
+            {[
+              {{[ae,epoch|'_'],counter,enabled},[],['$_']},
+              {{[ae,epoch|'_'],gauge,enabled},[],['$_']}
+             ],
+             aec_metrics_main, [value], default, true}},
+           {select,
+            {[
+              {{[ae,epoch|'_'],'$1',enabled},[{'=/=','$1',counter},
+                                              {'=/=','$1',gauge}], ['$_']}
+             ],
              aec_metrics_main, default, default, true}}
           ]},
         {'$setup_hooks',

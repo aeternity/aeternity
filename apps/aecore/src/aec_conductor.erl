@@ -298,7 +298,9 @@ handle_call(get_top_header,_From, State) ->
 handle_call(get_top_header_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_header_hash(State), State};
 handle_call(get_total_difficulty,_From, State) ->
-    {reply, aec_conductor_chain:get_total_difficulty(State), State};
+    Res = aec_conductor_chain:get_total_difficulty(State),
+    aec_metrics:try_update([ae,epoch,aecore,chain,total_difficulty], Res),
+    {reply, Res, State};
 handle_call({has_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:has_block(Hash, State), State};
 handle_call({hash_is_connected_to_genesis, Hash},_From, State) ->
@@ -530,7 +532,8 @@ maybe_publish_top(block_created,_TopHash,_State) ->
 maybe_publish_top(block_received, TopHash, State) ->
     %% The received block changed the top. Publish the new top.
     {ok, Block} = aec_conductor_chain:get_block(TopHash, State),
-    aec_events:publish(top_changed, Block).
+    aec_events:publish(top_changed, Block),
+    update_chain_metrics(Block).
 
 maybe_publish_block(none,_Block) -> ok;
 maybe_publish_block(block_received,_Block) ->
@@ -538,7 +541,13 @@ maybe_publish_block(block_received,_Block) ->
     ok;
 maybe_publish_block(block_created = T, Block) ->
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(T, Block).
+    aec_events:publish(T, Block),
+    update_chain_metrics(Block).
+
+update_chain_metrics(Block) ->
+    aec_metrics:try_update([ae,epoch,aecore,chain,height],
+                           aec_blocks:height(Block)).
+
 
 cleanup_after_worker(Info) ->
     case Info#worker_info.timer of
