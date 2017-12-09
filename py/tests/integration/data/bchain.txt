@@ -1,1 +1,0 @@
-[{"nonce": 0, "target": 553713663, "transactions": null, "pow": null, "time": 0, "height": 0, "version": 1, "txs_hash": null, "prev_hash": null, "state_hash": null}]

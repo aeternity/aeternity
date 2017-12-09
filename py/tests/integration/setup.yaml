@@ -30,10 +30,6 @@ nodes:
       internal_ws: 3134
 coinbase_reward: 10
 tests: # test specific settings
-  test_ext_api:
-    # Testing the external API
-    node_to_test: dev1
-    chain_data: py/tests/integration/data/bchain.txt
   test_use_cases:
     test_syncing:
       # Alice should be able to connect to peers on startup and download the
