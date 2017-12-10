@@ -877,7 +877,7 @@ extend_chain(Base, Targets, Nonce) ->
     Base ++ extend_block_chain(B, #{ targets => Targets, nonce => Nonce }).
 
 genesis_block() ->
-    aec_block_genesis:genesis_block().
+    aec_test_utils:genesis_block().
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),

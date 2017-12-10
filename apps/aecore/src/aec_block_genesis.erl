@@ -23,10 +23,11 @@
 -module(aec_block_genesis).
 
 %% API
--export([genesis_header/0,
-         height/0,
-         genesis_block/0,
-         populated_trees/0]).
+-export([ genesis_header/0,
+          height/0,
+          genesis_block/0,
+          genesis_block/1,
+          populated_trees/0 ]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -43,7 +44,10 @@ genesis_header() ->
 %%
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_block() ->
-    Trees = populated_trees(),
+  genesis_block(aec_genesis_block_settings:preset_accounts()).
+
+genesis_block(PresetAccounts) ->
+    Trees = populated_trees(PresetAccounts),
     #block{
       version = ?GENESIS_VERSION,
       height = ?GENESIS_HEIGHT,
@@ -58,19 +62,15 @@ genesis_block() ->
       }.
 
 populated_trees() ->
-    {ok, T0} = aec_trees:all_trees_new(),
-    PresetAccounts = aec_genesis_block_settings:preset_accounts(),
-    Trees = add_preset_accounts(PresetAccounts, T0),
-    Trees.
+    populated_trees(aec_genesis_block_settings:preset_accounts()).
 
-add_preset_accounts([], Trees) ->
-    Trees;
-add_preset_accounts([{PubKey, Amt} | T], Trees0) ->
-    Account = aec_accounts:new(PubKey, Amt, 0),
-    AccountsTrees0 = aec_trees:accounts(Trees0),
-    {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
-    Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
-    add_preset_accounts(T, Trees).
+populated_trees(PresetAccounts) ->
+     {ok, Trees0} = aec_trees:all_trees_new(),    %% renaming required in aec_trees!
+     lists:foldl(fun({PubKey, Amount}, Ts) ->
+                       Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                       {ok, AccountTree} =  aec_accounts:put(Account, aec_trees:accounts(Ts)),
+                       aec_trees:set_accounts(Ts, AccountTree)
+                  end, Trees0, PresetAccounts).
 
 height() ->
     ?GENESIS_HEIGHT.
