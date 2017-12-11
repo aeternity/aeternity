@@ -92,15 +92,21 @@ new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
     Height = LastBlockHeight + 1,
-    {ok, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
-    {ok, TxsTree} = aec_txs_trees:new(Txs),
+
+    %% We should not have any transactions with invalid signatures for
+    %% creation of block candidate, as only txs with validated signatures should land in mempool.
+    %% Let's hardcode this expectation for now.
+    Txs = aec_tx:filter_out_invalid_signatures(Txs),
+
+    {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
+    {ok, TxsTree} = aec_txs_trees:new(Txs1),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
     #block{height = Height,
            prev_hash = LastBlockHeaderHash,
            root_hash = aec_trees:all_trees_hash(Trees),
            trees = Trees,
            txs_hash = TxsRootHash,
-           txs = Txs,
+           txs = Txs1,
            target = target(LastBlock),
            time = aeu_time:now_in_msecs(),
            version = ?CURRENT_BLOCK_VERSION}.
@@ -245,7 +251,8 @@ hash_internal_representation(B = #block{}) ->
 -spec validate(block()) -> ok | {error, term()}.
 validate(Block) ->
     Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1],
+                  fun validate_txs_hash/1,
+                  fun validate_no_txs_with_invalid_signature/1],
     aeu_validation:run(Validators, [Block]).
 
 -spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
@@ -277,6 +284,15 @@ validate_txs_hash(#block{txs = Txs,
             ok;
         _Other ->
             {error, malformed_txs_hash}
+    end.
+
+validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
+    FilteredTxs = aec_tx:filter_out_invalid_signatures(Txs),
+    case FilteredTxs =:= Txs of
+        true ->
+            ok;
+        false ->
+            {error, invalid_transaction_signature}
     end.
 
 cointains_coinbase_tx(#block{txs = []}) ->

@@ -10,6 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
 -include("blocks.hrl").
+-include("txs.hrl").
 
 -import(aec_test_utils,
         [ extend_block_chain/2
@@ -364,7 +365,9 @@ broken_chain_test_() ->
        " because of its height",
        fun broken_chain_wrong_height/0},
       {"Add a block with the wrong state hash",
-       fun broken_chain_wrong_state_hash/0}
+       fun broken_chain_wrong_state_hash/0},
+      {"Add a block with invalid transaction",
+       fun broken_chain_invalid_transaction/0}
      ]}.
 
 broken_chain_postponed_validation() ->
@@ -437,6 +440,25 @@ broken_chain_wrong_state_hash() ->
     ?assertNotEqual(Hash, Bogus),
     ?assertMatch({error, {root_hash_mismatch, _, _}},
                  insert_block(B2#block{root_hash = Bogus}, State0)),
+    ok.
+
+broken_chain_invalid_transaction() ->
+    [B0, B1, B2] = aec_test_utils:gen_block_chain(3),
+
+    %% Insert up to last block.
+    State0 = write_blocks_to_chain([B0, B1], new_state()),
+
+    %% Check that we can insert the unmodified last block
+    ?assertMatch({ok, _}, insert_block(B2, State0)),
+
+    %% Add invalid transaction with negative nonce to last block
+    Txs = B2#block.txs,
+    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>, amount => 0, fee => 0, nonce => -1}),
+    BogusTxs = [BogusSpendTx | Txs],
+
+    ?assertNotEqual(Txs, BogusTxs),
+    ?assertMatch({error, invalid_transactions_in_block},
+                 insert_block(B2#block{txs = BogusTxs}, State0)),
     ok.
 
 %%%===================================================================

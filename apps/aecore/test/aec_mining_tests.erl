@@ -156,13 +156,15 @@ setup(PoWMod) ->
     meck:new(aeu_time, [passthrough]),
     meck:expect(aeu_time, now_in_msecs, 0, 1510253222889),
     {ok, _} = aec_tx_pool:start_link(),
+    SignedTx = #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
+                          signatures = [<<"sig1">>]},
     Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
     meck:expect(aec_trees, all_trees_hash, 1, <<>>),
-    meck:expect(aec_tx, apply_signed, 3, {ok, Trees}),
+    meck:expect(aec_tx, filter_out_invalid_signatures, fun(X) -> X end),
+    meck:expect(aec_tx, apply_signed, 3, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     meck:expect(aec_keys, sign, 1,
-                {ok, #signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                                signatures = [<<"sig1">>]}}).
+                {ok, SignedTx}).
 
 cleanup(_, PoWMod) ->
     application:stop(crypto),

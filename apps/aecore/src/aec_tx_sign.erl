@@ -18,8 +18,6 @@ data(#signed_tx{data = Data}) ->
 signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
 
-verify(failed_tx) ->
-    {error, verification_failed};
 verify(#signed_tx{data = Data, signatures = Sigs}) ->
     case aec_keys:verify(Sigs, Data) of
         true -> ok;

@@ -3,7 +3,8 @@
 -export([new/1,
          root_hash/1]).
 
-new(Txs = [_|_]) ->
+%% TODO: Avoid creation of Merkle tree for empty list of transactions
+new(Txs) ->
     {ok, EmptyTree} = aec_trees:new_merkle_tree(),
     TxsTree =
         lists:foldl(
