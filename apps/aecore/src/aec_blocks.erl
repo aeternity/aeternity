@@ -83,11 +83,11 @@ set_target(Block, Target) ->
     Block#block{target = Target}.
 
 %% TODO: have a spec for list of transactions
--spec txs(block()) -> list(signed_tx()).
+-spec txs(block()) -> list(aec_tx_sign:signed_tx()).
 txs(Block) ->
     Block#block.txs.
 
--spec new(block(), list(signed_tx()), trees()) -> block().
+-spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),

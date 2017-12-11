@@ -211,12 +211,9 @@ handle_call({sign, Term}, _From,
         false ->
             {reply, {error, not_a_signer}, State};
         true ->
-            Bin = aec_tx:serialize_to_binary(Term),
-            Signature =
-                crypto:sign(
-                  Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]),
-            {reply, {ok, #signed_tx{data = Term,
-                                    signatures = [Signature]}}, State}
+            CryptoMap = #{algo => Algo, digest => Digest, curve => Curve},
+            SignedTx = aec_tx_sign:sign(Term, PrivKey, CryptoMap),
+            {reply, {ok, SignedTx}, State}
     end;
 handle_call({verify, Sigs, Term}, _From, #state{crypto = C} = State) ->
     Signers = aec_tx:signers(Term),
