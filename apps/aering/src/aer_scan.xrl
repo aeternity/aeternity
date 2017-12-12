@@ -20,10 +20,11 @@ ID       = {LOWER}[a-zA-Z0-9_']*
 TVAR     = '{ID}
 QID      = ({CON}\.)+{ID}
 QCON     = ({CON}\.)+{CON}
+CHARTEXT = ([^\'\\]|(\\.))
 STRINGTEXT = ([^\"\\]|(\\.))
 
 Rules.
-%% "
+%% '
 
 %% Symbols
 ,   : {token, {',', TokenLine}}.
@@ -49,6 +50,7 @@ type       : {token, {type, TokenLine}}.
 if         : {token, {'if', TokenLine}}.
 else       : {token, {else, TokenLine}}.
 mutable    : {token, {mutable, TokenLine}}.
+and        : {token, {'and', TokenLine}}.
 true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 
 %% Operators
@@ -73,6 +75,9 @@ mod  : {token, {mod, TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 !    : {token, {'!', TokenLine}}.
 
+"{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
+'{CHARTEXT}'    : parse_char(TokenLine, TokenChars).
+
 %% Identifiers and literals
 {QID}       : {token, {qid, TokenLine, string:tokens(TokenChars, ".")}}.
 {QCON}      : {token, {qcon, TokenLine, string:tokens(TokenChars, ".")}}.
@@ -84,8 +89,6 @@ _           : {token, {'_', TokenLine}}.
 {INT}       : {token, {int, TokenLine, list_to_integer(TokenChars)}}.
 {HEX}       : {token, {hex, TokenLine, parse_hex(TokenChars)}}.
 {HASH}      : {token, {hash, TokenLine, parse_hash(TokenChars)}}.
-
-"{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
 
 %% Whitespace ignore
 {WS} : skip_token.
@@ -102,9 +105,25 @@ Erlang code.
 
 -ignore_xref([format_error/1, string/2, token/2, token/3, tokens/2, tokens/3]).
 
-%% TODO: unicode?
+%% TODO: unicode
 parse_string(Line, [$" | Chars]) ->
     unescape(Line, Chars).
+
+parse_char(Line, [$', $\\, Code, $']) ->
+    Ok = fun(C) -> {token, {char, Line, C}} end,
+    case Code of
+        $'  -> Ok($');
+        $\\ -> Ok($\\);
+        $b  -> Ok($\b);
+        $e  -> Ok($\e);
+        $f  -> Ok($\f);
+        $n  -> Ok($\n);
+        $r  -> Ok($\r);
+        $t  -> Ok($\t);
+        $v  -> Ok($\v);
+        _   -> {error, "Bad control sequence: \\" ++ [Code]}
+    end;
+parse_char(Line, [$', C, $']) -> {token, {char, Line, C}}.
 
 unescape(Line, Str) -> unescape(Line, Str, []).
 
@@ -114,7 +133,7 @@ unescape(Line, [$"], Acc) ->
 unescape(Line, [$\\, Code | Chars], Acc) ->
     Ok = fun(C) -> unescape(Line, Chars, [C | Acc]) end,
     case Code of
-        $"  -> Ok($\");
+        $"  -> Ok($");
         $\\ -> Ok($\\);
         $b  -> Ok($\b);
         $e  -> Ok($\e);
@@ -127,6 +146,8 @@ unescape(Line, [$\\, Code | Chars], Acc) ->
     end;
 unescape(Line, [C | Chars], Acc) ->
     unescape(Line, Chars, [C | Acc]).
+
+
 
 parse_hex("0x" ++ Chars) -> list_to_integer(Chars, 16).
 
