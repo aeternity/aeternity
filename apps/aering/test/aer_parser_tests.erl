@@ -1,5 +1,7 @@
 -module(aer_parser_tests).
 
+-export([parse_contract/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 
 simple_contracts_test_() ->
@@ -45,10 +47,22 @@ simple_contracts_test_() ->
 parse_contract(Name) ->
     parse_string(aer_test_utils:read_contract(Name)).
 
+scan_string(Text) ->
+    case aer_scan:string(Text) of
+        {ok, Tokens, _} -> Tokens;
+        Err = {error, {Line, aer_scan, {user, Reason}}, _} ->
+            io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
+            error(Err)
+    end.
+
 parse_string(Text) ->
-    {ok, Tokens, _} = aer_scan:string(Text),
-    {ok, Contract} = aer_parser:parse(Tokens),
-    Contract.
+    Tokens = scan_string(Text),
+    case aer_parser:parse(Tokens) of
+        {ok, Contract} -> Contract;
+        Err = {error, {Line, aer_parser, Reason}} ->
+            io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
+            error(Err)
+    end.
 
 parse_expr(Text) ->
     {contract, _, _, _, [{'fun', _, _, _, _, Expr}]} =
