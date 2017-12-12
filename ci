@@ -39,6 +39,9 @@ case "${1:?}"-"${2:?}" in
     script-test)
         make test
         ;;
+    script-eunit)
+        make eunit
+        ;;
     script-dialyzer)
         make dialyzer
         ;;
