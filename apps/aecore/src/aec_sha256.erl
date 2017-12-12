@@ -9,12 +9,16 @@
 
 -export([hash/1]).
 
--include("sha256.hrl").
+-export_type([hashable/0,
+              hash/1]).
 
+-include("sha256.hrl").
 
 -type hashable() :: binary().
 
--export_type([hashable/0]).
+%% For enabling code using this module to document types for
+%% readability.
+-type hash(_DataToBeHashed) :: <<_:(?HASH_BYTES*8)>>.
 
 %%%=============================================================================
 %%% API
