@@ -18,7 +18,7 @@ Nonterminals
 'Expr800' 'Expr850' 'Expr900' 'Expr950' 'ExprAtom' 'TypedExprs' 'TypedExprs1' 'TypedExpr'
 'BlockStatements' 'Statement' 'FieldAssignment'
 'Cases' 'Case'
-'AddOp' 'MulOp' 'CmpOp' 'ConsOp'
+'AddOp' 'MulOp' 'CmpOp' 'ConsOp' 'AndOp' 'OrOp'
 .
 
 Terminals
@@ -130,10 +130,10 @@ Rootsymbol 'File'.
 'Expr100' -> 'Expr200' '?' 'Expr100' ':' 'Expr100' : set_ann(format, '?:', {'if', get_ann('$1'), '$3', '$5'}).
 'Expr100' -> 'Expr200' : '$1'.
 
-'Expr200' -> 'Expr300' '||' 'Expr200' : infix('$1', '$2', '$3').
+'Expr200' -> 'Expr300' 'OrOp' 'Expr200' : infix('$1', '$2', '$3').
 'Expr200' -> 'Expr300' : '$1'.
 
-'Expr300' -> 'Expr400' '&&' 'Expr300' : infix('$1', '$2', '$3').
+'Expr300' -> 'Expr400' 'AndOp' 'Expr300' : infix('$1', '$2', '$3').
 'Expr300' -> 'Expr400' : '$1'.
 
 'Expr400' -> 'Expr500' 'CmpOp' 'Expr500' : infix('$1', '$2', '$3').
@@ -148,7 +148,7 @@ Rootsymbol 'File'.
 'Expr700' -> 'Expr700' 'MulOp' 'Expr800' : infix('$1', '$2', '$3').
 'Expr700' -> 'Expr800' : '$1'.
 
-'Expr800' -> '!' 'Expr800' : {unop, get_ann('$1'), '!', '$2'}.
+'Expr800' -> '!' 'Expr800' : prefix('$1', '$2').
 'Expr800' -> 'Expr850' : '$1'.
 
 'Expr850' -> switch 'Expr900' '{' 'Cases' '}' : {switch, get_ann('$1'), '$2', '$4'}.
@@ -179,7 +179,7 @@ Rootsymbol 'File'.
 'TypedExprs' -> 'TypedExprs1' : '$1'.
 
 'TypedExprs1' -> 'TypedExpr' : ['$1'].
-'TypedExprs1' -> 'TypedExpr' ',' 'TypedExprs' : ['$1' | '$2'].
+'TypedExprs1' -> 'TypedExpr' ',' 'TypedExprs' : ['$1' | '$3'].
 
 'TypedExpr' -> 'Expr'            : '$1'.
 'TypedExpr' -> 'Expr' ':' 'Type' : {typed, get_ann('$1'), '$1', '$2'}.
@@ -202,22 +202,25 @@ Rootsymbol 'File'.
 
 'Case' -> '|' 'Expr500' '=>' 'BlockStatements' : {'case', get_ann('$1'), '$2', block_e(get_ann(hd(element(2, '$4'))), '$4')}.
 
-'ConsOp' -> '::' : '::'.
-'ConsOp' -> '++' : '++'.
+'AndOp' -> '&&' : token('$1').
+'OrOp'  -> '||' : token('$1').
 
-'CmpOp' -> '<'  : '<'.
-'CmpOp' -> '>'  : '<'.
-'CmpOp' -> '=<' : '=<'.
-'CmpOp' -> '>=' : '>='.
-'CmpOp' -> '==' : '=='.
-'CmpOp' -> '!=' : '!='.
+'ConsOp' -> '::' : token('$1').
+'ConsOp' -> '++' : token('$1').
 
-'AddOp' -> '+' : '+'.
-'AddOp' -> '-' : '-'.
+'CmpOp' -> '<'  : token('$1').
+'CmpOp' -> '>'  : token('$1').
+'CmpOp' -> '=<' : token('$1').
+'CmpOp' -> '>=' : token('$1').
+'CmpOp' -> '==' : token('$1').
+'CmpOp' -> '!=' : token('$1').
 
-'MulOp' -> '*'   : '*'.
-'MulOp' -> '/'   : '/'.
-'MulOp' -> 'mod' : mod.
+'AddOp' -> '+' : token('$1').
+'AddOp' -> '-' : token('$1').
+
+'MulOp' -> '*'   : token('$1').
+'MulOp' -> '/'   : token('$1').
+'MulOp' -> 'mod' : token('$1').
 
 Erlang code.
 -include("aering_ast.hrl").
@@ -244,8 +247,8 @@ get_value({_Tok, _Line, Val}) -> Val.
 token({Tok, Line}) -> {Tok, line_ann(Line)};
 token({Tok, Line, Val}) -> {Tok, line_ann(Line), Val}.
 
-infix(L, {Op, _}, R) -> infix(L, Op, R);
-infix(L, Op, R)      -> {infix, get_ann(L), L, Op, R}.
+infix(L, Op, R) -> set_ann(format, infix, {app, get_ann(L), Op, [L, R]}).
+prefix(Op, E)   -> set_ann(format, prefix, {app, get_ann(Op), Op, [E]}).
 
 type_wildcard() ->
   {'_', [{origin, system}]}.
