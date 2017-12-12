@@ -10,7 +10,6 @@
          pick_nonce/0,
          next_nonce/1,
          target_to_difficulty/1,
-         recalculate_target/3,
 
          scientific_to_integer/1,
          integer_to_scientific/1]).
@@ -31,7 +30,8 @@
 -define(NONCE_RANGE, 1000000000000000000000000).
 -define(POW_MODULE, aec_pow_cuckoo).
 
-
+-type nonce() :: 0..?MAX_NONCE.
+-export_type([nonce/0]).
 
 %%------------------------------------------------------------------------------
 %%                      Target threshold and difficulty
@@ -73,7 +73,7 @@
 
 %% Optional evidence for PoW verification
 -type pow_evidence() :: 'no_value' | term().
--type pow_result() :: {'ok', {Nonce :: integer, Solution :: pow_evidence()}} |
+-type pow_result() :: {'ok', {Nonce :: nonce(), Solution :: pow_evidence()}} |
                       {error, no_solution | {runtime, term()}}.
 %% Difficulty: max threshold (0x00000000FFFF0000000000000000000000000000000000000000000000000000)
 %% over the actual one. Always positive.
@@ -89,10 +89,10 @@
 %%%=============================================================================
 
 -callback generate(Data :: aec_sha256:hashable(), Difficulty :: aec_pow:sci_int(),
-                   Nonce :: integer()) ->
+                   Nonce :: aec_pow:nonce()) ->
     aec_pow:pow_result().
 
--callback verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
+-callback verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
                  Evd :: aec_pow:pow_evidence(), Difficulty :: aec_pow:sci_int()) ->
     boolean().
 
@@ -129,32 +129,13 @@ target_to_difficulty(Th) ->
     %% Max threshold over the current one
     ?HIGHEST_TARGET_INT/scientific_to_integer(Th).
 
--spec pick_nonce() -> integer().
+-spec pick_nonce() -> aec_pow:nonce().
 pick_nonce() ->
-    rand:uniform(?NONCE_RANGE) band 16#7fffffff.
+    rand:uniform(?NONCE_RANGE) band ?MAX_NONCE.
 
--spec next_nonce(integer()) -> integer().
+-spec next_nonce(aec_pow:nonce()) -> aec_pow:nonce().
 next_nonce(N) ->
-    (N + 1) band 16#7fffffff.
-
-%%------------------------------------------------------------------------------
-%% Adjust target so that generation of new blocks proceeds at the expected pace
-%% Expected and Actual are rates (if Actual is too small, we need to decrease
-%% target).
-%%------------------------------------------------------------------------------
--spec recalculate_target(sci_int(), integer(), integer()) -> sci_int().
-recalculate_target(Target, _Expected, 0) ->
-    %% In the unexpected case the the two blocks used for rate calculation
-    %% have the same timestamp, do not update target (as rate is meaningless).
-    %% TODO: handle this case. Most likely that this is case we failed to enforce
-    %% increasing timestaps in headers.
-    Target;
-recalculate_target(Target, Expected, Actual) ->
-    TargetInt = scientific_to_integer(Target),
-    %% Prevent 0 difficulty: 0 can never be increased
-    integer_to_scientific(min(?HIGHEST_TARGET_INT,
-                              max(1, ((TargetInt * Actual) div Expected)))).
-
+    (N + 1) band ?MAX_NONCE.
 
 %%------------------------------------------------------------------------------
 %% Test if binary is under the target threshold

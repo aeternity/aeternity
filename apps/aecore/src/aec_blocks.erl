@@ -7,8 +7,10 @@
          target/1,
          txs/1,
          difficulty/1,
-         set_nonce/3,
+         time_in_msecs/1,
+         set_pow/3,
          set_trees/2,
+         set_target/2,
          new/3,
          to_header/1,
          serialize_for_network/1,
@@ -59,13 +61,16 @@ target(Block) ->
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
+time_in_msecs(Block) ->
+    Block#block.time.
+
 -spec root_hash(block()) -> binary().
 root_hash(Block) ->
     Block#block.root_hash.
 
 %% Sets the evidence of PoW,too,  for Cuckoo Cycle
--spec set_nonce(block(), non_neg_integer(), aec_pow:pow_evidence()) -> block().
-set_nonce(Block, Nonce, Evd) ->
+-spec set_pow(block(), aec_pow:nonce(), aec_pow:pow_evidence()) -> block().
+set_pow(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
 
@@ -73,25 +78,35 @@ set_nonce(Block, Nonce, Evd) ->
 set_trees(Block, Trees) ->
     Block#block{trees = Trees}.
 
+-spec set_target(block(), non_neg_integer()) -> block().
+set_target(Block, Target) ->
+    Block#block{target = Target}.
+
 %% TODO: have a spec for list of transactions
--spec txs(block()) -> list(signed_tx()).
+-spec txs(block()) -> list(aec_tx_sign:signed_tx()).
 txs(Block) ->
     Block#block.txs.
 
--spec new(block(), list(signed_tx()), trees()) -> block().
+-spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
     Height = LastBlockHeight + 1,
-    {ok, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
-    {ok, TxsTree} = aec_txs_trees:new(Txs),
+
+    %% We should not have any transactions with invalid signatures for
+    %% creation of block candidate, as only txs with validated signatures should land in mempool.
+    %% Let's hardcode this expectation for now.
+    Txs = aec_tx:filter_out_invalid_signatures(Txs),
+
+    {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
+    {ok, TxsTree} = aec_txs_trees:new(Txs1),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
     #block{height = Height,
            prev_hash = LastBlockHeaderHash,
            root_hash = aec_trees:all_trees_hash(Trees),
            trees = Trees,
            txs_hash = TxsRootHash,
-           txs = Txs,
+           txs = Txs1,
            target = target(LastBlock),
            time = aeu_time:now_in_msecs(),
            version = ?CURRENT_BLOCK_VERSION}.
@@ -169,7 +184,8 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
          Time,
          Version,
          PowEvidence,
-         Txs} ->
+         Txs} when Nonce >= 0,
+                   Nonce =< ?MAX_NONCE ->
             {ok,
              #block{
                 height = Height,
@@ -200,6 +216,11 @@ deserialize_from_store(_) -> false.
 deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
+deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
+                                                   Nonce >= ?MAX_NONCE ->
+    %% Prevent forging a solution without performing actual work by prefixing digits
+    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
+    {error, bad_nonce};
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
@@ -230,7 +251,8 @@ hash_internal_representation(B = #block{}) ->
 -spec validate(block()) -> ok | {error, term()}.
 validate(Block) ->
     Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1],
+                  fun validate_txs_hash/1,
+                  fun validate_no_txs_with_invalid_signature/1],
     aeu_validation:run(Validators, [Block]).
 
 -spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
@@ -262,6 +284,15 @@ validate_txs_hash(#block{txs = Txs,
             ok;
         _Other ->
             {error, malformed_txs_hash}
+    end.
+
+validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
+    FilteredTxs = aec_tx:filter_out_invalid_signatures(Txs),
+    case FilteredTxs =:= Txs of
+        true ->
+            ok;
+        false ->
+            {error, invalid_transaction_signature}
     end.
 
 cointains_coinbase_tx(#block{txs = []}) ->

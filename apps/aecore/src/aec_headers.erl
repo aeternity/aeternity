@@ -5,6 +5,7 @@
          height/1,
          nonce/1,
          target/1,
+         set_target/2,
          difficulty/1,
          time_in_secs/1,
          time_in_msecs/1,
@@ -15,8 +16,6 @@
          deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
-         serialize_to_binary/1,
-         deserialize_from_binary/1,
          hash_header/1,
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
@@ -39,6 +38,9 @@ nonce(Header) ->
 
 target(Header) ->
     Header#header.target.
+
+set_target(Header, NewTarget) ->
+    Header#header{ target = NewTarget }.
 
 difficulty(Header) ->
     aec_pow:target_to_difficulty(target(Header)).
@@ -101,7 +103,8 @@ deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
          Time,
          Version,
          PowEvidence
-        } ->
+        } when Nonce >= 0,
+               Nonce =< ?MAX_NONCE ->
             {ok,
              #header{
                 height = Height,
@@ -153,11 +156,7 @@ deserialize_from_map(H = #{}) ->
                  pow_evidence = deserialize_pow_evidence(PowEvidence),
                  txs_hash = base64:decode(TxsHash)}}.
 
--spec serialize_to_binary(header()) -> {ok, header_binary()}.
-serialize_to_binary(H) ->
-    {ok, Map} = serialize_to_map(H),
-    {ok, jsx:encode(Map)}.
-
+-spec serialize_for_hash(header()) -> deterministic_header_binary().
 serialize_for_hash(H) ->
     PowEvidence = serialize_pow_evidence_for_hash(H#header.pow_evidence),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
@@ -171,10 +170,6 @@ serialize_for_hash(H) ->
       (H#header.nonce):64,
       (H#header.time):64
     >>.
-
--spec deserialize_from_binary(header_binary()) -> {ok, header()}.
-deserialize_from_binary(B) ->
-    deserialize_from_map(jsx:decode(B, [return_maps])).
 
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
@@ -224,11 +219,13 @@ validate_version(_Header) ->
 -spec validate_pow(header()) -> ok | {error, incorrect_pow}.
 validate_pow(#header{nonce = Nonce,
                      pow_evidence = Evd,
-                     target = Target} = Header) ->
+                     target = Target} = Header) when Nonce >= 0,
+                                                     Nonce =< ?MAX_NONCE ->
     Mod = aec_pow:pow_module(),
-    %% Zero nonce and pow_evidence before hashing, as this is how the mined block got hashed.
+    %% Zero nonce and pow_evidence before hashing, as this is how the mined block
+    %% got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
-    {ok, HeaderBinary} = serialize_to_binary(Header1),
+    HeaderBinary = serialize_for_hash(Header1),
     case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
@@ -245,4 +242,3 @@ validate_time(#header{time = Time}) ->
         false ->
             {error, block_from_the_future}
     end.
-

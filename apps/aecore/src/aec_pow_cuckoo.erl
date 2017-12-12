@@ -20,18 +20,13 @@
 -compile([export_all, nowarn_export_all]).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
+-include("pow.hrl").
 
--define(DEFAULT_CUCKOO_ENV, {"lean30", "-t 5", 30}).
+-define(DEFAULT_CUCKOO_ENV, {"mean28s-generic", "-t 5", 28}).
 
--ifdef(TEST).
--define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
--define(info(F, A),  ?debugFmt(F, A)).
--define(error(F, A), ?debugFmt(F, A)).
--else.
 -define(debug(F, A), epoch_pow_cuckoo:debug(F, A)).
 -define(info(F, A),  epoch_pow_cuckoo:info(F, A)).
 -define(error(F, A), epoch_pow_cuckoo:error(F, A)).
--endif.
 
 -record(state, {os_pid :: integer() | undefined,
                 buffer = [] :: string(),
@@ -64,26 +59,29 @@
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
 -spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
-               Nonce :: integer()) -> aec_pow:pow_result().
-generate(Data, Target, Nonce) ->
+               Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
+generate(Data, Target, Nonce) when Nonce >= 0,
+                                   Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
-    Hash = base64:encode_to_string(aec_sha256:hash(Data)),
+    Hash = aec_sha256:hash(Data),
     generate_int(Hash, Nonce, Target).
 
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
--spec verify(Data :: aec_sha256:hashable(), Nonce :: integer(),
+-spec verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
-verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
-    Hash = base64:encode_to_string(aec_sha256:hash(Data)),
+verify(Data, Nonce, Evd, Target) when is_list(Evd),
+                                      Nonce >= 0, Nonce =< ?MAX_NONCE ->
+    Hash = aec_sha256:hash(Data),
     case test_target(Evd, Target) of
         true ->
-            verify(Hash, Nonce, Evd);
+            verify_proof(Hash, Nonce, Evd);
         false ->
             false
     end.
+
 
 %%%=============================================================================
 %%% Internal functions
@@ -92,15 +90,18 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd) ->
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
--spec generate_int(Hash :: string(), Nonce :: integer(), Target :: aec_pow:sci_int()) ->
-                          {'ok', Nonce2 :: integer(), Solution :: pow_cuckoo_solution()} |
+-spec generate_int(Hash :: binary(), Nonce :: aec_pow:nonce(), Target :: aec_pow:sci_int()) ->
+                          {'ok', Nonce2 :: aec_pow:nonce(),
+                           Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
 generate_int(Hash, Nonce, Target) ->
-    case generate_single(Hash, Nonce, Target) of
+    Header = pack_header_and_nonce(Hash, Nonce),
+
+    case generate_int(Header, Target) of
         {ok, Soln} ->
             {ok, {Nonce, Soln}};
         {error, no_value} ->
-            ?debug("No cuckoo solution found~n", []),
+            ?debug("No cuckoo solution found", []),
             {error, no_solution};
         {error, Reason} ->
             %% Executable failed (segfault, not found, etc.): let miner decide
@@ -109,28 +110,24 @@ generate_int(Hash, Nonce, Target) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Proof of Work generation, a single attempt
+%%   Proof of Work generation from a hex-encoded 80-byte buffer
 %% @end
 %%------------------------------------------------------------------------------
--spec generate_single(Hash :: string(), Nonce :: integer(), Target :: aec_pow:sci_int()) ->
-                             {'ok', Solution :: pow_cuckoo_solution()} |
-                             {'error', term()}.
-generate_single(Hash, Nonce, Target) ->
+-spec generate_int(Headr :: string(), Target :: aec_pow:sci_int()) ->
+                          {'ok', Solution :: pow_cuckoo_solution()} |
+                          {'error', term()}.
+generate_int(Header, Target) ->
     BinDir = aecuckoo:bin_dir(),
     {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    %% -s makes mean miner print out the solution. We do not make it
-    %% Algo-dependent in order to avoid wiring-in executable names. Lean miner
-    %% will complain but ignores it.
-    ?info("Executing cmd: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra])]),
-    try exec:run(
-          lists:concat(export_ld_lib_path() ++
-                           ["./", Exe, " -h ", Hash, " -n ", Nonce, " -s ", Extra]),
-          [{stdout, self()},
-           {stderr, self()},
-           {kill_timeout, 1},
-           {cd, BinDir},
-           {env, [{"SHELL", "/bin/sh"}]},
-           monitor]) of
+    Cmd = lists:concat([ld_lib_env(), " ",  "./", Exe, " -h ", Header, " ", Extra]),
+    ?info("Executing cmd: ~p", [Cmd]),
+    Old = process_flag(trap_exit, true),
+    try exec:run(Cmd,
+                 [{stdout, self()},
+                  {stderr, self()},
+                  {cd, BinDir},
+                  {env, [{"SHELL", "/bin/sh"}]},
+                  monitor]) of
         {ok, _ErlPid, OsPid} ->
             wait_for_result(#state{os_pid = OsPid,
                                    buffer = [],
@@ -139,57 +136,163 @@ generate_single(Hash, Nonce, Target) ->
     catch
         C:E ->
             {error, {unknown, {C, E}}}
+    after
+        process_flag(trap_exit, Old),
+        receive
+            {'EXIT',_From, shutdown} -> exit(shutdown)
+        after 0 -> ok
+        end
     end.
+
+-define(POW_OK, ok).
+-define(POW_TOO_BIG, {error, nonce_too_big}).
+-define(POW_TOO_SMALL, {error, nonces_not_ascending}).
+-define(POW_NON_MATCHING, {error, endpoints_do_not_match_up}).
+-define(POW_BRANCH, {error, branch_in_cycle}).
+-define(POW_DEAD_END, {error, cycle_dead_ends}).
+-define(POW_SHORT_CYCLE, {error, cycle_too_short}).
+-define(PROOFSIZE, 42).
+%%------------------------------------------------------------------------------
+%% @doc
+%%   Proof of Work verification (difficulty check should be done before calling
+%%   this function)
+%% @end
+%%------------------------------------------------------------------------------
+-spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
+                   Solution :: aec_pow:pow_evidence()) -> boolean().
+verify_proof(Hash, Nonce, Solution) ->
+    {_Exe, _Extra, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
+
+    %% Cuckoo has an 80 byte header, we have to use that as well
+    %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
+    Header0 = pack_header_and_nonce(Hash, Nonce),
+    Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
+    {K0, K1} = aeu_siphash24:create_keypair(Header),
+
+    EdgeMask = (1 bsl (Size - 1)) - 1,
+    try
+        %% Generate Uv pairs representing endpoints by hashing the proof
+        %% XOR points together: for a closed cycle they must match somewhere
+        %% making one of the XORs zero.
+        {Xor0, Xor1, _, Uvs} =
+            lists:foldl(
+              fun(N, _) when N > EdgeMask ->
+                      throw({?POW_TOO_BIG, N});
+                 (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
+                      throw({?POW_TOO_SMALL, N, PrevN});
+                 (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
+                      Uv0 = sipnode(K0, K1, N, 0, EdgeMask),
+                      Uv1 = sipnode(K0, K1, N, 1, EdgeMask),
+                      {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
+               end, {16#0, 16#0, -1, []}, Solution),
+        case Xor0 bor Xor1 of
+            0 ->
+                %% check cycle
+                case check_cycle(Uvs) of
+                    ok -> true;
+                    {error, E} -> throw(E)
+                end;
+            _ ->
+                %% matching endpoints imply zero xors
+                throw(?POW_NON_MATCHING)
+        end
+    catch
+        throw:{error, Reason} ->
+            epoch_pow_cuckoo:error("Proof verification failed for ~p: ~p", [Solution, Reason]),
+            false
+    end.
+
+sipnode(K0, K1, Proof, UOrV, EdgeMask) ->
+    SipHash = aeu_siphash24:hash(K0, K1, 2*Proof + UOrV) band EdgeMask,
+    (SipHash bsl 1) bor UOrV.
+
+check_cycle(Nodes0) ->
+  Nodes = lists:keysort(2, Nodes0),
+  {Evens0, Odds} = lists:unzip(Nodes),
+  Evens  = lists:sort(Evens0), %% Odd nodes are already sorted...
+  UEvens = lists:usort(Evens),
+  UOdds  = lists:usort(Odds),
+  %% Check that all nodes appear exactly twice (i.e. each node has
+  %% exactly two edges).
+  case length(UEvens) == (?PROOFSIZE div 2) andalso
+        length(UOdds) == (?PROOFSIZE div 2) andalso
+        UOdds == Odds -- UOdds andalso UEvens == Evens -- UEvens of
+      false ->
+          {error, ?POW_BRANCH};
+      true  ->
+          [{X0, Y0}, {X1, Y0} | Nodes1] = Nodes,
+          check_cycle(X0, X1, Nodes1)
+  end.
+
+%% If we reach the end in the last step everything is fine
+check_cycle(X, X, []) ->
+    ok;
+%% If we reach the end too early the cycle is too short
+check_cycle(X, X, _)  ->
+    {error, ?POW_SHORT_CYCLE};
+check_cycle(XEnd, XNext, Nodes) ->
+    %% Find the outbound edge for XNext and follow that edge
+    %% to an odd node and back again to NewXNext
+    case find_node(XNext, Nodes, []) of
+        Err = {error, _}            -> Err;
+        {XNext, NewXNext, NewNodes} -> check_cycle(XEnd, NewXNext, NewNodes)
+    end.
+
+find_node(_, [], _Acc) ->
+    {error, ?POW_DEAD_END};
+find_node(X, [{X, Y}, {X1, Y} | Nodes], Acc) ->
+    {X, X1, Nodes ++ Acc};
+find_node(X, [{X1, Y}, {X, Y} | Nodes], Acc) ->
+    {X, X1, Nodes ++ Acc};
+find_node(X, [{X, _Y} | _], _Acc) ->
+  {error, ?POW_DEAD_END};
+find_node(X, [N1, N2 | Nodes], Acc) ->
+  find_node(X, Nodes, [N1, N2 | Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
-%%   Proof of Work verification (without difficulty check)
-%%
-%%   This function returns {error, term()} in the unlikely case that
-%%   it does not manage to determine an outcome for the verification
-%%   of the PoW (e.g. verifier terminates abnormally).
+%%   Creates the Cuckoo buffer (hex encoded) from a base64-encoded hash and a
+%%   uint64 nonce.
 %% @end
 %%------------------------------------------------------------------------------
--spec verify(Hash :: string(), Nonce :: integer(),
-             Soln :: aec_pow:pow_evidence()) -> boolean().
-verify(Hash, Nonce, Soln) ->
-    BinDir = aecuckoo:bin_dir(),
-    {_, _, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    SolnStr = solution_to_hex(Soln),
-    ?info("Executing: ~p~n", [lists:concat(export_ld_lib_path() ++ ["./verify", Size, " -h ", Hash, " -n ", Nonce])]),
-    try exec:run(
-              lists:concat(export_ld_lib_path() ++
-                               ["./verify", Size, " -h ", Hash, " -n ", Nonce]),
-              [{stdout, self()},
-               {stderr, self()},
-               stdin,
-               {kill_timeout, 1}, %% Kills exe with SIGTERM, then with SIGKILL if needed
-               {cd, BinDir},
-               {env, [{"SHELL", "/bin/sh"}]},
-               monitor]) of
-        {ok, _ErlPid, OsPid} ->
-            exec:send(OsPid, list_to_binary(SolnStr)),
-            exec:send(OsPid, eof),
-            ParserState = #state{os_pid = OsPid,
-                                        buffer = [],
-                                        parser = fun parse_verification_result/2},
-            case wait_for_result(ParserState) of
-                {ok, Value} when is_boolean(Value) ->
-                    Value;
-                {error, _Reason} = Err ->
-                    Err
-            end
-    catch
-        C:E ->
-            {error, {unknown, {C, E}}}
-    end.
+-spec pack_header_and_nonce(binary(), aec_pow:nonce()) -> string().
+pack_header_and_nonce(Hash, Nonce) when byte_size(Hash) == 32 ->
+    %% Cuckoo originally uses 32-bit nonces inserted at the end of its 80-byte buffer.
+    %% This buffer is hashed into the keys used by the main algorithm.
+    %%
+    %% We insert our 64-bit Nonce right after the hash of the block header We
+    %% base64-encode both the hash of the block header and the nonce and pass
+    %% the resulting command-line friendly string with the -h option to Cuckoo.
+    %%
+    %% The SHA256 hash is 32 bytes (44 chars base64-encoded), the nonce is 8 bytes
+    %% (12 chars base64-encoded). That leaves plenty of room (80 - 56 = 24
+    %% bytes) for cuckoo to put its nonce (which will be 0 in our case) in.
+    %%
+    %% (Base64 encoding: see RFC 3548, Section 3:
+    %% https://tools.ietf.org/html/rfc3548#page-4
+    %% converts every triplet of bytes to 4 characters: from N bytes to 4*ceil(N/3)
+    %% bytes.)
+    %%
+    %% Like Cuckoo, we use little-endian for the nonce here.
+    NonceStr = base64:encode_to_string(<<Nonce:64/little-unsigned-integer>>),
+    HashStr  = base64:encode_to_string(Hash),
+    %% Cuckoo will automatically fill bytes not given with -h option to 0, thus
+    %% we need only return the two base64 encoded strings concatenated.
+    %% 44 + 12 = 56 bytes
+    HashStr ++ NonceStr.
 
-export_ld_lib_path() ->
+%%------------------------------------------------------------------------------
+%% @doc
+%%   Prefix setting load path to command so that blake2b.so is found in priv/lib
+%% @end
+%%------------------------------------------------------------------------------
+-spec ld_lib_env() -> string().
+ld_lib_env() ->
     LdPathVar = case os:type() of
                  {unix, darwin} -> "DYLD_LIBRARY_PATH";
                  {unix, _}      -> "LD_LIBRARY_PATH"
                 end,
-    ["export ", LdPathVar, "=../lib:$", LdPathVar, "; "].
+    "env " ++ LdPathVar ++ "=../lib:$" ++ LdPathVar.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -207,8 +310,12 @@ wait_for_result(#state{os_pid = OsPid,
             {Lines, NewBuffer} = handle_fragmented_lines(Str, Buffer),
             (State#state.parser)(Lines, State#state{buffer = NewBuffer});
         {stderr, OsPid, Msg} ->
-            ?error("ERROR: ~s~n", [Msg]),
+            ?error("ERROR: ~s", [Msg]),
             wait_for_result(State);
+        {'EXIT',_From, shutdown} ->
+            %% Someone is telling us to stop
+            stop_execution(OsPid),
+            exit(shutdown);
         {'DOWN', OsPid, process, _, normal} ->
             %% Process ended but no value found
             {error, no_value};
@@ -218,7 +325,7 @@ wait_for_result(#state{os_pid = OsPid,
                           {exit_status, ExStat} -> exec:status(ExStat);
                           _                     -> Reason
                       end,
-            ?error("OS process died: ~p~n", [Reason2]),
+            ?error("OS process died: ~p", [Reason2]),
             {error, {execution_failed, Reason2}}
     end.
 
@@ -267,38 +374,17 @@ parse_generation_result(["Solution" ++ ValuesStr | Rest], #state{os_pid = OsPid,
     Soln = [list_to_integer(V, 16) || V <- string:tokens(ValuesStr, " ")],
     case test_target(Soln, Target) of
         true ->
-            ?debug("Solution found: ~p~n", [Soln]),
+            ?debug("Solution found: ~p", [Soln]),
             stop_execution(OsPid),
             {ok, Soln};
         false ->
             %% failed to meet target: go on, we may find another solution
-            ?debug("Failed to meet target~n", []),
+            ?debug("Failed to meet target", []),
             parse_generation_result(Rest, State)
     end;
 parse_generation_result([Msg | T], State) ->
-    ?debug("~s~n", [Msg]),
+    ?debug("~s", [Msg]),
     parse_generation_result(T, State).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Parse verifyer output
-%% @end
-%%------------------------------------------------------------------------------
--spec parse_verification_result(list(string()), #state{}) ->
-                                       {'ok', boolean()} | {'error', term()}.
-parse_verification_result([], State) ->
-    wait_for_result(State);
-parse_verification_result(["Verified with cyclehash" ++ _ | _Rest], #state{os_pid = OsPid}) ->
-    ?debug("PoW verified.~n", []),
-    stop_execution(OsPid),
-    {ok, true};
-parse_verification_result(["FAILED due to" ++ Reason | _Rest], #state{os_pid = OsPid}) ->
-    ?error("PoW verification failed: ~s~n", [Reason]),
-    stop_execution(OsPid),
-    {ok, false};
-parse_verification_result([Msg | T], State) ->
-    ?debug("~s~n", [Msg]),
-    parse_verification_result(T, State).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -307,12 +393,12 @@ parse_verification_result([Msg | T], State) ->
 %%------------------------------------------------------------------------------
 -spec stop_execution(integer()) -> ok.
 stop_execution(OsPid) ->
-    case exec:stop(OsPid) of
+    case exec:kill(OsPid, 9) of
         {error, Reason} ->
-            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).~n",
+            ?debug("Failed to stop mining OS process ~p: ~p (may have already finished).",
                    [OsPid, Reason]);
         R ->
-            ?debug("Mining OS process ~p stopped successfully: ~p~n",
+            ?debug("Mining OS process ~p stopped successfully: ~p",
                    [OsPid, R])
     end.
 
@@ -348,7 +434,6 @@ test_target(Soln, Target) ->
     Hash = aec_sha256:hash(Bin),
     aec_pow:test_target(Hash, Target).
 
-
 %%------------------------------------------------------------------------------
 %% Convert solution (a list of 42 numbers) to a binary
 %% in a languauge-independent way
@@ -360,12 +445,3 @@ solution_to_binary([], _Bits, Acc) ->
 solution_to_binary([H | T], Bits, Acc) ->
     solution_to_binary(T, Bits, <<Acc/binary, H:Bits>>).
 
--spec solution_to_hex(list(integer())) -> string().
-solution_to_hex(Sol) ->
-    solution_to_hex(Sol, []).
-
--spec solution_to_hex(list(integer()), list(string())) -> string().
-solution_to_hex([], Acc) ->
-    string:join(lists:reverse(Acc), " ");
-solution_to_hex([H | T], Acc) when is_integer(H) ->
-    solution_to_hex(T, [lists:flatten(io_lib:format("~8.16.0b", [H])) | Acc]).

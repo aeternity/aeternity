@@ -11,7 +11,7 @@
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(INT_ACCEPTORS_POOLSIZE, 100).
+-define(INT_ACCEPTORS_POOLSIZE, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -40,7 +40,7 @@ local_peer_uri() ->
 
 local_internal_http_uri() ->
     Port = get_internal_port(),
-    local_peer(Port).
+    aec_peers:uri_from_ip_port("127.0.0.1", Port).
 
 %%--------------------------------------------------------------------
 stop(_State) ->
@@ -88,12 +88,8 @@ start_websocket_internal() ->
 local_peer(Port) ->
     Addr = get_local_peer_address(),
     case aeu_requests:parse_uri(Addr) of
-        {_Scheme, _Host, Port} ->    % same port as above
+        {_Scheme, _Host, _Port} -> % a valid address
             Addr;
-        {_Scheme, _Host, _OtherPort} ->
-            erlang:error({port_mismatch,
-                          [{swagger_port_external, Port},
-                           {local_peer_address, Addr}]});
         error ->
             case re:run(Addr, "[:/]", []) of
                 {match, _} ->

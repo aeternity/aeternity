@@ -8,6 +8,7 @@
 %%%=============================================================================
 -module(aec_pow_cuckoo_tests).
 
+
 -ifdef(TEST).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -31,19 +32,14 @@ pow_test_() ->
        {timeout, 60,
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
-                Nonce = 122,
-                {T1, Res} = timer:tc(?TEST_MODULE, generate,
-                                     [?TEST_BIN, Target, Nonce]),
-                ?debugFmt("~nReceived result ~p~nin ~p microsecs~n~n", [Res, T1]),
+                Nonce = 33,
+                Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
                 %% verify the nonce and the solution
                 {ok, {Nonce, Soln}} = Res,
-                {T2, Res2} =
-                    timer:tc(?TEST_MODULE, verify,
-                             [?TEST_BIN, Nonce, Soln, Target]),
-                ?debugFmt("~nVerified in ~p microsecs~n~n", [T2]),
+                Res2 = ?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target),
                 ?assert(Res2)
         end}
       },
@@ -51,7 +47,7 @@ pow_test_() ->
        {timeout, 90,
         fun() ->
                 Target = 16#01010000,
-                Nonce = 122,
+                Nonce = 33,
                 Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 ?assertEqual({error, no_solution}, Res),
 
@@ -86,11 +82,38 @@ misc_test_() ->
                        112561693,118817859,118965199,121744219,122178237,
                        132944539,133889045],
                NodeSize = ?TEST_MODULE:get_node_size(),
-               ?debugFmt("node_t size: ~p~n", [NodeSize]),
                ?assertEqual(42*NodeSize, size(?TEST_MODULE:solution_to_binary(
                                                  lists:sort(Soln), NodeSize * 8, <<>>)))
        end}
      ]
     }.
+
+kill_ospid_miner_test_() ->
+    {setup,
+     fun() ->
+           ok = application:ensure_started(erlexec)
+     end,
+     fun(_) ->
+           application:stop(erlexec)
+     end,
+     [ {"Run miner in OS and kill it by killing parent",
+       fun() ->
+            Self = self(),
+            ?assertEqual([], exec:which_children()),  %% no zombies around
+            Pid = spawn(fun() ->
+                          Self ! {aec_pow_cuckoo:generate(?TEST_BIN, 12837272, 128253), self()}
+                      end),
+            timer:sleep(200),                        %% give some time to start the miner OS pid
+            ?assertEqual(1, length(exec:which_children())),  %% We did create a new one.
+            exit(Pid, shutdown),
+            timer:sleep(1000),                       %% give it some time to kill the miner OS pid
+            ?assertEqual([], exec:which_children()), %% at least erlexec believes it died
+
+            Res = os:cmd("ps | grep mean28s-generic | grep -v grep"),
+            ?assertMatch([], Res)
+        end}
+     ]
+    }.
+
 
 -endif.

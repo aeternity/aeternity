@@ -16,6 +16,11 @@ tags:
 schemes:
   - http
 paths:
+
+###
+## External APIs definitions
+###
+
   /ping:
     post:
       tags:
@@ -192,11 +197,20 @@ paths:
           description: Account's balance
           schema:
             $ref: '#/definitions/Balance'
+        '400':
+          description: Invalid address
+          schema:
+            $ref: '#/definitions/Error'
         '404':
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
       security: []
+
+###
+## Internal APIs definitions
+###
+
   /spend-tx:
     post:
       tags:
@@ -243,6 +257,43 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+
+## CAUTION: debug endpoints, implementation may be inefficient
+  /balances:
+    get:
+      tags:
+        - external
+      operationId: GetAccountsBalances
+      description: 'Get all users'' balances'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/AccountsBalances'
+      security: []
+  /info:
+    get:
+      tags:
+        - external
+      operationId: GetInfo
+      description: 'Get node info'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Info'
+      security: []
+
 definitions:
   Block:
     type: object
@@ -261,7 +312,7 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: int64
+        format: uint64
       time:
         type: integer
         format: int64
@@ -295,7 +346,7 @@ definitions:
         format: int64
       nonce:
         type: integer
-        format: int64
+        format: uint64
       time:
         type: integer
         format: int64
@@ -358,6 +409,47 @@ definitions:
     properties:
       pub_key:
         type: string
+  AccountsBalances:
+    type: object
+    properties:
+      accounts_balances:
+        type: array
+        items:
+          $ref: '#/definitions/AccountBalance'
+  AccountBalance:
+    type: object
+    properties:
+      pub_key:
+        type: string
+      balance:
+        type: integer
+        format: int64
+  Info:
+    type: object
+    properties:
+      version:
+        type: string
+      revision:
+        type: string
+      genesis_hash:
+        type: string
+      last_30_blocks_time:
+        type: array
+        items:
+          $ref: '#/definitions/BlockTimeSummary'
+  BlockTimeSummary:
+    type: object
+    properties:
+      height:
+        type: integer
+        format: int64
+      time:
+        type: integer
+        format: int64
+      time_delta_to_parent:
+        type: integer
+        format: int64
+
 externalDocs:
   description: Find out more about Aeternity
   url: 'http://www.aeternity.com'

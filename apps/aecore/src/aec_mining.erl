@@ -1,10 +1,13 @@
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/0,
-         apply_new_txs/1,
+-export([create_block_candidate/2,
+         need_to_regenerate/1,
          mine/2]).
 
+-ifdef(TEST).
+-export([adjust_target/2]).
+-endif.
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -13,34 +16,27 @@
 
 %% API
 
--spec create_block_candidate() -> {ok, block(), integer()} | {error, term()}.
-create_block_candidate() ->
-    create_block_candidate(get_txs_to_mine_in_pool()).
+-spec create_block_candidate(block(), list(header())) ->
+                        {ok, block(), aec_pow:nonce()} | {error, term()}.
+create_block_candidate(TopBlock, AdjHeaders) ->
+    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock, AdjHeaders).
 
--spec apply_new_txs(block()) -> {ok, block()} | {ok, block(), integer()} | {error, term()}.
-apply_new_txs(#block{txs = Txs} = Block) ->
+-spec need_to_regenerate(block()) -> boolean().
+need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
+    %% TODO: This should be an access function in tx pool
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
-    CurrentTxsBlockCount = length(Txs),
-    case {MaxTxsInBlockCount, CurrentTxsBlockCount} of
-        {Count, Count} ->
-            {ok, Block};
-        {_, _} ->
-            case get_txs_to_mine_in_pool() of
-                [] ->
-                    {ok, Block};
-                [_|_] = NewTxs ->
-                    create_block_candidate(NewTxs)
-            end
-    end.
+    CurrentTxsBlockCount = length(Txs) + 1,
+    (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
+        andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
 
--spec mine(block(), integer()) -> {ok, block()} | {error, term()}.
+-spec mine(block(), aec_pow:nonce()) -> {ok, block()} | {error, term()}.
 mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
-    {ok, BlockBin} = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
+    BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
     Mod = aec_pow:pow_module(),
     case Mod:generate(BlockBin, Target, Nonce) of
         {ok, {Nonce, Evd}} ->
-            {ok, aec_blocks:set_nonce(Block, Nonce, Evd)};
+            {ok, aec_blocks:set_pow(Block, Nonce, Evd)};
         {error, no_solution} = Error ->
             Error;
         {error, {runtime, _}} = Error ->
@@ -50,32 +46,30 @@ mine(Block, Nonce) ->
 
 %% Internal functions
 
--spec get_txs_to_mine_in_pool() -> list(signed_tx()).
+-spec get_txs_to_mine_in_pool() -> list(aec_tx_sign:signed_tx()).
 get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(signed_tx())) -> {ok, block(), integer(), integer()} | {error, term()}.
-create_block_candidate(TxsToMineInPool) ->
+-spec create_block_candidate(list(aec_tx_sign:signed_tx()), block(), list(header())) ->
+                  {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
+create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            {ok, LastBlock} = aec_chain:top(),
-            Trees = aec_blocks:trees(LastBlock),
-            Block0 = aec_blocks:new(LastBlock, Txs, Trees),
-            case aec_blocks:cointains_coinbase_tx(Block0) of
+            Trees = aec_blocks:trees(TopBlock),
+            Block = aec_blocks:new(TopBlock, Txs, Trees),
+            case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
-                    Block = maybe_recalculate_difficulty(Block0),
-                    RandomNonce = aec_pow:pick_nonce(),
-                    {ok, Block, RandomNonce};
+                    adjust_target(Block, AdjHeaders);
                 false ->
                     {error, coinbase_tx_rejected}
             end
     end.
 
--spec create_signed_coinbase_tx() -> {ok, signed_tx()} | {error, term()}.
+-spec create_signed_coinbase_tx() -> {ok, aec_tx_sign:signed_tx()} | {error, term()}.
 create_signed_coinbase_tx() ->
     case create_coinbase_tx() of
         {ok, CoinbaseTx} ->
@@ -98,50 +92,19 @@ create_coinbase_tx() ->
             Error
     end.
 
-
--spec maybe_recalculate_difficulty(block()) -> block().
-maybe_recalculate_difficulty(Block) ->
-    Height = aec_blocks:height(Block),
-    case should_recalculate_difficulty(Height) of
+-spec adjust_target(block(), list(header())) ->
+            {ok, block(), aec_pow:nonce()} | {error, term()}.
+adjust_target(Block, AdjHeaders) ->
+    Header = aec_blocks:to_header(Block),
+    DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
+    case aec_headers:height(Header) =< DeltaHeight of
         true ->
-            %% Recalculate difficulty based on mining rate of N last blocks,
-            %% where N = recalculate_difficulty_frequency.
-            BlocksToCheckCount = aec_governance:recalculate_difficulty_frequency(),
-            Target = calculate_difficulty(Block, BlocksToCheckCount),
-            Block#block{target = Target};
-        false ->
-            Block
+            %% For the first DeltaHeight blocks, use pre-defined target
+            {ok, Block, aec_pow:pick_nonce()};
+        false when DeltaHeight == length(AdjHeaders) ->
+            CalculatedTarget = aec_target:recalculate(Header, AdjHeaders),
+            Block1 = aec_blocks:set_target(Block, CalculatedTarget),
+            {ok, Block1, aec_pow:pick_nonce()};
+        false -> %% Wrong number of headers in AdjHeaders...
+            {error, wrong_headers_for_target_adjustment}
     end.
-
--spec should_recalculate_difficulty(height()) -> boolean().
-should_recalculate_difficulty(Height) ->
-    RecalculateDifficultyFrequency = aec_governance:recalculate_difficulty_frequency(),
-    (Height > 10) andalso %% do not change difficulty for the first 10 blocks
-                    (Height > RecalculateDifficultyFrequency)
-        andalso (0 == (Height rem RecalculateDifficultyFrequency)).
-
--spec calculate_difficulty(block(), pos_integer()) -> non_neg_integer().
-calculate_difficulty(NewBlock, BlocksToCheckCount) ->
-    CurrentTarget = NewBlock#block.target,
-    CurrentRate = get_current_rate(NewBlock, BlocksToCheckCount),
-    %% rate in millisecs per block
-    ExpectedRate = 1000 * aec_governance:expected_block_mine_rate(),
-    aec_pow:recalculate_target(CurrentTarget, ExpectedRate, CurrentRate).
-
--spec get_current_rate(block(), pos_integer()) -> non_neg_integer().
-get_current_rate(Block, BlocksToCheckCount) ->
-    BlockHeader = aec_blocks:to_header(Block),
-    BlockHeight = aec_blocks:height(Block),
-
-    FirstBlockHeight = BlockHeight - BlocksToCheckCount,
-    {ok, FirstBlockHeader} = aec_chain:get_header_by_height(FirstBlockHeight), %% TODO: Ensure height refers to correct chain when we have support for longest chain.
-
-    mining_rate_between_blocks(BlockHeader, FirstBlockHeader, BlocksToCheckCount).
-
--spec mining_rate_between_blocks(header(), header(), non_neg_integer()) -> non_neg_integer().
-mining_rate_between_blocks(Block1Header, Block2Header, BlocksMinedCount) ->
-    Time1 = aec_headers:time_in_msecs(Block1Header),
-    Time2 = aec_headers:time_in_msecs(Block2Header),
-    %% TODO: validate header timestamps
-    TimeDiff = max(1, Time1 - Time2),
-    TimeDiff div BlocksMinedCount.

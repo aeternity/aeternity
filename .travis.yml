@@ -42,23 +42,35 @@ deploy:
       tags: true
       all_branches: true # Workaround for Travis - see https://github.com/travis-ci/travis-ci/issues/1675#issuecomment-37851765
       condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
-matrix:
-  include:
-    - os: osx
-      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
-      env: JOB=test
-    - os: osx
-      osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
-      language: generic
-      env: JOB=package
-  allow_failures:
-    - env: JOB=xref
-  fast_finish: true
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" dev1
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      branch: env/dev1
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
+  - provider: script
+    script: ./ci deploy "${JOB:?}" "${TRAVIS_BUILD_DIR:?}" dev2
+    skip_cleanup: true
+    on:
+      # See https://docs.travis-ci.com/user/deployment#Conditional-Releases-with-on%3A
+      repo: aeternity/epoch
+      branch: env/dev2
+      condition: "${JOB:?} = package && ${TRAVIS_OS_NAME:?} = linux"
+# matrix:
+#   include:
+#     - os: osx
+#       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+#       language: generic
+#       env: JOB=test
+#     - os: osx
+#       osx_image: xcode8.3 # [`xcode8.3` is Xcode 8.3.3 on OS X 10.12](https://docs.travis-ci.com/user/reference/osx#OS-X-Version)
+#       language: generic
+#       env: JOB=package
 env:
   - JOB=test
   - JOB=dialyzer
-  - JOB=xref
   - JOB=package
 cache:
   directories:

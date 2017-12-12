@@ -2,6 +2,8 @@
 
 -export([handle_request/3]).
 
+-import(aeu_debug, [pp/1]).
+
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
         Req :: cowboy_req:req(),
@@ -16,7 +18,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                                                      SpendTxObj)),
             Amount = maps:get(<<"amount">>, SpendTxObj),
             Fee = maps:get(<<"fee">>, SpendTxObj),
-            case aec_next_nonce:pick_for_account(SenderPubkey) of
+            case aec_conductor:next_nonce_for_account(SenderPubkey) of
                 {ok, Nonce} ->
                     lager:debug("Nonce = ~p", [Nonce]),
                     {ok, SpendTx} =
@@ -26,10 +28,11 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                             amount => Amount,
                             fee => Fee,
                             nonce => Nonce}),
-                    lager:debug("SpendTx = ~p", [SpendTx]),
+                    lager:debug("SpendTx = ~p", [pp(SpendTx)]),
                     {ok, SignedTx} = aec_keys:sign(SpendTx),
                     ok = aec_tx_pool:push(SignedTx),
-                    lager:debug("pushed; peek() -> ~p", [aec_tx_pool:peek(10)]),
+                    lager:debug("pushed; peek() -> ~p",
+                                [pp(aec_tx_pool:peek(10))]),
                     {200, [], #{}};
                 {error, account_not_found} ->
                     lager:debug("account not found", []),
@@ -44,11 +47,10 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
 handle_request('GetPubKey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            {200, [], #{pub_key => base64:encode(Pubkey)}}; 
+            {200, [], #{pub_key => base64:encode(Pubkey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
-
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(

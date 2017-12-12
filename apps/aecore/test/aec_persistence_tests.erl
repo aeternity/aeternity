@@ -8,11 +8,6 @@
         ?assertEqual(aec_blocks:serialize_for_network(B1),
                      aec_blocks:serialize_for_network(B2))).
 
--define(GENESIS_DIFFICULTY, 553713663.0).
-
-genesis_block() ->
-    aec_block_genesis:genesis_block().
-
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
     Hash.
@@ -38,30 +33,25 @@ cleanup_persistence(Path) ->
     file:del_dir(Path),
     ok.
 
-kill_and_restart_chain_server() ->
+kill_and_restart_conductor() ->
     %% Stop server
-    ok = aec_chain:stop(),
+    ok = aec_conductor:stop(),
     %% check that it is dead.
     dead =
-        try aec_chain:top()
+        try aec_conductor:top()
         catch exit:{noproc, _} -> dead
         end,
     %% Restart server
-    {ok, _} = aec_chain:start_link(),
-    server_up = wait_for_chain(),
+    {ok, _} = aec_conductor:start_link([{autostart, false}]),
+    server_up = wait_for_conductor(),
     ok.
 
-wait_for_chain() ->
-    case
-        try aec_chain:top()
-        catch exit:{noproc, _} -> dead
-        end
-    of
-        dead ->
-            timer:sleep(10),
-            wait_for_chain();
-        _ ->
-            server_up
+wait_for_conductor() ->
+    try aec_conductor:top(),
+        server_up
+    catch exit:{noproc, _} -> 
+        timer:sleep(10),
+        wait_for_conductor()
     end.
 
 write_test_() ->
@@ -74,7 +64,7 @@ write_test_() ->
      end,
      [{"Write a block to storage and read it back.",
        fun() ->
-               GB = genesis_block(),
+               GB = aec_test_utils:genesis_block(),
                ok = aec_persistence:write_block(GB),
                ok = aec_persistence:sync(),
                Hash = block_hash(GB),
@@ -89,19 +79,32 @@ write_test_() ->
 write_chain_test_() ->
     {foreach,
      fun() ->
+             meck:new(aec_pow_cuckoo, [passthrough]),
+             meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             meck:new(aec_events, [passthrough]),
+             meck:expect(aec_events, publish, fun(_, _) -> ok end),
+             meck:new(aec_genesis_block_settings, []),
+             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             TmpDir = aec_test_utils:aec_keys_setup(),
              Path = init_persistence(),
-             {ok, _} = aec_chain:start_link(genesis_block()),
-             {Path, aec_test_utils:aec_keys_setup()}
+             {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = aec_conductor:start_link([{autostart, false}]),
+             {Path, TmpDir}
      end,
      fun({Path, TmpDir}) ->
+             ok = aec_conductor:stop(),
+             ok = aec_tx_pool:stop(),
+             meck:unload(aec_pow_cuckoo),
+             meck:unload(aec_events),
+             meck:unload(aec_genesis_block_settings),
              cleanup_persistence(Path),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             ok = aec_chain:stop()
+             aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
-               GB = genesis_block(),
-               ok = aec_persistence:write_block(GB),
+               GB = aec_test_utils:genesis_block(),
+               ok = aec_conductor:post_block(GB),
+               aec_persistence:sync(),
 
                Hash = block_hash(GB),
 
@@ -125,9 +128,9 @@ write_chain_test_() ->
                [GB, B1, B2] = aec_test_utils:gen_block_chain(3),
                %% Add a couple of headers - not blocks - to the chain.
                BH1 = aec_blocks:to_header(B1),
-               ?assertEqual(ok, aec_chain:insert_header(BH1)),
+               ?assertEqual(ok, aec_conductor:post_header(BH1)),
                BH2 = aec_blocks:to_header(B2),
-               ?assertEqual(ok, aec_chain:insert_header(BH2)),
+               ?assertEqual(ok, aec_conductor:post_header(BH2)),
                aec_persistence:sync(),
 
                GHash = block_hash(GB),
@@ -147,7 +150,7 @@ write_chain_test_() ->
                ?assertEqual(GHash, TopBlockHash),
 
                %% Add one block corresponding to a header already in the chain.
-               ?assertEqual(ok, aec_chain:write_block(B2)),
+               ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),
 
                %% GB should still be top block
@@ -155,7 +158,7 @@ write_chain_test_() ->
                ?assertEqual(GHash, NewTopBlockHash),
 
                %% Add missing block corresponding to a header already in the chain.
-               ?assertEqual(ok, aec_chain:write_block(B1)),
+               ?assertEqual(ok, aec_conductor:post_block(B1)),
                aec_persistence:sync(),
                %% Now B2 should be the top block
                LastTopBlockHash = aec_persistence:get_top_block(),
@@ -169,27 +172,39 @@ write_chain_test_() ->
 restart_test_() ->
     {foreach,
      fun() ->
+             TmpDir = aec_test_utils:aec_keys_setup(),
              Path = init_persistence(),
-             {ok, _} = aec_chain:start_link(genesis_block()),
-             {Path, aec_test_utils:aec_keys_setup()}
+             meck:new(aec_events, [passthrough]),
+             meck:expect(aec_events, publish, fun(_, _) -> ok end),
+             meck:new(aec_pow_cuckoo, [passthrough]),
+             meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             meck:new(aec_genesis_block_settings, []),
+             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             {ok, _} = aec_tx_pool:start_link(),
+             {ok, _} = aec_conductor:start_link([{autostart, false}]),
+             {Path, TmpDir}
      end,
      fun({Path, TmpDir}) ->
-             %% ok = aec_chain:stop(),
+             ok = aec_tx_pool:stop(),
+             meck:unload(aec_pow_cuckoo),
+             meck:unload(aec_events),
+             meck:unload(aec_genesis_block_settings),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
-               [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
+               [GB, B1, B2] = aec_test_utils:gen_block_chain(3),
                BH2 = aec_blocks:to_header(B2),
-               ?assertEqual(ok, aec_chain:write_block(B1)),
-               ?assertEqual(ok, aec_chain:write_block(B2)),
+               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
+               ?assertEqual(ok, aec_conductor:post_block(B1)),
+               ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),
                %% Now B2 should be the top block
                TopBlockHash = aec_persistence:get_top_block(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
-               {ok, ChainTop1} = aec_chain:top(),
+               ChainTop1 = aec_conductor:top(),
                ?compareBlockResults(B2, ChainTop1),
 
                %% Check the state trees from persistence
@@ -197,12 +212,12 @@ restart_test_() ->
                             aec_blocks:trees(ChainTop1)),
 
                %% Kill chain server
-               kill_and_restart_chain_server(),
+               kill_and_restart_conductor(),
                aec_persistence:sync(),
                NewTopBlockHash = aec_persistence:get_top_block(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
-               {ok, ChainTop2} = aec_chain:top(),
+               ChainTop2 = aec_conductor:top(),
                ?compareBlockResults(B2, ChainTop2),
 
                %% Compare the trees after restart

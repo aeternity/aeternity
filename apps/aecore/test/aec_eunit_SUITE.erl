@@ -5,6 +5,7 @@
          init_per_group/2, end_per_group/2,
          init_per_testcase/2, end_per_testcase/2
         ]).
+-export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
@@ -12,10 +13,10 @@
 -define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server,
-         exec_app, exec]).
+         exec_app, exec, inet_gethost_native_sup, inet_gethost_native]).
 
 all() ->
-    [{group, eunit}].
+    [{group, eunit}, application_test].
 
 groups() ->
     [].
@@ -63,3 +64,28 @@ end_per_testcase(_TC, Config) ->
 -spec iolist_to_s(iolist()) -> string().
 iolist_to_s(L) ->
     lists:flatten(io_lib:format("~s~n", [L])).
+
+%% We must be able to start an application when all applications it
+%% depends upon are started.
+application_test(Config) ->
+    App = aecore,
+    application:load(App),
+    TempDir = aec_test_utils:create_temp_key_dir(),
+    application:set_env(aecore, keys_dir, TempDir),
+    application:set_env(aecore, password, <<"secret">>),
+
+    {ok, Deps} = application:get_key(App, applications), 
+    AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
+    [ ok = application:ensure_started(Dep) || Dep <- Deps ],
+    
+    meck:new(aec_genesis_block_settings, []),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, []),
+    ok = application:start(App),
+    timer:sleep(100),
+    ok = application:stop(App),
+    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:remove_temp_key_dir(TempDir),
+
+    [ ok = application:stop(D) || D <- lists:reverse(Deps -- AlreadyRunning) ],
+    ok.
+

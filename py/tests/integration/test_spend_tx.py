@@ -29,18 +29,12 @@ def test_successful():
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    alice_balance = alice_api.get_account_balance()
+    alice_balance = common.get_account_balance(alice_api)
     alice_has_enough_tokens = alice_balance.balance >= spend_tx_amt + spend_tx_fee
     assert_equals(alice_has_enough_tokens, True)
     print("Alice initial balance is " + str(alice_balance.balance))
 
-    bob_balance0 = {"balance":0} 
-    try:
-        bob_balance0 = alice_api.get_account_balance(pub_key=test_settings["spend_tx"]["bob_pubkey"])
-        assert_equals(bob_balance1.balance, bob_balance0.balance)
-
-    except ApiException as e:
-        assert_equals(e.status, 404) # Bob has no account yet
+    bob_balance0 = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
     # Alice sends some tokens to Bob 
     alice_internal_api = common.internal_api(alice_node)
     spend_tx_obj = SpendTx(
@@ -52,22 +46,19 @@ def test_successful():
     print("Transaction sent")
 
     # ensure Alice balance had not changed
-    alice_balance1 = alice_api.get_account_balance()
+    alice_balance1 = common.get_account_balance(alice_api)
     assert_equals(alice_balance.balance, alice_balance1.balance)
 
     # ensure Bob balance had not changed
-    try:
-        bob_balance1 = alice_api.get_account_balance(pub_key=test_settings["spend_tx"]["bob_pubkey"])
-        assert_equals(bob_balance1.balance, bob_balance0.balance)
-    except ApiException as e:
-        assert_equals(e.status, 404) # Bob has no account yet
+    bob_balance1 = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
+    assert_equals(bob_balance1.balance, bob_balance0.balance)
 
     # wait for a block to be mined
     print("Waiting for a next block to be mined")
     common.wait_until_height(alice_api, alice_top.height + 1)
 
     alice_new_top = alice_api.get_top()
-    alice_new_balance = alice_api.get_account_balance()
+    alice_new_balance = common.get_account_balance(alice_api)
     
     blocks_mined = alice_new_top.height - alice_top.height
 
@@ -78,7 +69,7 @@ def test_successful():
     expected_balance = alice_balance.balance - spend_tx_amt  + coinbase_reward * blocks_mined
     assert_equals(alice_new_balance.balance, expected_balance)
 
-    bob_balance = alice_api.get_account_balance(pub_key=test_settings["spend_tx"]["bob_pubkey"])
+    bob_balance = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
     print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
             str(blocks_mined) + " blocks")
     print("Alice's balance (with a coinbase reward) is now " + str(alice_new_balance.balance))
@@ -88,12 +79,76 @@ def test_successful():
     common.stop_node(alice_node)
     shutil.rmtree(root_dir)
 
+def test_not_enough_tokens():
+    # Bob should not be able to send more tokens than he has
+    #
+    # Let's say Bob has 100 tokens. He should not be able to send more than
+    # 100 tokens to Alice.
+    #
+    # If there's an incoming but unconfirmed deposit into Bob's account then Bob
+    # should not be able to use the incoming tokens until the spend transaction
+    # they are in is confirmed.
+    test_settings = settings["test_not_enough_tokens"]
+    coinbase_reward = common.coinbase_reward() 
+    (root_dir, bob_node, bob_api, bob_top) = setup_node_with_tokens(test_settings, "bob") 
+
+    spend_tx_amt = test_settings["spend_tx"]["amount"]
+    spend_tx_fee = test_settings["spend_tx"]["fee"]
+    bob_balance = common.get_account_balance(bob_api)
+    bob_has_not_enough_tokens = bob_balance.balance < spend_tx_amt + spend_tx_fee
+    assert_equals(bob_has_not_enough_tokens, True)
+    print("Bob initial balance is " + str(bob_balance.balance) +
+            " and he will try to spend " + str(spend_tx_amt + spend_tx_fee))
+
+    alice_balance0 = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+
+    # Bob tries to send some tokens to Alice
+    bob_internal_api = common.internal_api(bob_node)
+    spend_tx_obj = SpendTx(
+        recipient_pubkey=test_settings["spend_tx"]["alice_pubkey"],
+        amount=spend_tx_amt,
+        fee=spend_tx_fee)
+    print("Bob's spend_tx is " + str(spend_tx_obj))
+    bob_internal_api.post_spend_tx(spend_tx_obj)
+    print("Transaction sent")
+
+    # ensure Bob balance had not changed
+    bob_balance1 = common.get_account_balance(bob_api)
+    assert_equals(bob_balance.balance, bob_balance1.balance)
+
+    # ensure Alice balance had not changed
+    alice_balance1 = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+    # wait for a block to be mined
+    print("Waiting for a next block to be mined")
+    common.wait_until_height(bob_api, bob_top.height + 1)
+
+    bob_new_top = bob_api.get_top()
+    bob_new_balance = common.get_account_balance(bob_api)
+    
+    blocks_mined = bob_new_top.height - bob_top.height
+
+    # Since Bob had mined the block he is receiving the coinbase_reward
+    expected_balance = bob_balance.balance + coinbase_reward * blocks_mined
+    assert_equals(bob_new_balance.balance, expected_balance)
+
+    # ensure Alice balance had not changed
+    alice_balance = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+    print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
+            str(blocks_mined) + " blocks")
+    print("Bob's balance (with a coinbase reward) is now " + str(bob_new_balance.balance))
+    print("Alice's balance is now " + str(alice_balance.balance))
+    assert_equals(alice_balance.balance, alice_balance0.balance)
+    # stop node
+    common.stop_node(bob_node)
+    shutil.rmtree(root_dir)
+
+
 def make_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
     conf ='[{aecore, [{autostart, true},' + \
-                    ' {aec_pow_cuckoo, {"lean16", "-t 5", 16}}]}].' 
+                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
     f.write(conf)
     f.close()
     return sys_config

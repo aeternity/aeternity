@@ -5,9 +5,15 @@
 %% See the docs at https://github.com/Feuerlabs/exometer_core
 %% for information about how to create, update and read metrics
 [
- {[ae,epoch,aecore,mining,blocks_mined] , counter, []},
- {[ae,epoch,aecore,mining,retries]      , counter, []},
- {[ae,epoch,aecore,peers,count]         , gauge  , []},
- {[ae,epoch,aecore,peers,ping,success]  , counter, []},
- {[ae,epoch,aecore,peers,ping,failure]  , counter, []}
+ {[ae,epoch,aecore,mining,blocks_mined]      , counter     , []},
+ {[ae,epoch,aecore,mining,retries]           , counter     , []},
+ {[ae,epoch,aecore,mining,interval]          , histogram   , []},
+ {[ae,epoch,aecore,chain,height]             , gauge       , []},
+ {[ae,epoch,aecore,chain,top_change,interval], histogram   , []},
+ {[ae,epoch,aecore,chain]                    , chain_probe , []},
+ {[ae,epoch,aecore,peers,count]              , gauge       , []},
+ {[ae,epoch,aecore,peers,blocked]            , gauge       , []},
+ {[ae,epoch,aecore,peers,errored]            , gauge       , []},
+ {[ae,epoch,aecore,peers,ping,success]       , counter     , []},
+ {[ae,epoch,aecore,peers,ping,failure]       , counter     , []}
 ].

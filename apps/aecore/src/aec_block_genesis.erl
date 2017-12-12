@@ -15,7 +15,7 @@
 %%%   * This means that validation function attempting to check that
 %%%     there is at least a coinbase transaction in a block needs to
 %%%     have a special case for genesis.
-%%% * The hash values in it have special value i.e. all zeros.
+%%% * The hash values in it may have special values i.e. all zeros.
 %%%   * This means that validation function attempting to consider the
 %%%     hashes in a block needs to have a special case for genesis.
 %%% @end
@@ -23,48 +23,54 @@
 -module(aec_block_genesis).
 
 %% API
--export([genesis_header/0,
-         genesis_block_as_deserialized_from_network/0,
-         genesis_block/0]).
+-export([ genesis_header/0,
+          height/0,
+          genesis_block/0,
+          genesis_block/1,
+          populated_trees/0 ]).
 
 -include("common.hrl").
 -include("blocks.hrl").
 
+%% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->
-    #header{
-       version = ?GENESIS_VERSION,
-       height = ?GENESIS_HEIGHT,
-       prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-       txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
-       root_hash = <<0:?STATE_HASH_BYTES/unit:8>>,
-       target = ?HIGHEST_TARGET_SCI,
-       pow_evidence = no_value,
-       nonce = 0,
-       time = 0 %% Epoch.
-      }.
-
-genesis_block_as_deserialized_from_network() ->
-    H = genesis_header(),
-    #block{
-       version = H#header.version,
-       height = H#header.height,
-       prev_hash = H#header.prev_hash,
-       txs_hash = H#header.txs_hash,
-       root_hash = H#header.root_hash,
-       target = H#header.target,
-       pow_evidence = H#header.pow_evidence,
-       nonce = H#header.nonce,
-       time = H#header.time,
-       txs = [],
-       trees = _DummyTrees = #trees{}
-      }.
+    aec_blocks:to_header(genesis_block()).
 
 %% Returns the genesis block including the state trees.
 %%
 %% The current implementation of state trees causes a new Erlang term,
-%% representing the initial empty state trees, to be allocated in the
+%% representing the initial state trees, to be allocated in the
 %% heap memory of the calling process.
+%%
+%% Since preset accounts are being loaded from a file - please use with caution
 genesis_block() ->
-    B = genesis_block_as_deserialized_from_network(),
-    {ok, T} = aec_trees:all_trees_new(),
-    B#block{trees = T}.
+  genesis_block(aec_genesis_block_settings:preset_accounts()).
+
+genesis_block(PresetAccounts) ->
+    Trees = populated_trees(PresetAccounts),
+    #block{
+      version = ?GENESIS_VERSION,
+      height = ?GENESIS_HEIGHT,
+      prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+      txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
+      root_hash = aec_trees:all_trees_hash(Trees),
+      target = ?HIGHEST_TARGET_SCI,
+      pow_evidence = no_value,
+      nonce = 0,
+      time = 0, %% Epoch.
+      trees = Trees
+      }.
+
+populated_trees() ->
+    populated_trees(aec_genesis_block_settings:preset_accounts()).
+
+populated_trees(PresetAccounts) ->
+     {ok, Trees0} = aec_trees:all_trees_new(),    %% renaming required in aec_trees!
+     lists:foldl(fun({PubKey, Amount}, Ts) ->
+                       Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                       {ok, AccountTree} =  aec_accounts:put(Account, aec_trees:accounts(Ts)),
+                       aec_trees:set_accounts(Ts, AccountTree)
+                  end, Trees0, PresetAccounts).
+
+height() ->
+    ?GENESIS_HEIGHT.

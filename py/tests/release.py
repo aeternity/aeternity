@@ -8,6 +8,8 @@ import argparse
 import urllib3
 import shutil
 import pystache
+import logging
+from waiting import wait
 
 import swagger_client
 from swagger_client.rest import ApiException
@@ -17,7 +19,7 @@ from swagger_client.api_client import ApiClient
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
         "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args",
-        "sed -ibkp 's/{aec_pow_cuckoo, {\"lean30\", \"-t 5\", 30}}/{aec_pow_cuckoo, {\"lean16\", \"-t 5\", 16}}/g' ./releases/{{ version }}/sys.config"
+        "sed -ibkp 's/{aec_pow_cuckoo, {\"mean28s-generic\", \"-t 5\", 28}}/{aec_pow_cuckoo, {\"mean16s-generic\", \"-t 5\", 16}}/g' ./releases/{{ version }}/sys.config"
         ]
 # node's setup
 SETUP = {
@@ -28,7 +30,9 @@ SETUP = {
 {aecore,
  [
   {peers, ["http://localhost:9823/",
-           "http://localhost:9833/"]}
+           "http://localhost:9833/"]},
+  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
+  {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
@@ -50,7 +54,9 @@ SETUP = {
             "config": '''[
 {aecore,
  [
-  {peers, []}
+  {peers, []},
+  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
+  {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
@@ -72,7 +78,9 @@ SETUP = {
             "config": '''[
 {aecore,
  [
-  {peers, []}
+  {peers, []},
+  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
+  {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
@@ -89,6 +97,16 @@ SETUP = {
 '''
                 }
         }
+
+def node_is_online(api):
+    try:
+        top = api.get_top()
+        return top.height > -1
+    except Exception as e:
+        return False
+
+def wait_all_nodes_are_online(apis):
+    wait(lambda: all([node_is_online(api) for api in apis]), timeout_seconds=30, sleep_seconds=0.5)
 
 def executable(temp_dir):
     return os.path.join(temp_dir, "bin", "epoch")
@@ -111,7 +129,7 @@ def start_node(temp_dir):
 
 def read_argv(argv):
     parser = argparse.ArgumentParser(description='Integration test a potential release')
-    parser.add_argument('--maxheight', type=int, default=10,
+    parser.add_argument('--blocks', type=int, default=10,
                         help='Number of blocks to mine')
     parser.add_argument('--tarball', required=True, 
                         help='Release package tarball')
@@ -121,8 +139,8 @@ def read_argv(argv):
 
     args = parser.parse_args()
     tar_file_name = args.tarball
-    max_height = args.maxheight
-    return (tar_file_name, max_height, args.version)
+    blocks = args.blocks
+    return (tar_file_name, blocks, args.version)
 
 def tail_logs(temp_dir, log_name):
     n = 200 # last 200 lines
@@ -144,7 +162,8 @@ def setup_node(node, path, version):
     file_obj.close()
 
 def main(argv):
-    tar_file_name, max_height, version = read_argv(argv)
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    tar_file_name, blocks_to_mine, version = read_argv(argv)
     root_dir = tempfile.mkdtemp()
     temp_dir_dev1 = os.path.join(root_dir, "node1") 
     os.makedirs(temp_dir_dev1)
@@ -163,9 +182,14 @@ def main(argv):
     [setup_node(n, d, version) for n, d in zip(node_names, node_dirs)]
     [start_node(d) for d in node_dirs]
 
-    time.sleep(30)
+
     node_objs = [ExternalApi(ApiClient(host=SETUP[n]["host"])) for n in node_names]
-    height = 0
+
+    wait_all_nodes_are_online(node_objs)
+
+    top = node_objs[0].get_top()
+    height = top.height
+    max_height = blocks_to_mine + height
     test_failed = False
     try:
         print("Will mine till block " +  str(max_height))

@@ -9,19 +9,20 @@
          all_trees_hash/1,
          accounts/1,
          set_accounts/2,
-         new/0,
+         new_merkle_tree/0,
          get/2,
          get_with_proof/2,
          is_trees/1,
          put/3,
          root_hash/1,
-         verify_proof/4]).
+         verify_proof/4,
+         to_orddict/1]).
 
 -type tree() :: gb_merkle_trees:tree().
 
 -spec all_trees_new() -> {ok, trees()}.
 all_trees_new() ->
-    {ok, A} = new(),
+    {ok, A} = new_merkle_tree(),
     {ok, #trees{accounts = A}}.
 
 all_trees_hash(Trees) ->
@@ -31,7 +32,7 @@ all_trees_hash(Trees) ->
       {error, empty} -> <<0:?STATE_HASH_BYTES/unit:8>>
     end.
 
--spec accounts(trees()) -> tree().
+-spec accounts(trees()) -> tree() | undefined.
 accounts(Trees) ->
     Trees#trees.accounts.
 
@@ -39,8 +40,8 @@ accounts(Trees) ->
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
 
--spec new() -> {ok, tree()}.
-new() ->
+-spec new_merkle_tree() -> {ok, tree()}.
+new_merkle_tree() ->
     {ok, gb_merkle_trees:empty()}.
 
 get(Key, Tree) when is_binary(Key) ->
@@ -78,3 +79,7 @@ root_hash(Tree) ->
 
 verify_proof(Key, Value, RootHash, Proof) ->
     gb_merkle_trees:verify_merkle_proof(Key, Value, RootHash, Proof).
+
+-spec to_orddict(tree()) -> list({binary(), binary()}).
+to_orddict(Tree) ->
+    gb_merkle_trees:to_orddict(Tree).

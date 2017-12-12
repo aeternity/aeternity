@@ -12,7 +12,8 @@
 
 -define(TEST_MODULE, aec_pow).
 
--include("pow.hrl").
+-include("common.hrl").
+-include("blocks.hrl").
 
 conversion_test_() ->
     {setup,
@@ -163,29 +164,77 @@ conversion_test_() ->
        fun() ->
                %% More than 3 nonzero bytes
                Diff = ?TEST_MODULE:target_to_difficulty(16#1b0404cb),
-               ?debugFmt("Diff: ~p~n", [Diff]),
                ?assert(Diff > 70039839613066.1),
                ?assert(Diff < 70039839613066.2)
        end}
      ]
     }.
 
-recalc_test_() ->
+target_adj_test_() ->
     {setup,
-     fun setup/0,
-     fun teardown/1,
-     [{"Block building progressing twice as slow as expected, double target to make mining easier",
-       fun() ->
-               ExpectedTimeDiffBetweenBlocks = 500,
-               CurrentTimeDiffBetweenBlocks = 1000,
-               CurrentTarget = ?TEST_MODULE:integer_to_scientific(16#400000),
-               ExpectedTarget = ?TEST_MODULE:integer_to_scientific(16#800000),
-               ?assertEqual(ExpectedTarget,
-                            ?TEST_MODULE:recalculate_target(
-                               CurrentTarget, ExpectedTimeDiffBetweenBlocks, CurrentTimeDiffBetweenBlocks))
-       end}
-     ]
-    }.
+     fun setup_target/0,
+     fun teardown_target/1,
+     [{"With constant PoW capacity the target will stabilize (seed = " ++ integer_to_list(S) ++ ")",
+      fun() ->
+          Seed = {1, 1, S},
+          rand:seed(exs1024s, Seed),
+          PoWCapacity = 100,
+          TargetSpeed = 1 / 5, %% 1 block per 5 minutes
+          ExpectedDifficulty = PoWCapacity / TargetSpeed,
+          InitBlocks = [aec_test_utils:genesis_block()],
+          Chain = [Top | _] = mine_chain(InitBlocks, 100, PoWCapacity),
+          Difficulties = [ aec_blocks:difficulty(B) || B <- Chain ],
+          %% ?debugFmt("Difficulties: ~p", [Difficulties]),
+          Window = 20,
+          AvgDiffWindow = lists:sum(lists:sublist(Difficulties, Window)) / Window,
+          RateWindow = 50,
+          AvgRate = 60 * 1000 * RateWindow / (Top#block.time - (lists:nth(RateWindow + 1, Chain))#block.time),
+
+          ?assertMatch(N when 0.5 < N andalso N < 2.0, AvgDiffWindow/ExpectedDifficulty),
+          ?assertMatch(N when 0.75 < N andalso N < 1.25, AvgRate/TargetSpeed)
+
+      end} || S <- lists:seq(1, 10) ]
+     }.
+
+setup_target() ->
+    setup(),
+    meck:new(aec_txs_trees, [passthrough]),
+    meck:new(aec_conductor, [passthrough]),
+    meck:expect(aec_txs_trees, new, fun([]) -> {ok, undefined} end),
+    meck:expect(aec_txs_trees, root_hash, fun(undefined) -> {ok, <<>>} end).
+
+teardown_target(X) ->
+    meck:unload(aec_txs_trees),
+    meck:unload(aec_conductor),
+    teardown(X).
+
+mine_chain(Bs, 0, _) -> Bs;
+mine_chain(Bs, N, PC) ->
+    B = mining_step(Bs, PC),
+    mine_chain([B | Bs], N - 1, PC).
+
+%% PoWCapacity = number of solutions per minute
+mining_step(Blocks = [Top | _], PoWCapacity) ->
+    Block = aec_blocks:new(Top, [], Top#block.trees),
+    MiningTime = mining_time(Blocks, PoWCapacity),
+    {ok, NewBlock, _Nonce} =
+        aec_mining:adjust_target(Block#block{ time = Top#block.time + MiningTime },
+                                 [ aec_blocks:to_header(B) || B <- lists:sublist(Blocks, 10) ]),
+    NewBlock.
+
+mining_time([_], _) -> 1000000000;
+mining_time([Top | _], PC) ->
+    Attempts = mine(aec_blocks:difficulty(Top)),
+    round(Attempts / PC * 60 * 1000).
+
+mine(Difficulty) ->
+  mine(Difficulty, 1).
+
+mine(Difficulty, N) ->
+    case rand:uniform() * Difficulty < 1.0 of
+      true  -> N;
+      false -> mine(Difficulty, N + 1)
+    end.
 
 setup() ->
     application:start(crypto).

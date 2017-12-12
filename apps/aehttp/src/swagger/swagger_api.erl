@@ -20,6 +20,10 @@ request_params('GetAccountBalance') ->
         'pub_key'
     ];
 
+request_params('GetAccountsBalances') ->
+    [
+    ];
+
 request_params('GetBlockByHash') ->
     [
         'hash'
@@ -28,6 +32,10 @@ request_params('GetBlockByHash') ->
 request_params('GetBlockByHeight') ->
     [
         'height'
+    ];
+
+request_params('GetInfo') ->
+    [
     ];
 
 request_params('GetTop') ->
@@ -185,11 +193,15 @@ populate_request_params(OperationID, [FieldParams | T], Req0, ValidatorState, Mo
 
 populate_request_param(OperationID, Name, Req0, ValidatorState) ->
     #{rules := Rules, source := Source} = request_param_info(OperationID, Name),
-    {Value, Req} = get_value(Source, Name, Req0),
-    case prepare_param(Rules, Name, Value, ValidatorState) of
-        {ok, Result} -> {ok, Name, Result, Req};
-        {error, Reason} ->
-            {error, Reason, Req}
+    case get_value(Source, Name, Req0) of
+        {error, Reason, Req} ->
+            {error, Reason, Req};
+        {Value, Req} ->
+            case prepare_param(Rules, Name, Value, ValidatorState) of
+                {ok, Result} -> {ok, Name, Result, Req};
+                {error, Reason} ->
+                    {error, Reason, Req}
+            end
     end.
 
 -spec validate_response(
@@ -202,8 +214,13 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
 
 validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
     validate_response_body('Balance', 'Balance', Body, ValidatorState);
+validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
+    validate_response_body('AccountsBalances', 'AccountsBalances', Body, ValidatorState);
 
 validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
@@ -214,6 +231,9 @@ validate_response('GetBlockByHeight', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
 validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetInfo', 200, Body, ValidatorState) ->
+    validate_response_body('Info', 'Info', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
     validate_response_body('Top', 'Top', Body, ValidatorState);
@@ -409,11 +429,16 @@ validation_error(ViolatedRule, Name, Info) ->
     throw({wrong_param, Name, ViolatedRule, Info}).
 
 -spec get_value(body | qs_val | header | binding, Name :: any(), Req0 :: cowboy_req:req()) ->
-    {Value :: any(), Req :: cowboy_req:req()}.
+    {Value :: any(), Req :: cowboy_req:req()} | 
+    {error, Reason :: any(), Req :: cowboy_req:req()}.
 get_value(body, _Name, Req0) ->
     {ok, Body, Req} = cowboy_req:body(Req0),
-    Value = prepare_body(Body),
-    {Value, Req};
+    case prepare_body(Body) of
+        {error, Reason} ->
+            {error, Reason, Req};
+        Value ->
+            {Value, Req}
+    end;
 
 get_value(qs_val, Name, Req0) ->
     {QS, Req} = cowboy_req:qs_vals(Req0),
@@ -433,7 +458,13 @@ get_value(binding, Name, Req0) ->
 prepare_body(Body) ->
     case Body of
         <<"">> -> <<"">>;
-        _ -> jsx:decode(Body, [return_maps])
+        _ ->
+            try
+                jsx:decode(Body, [return_maps]) 
+            catch
+              error:_ ->
+                {error, {invalid_body, not_json, Body}}
+            end
     end.
 
 validate_with_schema(Body, Definition, ValidatorState) ->

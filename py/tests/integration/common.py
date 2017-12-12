@@ -17,6 +17,7 @@ from py.tests.swagger_client.api_client import ApiClient
 from py.tests.swagger_client.models.block import Block
 from py.tests.swagger_client.models.signed_tx import SignedTx
 from py.tests.swagger_client.models.coinbase_tx import CoinbaseTx
+from py.tests.swagger_client.models.balance import Balance 
 from py.tests import chain_downloader
 
 from nose.tools import assert_equals
@@ -115,3 +116,14 @@ def genesis_hash(api):
 
 def wait_until_height(api, height):
     wait(lambda: api.get_top().height >= height, timeout_seconds=30, sleep_seconds=0.25)
+
+def get_account_balance(api, pub_key=None):
+    balance = Balance(balance=0)
+    try:
+        if pub_key == None:
+            balance = api.get_account_balance()
+        else:
+            balance = api.get_account_balance(pub_key=pub_key)
+    except ApiException as e:
+        assert_equals(e.status, 404) # Alice has no account yet
+    return balance

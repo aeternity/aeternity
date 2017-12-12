@@ -3,7 +3,9 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2,
+         start_phase/3,
+         stop/1]).
 -export([check_env/0]).
 
 %%====================================================================
@@ -13,6 +15,9 @@
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     aecore_sup:start_link().
+
+start_phase(start_reporters, _StartType, _PhaseArgs) ->
+    aec_metrics:start_reporters().
 
 stop(_State) ->
     ok.
@@ -25,8 +30,8 @@ stop(_State) ->
 %% to relx.
 check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
-               {[<<"logging">>, <<"console">>] , fun set_console/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
+               {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
                {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]).
 
@@ -56,39 +61,6 @@ live_set_hwm(Hwm) ->
                || {lager_console_backend,_}
                       <- gen_event:which_handlers(Sink)]
       end, lager:list_all_sinks()).
-
-set_console(Level0) when is_binary(Level0) ->
-    Level = binary_to_existing_atom(Level0, latin1),
-    case application:get_env(lager, handlers) of
-        {ok, Handlers} ->
-            Handlers1 = set_console_loglevel(Handlers, Level),
-            application:set_env(lager, handlers, Handlers1);
-        undefined when Level =:= none ->
-            application:set_env(lager, handlers,
-                                [{lager_console_backend, [{level, Level}]}]);
-        _ -> ignore
-    end,
-    case application:get_env(lager, extra_sinks) of
-        {ok, Sinks} ->
-            Sinks1 = set_console_loglevel(Sinks, Level),
-            application:set_env(lager, extra_sinks, Sinks1);
-        undefined ->
-            ignore
-    end,
-    if_running(lager, fun() -> live_set_console(Level) end).
-
-live_set_console(Level) ->
-    catch lager:set_loglevel(lager_console_backend, Level).
-
-set_console_loglevel({lager_console_backend, Opts}, Level) ->
-    {lager_console_backend, lists:keystore(level, 1, Opts, {level, Level})};
-set_console_loglevel(T, Level) when is_tuple(T) ->
-    list_to_tuple([set_console_loglevel(E, Level)
-                   || E <- tuple_to_list(T)]);
-set_console_loglevel(L, Level) when is_list(L) ->
-    [set_console_loglevel(E, Level) || E <- L];
-set_console_loglevel(E, _) ->
-    E.
 
 if_running(App, F) ->
     case lists:keymember(App, 1, application:which_applications()) of

@@ -1,25 +1,23 @@
 -module(aec_governance).
 
 %% API
--export([recalculate_difficulty_frequency/0,
+-export([blocks_to_check_difficulty_count/0,
          expected_block_mine_rate/0,
          block_mine_reward/0,
          max_txs_in_block/0,
          minimum_tx_fee/0]).
 
--define(RECALCULATE_DIFFICULTY_FREQUENCY, 10).
--define(EXPECTED_BLOCK_MINE_RATE, 300). %% 60secs * 5 = 300secs
+-define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
+-define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
 -define(BLOCK_MINE_REWARD, 10).
 
 
-recalculate_difficulty_frequency() ->
-    %% Between how many blocks difficulty should be calculated.
-    %% Returned value is # of blocks.
-    ?RECALCULATE_DIFFICULTY_FREQUENCY.
+blocks_to_check_difficulty_count() ->
+    ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.
 
 expected_block_mine_rate() ->
-    %% Returned in seconds.
-    ?EXPECTED_BLOCK_MINE_RATE.
+    application:get_env(aecore, expected_mine_rate,
+                        ?EXPECTED_BLOCK_MINE_RATE).
 
 block_mine_reward() ->
     ?BLOCK_MINE_REWARD.

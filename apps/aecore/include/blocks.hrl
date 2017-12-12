@@ -1,9 +1,9 @@
 -include("trees.hrl").
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 1).
+-define(PROTOCOL_VERSION, 2).
 
--define(GENESIS_VERSION, 1).
+-define(GENESIS_VERSION, 2).
 -define(GENESIS_HEIGHT, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).
@@ -46,6 +46,5 @@
           pow_evidence = no_value :: aec_pow:pow_evidence()}).
 -type(header() :: #header{}).
 
-%% TODO: make deterministic and based on the canonical serialization of
-%% the header.
 -type(header_binary() :: binary()).
+-type(deterministic_header_binary() :: binary()).

@@ -27,6 +27,10 @@ PIP = $(PYTHON_BIN)/pip
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
+all:	local-build
+
+console:
+	@./rebar3 shell --config config/sys.config --sname epoch
 
 local-build: KIND=local
 local-build: internal-build
@@ -39,6 +43,9 @@ local-stop: internal-stop
 
 local-attach: KIND=local
 local-attach: internal-attach
+
+prod-package: KIND=prod
+prod-package: internal-package
 
 prod-build: KIND=prod
 prod-build: internal-build
@@ -106,11 +113,15 @@ dev3-attach: internal-attach
 dev3-clean: KIND=dev3
 dev3-clean: internal-clean
 
+dialyzer-install:
+	@./rebar3 tree
+	@./rebar3 dialyzer -u true -s false
+
 dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 do ct $(CT_TEST_FLAGS)
+	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
@@ -125,7 +136,7 @@ python-tests:
 	@$(NOSE) --nocapture -c $(PYTHON_TESTS)/nose.cfg $(PYTHON_TESTS)
 
 python-ws-test:
-	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3014 --log INFO --handler ws_logic
+	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3114 --log INFO --handler ws_logic
 
 python-integration-tests:
 	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/
@@ -134,7 +145,7 @@ python-single-integration-test:
 	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/test_$(TEST_NAME).py
 
 release-integration-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --maxheight=10 --version=$(VER)
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --blocks=100 --version=$(VER)
 
 python-download-chain:
 	@$(PYTHON) $(PYTHON_TESTS)/chain_downloader.py --host=localhost --port=3013 --export_file=$(PYTHON_TESTS)/integration/data/bchain.txt
@@ -163,6 +174,9 @@ killall:
 clean:
 	@./rebar3 clean
 
+distclean: clean
+	( cd apps/aecuckoo && $(MAKE) distclean; )
+
 multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
 	@for x in dev2 dev3; do \
@@ -176,6 +190,9 @@ multi-build: dev1-build
 #
 
 .SECONDEXPANSION:
+
+internal-package: $$(KIND)
+	@./rebar3 as $(KIND) tar
 
 internal-build: $$(KIND)
 	@./rebar3 as $(KIND) release
@@ -197,8 +214,9 @@ internal-clean: $$(KIND)
 
 
 .PHONY: \
+	all console \
 	local-build local-start local-stop local-attach \
-	prod-build prod-start prod-stop prod-attach \
+	prod-build prod-start prod-stop prod-attach prod-package \
 	multi-build, multi-start, multi-stop, multi-clean \
 	dev1-start, dev1-stop, dev1-attach, dev1-clean \
 	dev2-start, dev2-stop, dev2-attach, dev2-clean \
@@ -206,3 +224,4 @@ internal-clean: $$(KIND)
 	dialyzer \
 	test \
 	kill killall \
+	clean distclean

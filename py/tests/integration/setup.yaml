@@ -73,6 +73,22 @@ tests: # test specific settings
         alice: dev1
       blocks_to_mine: 7
       spend_tx:
-        bob_pubkey: bob_address
+        bob_pubkey: Ym9iX2FkZHJlc3M= 
         amount: 42
         fee: 2
+    test_not_enough_tokens:
+    # Bob should not be able to send more tokens than he has
+    #
+    # Let's say Bob has 100 tokens. He should not be able to send more than
+    # 100 tokens to Alice.
+    #
+    # If there's an incoming but unconfirmed deposit into Bob's account then Bob
+    # should not be able to use the incoming tokens until the spend transaction
+    # they are in is confirmed.
+      nodes:
+        bob: dev1
+      blocks_to_mine: 3
+      spend_tx:
+        alice_pubkey: YWxpY2VfYWRkcmVzcw==
+        amount: 1000
+        fee: 20
