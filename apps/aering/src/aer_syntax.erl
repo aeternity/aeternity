@@ -37,7 +37,7 @@
 -type letbind()
     :: {letval, ann(), id(), type(), expr()}
      | {letfun, ann(), id(), [arg()], type(), expr()}
-     | {letrec, ann(), [decl()]}.
+     | {letrec, ann(), [letbind()]}.
 
 -type arg() :: {arg, ann(), id(), type()}.
 
