@@ -8,6 +8,8 @@
 
 -module(aer_syntax).
 
+-export([get_ann/1, get_ann/2, get_ann/3]).
+
 -export_type([ann_line/0, ann_origin/0, ann_format/0, ann/0]).
 -export_type([name/0, id/0, con/0, tvar/0, op/0]).
 -export_type([decl/0, letbind/0, typedef/0]).
@@ -96,3 +98,10 @@
              | con()
              | id().
 
+get_ann(Node) -> element(2, Node).
+
+get_ann(Key, Node) ->
+    proplists:get_value(Key, get_ann(Node)).
+
+get_ann(Key, Node, Default) ->
+    proplists:get_value(Key, get_ann(Node), Default).
