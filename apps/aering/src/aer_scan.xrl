@@ -38,9 +38,6 @@ Rules.
 {   : {token, {'{', TokenLine}}.
 }   : {token, {'}', TokenLine}}.
 \?  : {token, {'?', TokenLine}}.
-!   : {token, {'!', TokenLine}}.
-&&  : {token, {'&&', TokenLine}}.
-||  : {token, {'||', TokenLine}}.
 
 %% Keywords
 contract   : {token, {contract, TokenLine}}.
@@ -51,6 +48,7 @@ switch     : {token, {switch, TokenLine}}.
 type       : {token, {type, TokenLine}}.
 if         : {token, {'if', TokenLine}}.
 else       : {token, {else, TokenLine}}.
+mutable    : {token, {mutable, TokenLine}}.
 true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 
 %% Operators
@@ -70,6 +68,10 @@ mod  : {token, {mod, TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 ->   : {token, {'->', TokenLine}}.
 =>   : {token, {'=>', TokenLine}}.
+&&   : {token, {'&&', TokenLine}}.
+||   : {token, {'||', TokenLine}}.
+\:\: : {token, {'::', TokenLine}}.
+!    : {token, {'!', TokenLine}}.
 
 %% Identifiers and literals
 {QID}       : {token, {qid, TokenLine, string:tokens(TokenChars, ".")}}.
