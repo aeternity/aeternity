@@ -145,12 +145,9 @@ get_mining_workers() ->
 %%%===================================================================
 %%% State trees API
 
--spec get_account(pubkey()) -> none | {value, account()}.
+-spec get_account(pubkey()) -> 'no_state_trees' | 'none' | {'value', account()}.
 get_account(Pubkey) ->
-    LastBlock = top(),
-    Trees = aec_blocks:trees(LastBlock),
-    AccountsTree = aec_trees:accounts(Trees),
-    aec_accounts_trees:lookup(Pubkey, AccountsTree).
+    gen_server:call(?SERVER, {get_account, Pubkey}).
 
 -spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
 get_all_accounts_balances() ->
@@ -276,6 +273,8 @@ handle_call(get_top_30_blocks_time_summary,_From, State) ->
     {reply, aec_conductor_chain:get_top_30_blocks_time_summary(State), State};
 handle_call(get_top_block,_From, State) ->
     {reply, aec_conductor_chain:get_top_block(State), State};
+handle_call({get_account, Pubkey},_From, State) ->
+    {reply, aec_conductor_chain:get_account(Pubkey, State), State};
 handle_call(get_top_block_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_block_hash(State), State};
 handle_call(get_top_header,_From, State) ->

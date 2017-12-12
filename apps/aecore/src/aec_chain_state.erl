@@ -28,6 +28,7 @@
         , new/1
         , new_from_persistance/2
         , top_block/1
+        , account/2
         , top_block_hash/1
         , top_header/1
         , top_header_hash/1
@@ -113,6 +114,15 @@ top_block_hash(?match_state(top_block_hash := X)) ->
 top_block(?match_state(top_block_hash := undefined)) -> undefined;
 top_block(?match_state(top_block_hash := X) = State) ->
     export_block(blocks_db_get(X, State), State).
+
+-spec account(pubkey(), state()) -> 'no_state_trees' | 'none' | {value, account()}.
+account(_, ?match_state(top_block_hash := undefined)) -> undefined;
+account(Pubkey, ?match_state(top_block_hash := X) = State) ->
+    case state_db_find(X, State) of
+        {ok, Trees} ->
+            aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
+        error -> no_state_trees
+    end.
 
 -spec get_n_headers_from_top(non_neg_integer(), state()) ->
                           {'ok', list(#header{})} | {error, atom()}.

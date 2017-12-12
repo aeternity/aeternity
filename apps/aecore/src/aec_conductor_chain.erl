@@ -24,6 +24,7 @@
         , get_missing_block_hashes/1
         , get_top_30_blocks_time_summary/1
         , get_top_block/1
+        , get_account/2
         , get_top_block_hash/1
         , get_top_header/1
         , get_top_header_hash/1
@@ -101,6 +102,9 @@ get_top_30_blocks_time_summary(State) ->
 
 get_top_block(State) ->
     aec_chain_state:top_block(State#state.chain_state).
+
+get_account(Pubkey, State) ->
+    aec_chain_state:account(Pubkey, State#state.chain_state).
 
 get_top_block_hash(State) ->
     aec_chain_state:top_block_hash(State#state.chain_state).
