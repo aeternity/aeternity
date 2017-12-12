@@ -277,7 +277,7 @@ infix(L, Op, R) -> set_ann(format, infix, {app, get_ann(L), Op, [L, R]}).
 prefix(Op, E)   -> set_ann(format, prefix, {app, get_ann(Op), Op, [E]}).
 
 type_wildcard() ->
-  {'_', [{origin, system}]}.
+  {id, [{origin, system}], "_"}.
 
 tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types) -> {tuple_t, Ann, Types}.
