@@ -78,8 +78,8 @@ Rootsymbol 'File'.
 'Constructors1' -> 'Constructor'                     : ['$1'].
 'Constructors1' -> 'Constructor' '|' 'Constructors1' : ['$1' | '$3'].
 
-'Constructor' -> con                    : {con, get_ann('$1'), get_value('$1'), []}.
-'Constructor' -> con '(' 'TypeArgs' ')' : {con, get_ann('$1'), get_value('$1'), '$3'}.
+'Constructor' -> con                    : {constr_t, get_ann('$1'), token('$1'), []}.
+'Constructor' -> con '(' 'TypeArgs' ')' : {constr_t, get_ann('$1'), token('$1'), '$3'}.
 
 'FieldTypes' -> 'FieldType' : ['$1'].
 'FieldTypes' -> 'FieldType' ',' 'FieldTypes' : ['$1' | '$3'].
