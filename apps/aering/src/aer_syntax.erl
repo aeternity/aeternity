@@ -51,8 +51,7 @@
 -type type() :: {fun_t, ann(), [type()], type()}
               | {app_t, ann(), type(), [type()]}
               | {tuple_t, ann(), [type()]}
-              | {con_t, ann(), name()}
-              | {var_t, ann(), name()}.
+              | id() | tvar().
 
 -type constant()
     :: {int, ann(), integer()}
