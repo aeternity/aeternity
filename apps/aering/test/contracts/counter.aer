@@ -1,13 +1,25 @@
-contract counter
 
-export get, tick
+contract type Counter = {
+  type state;
+  let init : unit => state;
+  let get  : unit => int;
+  let tick : unit => unit;
+};
 
-(* How to do state initialisation? *)
-fun init () = {state = 0}
+contract Counter = {
 
-const fun get () = @state
+  type state = int;
 
-fun tick () = {state = inc @state}
+  let init() = 0;
 
-pure fun inc x = x + 1
+  let get() = {
+    let s = state();
+    (s, s)
+  };
+
+  let tick() = {
+    let s = state();
+    ((), s + 1)
+  };
+};
 
