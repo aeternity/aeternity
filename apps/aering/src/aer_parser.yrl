@@ -128,8 +128,8 @@ Rootsymbol 'File'.
 
 'Type500' -> 'TypeAtom' : '$1'.
 
-'TypeAtom' -> id   : {con_t, get_ann('$1'), get_value('$1')}.
-'TypeAtom' -> tvar : {var_t, get_ann('$1'), get_value('$1')}.
+'TypeAtom' -> id   : token('$1').
+'TypeAtom' -> tvar : token('$1').
 'TypeAtom' -> '(' 'TypeArgs' ')' : tuple_t(get_ann('$1'), '$2').
 
 'TypeArgs' -> 'Type' ',' 'TypeArgs' : ['$1' | '$3'].
