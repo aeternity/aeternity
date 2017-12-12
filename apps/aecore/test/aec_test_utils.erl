@@ -20,6 +20,9 @@
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         , gen_block_chain/1
+        , gen_block_chain/2
+        , genesis_block/0
+        , preset_accounts/0
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
@@ -39,6 +42,11 @@
 -else.
 -define(ifDebugFmt(Str, Args), ok).
 -endif.
+
+-define(PRESET_ACCOUNTS, [{<<"my_public_key">>, 100}]).
+
+preset_accounts() ->
+  ?PRESET_ACCOUNTS.
 
 mock_time() ->
     meck:new(aeu_time, [passthrough]),
@@ -127,19 +135,26 @@ unmock_block_target_validation() ->
     meck:unload(aec_target).
 
 
-%% Generic blockchain with only coinbase transactions
-gen_block_chain(Length) when Length > 0 ->
-    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
-    gen_block_chain(Length, MinerAccount, []).
+genesis_block() ->
+    aec_block_genesis:genesis_block(?PRESET_ACCOUNTS).
 
-gen_block_chain(0,_MinerAccount, Acc) -> lists:reverse(Acc);
-gen_block_chain(N, MinerAccount, []) ->
-    gen_block_chain(N - 1, MinerAccount, [aec_block_genesis:genesis_block()]);
-gen_block_chain(N, MinerAccount, [PreviousBlock|_] = Acc) ->
+%% Generic blockchain with only coinbase transactions
+gen_block_chain(Length) ->
+    gen_block_chain(Length, ?PRESET_ACCOUNTS).
+  
+gen_block_chain(Length, PresetAccounts) when Length > 0 ->
+    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
+    gen_block_chain(Length, MinerAccount, PresetAccounts, []).
+
+
+gen_block_chain(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
+gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
+    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [aec_block_genesis:genesis_block(PresetAccounts)]);
+gen_block_chain(N, MinerAccount, PresetAccounts, [PreviousBlock|_] = Acc) ->
     Trees = aec_blocks:trees(PreviousBlock),
     Txs = [signed_coinbase_tx(MinerAccount)],
     B = aec_blocks:new(PreviousBlock, Txs, Trees),
-    gen_block_chain(N - 1, MinerAccount, [B|Acc]).
+    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [B|Acc]).
 
 extend_block_chain(PrevBlock, Data) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
@@ -165,6 +180,7 @@ signed_coinbase_tx() ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
     signed_coinbase_tx(MinerAccount).
 
+%% In order to find the secret key to sign with, we use the aec_key process
 signed_coinbase_tx(Account) ->
     {ok, Tx} = aec_coinbase_tx:new(#{account => Account}),
     {ok, STx} = aec_keys:sign(Tx),
