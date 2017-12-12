@@ -200,8 +200,8 @@ setup_target() ->
     setup(),
     meck:new(aec_txs_trees, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
-    meck:expect(aec_txs_trees, new, fun([]) -> {ok, undefined} end),
-    meck:expect(aec_txs_trees, root_hash, fun(undefined) -> {ok, <<>>} end).
+    meck:expect(aec_txs_trees, from_txs, fun([]) -> fake_txs_tree end),
+    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, <<>>} end).
 
 teardown_target(X) ->
     meck:unload(aec_txs_trees),

@@ -164,7 +164,7 @@ setup(PoWMod) ->
                             183,186,62,21,253,155,101,132,121,17,72,89,101,
                             145,206>>]},
     Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
-    meck:expect(aec_trees, all_trees_hash, 1, <<>>),
+    meck:expect(aec_trees, hash, 1, <<>>),
     meck:expect(aec_tx, filter_out_invalid_signatures, fun(X) -> X end),
     meck:expect(aec_tx, apply_signed, 3, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),

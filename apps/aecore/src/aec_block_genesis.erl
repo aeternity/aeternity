@@ -53,7 +53,7 @@ genesis_block(PresetAccounts) ->
       height = ?GENESIS_HEIGHT,
       prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
       txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
-      root_hash = aec_trees:all_trees_hash(Trees),
+      root_hash = aec_trees:hash(Trees),
       target = ?HIGHEST_TARGET_SCI,
       pow_evidence = no_value,
       nonce = 0,
@@ -65,7 +65,7 @@ populated_trees() ->
     populated_trees(aec_genesis_block_settings:preset_accounts()).
 
 populated_trees(PresetAccounts) ->
-     {ok, Trees0} = aec_trees:all_trees_new(),    %% renaming required in aec_trees!
+     {ok, Trees0} = aec_trees:new(),
      lists:foldl(fun({PubKey, Amount}, Ts) ->
                        Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
                        {ok, AccountTree} =  aec_accounts:put(Account, aec_trees:accounts(Ts)),

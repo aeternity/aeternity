@@ -1,5 +1,5 @@
 -record(trees, {
-          accounts :: aec_trees:tree()}).
+          accounts :: undefined | aec_accounts:tree()}).
 -type(trees() :: #trees{}).
 
 %% Placeholder to define state Merkle trees

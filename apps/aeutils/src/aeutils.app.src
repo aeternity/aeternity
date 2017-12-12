@@ -9,7 +9,8 @@
     gproc,
     jobs,
     exometer_core,
-    yamerl
+    yamerl,
+    gb_merkle_trees
    ]},
   {env,[
         {'$setup_hooks',
