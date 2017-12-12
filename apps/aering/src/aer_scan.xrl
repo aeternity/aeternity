@@ -9,17 +9,21 @@
 Definitions.
 DIGIT    = [0-9]
 HEXDIGIT = [0-9a-fA-F]
-LOWER    = [a-z]
+LOWER    = [a-z_]
 UPPER    = [A-Z]
-ID       = {LOWER}[a-zA-Z0-9_]*
 CON      = {UPPER}[a-zA-Z0-9_]*
 INT      = {DIGIT}+
 HEX      = 0x{HEXDIGIT}+
 HASH     = #{HEXDIGIT}+
 WS       = [\000-\s]
+ID       = {LOWER}[a-zA-Z0-9_']*
+TVAR     = '{ID}
+QID      = ({CON}\.)+{ID}
+QCON     = ({CON}\.)+{CON}
 STRINGTEXT = ([^\"\\]|(\\.))
 
-Rules. %% "
+Rules.
+%% "
 
 %% Symbols
 ,   : {token, {',', TokenLine}}.
@@ -33,21 +37,20 @@ Rules. %% "
 \]  : {token, {']', TokenLine}}.
 {   : {token, {'{', TokenLine}}.
 }   : {token, {'}', TokenLine}}.
+\?  : {token, {'?', TokenLine}}.
+!   : {token, {'!', TokenLine}}.
+&&  : {token, {'&&', TokenLine}}.
+||  : {token, {'||', TokenLine}}.
 
 %% Keywords
-const      : {token, {const, TokenLine}}.
 contract   : {token, {contract, TokenLine}}.
-export     : {token, {export, TokenLine}}.
-fn         : {token, {fn, TokenLine}}.
-fun        : {token, {'fun', TokenLine}}.
 import     : {token, {import, TokenLine}}.
-in         : {token, {in, TokenLine}}.
 let        : {token, {'let', TokenLine}}.
-match      : {token, {match, TokenLine}}.
-pure       : {token, {pure, TokenLine}}.
+rec        : {token, {rec, TokenLine}}.
+switch     : {token, {switch, TokenLine}}.
 type       : {token, {type, TokenLine}}.
-val        : {token, {val, TokenLine}}.
-with       : {token, {with, TokenLine}}.
+if         : {token, {'if', TokenLine}}.
+else       : {token, {else, TokenLine}}.
 true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 
 %% Operators
@@ -69,7 +72,10 @@ mod  : {token, {mod, TokenLine}}.
 =>   : {token, {'=>', TokenLine}}.
 
 %% Identifiers and literals
+{QID}       : {token, {qid, TokenLine, string:tokens(TokenChars, ".")}}.
+{QCON}      : {token, {qcon, TokenLine, string:tokens(TokenChars, ".")}}.
 {ID}        : {token, {id, TokenLine, TokenChars}}.
+{TVAR}      : {token, {tvar, TokenLine, TokenChars}}.
 _           : {token, {'_', TokenLine}}.
 {CON}       : {token, {con, TokenLine, TokenChars}}.
 @{ID}       : {token, {param, TokenLine, lists:nthtail(1, TokenChars)}}.
@@ -82,8 +88,9 @@ _           : {token, {'_', TokenLine}}.
 %% Whitespace ignore
 {WS} : skip_token.
 
-%% Comments (TODO: nested comments, line comments)
-\(\*.*\*\) : skip_token.
+%% Comments (TODO: nested comments)
+\/\/.*     : skip_token.
+\/\*.*\*\/ : skip_token.
 
 . : {error, "Unexpected token: " ++ TokenChars}.
 

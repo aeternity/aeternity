@@ -7,45 +7,48 @@
 %%%-------------------------------------------------------------------
 
 -type line() :: integer().
+-type ann() :: [{line, line()}].
 
 -type aer_constant()
-    :: {int, line(), integer()}
-     | {bool, line(), true | false}
-     | {hash, line(), binary()}
-     | {string, line(), binary()}.
+    :: {int, ann(), integer()}
+     | {bool, ann(), true | false}
+     | {hash, ann(), binary()}
+     | {string, ann(), binary()}.
 
 -type aer_name() :: string().
 
--type aer_id() :: {id, line(), aer_name()}
-                | {param, line(), aer_name()}.    %% implicit parameter (like @state or @balance)
+-type aer_id() :: {id, ann(), aer_name()}
+                | {param, ann(), aer_name()}.    %% implicit parameter (like @state or @balance)
 
--type aer_op() :: '+' | '-' | '*' | '/' | '%'.
+-type aer_op()   :: '+' | '-' | '*' | '/' | '%' | '++' | '<' | '>' | '=<' | '>=' | '==' | '!='.
+-type aer_unop() :: '!'.
 
 -type aer_modifier() :: pure | const.
 
 -type aer_field_assign()
-    :: {assign, line(), aer_id(), aer_exp()}.
+    :: {assign, ann(), aer_id(), aer_exp()}.
 
 -type aer_exp()
     :: aer_constant()
-     | {app, line(), aer_exp(), aer_exp()}
-     | {infix, line(), aer_exp(), aer_op(), aer_exp()}
-     | {record, line(), [aer_field_assign()]}
-     | {record_sel, line(), aer_exp(), aer_id()}
-     | {list, line(), [aer_exp()]}
-     | {'let', line(), aer_id(), aer_exp(), aer_exp()}
-     | {'if', line(), aer_exp(), aer_exp(), aer_exp()}.
+     | {app, ann(), aer_exp(), aer_exp()}
+     | {infix, ann(), aer_exp(), aer_op(), aer_exp()}
+     | {unop, ann(), aer_unop(), aer_exp()}
+     | {record, ann(), [aer_field_assign()]}
+     | {record_sel, ann(), aer_exp(), aer_id()}
+     | {list, ann(), [aer_exp()]}
+     | {'let', ann(), aer_id(), aer_exp(), aer_exp()}
+     | {'if', ann(), aer_exp(), aer_exp(), aer_exp()}.
 
 -type aer_pat()
     :: aer_id()
-     | {'_', line()}
-     | {unit, line()}.
+     | {'_', ann()}
+     | {unit, ann()}.
 
 -type aer_dec()
-    :: {'fun', line(), [aer_modifier()], aer_id(), [aer_pat()], aer_exp()}.
+    :: {'fun', ann(), [aer_modifier()], aer_id(), [aer_pat()], aer_exp()}.
 
 -type aer_export() :: [aer_id()].
 
 -type aer_contract()
-    :: {contract, line(), aer_name(), [aer_export()], [aer_dec()]}.
+    :: {contract, ann(), aer_name(), [aer_export()], [aer_dec()]}.
 
