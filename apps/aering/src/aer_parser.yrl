@@ -103,7 +103,7 @@ Rootsymbol 'File'.
 'LetDef' -> id 'Args'            '=' 'Expr' : {letfun, get_ann('$1'), token('$1'), '$2', type_wildcard(), '$4'}.
 
 %% Argument lists
-'Args' -> '(' 'Args1' ')' : ['$2'].
+'Args' -> '(' 'Args1' ')' : '$2'.
 'Args' -> '(' ')'         : [].
 
 'Args1' -> 'Arg'             : ['$1'].
