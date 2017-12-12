@@ -240,13 +240,15 @@ Rootsymbol 'File'.
 'MulOp' -> 'mod' : token('$1').
 
 Erlang code.
--include("aering_ast.hrl").
 
 -ignore_xref([format_error/1, parse_and_scan/1]).
 
 ret_err(Line, Fmt) -> ret_err(Line, Fmt, []).
 ret_err(Line, Fmt, Args) ->
   return_error(Line, lists:flatten(io_lib:format(Fmt, Args))).
+
+-type ann()      :: aer_syntax:ann().
+-type ann_line() :: aer_syntax:ann_line().
 
 -spec line_ann(ann_line()) -> ann().
 line_ann(Line) -> [{line, Line}].
