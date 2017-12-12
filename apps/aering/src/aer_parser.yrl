@@ -84,8 +84,8 @@ Rootsymbol 'File'.
 'FieldTypes' -> 'FieldType' : ['$1'].
 'FieldTypes' -> 'FieldType' ',' 'FieldTypes' : ['$1' | '$3'].
 
-'FieldType' -> mutable id ':' 'Type' : {field_t, get_value('$1'), mutable, token('$2'), '$3'}.
-'FieldType' ->         id ':' 'Type' : {field_t, get_value('$1'), immutable, token('$1'), '$3'}.
+'FieldType' -> mutable id ':' 'Type' : {field_t, get_ann('$1'), mutable, token('$2'), '$4'}.
+'FieldType' ->         id ':' 'Type' : {field_t, get_ann('$1'), immutable, token('$1'), '$3'}.
 
 %% Function declarations
 'Decl' -> 'let' id ':' 'Type' : {fun_decl, get_ann('$1'), token('$2'), '$4'}.
@@ -107,7 +107,7 @@ Rootsymbol 'File'.
 'Args' -> '(' ')'         : [].
 
 'Args1' -> 'Arg'             : ['$1'].
-'Args1' -> 'Arg' ',' 'Args1' : ['$1' | '$2'].
+'Args1' -> 'Arg' ',' 'Args1' : ['$1' | '$3'].
 
 'Arg' -> id            : {arg, get_ann('$1'), token('$1'), type_wildcard()}.
 'Arg' -> id ':' 'Type' : {arg, get_ann('$1'), token('$1'), '$3'}.
