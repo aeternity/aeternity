@@ -46,7 +46,7 @@
 
 -type field_t() :: {field_t, ann(), mutable | immutable, id(), type()}.
 
--type constructor_t() :: {con, ann(), name(), [type()]}.
+-type constructor_t() :: {constr_t, ann(), con(), [type()]}.
 
 -type type() :: {fun_t, ann(), [type()], type()}
               | {app_t, ann(), type(), [type()]}
