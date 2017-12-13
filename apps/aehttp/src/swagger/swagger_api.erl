@@ -24,6 +24,10 @@ request_params('GetAccountsBalances') ->
     [
     ];
 
+request_params('GetActiveRegisteredOracles') ->
+    [
+    ];
+
 request_params('GetBlockByHash') ->
     [
         'hash'
@@ -36,6 +40,11 @@ request_params('GetBlockByHeight') ->
 
 request_params('GetInfo') ->
     [
+    ];
+
+request_params('GetOracleQuestions') ->
+    [
+        'oracle_pub_key'
     ];
 
 request_params('GetTop') ->
@@ -56,6 +65,16 @@ request_params('PostBlock') ->
         'Block'
     ];
 
+request_params('PostOracleSubscribe') ->
+    [
+        'OracleSubscribe'
+    ];
+
+request_params('PostOracleUnsubscribe') ->
+    [
+        'OracleSubscribe'
+    ];
+
 request_params('PostTx') ->
     [
         'Tx'
@@ -64,6 +83,21 @@ request_params('PostTx') ->
 
 request_params('GetPubKey') ->
     [
+    ];
+
+request_params('OracleQueryTx') ->
+    [
+        'OracleQueryTx'
+    ];
+
+request_params('OracleRegisterTx') ->
+    [
+        'OracleRegisterTx'
+    ];
+
+request_params('OracleResponseTx') ->
+    [
+        'OracleResponseTx'
     ];
 
 request_params('PostSpendTx') ->
@@ -128,6 +162,15 @@ request_param_info('GetBlockByHeight', 'height') ->
         ]
     };
 
+request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
 request_param_info('Ping', 'Ping') ->
     #{
         source =>   body,
@@ -146,6 +189,24 @@ request_param_info('PostBlock', 'Block') ->
         ]
     };
 
+request_param_info('PostOracleSubscribe', 'OracleSubscribe') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleUnsubscribe', 'OracleSubscribe') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
 request_param_info('PostTx', 'Tx') ->
     #{
         source =>   body,
@@ -155,6 +216,33 @@ request_param_info('PostTx', 'Tx') ->
         ]
     };
 
+
+request_param_info('OracleQueryTx', 'OracleQueryTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('OracleRegisterTx', 'OracleRegisterTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('OracleResponseTx', 'OracleResponseTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
 
 request_param_info('PostSpendTx', 'SpendTx') ->
     #{
@@ -222,6 +310,9 @@ validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
 validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
     validate_response_body('AccountsBalances', 'AccountsBalances', Body, ValidatorState);
 
+validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
+    validate_response_body('RegisteredOracles', 'RegisteredOracles', Body, ValidatorState);
+
 validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
 validate_response('GetBlockByHash', 404, Body, ValidatorState) ->
@@ -234,6 +325,11 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
+
+validate_response('GetOracleQuestions', 200, Body, ValidatorState) ->
+    validate_response_body('OracleQuestions', 'OracleQuestions', Body, ValidatorState);
+validate_response('GetOracleQuestions', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
     validate_response_body('Top', 'Top', Body, ValidatorState);
@@ -251,11 +347,36 @@ validate_response('PostBlock', 200, Body, ValidatorState) ->
 validate_response('PostBlock', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('PostOracleSubscribe', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleSubscribe', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleUnsubscribe', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleUnsubscribe', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 
 
 validate_response('GetPubKey', 200, Body, ValidatorState) ->
     validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
 validate_response('GetPubKey', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('OracleQueryTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleInteractionId', 'OracleInteractionId', Body, ValidatorState);
+validate_response('OracleQueryTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('OracleRegisterTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('OracleRegisterTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('OracleResponseTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('OracleResponseTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->

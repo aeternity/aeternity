@@ -20,6 +20,7 @@
 
 %% API - subset of OTP `gb_trees` module
 -export([empty/0,
+         delete/2,
          get/2,
          lookup/2,
          enter/3,
@@ -59,6 +60,9 @@
 -spec empty() -> mtree().
 empty() ->
     gb_merkle_trees:empty().
+
+delete(Key, Tree) when ?IS_KEY(Key) ->
+    gb_merkle_trees:delete(Key, Tree).
 
 get(Key, Tree) when ?IS_KEY(Key) ->
     {value, Value} = lookup(Key, Tree),

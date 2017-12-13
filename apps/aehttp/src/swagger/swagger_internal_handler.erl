@@ -64,6 +64,30 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'OracleQueryTx'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'OracleRegisterTx'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'OracleResponseTx'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'PostSpendTx'
     }
 ) ->
@@ -103,6 +127,36 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'GetPubKey'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'OracleQueryTx'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'OracleRegisterTx'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'OracleResponseTx'
     }
 ) ->
     Headers = [],
