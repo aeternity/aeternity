@@ -172,7 +172,7 @@ Rootsymbol 'File'.
 'Expr850' -> 'if' '(' 'Expr' ')' 'ExprAtom'                   : {'if', get_ann('$1'), '$3', '$5', {unit, [{origin, system}]}}.
 'Expr850' -> 'Expr900' : '$1'.
 
-'Expr900' -> 'Expr900' '.' id : {proj, get_ann('$1'), '$1', token('$2')}.
+'Expr900' -> 'Expr900' '.' id : {proj, get_ann('$1'), '$1', token('$3')}.
 'Expr900' -> 'Expr950' : '$1'.
 
 'Expr950' -> 'Expr950' '(' 'TypedExprs' ')' : {app, get_ann('$1'), '$1', '$3'}.
