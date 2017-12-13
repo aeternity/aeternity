@@ -864,7 +864,7 @@ get_pubkey(N) ->
     rpc_call(N, aec_keys, pubkey, []).
 
 get_balance(N) ->
-    rpc_call(N, aec_conductor, get_miner_account_balance, []).
+    rpc_call(N, aec_mining, get_miner_account_balance, []).
 
 get_pool(N) ->
     rpc_call(N, aec_tx_pool, peek, [infinity]).

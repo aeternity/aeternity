@@ -57,8 +57,7 @@
         ]).
 
 %% State trees API
--export([ get_miner_account_balance/0
-        , next_nonce_for_account/1
+-export([ get_account/1
         , get_all_accounts_balances/0
         ]).
 
@@ -146,26 +145,12 @@ get_mining_workers() ->
 %%%===================================================================
 %%% State trees API
 
-%% TODO: Added for backwards compability.
--spec get_miner_account_balance() ->   {'ok', integer()}
-                                     | {'error', 'account_not_found'}.
-get_miner_account_balance() ->
-    {ok, Pubkey} = aec_keys:pubkey(),
+-spec get_account(pubkey()) -> {ok, account()} | {error, notfound}.
+get_account(Pubkey) ->
     LastBlock = top(),
     Trees = aec_blocks:trees(LastBlock),
     AccountsTree = aec_trees:accounts(Trees),
-    case aec_accounts:get(Pubkey, AccountsTree) of
-        {ok, #account{balance = B}} ->
-            {ok, B};
-        _ ->
-            {error, account_not_found}
-    end.
-
--spec next_nonce_for_account(binary()) ->
-                                    {'ok', integer()} | {'error', 'account_not_found'}.
-next_nonce_for_account(PubKey) ->
-    Top = top(),
-    aec_next_nonce:pick_for_account(PubKey, Top).
+    aec_accounts:get(Pubkey, AccountsTree).
 
 -spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
 get_all_accounts_balances() ->
