@@ -58,6 +58,20 @@ network_serialization_test_() ->
              ?assertEqual({ok, SerializedBlock},
                           ?TEST_MODULE:serialize_for_network(DeserializedBlock))
      end},
+     {"Serialize/deserialize block with min nonce",
+      fun() ->
+              B = #block{nonce = 0},
+              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+      end
+     },
+     {"Serialize/deserialize block with max nonce",
+      fun() ->
+              B = #block{nonce = ?MAX_NONCE},
+              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+      end
+     },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
              Block1 = #block{trees = #trees{accounts = foo}, nonce = ?MAX_NONCE + 1},
