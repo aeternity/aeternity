@@ -30,7 +30,8 @@
     msgpack,
     erlexec,
     aecuckoo,
-    aetx
+    aetx,
+    aeoracle
    ]},
   {env, [
          {exometer_predefined,

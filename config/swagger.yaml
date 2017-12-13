@@ -236,6 +236,179 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+  /oracles:
+  ## Not implemented yet, returns HTTP 501 response code
+    get:
+      tags:
+        - internal
+      operationId: GetActiveRegisteredOracles
+      description: 'Get active registered oracles'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Active registered oracles
+          schema:
+            $ref: '#/definitions/RegisteredOracles'
+      security: []
+  /oracle-questions:
+  ## Not implemented yet, returns HTTP 501 response code
+    get:
+      tags:
+        - internal
+      operationId: GetOracleQuestions
+      description: 'Get active oracle questions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: oracle_pub_key
+          description: 'Oracle public key'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Active oracle questions
+          schema:
+            $ref: '#/definitions/OracleQuestions'
+        '404':
+          description: Oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-register-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleRegisterTx
+      description: 'Create oracle register transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle register transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleRegisterTx'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle register transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-query-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleQueryTx
+      description: 'Create oracle query transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle query transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleQueryTx'
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/OracleInteractionId'
+        '404':
+          description: Oracle query transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-response-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleResponseTx
+      description: 'Create oracle response transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle response transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleResponseTx'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle response transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-subscribe:
+  ## Not implemented yet, returns HTTP 501 response code
+    post:
+      tags:
+        - internal
+      operationId: PostOracleSubscribe
+      description: 'Create oracle interactions subscription'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new subscription for oracle interactions
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-unsubscribe:
+  ## Not implemented yet, returns HTTP 501 response code
+    post:
+      tags:
+        - internal
+      operationId: PostOracleUnsubscribe
+      description: 'Remove oracle interactions subscriptions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Unsubscribe from oracle interactions notifications
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle or subscription not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
   /account/pub-key:
     get:
       tags:
@@ -378,26 +551,10 @@ definitions:
     - genesis_hash
     - best_hash
     - difficulty
-  Error:
-    type: object
-    properties:
-      reason:
-        type: string
   Balance:
     type: object
     properties:
       balance:
-        type: integer
-        format: int64
-  SpendTx:
-    type: object
-    properties:
-      recipient_pubkey:
-        type: string
-      amount:
-        type: integer
-        format: int64
-      fee:
         type: integer
         format: int64
   Tx:
@@ -409,6 +566,117 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/Tx'
+  RegisteredOracles:
+    type: array
+    items:
+      type: object
+      properties:
+        address:
+          type: string
+        query_format:
+          type: string
+        response_format:
+          type: string
+        query_fee:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+  OracleQuestions:
+    type: array
+    items:
+      type: object
+      properties:
+        interaction_id:
+          type: string
+        query:
+          type: string
+        query_fee:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+  OracleSubscribe:
+    type: object
+    properties:
+      oracle_pub_key:
+        type: string
+  SpendTx:
+    type: object
+    properties:
+      recipient_pubkey:
+        type: string
+      amount:
+        type: integer
+        format: int64
+      fee:
+        type: integer
+        format: int64
+  OracleRegisterTx:
+    type: object
+    properties:
+      query_format:
+        type: string
+      response_format:
+        type: string
+      query_fee:
+        type: integer
+        format: int64
+      fee:
+        type: integer
+        format: int64
+      ttl:
+        "$ref": '#/definitions/TTL'
+  OracleQueryTx:
+    type: object
+    properties:
+      oracle_pubkey:
+        type: string
+      query:
+        type: string
+      query_fee:
+        type: integer
+        format: int64
+      query_ttl:
+        "$ref": '#/definitions/TTL'
+      response_ttl:
+        "$ref": '#/definitions/RelativeTTL'
+      fee:
+        type: integer
+        format: int64
+  OracleResponseTx:
+    type: object
+    properties:
+      interaction_id:
+        type: string
+      response:
+        type: string
+      fee:
+        type: integer
+        format: int64
+  TTL:
+    type: object
+    properties:
+      type:
+        type: string
+        enum: ["delta", "block"]
+      value:
+        type: integer
+        format: int64
+  RelativeTTL:
+    type: object
+    properties:
+      type:
+        type: string
+        enum: ["delta"]
+      value:
+        type: integer
+        format: int64
+  OracleInteractionId:
+    type: object
+    properties:
+      interaction_id:
+        type: string
   PubKey:
     type: object
     properties:
@@ -454,6 +722,12 @@ definitions:
       time_delta_to_parent:
         type: integer
         format: int64
+
+  Error:
+    type: object
+    properties:
+      reason:
+        type: string
 
 externalDocs:
   description: Find out more about Aeternity

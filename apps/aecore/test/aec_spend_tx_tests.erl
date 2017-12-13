@@ -26,7 +26,7 @@ check_test_() ->
       fun() ->
               SpendTx = #spend_tx{fee = 10},
               StateTree = aec_test_utils:create_state_tree(),
-              ?assertEqual({error, sender_account_not_found},
+              ?assertEqual({error, account_not_found},
                            ?TEST_MODULE:check(SpendTx, StateTree, 10))
       end},
      {"Sender account has insufficient funds to cover tx fee + amount",
