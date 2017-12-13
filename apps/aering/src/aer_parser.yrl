@@ -268,17 +268,17 @@ line_ann(Line) -> [{line, Line}].
 
 -spec get_ann({atom(), ann_line() | ann(), _} | {atom(), ann_line() | ann()}) -> ann().
 get_ann(Node) ->
-  case element(2, Node) of
-    Line when is_integer(Line) -> line_ann(Line);
-    Ann -> Ann
-  end.
+    case element(2, Node) of
+        Line when is_integer(Line) -> line_ann(Line);
+        Ann -> Ann
+    end.
 
 get_ann(Key, Node) ->
-  proplists:get_value(Key, get_ann(Node)).
+    proplists:get_value(Key, get_ann(Node)).
 
 set_ann(Key, Val, Node) ->
-  Ann = get_ann(Node),
-  setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
+    Ann = get_ann(Node),
+    setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
 
 get_value({Tok, _Line})       -> Tok;
 get_value({_Tok, _Line, Val}) -> Val.
@@ -290,7 +290,7 @@ infix(L, Op, R) -> set_ann(format, infix, {app, get_ann(L), Op, [L, R]}).
 prefix(Op, E)   -> set_ann(format, prefix, {app, get_ann(Op), Op, [E]}).
 
 type_wildcard() ->
-  {id, [{origin, system}], "_"}.
+    {id, [{origin, system}], "_"}.
 
 tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types) -> {tuple_t, Ann, Types}.
@@ -304,9 +304,9 @@ block_e(Ann, {[], [Fld = {typed, _, _}]}) ->
 block_e(_Ann, {[], [Expr]}) -> Expr;
 block_e(Ann, {Seps, Exprs}) ->
   case lists:usort(Seps) of
-    [','] -> {record, Ann, Exprs};
-    [';'] -> {block,  Ann, Exprs};
-    _ -> ret_err(proplists:get_value(line, Ann), "parse error in block")
+      [','] -> {record, Ann, Exprs};
+      [';'] -> {block,  Ann, Exprs};
+      _ -> ret_err(proplists:get_value(line, Ann), "Mixed ',' and ';' in block")
   end.
 
 lam_args({tuple, _Ann, Args}) -> [lam_arg(Arg) || Arg <- Args];
@@ -321,13 +321,13 @@ fun_domain({tuple_t, _, Args}) -> Args;
 fun_domain(T)                  -> [T].
 
 parse_pattern({app, Ann, Con = {'::', _}, Es}) ->
-  {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
+    {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({app, Ann, Con = {con, _, _}, Es}) ->
-  {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
+    {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({tuple, Ann, Es}) ->
-  {tuple, Ann, lists:map(fun parse_pattern/1, Es)};
+    {tuple, Ann, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({list, Ann, Es}) ->
-  {list, Ann, lists:map(fun parse_pattern/1, Es)};
+    {list, Ann, lists:map(fun parse_pattern/1, Es)};
 parse_pattern(E = {con, _, _})    -> E;
 parse_pattern(E = {id, _, _})     -> E;
 parse_pattern(E = {unit, _})      -> E;
