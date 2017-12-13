@@ -1,11 +1,14 @@
--module(aec_spend_tx_tests).
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
 
+-module(aec_spend_tx_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_spend_tx).
 

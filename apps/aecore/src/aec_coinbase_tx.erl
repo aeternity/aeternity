@@ -1,3 +1,7 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_coinbase_tx).
 
 %% API
@@ -12,11 +16,11 @@
          deserialize/1,
          type/0]).
 
--behavior(aec_tx).
+-behavior(aetx).
 
 -include("common.hrl").
 -include("trees.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 -spec new(map()) -> {ok, coinbase_tx()}.

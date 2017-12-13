@@ -1,9 +1,9 @@
--module(tx_dispatcher).
+-module(aec_tx_dispatcher).
 -export([handler/1,
          handler_by_type/1]).
 
 -include("common.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 handler(#coinbase_tx{}) ->
     aec_coinbase_tx;

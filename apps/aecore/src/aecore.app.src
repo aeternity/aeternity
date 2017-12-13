@@ -27,7 +27,8 @@
     aeutils,
     msgpack,
     erlexec,
-    aecuckoo
+    aecuckoo,
+    aetx
    ]},
   {env, [
          {exometer_predefined,

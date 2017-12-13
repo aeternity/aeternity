@@ -10,7 +10,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -import(aec_test_utils,
         [ extend_block_chain/2
