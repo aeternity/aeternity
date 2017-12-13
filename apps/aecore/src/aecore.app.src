@@ -11,6 +11,7 @@
    [kernel,
     stdlib,
     crypto,
+    eper,
     syntax_tools,
     compiler,
     goldrush,

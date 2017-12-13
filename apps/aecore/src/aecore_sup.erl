@@ -28,7 +28,8 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [?CHILD(aec_keys, 5000, worker),
+    {ok, {{one_for_one, 5, 10}, [watchdog_childspec(),
+                                 ?CHILD(aec_keys, 5000, worker),
                                  ?CHILD(aec_peers, 5000, worker),
                                  ?CHILD(aec_persistence, 5000, worker),
                                  ?CHILD(aec_tx_pool, 5000, worker),
@@ -36,3 +37,8 @@ init([]) ->
                                  ?CHILD(aec_conductor, 5000, worker)
                                 ]
          }}.
+
+
+watchdog_childspec() ->
+    {watchdog, {gen_serv, start, [watchdog]},
+     permanent, 5000, worker, [watchdog]}.
