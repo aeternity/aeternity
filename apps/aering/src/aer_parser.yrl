@@ -243,9 +243,22 @@ Erlang code.
 
 -ignore_xref([format_error/1, parse_and_scan/1]).
 
+-spec ret_err(integer(), string()) -> no_return().
 ret_err(Line, Fmt) -> ret_err(Line, Fmt, []).
+
+-spec ret_err(integer(), string(), [any()]) -> no_return().
 ret_err(Line, Fmt, Args) ->
-  return_error(Line, lists:flatten(io_lib:format(Fmt, Args))).
+    return_error(Line, lists:flatten(io_lib:format(Fmt, Args))).
+
+-spec ret_doc_err(integer(), prettypr:document()) -> no_return().
+ret_doc_err(Line, Doc) ->
+    return_error(Line, prettypr:format(Doc)).
+
+-spec bad_expr_err(string(), aer_syntax:expr()) -> no_return().
+bad_expr_err(Reason, E) ->
+  ret_doc_err(get_ann(line, E),
+              prettypr:sep([prettypr:text(Reason ++ ":"),
+                            prettypr:nest(2, aer_pretty:expr(E))])).
 
 -type ann()      :: aer_syntax:ann().
 -type ann_line() :: aer_syntax:ann_line().
@@ -301,7 +314,7 @@ lam_args(E)                   -> [lam_arg(E)].
 
 lam_arg({typed, Ann, Id = {id, _, _}, Type}) -> {arg, Ann, Id, Type};
 lam_arg(Id = {id, Ann, _})                   -> {arg, Ann, Id, type_wildcard()};
-lam_arg(E)                                   -> ret_err(get_ann(line, E), "Bad function parameter ~p", [E]).
+lam_arg(E) -> bad_expr_err("Not a valid function parameter", E).
 
 %% TODO: not nice
 fun_domain({tuple_t, _, Args}) -> Args;
@@ -323,7 +336,8 @@ parse_pattern(E = {bool, _, _})   -> E;
 parse_pattern(E = {hash, _, _})   -> E;
 parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
-parse_pattern(E) -> ret_err(get_ann(line, E), "Bad pattern ~p", [E]).
+parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 
 parse_lvalue(E = {proj, _, _, _}) -> E;
-parse_lvalue(E) -> ret_err(get_ann(line, E), "Bad lvalue ~p", [E]).
+parse_lvalue(E) -> bad_expr_err("Not a valid lvalue", E).
+
