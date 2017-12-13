@@ -117,13 +117,10 @@ handle_request('GetAccountBalance', Req, _Context) ->
         not_base64_encoded ->
             {400, [], #{reason => <<"Invalid address">>}};
         _ when is_binary(Pubkey) ->
-            LastBlock = aec_conductor:top(),
-            Trees = aec_blocks:trees(LastBlock),
-            AccountsTree = aec_trees:accounts(Trees),
-            case aec_accounts:get(Pubkey, AccountsTree) of
-                {ok, #account{balance = B}} ->
+            case aec_conductor:get_account_balance(Pubkey) of
+                {ok, B} ->
                     {200, [], #{balance => B}};
-                _ ->
+                {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}}
             end
     end;
