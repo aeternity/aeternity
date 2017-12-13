@@ -25,6 +25,8 @@
 -type name() :: string().
 -type id()   :: {id,   ann(), name()}.
 -type con()  :: {con,  ann(), name()}.
+-type qid()  :: {qid,  ann(), [name()]}.
+-type qcon() :: {qcon, ann(), [name()]}.
 -type tvar() :: {tvar, ann(), name()}.
 
 -type decl() :: {contract_type, ann(), con(), [decl()]}
@@ -63,9 +65,12 @@
      | {string, ann(), binary()}
      | {char, ann(), integer()}.
 
--type op() :: '+' | '-' | '*' | '/' | mod
-            | '++' | '::' | '<' | '>' | '=<' | '>=' | '==' | '!='
-            | '!' | '||' | '&&'.
+-type op() :: bin_op() | un_op().
+
+-type bin_op() :: '+' | '-' | '*' | '/' | mod
+                | '++' | '::' | '<' | '>' | '=<' | '>=' | '==' | '!='
+                | '||' | '&&'.
+-type un_op() :: '-' | '!'.
 
 -type expr()
     :: {lam, ann(), [arg()], expr()}
@@ -79,6 +84,7 @@
      | {record, ann(), [field()]}
      | {block, ann(), [stmt()]}
      | {op(), ann()}
+     | id() | qid() | con() | qcon()
      | constant().
 
 -type field() :: {field, ann(), id(), expr()}.

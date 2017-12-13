@@ -71,7 +71,7 @@ mod  : {token, {mod, TokenLine}}.
 ->   : {token, {'->', TokenLine}}.
 =>   : {token, {'=>', TokenLine}}.
 &&   : {token, {'&&', TokenLine}}.
-||   : {token, {'||', TokenLine}}.
+\|\| : {token, {'||', TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 !    : {token, {'!', TokenLine}}.
 

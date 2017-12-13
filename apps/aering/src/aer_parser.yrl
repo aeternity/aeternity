@@ -172,7 +172,7 @@ Rootsymbol 'File'.
 'Expr850' -> 'if' '(' 'Expr' ')' 'ExprAtom'                   : {'if', get_ann('$1'), '$3', '$5', {unit, [{origin, system}]}}.
 'Expr850' -> 'Expr900' : '$1'.
 
-'Expr900' -> 'Expr900' '.' id : {proj, get_ann('$1'), '$1', token('$2')}.
+'Expr900' -> 'Expr900' '.' id : {proj, get_ann('$1'), '$1', token('$3')}.
 'Expr900' -> 'Expr950' : '$1'.
 
 'Expr950' -> 'Expr950' '(' 'TypedExprs' ')' : {app, get_ann('$1'), '$1', '$3'}.
@@ -243,9 +243,22 @@ Erlang code.
 
 -ignore_xref([format_error/1, parse_and_scan/1]).
 
+-spec ret_err(integer(), string()) -> no_return().
 ret_err(Line, Fmt) -> ret_err(Line, Fmt, []).
+
+-spec ret_err(integer(), string(), [any()]) -> no_return().
 ret_err(Line, Fmt, Args) ->
-  return_error(Line, lists:flatten(io_lib:format(Fmt, Args))).
+    return_error(Line, lists:flatten(io_lib:format(Fmt, Args))).
+
+-spec ret_doc_err(integer(), prettypr:document()) -> no_return().
+ret_doc_err(Line, Doc) ->
+    return_error(Line, prettypr:format(Doc)).
+
+-spec bad_expr_err(string(), aer_syntax:expr()) -> no_return().
+bad_expr_err(Reason, E) ->
+  ret_doc_err(get_ann(line, E),
+              prettypr:sep([prettypr:text(Reason ++ ":"),
+                            prettypr:nest(2, aer_pretty:expr(E))])).
 
 -type ann()      :: aer_syntax:ann().
 -type ann_line() :: aer_syntax:ann_line().
@@ -255,17 +268,17 @@ line_ann(Line) -> [{line, Line}].
 
 -spec get_ann({atom(), ann_line() | ann(), _} | {atom(), ann_line() | ann()}) -> ann().
 get_ann(Node) ->
-  case element(2, Node) of
-    Line when is_integer(Line) -> line_ann(Line);
-    Ann -> Ann
-  end.
+    case element(2, Node) of
+        Line when is_integer(Line) -> line_ann(Line);
+        Ann -> Ann
+    end.
 
 get_ann(Key, Node) ->
-  proplists:get_value(Key, get_ann(Node)).
+    proplists:get_value(Key, get_ann(Node)).
 
 set_ann(Key, Val, Node) ->
-  Ann = get_ann(Node),
-  setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
+    Ann = get_ann(Node),
+    setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
 
 get_value({Tok, _Line})       -> Tok;
 get_value({_Tok, _Line, Val}) -> Val.
@@ -277,7 +290,7 @@ infix(L, Op, R) -> set_ann(format, infix, {app, get_ann(L), Op, [L, R]}).
 prefix(Op, E)   -> set_ann(format, prefix, {app, get_ann(Op), Op, [E]}).
 
 type_wildcard() ->
-  {id, [{origin, system}], "_"}.
+    {id, [{origin, system}], "_"}.
 
 tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types) -> {tuple_t, Ann, Types}.
@@ -291,9 +304,9 @@ block_e(Ann, {[], [Fld = {typed, _, _}]}) ->
 block_e(_Ann, {[], [Expr]}) -> Expr;
 block_e(Ann, {Seps, Exprs}) ->
   case lists:usort(Seps) of
-    [','] -> {record, Ann, Exprs};
-    [';'] -> {block,  Ann, Exprs};
-    _ -> ret_err(proplists:get_value(line, Ann), "parse error in block")
+      [','] -> {record, Ann, Exprs};
+      [';'] -> {block,  Ann, Exprs};
+      _ -> ret_err(proplists:get_value(line, Ann), "Mixed ',' and ';' in block")
   end.
 
 lam_args({tuple, _Ann, Args}) -> [lam_arg(Arg) || Arg <- Args];
@@ -308,13 +321,13 @@ fun_domain({tuple_t, _, Args}) -> Args;
 fun_domain(T)                  -> [T].
 
 parse_pattern({app, Ann, Con = {'::', _}, Es}) ->
-  {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
+    {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({app, Ann, Con = {con, _, _}, Es}) ->
-  {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
+    {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({tuple, Ann, Es}) ->
-  {tuple, Ann, lists:map(fun parse_pattern/1, Es)};
+    {tuple, Ann, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({list, Ann, Es}) ->
-  {list, Ann, lists:map(fun parse_pattern/1, Es)};
+    {list, Ann, lists:map(fun parse_pattern/1, Es)};
 parse_pattern(E = {con, _, _})    -> E;
 parse_pattern(E = {id, _, _})     -> E;
 parse_pattern(E = {unit, _})      -> E;
@@ -323,7 +336,7 @@ parse_pattern(E = {bool, _, _})   -> E;
 parse_pattern(E = {hash, _, _})   -> E;
 parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
-parse_pattern(E) -> ret_err(get_ann(line, E), "Bad pattern ~p", [E]).
+parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 
 parse_lvalue(E = {proj, _, _, _}) -> E;
-parse_lvalue(E) -> ret_err(get_ann(line, E), "Bad lvalue ~p", [E]).
+parse_lvalue(E) -> bad_expr_err("Not a valid lvalue", E).
