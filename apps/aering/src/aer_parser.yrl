@@ -307,7 +307,7 @@ tuple_e(Ann, [])      -> {unit, Ann};
 tuple_e(_Ann, [Expr]) -> Expr;  %% Not a tuple
 tuple_e(Ann, Exprs)   -> {tuple, Ann, Exprs}.
 
-block_e(Ann, {[], [Fld = {typed, _, _}]}) ->
+block_e(Ann, {[], [Fld = {field, _, _, _}]}) ->
     {record, Ann, [Fld]};
 block_e(_Ann, {[], [Expr]}) -> Expr;
 block_e(Ann, {Seps, Exprs}) ->
