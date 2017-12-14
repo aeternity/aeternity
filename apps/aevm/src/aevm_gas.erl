@@ -12,6 +12,7 @@
         , mem_cost/2
         ]).
 
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 -include("aevm_gas.hrl").
 

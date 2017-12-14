@@ -1,13 +1,13 @@
-{application, aering,
- [{description, "Contract Language for Aethernity"},
-  {vsn, "0.0.1"},
+{application, aebytecode,
+ [{description, "Bytecode definitions for AEthernity VM shared with compiler."},
+  {vsn, "0.1.0"},
   {registered, []},
-  {mod, { aering_app, []}},
   {applications,
    [kernel,
     stdlib,
     lager,
-    aebytecode
+    jsx,
+    sha3
    ]},
   {env,[]},
   {modules, []},
@@ -16,4 +16,3 @@
   {licenses, []},
   {links, []}
  ]}.
-
