@@ -10,42 +10,71 @@ simple_contracts_test_() ->
      fun(_) -> ok end,
      [{"Parse an empty contract.",
        fun() ->
-            Text = "contract Empty",
-            {contract, 1, "Empty", [], []} = parse_string(Text),
+            Text = "contract Empty = { }",
+            ?assertMatch([{contract, _, {con, _, "Empty"}, []}], parse_string(Text)),
             ok
        end},
-      {"Parse an contract with an identity function.",
+      {"Parse a contract with an identity function.",
        fun() ->
-            Text = "contract Identity\n"
-                   "export id\n"
-                   "pure fun id x = x\n",
-            {contract, 1, "Identity",
-                [{id, _, "id"}],
-                [{'fun', _, [pure], {id, _, "id"},
-                    [{id, _, "x"}],
-                    {id, _, "x"}}]}
-                = parse_string(Text),
-            ok
-       end},
-      {"Parse the counter contract.",
-       fun() ->
-            _Contract = parse_contract(counter),
+            Text = "contract Identity = {\n"
+                   "  let id(x) = x\n"
+                   "}",
+            ?assertMatch(
+                [{contract, _, {con, _, "Identity"},
+                    [{letfun, _, {id, _, "id"}, [{arg, _, {id, _, "x"}, {id, _, "_"}}], {id, _, "_"},
+                        {id, _, "x"}}]}], parse_string(Text)),
             ok
        end},
       {"Operator precedence test.",
         fun() ->
-            %% + is left associative
-            ?assertEqual(parse_expr("a + b + c"),
-                         parse_expr("(a + b) + c")),
-            %% Check precedences
-            ?assertEqual(parse_expr("a * b mod c + d * e / f - g"),
-                         parse_expr("(((a * b) mod c) + ((d * e) / f)) - g")),
+            NoPar = fun NoPar(X) when is_atom(X) -> atom_to_list(X);
+                        NoPar({A, Op, B})        -> lists:concat([NoPar(A), " ", Op, " ", NoPar(B)]);
+                        NoPar({Op, A})           -> lists:concat([Op, " ", NoPar(A)])
+                    end,
+            Par   = fun Par(X) when is_atom(X) -> atom_to_list(X);
+                        Par({A, Op, B})        -> lists:concat(["(", Par(A), " ", Op, " ", Par(B), ")"]);
+                        Par({Op, A})           -> lists:concat(["(", Op, " ", Par(A), ")"])
+                    end,
+            Parse = fun(S) ->
+                    try parse_expr(S)
+                    catch _:_ -> ?assertMatch(ok, {parse_fail, S}) end
+                end,
+            CheckParens = fun(Expr) ->
+                    ?assertEqual(Parse(NoPar(Expr)), Parse(Par(Expr)))
+                end,
+            LeftAssoc  = fun(Op) -> CheckParens({{a, Op, b}, Op, c}) end,
+            RightAssoc = fun(Op) -> CheckParens({a, Op, {b, Op, c}}) end,
+            NonAssoc   = fun(Op) -> ?assertError({error, {_, aer_parser, ["syntax error" ++ _, _]}},
+                                                 parse_expr(NoPar({a, Op, {b, Op, c}}))) end,
+            Stronger = fun(Op1, Op2) ->
+                    CheckParens({{a, Op1, b}, Op2, c}),
+                    CheckParens({a, Op2, {b, Op1, c}})
+                end,
+
+            Tiers = [["||"], ["&&"], ["==", "!=", "<", ">", "=<", ">="], ["::", "++"],
+                     ["+", "-"], ["*", "/", "mod"]],
+
+            %% associativity
+            [ RightAssoc(Op) || Op <- ["||", "&&", "::", "++"] ],
+            [ NonAssoc(Op)   || Op <- ["==", "!=", "<", ">", "=<", ">="] ],
+            [ LeftAssoc(Op)  || Op <- ["+", "-", "*", "/", "mod"] ],
+
+            %% precedence
+            [ Stronger(Op2, Op1) || [T1 , T2 | _] <- tails(Tiers), Op1 <- T1, Op2 <- T2 ],
             ok
         end}
-     ]}.
+     ] ++
+     %% Parse tests of example contracts
+     [ {lists:concat(["Parse the ", Contract, " contract."]),
+        fun() -> roundtrip_contract(Contract) end}
+        || Contract <- [counter, voting] ]
+    }.
 
 parse_contract(Name) ->
     parse_string(aer_test_utils:read_contract(Name)).
+
+roundtrip_contract(Name) ->
+    round_trip(aer_test_utils:read_contract(Name)).
 
 scan_string(Text) ->
     case aer_scan:string(Text) of
@@ -59,13 +88,37 @@ parse_string(Text) ->
     Tokens = scan_string(Text),
     case aer_parser:parse(Tokens) of
         {ok, Contract} -> Contract;
-        Err = {error, {Line, aer_parser, Reason}} ->
-            io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
-            error(Err)
+        Err -> error(Err)
     end.
 
 parse_expr(Text) ->
-    {contract, _, _, _, [{'fun', _, _, _, _, Expr}]} =
-        parse_string("contract dummy\nfun expr _ = " ++ Text),
+    [{contract, _, _, [{letval, _, _, _, Expr}]}] =
+        parse_string("contract Dummy = { let _ = " ++ Text ++ "}"),
     Expr.
+
+round_trip(Text) ->
+    Contract  = parse_string(Text),
+    Text1     = prettypr:format(aer_pretty:decls(Contract)),
+    Contract1 = parse_string(Text1),
+    NoSrcLoc  = remove_line_numbers(Contract),
+    NoSrcLoc1 = remove_line_numbers(Contract1),
+    ?assertMatch(NoSrcLoc, diff(NoSrcLoc, NoSrcLoc1)).
+
+remove_line_numbers({line, _L}) -> {line, 0};
+remove_line_numbers([H|T]) ->
+  [remove_line_numbers(H) | remove_line_numbers(T)];
+remove_line_numbers(T) when is_tuple(T) ->
+  list_to_tuple(remove_line_numbers(tuple_to_list(T)));
+remove_line_numbers(M) when is_map(M) ->
+  maps:from_list(remove_line_numbers(maps:to_list(M)));
+remove_line_numbers(X) -> X.
+
+diff(X, X) -> X;
+diff([H | T], [H1 | T1]) ->
+    [diff(H, H1) | diff(T, T1)];
+diff(T, T1) when tuple_size(T) == tuple_size(T1) ->
+    list_to_tuple(diff(tuple_to_list(T), tuple_to_list(T1)));
+diff(X, Y) -> {X, '/=', Y}.
+
+tails(Zs) -> lists:foldr(fun(X, [Xs|Xss]) -> [[X|Xs], Xs | Xss] end, [[]], Zs).
 
