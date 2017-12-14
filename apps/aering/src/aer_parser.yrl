@@ -118,7 +118,7 @@ Rootsymbol 'File'.
 
 'Type100' -> 'Type200' : '$1'.
 
-'Type200' -> 'FunDomain' '=>' 'Type200' : {fun_t, get_ann('$2'), '$1', '$3'}.
+'Type200' -> 'FunDomain' '=>' 'Type200' : fun_t(get_ann('$2'), '$1', '$3').
 'Type200' -> 'Type300' : '$1'.
 
 'Type300' -> 'Type400' : '$1'.
@@ -290,6 +290,10 @@ type_wildcard() ->
 
 tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types) -> {tuple_t, Ann, Types}.
+
+fun_t(Ann, Domain, {fun_t, _Ann, Domain1, Result}) ->
+  {fun_t, Ann, Domain ++ Domain1, Result};
+fun_t(Ann, Domain, Result) -> {fun_t, Ann, Domain, Result}.
 
 tuple_e(Ann, [])      -> {unit, Ann};
 tuple_e(_Ann, [Expr]) -> Expr;  %% Not a tuple
