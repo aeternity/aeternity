@@ -20,6 +20,7 @@ ID       = {LOWER}[a-zA-Z0-9_']*
 TVAR     = '{ID}
 QID      = ({CON}\.)+{ID}
 QCON     = ({CON}\.)+{CON}
+OP       = [=!<>+\-*/:&|?]
 
 NOT_END_COMMENT = ([^*]|(\*+[^/*]))*
 
@@ -33,15 +34,12 @@ Rules.
 ,   : {token, {',', TokenLine}}.
 \.  : {token, {'.', TokenLine}}.
 ;   : {token, {';', TokenLine}}.
-\|  : {token, {'|', TokenLine}}.
-\:  : {token, {':', TokenLine}}.
 \(  : {token, {'(', TokenLine}}.
 \)  : {token, {')', TokenLine}}.
 \[  : {token, {'[', TokenLine}}.
 \]  : {token, {']', TokenLine}}.
 {   : {token, {'{', TokenLine}}.
 }   : {token, {'}', TokenLine}}.
-\?  : {token, {'?', TokenLine}}.
 
 %% Keywords
 contract   : {token, {contract, TokenLine}}.
@@ -57,28 +55,8 @@ and        : {token, {'and', TokenLine}}.
 true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 
 %% Operators
-=    : {token, {'=', TokenLine}}.
-==   : {token, {'==', TokenLine}}.
-!=   : {token, {'!=', TokenLine}}.
->    : {token, {'>', TokenLine}}.
-<    : {token, {'<', TokenLine}}.
->=   : {token, {'>=', TokenLine}}.
-=<   : {token, {'=<', TokenLine}}.
--    : {token, {'-', TokenLine}}.
-\+   : {token, {'+', TokenLine}}.
-\+\+ : {token, {'++', TokenLine}}.
-\*   : {token, {'*', TokenLine}}.
-/    : {token, {'/', TokenLine}}.
-mod  : {token, {mod, TokenLine}}.
-\:   : {token, {':', TokenLine}}.
-\:\: : {token, {'::', TokenLine}}.
-->   : {token, {'->', TokenLine}}.
-=>   : {token, {'=>', TokenLine}}.
-<=   : {token, {'<=', TokenLine}}.
-&&   : {token, {'&&', TokenLine}}.
-\|\| : {token, {'||', TokenLine}}.
-\:\: : {token, {'::', TokenLine}}.
-!    : {token, {'!', TokenLine}}.
+{OP}+ : {token, {list_to_atom(TokenChars), TokenLine}}.
+mod   : {token, {mod, TokenLine}}.
 
 "{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
 '{CHARTEXT}'    : parse_char(TokenLine, TokenChars).
