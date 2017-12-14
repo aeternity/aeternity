@@ -67,7 +67,7 @@ simple_contracts_test_() ->
      %% Parse tests of example contracts
      [ {lists:concat(["Parse the ", Contract, " contract."]),
         fun() -> roundtrip_contract(Contract) end}
-        || Contract <- [counter, voting] ]
+        || Contract <- [counter, voting, all_syntax] ]
     }.
 
 parse_contract(Name) ->

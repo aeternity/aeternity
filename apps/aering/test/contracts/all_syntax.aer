@@ -1,0 +1,46 @@
+// Try to cover all syntactic constructs.
+
+contract type AllSyntax = {
+  type typeDecl; /* bla */
+  type paramTypeDecl('a, 'b);
+
+  /** Multi-
+    * line
+    * comment
+    */
+  let foo : _;
+};
+
+contract AllSyntax = {
+
+  type typeDecl = int;
+  type paramTypeDecl('a, 'b) = (('a, 'b) => 'b) => list('a) => 'b => 'b;
+
+  type recordType = { x : int, mutable y : int };
+  type variantType('a) = None | Some('a);
+
+  let valWithType : map(int, int) => option(int) = m => Map.get(m, 42);
+  let valNoType =
+        if(valWithType(Map.empty) == None) {
+          print(42 mod 10 * 5 / 3)
+        };
+
+  let funWithType(x : int, y) : (int, list(int)) = (x, 0 :: [y] ++ []);
+  let funNoType() = {
+    let foo = (x, y : bool) => if (! (y && x =< 0x0b || true)) x else { 11 };
+    let bar(r : recordType) = r.y = 5;
+    switch (funWithType(1, -2)) {
+    | (x, [y, z]) => bar({x: z, y: y + z - 1})
+    | (x, y :: _) => ()
+    };
+  };
+
+  let rec recFun(x : int) = mutFun(x)
+      and mutFun(x) = x =< 0 ? 1 : x * recFun(x - 1);
+
+  let hash : address = #01ab0fff11;
+  let b = false;
+  let qcon = Mod.Con;
+  let str = "blabla\nfoo";
+  let chr = '"';
+}
