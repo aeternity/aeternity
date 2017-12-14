@@ -20,6 +20,9 @@ ID       = {LOWER}[a-zA-Z0-9_']*
 TVAR     = '{ID}
 QID      = ({CON}\.)+{ID}
 QCON     = ({CON}\.)+{CON}
+
+NOT_END_COMMENT = ([^*]|(\*+[^/*]))*
+
 CHARTEXT = ([^\'\\]|(\\.))
 STRINGTEXT = ([^\"\\]|(\\.))
 
@@ -96,8 +99,9 @@ _           : {token, {'_', TokenLine}}.
 {WS} : skip_token.
 
 %% Comments (TODO: nested comments)
-\/\/.*     : skip_token.
-\/\*.*\*\/ : skip_token.
+\/\/.*                     : skip_token.
+\/\*{NOT_END_COMMENT}\*+\/ : skip_token.
+\/\*{NOT_END_COMMENT}\n    : {skip_token, "*/"}.
 
 . : {error, "Unexpected token: " ++ TokenChars}.
 
