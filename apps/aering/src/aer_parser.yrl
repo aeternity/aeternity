@@ -14,7 +14,7 @@ Nonterminals
 'Args' 'Args1' 'Arg' 'TypeVars' 'TypeVars1'
 'Type' 'Type100' 'Type200' 'Type300' 'Type400' 'Type500' 'TypeAtom' 'FunDomain'
 'TypeArgs' 'Constructor' 'Constructors' 'Constructors1'
-'Expr' 'Expr100' 'Expr200' 'Expr300' 'Expr400' 'Expr500' 'Expr600' 'Expr700'
+'Expr' 'Expr100' 'Expr200' 'Expr300' 'Expr400' 'Expr500' 'Expr600' 'Expr650' 'Expr700'
 'Expr800' 'Expr850' 'Expr900' 'Expr950' 'ExprAtom' 'TypedExprs' 'TypedExprs1' 'TypedExpr'
 'BlockStatements' 'Statement' 'FieldAssignment'
 'Cases' 'Case'
@@ -158,9 +158,11 @@ Rootsymbol 'File'.
 'Expr500' -> 'Expr600' 'ConsOp' 'Expr500' : infix('$1', '$2', '$3').
 'Expr500' -> 'Expr600' : '$1'.
 
-'Expr600' -> 'Expr600' 'AddOp' 'Expr700' : infix('$1', '$2', '$3').
-'Expr600' -> '-' 'Expr700'               : prefix(token('$1'), '$2').
-'Expr600' -> 'Expr700' : '$1'.
+'Expr600' -> 'Expr600' 'AddOp' 'Expr650' : infix('$1', '$2', '$3').
+'Expr600' -> 'Expr650' : '$1'.
+
+'Expr650' -> '-' 'Expr650'               : prefix(token('$1'), '$2').
+'Expr650' -> 'Expr700' : '$1'.
 
 'Expr700' -> 'Expr700' 'MulOp' 'Expr800' : infix('$1', '$2', '$3').
 'Expr700' -> 'Expr800' : '$1'.
@@ -168,7 +170,7 @@ Rootsymbol 'File'.
 'Expr800' -> '!' 'Expr800' : prefix(token('$1'), '$2').
 'Expr800' -> 'Expr850' : '$1'.
 
-'Expr850' -> switch 'Expr900' '{' 'Cases' '}' : {switch, get_ann('$1'), '$2', '$4'}.
+'Expr850' -> switch '(' 'Expr' ')' '{' 'Cases' '}'            : {switch, get_ann('$1'), '$3', '$6'}.
 'Expr850' -> 'if' '(' 'Expr' ')' 'ExprAtom' 'else' 'ExprAtom' : {'if', get_ann('$1'), '$3', '$5', '$7'}.
 'Expr850' -> 'if' '(' 'Expr' ')' 'ExprAtom'                   : {'if', get_ann('$1'), '$3', '$5', {unit, [{origin, system}]}}.
 'Expr850' -> 'Expr900' : '$1'.

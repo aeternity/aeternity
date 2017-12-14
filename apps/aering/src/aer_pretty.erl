@@ -310,14 +310,14 @@ bin_prec('==') -> {400, 500, 500};
 bin_prec('!=') -> {400, 500, 500};
 bin_prec('++') -> {500, 600, 500};
 bin_prec('::') -> {500, 600, 500};
-bin_prec('+')  -> {600, 600, 700};
-bin_prec('-')  -> {600, 600, 700};
+bin_prec('+')  -> {600, 600, 650};
+bin_prec('-')  -> {600, 600, 650};
 bin_prec('*')  -> {700, 700, 800};
 bin_prec('/')  -> {700, 700, 800};
 bin_prec(mod)  -> {700, 700, 800}.
 
 -spec un_prec(aer_syntax:un_op()) -> {integer(), integer()}.
-un_prec('-') -> {600, 700};
+un_prec('-') -> {650, 650};
 un_prec('!') -> {800, 800}.
 
 -spec infix(integer(), aer_syntax:bin_op(), aer_syntax:expr(), aer_syntax:expr()) -> doc().
