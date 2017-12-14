@@ -70,6 +70,11 @@
         , get_block_candidate/0
         , get_block_by_hash/1
         , get_block_by_height/1
+        , get_block_pair_by_height/2
+        , get_block_pair_by_hash/2
+        , max_block_range/0
+        , get_block_range_by_height/2
+        , get_block_range_by_hash/2
         , get_header_by_hash/1
         , get_header_by_height/1
         , get_missing_block_hashes/0
@@ -108,6 +113,7 @@
 -define(SERVER, ?MODULE).
 
 -define(DEFAULT_MINING_ATTEMPT_TIMEOUT, 60 * 60 * 1000). %% milliseconds
+-define(MAXIMUM_BLOCK_RANGE, 10).
 
 %%%===================================================================
 %%% API
@@ -206,6 +212,59 @@ get_block_by_hash(Hash) when is_binary(Hash) ->
 get_block_by_height(Height) ->
     gen_server:call(?SERVER, {get_block_by_height, Height}).
 
+-spec get_block_pair_by_height(integer(), integer()) -> {ok, #block{}, #block{}} | {error, atom()}.
+get_block_pair_by_height(Height1, Height2) ->
+    gen_server:call(?SERVER, {get_block_pair, height, Height1, Height2}).
+
+-spec get_block_pair_by_hash(binary(), binary()) -> {ok, #block{}, #block{}} | {error, atom()}.
+get_block_pair_by_hash(Hash1, Hash2) ->
+    gen_server:call(?SERVER, {get_block_pair, hash, Hash1, Hash2}).
+
+max_block_range() -> ?MAXIMUM_BLOCK_RANGE.
+
+get_block_range_by_height(Height1, Height2) ->
+    get_block_range(get_block_pair_by_height(Height1, Height2)).
+
+get_block_range_by_hash(Hash1, Hash2) ->
+    get_block_range(get_block_pair_by_hash(Hash1, Hash2)).
+
+get_block_range({error, _} = Err) ->
+    Err;
+get_block_range({ok, Block, Block}) ->
+    {ok, [Block]};
+get_block_range({ok, BlockFrom, BlockTo}) ->
+    HeightFrom = aec_blocks:height(BlockFrom),
+    HeightTo = aec_blocks:height(BlockTo),
+    case validate_block_range(HeightFrom, HeightTo) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            do_get_block_range(HeightTo - HeightFrom, [BlockTo],
+                                aec_blocks:prev_hash(BlockTo))
+    end.
+
+do_get_block_range(BlocksLeft, Accum, _) when BlocksLeft < 1 ->
+    {ok, Accum};
+do_get_block_range(BlocksLeft, Accum, Hash) ->
+    case aec_conductor:get_block_by_hash(Hash) of
+        {ok, B} ->
+            PrevHash = aec_blocks:prev_hash(B),
+            do_get_block_range(BlocksLeft - 1, [B | Accum], PrevHash);
+        {error, _} ->
+            {error, missing_block}
+    end.
+
+validate_block_range(HeightFrom, HeightTo)
+  when HeightFrom > HeightTo ->
+    {error, invalid_range};
+validate_block_range(HeightFrom, HeightTo) ->
+    case HeightTo - HeightFrom > max_block_range() of
+        true ->
+            {error, range_too_big};
+        false ->
+            ok
+    end.
+
 -spec get_block_candidate() -> {'ok', block()} | {'error', atom()}.
 get_block_candidate() ->
     gen_server:call(?SERVER, get_block_candidate).
@@ -286,6 +345,23 @@ handle_call({get_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_block(Hash, State), State};
 handle_call({get_block_by_height, Height},_From, State) ->
     {reply, aec_conductor_chain:get_block_by_height(Height, State), State};
+handle_call({get_block_pair, Type, H1, H2},_From, State) 
+  when Type =:= height orelse Type =:= hash ->
+    ExtractFun =
+        case Type of
+            height -> fun aec_conductor_chain:get_block_by_height/2;
+            hash -> fun aec_conductor_chain:get_block/2
+        end,
+    Resp =
+        case {ExtractFun(H1, State),ExtractFun(H2, State)} of
+            {{ok, Block1}, {ok, Block2}} ->
+                {ok, Block1, Block2};
+            {{error, Err}, _} ->
+                {error, Err};
+            {_, {error, Err}} ->
+                {error, Err}
+        end,
+    {reply, Resp, State};
 handle_call({get_header, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_header(Hash, State), State};
 handle_call({get_header_by_height, Height},_From, State) ->

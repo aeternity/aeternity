@@ -152,6 +152,20 @@ request_params('GetTransactionFromBlockLatest') ->
         'tx_objects'
     ];
 
+request_params('GetTxsListFromBlockRangeByHash') ->
+    [
+        'from',
+        'to',
+        'tx_objects'
+    ];
+
+request_params('GetTxsListFromBlockRangeByHeight') ->
+    [
+        'from',
+        'to',
+        'tx_objects'
+    ];
+
 request_params('PostOracleQueryTx') ->
     [
         'OracleQueryTx'
@@ -429,6 +443,64 @@ request_param_info('GetTransactionFromBlockLatest', 'tx_objects') ->
         ]
     };
 
+request_param_info('GetTxsListFromBlockRangeByHash', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
 request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
     #{
         source =>   body,
@@ -659,6 +731,20 @@ validate_response('GetTransactionFromBlockHeight', 404, Body, ValidatorState) ->
 validate_response('GetTransactionFromBlockLatest', 200, Body, ValidatorState) ->
     validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
 validate_response('GetTransactionFromBlockLatest', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHash', 200, Body, ValidatorState) ->
+    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->

@@ -229,7 +229,26 @@ handle_request('GetTransactionFromBlockLatest', Req, _Context) ->
         Index,
         Req);
 
+handle_request('GetTxsListFromBlockRangeByHeight', Req, _Context) ->
+    HeightFrom = maps:get('from', Req),
+    HeightTo = maps:get('to', Req),
+    get_block_range(
+        fun() ->
+            aec_conductor:get_block_range_by_height(HeightFrom, HeightTo)
+        end, Req);
 
+handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
+    case {aec_base58c:safe_decode(block_hash, maps:get('from', Req)),
+          aec_base58c:safe_decode(block_hash, maps:get('to', Req))} of
+        {{ok, HashFrom}, {ok, HashTo}} ->
+            get_block_range(
+                fun() ->
+                    aec_conductor:get_block_range_by_hash(HashFrom, HashTo)
+                end, Req);
+        _ ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+          
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
@@ -355,3 +374,37 @@ read_optional_bool_param(Key, Req, Default) when Default =:= true
         undefined -> Default;
         Bool when is_boolean(Bool) -> Bool
     end.
+
+get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
+    {SerializeFun, DataSchema} =
+        case read_optional_bool_param('tx_objects', Req, false) of
+            false ->
+                {fun(Tx) ->
+                    #{<<"tx">> => aec_base58c:encode(transaction,
+                                                     aec_tx_sign:serialize_to_binary(Tx))}
+                  end, <<"TxMsgPackHashes">>};
+            true ->
+                {fun aec_tx_sign:serialize_for_client/1, <<"TxObjects">>}
+          end,
+    case GetFun() of
+        {error, invalid_range} ->
+            {400, [], #{reason => <<"From's height is bigger than To's">>}};
+        {error, range_too_big} ->
+            {400, [], #{reason => <<"Range too big">>}};
+        {error, chain_too_short} ->
+            {404, [], #{reason => <<"Chain too short">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {ok, Blocks} ->
+            Txs = lists:foldl(
+                fun(Block, Accum) ->
+                    BlockTxs = aec_blocks:txs(Block),
+                    lists:map(SerializeFun, BlockTxs) ++ Accum
+                end,
+                [],
+                Blocks),
+            {200, [], #{transactions => Txs, data_schema => DataSchema}}
+    end.
+
