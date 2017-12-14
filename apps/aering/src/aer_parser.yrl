@@ -143,6 +143,7 @@ Rootsymbol 'File'.
 
 'Expr100' -> 'ExprAtom' '=>' 'Expr100' : {lam, get_ann('$1'), lam_args('$1'), '$3'}.
 'Expr100' -> 'Expr200' '?' 'Expr100' ':' 'Expr100' : set_ann(format, '?:', {'if', get_ann('$1'), '$1', '$3', '$5'}).
+'Expr100' -> 'Expr900' '=' 'Expr100' : {assign, get_ann('$1'), parse_lvalue('$1'), '$3'}.
 'Expr100' -> 'Expr200' : '$1'.
 
 'Expr200' -> 'Expr300' 'OrOp' 'Expr200' : infix('$1', '$2', '$3').
@@ -211,7 +212,6 @@ Rootsymbol 'File'.
 'FieldAssignment' -> id ':' 'Expr' : {field, get_ann('$1'), token('$1'), '$3'}.
 
 'Statement' -> 'Expr'    : '$1'.
-'Statement' -> 'Expr900' '=' 'Expr' : {assign, get_ann('$1'), parse_lvalue('$1'), '$3'}.
 'Statement' -> 'LetDecl' : '$1'.
 
 'Cases' -> '$empty'       : [].
