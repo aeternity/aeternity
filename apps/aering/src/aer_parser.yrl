@@ -58,10 +58,10 @@ Rootsymbol 'File'.
 'Decl' -> 'contract'        con '=' '{' 'Decls' '}' : {contract, get_ann('$1'), token('$2'), '$5'}.
 
 %% Type declarations
-'Decl' -> 'type' id                          : {type_decl, get_ann('$1'), '$2', []}.
-'Decl' -> 'type' id 'TypeVars'               : {type_decl, get_ann('$1'), '$2', '$3'}.
-'Decl' -> 'type' id            '=' 'TypeDef' : {type_def,  get_ann('$1'), '$2', [], '$4'}.
-'Decl' -> 'type' id 'TypeVars' '=' 'TypeDef' : {type_def,  get_ann('$1'), '$2', '$3', '$5'}.
+'Decl' -> 'type' id                          : {type_decl, get_ann('$1'), token('$2'), []}.
+'Decl' -> 'type' id 'TypeVars'               : {type_decl, get_ann('$1'), token('$2'), '$3'}.
+'Decl' -> 'type' id            '=' 'TypeDef' : {type_def,  get_ann('$1'), token('$2'), [], '$4'}.
+'Decl' -> 'type' id 'TypeVars' '=' 'TypeDef' : {type_def,  get_ann('$1'), token('$2'), '$3', '$5'}.
 
 'TypeVars' -> '(' 'TypeVars1' ')' : '$2'.
 'TypeVars1' -> tvar                 : [token('$1')].
@@ -158,13 +158,13 @@ Rootsymbol 'File'.
 'Expr500' -> 'Expr600' : '$1'.
 
 'Expr600' -> 'Expr600' 'AddOp' 'Expr700' : infix('$1', '$2', '$3').
-'Expr600' -> '-' 'Expr700'               : prefix('$1', '$2').
+'Expr600' -> '-' 'Expr700'               : prefix(token('$1'), '$2').
 'Expr600' -> 'Expr700' : '$1'.
 
 'Expr700' -> 'Expr700' 'MulOp' 'Expr800' : infix('$1', '$2', '$3').
 'Expr700' -> 'Expr800' : '$1'.
 
-'Expr800' -> '!' 'Expr800' : prefix('$1', '$2').
+'Expr800' -> '!' 'Expr800' : prefix(token('$1'), '$2').
 'Expr800' -> 'Expr850' : '$1'.
 
 'Expr850' -> switch 'Expr900' '{' 'Cases' '}' : {switch, get_ann('$1'), '$2', '$4'}.
