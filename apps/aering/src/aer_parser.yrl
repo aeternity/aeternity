@@ -243,7 +243,15 @@ Rootsymbol 'File'.
 
 Erlang code.
 
+-export([string/1]).
+
 -ignore_xref([format_error/1, parse_and_scan/1]).
+
+string(S) ->
+    case aer_scan:string(S) of
+        {ok, Toks, _} -> parse(Toks);
+        Err           -> Err
+    end.
 
 -spec ret_err(integer(), string()) -> no_return().
 ret_err(Line, Fmt) -> ret_err(Line, Fmt, []).
