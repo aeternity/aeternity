@@ -99,7 +99,7 @@ indent(D) -> nest(indent(), D).
 %%  Header {
 %%      Body
 %%  }
--spec block(doc(), [doc()]) -> doc().
+-spec block(doc(), doc()) -> doc().
 block(Header, Body) ->
     sep([ hsep([Header, text("{")])
         , indent(Body)

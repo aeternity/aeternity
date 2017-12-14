@@ -266,7 +266,6 @@ bad_expr_err(Reason, E) ->
 -spec line_ann(ann_line()) -> ann().
 line_ann(Line) -> [{line, Line}].
 
--spec get_ann({atom(), ann_line() | ann(), _} | {atom(), ann_line() | ann()}) -> ann().
 get_ann(Node) ->
     case element(2, Node) of
         Line when is_integer(Line) -> line_ann(Line);
@@ -279,9 +278,6 @@ get_ann(Key, Node) ->
 set_ann(Key, Val, Node) ->
     Ann = get_ann(Node),
     setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
-
-get_value({Tok, _Line})       -> Tok;
-get_value({_Tok, _Line, Val}) -> Val.
 
 token({Tok, Line}) -> {Tok, line_ann(Line)};
 token({Tok, Line, Val}) -> {Tok, line_ann(Line), Val}.
@@ -320,6 +316,7 @@ lam_arg(E)                                   -> ret_err(get_ann(line, E), "Bad f
 fun_domain({tuple_t, _, Args}) -> Args;
 fun_domain(T)                  -> [T].
 
+-spec parse_pattern(aer_syntax:expr()) -> aer_syntax:pat() | no_return().
 parse_pattern({app, Ann, Con = {'::', _}, Es}) ->
     {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({app, Ann, Con = {con, _, _}, Es}) ->
@@ -338,5 +335,6 @@ parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
 parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 
+-spec parse_lvalue(aer_syntax:expr()) -> aer_syntax:expr() | no_return().
 parse_lvalue(E = {proj, _, _, _}) -> E;
 parse_lvalue(E) -> bad_expr_err("Not a valid lvalue", E).
