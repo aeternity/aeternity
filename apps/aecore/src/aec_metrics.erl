@@ -23,6 +23,7 @@
          exometer_newentry/2]).
 
 %% start phase API
+-export([create_metrics_probes/0]).
 -export([start_reporters/0]).
 
 -include_lib("kernel/include/inet.hrl").
@@ -58,7 +59,18 @@ try_update(Metric, Value) ->
     end.
 
 %%===================================================================
-%% Reporter API
+%% PROBE INITIALIZATION
+%%===================================================================
+
+create_metrics_probes() ->
+    Probes = aeu_env:get_env(aecore, metrics_probes, []),
+    lists:foreach(fun create_metrics_probe/1, Probes).
+
+create_metrics_probe({Name, Module}) ->
+    ok = exometer:ensure(Name, ad_hoc, Module:ad_hoc_spec()).
+
+%%===================================================================
+%% REPORTER API
 %%===================================================================
 
 start_reporters() ->

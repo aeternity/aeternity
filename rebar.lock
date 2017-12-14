@@ -21,7 +21,7 @@
   0},
  {<<"exometer_core">>,
   {git,"https://github.com/aeternity/exometer_core.git",
-       {ref,"c4afd6d095c8eef7c5447133a033b9165f53da02"}},
+       {ref,"588da231c885390a9b3c08a367949750f32d143c"}},
   0},
  {<<"folsom">>,
   {git,"git://github.com/folsom-project/folsom",
