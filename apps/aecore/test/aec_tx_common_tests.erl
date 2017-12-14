@@ -24,7 +24,7 @@ ensure_account_at_height_test_() ->
               ExpectedAccount = #account{pubkey = AccountPubkey,
                                          balance = 0,
                                          height = BlockHeight},
-              ?assertEqual({ok, ExpectedAccount}, aec_accounts:get(AccountPubkey, AccountsTree))
+              ?assertEqual({value, ExpectedAccount}, aec_accounts_trees:lookup(AccountPubkey, AccountsTree))
       end},
      {"account_height_too_bit is returned on block height lower than current account height",
       fun() ->

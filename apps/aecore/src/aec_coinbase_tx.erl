@@ -54,12 +54,12 @@ check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
 -spec process(coinbase_tx(), trees(), height()) -> {ok, trees()}.
 process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
-    {ok, Account0} = aec_accounts:get(AccountPubkey, AccountsTrees0),
+    {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),
 
     Reward = aec_governance:block_mine_reward(),
     {ok, Account} = aec_accounts:earn(Account0, Reward, Height),
 
-    {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
+    AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
     {ok, Trees}.
 

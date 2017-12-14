@@ -60,8 +60,8 @@ apply_signed_test_() ->
                ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),
-               {ok, ResultMinerAccount} = aec_accounts:get(MinerPubkey, ResultAccountsTree),
-               {ok, ResultRecipientAccount} = aec_accounts:get(?RECIPIENT_PUBKEY, ResultAccountsTree),
+               {value, ResultMinerAccount} = aec_accounts_trees:lookup(MinerPubkey, ResultAccountsTree),
+               {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
                %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + coinbase_t[x reward
                ?assertEqual(100 - 40 - 9 + 9 + 10, aec_accounts:balance(ResultMinerAccount)),

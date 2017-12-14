@@ -15,22 +15,21 @@
          accounts/1,
          set_accounts/2]).
 
--spec new() -> {ok, trees()}.
+-spec new() -> trees().
 new() ->
-    {ok, A} = aec_accounts:empty(),
-    {ok, #trees{accounts = A}}.
+    #trees{accounts = aec_accounts_trees:empty()}.
 
 hash(Trees) ->
     %% TODO Consider all state trees - not only accounts.
-    case aec_accounts:root_hash(accounts(Trees)) of
+    case aec_accounts_trees:root_hash(accounts(Trees)) of
       {ok, H} -> H;
       {error, empty} -> <<0:?STATE_HASH_BYTES/unit:8>>
     end.
 
--spec accounts(trees()) -> aec_accounts:tree() | undefined.
+-spec accounts(trees()) -> aec_accounts_trees:tree() | undefined.
 accounts(Trees) ->
     Trees#trees.accounts.
 
--spec set_accounts(trees(), aec_accounts:tree()) -> trees().
+-spec set_accounts(trees(), aec_accounts_trees:tree()) -> trees().
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.

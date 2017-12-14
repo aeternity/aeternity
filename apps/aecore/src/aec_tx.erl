@@ -147,10 +147,10 @@ grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
             #coinbase_tx{account = MinerPubkey} = aec_tx_sign:data(SignedCoinbaseTx),
             AccountsTrees0 = aec_trees:accounts(Trees0),
 
-            {ok, Account0} = aec_accounts:get(MinerPubkey, AccountsTrees0),
+            {value, Account0} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees0),
             {ok, Account} = aec_accounts:earn(Account0, TotalFee, Height),
 
-            {ok, AccountsTrees} = aec_accounts:put(Account, AccountsTrees0),
+            AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
             Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
             Trees
     end.

@@ -65,12 +65,13 @@ populated_trees() ->
     populated_trees(aec_genesis_block_settings:preset_accounts()).
 
 populated_trees(PresetAccounts) ->
-     {ok, Trees0} = aec_trees:new(),
-     lists:foldl(fun({PubKey, Amount}, Ts) ->
-                       Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
-                       {ok, AccountTree} =  aec_accounts:put(Account, aec_trees:accounts(Ts)),
-                       aec_trees:set_accounts(Ts, AccountTree)
-                  end, Trees0, PresetAccounts).
+    EmptyStateTrees = aec_trees:new(),
+    PopulatedAccountsTree =
+        lists:foldl(fun({PubKey, Amount}, T) ->
+                            Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                            aec_accounts_trees:enter(Account, T)
+                    end, aec_trees:accounts(EmptyStateTrees), PresetAccounts),
+    aec_trees:set_accounts(EmptyStateTrees, PopulatedAccountsTree).
 
 height() ->
     ?GENESIS_HEIGHT.

@@ -110,8 +110,8 @@ process_test_() ->
               {ok, StateTree} = ?TEST_MODULE:process(SpendTx, StateTree0, 20),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
-              {ok, ResultSenderAccount} = aec_accounts:get(?SENDER_PUBKEY, ResultAccountsTree),
-              {ok, ResultRecipientAccount} = aec_accounts:get(?RECIPIENT_PUBKEY, ResultAccountsTree),
+              {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
+              {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
               ?assertEqual(100 - 50 - 10, aec_accounts:balance(ResultSenderAccount)),
               ?assertEqual(11, aec_accounts:nonce(ResultSenderAccount)),

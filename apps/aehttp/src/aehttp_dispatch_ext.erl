@@ -118,9 +118,9 @@ handle_request('GetAccountBalance', Req, _Context) ->
             {400, [], #{reason => <<"Invalid address">>}};
         _ when is_binary(Pubkey) ->
             case aec_conductor:get_account(Pubkey) of
-                {ok, A} ->
+                {value, A} ->
                     {200, [], #{balance => aec_accounts:balance(A)}};
-                {error, notfound} ->
+                none ->
                     {404, [], #{reason => <<"Account not found">>}}
             end
     end;
