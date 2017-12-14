@@ -60,9 +60,10 @@ true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 >    : {token, {'>', TokenLine}}.
 <    : {token, {'<', TokenLine}}.
 >=   : {token, {'>=', TokenLine}}.
-<=   : {token, {'<=', TokenLine}}.
+=<   : {token, {'=<', TokenLine}}.
 -    : {token, {'-', TokenLine}}.
 \+   : {token, {'+', TokenLine}}.
+\+\+ : {token, {'++', TokenLine}}.
 \*   : {token, {'*', TokenLine}}.
 /    : {token, {'/', TokenLine}}.
 mod  : {token, {mod, TokenLine}}.
@@ -70,6 +71,7 @@ mod  : {token, {mod, TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
 ->   : {token, {'->', TokenLine}}.
 =>   : {token, {'=>', TokenLine}}.
+<=   : {token, {'<=', TokenLine}}.
 &&   : {token, {'&&', TokenLine}}.
 \|\| : {token, {'||', TokenLine}}.
 \:\: : {token, {'::', TokenLine}}.
