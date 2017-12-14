@@ -18,11 +18,11 @@ file(Filename, Options) ->
     Ast = parse(Filename, Options),
     ByteCode = compile(Ast, Options),
     ByteCode.
-    
+
 
 parse(_Filename,_Options) ->
      parse_string(read_contract(counter)).
-    
+
 compile(Ast,_Options) ->
     Ast.
 
@@ -47,10 +47,10 @@ parse_string(Text) ->
             error(Err)
     end.
 
-parse_expr(Text) ->
-    {contract, _, _, _, [{'fun', _, _, _, _, Expr}]} =
-        parse_string("contract dummy\nfun expr _ = " ++ Text),
-    Expr.
+%% parse_expr(Text) ->
+%%     [{contract, _, _, [{letval, _, _, _, Expr}]}] =
+%%         parse_string("contract Dummy = { let _ = " ++ Text ++ "}"),
+%%     Expr.
 
 read_contract(Name) ->
     {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aer"]))),
