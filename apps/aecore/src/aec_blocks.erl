@@ -1,3 +1,7 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_blocks).
 
 %% API
@@ -33,7 +37,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).

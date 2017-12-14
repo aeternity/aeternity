@@ -12,7 +12,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_conductor).
 
