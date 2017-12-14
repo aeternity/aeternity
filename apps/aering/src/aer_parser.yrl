@@ -324,7 +324,8 @@ lam_args(E)                   -> [lam_arg(E)].
 
 lam_arg({typed, Ann, Id = {id, _, _}, Type}) -> {arg, Ann, Id, Type};
 lam_arg(Id = {id, Ann, _})                   -> {arg, Ann, Id, type_wildcard()};
-lam_arg(E)                                   -> ret_err(get_ann(line, E), "Bad function parameter ~p", [E]).
+lam_arg(E) ->
+  bad_expr_err("Not a valid function parameter", E).
 
 %% TODO: not nice
 fun_domain({tuple_t, _, Args}) -> Args;
