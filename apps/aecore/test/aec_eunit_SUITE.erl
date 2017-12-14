@@ -58,8 +58,25 @@ end_per_testcase(_TC, Config) ->
             %% New applications take precedence over new registered processes
             {fail, {started_applications, NewApps}};
         {_, NewReg, _} ->
-            {fail, {registered_processes, NewReg}}
+            await_registered(NewReg, Names0)
     end.
+
+await_registered(Rest, Names0) ->
+    receive after 100 ->
+                    await_registered(9, Rest, Names0)
+            end.
+
+await_registered(N, _, Names0) when N > 0 ->
+    case (registered() -- Names0) -- ?REGISTERED_PROCS_WHITELIST of
+        [] ->
+            ok;
+        [_|_] = NewReg ->
+            receive after 100 ->
+                            await_registered(N-1, NewReg, Names0)
+                    end
+    end;
+await_registered(_, NewReg, _Names0) ->
+    {fail, {registered_processes, NewReg}}.
 
 -spec iolist_to_s(iolist()) -> string().
 iolist_to_s(L) ->
