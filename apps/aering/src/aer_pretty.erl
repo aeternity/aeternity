@@ -261,7 +261,7 @@ expr_p(_, {record, _, Fs}) ->
 expr_p(_, {block, _, Ss}) ->
     block(empty(), statements(Ss));
 expr_p(P, {proj, _, E, X}) ->
-    paren(P > 900, beside([expr_p(950, E), text("."), name(X)]));
+    paren(P > 900, beside([expr_p(900, E), text("."), name(X)]));
 expr_p(P, {typed, _, E, T}) ->
     paren(P > 0, typed(expr(E), T));
 expr_p(P, {assign, _, LV, E}) ->
@@ -332,8 +332,8 @@ prefix(P, Op, A) ->
     paren(P > Top, hsep(text(atom_to_list(Op)), expr_p(Inner, A))).
 
 app(P, F, Args) ->
-    paren(P > 950,
-    beside(expr_p(950, F),
+    paren(P > 900,
+    beside(expr_p(900, F),
            tuple(lists:map(fun expr/1, Args)))).
 
 field({field, _, X, E}) ->

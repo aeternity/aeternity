@@ -15,7 +15,7 @@ Nonterminals
 'Type' 'Type100' 'Type200' 'Type300' 'Type400' 'Type500' 'TypeAtom' 'FunDomain'
 'TypeArgs' 'Constructor' 'Constructors' 'Constructors1'
 'Expr' 'Expr100' 'Expr200' 'Expr300' 'Expr400' 'Expr500' 'Expr600' 'Expr650' 'Expr700'
-'Expr800' 'Expr850' 'Expr900' 'Expr950' 'ExprAtom' 'TypedExprs' 'TypedExprs1' 'TypedExpr'
+'Expr800' 'Expr850' 'Expr900' 'ExprAtom' 'TypedExprs' 'TypedExprs1' 'TypedExpr'
 'BlockStatements' 'Statement' 'FieldAssignment'
 'Cases' 'Case'
 'AddOp' 'MulOp' 'CmpOp' 'ConsOp' 'AndOp' 'OrOp'
@@ -175,11 +175,9 @@ Rootsymbol 'File'.
 'Expr850' -> 'if' '(' 'Expr' ')' 'ExprAtom'                   : {'if', get_ann('$1'), '$3', '$5', {unit, [{origin, system}]}}.
 'Expr850' -> 'Expr900' : '$1'.
 
-'Expr900' -> 'Expr900' '.' id : {proj, get_ann('$1'), '$1', token('$3')}.
-'Expr900' -> 'Expr950' : '$1'.
-
-'Expr950' -> 'Expr950' '(' 'TypedExprs' ')' : {app, get_ann('$1'), '$1', '$3'}.
-'Expr950' -> 'ExprAtom' : '$1'.
+'Expr900' -> 'Expr900' '.' id                    : {proj, get_ann('$1'), '$1', token('$3')}.
+'Expr900' -> 'Expr900' '(' 'TypedExprs' ')'      : {app, get_ann('$1'), '$1', '$3'}.
+'Expr900' -> 'ExprAtom' : '$1'.
 
 'ExprAtom' -> int    : token('$1').
 'ExprAtom' -> hex    : set_ann(format, hex, setelement(1, '$1', int)).
