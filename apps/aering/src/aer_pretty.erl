@@ -258,6 +258,8 @@ expr_p(_, {list, _, Es}) ->
     list(lists:map(fun expr/1, Es));
 expr_p(_, {record, _, Fs}) ->
     record(lists:map(fun field/1, Fs));
+expr_p(P, {record, Ann, E, Fs}) ->
+    paren(P > 900, hsep(expr_p(900, E), expr({record, Ann, Fs})));
 expr_p(_, {block, _, Ss}) ->
     block(empty(), statements(Ss));
 expr_p(P, {proj, _, E, X}) ->
@@ -336,8 +338,8 @@ app(P, F, Args) ->
     beside(expr_p(900, F),
            tuple(lists:map(fun expr/1, Args)))).
 
-field({field, _, X, E}) ->
-    follow(beside(name(X), text(":")), expr(E)).
+field({field, _, LV, E}) ->
+    follow(beside(expr_p(900, LV), text(":")), expr(E)).
 
 alt({'case', _, Pat, Body}) ->
     hsep(text("|"), block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body)).

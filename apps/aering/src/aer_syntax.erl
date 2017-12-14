@@ -82,12 +82,18 @@
      | {list, ann(), [expr()]}
      | {typed, ann(), expr(), type()}
      | {record, ann(), [field()]}
+     | {record, ann(), expr(), [field()]} %% record update
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
      | constant().
 
--type field() :: {field, ann(), id(), expr()}.
+%% When lvalue is a projection this is sugar for accessing fields in nested
+%% records. For instance,
+%%    r { x.y: 5 }
+%% is the same as
+%%    r { x: r.x { y: 5 } }
+-type field() :: {field, ann(), lvalue(), expr()}.
 
 -type stmt() :: {assign, ann(), lvalue(), expr()}
               | letbind()
@@ -95,7 +101,7 @@
 
 -type alt() :: {'case', ann(), pat(), expr()}.
 
--type lvalue() :: {proj, ann(), expr(), id()}.
+-type lvalue() :: {proj, ann(), expr(), id()} | id().
 
 -type pat() :: {app, ann(), con() | op(), [pat()]}
              | {tuple, ann(), [pat()]}

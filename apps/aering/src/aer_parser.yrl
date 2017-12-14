@@ -177,6 +177,7 @@ Rootsymbol 'File'.
 
 'Expr900' -> 'Expr900' '.' id                    : {proj, get_ann('$1'), '$1', token('$3')}.
 'Expr900' -> 'Expr900' '(' 'TypedExprs' ')'      : {app, get_ann('$1'), '$1', '$3'}.
+'Expr900' -> 'Expr900' '{' 'BlockStatements' '}' : record_update('$1', '$3').
 'Expr900' -> 'ExprAtom' : '$1'.
 
 'ExprAtom' -> int    : token('$1').
@@ -209,7 +210,7 @@ Rootsymbol 'File'.
 'BlockStatements' -> 'FieldAssignment' ',' 'BlockStatements' : begin {Seps, Ss} = '$3', {[',' | Seps], ['$1' | Ss]} end.
 'BlockStatements' -> 'Statement'       ';' 'BlockStatements' : begin {Seps, Ss} = '$3', {[';' | Seps], ['$1' | Ss]} end.
 
-'FieldAssignment' -> id ':' 'Expr' : {field, get_ann('$1'), token('$1'), '$3'}.
+'FieldAssignment' -> 'Expr900' ':' 'Expr' : {field, get_ann('$1'), parse_lvalue('$1'), '$3'}.
 
 'Statement' -> 'Expr'    : '$1'.
 'Statement' -> 'LetDecl' : '$1'.
@@ -317,6 +318,13 @@ block_e(Ann, {Seps, Exprs}) ->
       _ -> ret_err(proplists:get_value(line, Ann), "Mixed ',' and ';' in block")
   end.
 
+record_update(Expr, Stmts) ->
+  case block_e(get_ann(Expr), Stmts) of
+    {record, Ann, Flds}   -> {record, Ann, Expr, Flds};
+    Block = {block, _, _} ->
+      bad_expr_err("Expected record field updates instead of", Block)
+  end.
+
 lam_args({tuple, _Ann, Args}) -> [lam_arg(Arg) || Arg <- Args];
 lam_args(E)                   -> [lam_arg(E)].
 
@@ -348,6 +356,7 @@ parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
 parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 
--spec parse_lvalue(aer_syntax:expr()) -> aer_syntax:expr() | no_return().
+-spec parse_lvalue(aer_syntax:expr()) -> aer_syntax:lvalue() | no_return().
 parse_lvalue(E = {proj, _, _, _}) -> E;
+parse_lvalue(E = {id, _, _})      -> E;
 parse_lvalue(E) -> bad_expr_err("Not a valid lvalue", E).

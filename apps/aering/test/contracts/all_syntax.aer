@@ -28,7 +28,8 @@ contract AllSyntax = {
   let funWithType(x : int, y) : (int, list(int)) = (x, 0 :: [y] ++ []);
   let funNoType() = {
     let foo = (x, y : bool) => if (! (y && x =< 0x0b || true)) x else { 11 };
-    let bar(r : recordType) = r.y = 5;
+    let setY(r : recordType) : unit = r.y = 5;
+    let setX(r : recordType, x : int) : recordType = r { x: x };  // record update
     switch (funWithType(1, -2)) {
     | (x, [y, z]) => bar({x: z, y: -y + - -z * (-1)})
     | (x, y :: _) => ()
