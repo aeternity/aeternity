@@ -14,7 +14,7 @@
 -export_type([name/0, id/0, con/0, tvar/0, op/0]).
 -export_type([decl/0, letbind/0, typedef/0]).
 -export_type([arg/0, field_t/0, constructor_t/0]).
--export_type([type/0, constant/0, expr/0, field/0, stmt/0, alt/0, lvalue/0, pat/0]).
+-export_type([type/0, constant/0, expr/0, field/1, stmt/0, alt/0, lvalue/0, pat/0]).
 
 -type ann_line()   :: integer().
 -type ann_origin() :: system | user.
@@ -81,8 +81,8 @@
      | {tuple, ann(), [expr()]}
      | {list, ann(), [expr()]}
      | {typed, ann(), expr(), type()}
-     | {record, ann(), [field()]}
-     | {record, ann(), expr(), [field()]} %% record update
+     | {record, ann(), [field(expr())]}
+     | {record, ann(), expr(), [field(expr())]} %% record update
      | {block, ann(), [stmt()]}
      | {op(), ann()}
      | id() | qid() | con() | qcon()
@@ -93,7 +93,7 @@
 %%    r { x.y: 5 }
 %% is the same as
 %%    r { x: r.x { y: 5 } }
--type field() :: {field, ann(), lvalue(), expr()}.
+-type field(E) :: {field, ann(), lvalue(), E}.
 
 -type stmt() :: {assign, ann(), lvalue(), expr()}
               | letbind()
@@ -106,6 +106,7 @@
 -type pat() :: {app, ann(), con() | op(), [pat()]}
              | {tuple, ann(), [pat()]}
              | {list, ann(), [pat()]}
+             | {record, ann(), [field(pat())]}
              | constant()
              | con()
              | id().

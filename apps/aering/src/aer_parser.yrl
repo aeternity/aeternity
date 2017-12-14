@@ -346,6 +346,8 @@ parse_pattern({tuple, Ann, Es}) ->
     {tuple, Ann, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({list, Ann, Es}) ->
     {list, Ann, lists:map(fun parse_pattern/1, Es)};
+parse_pattern({record, Ann, Fs}) ->
+    {record, Ann, lists:map(fun parse_field_pattern/1, Fs)};
 parse_pattern(E = {con, _, _})    -> E;
 parse_pattern(E = {id, _, _})     -> E;
 parse_pattern(E = {unit, _})      -> E;
@@ -355,6 +357,10 @@ parse_pattern(E = {hash, _, _})   -> E;
 parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
 parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
+
+-spec parse_field_pattern(aer_syntax:field(aer_syntax:expr())) -> aer_syntax:field(aer_syntax:pat()) | no_return().
+parse_field_pattern({field, Ann, F, E}) ->
+    {field, Ann, F, parse_pattern(E)}.
 
 -spec parse_lvalue(aer_syntax:expr()) -> aer_syntax:lvalue() | no_return().
 parse_lvalue(E = {proj, _, _, _}) -> E;
