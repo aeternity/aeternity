@@ -18,36 +18,6 @@ empty_contract_test_() ->
        end}
      ]}.
 
-simple_contracts_test_() ->
-    {foreach,
-     fun() -> ok end,
-     fun(_) -> ok end,
-     [{"Scan a contract with an identity function.",
-       fun() ->
-               Text = "contract one\n"
-                      "export one\n"
-                      "pure fun one x =\n"
-                      "  x",
-               {ok, Tokens, _} = aer_scan:string(Text),
-               [{contract,1},
-                {id,1,"one"},
-                {export,2},
-                {id,2,"one"},
-                {pure,3},
-                {'fun',3},
-                {id,3,"one"},
-                {id,3,"x"},
-                {'=',3},
-                {id,4,"x"}] = Tokens,
-               ok
-       end},
-      {"Scan the counter contract.",
-        fun() ->
-            Text = aer_test_utils:read_contract(counter),
-            {ok, _Tokens, _} = aer_scan:string(Text),
-            ok
-       end}]}.
-
 all_tokens_test_() ->
     {foreach, fun() -> ok end,
               fun(_) -> ok end,
@@ -69,14 +39,14 @@ all_tokens() ->
     %% Symbols
     lists:map(Lit, [',', '.', ';', '|', ':', '(', ')', '[', ']', '{', '}']) ++
     %% Operators
-    lists:map(Lit, ['=', '==', '!=', '>', '<', '>=', '<=', '-', '+', '*', '/', mod, ':', '::', '->', '=>']) ++
+    lists:map(Lit, ['=', '==', '!=', '>', '<', '>=', '=<', '-', '+', '++', '*', '/', mod, ':', '::', '->', '=>', '||', '&&', '!']) ++
     %% Keywords
-    lists:map(Lit, [const, contract, export, fn, 'fun', import, in, 'let', match, pure, type, val, with]) ++
+    lists:map(Lit, [contract, type, 'let', switch, rec, 'and']) ++
     %% Comment token (not an actual token), just for tests
     [{comment, 0, "*Comment!\""}] ++
     %% Literals
     [ Tok(bool, true), Tok(bool, false)
-    , Tok(id, "foo"), Lit('_'), Tok(con, "Foo"), Tok(param, "state")
+    , Tok(id, "foo"), Tok(id, "_"), Tok(con, "Foo")
     , Tok(hash, Hash)
     , Tok(int, 1234567890), Tok(hex, 9876543210)
     , Tok(string, <<"bla\"\\\b\e\f\n\r\t\vbla">>)
@@ -107,6 +77,6 @@ show_token({string, _, S}) -> fmt(binary_to_list(S));
 show_token({int, _, N}) -> fmt(N);
 show_token({hex, _, N}) -> fmt("0x~.16b", N);
 show_token({hash, _, <<N:256>>}) -> fmt("#~.16b", N);
-show_token({comment, _, S}) -> "(*" ++ S ++ "*)";
+show_token({comment, _, S}) -> "/*" ++ S ++ "*/";
 show_token({_, _, _}) -> "TODO".
 
