@@ -21,7 +21,8 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0
+         type/0,
+         for_client/1
         ]).
 
 %% Additional getters
@@ -156,6 +157,20 @@ type() ->
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_RESPONSE_TX_VSN.
+
+for_client(#oracle_response_tx{ oracle         = OraclePubKey,
+                                nonce          = Nonce,
+                                interaction_id = IId,
+                                response       = Response,
+                                fee            = Fee}) ->
+    #{<<"type">> => <<"OracleResponseTxObject">>, % swagger schema name
+      <<"vsn">> => version(),
+      <<"oracle">> => base64:encode(OraclePubKey),
+      <<"nonce">> => Nonce,
+      <<"interaction_id">> => IId,
+      <<"response">> => Response,
+      <<"fee">> => Fee}.
+
 
 %% -- Local functions  -------------------------------------------------------
 

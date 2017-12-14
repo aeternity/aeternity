@@ -67,6 +67,7 @@
         , genesis_block/0
         , genesis_header/0
         , genesis_hash/0
+        , get_block_candidate/0
         , get_block_by_hash/1
         , get_block_by_height/1
         , get_header_by_hash/1
@@ -205,6 +206,10 @@ get_block_by_hash(Hash) when is_binary(Hash) ->
 get_block_by_height(Height) ->
     gen_server:call(?SERVER, {get_block_by_height, Height}).
 
+-spec get_block_candidate() -> {'ok', block()} | {'error', atom()}.
+get_block_candidate() ->
+    gen_server:call(?SERVER, get_block_candidate).
+
 -spec get_header_by_hash(block_header_hash()) -> {'ok', header()} | {'error', atom()}.
 get_header_by_hash(Hash) when is_binary(Hash) ->
     gen_server:call(?SERVER, {get_header, Hash}).
@@ -262,6 +267,17 @@ handle_call({add_synced_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(genesis_block,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_block(State), State};
+handle_call(get_block_candidate,_From, State) ->
+    Res =
+        case State#state.block_candidate of
+            undefined when State#state.mining_state =:= stopped ->
+                {error, not_mining};
+            undefined when State#state.mining_state =:= running ->
+                {error, miner_starting};
+            #candidate{block=Block} ->
+                {ok, Block}
+        end,
+    {reply, Res, State};
 handle_call(genesis_hash,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_hash(State), State};
 handle_call(genesis_header,_From, State) ->

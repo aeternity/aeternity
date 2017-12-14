@@ -21,7 +21,8 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0
+         type/0,
+         for_client/1
         ]).
 
 %% Additional getters
@@ -189,6 +190,27 @@ type() ->
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_QUERY_TX_VSN.
+
+for_client(#oracle_query_tx{sender        = SenderPubKey,
+                            nonce         = Nonce,
+                            oracle        = OraclePubKey,
+                            query         = Query,
+                            query_fee     = QueryFee,
+                            query_ttl     = {QueryTLLType, QueryTTLValue},
+                            response_ttl  = {delta=ResponseTTLType, ResponseTTLValue},
+                            fee           = Fee}) ->
+    #{<<"type">> => <<"OracleQueryTxObject">>, % swagger schema name
+      <<"vsn">> => version(),
+      <<"sender">> => base64:encode(SenderPubKey),
+      <<"nonce">> => Nonce,
+      <<"oracle">> => base64:encode(OraclePubKey),
+      <<"query">> => Query,
+      <<"query_fee">> => QueryFee,
+      <<"query_ttl">> => #{<<"type">> => QueryTLLType,
+                           <<"value">> => QueryTTLValue},
+      <<"response_ttl">> => #{<<"type">> => ResponseTTLType,
+                              <<"value">> => ResponseTTLValue},
+      <<"fee">> => Fee}.
 
 %% -- Local functions  -------------------------------------------------------
 

@@ -24,6 +24,7 @@
          deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
+         serialize_client_readable/1,
          hash_internal_representation/1,
          root_hash/1,
          validate/1,
@@ -142,7 +143,16 @@ to_header(#block{height = Height,
 serialize_for_network(B = #block{}) ->
     {ok, jsx:encode(serialize_to_map(B))}.
 
+serialize_client_readable(B) ->
+    serialize_to_map(B, fun aec_tx_sign:serialize_for_client/1).
+
 serialize_to_map(B = #block{}) ->
+    serialize_to_map(B,
+                     fun(Tx) ->
+                         #{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}
+                     end).
+
+serialize_to_map(B = #block{}, SerializeTxFun) ->
     #{<<"height">> => height(B),
       <<"prev_hash">> => base64:encode(prev_hash(B)),
       <<"state_hash">> => base64:encode(B#block.root_hash),
@@ -152,11 +162,9 @@ serialize_to_map(B = #block{}) ->
       <<"time">> => B#block.time,
       <<"version">> => B#block.version,
       <<"pow">> => aec_headers:serialize_pow_evidence(B#block.pow_evidence),
-      <<"transactions">> => lists:map(fun serialize_tx/1, B#block.txs)
+      <<"transactions">> => lists:map(SerializeTxFun, B#block.txs)
      }.
 
-serialize_tx(Tx) ->
-    #{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
 
 deserialize_tx(#{<<"tx">> := Bin}) ->
     aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).

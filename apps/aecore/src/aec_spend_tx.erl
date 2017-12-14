@@ -15,7 +15,8 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0]).
+         type/0,
+         for_client/1]).
 
 -behavior(aetx).
 
@@ -123,6 +124,19 @@ deserialize([#{<<"type">> := ?SPEND_TX_TYPE},
 -spec type() -> binary().
 type() ->
     ?SPEND_TX_TYPE.
+
+for_client(#spend_tx{sender = Sender,
+                 recipient = Recipient,
+                 amount = Amount,
+                 fee = Fee,
+                 nonce = Nonce}) ->
+    #{<<"sender">> => base64:encode(Sender),
+      <<"type">> => <<"SpendTxObject">>, % swagger schema name
+      <<"recipient">> => base64:encode(Recipient),
+      <<"amount">> => Amount,
+      <<"fee">> => Fee,
+      <<"nonce">> => Nonce,
+      <<"vsn">> => ?SPEND_TX_VSN}.
 
 version() ->
     ?SPEND_TX_VSN.

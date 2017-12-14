@@ -503,9 +503,289 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+  /block/number:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockNumber
+      description: 'Get the current block''s height'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+      responses:
+        '200':
+          description: The current block's height 
+          schema:
+            $ref: '#/definitions/BlockHeight'
+      security: []
+  /block/height/{height}:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockByHeightInternal
+      description: 'Get a block by height'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: height
+          description: 'Height of the block to fetch'
+          required: true
+          type : integer
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The block being found 
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/hash/{hash}:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockByHashInternal
+      description: 'Get a block by hash'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string 
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The block being found  
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '400':
+          description: Invalid hash 
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/genesis:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockGenesis
+      description: 'Get the genesis block'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The genesis block 
+          schema:
+            $ref: '#/definitions/GenericBlock'
+      security: []
+  /block/latest:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockLatest
+      description: 'Get the top block'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The top block 
+          schema:
+            $ref: '#/definitions/GenericBlock'
+      security: []
+  /block/pending:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockPending
+      description: 'Get the block being mined'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The pending block with invalid nonce and pow evidence 
+          schema:
+            $ref: '#/definitions/GenericBlock'
+        '404':
+          description: No pending block (node not mining)
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/txs/count/hash/{hash}:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockTxsCountByHash
+      description: 'Get a block transactions count by hash'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: hash
+          description: 'Hash of the block to fetch'
+          required: true
+          type : string 
+      responses:
+        '200':
+          description: The count of transactions in the block  
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+        '400':
+          description: Invalid hash 
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/txs/count/height/{height}:
+    get:
+      tags:
+        - internal
+      operationId: GetBlockTxsCountByHeight
+      description: 'Get a block transactions count by height'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: height
+          description: 'Height of the block to fetch'
+          required: true
+          type : integer
+      responses:
+        '200':
+          description: The count of transactions in the block  
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+        '404':
+          description: Block not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/txs/count/genesis:
+    get:
+      tags:
+        - internal
+      operationId: GetGenesisBlockTxsCount
+      description: 'Get the genesis block transactions count'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+      responses:
+        '200':
+          description: The count of transactions in the genesis block  
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+      security: []
+  /block/txs/count/latest:
+    get:
+      tags:
+        - internal
+      operationId: GetLatestBlockTxsCount
+      description: 'Get the latest block transactions count'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+      responses:
+        '200':
+          description: The count of transactions in the latest block  
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+      security: []
+  /block/txs/count/pending:
+    get:
+      tags:
+        - internal
+      operationId: GetPendingBlockTxsCount
+      description: 'Get the pending block transactions count'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+      responses:
+        '200':
+          description: The count of transactions in the pending block  
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+                description: Count
+      security: []
 
 definitions:
-  Block:
+  Header:
     type: object
     properties:
       height:
@@ -533,38 +813,50 @@ definitions:
         type: array
         items:
           type: integer
-      transactions:
-        type: array
-        items:
-          $ref: '#/definitions/Tx'
+  Block:
+    allOf:
+      - $ref: '#/definitions/Header'
+      - type: object
+        properties:
+          transactions:
+            type: array
+            items:
+              $ref: '#/definitions/Tx'
+  GenericBlock:
+    allOf:
+      - $ref: '#/definitions/Header'
+      - type: object
+        discriminator: data_schema
+        properties:
+          data_schema:
+            type: string
+        required:
+        - data_schema
+  BlockWithTxs:
+    allOf:
+      - $ref: '#/definitions/GenericBlock'
+      - type: object
+        properties:
+          transactions:
+            type: array
+            items:
+              $ref: '#/definitions/SignedTxObject'
+  BlockWithTxsHashes:
+    allOf:
+      - $ref: '#/definitions/GenericBlock'
+      - type: object
+        properties:
+          transactions:
+            type: array
+            items:
+              $ref: '#/definitions/Tx'
   Top:
-    type: object
-    properties:
-      height:
-        type: integer
-        format: int64
-      hash:
-        type: string
-      prev_hash:
-        type: string
-      state_hash:
-        type: string
-      txs_hash:
-        type: string
-      difficulty:
-        type: integer
-        format: int64
-      nonce:
-        type: integer
-        format: uint64
-      time:
-        type: integer
-        format: int64
-      version:
-        type: integer
-        format: int64
-      pow:
-        type: string
+    allOf:
+      - $ref: '#/definitions/Header'
+      - type: object
+        properties:
+          hash:
+            type: string
   Ping:
     type: object
     properties:
@@ -764,7 +1056,125 @@ definitions:
         format: int64
       difficulty:
         type: number
+  BlockHeight:
+    type: object
+    properties:
+      height:
+        type: integer
+        format: int64
+        description: Blocks's height
+    required:
+    - height
 
+  SignedTxObject:
+    type: object
+    properties:
+      tx:
+        "$ref": '#/definitions/GenericTxObject'
+      signatures:
+        type: array
+        minItems: 1
+        items:
+          type: string
+## readable JSON objects for transactions:
+  GenericTxObject:
+    type: object
+    discriminator: type 
+    properties:
+      data_schema:
+        type: string
+        vsn: integer
+    required:
+    - type
+  CoinbaseTxObject:
+    allOf:
+      - $ref: '#/definitions/GenericTxObject'
+      - type: object
+        properties:
+          account: string
+        required:
+        - account
+  SpendTxObject:
+    allOf:
+      - $ref: '#/definitions/GenericTxObject'
+      - type: object
+        properties:
+          sender: string
+          recipient: string
+          amount: integer 
+          fee: integer 
+          nonce: integer 
+        required:
+        - sender
+        - recipient
+        - amount
+        - fee
+        - nonce
+  OracleRegisterTxObject:
+    allOf:
+      - $ref: '#/definitions/GenericTxObject'
+      - type: object
+        properties:
+          sender: string
+          nonce: integer 
+          que: string
+          response_spec: string
+          ttl: 
+            "$ref": '#/definitions/TTL'
+          fee: integer
+        required:
+        - account
+        - nonce
+        - query_spec
+        - response_spec
+        - ttl
+        - fee
+  OracleQueryTxObject:
+    allOf:
+      - $ref: '#/definitions/GenericTxObject'
+      - type: object
+        properties:
+          sender: string
+          nonce: integer 
+          oracle: string
+          query: string
+          query_fee: integer
+          query_ttl: 
+            "$ref": '#/definitions/TTL'
+          response_ttl: 
+            "$ref": '#/definitions/TTL'
+          fee: integer
+        required:
+        - sender
+        - nonce
+        - oracle
+        - query
+        - query_fee
+        - query_ttl
+        - response_ttl
+        - fee
+  OracleResponseTxObject:
+    allOf:
+      - $ref: '#/definitions/GenericTxObject'
+      - type: object
+        properties:
+          sender: string
+          nonce: integer 
+          oracle: string
+          query: string
+          query_fee: integer
+          query_ttl: 
+            "$ref": '#/definitions/TTL'
+          response_ttl: 
+            "$ref": '#/definitions/TTL'
+          fee: integer
+        required:
+        - account
+        - nonce
+        - query_spec
+        - response_spec
+        - ttl
+        - fee
   Error:
     type: object
     properties:
