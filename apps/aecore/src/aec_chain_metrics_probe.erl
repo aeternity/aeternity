@@ -13,6 +13,8 @@
          probe_handle_msg/2,
          probe_code_change/3]).
 
+-export([ad_hoc_spec/0]).
+
 -include_lib("exometer_core/include/exometer.hrl").
 
 -define(DATAPOINTS, [total_difficulty]).
@@ -25,13 +27,19 @@
           ref
          }).
 
+ad_hoc_spec() ->
+    [{module, ?MODULE},
+     {type, probe},
+     {cache, 5000},
+     {options, [{sample_interval, 5000}]}].
+
+
+
 -spec behaviour() -> exometer:behaviour().
 behaviour() ->
     probe.
 
 probe_init(_, _, Opts) ->
-    lager:debug("ensuring gproc started", []),
-    {ok,_} = application:ensure_all_started(gproc),
     lager:debug("chain_metrics probe initialized", []),
     aec_events:subscribe(block_created),
     aec_events:subscribe(top_changed),

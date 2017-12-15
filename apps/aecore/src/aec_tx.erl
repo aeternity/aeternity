@@ -1,3 +1,7 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_tx).
 
 -export([filter_out_invalid_signatures/1,
@@ -16,57 +20,25 @@
 
 -include("common.hrl").
 -include("trees.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
+-type tx() :: coinbase_tx() | spend_tx().
 -export_type([tx/0]).
-
-%%%=============================================================================
-%%% aec_tx behavior callbacks
-%%%=============================================================================
-
--callback new(Args :: map()) ->
-    {ok, Tx :: term()} | {error, Reason :: term()}.
-
--callback fee(Tx :: term()) ->
-    Fee :: integer().
-
--callback nonce(Tx :: term()) ->
-    Nonce :: non_neg_integer() | undefined.
-
--callback origin(Tx :: term()) ->
-    Origin :: pubkey() | undefined.
-
--callback signers(Tx :: term()) -> [pubkey()].
-
--callback check(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()} | {error, Reason :: term()}.
-
--callback process(Tx :: term(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()}.
-
-
-%% Relax type spec for now to have different spec in coinbase/spend
--callback serialize(Tx :: term()) -> term().
-
-%% Relax type spec for now to have different spec in coinbase/spend
--callback deserialize(term()) -> Tx :: term().
-
--callback type() -> binary().
 
 %%%%=============================================================================
 %% API
 %%%=============================================================================
 
 fee(Tx) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:fee(Tx).
 
 nonce(Tx) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:nonce(Tx).
 
 origin(Tx) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:origin(Tx).
 
 -spec filter_out_invalid_signatures(list(aec_tx_sign:signed_tx())) -> list(aec_tx_sign:signed_tx()).
@@ -88,7 +60,7 @@ apply_signed(SignedTxs, Trees0, Height) ->
 -spec is_coinbase(aec_tx_sign:signed_tx()) -> boolean().
 is_coinbase(Signed) ->
     Tx = aec_tx_sign:data(Signed),
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Type = Mod:type(),
     <<"coinbase">> =:= Type.
 
@@ -120,15 +92,15 @@ calculate_total_fee(SignedTxs) ->
       end, 0, SignedTxs).
 
 signers(Tx) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:signers(Tx).
 
 serialize(Tx) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:serialize(Tx).
 
 deserialize(Data) ->
-    Mod = tx_dispatcher:handler_by_type(type_of(Data)),
+    Mod = aec_tx_dispatcher:handler_by_type(type_of(Data)),
     Mod:deserialize(Data).
 
 serialize_to_binary(Tx) ->
@@ -149,7 +121,7 @@ type_of([Type|_]) ->
 %%------------------------------------------------------------------------------
 -spec check_single(tx(), trees(), non_neg_integer()) -> {ok, trees()} | {error, term()}.
 check_single(Tx, Trees, Height) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:check(Tx, Trees, Height).
 
 %%------------------------------------------------------------------------------
@@ -157,7 +129,7 @@ check_single(Tx, Trees, Height) ->
 %%------------------------------------------------------------------------------
 -spec process_single(tx(), trees(), non_neg_integer()) -> {ok, trees()}.
 process_single(Tx, Trees, Height) ->
-    Mod = tx_dispatcher:handler(Tx),
+    Mod = aec_tx_dispatcher:handler(Tx),
     Mod:process(Tx, Trees, Height).
 
 -spec grant_fee_to_miner(list(aec_tx_sign:signed_tx()), trees(), non_neg_integer(), height()) ->

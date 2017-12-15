@@ -1,3 +1,7 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_blocks).
 
 %% API
@@ -33,7 +37,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
@@ -217,7 +221,7 @@ deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
 deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
-                                                   Nonce >= ?MAX_NONCE ->
+                                                   Nonce > ?MAX_NONCE ->
     %% Prevent forging a solution without performing actual work by prefixing digits
     %% to a valid nonce (produces valid PoW after truncating to the allowed range)
     {error, bad_nonce};

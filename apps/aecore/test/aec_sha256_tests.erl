@@ -20,10 +20,6 @@ all_test_() ->
      [{"Hash a binary",
        fun() ->
                ?assertEqual(?HASH_BYTES, size(?TEST_MODULE:hash(<<"hello there!">>)))
-       end},
-      {"Hash an erlang term",
-       fun() ->
-               ?assertEqual(?HASH_BYTES, size(?TEST_MODULE:hash({a, b, c})))
        end}
      ]
     }.

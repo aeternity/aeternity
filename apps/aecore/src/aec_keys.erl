@@ -15,7 +15,6 @@
 -behaviour(gen_server).
 
 -include("common.hrl").
--include("txs.hrl").
 
 %% API
 -export([start_link/0,

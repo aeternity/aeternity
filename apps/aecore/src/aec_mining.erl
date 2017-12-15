@@ -1,9 +1,14 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_mining).
 
 %% API
 -export([create_block_candidate/2,
          need_to_regenerate/1,
-         mine/2]).
+         mine/2,
+         get_miner_account_balance/0]). %% For tests.
 
 -ifdef(TEST).
 -export([adjust_target/2]).
@@ -11,7 +16,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 %% API
@@ -43,6 +48,16 @@ mine(Block, Nonce) ->
             Error
     end.
 
+-spec get_miner_account_balance() -> {ok, non_neg_integer()} |
+                                     {error, account_not_found}.
+get_miner_account_balance() ->
+    {ok, Pubkey} = aec_keys:pubkey(),
+    case aec_conductor:get_account(Pubkey) of
+        {ok, A} ->
+            {ok, aec_accounts:balance(A)};
+        {error, notfound} ->
+            {error, account_not_found}
+    end.
 
 %% Internal functions
 

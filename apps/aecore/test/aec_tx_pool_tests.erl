@@ -1,8 +1,12 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 

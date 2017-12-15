@@ -8,9 +8,6 @@
         ?assertEqual(aec_blocks:serialize_for_network(B1),
                      aec_blocks:serialize_for_network(B2))).
 
-genesis_block() ->
-    aec_block_genesis:genesis_block().
-
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
     Hash.
@@ -50,16 +47,11 @@ kill_and_restart_conductor() ->
     ok.
 
 wait_for_conductor() ->
-    case
-        try aec_conductor:top()
-        catch exit:{noproc, _} -> dead
-        end
-    of
-        dead ->
-            timer:sleep(10),
-            wait_for_conductor();
-        _ ->
-            server_up
+    try aec_conductor:top(),
+        server_up
+    catch exit:{noproc, _} -> 
+        timer:sleep(10),
+        wait_for_conductor()
     end.
 
 write_test_() ->
@@ -72,7 +64,7 @@ write_test_() ->
      end,
      [{"Write a block to storage and read it back.",
        fun() ->
-               GB = genesis_block(),
+               GB = aec_test_utils:genesis_block(),
                ok = aec_persistence:write_block(GB),
                ok = aec_persistence:sync(),
                Hash = block_hash(GB),
@@ -91,6 +83,8 @@ write_chain_test_() ->
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
+             meck:new(aec_genesis_block_settings, []),
+             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
              TmpDir = aec_test_utils:aec_keys_setup(),
              Path = init_persistence(),
              {ok, _} = aec_tx_pool:start_link(),
@@ -102,12 +96,13 @@ write_chain_test_() ->
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
+             meck:unload(aec_genesis_block_settings),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
-               GB = genesis_block(),
+               GB = aec_test_utils:genesis_block(),
                ok = aec_conductor:post_block(GB),
                aec_persistence:sync(),
 
@@ -183,6 +178,8 @@ restart_test_() ->
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             meck:new(aec_genesis_block_settings, []),
+             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              {Path, TmpDir}
@@ -191,13 +188,15 @@ restart_test_() ->
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
+             meck:unload(aec_genesis_block_settings),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
-               [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
+               [GB, B1, B2] = aec_test_utils:gen_block_chain(3),
                BH2 = aec_blocks:to_header(B2),
+               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),

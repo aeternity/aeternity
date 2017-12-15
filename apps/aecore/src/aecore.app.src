@@ -5,12 +5,14 @@
   {registered, []},
   {mod, { aecore_app, []}},
   {start_phases, [
+                  {create_metrics_probes, []},
                   {start_reporters, []}
                  ]},
   {applications,
    [kernel,
     stdlib,
     crypto,
+    eper,
     syntax_tools,
     compiler,
     goldrush,
@@ -27,19 +29,12 @@
     aeutils,
     msgpack,
     erlexec,
-    aecuckoo
+    aecuckoo,
+    aetx
    ]},
   {env, [
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},
-         {exometer_defaults,
-          [
-           {['_'], chain_probe, [
-                                 {module, aec_chain_metrics_probe},
-                                 {cache, 5000},
-                                 {options, [{sample_interval, 5000}]}
-                                ]}
-          ]},
          {exometer_subscribers,
           [
            {select,
@@ -55,13 +50,16 @@
              ],
              aec_metrics_main, default, default, true}}
           ]},
-        {'$setup_hooks',
-         [
-          {normal, [
-                    {110, {aec_peers, check_env, []}},
-                    {110, {aecore_app, check_env, []}}
-                   ]}
-         ]}
+         {metrics_probes,
+          [{[ae,epoch,aecore,chain], aec_chain_metrics_probe},
+           {[ae,epoch,aecore,eper] , aec_eper_metrics_probe}]},
+         {'$setup_hooks',
+          [
+           {normal, [
+                     {110, {aec_peers, check_env, []}},
+                     {110, {aecore_app, check_env, []}}
+                    ]}
+          ]}
         ]},
   {modules, []},
 

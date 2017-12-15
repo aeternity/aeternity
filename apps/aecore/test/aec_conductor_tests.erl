@@ -12,7 +12,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_conductor).
 
@@ -23,6 +23,8 @@ setup_minimal() ->
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
+    meck:new(aec_genesis_block_settings, []),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
@@ -36,6 +38,7 @@ teardown_minimal(TmpKeysDir) ->
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
+    meck:unload(aec_genesis_block_settings),
     aec_test_utils:unmock_time(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
@@ -350,7 +353,7 @@ assert_stopped() ->
 assert_stopped_and_genesis_at_top() ->
     assert_stopped(),
     ?assertEqual(?TEST_MODULE:top_block_hash(),
-                 header_hash(aec_block_genesis:genesis_header())).
+                 header_hash(aec_blocks:to_header(aec_test_utils:genesis_block()))).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),

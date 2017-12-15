@@ -38,7 +38,7 @@
           height = 0              :: height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
-          root_hash = <<>>        :: binary(),
+          root_hash = <<>>        :: state_hash(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
