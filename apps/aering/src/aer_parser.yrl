@@ -322,10 +322,14 @@ block_e(Ann, {[], [Fld = {field, _, _, _}]}) ->
 block_e(_Ann, {[], [Expr]}) -> Expr;
 block_e(Ann, {Seps, Exprs}) ->
   case lists:usort(Seps) of
-      [','] -> {record, Ann, Exprs};
+      [','] -> {record, Ann, lists:map(fun check_field/1, Exprs)};
       [';'] -> {block,  Ann, Exprs};
       _ -> ret_err(proplists:get_value(line, Ann), "Mixed ',' and ';' in block")
   end.
+
+check_field(F = {field, _, _, _}) -> F;
+check_field(E) ->
+    bad_expr_err("Expected record field update instead of", E).
 
 record_update(Expr, Stmts) ->
   case block_e(get_ann(Expr), Stmts) of
