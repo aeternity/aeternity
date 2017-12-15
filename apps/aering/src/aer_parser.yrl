@@ -247,7 +247,7 @@ Erlang code.
 -ignore_xref([format_error/1, parse_and_scan/1]).
 
 string(S) ->
-    case aer_scan:string(S) of
+    case aer_scan:scan(S) of
         {ok, Toks, _} -> parse(Toks);
         Err           -> Err
     end.

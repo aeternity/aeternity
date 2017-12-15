@@ -85,6 +85,8 @@ _           : {token, {'_', TokenLine}}.
 
 Erlang code.
 
+-export([scan/1]).
+
 -dialyzer({nowarn_function, yyrev/2}).
 
 -ignore_xref([format_error/1, string/2, token/2, token/3, tokens/2, tokens/3]).
@@ -131,11 +133,43 @@ unescape(Line, [$\\, Code | Chars], Acc) ->
 unescape(Line, [C | Chars], Acc) ->
     unescape(Line, Chars, [C | Acc]).
 
-
-
 parse_hex("0x" ++ Chars) -> list_to_integer(Chars, 16).
 
 parse_hash("#" ++ Chars) ->
     N = list_to_integer(Chars, 16),
     <<N:256>>.
+
+%% leex has no facilities whatsoever for going beyond pure regexps so we can't
+%% do nested comments using leex. Until we implement a proper lexer, nested comments
+%% are stripped before calling string/1.
+scan(S) ->
+    string(strip_block_comments(S, [])).
+
+strip_block_comments("", Acc) ->
+    lists:append(lists:reverse(Acc));
+strip_block_comments([$" | S], Acc) ->
+    case re:run(S, "^([^\"]|\\\\.)*\"", [{capture, first}]) of
+        {match, [{0, N}]} ->
+            {S1, S2} = lists:split(N, S),
+            strip_block_comments(S2, [[$" | S1] | Acc]);
+        nomatch -> %% Bad string literal
+            strip_block_comments("", [[$" | S] | Acc])
+    end;
+strip_block_comments("/*" ++ S, Acc) -> %% TODO: Not quite right, since +/* lexes as an operator.
+    strip_block_comments(0, S, Acc);
+strip_block_comments([C | S], Acc) ->
+    strip_block_comments(S, [[C] | Acc]).
+
+strip_block_comments(0, "*/" ++ S, Acc) ->
+    strip_block_comments(S, Acc);
+strip_block_comments(_, "", Acc) -> %% Unterminated comment, ignore
+    strip_block_comments("", Acc);
+strip_block_comments(N, "*/" ++ S, Acc) ->
+    strip_block_comments(N - 1, S, Acc);
+strip_block_comments(N, "/*" ++ S, Acc) ->
+    strip_block_comments(N + 1, S, Acc);
+strip_block_comments(N, "\n" ++ S, Acc) ->  %% Preserve line numbers!
+    strip_block_comments(N, S, ["\n" | Acc]);
+strip_block_comments(N, [_ | S], Acc) ->
+    strip_block_comments(N, S, Acc).
 

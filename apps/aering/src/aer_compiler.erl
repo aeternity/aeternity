@@ -30,18 +30,12 @@ compile(Ast,_Options) ->
 
 %% TODO: Tempoary parser hook below...
 
-scan_string(Text) ->
-    case aer_scan:string(Text) of
-        {ok, Tokens, _} -> Tokens;
-        Err = {error, {Line, aer_scan, {user, Reason}}, _} ->
-            io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
-            error(Err)
-    end.
-
 parse_string(Text) ->
-    Tokens = scan_string(Text),
-    case aer_parser:parse(Tokens) of
+    case aer_parser:string(Text) of
         {ok, Contract} -> Contract;
+        Err = {error, {Line, aer_scan, Reason}} ->
+            io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
+            error(Err);
         Err = {error, {Line, aer_parser, Reason}} ->
             io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
             error(Err)

@@ -76,17 +76,8 @@ parse_contract(Name) ->
 roundtrip_contract(Name) ->
     round_trip(aer_test_utils:read_contract(Name)).
 
-scan_string(Text) ->
-    case aer_scan:string(Text) of
-        {ok, Tokens, _} -> Tokens;
-        Err = {error, {Line, aer_scan, {user, Reason}}, _} ->
-            io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
-            error(Err)
-    end.
-
 parse_string(Text) ->
-    Tokens = scan_string(Text),
-    case aer_parser:parse(Tokens) of
+    case aer_parser:string(Text) of
         {ok, Contract} -> Contract;
         Err -> error(Err)
     end.
