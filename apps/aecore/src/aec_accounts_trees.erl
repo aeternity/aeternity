@@ -7,6 +7,7 @@
 
 %% API - similar to OTP `gb_trees` module
 -export([empty/0,
+         get/2,
          lookup/2,
          enter/2]).
 
@@ -34,6 +35,11 @@
 -spec empty() -> tree().
 empty() ->
     aeu_mtrees:empty().
+
+-spec get(pubkey(), tree()) -> account().
+get(Pubkey, Tree) ->
+    #account{pubkey = Pubkey} = %% Hardcoded expectation.
+        aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)).
 
 -spec lookup(pubkey(), tree()) -> none | {value, account()}.
 lookup(Pubkey, Tree) ->

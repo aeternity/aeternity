@@ -26,6 +26,26 @@ smoke_test() ->
     ?assertNotEqual(H1, H2),
     ok.
 
+lookup_test() ->
+    A1 = #account{pubkey = K1 = <<"k1">>, balance = 10},
+    K2 = <<"k2">>,
+    T0 = aec_accounts_trees:empty(),
+    ?assertEqual(none, aec_accounts_trees:lookup(K1, T0)),
+    T1 = aec_accounts_trees:enter(A1, T0),
+    ?assertEqual({value, A1}, aec_accounts_trees:lookup(K1, T1)),
+    ?assertEqual(none, aec_accounts_trees:lookup(K2, T1)),
+    ok.
+
+get_test() ->
+    A1 = #account{pubkey = K1 = <<"k1">>, balance = 10},
+    K2 = <<"k2">>,
+    T0 = aec_accounts_trees:empty(),
+    ?assertException(_, _, aec_accounts_trees:get(K1, T0)),
+    T1 = aec_accounts_trees:enter(A1, T0),
+    ?assertEqual(A1, aec_accounts_trees:get(K1, T1)),
+    ?assertException(_, _, aec_accounts_trees:get(K2, T1)),
+    ok.
+
 proof_test() ->
     T0 = aec_accounts_trees:empty(),
     A1 = #account{pubkey = <<"k1">>, balance = 10},
