@@ -269,6 +269,8 @@ expr_p(P, {typed, _, E, T}) ->
 expr_p(P, {assign, _, LV, E}) ->
     paren(P > 0, equals(expr_p(900, LV), expr(E)));
 %% -- Operators
+expr_p(_, {app, _, {'..', _}, [A, B]}) ->
+    list([infix(0, '..', A, B)]);
 expr_p(P, E = {app, _, F = {Op, _}, Args}) when is_atom(Op) ->
     case {aer_syntax:get_ann(format, E), Args} of
         {infix, [A, B]} -> infix(P, Op, A, B);
@@ -302,21 +304,22 @@ expr_p(_, E = {qid, _, _})  -> name(E);
 expr_p(_, E = {qcon, _, _}) -> name(E).
 
 -spec bin_prec(aer_syntax:bin_op()) -> {integer(), integer(), integer()}.
-bin_prec('||') -> {200, 300, 200};
-bin_prec('&&') -> {300, 400, 300};
-bin_prec('<')  -> {400, 500, 500};
-bin_prec('>')  -> {400, 500, 500};
-bin_prec('=<') -> {400, 500, 500};
-bin_prec('>=') -> {400, 500, 500};
-bin_prec('==') -> {400, 500, 500};
-bin_prec('!=') -> {400, 500, 500};
-bin_prec('++') -> {500, 600, 500};
-bin_prec('::') -> {500, 600, 500};
-bin_prec('+')  -> {600, 600, 650};
-bin_prec('-')  -> {600, 600, 650};
-bin_prec('*')  -> {700, 700, 800};
-bin_prec('/')  -> {700, 700, 800};
-bin_prec(mod)  -> {700, 700, 800}.
+bin_prec('..')   -> {  0,   0,   0};  %% Always printed inside '[ ]'
+bin_prec('||')   -> {200, 300, 200};
+bin_prec('&&')   -> {300, 400, 300};
+bin_prec('<')    -> {400, 500, 500};
+bin_prec('>')    -> {400, 500, 500};
+bin_prec('=<')   -> {400, 500, 500};
+bin_prec('>=')   -> {400, 500, 500};
+bin_prec('==')   -> {400, 500, 500};
+bin_prec('!=')   -> {400, 500, 500};
+bin_prec('++')   -> {500, 600, 500};
+bin_prec('::')   -> {500, 600, 500};
+bin_prec('+')    -> {600, 600, 650};
+bin_prec('-')    -> {600, 600, 650};
+bin_prec('*')    -> {700, 700, 800};
+bin_prec('/')    -> {700, 700, 800};
+bin_prec(mod)    -> {700, 700, 800}.
 
 -spec un_prec(aer_syntax:un_op()) -> {integer(), integer()}.
 un_prec('-') -> {650, 650};

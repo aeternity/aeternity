@@ -33,7 +33,7 @@ int hex bool hash string char
 
 %% Symbols
 ';' ':' ',' '=' '(' ')' '{' '}' '|' '[' ']' '?'
-'+' '-' '*' '/' mod '++' '::'
+'+' '-' '*' '/' 'mod' '++' '::' '..'
 '<' '>' '=<' '>=' '==' '!='
 '||' '&&' '!' '.'
 '=>'
@@ -193,6 +193,7 @@ Rootsymbol 'File'.
 'ExprAtom' -> '{' 'BlockStatements' '}' : block_e(get_ann('$1'), '$2').
 'ExprAtom' -> '(' 'TypedExprs' ')' : tuple_e(get_ann('$1'), '$2').
 'ExprAtom' -> '[' 'TypedExprs' ']' : {list, get_ann('$1'), '$2'}.
+'ExprAtom' -> '[' 'Expr' '..' 'Expr' ']' : infix('$2', token('$3'), '$4').
 
 'TypedExprs' -> '$empty'      : [].
 'TypedExprs' -> 'TypedExprs1' : '$1'.

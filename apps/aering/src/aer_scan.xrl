@@ -33,6 +33,7 @@ Rules.
 %% Symbols
 ,   : {token, {',', TokenLine}}.
 \.  : {token, {'.', TokenLine}}.
+\.\. : {token, {'..', TokenLine}}.
 ;   : {token, {';', TokenLine}}.
 \(  : {token, {'(', TokenLine}}.
 \)  : {token, {')', TokenLine}}.
