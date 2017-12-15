@@ -44,10 +44,6 @@ all_test_() ->
                ?assertEqual(ok, aec_peers:remove("http://someone.somewhere:1337/v1")),
                ?assertEqual(1, length(aec_peers:all()))
        end},
-      {"Uri_from_ip_port",
-       fun() ->
-               ?assertEqual("http://123.123.123.123:1337/", aec_peers:uri_from_ip_port("123.123.123.123", 1337))
-       end},
       {"Remove all",
        fun do_remove_all/0},
       {"Add peer",
