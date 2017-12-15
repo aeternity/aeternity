@@ -10,9 +10,16 @@
 
 -export([read_contract/1, contract_path/0]).
 
-%% TODO: does eunit have some path machinery?
 contract_path() ->
-    "apps/aering/test/contracts".
+    {ok, Cwd} = file:get_cwd(),
+    N   = length(filename:split(Cwd)),
+    Rel = ["apps", "aering", "test", "contracts"],
+    %% Try the first matching directory (../)*Rel
+    Cand = fun(I) -> filename:join(lists:duplicate(I, "..") ++ Rel) end,
+    case [ Dir || Dir <- lists:map(Cand, lists:seq(0, N)), filelib:is_dir(Dir) ] of
+        [Dir | _] -> Dir;
+        []        -> error(failed_to_find_contract_dir)
+    end.
 
 %% Read a contract file from the test/contracts directory.
 -spec read_contract(string() | atom()) -> string().
