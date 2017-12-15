@@ -8,7 +8,9 @@
 -export([all_trees_new/0,
          all_trees_hash/1,
          accounts/1,
+         oracles/1,
          set_accounts/2,
+         set_oracles/2,
          new_merkle_tree/0,
          get/2,
          get_with_proof/2,
@@ -22,7 +24,8 @@
 -spec all_trees_new() -> {ok, trees()}.
 all_trees_new() ->
     {ok, A} = new_merkle_tree(),
-    {ok, #trees{accounts = A}}.
+    Oracles = aeo_state_tree:new(),
+    {ok, #trees{accounts = A, oracles = Oracles}}.
 
 all_trees_hash(Trees) ->
     %% TODO Consider all state trees - not only accounts.
@@ -35,9 +38,17 @@ all_trees_hash(Trees) ->
 accounts(Trees) ->
     Trees#trees.accounts.
 
+-spec oracles(trees()) -> tree().
+oracles(Trees) ->
+    Trees#trees.oracles.
+
 -spec set_accounts(trees(), tree()) -> trees().
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
+
+-spec set_oracles(trees(), tree()) -> trees().
+set_oracles(Trees, Oracles) ->
+    Trees#trees{oracles = Oracles}.
 
 -spec new_merkle_tree() -> {ok, tree()}.
 new_merkle_tree() ->

@@ -136,45 +136,6 @@ check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
 
 -spec check_sender_account(spend_tx(), trees(), height()) ->
                                   ok | {error, term()}.
-check_sender_account(#spend_tx{sender = SenderPubkey} = SpendTx, Trees, Height) ->
-    AccountsTrees = aec_trees:accounts(Trees),
-    case aec_accounts:get(SenderPubkey, AccountsTrees) of
-        {ok, #account{} = Account} ->
-            Checks = [fun check_balance/3,
-                      fun check_nonce/3,
-                      fun check_height/3],
-            aeu_validation:run(Checks, [SpendTx, Account, Height]);
-        {error, notfound} ->
-            {error, sender_account_not_found}
-    end.
-
--spec check_balance(spend_tx(), account(), height()) ->
-                           ok | {error, insufficient_funds}.
-check_balance(#spend_tx{amount = Amount, fee = Fee},
-              #account{balance = Balance}, _Height) ->
-    case Balance >= Amount + Fee of
-        true ->
-            ok;
-        false ->
-            {error, insufficient_funds}
-    end.
-
--spec check_nonce(spend_tx(), account(), height()) ->
-                         ok | {error, account_nonce_too_high}.
-check_nonce(#spend_tx{nonce = TxNonce}, #account{nonce = SenderNonce}, _Height) ->
-    case TxNonce > SenderNonce of
-        true ->
-            ok;
-        false ->
-            {error, account_nonce_too_high}
-    end.
-
--spec check_height(spend_tx(), account(), height()) ->
-                          ok | {error, account_height_too_big}.
-check_height(_SpendTx, #account{height = AccountCurrentHeight}, Height) ->
-    case AccountCurrentHeight =< Height of
-        true ->
-            ok;
-        false ->
-            {error, sender_account_height_too_big}
-    end.
+check_sender_account(#spend_tx{sender = SenderPubkey, amount = Amount,
+                               fee = Fee, nonce = TxNonce }, Trees, Height) ->
+    aetx_utils:check_account(SenderPubkey, Trees, Height, TxNonce, Fee + Amount).
