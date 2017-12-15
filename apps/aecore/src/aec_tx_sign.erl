@@ -33,7 +33,7 @@
          deserialize_from_binary/1]).
 
 -export_type([signed_tx/0,
-              deterministic_signed_tx_binary/0]).
+              binary_signed_tx/0]).
 
 -include("common.hrl").
 
@@ -42,7 +42,7 @@
           signatures = ordsets:new() :: ordsets:ordset(binary())}).
 
 -opaque signed_tx() :: #signed_tx{}.
--type deterministic_signed_tx_binary() :: binary().
+-type binary_signed_tx() :: binary().
 
 %% @doc Given a transaction Tx, a private key or list of keys, 
 %% return the cryptographically signed transaction using the default crypto
@@ -127,7 +127,7 @@ deserialize([?SIG_TX_TYPE, ?SIG_TX_VSN, TxSer, Sigs]) ->
     #signed_tx{data = Tx, signatures = Sigs}.
 
 %% deterministic canonical serialization.
--spec serialize_to_binary(signed_tx()) -> deterministic_signed_tx_binary().
+-spec serialize_to_binary(signed_tx()) -> binary_signed_tx().
 serialize_to_binary(#signed_tx{} = SignedTx) ->
     msgpack:pack(serialize(SignedTx)).
 

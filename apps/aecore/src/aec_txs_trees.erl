@@ -16,7 +16,7 @@
 -include("blocks.hrl").
 
 -type key() :: aec_sha256:hash(value()).
--type value() :: aec_tx_sign:deterministic_signed_tx_binary().
+-type value() :: aec_tx_sign:binary_signed_tx(). %% Deterministic.
 -opaque txs_tree() :: aeu_mtrees:mtree(key(), value()).
 -type root_hash() :: <<_:(?TXS_HASH_BYTES*8)>>.
 
