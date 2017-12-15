@@ -217,7 +217,7 @@ mine_chain(Bs, N, PC) ->
 mining_step(Blocks = [Top | _], PoWCapacity) ->
     Block = aec_blocks:new(Top, [], Top#block.trees),
     MiningTime = mining_time(Blocks, PoWCapacity),
-    {ok, NewBlock, _Nonce} =
+    {ok, NewBlock} =
         aec_mining:adjust_target(Block#block{ time = Top#block.time + MiningTime },
                                  [ aec_blocks:to_header(B) || B <- lists:sublist(Blocks, 10) ]),
     NewBlock.

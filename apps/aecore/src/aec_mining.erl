@@ -78,7 +78,12 @@ create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
             Block = aec_blocks:new(TopBlock, Txs, Trees),
             case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
-                    adjust_target(Block, AdjHeaders);
+                    case adjust_target(Block, AdjHeaders) of
+                        {ok, AdjBlock} ->
+                            {ok, AdjBlock, aec_pow:pick_nonce()};
+                        {error, _} = Error ->
+                            Error
+                    end;
                 false ->
                     {error, coinbase_tx_rejected}
             end
@@ -108,18 +113,18 @@ create_coinbase_tx() ->
     end.
 
 -spec adjust_target(block(), list(header())) ->
-            {ok, block(), aec_pow:nonce()} | {error, term()}.
+            {ok, block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
     DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
-            {ok, Block, aec_pow:pick_nonce()};
+            {ok, Block};
         false when DeltaHeight == length(AdjHeaders) ->
             CalculatedTarget = aec_target:recalculate(Header, AdjHeaders),
             Block1 = aec_blocks:set_target(Block, CalculatedTarget),
-            {ok, Block1, aec_pow:pick_nonce()};
+            {ok, Block1};
         false -> %% Wrong number of headers in AdjHeaders...
             {error, wrong_headers_for_target_adjustment}
     end.
