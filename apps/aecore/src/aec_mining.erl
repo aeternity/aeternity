@@ -5,7 +5,7 @@
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/2,
+-export([create_block_candidate/3,
          need_to_regenerate/1,
          mine/2,
          get_miner_account_balance/0]). %% For tests.
@@ -21,10 +21,13 @@
 
 %% API
 
--spec create_block_candidate(block(), list(header())) ->
-                        {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate(TopBlock, AdjHeaders) ->
-    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock, AdjHeaders).
+-spec create_block_candidate(block(), trees(), list(header())) ->
+                                    {ok, block(), trees(), aec_pow:nonce()} |
+                                    {error, term()}.
+create_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
+    create_block_candidate(get_txs_to_mine_in_pool(),
+                           TopBlock, TopBlockTrees,
+                           AdjHeaders).
 
 -spec need_to_regenerate(block()) -> boolean().
 need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
@@ -66,21 +69,23 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(aec_tx_sign:signed_tx()), block(), list(header())) ->
-                  {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
+-spec create_block_candidate(
+        list(aec_tx_sign:signed_tx()),
+        block(), trees(),
+        list(header())) -> {ok, block(), trees(), aec_pow:nonce()} |
+                           {error, term()}.
+create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            Trees = aec_blocks:trees(TopBlock),
-            Block = aec_blocks:new(TopBlock, Txs, Trees),
+            {ok, Block, Trees} = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
             case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
                     case adjust_target(Block, AdjHeaders) of
                         {ok, AdjBlock} ->
-                            {ok, AdjBlock, aec_pow:pick_nonce()};
+                            {ok, AdjBlock, Trees, aec_pow:pick_nonce()};
                         {error, _} = Error ->
                             Error
                     end;

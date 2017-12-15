@@ -16,12 +16,15 @@
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
         , wait_for_it/2
-        , extend_block_chain/2
+        , extend_block_chain/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         , gen_block_chain/1
+        , gen_block_chain_without_state/1
         , gen_block_chain/2
-        , genesis_block/0
+        , block_chain_without_state/1
+        , genesis_block_with_state/0
+        , genesis_block_and_state/0
         , preset_accounts/0
         , create_state_tree/0
         , create_state_tree_with_account/1
@@ -135,13 +138,20 @@ unmock_block_target_validation() ->
     meck:unload(aec_target).
 
 
-genesis_block() ->
-    aec_block_genesis:genesis_block(?PRESET_ACCOUNTS).
+genesis_block_with_state() ->
+    aec_block_genesis:genesis_block_with_state(?PRESET_ACCOUNTS).
+
+genesis_block_and_state() ->
+    {ok, B, S} = genesis_block_with_state(),
+    {B, S}.
 
 %% Generic blockchain with only coinbase transactions
 gen_block_chain(Length) ->
     gen_block_chain(Length, ?PRESET_ACCOUNTS).
-  
+
+gen_block_chain_without_state(Length) ->
+    block_chain_without_state(gen_block_chain(Length)).
+
 gen_block_chain(Length, PresetAccounts) when Length > 0 ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
     gen_block_chain(Length, MinerAccount, PresetAccounts, []).
@@ -149,32 +159,37 @@ gen_block_chain(Length, PresetAccounts) when Length > 0 ->
 
 gen_block_chain(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
 gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
-    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [aec_block_genesis:genesis_block(PresetAccounts)]);
-gen_block_chain(N, MinerAccount, PresetAccounts, [PreviousBlock|_] = Acc) ->
-    Trees = aec_blocks:trees(PreviousBlock),
+    {ok, B, S} = aec_block_genesis:genesis_block_with_state(PresetAccounts),
+    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
+gen_block_chain(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Txs = [signed_coinbase_tx(MinerAccount)],
-    B = aec_blocks:new(PreviousBlock, Txs, Trees),
-    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [B|Acc]).
+    {ok, B, S} = aec_blocks:new(PreviousBlock, Txs, Trees),
+    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
-extend_block_chain(PrevBlock, Data) ->
+extend_block_chain(PrevBlock, PrevBlockState, Data) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
     Targets    = maps:get(targets, Data),
     Nonce      = maps:get(nonce, Data, 12345),
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
-    extend_block_chain(PrevBlock, Targets, Timestamps, Nonce, MinerAccount, []).
+    extend_block_chain(PrevBlock, PrevBlockState, Targets, Timestamps, Nonce, MinerAccount, []).
 
 
-extend_block_chain(_, [], _, _, _, Chain) ->
+extend_block_chain(_, _, [], _, _, _, Chain) ->
     lists:reverse(Chain);
-extend_block_chain(PrevBlock, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
-    Block = next_block(PrevBlock, Tgt, Ts, Nonce, MinerAcc),
-    extend_block_chain(Block, Tgts, Tss, Nonce, MinerAcc, [Block | Chain]).
+extend_block_chain(PrevBlock, PrevBlockState, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
+    {Block, BlockState} = next_block(PrevBlock, PrevBlockState, Tgt, Ts, Nonce, MinerAcc),
+    extend_block_chain(Block, BlockState, Tgts, Tss, Nonce, MinerAcc, [{Block, BlockState} | Chain]).
 
-next_block(PrevBlock, Target, Time0, Nonce, MinerAcc) ->
-    Trees = aec_blocks:trees(PrevBlock),
-    B = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
-    B#block{ target = Target, nonce  = Nonce,
-             time   = case Time0 of undefined -> B#block.time; _ -> Time0 end }.
+
+block_chain_without_state(Chain) ->
+    lists:map(fun({B, _S}) -> B end, Chain).
+
+
+next_block(PrevBlock, Trees, Target, Time0, Nonce, MinerAcc) ->
+    {ok, B, S} = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
+    {B#block{ target = Target, nonce  = Nonce,
+              time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
+     S}.
 
 signed_coinbase_tx() ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),

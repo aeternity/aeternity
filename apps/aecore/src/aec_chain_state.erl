@@ -12,6 +12,7 @@
         , difficulty_at_top_block/1
         , find_common_ancestor/3
         , get_block/2
+        , get_block_with_state/2
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
@@ -28,6 +29,7 @@
         , new/1
         , new_from_persistance/2
         , top_block/1
+        , top_block_with_state/1
         , account/2
         , top_block_hash/1
         , top_header/1
@@ -113,7 +115,14 @@ top_block_hash(?match_state(top_block_hash := X)) ->
 -spec top_block(state()) -> 'undefined' | #block{}.
 top_block(?match_state(top_block_hash := undefined)) -> undefined;
 top_block(?match_state(top_block_hash := X) = State) ->
-    export_block(blocks_db_get(X, State), State).
+    export_block(blocks_db_get(X, State)).
+
+-spec top_block_with_state(state()) -> 'undefined' | {'ok', #block{}, {'state', trees()} | 'no_state_trees'}.
+top_block_with_state(?match_state(top_block_hash := undefined)) -> undefined;
+top_block_with_state(?match_state(top_block_hash := X) = State) ->
+    {ok,
+     export_block(blocks_db_get(X, State)),
+     case state_db_find(X, State) of {ok, Trees} -> {state, Trees}; error -> no_state_trees end}.
 
 -spec account(pubkey(), state()) -> 'no_state_trees' | 'none' | {value, account()}.
 account(_, ?match_state(top_block_hash := undefined)) -> undefined;
@@ -152,7 +161,21 @@ get_block(Hash, ?assert_state() = State) ->
     case blocks_db_find(Hash, State) of
         {ok, Node} ->
             case node_is_block(Node) of
-                true  -> {ok, export_block(Node, State)};
+                true  -> {ok, export_block(Node)};
+                false -> error
+            end;
+        error -> error
+    end.
+
+-spec get_block_with_state(binary(), state()) -> {'ok', #block{}, {'state', trees()} | 'no_state_trees'} | 'error'.
+get_block_with_state(Hash, ?assert_state() = State) ->
+    case blocks_db_find(Hash, State) of
+        {ok, Node} ->
+            case node_is_block(Node) of
+                true  ->
+                    {ok,
+                     export_block(Node),
+                     case state_db_find(Hash, State) of {ok, Trees} -> {state, Trees}; error -> no_state_trees end};
                 false -> error
             end;
         error -> error
@@ -195,7 +218,7 @@ get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
     case get_node_by_height(Height, State) of
         {ok, Node} ->
             case node_is_block(Node) of
-                true  -> {ok, export_block(Node, State)};
+                true  -> {ok, export_block(Node)};
                 false -> {error, block_not_found}
             end;
         Error -> Error
@@ -375,11 +398,7 @@ wrap_header(Header) ->
 export_header(#node{type = header, content = H}) -> H;
 export_header(#node{type = block, content = H}) -> aec_blocks:to_header(H).
 
-export_block(#node{type = block, hash = H, content = B}, State) ->
-    case add_state_tree_to_block(B, H, State) of
-        {ok, ExportBlock} -> ExportBlock;
-        error -> B
-    end.
+export_block(#node{type = block, content = B}) -> B.
 
 -spec get_node_by_height(non_neg_integer(), state()) ->
                                   {'ok', #node{}} | {'error', atom()}.
@@ -450,16 +469,6 @@ total_difficulty_at_hash(Hash, Acc, State) ->
             end;
         error ->
             {error, not_rooted}
-    end.
-
-%%%-------------------------------------------------------------------
-%%% Handling the state trees
-%%%-------------------------------------------------------------------
-
-add_state_tree_to_block(Block, Hash, State) ->
-    case state_db_find(Hash, State) of
-        {ok, Trees} -> {ok, aec_blocks:set_trees(Block, Trees)};
-        error -> error
     end.
 
 %%%-------------------------------------------------------------------
@@ -693,14 +702,9 @@ do_assert_target_equal_to_parent(Header, PrevHeaders0, ForkHeight) ->
 
 genesis_state_tree(Node) ->
     %% TODO: This should be handled somewhere else.
-    Trees = aec_blocks:trees(Node#node.content),
     %% Assert current assumption.
     [] = aec_blocks:txs(Node#node.content),
-    case aec_trees:accounts(Trees) of
-        undefined  -> % persistence
-            aec_block_genesis:populated_trees();
-        _ -> Trees
-    end.
+    aec_block_genesis:populated_trees().
 
 %% Transitively compute the new state trees in the main chain
 %% starting from the node (which must be in the main chain).

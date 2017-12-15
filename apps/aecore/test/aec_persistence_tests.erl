@@ -64,7 +64,7 @@ write_test_() ->
      end,
      [{"Write a block to storage and read it back.",
        fun() ->
-               GB = aec_test_utils:genesis_block(),
+               {ok, GB, _} = aec_test_utils:genesis_block_with_state(),
                ok = aec_persistence:write_block(GB),
                ok = aec_persistence:sync(),
                Hash = block_hash(GB),
@@ -102,7 +102,7 @@ write_chain_test_() ->
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
-               GB = aec_test_utils:genesis_block(),
+               {ok, GB, _} = aec_test_utils:genesis_block_with_state(),
                ok = aec_conductor:post_block(GB),
                aec_persistence:sync(),
 
@@ -125,7 +125,7 @@ write_chain_test_() ->
        end},
       {"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
-               [GB, B1, B2] = aec_test_utils:gen_block_chain(3),
+               [GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
                %% Add a couple of headers - not blocks - to the chain.
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_conductor:post_header(BH1)),
@@ -194,9 +194,9 @@ restart_test_() ->
      end,
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
-               [GB, B1, B2] = aec_test_utils:gen_block_chain(3),
+               [GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
                BH2 = aec_blocks:to_header(B2),
-               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
+               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)), %% TODO Check state trees too.
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),
@@ -204,12 +204,13 @@ restart_test_() ->
                TopBlockHash = aec_persistence:get_top_block(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
-               ChainTop1 = aec_conductor:top(),
+               {ok, ChainTop1, {state, ChainTop1State}} = aec_conductor:top_with_state(),
+               ?assertEqual(ChainTop1, aec_conductor:top()),
                ?compareBlockResults(B2, ChainTop1),
 
                %% Check the state trees from persistence
-               ?assertEqual(aec_persistence:get_block_state(TopBlockHash),
-                            aec_blocks:trees(ChainTop1)),
+               ?assertEqual(ChainTop1State,
+                            aec_persistence:get_block_state(TopBlockHash)),
 
                %% Kill chain server
                kill_and_restart_conductor(),
@@ -217,13 +218,14 @@ restart_test_() ->
                NewTopBlockHash = aec_persistence:get_top_block(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
-               ChainTop2 = aec_conductor:top(),
+               {ok, ChainTop2, {state, ChainTop2State}} = aec_conductor:top_with_state(),
+               ?assertEqual(ChainTop2, aec_conductor:top()),
                ?compareBlockResults(B2, ChainTop2),
 
                %% Compare the trees after restart
                %% Check the state trees from persistence
-               ?assertEqual(aec_blocks:trees(ChainTop2),
-                            aec_blocks:trees(ChainTop1)),
+               ?assertEqual(ChainTop1State,
+                            ChainTop2State),
 
                ok
        end}

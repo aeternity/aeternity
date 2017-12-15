@@ -38,7 +38,7 @@ new_block_test_() ->
               PrevBlock = #block{height = 11, target = 17},
               BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
-              NewBlock = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
+              {ok, NewBlock, _} = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
 
               ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
               SerializedBlockHeader =
@@ -54,13 +54,11 @@ new_block_test_() ->
 network_serialization_test_() ->
     [{"Serialize/deserialize block",
       fun() ->
-             Block = #block{trees = #trees{accounts = foo}},
+             Block = #block{},
              {ok, SerializedBlock} = ?TEST_MODULE:serialize_for_network(Block),
              {ok, DeserializedBlock} =
                  ?TEST_MODULE:deserialize_from_network(SerializedBlock),
-             ?assertEqual(Block#block{trees = #trees{}}, DeserializedBlock),
-             ?assertEqual({ok, SerializedBlock},
-                          ?TEST_MODULE:serialize_for_network(DeserializedBlock))
+             ?assertEqual(Block, DeserializedBlock)
      end},
      {"Serialize/deserialize block with min nonce",
       fun() ->
@@ -78,12 +76,12 @@ network_serialization_test_() ->
      },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
-             Block1 = #block{trees = #trees{accounts = foo}, nonce = ?MAX_NONCE + 1},
+             Block1 = #block{nonce = ?MAX_NONCE + 1},
              {ok, SerializedBlock1} = ?TEST_MODULE:serialize_for_network(Block1),
              ?assertEqual({error,bad_nonce},
                           ?TEST_MODULE:deserialize_from_network(SerializedBlock1)),
 
-              Block2 = #block{trees = #trees{accounts = foo}, nonce = -1},
+             Block2 = #block{nonce = -1},
              {ok, SerializedBlock2} = ?TEST_MODULE:serialize_for_network(Block2),
              ?assertEqual({error,bad_nonce},
                           ?TEST_MODULE:deserialize_from_network(SerializedBlock2))
