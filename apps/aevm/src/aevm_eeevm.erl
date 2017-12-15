@@ -22,6 +22,7 @@
 %% Exports for tracing. TODO: move to aevm_eeevm_code
 -export([code_get_op/2]).
 
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 
 %% Main eval loop.
