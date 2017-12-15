@@ -325,6 +325,7 @@ record_update(Expr, Stmts) ->
       bad_expr_err("Expected record field updates instead of", Block)
   end.
 
+lam_args({unit, _Ann})        -> [];
 lam_args({tuple, _Ann, Args}) -> [lam_arg(Arg) || Arg <- Args];
 lam_args(E)                   -> [lam_arg(E)].
 
