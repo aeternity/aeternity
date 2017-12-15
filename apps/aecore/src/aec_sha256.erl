@@ -9,14 +9,10 @@
 
 -export([hash/1]).
 
--ifdef(TEST).
--compile([export_all, nowarn_export_all]).
--endif.
-
 -include("sha256.hrl").
 
 
--type hashable() :: term().
+-type hashable() :: binary().
 
 -export_type([hashable/0]).
 
@@ -25,11 +21,8 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% Calculate the SHA256 hash value of a binary or an erlang term
+%% Calculate the SHA256 hash value of a binary
 %%------------------------------------------------------------------------------
 -spec hash(hashable()) -> binary().
 hash(Data) when is_binary(Data) ->
-    <<Hash:?HASH_BITS, _/bitstring>> = crypto:hash(sha256, Data),
-    <<Hash:?HASH_BITS>>;
-hash(Term) ->
-    hash(term_to_binary(Term)).
+    <<_:?HASH_BYTES/unit:8>> = crypto:hash(sha256, Data).

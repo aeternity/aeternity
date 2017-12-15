@@ -18,7 +18,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                                                      SpendTxObj)),
             Amount = maps:get(<<"amount">>, SpendTxObj),
             Fee = maps:get(<<"fee">>, SpendTxObj),
-            case aec_conductor:next_nonce_for_account(SenderPubkey) of
+            case aec_next_nonce:pick_for_account(SenderPubkey) of
                 {ok, Nonce} ->
                     lager:debug("Nonce = ~p", [Nonce]),
                     {ok, SpendTx} =
