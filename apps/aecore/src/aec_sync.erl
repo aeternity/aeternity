@@ -13,7 +13,8 @@
 -import(aeu_debug, [pp/1]).
 
 %% API
--export([connect_peer/1
+-export([connect_peer/1,
+         start_link/0
         ]).
 
 -export([subset_size/0,
@@ -24,7 +25,7 @@
          compare_ping_objects/2]).
 
 %% gen_server callbacks
--export([start_link/0, init/1, handle_call/3, handle_cast/2,
+-export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2,  terminate/2, code_change/3]).
 
 %% Callback for jobs producer queue

@@ -40,7 +40,7 @@ local_peer_uri() ->
 
 local_internal_http_uri() ->
     Port = get_internal_port(),
-    aec_peers:uri_from_ip_port("127.0.0.1", Port).
+    "http://127.0.0.1:"  ++ integer_to_list(Port) ++ "/".
 
 %%--------------------------------------------------------------------
 stop(_State) ->
@@ -96,10 +96,9 @@ local_peer(Port) ->
                     erlang:error({cannot_parse, [{local_peer_address,
                                                   Addr}]});
                 nomatch ->
-                    aec_peers:uri_from_ip_port(Addr, Port)
+                    "http://" ++ Addr ++ ":" ++ integer_to_list(Port) ++ "/"
             end
     end.
-
 
 -spec get_local_peer_address() -> string().
 get_local_peer_address() ->
