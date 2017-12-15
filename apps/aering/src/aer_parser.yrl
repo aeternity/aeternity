@@ -18,7 +18,7 @@ Nonterminals
 'Expr800' 'Expr850' 'Expr900' 'ExprAtom' 'TypedExprs' 'TypedExprs1' 'TypedExpr'
 'BlockStatements' 'Statement' 'FieldAssignment'
 'Cases' 'Case'
-'AddOp' 'MulOp' 'CmpOp' 'ConsOp' 'AndOp' 'OrOp'
+'AddOp' 'MulOp' 'CmpOp' 'ConsOp' 'AndOp' 'OrOp' 'NotOp'
 .
 
 Terminals
@@ -35,7 +35,7 @@ int hex bool hash string char
 ';' ':' ',' '=' '(' ')' '{' '}' '|' '[' ']' '?'
 '+' '-' '*' '/' 'mod' '++' '::' '..'
 '<' '>' '=<' '>=' '==' '!='
-'||' '&&' '!' '.'
+'||' '&&' '!' '.' 'bor' 'band' 'bxor' 'bsl' 'bsr' 'bnot'
 '=>'
 .
 
@@ -167,7 +167,7 @@ Rootsymbol 'File'.
 'Expr700' -> 'Expr700' 'MulOp' 'Expr800' : infix('$1', '$2', '$3').
 'Expr700' -> 'Expr800' : '$1'.
 
-'Expr800' -> '!' 'Expr800' : prefix(token('$1'), '$2').
+'Expr800' -> 'NotOp' 'Expr800' : prefix('$1', '$2').
 'Expr800' -> 'Expr850' : '$1'.
 
 'Expr850' -> switch '(' 'Expr' ')' '{' 'Cases' '}'            : {switch, get_ann('$1'), '$3', '$6'}.
@@ -234,12 +234,20 @@ Rootsymbol 'File'.
 'CmpOp' -> '==' : token('$1').
 'CmpOp' -> '!=' : token('$1').
 
-'AddOp' -> '+' : token('$1').
-'AddOp' -> '-' : token('$1').
+'AddOp' -> '+'    : token('$1').
+'AddOp' -> '-'    : token('$1').
+'AddOp' -> 'bor'  : token('$1').
+'AddOp' -> 'bxor' : token('$1').
+'AddOp' -> 'bsr'  : token('$1').
+'AddOp' -> 'bsl'  : token('$1').
 
-'MulOp' -> '*'   : token('$1').
-'MulOp' -> '/'   : token('$1').
-'MulOp' -> 'mod' : token('$1').
+'MulOp' -> '*'    : token('$1').
+'MulOp' -> '/'    : token('$1').
+'MulOp' -> 'mod'  : token('$1').
+'MulOp' -> 'band' : token('$1').
+
+'NotOp' -> '!'    : token('$1').
+'NotOp' -> 'bnot' : token('$1').
 
 Erlang code.
 

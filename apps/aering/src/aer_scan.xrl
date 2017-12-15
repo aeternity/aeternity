@@ -20,7 +20,7 @@ ID       = {LOWER}[a-zA-Z0-9_']*
 TVAR     = '{ID}
 QID      = ({CON}\.)+{ID}
 QCON     = ({CON}\.)+{CON}
-OP       = [=!<>+\-*/:&|?]
+OP       = [=!<>+\-*/:&|?~]
 
 NOT_END_COMMENT = ([^*]|(\*+[^/*]))*
 
@@ -58,6 +58,11 @@ true|false : {token, {bool, TokenLine, list_to_atom(TokenChars)}}.
 %% Operators
 {OP}+ : {token, {list_to_atom(TokenChars), TokenLine}}.
 mod   : {token, {mod, TokenLine}}.
+band  : {token, {'band', TokenLine}}.
+bor   : {token, {'bor', TokenLine}}.
+bxor  : {token, {'bxor', TokenLine}}.
+bsl   : {token, {'bsl', TokenLine}}.
+bsr   : {token, {'bsr', TokenLine}}.
 
 "{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
 '{CHARTEXT}'    : parse_char(TokenLine, TokenChars).
