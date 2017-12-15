@@ -1,4 +1,4 @@
-(* Example from Solidity by Example
+/* Example from Solidity by Example
    http://solidity.readthedocs.io/en/develop/introduction-to-smart-contracts.html
 
    The Solidity code:
@@ -14,42 +14,24 @@
            return storedData;
        }
    }
-*)
+*/
 
-contract simple_storage
+contract type SimpleStorage = {
+  type state;
+  let init : uint => state;
+  let set  : uint => unit;
+  let get  : unit => uint;
+};
 
-(* Make explicit what is callable from the outside!? *)
-export init, set, get
+contract SimpleStorage = {
 
-(*
-  - Each function has zero or more arguments
-  - Each non-pure function has also some implicit arguments @state, @call, @balance, ...
-    @state is the state of the contract
-    @call  contains information from the issuer of the (top-level) call
+  type event = unit;
+  type state = { data : uint };
 
-  - Each function produces a result, the result type is complex, but roughly
-    Result 'a = { .result       : 'a
-                , .state        : State
-                , .transactions : List Transaction
-                , .events       : List Event }
+  let init(value : uint) : state = { data: value };
 
-    Transaction is static and defined by us. State and/or Event should be given by
-    the contract implementer.
+  let get() : uint = state().data;
 
-    A pure/const function only has type 'a while other functions has type Result 'a
-
-    The 'init' function is a special case, it should have type State ?!
-*)
-
-type Event = ()
-type State = { .data : UInt }
-
-fun init (value : UInt) : State = { .data = value }
-
-const fun get () : UInt = @state.data
-(* alternatively if we make @state really, really implicit:
-const fun get () : UInt = .data
-*)
-
-fun set (value : UInt) : Result () = { .state = { .data = value } }
+  let set(value : uint) : result(unit) = { state: { data: value } }
+}
 
