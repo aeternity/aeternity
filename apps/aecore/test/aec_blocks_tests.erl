@@ -19,13 +19,13 @@ new_block_test_() ->
      fun() ->
              meck:new(aec_txs_trees, [passthrough]),
              meck:new(aec_trees, [passthrough]),
-             meck:expect(aec_txs_trees, new, 1, {ok, fake_txs_tree}),
+             meck:expect(aec_txs_trees, from_txs, 1, fake_txs_tree),
              meck:expect(
                aec_txs_trees, root_hash,
                fun(fake_txs_tree) ->
                        {ok, <<"fake_txs_tree_hash">>}
                end),
-             meck:expect(aec_trees, all_trees_hash, 1, <<>>)
+             meck:expect(aec_trees, hash, 1, <<>>)
      end,
      fun(_) ->
              ?assert(meck:validate(aec_txs_trees)),
@@ -112,7 +112,7 @@ validate_test_multiple_coinbase() ->
 validate_test_malformed_txs_root_hash() ->
     SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
     MalformedTxs = [SignedCoinbase, aec_tx_sign:sign(#coinbase_tx{account = <<"malformed_account">>}, <<"pubkey">>)],
-    {ok, MalformedTree} = aec_txs_trees:new(MalformedTxs),
+    MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
     {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
     Block = #block{txs = [SignedCoinbase], txs_hash = MalformedRootHash},
 
@@ -121,7 +121,7 @@ validate_test_malformed_txs_root_hash() ->
 validate_test_malformed_tx_signature() ->
     SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
     Txs = [{signed_tx, aec_tx_sign:data(SignedCoinbase), []}],
-    {ok, Tree} = aec_txs_trees:new(Txs),
+    Tree = aec_txs_trees:from_txs(Txs),
     {ok, RootHash} = aec_txs_trees:root_hash(Tree),
     Block = #block{txs = Txs, txs_hash = RootHash},
 
@@ -130,7 +130,7 @@ validate_test_malformed_tx_signature() ->
 validate_test_pass_validation() ->
     SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
     Txs = [SignedCoinbase],
-    {ok, Tree} = aec_txs_trees:new(Txs),
+    Tree = aec_txs_trees:from_txs(Txs),
     {ok, RootHash} = aec_txs_trees:root_hash(Tree),
     Block = #block{txs = Txs, txs_hash = RootHash},
 

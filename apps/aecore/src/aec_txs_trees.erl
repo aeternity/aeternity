@@ -1,25 +1,48 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc Merkle trees of transactions.
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aec_txs_trees).
 
--export([new/1,
+%% API
+-export([from_txs/1,
          root_hash/1]).
 
-new(Txs = [_|_]) ->
-    {ok, EmptyTree} = aec_trees:new_merkle_tree(),
-    TxsTree =
-        lists:foldl(
-          fun(SignedTx, TreeIn) ->
-                  {ok, TreeOut} = put_signed_tx(SignedTx, TreeIn),
-                  TreeOut
-          end,
-          EmptyTree,
-          Txs),
-    {ok, TxsTree}.
+-export_type([txs_tree/0,
+              root_hash/0]).
 
-put_signed_tx(SignedTx, TxsTree) ->
+-include("common.hrl").
+-include("blocks.hrl").
+
+-type key() :: aec_sha256:hash(value()).
+-type value() :: aec_tx_sign:binary_signed_tx(). %% Deterministic.
+-opaque txs_tree() :: aeu_mtrees:mtree(key(), value()).
+-type root_hash() :: <<_:(?TXS_HASH_BYTES*8)>>.
+
+%%%===================================================================
+%%% API
+%%%===================================================================
+
+-spec from_txs([aec_tx_sign:signed_tx(), ...]) -> txs_tree().
+from_txs(Txs = [_|_]) ->
+    lists:foldl(fun enter_signed_tx/2, empty(), Txs).
+
+-spec root_hash(txs_tree()) -> {ok, root_hash()}.
+root_hash(TxsTree) ->
+    {ok, <<_:?TXS_HASH_BYTES/unit:8>>} = aeu_mtrees:root_hash(TxsTree).
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+empty() ->
+    aeu_mtrees:empty().
+
+enter(K, V, T) ->
+    aeu_mtrees:enter(K, V, T).
+
+enter_signed_tx(SignedTx, TxsTree) ->
     V = aec_tx_sign:serialize_to_binary(SignedTx),
     K = aec_sha256:hash(V),
-    {ok, _NewTxsTree} =
-        aec_trees:put(K, V, TxsTree).
-
-root_hash(TxsTree) ->
-    aec_trees:root_hash(TxsTree).
+    enter(K, V, TxsTree).

@@ -53,9 +53,9 @@ mine(Block, Nonce) ->
 get_miner_account_balance() ->
     {ok, Pubkey} = aec_keys:pubkey(),
     case aec_conductor:get_account(Pubkey) of
-        {ok, A} ->
+        {value, A} ->
             {ok, aec_accounts:balance(A)};
-        {error, notfound} ->
+        none ->
             {error, account_not_found}
     end.
 

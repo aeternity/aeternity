@@ -706,7 +706,7 @@ update_state_tree(Node, State) ->
     end.
 
 assert_state_hash_valid(Trees, Node) ->
-    RootHash = aec_trees:all_trees_hash(Trees),
+    RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
     case RootHash =:= Expected of
         true -> ok;

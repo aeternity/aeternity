@@ -74,14 +74,14 @@ process(#spend_tx{sender = SenderPubkey,
                   nonce = Nonce}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
-    {ok, SenderAccount0} = aec_accounts:get(SenderPubkey, AccountsTrees0),
-    {ok, RecipientAccount0} = aec_accounts:get(RecipientPubkey, AccountsTrees0),
+    {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
+    {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees0),
 
     {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce, Height),
     {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount, Height),
 
-    {ok, AccountsTrees1} = aec_accounts:put(SenderAccount, AccountsTrees0),
-    {ok, AccountsTrees2} = aec_accounts:put(RecipientAccount, AccountsTrees1),
+    AccountsTrees1 = aec_accounts_trees:enter(SenderAccount, AccountsTrees0),
+    AccountsTrees2 = aec_accounts_trees:enter(RecipientAccount, AccountsTrees1),
 
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees2),
     {ok, Trees}.
@@ -138,13 +138,13 @@ check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
                                   ok | {error, term()}.
 check_sender_account(#spend_tx{sender = SenderPubkey} = SpendTx, Trees, Height) ->
     AccountsTrees = aec_trees:accounts(Trees),
-    case aec_accounts:get(SenderPubkey, AccountsTrees) of
-        {ok, #account{} = Account} ->
+    case aec_accounts_trees:lookup(SenderPubkey, AccountsTrees) of
+        {value, #account{} = Account} ->
             Checks = [fun check_balance/3,
                       fun check_nonce/3,
                       fun check_height/3],
             aeu_validation:run(Checks, [SpendTx, Account, Height]);
-        {error, notfound} ->
+        none ->
             {error, sender_account_not_found}
     end.
 

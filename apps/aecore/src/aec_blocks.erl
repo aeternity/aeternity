@@ -103,11 +103,10 @@ new(LastBlock, Txs, Trees0) ->
     Txs = aec_tx:filter_out_invalid_signatures(Txs),
 
     {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
-    {ok, TxsTree} = aec_txs_trees:new(Txs1),
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     #block{height = Height,
            prev_hash = LastBlockHeaderHash,
-           root_hash = aec_trees:all_trees_hash(Trees),
+           root_hash = aec_trees:hash(Trees),
            trees = Trees,
            txs_hash = TxsRootHash,
            txs = Txs1,
@@ -281,8 +280,7 @@ validate_coinbase_txs_count(#block{txs = Txs}) ->
 -spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
 validate_txs_hash(#block{txs = Txs,
                          txs_hash = BlockTxsHash}) ->
-    {ok, TxsTree} = aec_txs_trees:new(Txs),
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs)),
     case TxsRootHash of
         BlockTxsHash ->
             ok;
