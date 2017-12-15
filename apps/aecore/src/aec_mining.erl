@@ -67,7 +67,7 @@ get_txs_to_mine_in_pool() ->
     Txs.
 
 -spec create_block_candidate(list(aec_tx_sign:signed_tx()), block(), list(header())) ->
-                  {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
+                  {ok, block(), aec_pow:nonce()} | {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
