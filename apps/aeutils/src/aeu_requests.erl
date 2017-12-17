@@ -7,7 +7,8 @@
          transactions/1,
          send_tx/2,
          send_block/2,
-         new_spend_tx/2
+         new_spend_tx/2,
+         pp_uri/1
         ]).
 
 -export([parse_uri/1]).
@@ -141,7 +142,7 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
             Error
     end.
 
--spec parse_uri(http_uri:uri()) -> {string(), string(), integer()} | error.
+-spec parse_uri(http_uri:uri()) -> {http_uri:scheme(), http_uri:host(), http_uri:port()} | error.
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
@@ -239,3 +240,11 @@ check_returned_source(#{<<"source">> := Source}, Peer) ->
        true ->
             ok
     end.
+
+
+-spec pp_uri({http_uri:schema(), http_uri:host(), http_uri:port()}) -> string().  %% TODO: | unicode:unicode_binary().
+pp_uri({Schema, Host, Port}) when is_binary(Host) ->
+  pp_uri({Schema, binary_to_list(Host), Port});
+pp_uri({Schema, Host, Port}) ->
+    atom_to_list(Schema) ++ "://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/".
+
