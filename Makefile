@@ -154,8 +154,12 @@ swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
+	( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
 	@rm -fr $(SWTEMP)
+
+swagger-docs:
+	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
 swagger-python: config/swagger.yaml
 	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
@@ -176,6 +180,7 @@ clean:
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
+	( cd $(HTTP_APP) && $(MAKE) distclean; )
 
 multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
