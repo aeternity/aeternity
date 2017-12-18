@@ -26,7 +26,7 @@ hash(Trees) ->
       {error, empty} -> <<0:?STATE_HASH_BYTES/unit:8>>
     end.
 
--spec accounts(trees()) -> aec_accounts_trees:tree() | undefined.
+-spec accounts(trees()) -> aec_accounts_trees:tree().
 accounts(Trees) ->
     Trees#trees.accounts.
 

@@ -23,8 +23,7 @@
 -record(block, {
           height = 0              :: height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees included in #block.trees
-          trees = #trees{}        :: trees(),
+          root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           txs = []                :: list(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),

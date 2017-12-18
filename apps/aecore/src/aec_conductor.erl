@@ -64,6 +64,7 @@
 %% Chain API
 -export([ add_synced_block/1
         , genesis_block/0
+        , genesis_block_with_state/0
         , genesis_header/0
         , genesis_hash/0
         , get_block_by_hash/1
@@ -78,6 +79,7 @@
         , post_block/1
         , post_header/1
         , top/0
+        , top_with_state/0
         , top_block_hash/0
         , top_header/0
         , top_header_hash/0
@@ -145,17 +147,13 @@ get_mining_workers() ->
 %%%===================================================================
 %%% State trees API
 
--spec get_account(pubkey()) -> none | {value, account()}.
+-spec get_account(pubkey()) -> 'no_state_trees' | 'none' | {'value', account()}.
 get_account(Pubkey) ->
-    LastBlock = top(),
-    Trees = aec_blocks:trees(LastBlock),
-    AccountsTree = aec_trees:accounts(Trees),
-    aec_accounts_trees:lookup(Pubkey, AccountsTree).
+    gen_server:call(?SERVER, {get_account, Pubkey}).
 
 -spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
 get_all_accounts_balances() ->
-    Top = top(),
-    Trees = aec_blocks:trees(Top),
+    {ok, _Block, {state, Trees}} = top_with_state(),
     AccountsTree = aec_trees:accounts(Trees),
     aec_accounts_trees:get_all_accounts_balances(AccountsTree).
 
@@ -165,6 +163,10 @@ get_all_accounts_balances() ->
 -spec genesis_block() -> {'ok', #block{}} | 'error'.
 genesis_block() ->
     gen_server:call(?SERVER, genesis_block).
+
+-spec genesis_block_with_state() -> {'ok', #block{}, {'state', trees()}} | 'error'.
+genesis_block_with_state() ->
+    gen_server:call(?SERVER, genesis_block_with_state).
 
 -spec genesis_hash() -> binary().
 genesis_hash() ->
@@ -226,6 +228,10 @@ get_total_difficulty() ->
 top() ->
     gen_server:call(?SERVER, get_top_block).
 
+-spec top_with_state() -> {'ok', block(), {'state', trees()} | 'no_state_trees'}.
+top_with_state() ->
+    gen_server:call(?SERVER, get_top_block_with_state).
+
 -spec top_block_hash() -> binary() | 'undefined'.
 top_block_hash() ->
     gen_server:call(?SERVER, get_top_block_hash).
@@ -258,6 +264,8 @@ handle_call({add_synced_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(genesis_block,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_block(State), State};
+handle_call(genesis_block_with_state,_From, State) ->
+    {reply, aec_conductor_chain:get_genesis_block_with_state(State), State};
 handle_call(genesis_hash,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_hash(State), State};
 handle_call(genesis_header,_From, State) ->
@@ -276,6 +284,10 @@ handle_call(get_top_30_blocks_time_summary,_From, State) ->
     {reply, aec_conductor_chain:get_top_30_blocks_time_summary(State), State};
 handle_call(get_top_block,_From, State) ->
     {reply, aec_conductor_chain:get_top_block(State), State};
+handle_call(get_top_block_with_state,_From, State) ->
+    {reply, aec_conductor_chain:get_top_block_with_state(State), State};
+handle_call({get_account, Pubkey},_From, State) ->
+    {reply, aec_conductor_chain:get_account(Pubkey, State), State};
 handle_call(get_top_block_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_block_hash(State), State};
 handle_call(get_top_header,_From, State) ->
@@ -700,7 +712,7 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%%===================================================================
 %%% Worker: Generate new block candidates
 
-new_candidate(Block, Nonce, MaxNonce, State) ->
+new_candidate(Block, _Trees, Nonce, MaxNonce, State) ->
     #candidate{block = Block,
                nonce = Nonce,
                max_nonce = MaxNonce,
@@ -711,12 +723,14 @@ create_block_candidate(#state{keys_ready = false} = State) ->
     %% Keys are needed for creating a candidate
     wait_for_keys(State);
 create_block_candidate(State) ->
-    TopBlock = aec_conductor_chain:get_top_block(State),
+    {ok, TopBlock, {state, TopBlockState}} =
+        aec_conductor_chain:get_top_block_with_state(State),
     AdjChain = aec_conductor_chain:get_adjustment_headers(State),
     epoch_mining:info("Creating block candidate"),
     Fun = fun() ->
-                  {aec_mining:create_block_candidate(TopBlock, AdjChain),
-                    State#state.seen_top_block_hash}
+                  {aec_mining:create_block_candidate(TopBlock, TopBlockState,
+                                                     AdjChain),
+                   State#state.seen_top_block_hash}
           end,
     dispatch_worker(create_block_candidate, Fun, State).
 
@@ -726,13 +740,13 @@ handle_block_candidate_reply({_Result, OldTopHash}, State)
     start_mining(State#state{block_candidate = undefined});
 handle_block_candidate_reply({Result,_OldTopHash}, State) ->
     case Result of
-        {ok, BlockCandidate, RandomNonce} ->
+        {ok, BlockCandidate, BlockCandidateTrees, RandomNonce} ->
             Nonce = aec_pow:next_nonce(RandomNonce),
             epoch_mining:info("Created block candidate and nonce "
                               "(max ~p, current ~p).",
                               [RandomNonce, Nonce]),
-            Candidate = new_candidate(BlockCandidate, Nonce,
-                                      RandomNonce, State),
+            Candidate = new_candidate(BlockCandidate, BlockCandidateTrees,
+                                      Nonce, RandomNonce, State),
             State1 = State#state{block_candidate = Candidate},
             start_mining(State1);
         {error, key_not_found} ->

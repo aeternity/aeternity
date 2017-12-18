@@ -7,13 +7,11 @@
 %% API
 -export([prev_hash/1,
          height/1,
-         trees/1,
          target/1,
          txs/1,
          difficulty/1,
          time_in_msecs/1,
          set_pow/3,
-         set_trees/2,
          set_target/2,
          new/3,
          to_header/1,
@@ -32,8 +30,7 @@
 -compile([export_all, nowarn_export_all]).
 -endif.
 
--export_type([block_serialized_for_network/0,
-              block_deserialized_from_network/0]).
+-export_type([block_serialized_for_network/0]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -43,7 +40,6 @@
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
 -type block_serialized_for_network() :: binary().
--type block_deserialized_from_network() :: #block{trees :: DummyTrees::trees()}.
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
@@ -52,10 +48,6 @@ prev_hash(Block) ->
 -spec height(block()) -> height().
 height(Block) ->
     Block#block.height.
-
--spec trees(block()) -> trees().
-trees(Block) ->
-    Block#block.trees.
 
 -spec target(block()) -> integer().
 target(Block) ->
@@ -78,10 +70,6 @@ set_pow(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
 
--spec set_trees(block(), aec_trees:trees()) -> block().
-set_trees(Block, Trees) ->
-    Block#block{trees = Trees}.
-
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
@@ -91,7 +79,7 @@ set_target(Block, Target) ->
 txs(Block) ->
     Block#block.txs.
 
--spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
+-spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> {ok, block(), trees()}.
 new(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
@@ -104,15 +92,16 @@ new(LastBlock, Txs, Trees0) ->
 
     {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
-    #block{height = Height,
-           prev_hash = LastBlockHeaderHash,
-           root_hash = aec_trees:hash(Trees),
-           trees = Trees,
-           txs_hash = TxsRootHash,
-           txs = Txs1,
-           target = target(LastBlock),
-           time = aeu_time:now_in_msecs(),
-           version = ?CURRENT_BLOCK_VERSION}.
+    NewBlock =
+        #block{height = Height,
+               prev_hash = LastBlockHeaderHash,
+               root_hash = aec_trees:hash(Trees),
+               txs_hash = TxsRootHash,
+               txs = Txs1,
+               target = target(LastBlock),
+               time = aeu_time:now_in_msecs(),
+               version = ?CURRENT_BLOCK_VERSION},
+     {ok, NewBlock, Trees}.
 
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,
@@ -134,10 +123,7 @@ to_header(#block{height = Height,
             pow_evidence = Evd,
             version = Version}.
 
--spec serialize_for_network(BlockInternalRepresentation) ->
-                                   {ok, block_serialized_for_network()} when
-      BlockInternalRepresentation :: block()
-                                   | block_deserialized_from_network().
+-spec serialize_for_network(block()) -> {ok, block_serialized_for_network()}.
 serialize_for_network(B = #block{}) ->
     {ok, jsx:encode(serialize_to_map(B))}.
 
@@ -214,8 +200,7 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
 deserialize_from_store(_) -> false.
 
 
--spec deserialize_from_network(block_serialized_for_network()) ->
-                                      {ok, block_deserialized_from_network()}.
+-spec deserialize_from_network(block_serialized_for_network()) -> {ok, block()}.
 deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
