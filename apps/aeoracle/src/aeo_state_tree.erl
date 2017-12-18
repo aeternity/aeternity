@@ -107,11 +107,11 @@ enter_common(Id, Expires, Serialized, Tree) ->
                     , cache = Cache
                     }.
 
-int_prune(Height, #oracle_tree{cache = Cache} = Tree) ->
+int_prune(Height, #oracle_tree{cache = Cache, mtree = MTree} = Tree) ->
     case cache_safe_peek(Cache) of
-        {H, _} when H > Height -> {unchanged, Tree};
+        {H, _} when H > Height -> Tree;
         Other ->
-            {Cache1, Mtree1} = int_prune(Other, Height, Cache, Tree),
+            {Cache1, Mtree1} = int_prune(Other, Height, Cache, MTree),
             Tree#oracle_tree{ cache = Cache1
                             , mtree = Mtree1}
     end.

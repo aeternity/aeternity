@@ -38,7 +38,8 @@ new_block_test_() ->
               PrevBlock = #block{height = 11, target = 17},
               BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
-              {ok, NewBlock, _} = ?TEST_MODULE:new(PrevBlock, [], #trees{}),
+              Trees = aec_trees:new(),
+              {ok, NewBlock, _} = ?TEST_MODULE:new(PrevBlock, [], Trees),
 
               ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
               SerializedBlockHeader =
