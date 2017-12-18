@@ -7,8 +7,6 @@
 -module(aec_sync).
 
 -behaviour(gen_server).
--compile({parse_transform, lager_transform}).
--include("peers.hrl").
 
 -import(aeu_debug, [pp/1]).
 

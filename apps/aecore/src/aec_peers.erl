@@ -274,7 +274,8 @@ start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
 
 init(ok) ->
-    PeerUri = aehttp_app:local_peer_uri(),
+    LocalPeer = aeu_env:local_peer(),
+    PeerUri = aeu_requests:pp_uri(LocalPeer),  %% TODO: keep datatype, not string
     do_set_local_peer_uri(
       PeerUri,
       #state{peers=gb_trees:empty(),

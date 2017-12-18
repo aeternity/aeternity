@@ -872,7 +872,10 @@ get_pool(N) ->
 new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
     PK1 = maps_get(pk1, M, fun() -> ok(get_pubkey(N1)) end),
     PK2 = maps_get(pk2, M, fun() -> ok(get_pubkey(N2)) end),
-    Uri = rpc_call(N1, aehttp_app, local_internal_http_uri, []),
+    Port = rpc_call(N1, aeu_env, user_config_or_env, 
+                    [ [<<"http">>, <<"internal">>, <<"port">>], 
+                      aehttp, [internal, swagger_port], 8143]),
+    Uri = aeu_requests:pp_uri({http, "127.0.0.1", Port}),
     {ok, ok} = aeu_requests:new_spend_tx(
                  Uri, #{sender_pubkey => PK1,
                         recipient_pubkey => PK2,
