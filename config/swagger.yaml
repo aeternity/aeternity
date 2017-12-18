@@ -631,7 +631,7 @@ definitions:
       query_ttl:
         "$ref": '#/definitions/TTL'
       response_ttl:
-        "$ref": '#/definitions/TTL'
+        "$ref": '#/definitions/RelativeTTL'
       fee:
         type: integer
         format: int64
@@ -651,6 +651,15 @@ definitions:
       type:
         type: string
         enum: ["delta", "block"]
+      value:
+        type: integer
+        format: int64
+  RelativeTTL:
+    type: object
+    properties:
+      type:
+        type: string
+        enum: ["delta"]
       value:
         type: integer
         format: int64

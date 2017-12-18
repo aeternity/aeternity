@@ -140,8 +140,8 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
                            oracle        = OraclePubKey,
                            query         = Query,
                            query_fee     = QueryFee,
-                           query_ttl     = QueryTTL,
-                           response_ttl  = ResponseTTL,
+                           query_ttl     = {QueryTTLType, QueryTTLValue},
+                           response_ttl  = {delta, ResponseTTLValue},
                            fee           = Fee}) ->
     [#{<<"type">>         => type()},
      #{<<"vsn">>          => version()},
@@ -150,8 +150,12 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
      #{<<"oracle">>       => OraclePubKey},
      #{<<"query">>        => Query},
      #{<<"query_fee">>    => QueryFee},
-     #{<<"query_ttl">>    => QueryTTL},
-     #{<<"response_ttl">> => ResponseTTL},
+     #{<<"query_ttl">>    =>
+           #{<<"type">>   => QueryTTLType,
+             <<"value">>  => QueryTTLValue}},
+     #{<<"response_ttl">> =>
+           #{<<"type">>   => delta,
+             <<"value">>  => ResponseTTLValue}}
      #{<<"fee">>          => Fee}].
 
 deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
@@ -161,16 +165,18 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
              #{<<"oracle">>       := OraclePubKey},
              #{<<"query">>        := Query},
              #{<<"query_fee">>    := QueryFee},
-             #{<<"query_ttl">>    := QueryTTL},
-             #{<<"response_ttl">> := ResponseTTL},
+             #{<<"query_ttl">>    := #{<<"type">>  := QueryTLLType,
+                                       <<"value">> := QueryTTLValue}},
+             #{<<"response_ttl">> := #{<<"type">>  := delta,
+                                       <<"value">> := ResponseTTLValue}},
              #{<<"fee">>          := Fee}]) ->
     #oracle_query_tx{sender        = SenderPubKey,
                      nonce         = Nonce,
                      oracle        = OraclePubKey,
                      query         = Query,
                      query_fee     = QueryFee,
-                     query_ttl     = QueryTTL,
-                     response_ttl  = ResponseTTL,
+                     query_ttl     = {QueryTLLType, QueryTTLValue},
+                     response_ttl  = {delta, ResponseTTLValue},
                      fee           = Fee}.
 
 -spec type() -> binary().

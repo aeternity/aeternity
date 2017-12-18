@@ -151,7 +151,7 @@ deserialize([#{<<"type">>          := ?ORACLE_REGISTER_TX_TYPE},
              #{<<"query_spec">>    := QuerySpec},
              #{<<"response_spec">> := ResponseSpec},
              #{<<"query_fee">>     := QueryFee},
-             #{<<"ttl">>           := #{<<"type">> := TTLType,
+             #{<<"ttl">>           := #{<<"type">>  := TTLType,
                                         <<"value">> := TTLValue}},
              #{<<"fee">>           := Fee}]) ->
     #oracle_register_tx{account       = AccountPubKey,

@@ -48,22 +48,22 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
             case aec_next_nonce:pick_for_account(Pubkey) of
                 {ok, Nonce} ->
                     lager:debug("Nonce = ~p", [Nonce]),
-                    QueryFormat = maps:get(<<"query_format">>, OracleRegisterTxObj),
-                    ResponseFormat = maps:get(<<"response_format">>, OracleRegisterTxObj),
-                    QueryFee = maps:get(<<"query_fee">>, OracleRegisterTxObj),
-                    Fee = maps:get(<<"fee">>, OracleRegisterTxObj),
-                    TTL = maps:get(<<"ttl">>, OracleRegisterTxObj),
+                    #{<<"query_format">>    := QueryFormat,
+                      <<"response_format">> := ResponseFormat,
+                      <<"query_fee">>       := QueryFee,
+                      <<"fee">>             := Fee,
+                      <<"ttl">>             := TTL} = OracleRegisterTxObj,
                     TTLType = binary_to_atom(maps:get(<<"type">>, TTL), utf8),
                     TTLValue = maps:get(<<"value">>, TTL),
                     {ok, OracleRegisterTx} =
                         aeo_register_tx:new(
-                          #{account => Pubkey,
-                            nonce => Nonce,
-                            query_spec => QueryFormat,
+                          #{account       => Pubkey,
+                            nonce         => Nonce,
+                            query_spec    => QueryFormat,
                             response_spec => ResponseFormat,
-                            query_fee => QueryFee,
-                            ttl => {TTLType, TTLValue},
-                            fee => Fee}),
+                            query_fee     => QueryFee,
+                            ttl           => {TTLType, TTLValue},
+                            fee           => Fee}),
                     sign_and_push_to_mempool(OracleRegisterTx),
                     {200, [], #{}};
                 {error, account_not_found} ->
@@ -73,9 +73,42 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
-handle_request('PostOracleQueryTx', _Req, _Context) ->
-    %% TODO: Implement me
-    {200, [], #{}};
+handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Context) ->
+    case aec_keys:pubkey() of
+        {ok, Pubkey} ->
+            lager:debug("SenderPubKey matches ours"),
+            case aec_next_nonce:pick_for_account(Pubkey) of
+                {ok, Nonce} ->
+                    lager:debug("Nonce = ~p", [Nonce]),
+                    %% TODO: Check if oracle exist before submitting question!
+                    #{<<"oracle_pubkey">> := EncodedOraclePubkey,
+                      <<"query">>         := Query,
+                      <<"query_fee">>     := QueryFee,
+                      <<"query_ttl">>     := QueryTTL,
+                      <<"response_ttl">>  :=
+                          #{<<"type">>    := <<"delta">>,
+                            <<"value">>   := ResponseTTLValue},
+                      <<"fee">>           := Fee} = OracleQueryTxObj,
+                    QueryTTLType = binary_to_atom(maps:get(<<"type">>, QueryTTL), utf8),
+                    QueryTTLValue= maps:get(<<"value">>, QueryTTL),
+                    {ok, OracleQueryTx} =
+                        aeo_query_tx:new(
+                          #{sender       => Pubkey,
+                            nonce        => Nonce,
+                            oracle       => base64:decode(EncodedOraclePubkey),
+                            query        => Query,
+                            query_fee    => QueryFee,
+                            query_ttl    => {QueryTTLType, QueryTTLValue},
+                            response_ttl => {delta, ResponseTTLValue},
+                            fee          => Fee}),
+                    sign_and_push_to_mempool(OracleQueryTx),
+                    {200, [], #{}};
+                {error, account_not_found} ->
+                    {404, [], #{reason => <<"No funds in an account">>}}
+            end;
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"Keys not configured">>}}
+    end;
 
 handle_request('PostOracleResponseTx', _Req, _Context) ->
     %% TODO: Implement me
