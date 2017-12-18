@@ -64,7 +64,7 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'OracleQueryTx'
+        operation_id = 'PostOracleQueryTx'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -72,7 +72,7 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'OracleRegisterTx'
+        operation_id = 'PostOracleRegisterTx'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -80,7 +80,7 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'OracleResponseTx'
+        operation_id = 'PostOracleResponseTx'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -136,7 +136,7 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'OracleQueryTx'
+        operation_id = 'PostOracleQueryTx'
     }
 ) ->
     Headers = [],
@@ -146,7 +146,7 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'OracleRegisterTx'
+        operation_id = 'PostOracleRegisterTx'
     }
 ) ->
     Headers = [],
@@ -156,7 +156,7 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'OracleResponseTx'
+        operation_id = 'PostOracleResponseTx'
     }
 ) ->
     Headers = [],

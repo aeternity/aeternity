@@ -125,6 +125,22 @@ handle_request('GetAccountBalance', Req, _Context) ->
             end
     end;
 
+handle_request('GetActiveRegisteredOracles', _Req, _Context) ->
+    %% TODO: Implement me
+    {200, [], #{}};
+
+handle_request('GetOracleQuestions', _Req, _Context) ->
+    %% TODO: Implement me
+    {200, [], #{}};
+
+handle_request('PostOracleSubscribe', _Req, _Context) ->
+    %% TODO: Implement me
+    {200, [], #{}};
+
+handle_request('PostOracleUnsubscribe', _Req, _Context) ->
+    %% TODO: Implement me
+    {200, [], #{}};
+
 handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->

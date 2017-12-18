@@ -379,7 +379,7 @@
       "post" : {
         "tags" : [ "internal" ],
         "description" : "Create oracle register transaction",
-        "operationId" : "OracleRegisterTx",
+        "operationId" : "PostOracleRegisterTx",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -409,7 +409,7 @@
       "post" : {
         "tags" : [ "internal" ],
         "description" : "Create oracle query transaction",
-        "operationId" : "OracleQueryTx",
+        "operationId" : "PostOracleQueryTx",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -442,7 +442,7 @@
       "post" : {
         "tags" : [ "internal" ],
         "description" : "Create oracle response transaction",
-        "operationId" : "OracleResponseTx",
+        "operationId" : "PostOracleResponseTx",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {

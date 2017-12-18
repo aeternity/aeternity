@@ -85,17 +85,17 @@ request_params('GetPubKey') ->
     [
     ];
 
-request_params('OracleQueryTx') ->
+request_params('PostOracleQueryTx') ->
     [
         'OracleQueryTx'
     ];
 
-request_params('OracleRegisterTx') ->
+request_params('PostOracleRegisterTx') ->
     [
         'OracleRegisterTx'
     ];
 
-request_params('OracleResponseTx') ->
+request_params('PostOracleResponseTx') ->
     [
         'OracleResponseTx'
     ];
@@ -217,7 +217,7 @@ request_param_info('PostTx', 'Tx') ->
     };
 
 
-request_param_info('OracleQueryTx', 'OracleQueryTx') ->
+request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
     #{
         source =>   body,
         rules => [
@@ -226,7 +226,7 @@ request_param_info('OracleQueryTx', 'OracleQueryTx') ->
         ]
     };
 
-request_param_info('OracleRegisterTx', 'OracleRegisterTx') ->
+request_param_info('PostOracleRegisterTx', 'OracleRegisterTx') ->
     #{
         source =>   body,
         rules => [
@@ -235,7 +235,7 @@ request_param_info('OracleRegisterTx', 'OracleRegisterTx') ->
         ]
     };
 
-request_param_info('OracleResponseTx', 'OracleResponseTx') ->
+request_param_info('PostOracleResponseTx', 'OracleResponseTx') ->
     #{
         source =>   body,
         rules => [
@@ -364,19 +364,19 @@ validate_response('GetPubKey', 200, Body, ValidatorState) ->
 validate_response('GetPubKey', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
-validate_response('OracleQueryTx', 200, Body, ValidatorState) ->
+validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
     validate_response_body('OracleInteractionId', 'OracleInteractionId', Body, ValidatorState);
-validate_response('OracleQueryTx', 404, Body, ValidatorState) ->
+validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
-validate_response('OracleRegisterTx', 200, Body, ValidatorState) ->
+validate_response('PostOracleRegisterTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
-validate_response('OracleRegisterTx', 404, Body, ValidatorState) ->
+validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
-validate_response('OracleResponseTx', 200, Body, ValidatorState) ->
+validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
-validate_response('OracleResponseTx', 404, Body, ValidatorState) ->
+validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->

@@ -130,17 +130,17 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
-        'OracleQueryTx' => #{
+        'PostOracleQueryTx' => #{
             path => "/v1/oracle-query-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
-        'OracleRegisterTx' => #{
+        'PostOracleRegisterTx' => #{
             path => "/v1/oracle-register-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
-        'OracleResponseTx' => #{
+        'PostOracleResponseTx' => #{
             path => "/v1/oracle-response-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'

@@ -332,7 +332,7 @@ paths:
     post:
       tags:
         - internal
-      operationId: OracleRegisterTx
+      operationId: PostOracleRegisterTx
       description: 'Create oracle register transaction'
       consumes:
         - application/json
@@ -357,7 +357,7 @@ paths:
     post:
       tags:
         - internal
-      operationId: OracleQueryTx
+      operationId: PostOracleQueryTx
       description: 'Create oracle query transaction'
       consumes:
         - application/json
@@ -384,7 +384,7 @@ paths:
     post:
       tags:
         - internal
-      operationId: OracleResponseTx
+      operationId: PostOracleResponseTx
       description: 'Create oracle response transaction'
       consumes:
         - application/json
@@ -704,7 +704,6 @@ definitions:
       time_delta_to_parent:
         type: integer
         format: int64
-
 
   Error:
     type: object
