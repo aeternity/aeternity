@@ -27,3 +27,6 @@ apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 .chain
 REVISION
+aevm_external
+apps/aering/src/aer_parser.erl
+apps/aering/src/aer_scan.erl

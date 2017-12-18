@@ -1,0 +1,37 @@
+/* Example from Solidity by Example
+   http://solidity.readthedocs.io/en/develop/introduction-to-smart-contracts.html
+
+   The Solidity code:
+
+   contract SimpleStorage {
+       uint storedData;
+
+       function set(uint x) {
+           storedData = x;
+       }
+
+       function get() constant returns (uint) {
+           return storedData;
+       }
+   }
+*/
+
+contract type SimpleStorage = {
+  type state;
+  let init : uint => state;
+  let set  : uint => unit;
+  let get  : unit => uint;
+};
+
+contract SimpleStorage = {
+
+  type event = unit;
+  type state = { data : uint };
+
+  let init(value : uint) : state = { data: value };
+
+  let get() : uint = state().data;
+
+  let set(value : uint) : result(unit) = { state: { data: value } }
+}
+
