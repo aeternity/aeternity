@@ -235,116 +235,6 @@
         "security" : [ ]
       }
     },
-    "/oracles" : {
-      "get" : {
-        "tags" : [ "external" ],
-        "description" : "Get active registered oracles",
-        "operationId" : "GetActiveRegisteredOracles",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ ],
-        "responses" : {
-          "200" : {
-            "description" : "Active registered oracles",
-            "schema" : {
-              "$ref" : "#/definitions/RegisteredOracles"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-questions" : {
-      "get" : {
-        "tags" : [ "external" ],
-        "description" : "Get active oracle questions",
-        "operationId" : "GetOracleQuestions",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "oracle_pub_key",
-          "in" : "query",
-          "description" : "Oracle public key",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Active oracle questions",
-            "schema" : {
-              "$ref" : "#/definitions/OracleQuestions"
-            }
-          },
-          "404" : {
-            "description" : "Oracle not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-subscribe" : {
-      "post" : {
-        "tags" : [ "external" ],
-        "description" : "Create oracle interactions subscription",
-        "operationId" : "PostOracleSubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new subscription for oracle interactions",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-unsubscribe" : {
-      "post" : {
-        "tags" : [ "external" ],
-        "description" : "Remove oracle interactions subscriptions",
-        "operationId" : "PostOracleUnsubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Unsubscribe from oracle interactions notifications",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle or subscription not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
     "/spend-tx" : {
       "post" : {
         "tags" : [ "internal" ],
@@ -367,6 +257,56 @@
           },
           "404" : {
             "description" : "Spend transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracles" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get active registered oracles",
+        "operationId" : "GetActiveRegisteredOracles",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Active registered oracles",
+            "schema" : {
+              "$ref" : "#/definitions/RegisteredOracles"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-questions" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get active oracle questions",
+        "operationId" : "GetOracleQuestions",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "oracle_pub_key",
+          "in" : "query",
+          "description" : "Oracle public key",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Active oracle questions",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQuestions"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -460,6 +400,66 @@
           },
           "404" : {
             "description" : "Oracle response transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-subscribe" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle interactions subscription",
+        "operationId" : "PostOracleSubscribe",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new subscription for oracle interactions",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleSubscribe"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-unsubscribe" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Remove oracle interactions subscriptions",
+        "operationId" : "PostOracleUnsubscribe",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Unsubscribe from oracle interactions notifications",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleSubscribe"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle or subscription not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }

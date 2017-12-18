@@ -65,11 +65,6 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
-        'GetActiveRegisteredOracles' => #{
-            path => "/v1/oracles",
-            method => <<"GET">>,
-            handler => 'swagger_external_handler'
-        },
         'GetBlockByHash' => #{
             path => "/v1/block-by-hash",
             method => <<"GET">>,
@@ -82,11 +77,6 @@ get_operations() ->
         },
         'GetInfo' => #{
             path => "/v1/info",
-            method => <<"GET">>,
-            handler => 'swagger_external_handler'
-        },
-        'GetOracleQuestions' => #{
-            path => "/v1/oracle-questions",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
@@ -110,20 +100,20 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
-        'PostOracleSubscribe' => #{
-            path => "/v1/oracle-subscribe",
-            method => <<"POST">>,
-            handler => 'swagger_external_handler'
-        },
-        'PostOracleUnsubscribe' => #{
-            path => "/v1/oracle-unsubscribe",
-            method => <<"POST">>,
-            handler => 'swagger_external_handler'
-        },
         'PostTx' => #{
             path => "/v1/tx",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
+        },
+        'GetActiveRegisteredOracles' => #{
+            path => "/v1/oracles",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetOracleQuestions' => #{
+            path => "/v1/oracle-questions",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
         },
         'GetPubKey' => #{
             path => "/v1/account/pub-key",
@@ -142,6 +132,16 @@ get_operations() ->
         },
         'PostOracleResponseTx' => #{
             path => "/v1/oracle-response-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleSubscribe' => #{
+            path => "/v1/oracle-subscribe",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleUnsubscribe' => #{
+            path => "/v1/oracle-unsubscribe",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },

@@ -206,98 +206,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
-  /oracles:
-    get:
-      tags:
-        - external
-      operationId: GetActiveRegisteredOracles
-      description: 'Get active registered oracles'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      responses:
-        '200':
-          description: Active registered oracles
-          schema:
-            $ref: '#/definitions/RegisteredOracles'
-      security: []
-  /oracle-questions:
-    get:
-      tags:
-        - external
-      operationId: GetOracleQuestions
-      description: 'Get active oracle questions'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: oracle_pub_key
-          description: 'Oracle public key'
-          required: true
-          type : string
-      responses:
-        '200':
-          description: Active oracle questions
-          schema:
-            $ref: '#/definitions/OracleQuestions'
-        '404':
-          description: Oracle not found
-          schema:
-            $ref: '#/definitions/Error'
-      security: []
-  /oracle-subscribe:
-    post:
-      tags:
-        - external
-      operationId: PostOracleSubscribe
-      description: 'Create oracle interactions subscription'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new subscription for oracle interactions
-          required: true
-          schema:
-            $ref: '#/definitions/OracleSubscribe'
-      responses:
-        '200':
-          description: successful operation
-        '404':
-          description: Oracle not found
-          schema:
-            $ref: '#/definitions/Error'
-      security: []
-  /oracle-unsubscribe:
-    post:
-      tags:
-        - external
-      operationId: PostOracleUnsubscribe
-      description: 'Remove oracle interactions subscriptions'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Unsubscribe from oracle interactions notifications
-          required: true
-          schema:
-            $ref: '#/definitions/OracleSubscribe'
-      responses:
-        '200':
-          description: successful operation
-        '404':
-          description: Oracle or subscription not found
-          schema:
-            $ref: '#/definitions/Error'
-      security: []
 
 ###
 ## Internal APIs definitions
@@ -325,6 +233,48 @@ paths:
           description: successful operation
         '404':
           description: Spend transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracles:
+    get:
+      tags:
+        - internal
+      operationId: GetActiveRegisteredOracles
+      description: 'Get active registered oracles'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Active registered oracles
+          schema:
+            $ref: '#/definitions/RegisteredOracles'
+      security: []
+  /oracle-questions:
+    get:
+      tags:
+        - internal
+      operationId: GetOracleQuestions
+      description: 'Get active oracle questions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: oracle_pub_key
+          description: 'Oracle public key'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Active oracle questions
+          schema:
+            $ref: '#/definitions/OracleQuestions'
+        '404':
+          description: Oracle not found
           schema:
             $ref: '#/definitions/Error'
       security: []
@@ -402,6 +352,56 @@ paths:
           description: successful operation
         '404':
           description: Oracle response transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-subscribe:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleSubscribe
+      description: 'Create oracle interactions subscription'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new subscription for oracle interactions
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-unsubscribe:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleUnsubscribe
+      description: 'Remove oracle interactions subscriptions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Unsubscribe from oracle interactions notifications
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle or subscription not found
           schema:
             $ref: '#/definitions/Error'
       security: []

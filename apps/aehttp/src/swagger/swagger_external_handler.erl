@@ -72,14 +72,6 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'GetActiveRegisteredOracles'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
         operation_id = 'GetBlockByHash'
     }
 ) ->
@@ -97,14 +89,6 @@ allowed_methods(
     Req,
     State = #state{
         operation_id = 'GetInfo'
-    }
-) ->
-    {[<<"GET">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'GetOracleQuestions'
     }
 ) ->
     {[<<"GET">>], Req, State};
@@ -137,22 +121,6 @@ allowed_methods(
     Req,
     State = #state{
         operation_id = 'PostBlock'
-    }
-) ->
-    {[<<"POST">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'PostOracleSubscribe'
-    }
-) ->
-    {[<<"POST">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'PostOracleUnsubscribe'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -224,16 +192,6 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'GetActiveRegisteredOracles'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
         operation_id = 'GetBlockByHash'
     }
 ) ->
@@ -255,16 +213,6 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'GetInfo'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'GetOracleQuestions'
     }
 ) ->
     Headers = [],
@@ -305,26 +253,6 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostBlock'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'PostOracleSubscribe'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'PostOracleUnsubscribe'
     }
 ) ->
     Headers = [],

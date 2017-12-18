@@ -56,6 +56,22 @@ rest_init(Req0, {Operations, LogicHandler, ValidatorState}) ->
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetActiveRegisteredOracles'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetOracleQuestions'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetPubKey'
     }
 ) ->
@@ -81,6 +97,22 @@ allowed_methods(
     Req,
     State = #state{
         operation_id = 'PostOracleResponseTx'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'PostOracleSubscribe'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'PostOracleUnsubscribe'
     }
 ) ->
     {[<<"POST">>], Req, State};
@@ -126,6 +158,26 @@ content_types_accepted(Req, State) ->
 valid_content_headers(
     Req0,
     State = #state{
+        operation_id = 'GetActiveRegisteredOracles'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetOracleQuestions'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
         operation_id = 'GetPubKey'
     }
 ) ->
@@ -157,6 +209,26 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostOracleResponseTx'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'PostOracleSubscribe'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'PostOracleUnsubscribe'
     }
 ) ->
     Headers = [],
