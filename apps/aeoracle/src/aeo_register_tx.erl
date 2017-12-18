@@ -130,7 +130,7 @@ serialize(#oracle_register_tx{account       = AccountPubKey,
                               query_spec    = QuerySpec,
                               response_spec = ResponseSpec,
                               query_fee     = QueryFee,
-                              ttl           = TTL,
+                              ttl           = {TTLType, TTLValue},
                               fee           = Fee}) ->
     [#{<<"type">> => type()},
      #{<<"vsn">> => version()},
@@ -139,7 +139,9 @@ serialize(#oracle_register_tx{account       = AccountPubKey,
      #{<<"query_spec">> => QuerySpec},
      #{<<"response_spec">> => ResponseSpec},
      #{<<"query_fee">> => QueryFee},
-     #{<<"ttl">> => TTL},
+     #{<<"ttl">> =>
+           #{<<"type">> => TTLType,
+             <<"value">> => TTLValue}},
      #{<<"fee">> => Fee}].
 
 deserialize([#{<<"type">>          := ?ORACLE_REGISTER_TX_TYPE},
@@ -149,14 +151,15 @@ deserialize([#{<<"type">>          := ?ORACLE_REGISTER_TX_TYPE},
              #{<<"query_spec">>    := QuerySpec},
              #{<<"response_spec">> := ResponseSpec},
              #{<<"query_fee">>     := QueryFee},
-             #{<<"ttl">>           := TTL},
+             #{<<"ttl">>           := #{<<"type">> := TTLType,
+                                        <<"value">> := TTLValue}},
              #{<<"fee">>           := Fee}]) ->
     #oracle_register_tx{account       = AccountPubKey,
                         nonce         = Nonce,
                         query_spec    = QuerySpec,
                         response_spec = ResponseSpec,
                         query_fee     = QueryFee,
-                        ttl           = TTL,
+                        ttl           = {TTLType, TTLValue},
                         fee           = Fee}.
 
 -spec type() -> binary().
