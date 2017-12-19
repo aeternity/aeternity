@@ -138,9 +138,9 @@ basic_access_test_block_chain() ->
     ?assertEqual(BH2, top_header(State2)),
 
     %% Check highest block
-    ?compareBlockResults({ok, B0}, {ok, top_block(State0)}), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, {ok, top_block(State1)}), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, {ok, top_block(State2)}), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, {ok, top_block(State0)}),
+    ?compareBlockResults({ok, B1}, {ok, top_block(State1)}),
+    ?compareBlockResults({ok, B2}, {ok, top_block(State2)}),
 
     %% Check by hash.
     ?assertEqual({ok, BH0}, get_header(B0H, State2)),
@@ -148,9 +148,9 @@ basic_access_test_block_chain() ->
     ?assertEqual({ok, BH2}, get_header(B2H, State2)),
     ?assertEqual(error, get_header(B1H, State0)),
     ?assertEqual(error, get_header(B2H, State0)),
-    ?compareBlockResults({ok, B0}, get_block(B0H, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, get_block(B1H, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, get_block(B2H, State2)), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, get_block(B0H, State2)),
+    ?compareBlockResults({ok, B1}, get_block(B1H, State2)),
+    ?compareBlockResults({ok, B2}, get_block(B2H, State2)),
     ?assertEqual(error, get_block(B1H, State0)),
     ?assertEqual(error, get_block(B2H, State0)),
 
@@ -158,9 +158,9 @@ basic_access_test_block_chain() ->
     ?assertEqual({ok, BH0}, get_header_by_height(0, State2)),
     ?assertEqual({ok, BH1}, get_header_by_height(1, State2)),
     ?assertEqual({ok, BH2}, get_header_by_height(2, State2)),
-    ?compareBlockResults({ok, B0}, get_block_by_height(0, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, get_block_by_height(1, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, get_block_by_height(2, State2)), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, get_block_by_height(0, State2)),
+    ?compareBlockResults({ok, B1}, get_block_by_height(1, State2)),
+    ?compareBlockResults({ok, B2}, get_block_by_height(2, State2)),
     ?assertEqual({error, chain_too_short}, get_block_by_height(3, State2)).
 
 basic_access_missing_blocks() ->
