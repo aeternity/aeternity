@@ -26,8 +26,11 @@
 -export([ genesis_header/0,
           height/0,
           genesis_block_with_state/0,
-          genesis_block_with_state/1,
           populated_trees/0 ]).
+
+-ifdef(TEST).
+-export([genesis_block_with_state/1]).
+-endif.
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -45,10 +48,10 @@ genesis_header() ->
 %%
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_block_with_state() ->
-  genesis_block_with_state(aec_genesis_block_settings:preset_accounts()).
+    genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
-genesis_block_with_state(PresetAccounts) ->
-    Trees = populated_trees(PresetAccounts),
+genesis_block_with_state(Map) ->
+    Trees = populated_trees(Map),
     Block =
         #block{
            version = ?GENESIS_VERSION,
@@ -64,16 +67,17 @@ genesis_block_with_state(PresetAccounts) ->
     {ok, Block, Trees}.
 
 populated_trees() ->
-    populated_trees(aec_genesis_block_settings:preset_accounts()).
+    populated_trees(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
-populated_trees(PresetAccounts) ->
-    EmptyStateTrees = aec_trees:new(),
+populated_trees(Map) ->
+    PresetAccounts = maps:get(preset_accounts, Map),
+    StateTrees = maps:get(state_tree, Map, aec_trees:new()),
     PopulatedAccountsTree =
         lists:foldl(fun({PubKey, Amount}, T) ->
                             Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
                             aec_accounts_trees:enter(Account, T)
-                    end, aec_trees:accounts(EmptyStateTrees), PresetAccounts),
-    aec_trees:set_accounts(EmptyStateTrees, PopulatedAccountsTree).
+                    end, aec_trees:accounts(StateTrees), PresetAccounts),
+    aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
 height() ->
     ?GENESIS_HEIGHT.

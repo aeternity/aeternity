@@ -139,7 +139,7 @@ unmock_block_target_validation() ->
 
 
 genesis_block_with_state() ->
-    aec_block_genesis:genesis_block_with_state(?PRESET_ACCOUNTS).
+    aec_block_genesis:genesis_block_with_state(#{preset_accounts => ?PRESET_ACCOUNTS}).
 
 genesis_block_and_state() ->
     {ok, B, S} = genesis_block_with_state(),
@@ -159,7 +159,7 @@ gen_block_chain(Length, PresetAccounts) when Length > 0 ->
 
 gen_block_chain(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
 gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
-    {ok, B, S} = aec_block_genesis:genesis_block_with_state(PresetAccounts),
+    {ok, B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
     gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Txs = [signed_coinbase_tx(MinerAccount)],
