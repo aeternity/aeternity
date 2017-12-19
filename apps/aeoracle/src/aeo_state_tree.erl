@@ -53,7 +53,9 @@ empty() ->
 -spec prune(block_height(), tree()) -> tree().
 prune(Height, #oracle_tree{} = Tree) ->
     %% TODO: We need to know what we pruned as well
-    int_prune(Height, Tree).
+    %% Oracle information should be around for the expiry block
+    %% since we prune before the block, use Height - 1 for pruning.
+    int_prune(Height - 1, Tree).
 
 -spec enter_interaction(interaction(), tree()) -> tree().
 enter_interaction(I, Tree) ->
@@ -119,10 +121,10 @@ int_prune(Height, #oracle_tree{cache = Cache, mtree = MTree} = Tree) ->
 int_prune(none,_Height, Cache, MTree) ->
     {Cache, MTree};
 int_prune({Height, Id}, Height, Cache, MTree) ->
-    {Id, Cache1} = cache_pop(Cache),
+    {{Height, Id}, Cache1} = cache_pop(Cache),
     MTree1 = aeu_mtrees:delete(Id, MTree),
     int_prune(cache_safe_peek(Cache1), Height, Cache1, MTree1);
-int_prune({Height1,_Id}, Height2, Cache, MTree) when Height2 > Height1 ->
+int_prune({Height1,_Id}, Height2, Cache, MTree) when Height2 < Height1 ->
     {Cache, MTree}.
 
 

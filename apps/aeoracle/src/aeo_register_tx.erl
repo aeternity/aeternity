@@ -108,13 +108,12 @@ signers(#oracle_register_tx{account = AccountPubKey}) ->
 -spec process(register_tx(), trees(), height()) -> {ok, trees()}.
 process(#oracle_register_tx{account       = AccountPubKey,
                             nonce         = Nonce,
-                            query_fee     = QueryFee,
                             fee           = Fee} = RegisterTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, QueryFee + Fee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle = aeo_oracles:new(RegisterTx, Height),
