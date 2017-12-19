@@ -15,6 +15,8 @@
         , unmock_block_target_validation/0
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
+        , mock_genesis/0
+        , unmock_genesis/0
         , wait_for_it/2
         , extend_block_chain/3
         , aec_keys_setup/0
@@ -86,6 +88,15 @@ mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
                     (App, Key, Def) ->
                        meck:passthrough([App, Key, Def])
                end).
+
+mock_genesis() ->
+    meck:new(aec_genesis_block_settings, []),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, preset_accounts()),
+    ok.
+
+unmock_genesis() ->
+    meck:unload(aec_genesis_block_settings),
+    ok.
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).

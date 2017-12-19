@@ -23,8 +23,7 @@ setup_minimal() ->
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+    aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
@@ -38,7 +37,7 @@ teardown_minimal(TmpKeysDir) ->
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.

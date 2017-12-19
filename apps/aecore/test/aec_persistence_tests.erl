@@ -83,8 +83,7 @@ write_chain_test_() ->
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              Path = init_persistence(),
              {ok, _} = aec_tx_pool:start_link(),
@@ -96,7 +95,7 @@ write_chain_test_() ->
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
-             meck:unload(aec_genesis_block_settings),
+             aec_test_utils:unmock_genesis(),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
@@ -178,8 +177,7 @@ restart_test_() ->
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              {Path, TmpDir}
@@ -188,7 +186,7 @@ restart_test_() ->
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
-             meck:unload(aec_genesis_block_settings),
+             aec_test_utils:unmock_genesis(),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,

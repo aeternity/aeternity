@@ -61,13 +61,12 @@
 basic_access_test_() ->
     {setup,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [ {"Access for header chain", fun basic_access_test_header_chain/0}
      , {"Access for block chain", fun basic_access_test_block_chain/0}
@@ -261,13 +260,12 @@ gc_test_fun(Length, Max, Interval, KeepAll) ->
 out_of_order_test_() ->
     {setup,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [ {"Out of order insert of header chain",
         fun out_of_order_test_header_chain/0}
@@ -481,13 +479,12 @@ broken_chain_invalid_transaction() ->
 n_headers_from_top_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [{"Ensure the right headers are returned.",
        fun n_headers_from_top/0}]}.
@@ -524,8 +521,7 @@ target_validation_test_() ->
              meck:new(aec_pow, [passthrough]),
              meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 3),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -533,7 +529,7 @@ target_validation_test_() ->
              meck:unload(aec_governance),
              meck:unload(aec_pow),
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [{"Ensure target is same as genesis block target"
        " in first (blocks_to_check_difficulty_count + 1) headers/blocks",
@@ -859,14 +855,13 @@ new_state(Opts) ->
 setup_meck_and_keys() ->
     aec_test_utils:mock_difficulty_as_target(),
     aec_test_utils:mock_block_target_validation(),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+    aec_test_utils:mock_genesis(),
     aec_test_utils:aec_keys_setup().
 
 teardown_meck_and_keys(TmpDir) ->
     aec_test_utils:unmock_difficulty_as_target(),
     aec_test_utils:unmock_block_target_validation(),
-    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:unmock_genesis(),
     aec_test_utils:aec_keys_cleanup(TmpDir).
 
 write_blocks_to_chain([H|T], State) ->
