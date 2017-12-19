@@ -712,7 +712,7 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%%===================================================================
 %%% Worker: Generate new block candidates
 
-new_candidate(Block, _Trees, Nonce, MaxNonce, State) ->
+new_candidate(Block, Nonce, MaxNonce, State) ->
     #candidate{block = Block,
                nonce = Nonce,
                max_nonce = MaxNonce,
@@ -740,13 +740,13 @@ handle_block_candidate_reply({_Result, OldTopHash}, State)
     start_mining(State#state{block_candidate = undefined});
 handle_block_candidate_reply({Result,_OldTopHash}, State) ->
     case Result of
-        {ok, BlockCandidate, BlockCandidateTrees, RandomNonce} ->
+        {ok, BlockCandidate, RandomNonce} ->
             Nonce = aec_pow:next_nonce(RandomNonce),
             epoch_mining:info("Created block candidate and nonce "
                               "(max ~p, current ~p).",
                               [RandomNonce, Nonce]),
-            Candidate = new_candidate(BlockCandidate, BlockCandidateTrees,
-                                      Nonce, RandomNonce, State),
+            Candidate = new_candidate(BlockCandidate, Nonce,
+                                      RandomNonce, State),
             State1 = State#state{block_candidate = Candidate},
             start_mining(State1);
         {error, key_not_found} ->

@@ -22,7 +22,7 @@
 %% API
 
 -spec create_block_candidate(block(), trees(), list(header())) ->
-                                    {ok, block(), trees(), aec_pow:nonce()} |
+                                    {ok, block(), aec_pow:nonce()} |
                                     {error, term()}.
 create_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
     create_block_candidate(get_txs_to_mine_in_pool(),
@@ -72,7 +72,7 @@ get_txs_to_mine_in_pool() ->
 -spec create_block_candidate(
         list(aec_tx_sign:signed_tx()),
         block(), trees(),
-        list(header())) -> {ok, block(), trees(), aec_pow:nonce()} |
+        list(header())) -> {ok, block(), aec_pow:nonce()} |
                            {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
     case create_signed_coinbase_tx() of
@@ -80,12 +80,12 @@ create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            {ok, Block, Trees} = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
+            Block = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
             case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
                     case adjust_target(Block, AdjHeaders) of
                         {ok, AdjBlock} ->
-                            {ok, AdjBlock, Trees, aec_pow:pick_nonce()};
+                            {ok, AdjBlock, aec_pow:pick_nonce()};
                         {error, _} = Error ->
                             Error
                     end;

@@ -163,7 +163,7 @@ gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
     gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Txs = [signed_coinbase_tx(MinerAccount)],
-    {ok, B, S} = aec_blocks:new(PreviousBlock, Txs, Trees),
+    {B, S} = aec_blocks:new_with_state(PreviousBlock, Txs, Trees),
     gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
 extend_block_chain(PrevBlock, PrevBlockState, Data) ->
@@ -186,7 +186,7 @@ block_chain_without_state(Chain) ->
 
 
 next_block(PrevBlock, Trees, Target, Time0, Nonce, MinerAcc) ->
-    {ok, B, S} = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
+    {B, S} = aec_blocks:new_with_state(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
     {B#block{ target = Target, nonce  = Nonce,
               time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
      S}.

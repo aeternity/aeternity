@@ -216,7 +216,7 @@ mine_chain(Chain, N, PC) ->
 
 %% PoWCapacity = number of solutions per minute
 mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    {ok, Block, BlockState} = aec_blocks:new(Top, [], TopState),
+    {Block, BlockState} = aec_blocks:new_with_state(Top, [], TopState),
     MiningTime = mining_time(Chain, PoWCapacity),
     {ok, NewBlock} =
         aec_mining:adjust_target(Block#block{ time = Top#block.time + MiningTime },

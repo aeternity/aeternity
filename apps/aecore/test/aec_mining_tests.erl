@@ -33,7 +33,7 @@ mine_block_test_() ->
                                    target = ?HIGHEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 10),
 
-                 {ok, BlockCandidate, _, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(1, Block#block.height),
@@ -49,7 +49,7 @@ mine_block_test_() ->
                  TopBlock = #block{target = ?LOWEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
 
-                 {ok, BlockCandidate, _, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  ?assertEqual({error, no_solution},
                               ?TEST_MODULE:mine(BlockCandidate, Nonce))
          end}}
@@ -77,14 +77,12 @@ difficulty_recalculation_test_() ->
                  Now = 1504731164584,
                  OneBlockExpectedMineTime = 300000,
                  meck:expect(aec_blocks, new, 3,
-                             {ok,
-                              #block{height = 30,
-                                     target = ?HIGHEST_TARGET_SCI,
-                                     txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
-                                     %% [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
-                                     %%                  signatures = [<<"sig1">>]}],
-                                     time = Now},
-                              aec_trees:new()}),
+                             #block{height = 30,
+                                    target = ?HIGHEST_TARGET_SCI,
+                                    txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
+                                    %% [#signed_tx{data = #coinbase_tx{account = <<"pubkey">>},
+                                    %%                  signatures = [<<"sig1">>]}],
+                                    time = Now}),
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
                                                      time = Now - (10 * OneBlockExpectedMineTime)}),
@@ -93,7 +91,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
 
                  TopBlock = #block{},
-                 {ok, BlockCandidate, _, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(30, Block#block.height),
@@ -111,12 +109,10 @@ difficulty_recalculation_test_() ->
                  Chain = [ #header{ height = 200 - I, target = PastTarget, time = T } || {I, T} <- TS ],
 
                  meck:expect(aec_blocks, new, 3,
-                             {ok,
-                              #block{height = 200,
-                                     target = PastTarget,
-                                     txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
-                                     time = Now},
-                              aec_trees:new()}),
+                             #block{height = 200,
+                                    target = PastTarget,
+                                    txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
+                                    time = Now}),
 
                  case PoWMod of
                      aec_pow_sha256 -> meck:expect(aec_pow, pick_nonce, 0, 22);
@@ -127,7 +123,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
 
                  TopBlock = #block{},
-                 {ok, BlockCandidate, _, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
 
                  ?assertEqual(200, Block#block.height),
