@@ -47,7 +47,7 @@
 init(State) ->
     case aec_persistence:get_chain() of
         [] ->
-            {ok, GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
+            {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
             State1 = State#state{chain_state = aec_chain_state:new()},
             {ok, State2} = insert_block(GB, State1),
             State2;

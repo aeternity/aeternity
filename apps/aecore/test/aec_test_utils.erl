@@ -23,8 +23,8 @@
         , gen_block_chain_without_state/1
         , gen_block_chain/2
         , block_chain_without_state/1
+        , genesis_block/0
         , genesis_block_with_state/0
-        , genesis_block_and_state/0
         , preset_accounts/0
         , create_state_tree/0
         , create_state_tree_with_account/1
@@ -138,12 +138,12 @@ unmock_block_target_validation() ->
     meck:unload(aec_target).
 
 
+genesis_block() ->
+    {B, _} = genesis_block_with_state(),
+    B.
+
 genesis_block_with_state() ->
     aec_block_genesis:genesis_block_with_state(#{preset_accounts => ?PRESET_ACCOUNTS}).
-
-genesis_block_and_state() ->
-    {ok, B, S} = genesis_block_with_state(),
-    {B, S}.
 
 %% Generic blockchain with only coinbase transactions
 gen_block_chain(Length) ->
@@ -159,7 +159,7 @@ gen_block_chain(Length, PresetAccounts) when Length > 0 ->
 
 gen_block_chain(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
 gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
-    {ok, B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
+    {B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
     gen_block_chain(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Txs = [signed_coinbase_tx(MinerAccount)],

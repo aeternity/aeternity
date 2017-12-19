@@ -888,11 +888,11 @@ gc_opts(KeepAll, Max, Interval) ->
      }.
 
 gen_block_chain(Data) ->
-    {B0, S0} = genesis_block_and_state(),
+    {B0, S0} = genesis_block_with_state(),
     [{B0, S0} | extend_block_chain(B0, S0, Data)].
 
 gen_block_chain_by_target(Targets, Nonce) ->
-    {B0, S0} = genesis_block_and_state(),
+    {B0, S0} = genesis_block_with_state(),
     [{B0, S0} | extend_block_chain(B0, S0, #{ targets => Targets, nonce => Nonce })].
 
 extend_chain(Base, Targets, Nonce) ->
@@ -903,11 +903,10 @@ bc_without_state(BC) ->
     aec_test_utils:block_chain_without_state(BC).
 
 genesis_block() ->
-    {B, _} = genesis_block_and_state(),
-    B.
+    aec_test_utils:genesis_block().
 
-genesis_block_and_state() ->
-    aec_test_utils:genesis_block_and_state().
+genesis_block_with_state() ->
+    aec_test_utils:genesis_block_with_state().
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),

@@ -353,9 +353,8 @@ assert_stopped() ->
 
 assert_stopped_and_genesis_at_top() ->
     assert_stopped(),
-    {ok, B, S} = aec_test_utils:genesis_block_with_state(),
     ?assertEqual(?TEST_MODULE:top_block_hash(),
-                 header_hash(aec_blocks:to_header(B))).
+                 header_hash(aec_blocks:to_header(aec_test_utils:genesis_block()))).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),

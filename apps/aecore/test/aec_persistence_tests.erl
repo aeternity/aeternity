@@ -64,7 +64,7 @@ write_test_() ->
      end,
      [{"Write a block to storage and read it back.",
        fun() ->
-               {ok, GB, _} = aec_test_utils:genesis_block_with_state(),
+               GB = aec_test_utils:genesis_block(),
                ok = aec_persistence:write_block(GB),
                ok = aec_persistence:sync(),
                Hash = block_hash(GB),
@@ -102,7 +102,7 @@ write_chain_test_() ->
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
-               {ok, GB, _} = aec_test_utils:genesis_block_with_state(),
+               GB = aec_test_utils:genesis_block(),
                ok = aec_conductor:post_block(GB),
                aec_persistence:sync(),
 

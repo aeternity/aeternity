@@ -181,7 +181,7 @@ target_adj_test_() ->
           PoWCapacity = 100,
           TargetSpeed = 1 / 5, %% 1 block per 5 minutes
           ExpectedDifficulty = PoWCapacity / TargetSpeed,
-          InitBlocks = [aec_test_utils:genesis_block_and_state()],
+          InitBlocks = [aec_test_utils:genesis_block_with_state()],
           Chain = [Top | _] = aec_test_utils:block_chain_without_state(
                                 mine_chain(InitBlocks, 100, PoWCapacity)),
           Difficulties = [ aec_blocks:difficulty(B) || B <- Chain ],
