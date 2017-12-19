@@ -151,7 +151,8 @@ get_mining_workers() ->
 get_block_state_by_hash(Hash) when is_binary(Hash) ->
     gen_server:call(?SERVER, {get_block_state, Hash}).
 
--spec get_account(pubkey()) -> 'no_state_trees' | 'none' | {'value', account()}.
+-spec get_account(pubkey()) -> 'no_top_block_hash' | 'no_state_trees' |
+                               'none' | {'value', account()}.
 get_account(Pubkey) ->
     gen_server:call(?SERVER, {get_account, Pubkey}).
 

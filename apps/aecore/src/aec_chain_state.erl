@@ -124,8 +124,9 @@ get_block_state(Hash, ?assert_state() = State) ->
         error -> {error, no_state_trees}
     end.
 
--spec account(pubkey(), state()) -> 'no_state_trees' | 'none' | {value, account()}.
-account(_, ?match_state(top_block_hash := undefined)) -> undefined;
+-spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
+                                    'none' | {value, account()}.
+account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
 account(Pubkey, ?match_state(top_block_hash := X) = State) ->
     case state_db_find(X, State) of
         {ok, Trees} ->
