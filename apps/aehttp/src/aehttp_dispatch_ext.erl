@@ -129,7 +129,9 @@ handle_request('GetAccountBalance', Req, _Context) ->
 handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
-            AccountsBalances = aec_conductor:get_all_accounts_balances(),
+            {ok, AccountsBalances} =
+                aec_conductor:get_all_accounts_balances(
+                  aec_conductor:top_block_hash()),
             FormattedAccountsBalances =
                 lists:foldl(
                   fun({Pubkey, Balance}, Acc) ->

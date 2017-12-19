@@ -194,7 +194,7 @@ restart_test_() ->
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
                BH2 = aec_blocks:to_header(B2),
-               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)), %% TODO Check state trees too.
+               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),
@@ -202,11 +202,15 @@ restart_test_() ->
                TopBlockHash = aec_persistence:get_top_block(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
-               {ok, ChainTop1, {state, ChainTop1State}} = aec_conductor:top_with_state(),
+               ChainTop1 = aec_conductor:top(),
                ?assertEqual(ChainTop1, aec_conductor:top()),
                ?compareBlockResults(B2, ChainTop1),
 
                %% Check the state trees from persistence
+               {ok, ChainTop1Hash} =
+                   aec_blocks:hash_internal_representation(ChainTop1),
+               {ok, ChainTop1State} =
+                   aec_conductor:get_block_state_by_hash(ChainTop1Hash),
                ?assertEqual(ChainTop1State,
                             aec_persistence:get_block_state(TopBlockHash)),
 
@@ -216,12 +220,16 @@ restart_test_() ->
                NewTopBlockHash = aec_persistence:get_top_block(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
-               {ok, ChainTop2, {state, ChainTop2State}} = aec_conductor:top_with_state(),
+               ChainTop2 = aec_conductor:top(),
                ?assertEqual(ChainTop2, aec_conductor:top()),
                ?compareBlockResults(B2, ChainTop2),
 
                %% Compare the trees after restart
                %% Check the state trees from persistence
+               {ok, ChainTop2Hash} =
+                   aec_blocks:hash_internal_representation(ChainTop2),
+               {ok, ChainTop2State} =
+                   aec_conductor:get_block_state_by_hash(ChainTop2Hash),
                ?assertEqual(ChainTop1State,
                             ChainTop2State),
 

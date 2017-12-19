@@ -383,18 +383,18 @@ broken_chain_test_() ->
      ]}.
 
 broken_chain_postponed_validation() ->
-    MainBC = gen_block_chain_by_target([?GENESIS_TARGET, 2, 5], 111),
-    AltChain = [{_B0,S0}, {B1,S1}, {B2,S2}, {B3,S3}] = gen_block_chain_by_target([?GENESIS_TARGET, 2, 1], 222),
+    MainBC = bc_without_state(gen_block_chain_by_target([?GENESIS_TARGET, 2, 5], 111)),
+    AltChain = [B0, B1, B2, B3] = bc_without_state(gen_block_chain_by_target([?GENESIS_TARGET, 2, 1], 222)),
 
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
-    ?assertEqual(hd(MainBC), hd(AltChain)),
+    ?assertEqual(hd(MainBC), B0),
 
     %% Insert the main chain.
-    State0 = write_blocks_to_chain(bc_without_state(MainBC), new_state()),
+    State0 = write_blocks_to_chain(MainBC, new_state()),
 
     %% Assert that the fork would have taken over if it was ok.
-    State1 = write_blocks_to_chain(bc_without_state(AltChain), State0),
+    State1 = write_blocks_to_chain(AltChain, State0),
     ?assertEqual(aec_blocks:hash_internal_representation(B3),
                  aec_blocks:hash_internal_representation(top_block(State1))),
 
@@ -409,8 +409,8 @@ broken_chain_postponed_validation() ->
     B3Bad = B3#block{prev_hash = Hash},
 
     %% Check that the fork is not taking over
-    ?assertEqual(top_block(State0), top_block(State3)), %% TODO Check state trees too.
-    ?assertEqual(top_block_hash(State3), block_hash(lists:last(bc_without_state(MainBC)))),
+    ?assertEqual(top_block(State0), top_block(State3)),
+    ?assertEqual(top_block_hash(State3), block_hash(lists:last(MainBC))),
 
     %% When the fork takes over, the bad block should be found invalid.
     ?assertMatch({error, _}, insert_block(B3Bad, State3)),

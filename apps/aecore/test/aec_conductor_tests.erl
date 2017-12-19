@@ -197,6 +197,7 @@ chain_test_() ->
       {"Start mining add a block.", fun test_start_mining_add_block/0},
       {"Test preemption of mining", fun test_preemption/0},
       {"Test chain api"           , fun test_chain_api/0},
+      {"Test chain genesis state" , fun test_chain_genesis_state/0},
       {"Test block publishing"    , fun test_block_publishing/0}
      ]}.
 
@@ -256,8 +257,7 @@ test_chain_api() ->
     %% Test that we have a genesis block to start out from.
     {ok, GenesisHeader} = ?TEST_MODULE:genesis_header(),
     GenesisHash = header_hash(GenesisHeader),
-    ?assertMatch({ok, #block{}, {state, #trees{accounts = AccountsTree}}} when AccountsTree =/= undefined,
-                 ?TEST_MODULE:genesis_block_with_state()),
+    ?assertMatch({ok, #block{}}, ?TEST_MODULE:genesis_block()),
     ?assertMatch({ok, #header{}}, ?TEST_MODULE:genesis_header()),
     ?assertEqual(GenesisHash, ?TEST_MODULE:genesis_hash()),
 
@@ -280,9 +280,9 @@ test_chain_api() ->
     FakeHash = <<"I am a fake hash">>,
 
     %% Check the chain access functions
-    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_hash(TopHash)), %% TODO Check state trees too.
+    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_hash(TopHash)),
     ?assertMatch(?error_atom, ?TEST_MODULE:get_block_by_hash(FakeHash)),
-    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_height(TopHeight)), %% TODO Check state trees too.
+    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_height(TopHeight)),
     ?assertMatch(?error_atom, ?TEST_MODULE:get_block_by_height(TopHeight + 1)),
 
     ?assertEqual({ok, TopHeader}, ?TEST_MODULE:get_header_by_hash(TopHash)),
@@ -297,6 +297,44 @@ test_chain_api() ->
     ?assertEqual(false, ?TEST_MODULE:has_block(FakeHash)),
 
     ?assertMatch({ok, F} when is_float(F), ?TEST_MODULE:get_total_difficulty()),
+
+    %% Check the chain state functions
+    ?assertMatch({ok, [{_,_} | _]},
+                 ?TEST_MODULE:get_all_accounts_balances(TopHash)),
+    ?assertMatch(?error_atom, ?TEST_MODULE:get_all_accounts_balances(FakeHash)),
+    {ok, [{PK, Balance} | _]} = ?TEST_MODULE:get_all_accounts_balances(TopHash),
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
+    ok.
+
+test_chain_genesis_state() ->
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
+
+    {GB, GBS} = aec_test_utils:genesis_block_with_state(),
+    GH = aec_blocks:to_header(GB),
+    GHH = header_hash(GH),
+
+    %% Check genesis block in chain, including state
+    ?assertEqual(GHH, ?TEST_MODULE:genesis_hash()),
+    ?assertEqual({ok, GH}, ?TEST_MODULE:genesis_header()),
+    ?assertEqual({ok, GB}, ?TEST_MODULE:genesis_block()),
+    ?assertMatch({ok, #trees{}}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+    ?assertEqual({ok, GBS}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+
+    %% Check that genesis is top
+    ?assertEqual(GHH, ?TEST_MODULE:top_header_hash()),
+    ?assertEqual(GHH, ?TEST_MODULE:top_block_hash()),
+
+    %% Check chain state functions
+    GenesisAccountsBalances = aec_test_utils:preset_accounts(),
+    ?assertEqual({ok, GenesisAccountsBalances},
+                 ?TEST_MODULE:get_all_accounts_balances(GHH)),
+    [{PK, Balance} | _] = GenesisAccountsBalances,
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
     ok.
 
 test_block_publishing() ->
