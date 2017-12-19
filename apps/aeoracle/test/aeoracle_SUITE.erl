@@ -33,15 +33,9 @@ end_per_suite(_) ->
     ok.
 
 init_per_testcase(_, Config) ->
-    ok = meck:new(aec_tx_sign, [passthrough]),
-    meck:expect(aec_tx_sign, sign,
-        fun(Data, Key) -> {signed_tx, Data, [Key]} end),
-    meck:expect(aec_tx_sign, data,
-        fun({signed_tx, Data, _}) -> Data end),
     Config.
 
 end_per_testcase(_, _) ->
-    meck:unload(aec_tx_sign),
     ok.
 
 register_oracle_negative(_Cfg) ->
