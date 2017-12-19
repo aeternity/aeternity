@@ -70,6 +70,7 @@ deploy:
 #       env: JOB=package
 env:
   - JOB=test
+  - JOB=eunit
   - JOB=dialyzer
   - JOB=package
 cache:
