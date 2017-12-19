@@ -124,7 +124,7 @@ write_chain_test_() ->
        end},
       {"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
        fun() ->
-               [GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+               [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
                %% Add a couple of headers - not blocks - to the chain.
                BH1 = aec_blocks:to_header(B1),
                ?assertEqual(ok, aec_conductor:post_header(BH1)),
@@ -192,7 +192,7 @@ restart_test_() ->
      end,
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
-               [GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+               [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),

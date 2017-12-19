@@ -206,7 +206,7 @@ test_start_mining_add_block() ->
     assert_stopped_and_genesis_at_top(),
 
     ?TEST_MODULE:start_mining(),
-    [_GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
@@ -219,7 +219,7 @@ test_preemption() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    Chain = aec_test_utils:gen_block_chain_without_state(7),
+    Chain = aec_test_utils:gen_blocks_only_chain(7),
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -268,7 +268,7 @@ test_chain_api() ->
     ?assertMatch(#header{}, ?TEST_MODULE:top_header()),
 
     %% Seed the server with a chain
-    [_, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [_, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     TopBlock = B2,
     TopHeader = aec_blocks:to_header(TopBlock),
     TopHash = block_hash(TopBlock),
@@ -342,7 +342,7 @@ test_block_publishing() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_block_chain_without_state(6),
+    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6),
     [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
     aec_events:subscribe(top_changed),
