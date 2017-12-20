@@ -62,8 +62,42 @@ request_params('PostTx') ->
     ];
 
 
+request_params('GetActiveRegisteredOracles') ->
+    [
+    ];
+
+request_params('GetOracleQuestions') ->
+    [
+        'oracle_pub_key'
+    ];
+
 request_params('GetPubKey') ->
     [
+    ];
+
+request_params('PostOracleQueryTx') ->
+    [
+        'OracleQueryTx'
+    ];
+
+request_params('PostOracleRegisterTx') ->
+    [
+        'OracleRegisterTx'
+    ];
+
+request_params('PostOracleResponseTx') ->
+    [
+        'OracleResponseTx'
+    ];
+
+request_params('PostOracleSubscribe') ->
+    [
+        'OracleSubscribe'
+    ];
+
+request_params('PostOracleUnsubscribe') ->
+    [
+        'OracleSubscribe'
     ];
 
 request_params('PostSpendTx') ->
@@ -155,6 +189,60 @@ request_param_info('PostTx', 'Tx') ->
         ]
     };
 
+
+request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleRegisterTx', 'OracleRegisterTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleResponseTx', 'OracleResponseTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleSubscribe', 'OracleSubscribe') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleUnsubscribe', 'OracleSubscribe') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
 
 request_param_info('PostSpendTx', 'SpendTx') ->
     #{
@@ -253,9 +341,42 @@ validate_response('PostBlock', 404, Body, ValidatorState) ->
 
 
 
+validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
+    validate_response_body('RegisteredOracles', 'RegisteredOracles', Body, ValidatorState);
+
+validate_response('GetOracleQuestions', 200, Body, ValidatorState) ->
+    validate_response_body('OracleQuestions', 'OracleQuestions', Body, ValidatorState);
+validate_response('GetOracleQuestions', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('GetPubKey', 200, Body, ValidatorState) ->
     validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
 validate_response('GetPubKey', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleInteractionId', 'OracleInteractionId', Body, ValidatorState);
+validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleRegisterTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleSubscribe', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleSubscribe', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleUnsubscribe', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostOracleUnsubscribe', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->

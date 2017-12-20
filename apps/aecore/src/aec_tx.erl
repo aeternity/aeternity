@@ -6,6 +6,7 @@
 
 -export([filter_out_invalid_signatures/1,
          apply_signed/3,
+         apply_signed_strict/3,
          is_coinbase/1,
          signers/1]).
 -export([serialize/1,
@@ -48,13 +49,16 @@ filter_out_invalid_signatures(SignedTxs) ->
               ok =:= aec_tx_sign:verify(SignedTx)
       end, SignedTxs).
 
+-spec apply_signed_strict(list(aec_tx_sign:signed_tx()), trees(), non_neg_integer()) ->
+                                 {ok, list(aec_tx_sign:signed_tx()), trees()}
+                               | {'error', atom()}.
+apply_signed_strict(SignedTxs, Trees, Height) ->
+    apply_signed_common(SignedTxs, Trees, Height, true).
+
 -spec apply_signed(list(aec_tx_sign:signed_tx()), trees(), non_neg_integer()) ->
                           {ok, list(aec_tx_sign:signed_tx()), trees()}.
-apply_signed(SignedTxs, Trees0, Height) ->
-    {ok, SignedTxs1, Trees1} = apply_on_state_trees(SignedTxs, Trees0, Height),
-    TotalFee = calculate_total_fee(SignedTxs1),
-    Trees2 = grant_fee_to_miner(SignedTxs1, Trees1, TotalFee, Height),
-    {ok, SignedTxs1, Trees2}.
+apply_signed(SignedTxs, Trees, Height) ->
+    {ok, _, _} = apply_signed_common(SignedTxs, Trees, Height, false).
 
 %% TODO: there should be an easier way to do this...
 -spec is_coinbase(aec_tx_sign:signed_tx()) -> boolean().
@@ -68,20 +72,33 @@ is_coinbase(Signed) ->
 %%% Internal functions
 %%%=============================================================================
 
-apply_on_state_trees(SignedTxs, Trees, Height) ->
-    apply_on_state_trees(SignedTxs, [], Trees, Height).
+apply_signed_common(SignedTxs, Trees0, Height, Strict) ->
+    Trees1 = aec_trees:perform_pre_transformations(Trees0, Height),
+    case apply_on_state_trees(SignedTxs, Trees1, Height, Strict) of
+        {ok, SignedTxs1, Trees2} ->
+            TotalFee = calculate_total_fee(SignedTxs1),
+            Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee, Height),
+            {ok, SignedTxs1, Trees3};
+        {error, _} = E -> E
+    end.
 
-apply_on_state_trees([], FilteredSignedTxs, Trees, _Height) ->
+apply_on_state_trees(SignedTxs, Trees, Height, Strict) ->
+    apply_on_state_trees(SignedTxs, [], Trees, Height, Strict).
+
+apply_on_state_trees([], FilteredSignedTxs, Trees, _Height,_Strict) ->
     {ok, lists:reverse(FilteredSignedTxs), Trees};
-apply_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height) ->
+apply_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, Strict) ->
     Tx = aec_tx_sign:data(SignedTx),
     case check_single(Tx, Trees0, Height) of
         {ok, Trees1} ->
             {ok, Trees2} = process_single(Tx, Trees1, Height),
-            apply_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height);
-        {error, Reason} ->
+            apply_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
+        {error, Reason} when Strict ->
             lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-            apply_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height)
+            {error, Reason};
+        {error, Reason} when not Strict ->
+            lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+            apply_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
     end.
 
 calculate_total_fee(SignedTxs) ->

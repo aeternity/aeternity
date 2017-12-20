@@ -105,9 +105,44 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'GetActiveRegisteredOracles' => #{
+            path => "/v1/oracles",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetOracleQuestions' => #{
+            path => "/v1/oracle-questions",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'GetPubKey' => #{
             path => "/v1/account/pub-key",
             method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleQueryTx' => #{
+            path => "/v1/oracle-query-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleRegisterTx' => #{
+            path => "/v1/oracle-register-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleResponseTx' => #{
+            path => "/v1/oracle-response-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleSubscribe' => #{
+            path => "/v1/oracle-subscribe",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleUnsubscribe' => #{
+            path => "/v1/oracle-unsubscribe",
+            method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
         'PostSpendTx' => #{

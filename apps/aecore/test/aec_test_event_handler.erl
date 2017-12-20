@@ -15,7 +15,8 @@ install() ->
 
 init(Parent) ->
     io:fwrite(user, "handler init.~n", []),
-    [Parent ! {application_started, A}
+    Now = os:timestamp(),
+    [Parent ! {application_started, Now, A}
      || {A,_,_} <- application:which_applications()],
     {ok, #{parent => Parent}}.
 
@@ -32,7 +33,7 @@ handle_call(_Req, State) ->
     {ok, {error, unknown_call}, State}.
 
 handle_info(_Msg, State) ->
-    {noreply, State}.
+    {ok, State}.
 
 terminate(Arg, _State) ->
     io:fwrite(user, "Event handler terminating: ~p~n", [Arg]),

@@ -20,7 +20,9 @@
 
 %% API - subset of OTP `gb_trees` module
 -export([empty/0,
+         delete/2,
          get/2,
+         insert/3,
          lookup/2,
          enter/3,
          to_list/1]).
@@ -60,6 +62,9 @@
 empty() ->
     gb_merkle_trees:empty().
 
+delete(Key, Tree) when ?IS_KEY(Key) ->
+    gb_merkle_trees:delete(Key, Tree).
+
 get(Key, Tree) when ?IS_KEY(Key) ->
     {value, Value} = lookup(Key, Tree),
     Value.
@@ -74,6 +79,14 @@ lookup(Key, Tree) when ?IS_KEY(Key) ->
 
 enter(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
     gb_merkle_trees:enter(Key, Value, Tree).
+
+%% TODO: This should be implemented in gb_merkle_trees:insert/3
+%%       but that API is not present there.
+insert(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
+    case lookup(Key, Tree) of
+        none -> gb_merkle_trees:enter(Key, Value, Tree);
+        {value, _} -> error({already_present, Key})
+    end.
 
 -spec to_list(mtree()) -> [{key(), value()}].
 to_list(Tree) ->

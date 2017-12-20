@@ -1,6 +1,9 @@
 -module(aeu_validation).
 
--export([run/2]).
+-export([run/1, run/2]).
+
+run(Checks) ->
+    run(Checks, []).
 
 run([], _Args) ->
     ok;
