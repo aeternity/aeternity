@@ -39,7 +39,7 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
               <<"query_fee">>       := QueryFee,
               <<"fee">>             := Fee,
               <<"ttl">>             := TTL} = OracleRegisterTxObj,
-            TTLType = binary_to_atom(maps:get(<<"type">>, TTL), utf8),
+            TTLType = binary_to_existing_atom(maps:get(<<"type">>, TTL), utf8),
             TTLValue = maps:get(<<"value">>, TTL),
             {ok, OracleRegisterTx} =
                 aeo_register_tx:new(
@@ -69,7 +69,7 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                   #{<<"type">>    := <<"delta">>,
                     <<"value">>   := ResponseTTLValue},
               <<"fee">>           := Fee} = OracleQueryTxObj,
-            QueryTTLType = binary_to_atom(maps:get(<<"type">>, QueryTTL), utf8),
+            QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
             {ok, OracleQueryTx} =
                 aeo_query_tx:new(
