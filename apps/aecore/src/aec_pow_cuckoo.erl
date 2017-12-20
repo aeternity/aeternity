@@ -167,7 +167,7 @@ verify_proof(Hash, Nonce, Solution) ->
     %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
     Header0 = pack_header_and_nonce(Hash, Nonce),
     Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
-    {K0, K1} = aeu_siphash24:create_keypair(Header),
+    {K0, K1, K2, K3} = aeu_siphash24:create_keys(Header),
 
     EdgeMask = (1 bsl (Size - 1)) - 1,
     try
@@ -181,8 +181,8 @@ verify_proof(Hash, Nonce, Solution) ->
                  (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
                       throw({?POW_TOO_SMALL, N, PrevN});
                  (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
-                      Uv0 = sipnode(K0, K1, N, 0, EdgeMask),
-                      Uv1 = sipnode(K0, K1, N, 1, EdgeMask),
+                      Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
+                      Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
                       {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
                end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
@@ -202,8 +202,8 @@ verify_proof(Hash, Nonce, Solution) ->
             false
     end.
 
-sipnode(K0, K1, Proof, UOrV, EdgeMask) ->
-    SipHash = aeu_siphash24:hash(K0, K1, 2*Proof + UOrV) band EdgeMask,
+sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
+    SipHash = aeu_siphash24:hash(K0, K1, K2, K3, 2*Proof + UOrV) band EdgeMask,
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
