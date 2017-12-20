@@ -189,17 +189,11 @@ empty_fields_in_genesis() ->
 % if this changes - both functions should be changes:
 % empty_fields_in_genesis/0 and values_for_empty_fields_in_genesis/0
 values_for_empty_fields_in_genesis() ->
-    % this is a fake genesis block - there are no preset accounts
-    % since they only impact state_hash we're not getting it from the fake
-    % genesis block - this is OK 
-    {FakeGB, _} = aec_block_genesis:genesis_block_with_state(
-                    #{preset_accounts => []}),
-    % assert the assumptions
-    false = lists:member(<<"state_hash">>, empty_fields_in_genesis()),
     true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
-    GBMap = aec_blocks:serialize_to_map(FakeGB),
-    maps:filter(fun(K, _) -> lists:member(K, empty_fields_in_genesis()) end,
-                GBMap).
+    #{<<"prev_hash">> => base64:encode(aec_block_genesis:prev_hash()),
+      <<"pow">> => aec_headers:serialize_pow_evidence(aec_block_genesis:pow()),
+      <<"txs_hash">> => base64:encode(aec_block_genesis:txs_hash()),
+      <<"transactions">> => aec_block_genesis:transactions()}.
 
 %% to be used for both headers and blocks
 cleanup_genesis(#{<<"height">> := 0} = Genesis) ->

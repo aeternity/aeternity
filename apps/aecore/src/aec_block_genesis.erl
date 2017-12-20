@@ -28,7 +28,14 @@
           genesis_block_with_state/0,
           populated_trees/0 ]).
 
+-export([prev_hash/0,
+         pow/0,
+         txs_hash/0,
+         transactions/0]).
+
+-ifdef(TEST).
 -export([genesis_block_with_state/1]).
+-endif.
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -37,6 +44,18 @@
 genesis_header() ->
     {B, _S} = genesis_block_with_state(),
     aec_blocks:to_header(B).
+
+prev_hash() ->
+    <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
+
+txs_hash() ->
+    <<0:?TXS_HASH_BYTES/unit:8>>.
+
+pow() ->
+    no_value.
+
+transactions() ->
+    [].
 
 %% Returns the genesis block and the state trees.
 %%
@@ -54,11 +73,12 @@ genesis_block_with_state(Map) ->
         #block{
            version = ?GENESIS_VERSION,
            height = ?GENESIS_HEIGHT,
-           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
+           prev_hash = prev_hash(),
+           txs_hash = txs_hash(),
            root_hash = aec_trees:hash(Trees),
            target = ?HIGHEST_TARGET_SCI,
-           pow_evidence = no_value,
+           txs = transactions(),
+           pow_evidence = pow(),
            nonce = 0,
            time = 0 %% Epoch.
           },
