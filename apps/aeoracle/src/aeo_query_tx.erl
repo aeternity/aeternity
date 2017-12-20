@@ -175,7 +175,8 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
                      oracle        = OraclePubKey,
                      query         = Query,
                      query_fee     = QueryFee,
-                     query_ttl     = {QueryTLLType, QueryTTLValue},
+                     query_ttl     = {binary_to_existing_atom(QueryTLLType, utf8),
+                                      QueryTTLValue},
                      response_ttl  = {delta, ResponseTTLValue},
                      fee           = Fee}.
 

@@ -85,12 +85,16 @@ id(I) ->
 -spec serialize(interaction()) -> binary().
 serialize(#interaction{} = I) ->
     {delta, RespTTLValue} = response_ttl(I),
+    Response = case response(I) of
+                   undefined -> 0;
+                   Bin when is_binary(Bin) -> Bin
+               end,
     msgpack:pack([ #{<<"type">>            => ?ORACLE_INTERACTION_TYPE}
                  , #{<<"vsn">>             => ?ORACLE_INTERACTION_VSN}
                  , #{<<"sender_address">>  => sender_address(I)}
                  , #{<<"sender_nonce">>    => sender_nonce(I)}
                  , #{<<"oracle_address">>  => oracle_address(I)}
-                 , #{<<"response">>        => response(I)}
+                 , #{<<"response">>        => Response}
                  , #{<<"expires">>         => expires(I)}
                  , #{<<"response_ttl">>    => RespTTLValue}
                  , #{<<"fee">>             => fee(I)}
@@ -104,11 +108,15 @@ deserialize(B) ->
     , #{<<"sender_address">>  := SenderAddress}
     , #{<<"sender_nonce">>    := SenderNonce}
     , #{<<"oracle_address">>  := OracleAddress}
-    , #{<<"response">>        := Response}
+    , #{<<"response">>        := Response0}
     , #{<<"expires">>         := Expires}
     , #{<<"response_ttl">>    := RespTTLValue}
     , #{<<"fee">>             := Fee}
     ] = List,
+    Response = case Response0 of
+                   0 -> undefined;
+                   Bin when is_binary(Bin) -> Bin
+               end,
     #interaction{ sender_address = SenderAddress
                 , sender_nonce   = SenderNonce
                 , oracle_address = OracleAddress
