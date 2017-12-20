@@ -38,7 +38,7 @@
 
 -type type_spec()    :: binary(). %% Utf8 encoded string
 
--type response() :: binary(). %% Don't use native types for responses
+-type response() :: undefined | binary(). %% Don't use native types for responses
 
 -record(oracle, { owner           :: pubkey()
                 , query_format    :: type_spec()
@@ -50,10 +50,15 @@
 
 -opaque oracle() :: #oracle{}.
 
+-type id() :: pubkey().
+-type serialized() :: binary().
+
 -export_type([ fixed_ttl/0
+             , id/0
              , oracle/0
              , response/0
              , relative_ttl/0
+             , serialized/0
              , ttl/0
              , type_spec/0
              ]).
@@ -81,7 +86,7 @@ new(RTx, BlockHeight) ->
                },
     assert_fields(O).
 
--spec serialize(oracle()) -> list(map()).
+-spec serialize(oracle()) -> binary().
 serialize(#oracle{} = O) ->
     msgpack:pack([ #{<<"type">>            => ?ORACLE_TYPE}
                  , #{<<"vsn">>             => ?ORACLE_VSN}

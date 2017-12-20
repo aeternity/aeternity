@@ -29,7 +29,9 @@
 %%% Types
 %%%===================================================================
 
--type mtree() :: aeu_mtrees:tree(binary(), binary()).
+-type mkey() :: aeo_oracles:id() | aeo_interaction:id().
+-type mvalue() :: aeo_oracles:serialized() | aeo_interaction:serialized().
+-type mtree() :: aeu_mtrees:tree(mkey(), mvalue()).
 -type interaction() :: aeo_interaction:interaction().
 -type oracle() :: aeo_oracles:oracle().
 -type cache() :: gb_sets:set({integer(), binary()}).

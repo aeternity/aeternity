@@ -80,7 +80,7 @@ iolist_to_s(L) ->
 application_test(Config) ->
     App = aehttp,
     application:load(App),
-    {ok, Deps} = application:get_key(App, applications),
+    {ok, _Deps} = application:get_key(App, applications),
     AlreadyRunning = [ Name || {Name, _, _} <- proplists:get_value(running_apps, Config) ],
 
     %% Start application it depends on (among which aecore)

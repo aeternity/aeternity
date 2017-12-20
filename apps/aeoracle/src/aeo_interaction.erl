@@ -52,8 +52,12 @@
                      }).
 
 -opaque interaction() :: #interaction{}.
+-type id() :: binary().
+-type serialized() :: binary().
 
--export_type([ interaction/0
+-export_type([ id/0
+             , interaction/0
+             , serialized/0
              ]).
 
 -define(PUB_SIZE, 65).
@@ -76,7 +80,7 @@ new(QTx, BlockHeight) ->
                     },
     assert_fields(I).
 
--spec id(interaction()) -> binary().
+-spec id(interaction()) -> id().
 id(I) ->
     Bin = <<(I#interaction.sender_address):?PUB_SIZE/binary,
             (I#interaction.sender_nonce):?NONCE_SIZE,
