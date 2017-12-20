@@ -418,6 +418,7 @@
     },
     "Ping" : {
       "type" : "object",
+      "required" : [ "best_hash", "difficulty", "genesis_hash", "source" ],
       "properties" : {
         "source" : {
           "type" : "string"

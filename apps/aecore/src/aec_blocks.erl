@@ -9,8 +9,10 @@
          height/1,
          target/1,
          txs/1,
+         txs_hash/1,
          difficulty/1,
          time_in_msecs/1,
+         pow/1,
          set_pow/3,
          set_target/2,
          new/3,
@@ -70,6 +72,9 @@ set_pow(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
 
+-spec pow(block()) -> aec_pow:pow_evidence().
+pow(Block) ->
+    Block#block.pow_evidence.
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
@@ -78,6 +83,10 @@ set_target(Block, Target) ->
 -spec txs(block()) -> list(aec_tx_sign:signed_tx()).
 txs(Block) ->
     Block#block.txs.
+
+-spec txs_hash(block()) -> binary().
+txs_hash(Block) ->
+    Block#block.txs_hash.
 
 -spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> {ok, block(), trees()}.
 new(LastBlock, Txs, Trees0) ->
@@ -141,7 +150,7 @@ serialize_to_map(B = #block{}) ->
      }.
 
 serialize_tx(Tx) ->
-    #{tx => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
+    #{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
 
 deserialize_tx(#{<<"tx">> := Bin}) ->
     aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).

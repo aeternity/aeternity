@@ -281,3 +281,4 @@ create_state_tree_with_accounts(Accounts) ->
     AccountsTree1 = lists:foldl(fun aec_accounts_trees:enter/2,
                                 AccountsTree0, Accounts),
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
+

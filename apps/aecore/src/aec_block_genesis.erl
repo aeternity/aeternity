@@ -28,9 +28,7 @@
           genesis_block_with_state/0,
           populated_trees/0 ]).
 
--ifdef(TEST).
 -export([genesis_block_with_state/1]).
--endif.
 
 -include("common.hrl").
 -include("blocks.hrl").

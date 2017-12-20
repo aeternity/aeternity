@@ -1,7 +1,8 @@
 -module(aehttp_dispatch_ext).
 
 -export([handle_request/3]).
--export([cleanup_genesis/1]).
+-export([cleanup_genesis/1,
+         add_missing_to_genesis_block/1]).
 
 -import(aeu_debug, [pp/1]).
 
@@ -182,6 +183,22 @@ empty_fields_in_genesis() ->
       <<"txs_hash">>,
       <<"transactions">>].
 
+% assuming no transactions in genesis block
+% if this changes - both functions should be changes:
+% empty_fields_in_genesis/0 and values_for_empty_fields_in_genesis/0
+values_for_empty_fields_in_genesis() ->
+    % this is a fake genesis block - there are no preset accounts
+    % since they only impact state_hash we're not getting it from the fake
+    % genesis block - this is OK 
+    {ok, FakeGB, _} = aec_block_genesis:genesis_block_with_state(
+                    #{preset_accounts => []}),
+    % assert the assumptions
+    false = lists:member(<<"state_hash">>, empty_fields_in_genesis()),
+    true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
+    GBMap = aec_blocks:serialize_to_map(FakeGB),
+    maps:filter(fun(K, _) -> lists:member(K, empty_fields_in_genesis()) end,
+                GBMap).
+
 %% to be used for both headers and blocks
 cleanup_genesis(#{<<"height">> := 0} = Genesis) ->
     maps:without(empty_fields_in_genesis(), Genesis);
@@ -189,10 +206,7 @@ cleanup_genesis(Val) ->
     Val.
 
 add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
-    {ok, GenesisBlock} = aec_conductor:genesis_block(),
-    GB = aec_blocks:serialize_to_map(GenesisBlock),
-    EmptyFields = maps:with(empty_fields_in_genesis(), GB),
-    maps:merge(Block, EmptyFields);
+    maps:merge(Block, values_for_empty_fields_in_genesis());
 add_missing_to_genesis_block(Val) ->
     Val.
 
@@ -213,7 +227,7 @@ handle_ping_(PingObj) ->
         {error, different_genesis_blocks} ->
             Source = maps:get(<<"source">>, PingObj),
             aec_peers:block_peer(Source),
-            abort_sync(Source,  <<"Different genesis blocks">>);
+            abort_sync(Source, <<"Different genesis blocks">>);
         ok ->
             Source = maps:get(<<"source">>, PingObj),
             aec_peers:update_last_seen(Source),

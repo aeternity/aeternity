@@ -373,6 +373,11 @@ definitions:
         type: array
         items:
           type: string
+    required:
+    - source
+    - genesis_hash
+    - best_hash
+    - difficulty
   Error:
     type: object
     properties:
