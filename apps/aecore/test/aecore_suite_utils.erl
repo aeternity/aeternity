@@ -29,7 +29,7 @@
          await_aehttp/1
          ]).
 
-
+-include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 %%%=============================================================================
@@ -242,7 +242,47 @@ setup_node(N, Top, Epoch, Config) ->
 
 
 cp_dir(From, To) ->
-    cmd(["cp -r ", From, " ", To]).
+    ToDir = case lists:last(To) of
+		$/ ->
+		    filename:join(To, filename:basename(From));
+		_ ->
+		    To
+	    end,
+    ok = filelib:ensure_dir(filename:join(ToDir, "foo")),
+    cp_dir(file:list_dir(From), From, ToDir).
+
+cp_dir({ok, Fs}, From, To) ->
+    Res =
+	lists:foldl(
+	  fun(F, Acc) ->
+		  FullF = filename:join(From, F),
+		  case filelib:is_dir(FullF) of
+		      true ->
+			  To1 = filename:join(To, F),
+			  cp_dir(FullF, To1),
+			  [FullF|Acc];
+		      false ->
+			  Tgt = filename:join(To, F),
+			  ok = filelib:ensure_dir(Tgt),
+			  {ok,_} = file:copy(FullF, Tgt),
+			  ok = match_mode(FullF, Tgt),
+			  [FullF|Acc]
+		  end
+	  end, [], Fs),
+    ct:log("cp_dir(~p, ~p) -> ~p", [From, To, Res]),
+    ok;
+cp_dir({error, _} = Error, From, To) ->
+    ct:log("cp_dir(~p, ~p) -> ~p", [From, To, Error]),
+    Error.
+
+match_mode(A, B) ->
+    case {file:read_link_info(A), file:read_file_info(B)} of
+	{{ok, #file_info{mode = M}}, {ok, FI}} ->
+	    file:write_file_info(B, FI#file_info{mode = M});
+	Other ->
+	    ct:log("Error matching mode ~p -> ~p: ~p", [A, B, Other]),
+	    {error, {match_mode, {A, B}, Other}}
+    end.
 
 cp_file(From, To) ->
     {ok, _} = file:copy(From, To),
