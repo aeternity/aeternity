@@ -31,9 +31,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [
-     {group, all_nodes}
-    ].
+    [ {group, all_nodes} ].
 
 groups() ->
     [
@@ -87,46 +85,27 @@ init_per_suite(Config) ->
     Config1.
 
 end_per_suite(Config) ->
-    lists:foreach(
-        fun(Node) ->
-            aecore_suite_utils:stop_node(Node, Config)
-        end,
-        [dev1, dev2, dev3]),
-    ok.
+    stop_devs(Config).
 
 init_per_group(two_nodes, Config) ->
-    config(two_nodes, Config);
+    config({devs, [dev1, dev2]}, Config);
 init_per_group(three_nodes, Config) ->
-    config(three_nodes, Config);
+    config({devs, [dev1, dev2, dev3]}, Config);
 init_per_group(one_blocked, Config) ->
-    Config1 = config(two_nodes, Config),
+    Config1 = config({devs, [dev1, dev2]}, Config),
     preblock_second(Config1),
     Config1;
+init_per_group(faulty_connect, Config) ->
+    config({devs, [dev1]}, Config);
 init_per_group(_Group, Config) ->
     Config.
 
-end_per_group(two_nodes, Config) ->
-    lists:foreach(
-        fun(Node) ->
-            aecore_suite_utils:stop_node(Node, Config)
-        end,
-        [dev1, dev2]),
-    ok;
-end_per_group(three_nodes, Config) ->
-    lists:foreach(
-        fun(Node) ->
-            aecore_suite_utils:stop_node(Node, Config)
-        end,
-        [dev1, dev2, dev3]),
-    ok;
-end_per_group(one_blocked, Config) ->
-    lists:foreach(
-        fun(Node) ->
-            aecore_suite_utils:stop_node(Node, Config)
-        end,
-        [dev1, dev2]),
-    ok;
-end_per_group(all_nodes, _Config) ->
+end_per_group(_, Config) ->
+    stop_devs(Config).
+
+stop_devs(Config) ->
+    Devs = proplists:get_value(devs, Config, []),
+    [ aecore_suite_utils:stop_node(Node, Config) || Node <- Devs ],
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -144,12 +123,35 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 start_first_node(Config) ->
-    aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    aecore_suite_utils:start_node(Dev1, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
     ok.
 
-test_subscription(_Config) ->
-    N = aecore_suite_utils:node_name(dev1),
+start_second_node(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+    aecore_suite_utils:start_node(Dev2, Config),
+    aecore_suite_utils:connect(N2),
+    timer:sleep(2000),
+    ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
+    B1 = rpc:call(N1, aec_conductor, top, [], 5000),
+    true = expect_block(N2, B1).
+
+start_third_node(Config) ->
+    [ _, _, Dev3 | _ ] = proplists:get_value(devs, Config),
+    N3 = aecore_suite_utils:node_name(Dev3),
+    T0 = os:timestamp(),
+    aecore_suite_utils:start_node(Dev3, Config),
+    aecore_suite_utils:connect(N3),
+    aecore_suite_utils:await_aehttp(N3),
+    ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
+    true = expect_same(T0, Config).
+
+test_subscription(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:subscribe(N, app_started),
     Debug0 = aecore_suite_utils:call_proxy(N, debug),
     ct:log("After subscription (~p, app_started): ~p", [self(), Debug0]),
@@ -168,26 +170,18 @@ test_subscription(_Config) ->
             ok
     end.
 
-mine_on_first(_Config) ->
-    N = aecore_suite_utils:node_name(dev1),
+mine_on_first(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:mine_blocks(N, 1),
     ok.
 
-start_second_node(Config) ->
-    N1 = aecore_suite_utils:node_name(dev1),
-    N2 = aecore_suite_utils:node_name(dev2),
-    aecore_suite_utils:start_node(dev2, Config),
-    aecore_suite_utils:connect(N2),
-    timer:sleep(2000),
-    ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
-    B1 = rpc:call(N1, aec_conductor, top, [], 5000),
-    true = expect_block(N2, B1).
-
 start_blocked_second(Config) ->
-    N1 = aecore_suite_utils:node_name(dev1),
-    N2 = aecore_suite_utils:node_name(dev2),
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
     T0 = os:timestamp(),
-    aecore_suite_utils:start_node(dev2, Config),
+    aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     timer:sleep(2000),
     ct:log("Peers on dev1: ~p", [rpc:call(N1, aec_peers, all, [], 5000)]),
@@ -195,9 +189,10 @@ start_blocked_second(Config) ->
            [rpc:call(N1, aec_peers, get_random, [10], 5000)]),
     await_sync_abort(T0, [N1, N2]).
 
-tx_first_pays_second(_Config) ->
-    N1 = aecore_suite_utils:node_name(dev1),
-    N2 = aecore_suite_utils:node_name(dev2),
+tx_first_pays_second(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
     {ok, PK1} = get_pubkey(N1),
     ct:log("PK1 = ~p", [PK1]),
     {ok, PK2} = get_pubkey(N2),
@@ -240,31 +235,22 @@ mine_on_second(Config) ->
     mine_and_compare(aecore_suite_utils:node_name(dev2), Config).
 
 restart_first(Config) ->
-    restart_node(dev1, Config).
+    restart_node(1, Config).
 
 restart_second(Config) ->
-    restart_node(dev2, Config).
+    restart_node(2, Config).
 
 restart_third(Config) ->
-    restart_node(dev3, Config).
+    restart_node(3, Config).
 
-restart_node(Dev, Config) ->
+restart_node(Nr, Config) ->
+    Dev = lists:nth(Nr, proplists:get_value(devs, Config)),
     aecore_suite_utils:stop_node(Dev, Config),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev, Config),
     N = aecore_suite_utils:node_name(Dev),
     aecore_suite_utils:connect(N),
     ct:log("~w restarted", [Dev]),
-    true = expect_same(T0, Config).
-
-
-start_third_node(Config) ->
-    N3 = aecore_suite_utils:node_name(dev3),
-    T0 = os:timestamp(),
-    aecore_suite_utils:start_node(dev3, Config),
-    aecore_suite_utils:connect(N3),
-    aecore_suite_utils:await_aehttp(N3),
-    ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
     true = expect_same(T0, Config).
 
 mine_on_third(Config) ->
@@ -395,116 +381,6 @@ expect_same_tx_(Nodes) ->
 %% Private functions
 %% ==================================================
 
-%% set_trace(N, Spec) ->
-%%     dbg:n(N),
-%%     lists:map(
-%%       fun(tracer) ->
-%%               {tracer,
-%%                dbg:tracer(process, {fun(Msg,_) ->
-%%                                             ct:log(">>~p~n", [Msg]), 0
-%%                                     end, 0})};
-%%          (stop) ->
-%%               {stop, dbg:stop()};
-%%          ({Op, Args} = S) when Op==tp; Op==tpl; Op==ct; Op==ctpl;
-%%                                Op==p; Op==n; Op==cn ->
-%%               {S, apply(dbg, Op, Args)}
-%%       end, Spec).
-
-%% cp_and_mod(From, To, F) ->
-%%     {ok, B} = file:read_file(From),
-%%     B1 = F(B),
-%%     ok = file:write_file(To, B1),
-%%     ct:log("Wrote to ~s:~n"
-%%            "\"~s\"", [To, B1]),
-%%     ok.
-
-%% change_sname(Data, N) ->
-%%     re:replace(Data, "epoch_dev1", "epoch_" ++ atom_to_list(N),
-%%                [{return, binary}]).
-
-%% modify_vm_args(dev1, _) ->
-%%     ok;
-%% modify_vm_args(N, F) ->
-%%     {ok, Bin} = file:read_file(F),
-%%     Bin1 = re:replace(Bin, "epoch_dev1", "epoch_" ++ atom_to_list(N),
-%%                       [{return, binary}]),
-%%     ct:log("modify vm.args (~p):~n"
-%%            "~p ->~n   ~p", [filename:dirname(F), Bin, Bin1]),
-%%     file:write_file(F, Bin1).
-
-
-%% modify_sys_config(SysCfg) ->
-%%     ct:log("modify_sys_config(~p)", [SysCfg]),
-%%     {ok, [Terms]} = file:consult(SysCfg),
-%%     Terms1 =
-%%         whitelist_test_handler(
-%%           add_setup_phase(Terms)),
-%%     ct:log("Terms1 = ~p~n", [Terms1]),
-%%     {ok, Fd} = file:open(SysCfg, [write]),
-%%     try io:fwrite(Fd, "~p.~n", [Terms1]),
-%%          ct:log("wrote sys.config", [])
-%%     after
-%%         file:close(Fd)
-%%     end,
-%%     check_sys_config(SysCfg, Terms1).
-
-%% check_sys_config(SysCfg, Terms) ->
-%%     {ok, [Terms]} = file:consult(SysCfg),
-%%     ct:log("sys.config verified (~p)", [SysCfg]),
-%%     ok.
-
-%% whitelist_test_handler(Terms) ->
-%%     Handler = aec_test_event_handler,
-%%     K = error_logger_whitelist,
-%%     Lager =
-%%         case lists:keyfind(lager, 1, Terms) of
-%%             {lager, Env} ->
-%%                 Env1 =
-%%                     case lists:keyfind(K, 1, Env) of
-%%                         {_, L} ->
-%%                             L1 = [Handler|L -- [Handler]],
-%%                             lists:keystore(K, 1, Env, {K, L1});
-%%                         false  ->
-%%                             lists:keystore(K, 1, Env, {K, [Handler]})
-%%                     end,
-%%                 {lager, Env1};
-%%             false ->
-%%                 {lager, [{K, [Handler]}]}
-%%         end,
-%%     lists:keystore(lager, 1, Terms, Lager).
-
-%% add_setup_phase(Terms) ->
-%%     Hook = {normal, [
-%%                      {10, {?MODULE, start_proxy, []}}
-%%                     ]},
-%%     Setup =
-%%         case lists:keyfind(setup, 1, Terms) of
-%%             {_, Env} ->
-%%                 case lists:keyfind('$setup_hooks', 1, Env) of
-%%                     {_, Hooks} ->
-%%                         {setup, lists:keystore(
-%%                                   '$setup_hooks', 1, Env, [Hook|Hooks])};
-%%                     false ->
-%%                         {setup, [{'$setup_hooks', [Hook]}]}
-%%                 end;
-%%             false ->
-%%                 {setup, [{'$setup_hooks', [Hook]}]}
-%%         end,
-%%     lists:keystore(setup, 1, Terms, Setup).
-
-%% copy_files(Ops) ->
-%%     lists:map(
-%%       fun({ln, From, To}) ->
-%%               file:make_symlink(From, To);
-%%          ({cp, From, To}) ->
-%%               cmd(["cp -r ", From, " ", To])
-%%       end, Ops).
-
-
-%% start_tgt(dev1) -> "dev1-start";
-%% start_tgt(dev2) -> "dev2-start";
-%% start_tgt(dev3) -> "dev3-start".
-
 expect_block(N, B) ->
     retry(fun() -> expect_block_(N, B) end,
           {?LINE, expect_block, N, B}).
@@ -590,18 +466,13 @@ maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
     end.
 
 preblock_second(Config) ->
-    Node = dev1,
-    BlockedPeers = [dev2],
-    EpochCfg = aecore_suite_utils:epoch_config(Node, Config),
-    aecore_suite_utils:create_config(Node, Config, EpochCfg,
-                                            [{block_peers, BlockedPeers},
+    [Dev1, Dev2 | _] = proplists:get_value(devs, Config),
+    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+                                            [{block_peers, [ Dev2 ]},
                                              {add_peers, true}
                                             ]).
 
-config(two_nodes, Config) ->
-    [{nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- [dev1, dev2]]}
-           | Config];
-config(three_nodes, Config) ->
-    [{nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- [dev1, dev2, dev3]]}
-              | Config].
-
+config({devs, Devs}, Config) ->
+    [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- Devs]} 
+     | Config].
