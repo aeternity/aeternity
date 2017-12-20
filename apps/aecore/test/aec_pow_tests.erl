@@ -181,9 +181,8 @@ target_adj_test_() ->
           PoWCapacity = 100,
           TargetSpeed = 1 / 5, %% 1 block per 5 minutes
           ExpectedDifficulty = PoWCapacity / TargetSpeed,
-          InitBlocks = [aec_test_utils:genesis_block_and_state()],
-          Chain = [Top | _] = aec_test_utils:block_chain_without_state(
-                                mine_chain(InitBlocks, 100, PoWCapacity)),
+          InitBlocks = [aec_test_utils:genesis_block_with_state()],
+          Chain = [Top | _] = mine_blocks_only_chain(InitBlocks, 100, PoWCapacity),
           Difficulties = [ aec_blocks:difficulty(B) || B <- Chain ],
           %% ?debugFmt("Difficulties: ~p", [Difficulties]),
           Window = 20,
@@ -209,18 +208,22 @@ teardown_target(X) ->
     meck:unload(aec_conductor),
     teardown(X).
 
-mine_chain(Chain, 0, _) -> Chain;
-mine_chain(Chain, N, PC) ->
+mine_blocks_only_chain(Chain, N, PC) ->
+    aec_test_utils:blocks_only_chain(mine_chain_with_state(Chain, N, PC)).
+
+mine_chain_with_state(Chain, 0, _) -> Chain;
+mine_chain_with_state(Chain, N, PC) ->
     {B, S} = mining_step(Chain, PC),
-    mine_chain([{B, S} | Chain], N - 1, PC).
+    mine_chain_with_state([{B, S} | Chain], N - 1, PC).
 
 %% PoWCapacity = number of solutions per minute
 mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    {ok, Block, BlockState} = aec_blocks:new(Top, [], TopState),
+    {Block, BlockState} = aec_blocks:new_with_state(Top, [], TopState),
     MiningTime = mining_time(Chain, PoWCapacity),
     {ok, NewBlock} =
-        aec_mining:adjust_target(Block#block{ time = Top#block.time + MiningTime },
-                                 [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:block_chain_without_state(Chain), 10) ]),
+        aec_mining:adjust_target(
+          Block#block{ time = Top#block.time + MiningTime },
+          [ aec_blocks:to_header(B) || B <- lists:sublist(aec_test_utils:blocks_only_chain(Chain), 10) ]),
     {NewBlock, BlockState}.
 
 mining_time([_], _) -> 1000000000;

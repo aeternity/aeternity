@@ -12,7 +12,6 @@
         , difficulty_at_top_block/1
         , find_common_ancestor/3
         , get_block/2
-        , get_block_with_state/2
         , get_block_by_height/2
         , get_header/2
         , get_header_by_height/2
@@ -29,8 +28,9 @@
         , new/1
         , new_from_persistance/2
         , top_block/1
-        , top_block_with_state/1
+        , get_block_state/2
         , account/2
+        , all_accounts_balances/2
         , top_block_hash/1
         , top_header/1
         , top_header_hash/1
@@ -117,20 +117,31 @@ top_block(?match_state(top_block_hash := undefined)) -> undefined;
 top_block(?match_state(top_block_hash := X) = State) ->
     export_block(blocks_db_get(X, State)).
 
--spec top_block_with_state(state()) -> 'undefined' | {'ok', #block{}, {'state', trees()} | 'no_state_trees'}.
-top_block_with_state(?match_state(top_block_hash := undefined)) -> undefined;
-top_block_with_state(?match_state(top_block_hash := X) = State) ->
-    {ok,
-     export_block(blocks_db_get(X, State)),
-     case state_db_find(X, State) of {ok, Trees} -> {state, Trees}; error -> no_state_trees end}.
+-spec get_block_state(binary(), state()) -> {'ok', trees()} | {'error', 'no_state_trees'}.
+get_block_state(Hash, ?assert_state() = State) ->
+    case state_db_find(Hash, State) of
+        {ok, Trees} -> {ok, Trees};
+        error -> {error, no_state_trees}
+    end.
 
--spec account(pubkey(), state()) -> 'no_state_trees' | 'none' | {value, account()}.
-account(_, ?match_state(top_block_hash := undefined)) -> undefined;
+-spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
+                                    'none' | {value, account()}.
+account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
 account(Pubkey, ?match_state(top_block_hash := X) = State) ->
     case state_db_find(X, State) of
         {ok, Trees} ->
             aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
         error -> no_state_trees
+    end.
+
+-spec all_accounts_balances(binary(), state()) -> {'ok', [{pubkey(), non_neg_integer()}]} |
+                                                  {'error', 'no_state_trees'}.
+all_accounts_balances(BlockHeaderHash, ?assert_state() = State) ->
+    case state_db_find(BlockHeaderHash, State) of
+        {ok, Trees} ->
+            {ok, aec_accounts_trees:get_all_accounts_balances(
+                   aec_trees:accounts(Trees))};
+        error -> {error, no_state_trees}
     end.
 
 -spec get_n_headers_from_top(non_neg_integer(), state()) ->
@@ -162,20 +173,6 @@ get_block(Hash, ?assert_state() = State) ->
         {ok, Node} ->
             case node_is_block(Node) of
                 true  -> {ok, export_block(Node)};
-                false -> error
-            end;
-        error -> error
-    end.
-
--spec get_block_with_state(binary(), state()) -> {'ok', #block{}, {'state', trees()} | 'no_state_trees'} | 'error'.
-get_block_with_state(Hash, ?assert_state() = State) ->
-    case blocks_db_find(Hash, State) of
-        {ok, Node} ->
-            case node_is_block(Node) of
-                true  ->
-                    {ok,
-                     export_block(Node),
-                     case state_db_find(Hash, State) of {ok, Trees} -> {state, Trees}; error -> no_state_trees end};
                 false -> error
             end;
         error -> error

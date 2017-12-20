@@ -13,7 +13,10 @@
 -include("core_txs.hrl").
 
 -import(aec_test_utils,
-        [ extend_block_chain/3
+        [ extend_block_chain_with_state/3
+        , blocks_only_chain/1
+        , genesis_block/0
+        , genesis_block_with_state/0
         , aec_keys_setup/0
         , aec_keys_cleanup/1
         ]).
@@ -61,13 +64,12 @@
 basic_access_test_() ->
     {setup,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [ {"Access for header chain", fun basic_access_test_header_chain/0}
      , {"Access for block chain", fun basic_access_test_block_chain/0}
@@ -76,7 +78,7 @@ basic_access_test_() ->
 
 basic_access_test_header_chain() ->
     %% Create a chain that we are going to use.
-    Chain = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = aec_test_utils:gen_blocks_only_chain(3),
     [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
     [B0H, B1H, B2H] = [block_hash(B) || B <- Chain],
 
@@ -124,7 +126,7 @@ basic_access_test_header_chain() ->
 
 basic_access_test_block_chain() ->
     %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
     [B0H, B1H, B2H] = [block_hash(B) || B <- Chain],
 
@@ -139,9 +141,9 @@ basic_access_test_block_chain() ->
     ?assertEqual(BH2, top_header(State2)),
 
     %% Check highest block
-    ?compareBlockResults({ok, B0}, {ok, top_block(State0)}), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, {ok, top_block(State1)}), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, {ok, top_block(State2)}), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, {ok, top_block(State0)}),
+    ?compareBlockResults({ok, B1}, {ok, top_block(State1)}),
+    ?compareBlockResults({ok, B2}, {ok, top_block(State2)}),
 
     %% Check by hash.
     ?assertEqual({ok, BH0}, get_header(B0H, State2)),
@@ -149,9 +151,9 @@ basic_access_test_block_chain() ->
     ?assertEqual({ok, BH2}, get_header(B2H, State2)),
     ?assertEqual(error, get_header(B1H, State0)),
     ?assertEqual(error, get_header(B2H, State0)),
-    ?compareBlockResults({ok, B0}, get_block(B0H, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, get_block(B1H, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, get_block(B2H, State2)), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, get_block(B0H, State2)),
+    ?compareBlockResults({ok, B1}, get_block(B1H, State2)),
+    ?compareBlockResults({ok, B2}, get_block(B2H, State2)),
     ?assertEqual(error, get_block(B1H, State0)),
     ?assertEqual(error, get_block(B2H, State0)),
 
@@ -159,13 +161,13 @@ basic_access_test_block_chain() ->
     ?assertEqual({ok, BH0}, get_header_by_height(0, State2)),
     ?assertEqual({ok, BH1}, get_header_by_height(1, State2)),
     ?assertEqual({ok, BH2}, get_header_by_height(2, State2)),
-    ?compareBlockResults({ok, B0}, get_block_by_height(0, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B1}, get_block_by_height(1, State2)), %% TODO Check state trees too.
-    ?compareBlockResults({ok, B2}, get_block_by_height(2, State2)), %% TODO Check state trees too.
+    ?compareBlockResults({ok, B0}, get_block_by_height(0, State2)),
+    ?compareBlockResults({ok, B1}, get_block_by_height(1, State2)),
+    ?compareBlockResults({ok, B2}, get_block_by_height(2, State2)),
     ?assertEqual({error, chain_too_short}, get_block_by_height(3, State2)).
 
 basic_access_missing_blocks() ->
-    Chain = [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
     [B0H, B1H, B2H] = [block_hash(B) || B <- Chain],
 
@@ -218,7 +220,7 @@ gc_test_params() ->
 
 gc_test_fun(Length, Max, Interval, KeepAll) ->
     %% Generate blockchain and write it to the state.
-    BC = aec_test_utils:gen_block_chain_without_state(Length),
+    BC = aec_test_utils:gen_blocks_only_chain(Length),
     State1 = new_state(gc_opts(KeepAll, Max, Interval)),
     State2 = write_blocks_to_chain(BC, State1),
 
@@ -261,13 +263,12 @@ gc_test_fun(Length, Max, Interval, KeepAll) ->
 out_of_order_test_() ->
     {setup,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [ {"Out of order insert of header chain",
         fun out_of_order_test_header_chain/0}
@@ -281,7 +282,7 @@ out_of_order_test_() ->
 
 out_of_order_test_header_chain() ->
     %% Create a chain that we are going to use.
-    Chain = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = aec_test_utils:gen_blocks_only_chain(3),
     [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
     [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
 
@@ -302,7 +303,7 @@ out_of_order_test_header_chain() ->
 
 out_of_order_test_block_chain() ->
     %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
 
     %% Insert the headers in different order and assert
@@ -322,7 +323,7 @@ out_of_order_test_block_chain() ->
 
 out_of_order_test_mixed_chain() ->
     %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     [BH0, BH1,_BH2] = [aec_blocks:to_header(B) || B <- Chain],
     [B0H, B1H, B2H] = [block_hash(H) || H <- Chain],
 
@@ -347,7 +348,7 @@ out_of_order_test_mixed_chain() ->
 
 out_of_order_test_connected() ->
     %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2, B3] = aec_test_utils:gen_block_chain_without_state(4),
+    Chain = [B0, B1, B2, B3] = aec_test_utils:gen_blocks_only_chain(4),
     [B0H, B1H, B2H, B3H] = [block_hash(H) || H <- Chain],
 
     %% Insert a broken chain and test connectivity
@@ -385,18 +386,18 @@ broken_chain_test_() ->
      ]}.
 
 broken_chain_postponed_validation() ->
-    MainBC = gen_block_chain_by_target([?GENESIS_TARGET, 2, 5], 111),
-    AltChain = [{_B0,S0}, {B1,S1}, {B2,S2}, {B3,S3}] = gen_block_chain_by_target([?GENESIS_TARGET, 2, 1], 222),
+    MainBC = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 5], 111),
+    AltChain = [B0, B1, B2, B3] = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 1], 222),
 
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
-    ?assertEqual(hd(MainBC), hd(AltChain)),
+    ?assertEqual(hd(MainBC), B0),
 
     %% Insert the main chain.
-    State0 = write_blocks_to_chain(bc_without_state(MainBC), new_state()),
+    State0 = write_blocks_to_chain(MainBC, new_state()),
 
     %% Assert that the fork would have taken over if it was ok.
-    State1 = write_blocks_to_chain(bc_without_state(AltChain), State0),
+    State1 = write_blocks_to_chain(AltChain, State0),
     ?assertEqual(aec_blocks:hash_internal_representation(B3),
                  aec_blocks:hash_internal_representation(top_block(State1))),
 
@@ -411,8 +412,8 @@ broken_chain_postponed_validation() ->
     B3Bad = B3#block{prev_hash = Hash},
 
     %% Check that the fork is not taking over
-    ?assertEqual(top_block(State0), top_block(State3)), %% TODO Check state trees too.
-    ?assertEqual(top_block_hash(State3), block_hash(lists:last(bc_without_state(MainBC)))),
+    ?assertEqual(top_block(State0), top_block(State3)),
+    ?assertEqual(top_block_hash(State3), block_hash(lists:last(MainBC))),
 
     %% When the fork takes over, the bad block should be found invalid.
     ?assertMatch({error, _}, insert_block(B3Bad, State3)),
@@ -421,7 +422,7 @@ broken_chain_postponed_validation() ->
 
 broken_chain_wrong_height() ->
     %% Create a chain that we are going to use.
-    [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
 
     %% Insert up to last block.
     State0 = write_blocks_to_chain([B0, B1], new_state()),
@@ -437,7 +438,7 @@ broken_chain_wrong_height() ->
     ok.
 
 broken_chain_wrong_state_hash() ->
-    [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
 
     %% Insert up to last block.
     State0 = write_blocks_to_chain([B0, B1], new_state()),
@@ -457,7 +458,7 @@ broken_chain_wrong_state_hash() ->
     ok.
 
 broken_chain_invalid_transaction() ->
-    [B0, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
 
     %% Insert up to last block.
     State0 = write_blocks_to_chain([B0, B1], new_state()),
@@ -481,20 +482,19 @@ broken_chain_invalid_transaction() ->
 n_headers_from_top_test_() ->
     {foreach,
      fun() ->
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [{"Ensure the right headers are returned.",
        fun n_headers_from_top/0}]}.
 
 n_headers_from_top() ->
-    Chain = bc_without_state(gen_block_chain_by_target(
-                               [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 1)),
+    Chain = gen_blocks_only_chain_by_target(
+              [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 1),
 
     Hdrs = lists:reverse([ aec_blocks:to_header(B) || B <- Chain ]),
 
@@ -524,8 +524,7 @@ target_validation_test_() ->
              meck:new(aec_pow, [passthrough]),
              meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 3),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
-             meck:new(aec_genesis_block_settings, []),
-             meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -533,7 +532,7 @@ target_validation_test_() ->
              meck:unload(aec_governance),
              meck:unload(aec_pow),
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             meck:unload(aec_genesis_block_settings)
+             aec_test_utils:unmock_genesis()
      end,
      [{"Ensure target is same as genesis block target"
        " in first (blocks_to_check_difficulty_count + 1) headers/blocks",
@@ -547,8 +546,8 @@ target_validation_test_() ->
      ]}.
 
 constant_target_at_the_beginning_of_the_chain() ->
-    Chain = [_,_,_,B3,_] = bc_without_state(gen_block_chain_by_target(
-                                              [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 222)),
+    Chain = [_,_,_,B3,_] = gen_blocks_only_chain_by_target(
+                             [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 222),
     [BH0, BH1, BH2, BH3, BH4] = [aec_blocks:to_header(B) || B <- Chain],
 
     %% Insert genesis
@@ -589,7 +588,7 @@ target_verified_based_on_calculations() ->
            nonce      => 12345,
            timestamps => [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000] },
 
-    Chain = bc_without_state(gen_block_chain(ChainData)),
+    Chain = gen_blocks_only_chain(ChainData),
     [BH0, BH1, BH2, BH3, BH4, BH5] = [aec_blocks:to_header(B) || B <- Chain],
 
     {ok, S0} = insert_header(BH0, new_state()),
@@ -616,9 +615,9 @@ test_postponed_target_verification() ->
 
     T0 = aeu_time:now_in_msecs(),
     TS = [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000, T0 + 50000],
-    MainBC = bc_without_state(gen_block_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS })),
+    MainBC = gen_blocks_only_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS }),
     AltChain = [_, B1, B2, B3, B4, B5, B6] =
-        bc_without_state(gen_block_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS })),
+        gen_blocks_only_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS }),
 
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
@@ -668,7 +667,7 @@ total_difficulty_only_genesis() ->
 
 total_difficulty_in_chain() ->
     %% In order to pass target validation, block after genesis has to have the same target as genesis block
-    [B0, B1, B2, B3, B4] = Chain = bc_without_state(gen_block_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111)),
+    [B0, B1, B2, B3, B4] = Chain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
     State = write_blocks_to_chain(Chain, new_state()),
     {ok, DiffTopH} = difficulty_at_top_header(State),
     {ok, DiffTopB} = difficulty_at_top_block(State),
@@ -703,20 +702,20 @@ forking_test_() ->
      ]}.
 
 fork_on_genesis() ->
-    EasyChain = gen_block_chain_by_target([?GENESIS_TARGET, 2, 2, 2], 111),
-    HardChain = gen_block_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
-    fork_common(bc_without_state(EasyChain), bc_without_state(HardChain)).
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 2], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    fork_common(EasyChain, HardChain).
 
 fork_on_last_block() ->
-    CommonChain = gen_block_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
-    EasyChain = extend_chain(CommonChain, [2], 111),
-    HardChain = extend_chain(CommonChain, [1], 222),
-    fork_common(bc_without_state(EasyChain), bc_without_state(HardChain)).
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = extend_chain_with_state(CommonChain, [2], 111),
+    HardChain = extend_chain_with_state(CommonChain, [1], 222),
+    fork_common(blocks_only_chain(EasyChain), blocks_only_chain(HardChain)).
 
 fork_on_shorter() ->
-    EasyChain = gen_block_chain_by_target([?GENESIS_TARGET, 2, 2, 4], 111),
-    HardChain = gen_block_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
-    fork_common(bc_without_state(EasyChain), bc_without_state(HardChain)).
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 4], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
+    fork_common(EasyChain, HardChain).
 
 fork_common(EasyChain, HardChain) ->
     TopHashEasy = block_hash(lists:last(EasyChain)),
@@ -769,20 +768,20 @@ fork_common_headers(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ok.
 
 fork_out_of_order() ->
-    CommonChain = gen_block_chain_by_target([?GENESIS_TARGET, 1, 1], 111),
-    EasyChain = extend_chain(CommonChain, [2], 111),
-    HardChain = extend_chain(CommonChain, [1], 222),
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = extend_chain_with_state(CommonChain, [2], 111),
+    HardChain = extend_chain_with_state(CommonChain, [1], 222),
 
     %% Add the chain with the fork node as the last entry.
     InitState = new_state(),
 
-    State1 = write_blocks_to_chain(lists:droplast(bc_without_state(CommonChain)), InitState),
-    {ok, State2} = insert_block(lists:last(bc_without_state(EasyChain)), State1),
-    {ok, State3} = insert_block(lists:last(bc_without_state(HardChain)), State2),
+    State1 = write_blocks_to_chain(lists:droplast(blocks_only_chain(CommonChain)), InitState),
+    {ok, State2} = insert_block(lists:last(blocks_only_chain(EasyChain)), State1),
+    {ok, State3} = insert_block(lists:last(blocks_only_chain(HardChain)), State2),
 
     %% The last block to enter is the last common node.
-    {ok, State4} = insert_block(lists:last(bc_without_state(CommonChain)), State3),
-    ?assertEqual(block_hash(lists:last(bc_without_state(HardChain))), top_block_hash(State4)),
+    {ok, State4} = insert_block(lists:last(blocks_only_chain(CommonChain)), State3),
+    ?assertEqual(block_hash(lists:last(blocks_only_chain(HardChain))), top_block_hash(State4)),
     ok.
 
 
@@ -817,7 +816,7 @@ time_summary_only_genesis() ->
 time_summary_N_blocks() ->
     InitState = new_state(),
     [B0, B1, B2, B3, B4] = Chain =
-        bc_without_state(gen_block_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111)),
+        gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
     State = write_blocks_to_chain(Chain, InitState),
 
     B0Time = aec_blocks:time_in_msecs(B0),
@@ -859,14 +858,13 @@ new_state(Opts) ->
 setup_meck_and_keys() ->
     aec_test_utils:mock_difficulty_as_target(),
     aec_test_utils:mock_block_target_validation(),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+    aec_test_utils:mock_genesis(),
     aec_test_utils:aec_keys_setup().
 
 teardown_meck_and_keys(TmpDir) ->
     aec_test_utils:unmock_difficulty_as_target(),
     aec_test_utils:unmock_block_target_validation(),
-    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:unmock_genesis(),
     aec_test_utils:aec_keys_cleanup(TmpDir).
 
 write_blocks_to_chain([H|T], State) ->
@@ -887,27 +885,22 @@ gc_opts(KeepAll, Max, Interval) ->
      , keep_all_snapshots_height => KeepAll
      }.
 
-gen_block_chain(Data) ->
-    {B0, S0} = genesis_block_and_state(),
-    [{B0, S0} | extend_block_chain(B0, S0, Data)].
+gen_blocks_only_chain(Data) ->
+    blocks_only_chain(gen_block_chain_with_state(Data)).
 
-gen_block_chain_by_target(Targets, Nonce) ->
-    {B0, S0} = genesis_block_and_state(),
-    [{B0, S0} | extend_block_chain(B0, S0, #{ targets => Targets, nonce => Nonce })].
+gen_block_chain_with_state(Data) ->
+    {B0, S0} = genesis_block_with_state(),
+    [{B0, S0} | extend_block_chain_with_state(B0, S0, Data)].
 
-extend_chain(Base, Targets, Nonce) ->
+gen_blocks_only_chain_by_target(Targets, Nonce) ->
+    blocks_only_chain(gen_block_chain_with_state_by_target(Targets, Nonce)).
+
+gen_block_chain_with_state_by_target(Targets, Nonce) ->
+    gen_block_chain_with_state(#{ targets => Targets, nonce => Nonce }).
+
+extend_chain_with_state(Base, Targets, Nonce) ->
     {B, S} = lists:last(Base),
-    Base ++ extend_block_chain(B, S, #{ targets => Targets, nonce => Nonce }).
-
-bc_without_state(BC) ->
-    aec_test_utils:block_chain_without_state(BC).
-
-genesis_block() ->
-    {B, _} = genesis_block_and_state(),
-    B.
-
-genesis_block_and_state() ->
-    aec_test_utils:genesis_block_and_state().
+    Base ++ extend_block_chain_with_state(B, S, #{ targets => Targets, nonce => Nonce }).
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),

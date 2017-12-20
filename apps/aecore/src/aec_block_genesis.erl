@@ -35,7 +35,7 @@
 
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->
-    {ok, B, _S} = genesis_block_with_state(),
+    {B, _S} = genesis_block_with_state(),
     aec_blocks:to_header(B).
 
 %% Returns the genesis block and the state trees.
@@ -62,7 +62,7 @@ genesis_block_with_state(Map) ->
            nonce = 0,
            time = 0 %% Epoch.
           },
-    {ok, Block, Trees}.
+    {Block, Trees}.
 
 populated_trees() ->
     populated_trees(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).

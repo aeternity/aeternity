@@ -16,6 +16,7 @@
          set_pow/3,
          set_target/2,
          new/3,
+         new_with_state/3,
          to_header/1,
          serialize_for_network/1,
          deserialize_from_network/1,
@@ -88,8 +89,13 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> {ok, block(), trees()}.
+-spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
+    {B, _} = new_with_state(LastBlock, Txs, Trees0),
+    B.
+
+-spec new_with_state(block(), list(aec_tx_sign:signed_tx()), trees()) -> {block(), trees()}.
+new_with_state(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
     Height = LastBlockHeight + 1,
@@ -110,7 +116,7 @@ new(LastBlock, Txs, Trees0) ->
                target = target(LastBlock),
                time = aeu_time:now_in_msecs(),
                version = ?CURRENT_BLOCK_VERSION},
-     {ok, NewBlock, Trees}.
+    {NewBlock, Trees}.
 
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,

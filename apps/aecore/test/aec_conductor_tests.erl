@@ -23,8 +23,7 @@ setup_minimal() ->
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+    aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
@@ -38,7 +37,7 @@ teardown_minimal(TmpKeysDir) ->
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
@@ -198,6 +197,7 @@ chain_test_() ->
       {"Start mining add a block.", fun test_start_mining_add_block/0},
       {"Test preemption of mining", fun test_preemption/0},
       {"Test chain api"           , fun test_chain_api/0},
+      {"Test chain genesis state" , fun test_chain_genesis_state/0},
       {"Test block publishing"    , fun test_block_publishing/0}
      ]}.
 
@@ -206,7 +206,7 @@ test_start_mining_add_block() ->
     assert_stopped_and_genesis_at_top(),
 
     ?TEST_MODULE:start_mining(),
-    [_GB, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
@@ -219,7 +219,7 @@ test_preemption() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    Chain = aec_test_utils:gen_block_chain_without_state(7),
+    Chain = aec_test_utils:gen_blocks_only_chain(7),
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -257,8 +257,7 @@ test_chain_api() ->
     %% Test that we have a genesis block to start out from.
     {ok, GenesisHeader} = ?TEST_MODULE:genesis_header(),
     GenesisHash = header_hash(GenesisHeader),
-    ?assertMatch({ok, #block{}, {state, #trees{accounts = AccountsTree}}} when AccountsTree =/= undefined,
-                 ?TEST_MODULE:genesis_block_with_state()),
+    ?assertMatch({ok, #block{}}, ?TEST_MODULE:genesis_block()),
     ?assertMatch({ok, #header{}}, ?TEST_MODULE:genesis_header()),
     ?assertEqual(GenesisHash, ?TEST_MODULE:genesis_hash()),
 
@@ -269,7 +268,7 @@ test_chain_api() ->
     ?assertMatch(#header{}, ?TEST_MODULE:top_header()),
 
     %% Seed the server with a chain
-    [_, B1, B2] = aec_test_utils:gen_block_chain_without_state(3),
+    [_, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     TopBlock = B2,
     TopHeader = aec_blocks:to_header(TopBlock),
     TopHash = block_hash(TopBlock),
@@ -281,9 +280,9 @@ test_chain_api() ->
     FakeHash = <<"I am a fake hash">>,
 
     %% Check the chain access functions
-    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_hash(TopHash)), %% TODO Check state trees too.
+    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_hash(TopHash)),
     ?assertMatch(?error_atom, ?TEST_MODULE:get_block_by_hash(FakeHash)),
-    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_height(TopHeight)), %% TODO Check state trees too.
+    ?assertEqual({ok, TopBlock}, ?TEST_MODULE:get_block_by_height(TopHeight)),
     ?assertMatch(?error_atom, ?TEST_MODULE:get_block_by_height(TopHeight + 1)),
 
     ?assertEqual({ok, TopHeader}, ?TEST_MODULE:get_header_by_hash(TopHash)),
@@ -298,6 +297,44 @@ test_chain_api() ->
     ?assertEqual(false, ?TEST_MODULE:has_block(FakeHash)),
 
     ?assertMatch({ok, F} when is_float(F), ?TEST_MODULE:get_total_difficulty()),
+
+    %% Check the chain state functions
+    ?assertMatch({ok, [{_,_} | _]},
+                 ?TEST_MODULE:get_all_accounts_balances(TopHash)),
+    ?assertMatch(?error_atom, ?TEST_MODULE:get_all_accounts_balances(FakeHash)),
+    {ok, [{PK, Balance} | _]} = ?TEST_MODULE:get_all_accounts_balances(TopHash),
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
+    ok.
+
+test_chain_genesis_state() ->
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
+
+    {GB, GBS} = aec_test_utils:genesis_block_with_state(),
+    GH = aec_blocks:to_header(GB),
+    GHH = header_hash(GH),
+
+    %% Check genesis block in chain, including state
+    ?assertEqual(GHH, ?TEST_MODULE:genesis_hash()),
+    ?assertEqual({ok, GH}, ?TEST_MODULE:genesis_header()),
+    ?assertEqual({ok, GB}, ?TEST_MODULE:genesis_block()),
+    ?assertMatch({ok, #trees{}}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+    ?assertEqual({ok, GBS}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+
+    %% Check that genesis is top
+    ?assertEqual(GHH, ?TEST_MODULE:top_header_hash()),
+    ?assertEqual(GHH, ?TEST_MODULE:top_block_hash()),
+
+    %% Check chain state functions
+    GenesisAccountsBalances = aec_test_utils:preset_accounts(),
+    ?assertEqual({ok, GenesisAccountsBalances},
+                 ?TEST_MODULE:get_all_accounts_balances(GHH)),
+    [{PK, Balance} | _] = GenesisAccountsBalances,
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
     ok.
 
 test_block_publishing() ->
@@ -305,7 +342,7 @@ test_block_publishing() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_block_chain_without_state(6),
+    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6),
     [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
     aec_events:subscribe(top_changed),
@@ -353,9 +390,8 @@ assert_stopped() ->
 
 assert_stopped_and_genesis_at_top() ->
     assert_stopped(),
-    {ok, B, S} = aec_test_utils:genesis_block_with_state(),
     ?assertEqual(?TEST_MODULE:top_block_hash(),
-                 header_hash(aec_blocks:to_header(B))).
+                 header_hash(aec_blocks:to_header(aec_test_utils:genesis_block()))).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),

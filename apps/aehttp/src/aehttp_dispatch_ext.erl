@@ -129,7 +129,9 @@ handle_request('GetAccountBalance', Req, _Context) ->
 handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
-            AccountsBalances = aec_conductor:get_all_accounts_balances(),
+            {ok, AccountsBalances} =
+                aec_conductor:get_all_accounts_balances(
+                  aec_conductor:top_block_hash()),
             FormattedAccountsBalances =
                 lists:foldl(
                   fun({Pubkey, Balance}, Acc) ->
@@ -190,7 +192,7 @@ values_for_empty_fields_in_genesis() ->
     % this is a fake genesis block - there are no preset accounts
     % since they only impact state_hash we're not getting it from the fake
     % genesis block - this is OK 
-    {ok, FakeGB, _} = aec_block_genesis:genesis_block_with_state(
+    {FakeGB, _} = aec_block_genesis:genesis_block_with_state(
                     #{preset_accounts => []}),
     % assert the assumptions
     false = lists:member(<<"state_hash">>, empty_fields_in_genesis()),
