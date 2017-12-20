@@ -63,10 +63,22 @@ difficulty_recalculation_test_() ->
               setup(PoWMod),
               %% This group of tests tests the difficulty
               %% recalculation inside the aec_mining module, hence the
-              %% PoW module could be mocked.
+              %% PoW module can be mocked.
+              meck:new(PoWMod),
+              meck:expect(PoWMod, generate,
+                          fun(_, _, Nonce) ->
+                                   Evd = case PoWMod of
+                                             aec_pow_cuckoo ->
+                                                 lists:duplicate(42, 0);
+                                             aec_pow_sha256 ->
+                                                 no_value
+                                         end,
+                                  {ok, {Nonce, Evd}}
+                          end),
               meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10)
       end,
       fun(_) ->
+              meck:unload(PoWMod),
               cleanup(unused_arg, PoWMod)
       end,
       [
@@ -86,7 +98,6 @@ difficulty_recalculation_test_() ->
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
                                                      time = Now - (10 * OneBlockExpectedMineTime)}),
-                 meck:expect(aec_pow, pick_nonce, 0, 21),
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
 
@@ -114,10 +125,6 @@ difficulty_recalculation_test_() ->
                                     txs = [aec_tx_sign:sign(#coinbase_tx{account = <<"pubkey">>}, <<"sig1">>)],
                                     time = Now}),
 
-                 case PoWMod of
-                     aec_pow_sha256 -> meck:expect(aec_pow, pick_nonce, 0, 22);
-                     aec_pow_cuckoo -> meck:expect(aec_pow, pick_nonce, 0, 37)
-                 end,
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  %% One block should be mined every 5 mins
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
