@@ -90,7 +90,7 @@ handle_request('PostBlock', Req, _Context) ->
         ok -> {200, [], #{}};
         {error, Reason} ->
             lager:error("Post block failed: ~p", [Reason]),
-            {200, [], #{}}
+            {400, [], #{reason => <<"Block rejected">>}}
     end;
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
@@ -217,11 +217,8 @@ handle_ping(#{<<"source">> := Src} = PingObj) ->
     case IsBlocked of
         false -> handle_ping_(PingObj);
         true  ->
-            abort_sync(Src, <<"Not allowed">>)
-    end;
-handle_ping(_) ->
-    Reason = <<"Missing source attribute">>,
-    abort_sync(undefined, Reason).
+            abort_sync(Src, 403, <<"Not allowed">>)
+    end.
 
 handle_ping_(PingObj) ->
     LocalPingObj = aec_sync:local_ping_object(),
@@ -229,7 +226,7 @@ handle_ping_(PingObj) ->
         {error, different_genesis_blocks} ->
             Source = maps:get(<<"source">>, PingObj),
             aec_peers:block_peer(Source),
-            abort_sync(Source, <<"Different genesis blocks">>);
+            abort_sync(Source, 409, <<"Different genesis blocks">>);
         ok ->
             Source = maps:get(<<"source">>, PingObj),
             aec_peers:update_last_seen(Source),
@@ -250,9 +247,9 @@ handle_ping_(PingObj) ->
             {200, [], Res}
     end.
 
-abort_sync(Uri, Reason) ->
+abort_sync(Uri, Code, Reason) ->
     aec_events:publish(
       chain_sync,
       {sync_aborted, #{uri => Uri,
                        reason => Reason}}),
-      {404, [], #{reason => Reason}}.
+      {Code, [], #{reason => Reason}}.
