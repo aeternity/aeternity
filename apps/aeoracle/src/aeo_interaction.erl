@@ -12,6 +12,7 @@
         , expires/1
         , fee/1
         , id/1
+        , is_closed/1
         , new/2
         , oracle_address/1
         , response/1
@@ -81,6 +82,11 @@ id(I) ->
             (I#interaction.sender_nonce):?NONCE_SIZE,
             (I#interaction.oracle_address):?PUB_SIZE/binary>>,
     aec_sha256:hash(Bin).
+
+-spec is_closed(interaction()) -> boolean().
+%% @doc An interaction is closed if it is already answered.
+is_closed(#interaction{response = undefined}) -> false;
+is_closed(#interaction{}) -> true.
 
 -spec serialize(interaction()) -> binary().
 serialize(#interaction{} = I) ->

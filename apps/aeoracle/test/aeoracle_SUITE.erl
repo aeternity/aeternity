@@ -185,9 +185,15 @@ query_response(Cfg) ->
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
     SignedTx = aec_tx_sign:sign(RTx, <<"pkey1">>),
+    {_, _} = redbug:start("aeo_response_tx:check_interaction->return"),
     {ok, [SignedTx], Trees2} =
         aec_tx:apply_signed([SignedTx], Trees, CurrHeight),
     S2 = aeo_test_utils:set_trees(Trees2, S1),
+
+    %% Test that the interaction is now closed.
+    OIO = aeo_state_tree:get_interaction(ID, aec_trees:oracles(Trees2)),
+    true = aeo_interaction:is_closed(OIO),
+
     {OracleKey, ID, S2}.
 
 %%%===================================================================

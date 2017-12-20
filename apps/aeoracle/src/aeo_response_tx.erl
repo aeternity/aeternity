@@ -79,19 +79,22 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 -spec check(response_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           interaction_id = IId, fee = Fee}, Trees, Height) ->
-    case check_interaction_id(IId, Trees, OraclePubKey) of
-        {ok, ResponseTTL, QueryFee} ->
+    case fetch_interaction(IId, Trees) of
+        {value, I} ->
+            ResponseTTL = aeo_interaction:response_ttl(I),
+            QueryFee    = aeo_interaction:fee(I),
             Checks =
-                [fun() -> aetx_utils:check_account(OraclePubKey, Trees,
+                [fun() -> check_interaction(I, OraclePubKey)end,
+                 fun() -> aetx_utils:check_account(OraclePubKey, Trees,
                                                    Height, Nonce, Fee - QueryFee) end,
                  fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
-                                                  Fee - ?ORACLE_RESPONSE_TX_FEE) end],
-
+                                                  Fee - ?ORACLE_RESPONSE_TX_FEE) end
+                ],
             case aeu_validation:run(Checks) of
                 ok              -> {ok, Trees};
                 {error, Reason} -> {error, Reason}
             end;
-        Err = {error, _} -> Err
+        none -> {error, oracle_interaction_id_does_not_exist}
     end.
 
 -spec signers(response_tx()) -> [pubkey()].
@@ -155,13 +158,17 @@ version() ->
     ?ORACLE_RESPONSE_TX_VSN.
 
 %% -- Local functions  -------------------------------------------------------
-check_interaction_id(IId, Trees, OraclePubKey) ->
+
+fetch_interaction(IId, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),
-    case aeo_state_tree:lookup_interaction(IId, OraclesTree) of
-        {value, I} ->
-            case OraclePubKey == aeo_interaction:oracle_address(I) of
-                true  -> {ok, aeo_interaction:response_ttl(I), aeo_interaction:fee(I)};
-                false -> {error, oracle_does_not_match_interaction_id}
+    aeo_state_tree:lookup_interaction(IId, OraclesTree).
+
+check_interaction(I, OraclePubKey) ->
+    case OraclePubKey == aeo_interaction:oracle_address(I) of
+        true  ->
+            case aeo_interaction:is_closed(I) of
+                true  -> {error, oracle_closed_for_response};
+                false -> ok
             end;
-        none -> {error, oracle_interaction_id_does_not_exist}
+        false -> {error, oracle_does_not_match_interaction_id}
     end.
