@@ -102,11 +102,13 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 -spec check(query_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
-                       query_ttl = TTL, fee = Fee}, Trees, Height) ->
+                       query_ttl = TTL, fee = Fee} = Q, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Height, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
-         fun() -> check_oracle(OraclePubKey, Trees, QFee) end],
+         fun() -> check_oracle(OraclePubKey, Trees, QFee) end,
+         fun() -> check_interaction(Q, Trees, Height) end
+        ],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -128,7 +130,7 @@ process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
     AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
 
     Interaction = aeo_interaction:new(Query, Height),
-    OraclesTree1 = aeo_state_tree:enter_interaction(Interaction, OraclesTree0),
+    OraclesTree1 = aeo_state_tree:insert_interaction(Interaction, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
     Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
@@ -189,6 +191,14 @@ version() ->
     ?ORACLE_QUERY_TX_VSN.
 
 %% -- Local functions  -------------------------------------------------------
+
+check_interaction(Q, Trees, Height) ->
+    Oracles = aec_trees:oracles(Trees),
+    Id      = aeo_interaction:id(aeo_interaction:new(Q, Height)),
+    case aeo_state_tree:lookup_interaction(Id, Oracles) of
+        none       -> ok;
+        {value, _} -> {error, oracle_interaction_already_present}
+    end.
 
 check_oracle(OraclePubKey, Trees, QueryFee) ->
     OraclesTree  = aec_trees:oracles(Trees),

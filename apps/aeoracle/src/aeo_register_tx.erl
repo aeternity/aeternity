@@ -117,7 +117,7 @@ process(#oracle_register_tx{account       = AccountPubKey,
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle = aeo_oracles:new(RegisterTx, Height),
-    OraclesTree1 = aeo_state_tree:enter_oracle(Oracle, OraclesTree0),
+    OraclesTree1 = aeo_state_tree:insert_oracle(Oracle, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
     Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),

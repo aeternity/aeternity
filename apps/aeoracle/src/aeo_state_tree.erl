@@ -12,7 +12,8 @@
         , get_oracle/2
         , empty/0
         , enter_interaction/2
-        , enter_oracle/2
+        , insert_interaction/2
+        , insert_oracle/2
         , lookup_interaction/2
         , lookup_oracle/2
         , prune/2
@@ -71,6 +72,13 @@ enter_interaction(I, Tree) ->
     Expires = aeo_interaction:expires(I),
     enter_common(Id, Expires, Serialized, Tree).
 
+-spec insert_interaction(interaction(), tree()) -> tree().
+insert_interaction(I, Tree) ->
+    Id = aeo_interaction:id(I),
+    Serialized = aeo_interaction:serialize(I),
+    Expires = aeo_interaction:expires(I),
+    insert_common(Id, Expires, Serialized, Tree).
+
 -spec get_interaction(binary(), tree()) -> interaction().
 get_interaction(Id, Tree) ->
     aeo_interaction:deserialize(aeu_mtrees:get(Id, Tree#oracle_tree.mtree)).
@@ -82,12 +90,12 @@ lookup_interaction(Id, Tree) ->
       none -> none
     end.
 
--spec enter_oracle(oracle(), tree()) -> tree().
-enter_oracle(O, Tree) ->
+-spec insert_oracle(oracle(), tree()) -> tree().
+insert_oracle(O, Tree) ->
     Id = aeo_oracles:id(O),
     Serialized = aeo_oracles:serialize(O),
     Expires = aeo_oracles:expires(O),
-    enter_common(Id, Expires, Serialized, Tree).
+    insert_common(Id, Expires, Serialized, Tree).
 
 -spec get_oracle(binary(), tree()) -> oracle().
 get_oracle(Id, Tree) ->
@@ -126,6 +134,13 @@ interaction_list(#oracle_tree{mtree = MTree}) ->
 
 enter_common(Id, Expires, Serialized, Tree) ->
     MTree1 = aeu_mtrees:enter(Id, Serialized, Tree#oracle_tree.mtree),
+    Cache = cache_push(Id, Expires, Tree#oracle_tree.cache),
+    Tree#oracle_tree{ mtree = MTree1
+                    , cache = Cache
+                    }.
+
+insert_common(Id, Expires, Serialized, Tree) ->
+    MTree1 = aeu_mtrees:insert(Id, Serialized, Tree#oracle_tree.mtree),
     Cache = cache_push(Id, Expires, Tree#oracle_tree.cache),
     Tree#oracle_tree{ mtree = MTree1
                     , cache = Cache
