@@ -11,7 +11,7 @@
     config:
       chain:
         persist: true
-        db_path: "./db10"
+        db_path: "./db11"
       keypair:
         dir: "keys"
         password: "{{ keys_password|default('secret') }}"
