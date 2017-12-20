@@ -40,11 +40,11 @@ accounts(Trees) ->
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
 
--spec oracles(trees()) -> aeo_state_trees:tree().
+-spec oracles(trees()) -> aeo_state_tree:tree().
 oracles(Trees) ->
     Trees#trees.oracles.
 
--spec set_oracles(trees(), aeo_state_trees:tree()) -> trees().
+-spec set_oracles(trees(), aeo_state_tree:tree()) -> trees().
 set_oracles(Trees, Oracles) ->
     Trees#trees{oracles = Oracles}.
 
