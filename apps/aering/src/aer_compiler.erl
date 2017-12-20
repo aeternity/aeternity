@@ -14,6 +14,8 @@
 
 -export([test/0]).
 
+-include("aer_icode.hrl").
+
 file(Filename) ->
     file(Filename, []).
 
@@ -68,9 +70,9 @@ ast_args([{arg, _, Name, Type}|Rest], Acc) ->
 ast_args([], Acc) -> lists:reverse(Acc).
                                  
 
-ast_body({id, _,_Name},_Icode) ->
+ast_body({id, _, Name},_Icode) ->
     %% TODO Look up id in env
-    ['DUP'].
+    #var_ref{name = Name}.
     
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
