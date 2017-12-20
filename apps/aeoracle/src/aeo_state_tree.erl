@@ -102,6 +102,7 @@ lookup_oracle(Id, Tree) ->
 root_hash(#oracle_tree{mtree = MTree}) ->
     aeu_mtrees:root_hash(MTree).
 
+-ifdef(TEST).
 -spec oracle_list(tree()) -> list(oracle()).
 oracle_list(#oracle_tree{mtree = MTree}) ->
     ToOracle = fun(MaybeO) ->
@@ -115,6 +116,8 @@ interaction_list(#oracle_tree{mtree = MTree}) ->
                   try [aeo_interaction:deserialize(MaybeI)]
                   catch _:_ -> [] end end,
     [ I || {_, Val} <- aeu_mtrees:to_list(MTree), I <- ToInter(Val) ].
+-endif.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
