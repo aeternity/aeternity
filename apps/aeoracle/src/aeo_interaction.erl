@@ -12,9 +12,11 @@
         , expires/1
         , fee/1
         , id/1
+        , id/3
         , is_closed/1
         , new/2
         , oracle_address/1
+        , query/1
         , response/1
         , response_ttl/1
         , sender_address/1
@@ -23,6 +25,7 @@
         , set_expires/2
         , set_fee/2
         , set_oracle_address/2
+        , set_query/2
         , set_response/2
         , set_response_ttl/2
         , set_sender_address/2
@@ -39,13 +42,15 @@
 %%%===================================================================
 
 -type block_height()    :: integer().
--type oracle_response() :: aeo_oracles:response().
+-type oracle_query()    :: aeo_oracles:response().
+-type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
 -record(interaction, { sender_address :: pubkey()
                      , sender_nonce   :: integer()
                      , oracle_address :: pubkey()
-                     , response       :: oracle_response() | 'undefined'
+                     , query          :: oracle_query()
+                     , response       :: oracle_response()
                      , expires        :: block_height()
                      , response_ttl   :: relative_ttl()
                      , fee            :: integer()
@@ -73,6 +78,7 @@ new(QTx, BlockHeight) ->
     I = #interaction{ sender_address = aeo_query_tx:sender(QTx)
                     , sender_nonce   = aeo_query_tx:nonce(QTx)
                     , oracle_address = aeo_query_tx:oracle(QTx)
+                    , query          = aeo_query_tx:query(QTx)
                     , response       = undefined
                     , expires        = Expires
                     , response_ttl   = aeo_query_tx:response_ttl(QTx)
@@ -82,9 +88,15 @@ new(QTx, BlockHeight) ->
 
 -spec id(interaction()) -> id().
 id(I) ->
-    Bin = <<(I#interaction.sender_address):?PUB_SIZE/binary,
-            (I#interaction.sender_nonce):?NONCE_SIZE,
-            (I#interaction.oracle_address):?PUB_SIZE/binary>>,
+    id(I#interaction.sender_address,
+       I#interaction.sender_nonce,
+       I#interaction.oracle_address).
+
+-spec id(binary(), non_neg_integer(), binary()) -> binary().
+id(SenderAddress, Nonce, OracleAddress) ->
+    Bin = <<SenderAddress:?PUB_SIZE/binary,
+            Nonce:?NONCE_SIZE,
+            OracleAddress:?PUB_SIZE/binary>>,
     aec_sha256:hash(Bin).
 
 -spec is_closed(interaction()) -> boolean().
@@ -104,6 +116,7 @@ serialize(#interaction{} = I) ->
                  , #{<<"sender_address">>  => sender_address(I)}
                  , #{<<"sender_nonce">>    => sender_nonce(I)}
                  , #{<<"oracle_address">>  => oracle_address(I)}
+                 , #{<<"query">>           => query(I)}
                  , #{<<"response">>        => Response}
                  , #{<<"expires">>         => expires(I)}
                  , #{<<"response_ttl">>    => RespTTLValue}
@@ -118,6 +131,7 @@ deserialize(B) ->
     , #{<<"sender_address">>  := SenderAddress}
     , #{<<"sender_nonce">>    := SenderNonce}
     , #{<<"oracle_address">>  := OracleAddress}
+    , #{<<"query">>           := Query}
     , #{<<"response">>        := Response0}
     , #{<<"expires">>         := Expires}
     , #{<<"response_ttl">>    := RespTTLValue}
@@ -130,6 +144,7 @@ deserialize(B) ->
     #interaction{ sender_address = SenderAddress
                 , sender_nonce   = SenderNonce
                 , oracle_address = OracleAddress
+                , query          = Query
                 , response       = Response
                 , expires        = Expires
                 , response_ttl   = {delta, RespTTLValue}
@@ -148,6 +163,9 @@ sender_nonce(I) -> I#interaction.sender_nonce.
 
 -spec oracle_address(interaction()) -> pubkey().
 oracle_address(I) -> I#interaction.oracle_address.
+
+-spec query(interaction()) -> oracle_query().
+query(I) -> I#interaction.query.
 
 -spec response(interaction()) -> oracle_response().
 response(I) -> I#interaction.response.
@@ -176,6 +194,10 @@ set_sender_nonce(X, I) ->
 set_oracle_address(X, I) ->
     I#interaction{oracle_address = assert_field(oracle_address, X)}.
 
+-spec set_query(oracle_query(), interaction()) -> interaction().
+set_query(X, I) ->
+    I#interaction{query = assert_field(query, X)}.
+
 -spec set_response(oracle_response(), interaction()) -> interaction().
 set_response(X, I) ->
     I#interaction{response = assert_field(response, X)}.
@@ -200,6 +222,7 @@ assert_fields(I) ->
     List = [ {sender_address, I#interaction.sender_address}
            , {sender_nonce  , I#interaction.sender_nonce}
            , {oracle_address, I#interaction.oracle_address}
+           , {query         , I#interaction.query}
            , {response      , I#interaction.response}
            , {expires       , I#interaction.expires}
            , {response_ttl  , I#interaction.response_ttl}
@@ -215,6 +238,7 @@ assert_fields(I) ->
 assert_field(sender_address, <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(sender_nonce  , X) when is_integer(X), X >= 0 -> X;
 assert_field(oracle_address, <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(query         , X) when is_binary(X) -> X;
 assert_field(response      , X) when X =:= 'undefined' -> X;
 assert_field(response      , X) when is_binary(X) -> X;
 assert_field(expires       , X) when is_integer(X), X >= 0 -> X;

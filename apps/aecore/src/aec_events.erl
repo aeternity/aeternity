@@ -25,7 +25,9 @@
                | peers
                | metric
                | chain_sync
-               | mempool_sync.
+               | mempool_sync
+               | oracle_query_tx_created
+               | oracle_response_tx_created.
 
 -spec publish(event(), any()) -> ok.
 publish(Event, Info) ->

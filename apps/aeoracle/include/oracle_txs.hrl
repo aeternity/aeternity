@@ -14,7 +14,7 @@
           sender       :: pubkey(),
           nonce        :: integer(),
           oracle       :: pubkey(),
-          query        :: string(),
+          query        :: aeo_oracles:query(),
           query_fee    :: integer(),
           query_ttl    :: aeo_oracles:ttl(),
           response_ttl :: aeo_oracles:relative_ttl(),
@@ -25,7 +25,7 @@
           oracle         :: pubkey(),
           nonce          :: integer(),
           interaction_id :: aeo_interaction:oracle_tx_id(),
-          response       :: aeo_interaction:oracle_response(),
+          response       :: aeo_oracles:response(),
           fee            :: integer()
           }).
 

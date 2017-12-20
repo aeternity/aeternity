@@ -40,7 +40,8 @@
 
 -type type_spec()    :: binary(). %% Utf8 encoded string
 
--type response() :: undefined | binary(). %% Don't use native types for responses
+-type query()    :: binary().             %% Don't use native types for queries
+-type response() :: binary(). %% Don't use native types for responses
 
 -type interactions_hash() :: aeu_mtrees:root_hash().
 
@@ -61,6 +62,7 @@
 -export_type([ fixed_ttl/0
              , id/0
              , oracle/0
+             , query/0
              , response/0
              , relative_ttl/0
              , serialized/0

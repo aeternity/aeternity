@@ -6,9 +6,9 @@
 
 -spec handle_request(
         OperationID :: swagger_api:operation_id(),
-        Req :: cowboy_req:req(),
+        Req :: map(),
         Context :: #{}
-                   ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
+                   ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: map()}.
 
 handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of
@@ -57,7 +57,7 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
                     ttl           => {TTLType, TTLValue},
                     fee           => Fee}),
             sign_and_push_to_mempool(OracleRegisterTx),
-            {200, [], #{}};
+            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey)}};
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -90,7 +90,8 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee}),
                     sign_and_push_to_mempool(OracleQueryTx),
-                    {200, [], #{}};
+                    QId = aeo_interaction:id(Pubkey, Nonce, DecodedOraclePubkey),
+                    {200, [], #{query_id => aec_base58c:encode(oracle_interaction_id, QId)}};
                 {error, _} ->
                     {404, [], #{reason => <<"Invalid key">>}}
             end;
@@ -103,18 +104,23 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
 handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of
         {ok, Pubkey, Nonce} ->
-            #{<<"interaction_id">> := InteractionId,
+            #{<<"interaction_id">> := EncodedInteractionId,
               <<"response">>       := Response,
               <<"fee">>            := Fee} = OracleResponseTxObj,
-            {ok, OracleResponseTx} =
-                aeo_response_tx:new(
-                  #{oracle         => Pubkey,
-                    nonce          => Nonce,
-                    interaction_id => InteractionId,
-                    response       => Response,
-                    fee            => Fee}),
-            sign_and_push_to_mempool(OracleResponseTx),
-            {200, [], #{}};
+            case aec_base58c:safe_decode(oracle_interaction_id, EncodedInteractionId) of
+                {ok, DecodedInteractionId} ->
+                    {ok, OracleResponseTx} =
+                        aeo_response_tx:new(
+                          #{oracle         => Pubkey,
+                            nonce          => Nonce,
+                            interaction_id => DecodedInteractionId,
+                            response       => Response,
+                            fee            => Fee}),
+                    sign_and_push_to_mempool(OracleResponseTx),
+                    {200, [], #{query_id => EncodedInteractionId}};
+                {error, _} ->
+                    {404, [], #{reason => <<"Invalid interaction Id">>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->

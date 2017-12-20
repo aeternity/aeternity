@@ -166,12 +166,11 @@ for_client(#oracle_response_tx{ oracle         = OraclePubKey,
                                 fee            = Fee}) ->
     #{<<"type">> => <<"OracleResponseTxObject">>, % swagger schema name
       <<"vsn">> => version(),
-      <<"oracle">> => base64:encode(OraclePubKey),
+      <<"oracle">> => aec_base58c:encode(oracle_pubkey, OraclePubKey),
       <<"nonce">> => Nonce,
-      <<"interaction_id">> => IId,
+      <<"interaction_id">> => aec_base58c:encode(oracle_interaction_id, IId),
       <<"response">> => Response,
       <<"fee">> => Fee}.
-
 
 %% -- Local functions  -------------------------------------------------------
 

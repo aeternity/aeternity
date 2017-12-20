@@ -369,58 +369,6 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
-  /oracle-subscribe:
-  ## Not implemented yet, returns HTTP 501 response code
-    post:
-      tags:
-        - internal
-      operationId: PostOracleSubscribe
-      description: 'Create oracle interactions subscription'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Creates new subscription for oracle interactions
-          required: true
-          schema:
-            $ref: '#/definitions/OracleSubscribe'
-      responses:
-        '200':
-          description: successful operation
-        '404':
-          description: Oracle not found
-          schema:
-            $ref: '#/definitions/Error'
-      security: []
-  /oracle-unsubscribe:
-  ## Not implemented yet, returns HTTP 501 response code
-    post:
-      tags:
-        - internal
-      operationId: PostOracleUnsubscribe
-      description: 'Remove oracle interactions subscriptions'
-      consumes:
-        - application/json
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Unsubscribe from oracle interactions notifications
-          required: true
-          schema:
-            $ref: '#/definitions/OracleSubscribe'
-      responses:
-        '200':
-          description: successful operation
-        '404':
-          description: Oracle or subscription not found
-          schema:
-            $ref: '#/definitions/Error'
-      security: []
   /account/pub-key:
     get:
       tags:
@@ -925,11 +873,6 @@ definitions:
         expires_at:
           type: integer
           format: int64
-  OracleSubscribe:
-    type: object
-    properties:
-      oracle_pub_key:
-        type: string
   SpendTx:
     type: object
     properties:
