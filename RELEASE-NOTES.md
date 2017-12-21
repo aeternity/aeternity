@@ -1,6 +1,6 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.3.5-big-spenders) is focused on stability of the testnet - the public test network of nodes.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.0) is focused on stability of the testnet - the public test network of nodes.
 It also introduces a backward incompatible change in the chain format.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
@@ -13,7 +13,7 @@ The instructions below also describe the simplest way to test sending tokens bet
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.3.5-big-spenders) corresponding to your platform, e.g. `epoch-0.3.5-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.0) corresponding to your platform, e.g. `epoch-0.4.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS;
@@ -31,7 +31,7 @@ This section describes how to run a node as part of the testnet.
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.3.5-big-spenders/config/swagger.yaml).
+The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.0/config/swagger.yaml).
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://31.13.248.103:3013/v1/top
@@ -48,7 +48,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.3.5-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -103,14 +103,14 @@ mining:
 
 chain:
     persist: true
-    db_path: ./mydb
+    db_path: ./my_db
 ```
 
 Ensure the configured path for storing the blockchain exists:
 ```
-mkdir /tmp/node/mydb
+mkdir /tmp/node/my_db
 ```
-As of release "v0.3.5-big-spenders", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous release "v0.3.3-big-spenders".
+As of release "v0.4.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous release "v0.3.5-big-spenders".
 
 You can validate the configuration file before starting the node:
 ```
@@ -119,7 +119,7 @@ bin/epoch check_config epoch.yaml
 ```
 You shall read output like the following:
 ```
-Res = {ok,[{<<"chain">>,[{<<"db_path">>,<<"./mydb">>},{<<"persist">>,true}]},
+Res = {ok,[{<<"chain">>,[{<<"db_path">>,<<"./my_db">>},{<<"persist">>,true}]},
            {<<"http">>,
             [{<<"external">>,
               [{<<"peer_address">>,<<"http://1.2.3.4:8080/">>},
@@ -250,14 +250,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node1
 cd /tmp/node1
-tar xf ~/Downloads/epoch-0.3.5-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #1
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.3.5/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.4.0/vm.args
 ```
 
 Create the file `/tmp/node1/epoch.yaml` with the following content:
@@ -374,14 +374,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node2
 cd /tmp/node2
-tar xf ~/Downloads/epoch-0.3.5-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #2
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.3.5/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.4.0/vm.args
 ```
 
 Create the file `/tmp/node2/epoch.yaml` with the following content:
