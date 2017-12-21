@@ -5,7 +5,8 @@
 %%%     Compiler from Aeterinty Ring language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 12 Dec 2017
-%%% aec_conductor:stop_mining(),aer_compiler:file(a,c).
+%%% aec_conductor:stop_mining().
+%%% aer_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_ring_code]).
 %%%-------------------------------------------------------------------
 -module(aer_compiler).
 
@@ -14,89 +15,58 @@
 
 -export([test/0]).
 
--include("aer_icode.hrl").
-
 file(Filename) ->
     file(Filename, []).
 
 file(Filename, Options) ->
     Ast = parse(Filename, Options),
-    ByteCode = compile(Ast, Options),
+    ok = pp_ast(Ast, Options),
+    ICode = to_icode(Ast, Options),
+    ok = pp_icode(ICode, Options),
+    Assembler =  assemble(ICode, Options),
+    ok = pp_assembler(Assembler, Options),
+    ByteCodeList = to_bytecode(Assembler, Options),
+    ByteCode = << << B:8 >> || B <- ByteCodeList >>,
+    ok = pp_bytecode(ByteCode, Options),
     ByteCode.
 
 
-parse(_Filename,_Options) ->
-     parse_string(read_contract(identity)).
+
+parse(_Filename, Options) ->
+    C = read_contract(identity),
+    ok = pp_ring_code(C, Options),
+    parse_string(C).
     
-compile(Ast,_Options) ->
-    ast_to_icode(Ast, #{functions => [], env => []}).
+to_icode(Ast, Options) ->
+    aer_ast_to_icode:convert(Ast, Options).
 
-ast_to_icode([{contract_type,_Attribs, {con, _, Name}, _TypeDecls}|Rest], Icode) ->
-    %% TODO: Handle types for future type check.
-    ast_to_icode(Rest, set_name(Name, Icode));
-ast_to_icode([{contract, Attribs, {con, _, Name}, Code}|Rest], Icode) ->
-    try get_name(Icode) of
-        Name ->
-            NewIcode = ast_code_to_icode(Code, Icode),
-            ast_to_icode(Rest, NewIcode);
-        _ -> error({contract_name_mismatch, get_line(Attribs)})
-    catch
-        error:name_not_defined ->
-            error({contract_name_not_defined, get_line(Attribs)})
-    end;
-ast_to_icode([], Icode) -> Icode.
+assemble(Icode, Options) ->
+    aer_icode_to_asm:convert(Icode, Options).
 
-ast_code_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
-    %% TODO: Handle types
-    ast_code_to_icode(Rest, Icode);
-ast_code_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
-    %% TODO: Handle types
-    FunName = ast_id(Name),
-    %% TODO: push funname to env
-    FunArgs = ast_args(Args, []),
-    %% TODO: push args to env
-    FunBody = ast_body(Body, Icode),
-    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
-    ast_code_to_icode(Rest, NewIcode);
-ast_code_to_icode([], Icode) -> Icode;
-ast_code_to_icode(Code, Icode) ->
-    io:format("Unhandled code ~p~n",[Code]),
-    Icode.
 
-ast_id({id, _, Id}) -> Id.
+to_bytecode(['COMMENT',_|Rest],_Options) ->
+    to_bytecode(Rest,_Options);
+to_bytecode([Op|Rest], Options) ->
+    [aeb_opcodes:m_to_op(Op)|to_bytecode(Rest, Options)];
+to_bytecode([], _) -> [].
 
-ast_args([{arg, _, Name, Type}|Rest], Acc) ->
-    ast_args(Rest, [{ast_id(Name), ast_id(Type)}| Acc]);
-ast_args([], Acc) -> lists:reverse(Acc).
-                                 
 
-ast_body({id, _, Name},_Icode) ->
-    %% TODO Look up id in env
-    #var_ref{name = Name}.
+
+pp_ring_code(C, Opts)->  pp(C, Opts, pp_ring_code,
+                            fun (X) -> io:format("~s~n",[X]) end).
+pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aer_ast:pp/1).
+pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aer_icode:pp/1).
+pp_assembler(C, Opts)->  pp(C, Opts, pp_assembler, fun aeb_asm:pp/1).
+pp_bytecode(C, Opts) ->  pp(C, Opts, pp_bytecode, fun aeb_disassemble:pp/1).
+
+pp(Code, Options, Option, PPFun) ->
+    case proplists:lookup(Option, Options) of
+        {Option, true} ->
+            PPFun(Code);
+        none ->
+            ok
+    end.
     
-
-ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
-    NewFuns = [{Name, Args, Body}| Funs],
-    set_functions(NewFuns, Icode).
-
-%% -------------------------------------------------------------------
-%% AST
-%% -------------------------------------------------------------------
-get_line(Attribs) -> %% TODO: use AST primitives.
-     proplists:get_value(line, Attribs).
-                    
-
-%% -------------------------------------------------------------------
-%% Icode
-%% -------------------------------------------------------------------
-set_name(Name, Icode) ->
-    maps:put(contract_name, Name, Icode).
-
-get_name(#{contract_name := Name}) -> Name;
-get_name(_) -> error(name_not_defined).
-    
-set_functions(NewFuns, Icode) ->
-    maps:put(functions, NewFuns, Icode).
 
 %% -------------------------------------------------------------------
 %% TODO: Tempoary parser hook below...
@@ -111,11 +81,6 @@ parse_string(Text) ->
             io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
             error(Err)
     end.
-
-%% parse_expr(Text) ->
-%%     [{contract, _, _, [{letval, _, _, _, Expr}]}] =
-%%         parse_string("contract Dummy = { let _ = " ++ Text ++ "}"),
-%%     Expr.
 
 read_contract(Name) ->
     {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aer"]))),

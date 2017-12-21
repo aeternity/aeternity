@@ -145,3 +145,5 @@
 -define(         'REVERT', 16#fd).
 -define(        'INVALID', 16#fe).
 -define(        'SUICIDE', 16#ff).
+
+-define(        'COMMENT', comment).

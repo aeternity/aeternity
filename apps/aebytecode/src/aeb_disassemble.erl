@@ -15,6 +15,10 @@
 
 
 pp(Binary) ->
+    Listing = format(Binary),
+    io:format("~s~n", [Listing]).
+
+format(Binary) ->
     pp(0, binary:bin_to_list(Binary), []).
 
 pp(Address, [Op|Ops], Assembly) ->
@@ -83,7 +87,8 @@ pp_args([{Arg, Size}]) ->
         8 -> io_lib:format("0x~2.16.0B",[Arg]);
         160 -> io_lib:format("0x~64.16.0B",[Arg]);
         232 -> io_lib:format("0x~64.16.0B",[Arg]);
-        256 -> io_lib:format("0x~64.16.0B",[Arg])
+        256 -> io_lib:format("0x~64.16.0B",[Arg]);
+        _ -> io_lib:format("0x~64.16.0B",[Arg])
     end;
 pp_args([{Arg, Size}|Args]) ->
     [pp_args([{Arg, Size}]), " ", pp_args(Args)].
