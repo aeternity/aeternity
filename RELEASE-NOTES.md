@@ -115,7 +115,7 @@ As of release "v0.3.5-big-spenders", as the chain format changed from the previo
 You can validate the configuration file before starting the node:
 ```
 cd /tmp/node
-( export PATH="$(pwd)/$(ls -dr erts-* | head -n 1)/bin:$PATH" && bin/check_config epoch.yaml; )
+bin/epoch check_config epoch.yaml
 ```
 You shall read output like the following:
 ```
