@@ -331,12 +331,14 @@ validate_response('GetTxs', 200, Body, ValidatorState) ->
 
 validate_response('Ping', 200, Body, ValidatorState) ->
     validate_response_body('Ping', 'Ping', Body, ValidatorState);
-validate_response('Ping', 404, Body, ValidatorState) ->
+validate_response('Ping', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('Ping', 409, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
-validate_response('PostBlock', 404, Body, ValidatorState) ->
+validate_response('PostBlock', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 

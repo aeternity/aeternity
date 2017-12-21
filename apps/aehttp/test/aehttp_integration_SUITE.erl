@@ -158,7 +158,7 @@ broken_pings(_Config) ->
     % wrong genesis hash 
     WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => unique_peer(),
                                              <<"genesis_hash">> => <<"foo">>}),
-    {ok, 404, #{<<"reason">> := <<"Different genesis blocks">>}} =
+    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
         post_ping(WrongGenHashPing),
     ok.
 
@@ -167,9 +167,9 @@ blocked_ping(_Config) ->
     PingObj = rpc(aec_sync, local_ping_object, []),
     WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
                                              <<"genesis_hash">> => <<"foo">>}),
-    {ok, 404, _} = post_ping(WrongGenHashPing),
+    {ok, 409, _} = post_ping(WrongGenHashPing),
     % node is blocked now 
-    {ok, 404, #{<<"reason">> := <<"Not allowed">>}} =
+    {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
         post_ping(maps:put(<<"source">>, Peer, PingObj)),
     ok.
 
@@ -388,7 +388,7 @@ post_broken_blocks(Config) ->
         fun({BrokenField, BlockMap}) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
             {ok, Block} = aec_blocks:deserialize_from_map(BlockMap),
-            {ok, 200, _} = post_block(Block),
+            {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
             H = rpc(aec_conductor, top_header, []), 
             0 = aec_headers:height(H) %chain is still empty
         end,

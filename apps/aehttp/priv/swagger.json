@@ -41,7 +41,13 @@
               "$ref" : "#/definitions/Ping"
             }
           },
-          "404" : {
+          "403" : {
+            "description" : "Not allowed (node is blocked)",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "409" : {
             "description" : "Different genesis blocks",
             "schema" : {
               "$ref" : "#/definitions/Error"
@@ -152,7 +158,7 @@
           "200" : {
             "description" : "successful operation"
           },
-          "404" : {
+          "400" : {
             "description" : "Block or header validation error",
             "schema" : {
               "$ref" : "#/definitions/Error"
