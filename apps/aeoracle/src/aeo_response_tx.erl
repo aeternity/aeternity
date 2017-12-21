@@ -30,7 +30,7 @@
          response/1]).
 
 
--define(ORACLE_RESPONSE_TX_TYPE, <<"oracle_query">>).
+-define(ORACLE_RESPONSE_TX_TYPE, <<"oracle_response">>).
 -define(ORACLE_RESPONSE_TX_VSN, 1).
 -define(ORACLE_RESPONSE_TX_FEE, 2).
 
