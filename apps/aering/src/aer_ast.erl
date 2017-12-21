@@ -2,6 +2,7 @@
 
 -export([int/2,
          line/1,
+         pp/1,
          symbol/2,
          symbol_name/1
         ]).
@@ -15,3 +16,8 @@ line({symbol, Line, _}) -> Line.
 
 symbol_name({symbol, _, Name}) -> Name.
 
+pp(Ast) ->
+    %% TODO: Actually do *Pretty* printing.
+    io:format("~p~n", [Ast]).
+    
+    

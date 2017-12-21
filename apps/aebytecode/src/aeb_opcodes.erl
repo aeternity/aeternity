@@ -10,6 +10,7 @@
 
 -export([ opcode/1
         , mnemonic/1
+        , m_to_op/1
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -153,6 +154,7 @@ opcode(?DELEGATECALL)   -> ?DELEGATECALL;
 opcode(?CALLBLACKBOX)   -> ?CALLBLACKBOX; %% TODO
 opcode(?STATICCALL)     -> ?STATICCALL; %% TODO
 opcode(?REVERT)         -> ?REVERT;
+opcode(?COMMENT)        -> ?COMMENT;
 opcode(?SUICIDE)        -> ?SUICIDE.
 
 
@@ -290,4 +292,144 @@ mnemonic(?DELEGATECALL)   -> 'DELEGATECALL'   ;
 mnemonic(?CALLBLACKBOX)   -> 'CALLBLACKBOX'   ;
 mnemonic(?STATICCALL)     -> 'STATICCALL'     ;
 mnemonic(?REVERT)         -> 'REVERT'         ;
+mnemonic(?COMMENT)        -> 'COMMENT'        ;
 mnemonic(?SUICIDE)        -> 'SUICIDE'        .
+
+
+
+m_to_op('STOP')           -> ?STOP           ;
+m_to_op('ADD')            -> ?ADD            ;
+m_to_op('MUL')            -> ?MUL            ;
+m_to_op('SUB')            -> ?SUB            ;
+m_to_op('DIV')            -> ?DIV            ;
+m_to_op('SDIV')           -> ?SDIV           ;
+m_to_op('MOD')            -> ?MOD            ;
+m_to_op('SMOD')           -> ?SMOD           ;
+m_to_op('ADDMOD')         -> ?ADDMOD         ;
+m_to_op('MULMOD')         -> ?MULMOD         ;
+m_to_op('EXP')            -> ?EXP            ;
+m_to_op('SIGNEXTEND')     -> ?SIGNEXTEND     ;
+m_to_op('LT')             -> ?LT             ;
+m_to_op('GT')             -> ?GT             ;
+m_to_op('SLT')            -> ?SLT            ;
+m_to_op('SGT')            -> ?SGT            ;
+m_to_op('EQ')             -> ?EQ             ;
+m_to_op('ISZERO')         -> ?ISZERO         ;
+m_to_op('AND')            -> ?AND            ;
+m_to_op('OR')             -> ?OR             ;
+m_to_op('XOR')            -> ?XOR            ;
+m_to_op('NOT')            -> ?NOT            ;
+m_to_op('BYTE')           -> ?BYTE           ;
+m_to_op('SHA3')           -> ?SHA3           ;
+m_to_op('ADDRESS')        -> ?ADDRESS        ;
+m_to_op('BALANCE')        -> ?BALANCE        ;
+m_to_op('ORIGIN')         -> ?ORIGIN         ;
+m_to_op('CALLER')         -> ?CALLER         ;
+m_to_op('CALLVALUE')      -> ?CALLVALUE      ;
+m_to_op('CALLDATALOAD')   -> ?CALLDATALOAD   ;
+m_to_op('CALLDATASIZE')   -> ?CALLDATASIZE   ;
+m_to_op('CALLDATACOPY')   -> ?CALLDATACOPY   ;
+m_to_op('CODESIZE')       -> ?CODESIZE       ;
+m_to_op('CODECOPY')       -> ?CODECOPY       ;
+m_to_op('GASPRICE')       -> ?GASPRICE       ;
+m_to_op('EXTCODESIZE')    -> ?EXTCODESIZE    ;
+m_to_op('EXTCODECOPY')    -> ?EXTCODECOPY    ;
+m_to_op('RETURNDATASIZE') -> ?RETURNDATASIZE ;
+m_to_op('RETURNDATACOPY') -> ?RETURNDATACOPY ;
+m_to_op('BLOCKHASH')      -> ?BLOCKHASH      ;
+m_to_op('COINBASE')       -> ?COINBASE       ;
+m_to_op('TIMESTAMP')      -> ?TIMESTAMP      ;
+m_to_op('NUMBER')         -> ?NUMBER         ;
+m_to_op('DIFFICULTY')     -> ?DIFFICULTY     ;
+m_to_op('GASLIMIT')       -> ?GASLIMIT       ;
+m_to_op('POP')            -> ?POP            ;
+m_to_op('MLOAD')          -> ?MLOAD          ;
+m_to_op('MSTORE')         -> ?MSTORE         ;
+m_to_op('MSTORE8')        -> ?MSTORE8        ;
+m_to_op('SLOAD')          -> ?SLOAD          ;
+m_to_op('SSTORE')         -> ?SSTORE         ;
+m_to_op('JUMP')           -> ?JUMP           ;
+m_to_op('JUMPI')          -> ?JUMPI          ;
+m_to_op('PC')             -> ?PC             ;
+m_to_op('MSIZE')          -> ?MSIZE          ;
+m_to_op('GAS')            -> ?GAS            ;
+m_to_op('JUMPDEST')       -> ?JUMPDEST       ;
+m_to_op('PUSH1')          -> ?PUSH1          ;
+m_to_op('PUSH2')          -> ?PUSH2          ;
+m_to_op('PUSH3')          -> ?PUSH3          ;
+m_to_op('PUSH4')          -> ?PUSH4          ;
+m_to_op('PUSH5')          -> ?PUSH5          ;
+m_to_op('PUSH6')          -> ?PUSH6          ;
+m_to_op('PUSH7')          -> ?PUSH7          ;
+m_to_op('PUSH8')          -> ?PUSH8          ;
+m_to_op('PUSH9')          -> ?PUSH9          ;
+m_to_op('PUSH10')         -> ?PUSH10         ;
+m_to_op('PUSH11')         -> ?PUSH11         ;
+m_to_op('PUSH12')         -> ?PUSH12         ;
+m_to_op('PUSH13')         -> ?PUSH13         ;
+m_to_op('PUSH14')         -> ?PUSH14         ;
+m_to_op('PUSH15')         -> ?PUSH15         ;
+m_to_op('PUSH16')         -> ?PUSH16         ;
+m_to_op('PUSH17')         -> ?PUSH17         ;
+m_to_op('PUSH18')         -> ?PUSH18         ;
+m_to_op('PUSH19')         -> ?PUSH19         ;
+m_to_op('PUSH20')         -> ?PUSH20         ;
+m_to_op('PUSH21')         -> ?PUSH21         ;
+m_to_op('PUSH22')         -> ?PUSH22         ;
+m_to_op('PUSH23')         -> ?PUSH23         ;
+m_to_op('PUSH24')         -> ?PUSH24         ;
+m_to_op('PUSH25')         -> ?PUSH25         ;
+m_to_op('PUSH26')         -> ?PUSH26         ;
+m_to_op('PUSH27')         -> ?PUSH27         ;
+m_to_op('PUSH28')         -> ?PUSH28         ;
+m_to_op('PUSH29')         -> ?PUSH29         ;
+m_to_op('PUSH30')         -> ?PUSH30         ;
+m_to_op('PUSH31')         -> ?PUSH31         ;
+m_to_op('PUSH32')         -> ?PUSH32         ;
+m_to_op('DUP1')           -> ?DUP1           ;
+m_to_op('DUP2')           -> ?DUP2           ;
+m_to_op('DUP3')           -> ?DUP3           ;
+m_to_op('DUP4')           -> ?DUP4           ;
+m_to_op('DUP5')           -> ?DUP5           ;
+m_to_op('DUP6')           -> ?DUP6           ;
+m_to_op('DUP7')           -> ?DUP7           ;
+m_to_op('DUP8')           -> ?DUP8           ;
+m_to_op('DUP9')           -> ?DUP9           ;
+m_to_op('DUP10')          -> ?DUP10          ;
+m_to_op('DUP11')          -> ?DUP11          ;
+m_to_op('DUP12')          -> ?DUP12          ;
+m_to_op('DUP13')          -> ?DUP13          ;
+m_to_op('DUP14')          -> ?DUP14          ;
+m_to_op('DUP15')          -> ?DUP15          ;
+m_to_op('DUP16')          -> ?DUP16          ;
+m_to_op('SWAP1')          -> ?SWAP1          ;
+m_to_op('SWAP2')          -> ?SWAP2          ;
+m_to_op('SWAP3')          -> ?SWAP3          ;
+m_to_op('SWAP4')          -> ?SWAP4          ;
+m_to_op('SWAP5')          -> ?SWAP5          ;
+m_to_op('SWAP6')          -> ?SWAP6          ;
+m_to_op('SWAP7')          -> ?SWAP7          ;
+m_to_op('SWAP8')          -> ?SWAP8          ;
+m_to_op('SWAP9')          -> ?SWAP9          ;
+m_to_op('SWAP10')         -> ?SWAP10         ;
+m_to_op('SWAP11')         -> ?SWAP11         ;
+m_to_op('SWAP12')         -> ?SWAP12         ;
+m_to_op('SWAP13')         -> ?SWAP13         ;
+m_to_op('SWAP14')         -> ?SWAP14         ;
+m_to_op('SWAP15')         -> ?SWAP15         ;
+m_to_op('SWAP16')         -> ?SWAP16         ;
+m_to_op('LOG0')           -> ?LOG0           ;
+m_to_op('LOG1')           -> ?LOG1           ;
+m_to_op('LOG2')           -> ?LOG2           ;
+m_to_op('LOG3')           -> ?LOG3           ;
+m_to_op('LOG4')           -> ?LOG4           ;
+m_to_op('CREATE')         -> ?CREATE         ;
+m_to_op('CALL')           -> ?CALL           ;
+m_to_op('CALLCODE')       -> ?CALLCODE       ;
+m_to_op('RETURN')         -> ?RETURN         ;
+m_to_op('DELEGATECALL')   -> ?DELEGATECALL   ;
+m_to_op('CALLBLACKBOX')   -> ?CALLBLACKBOX   ;
+m_to_op('STATICCALL')     -> ?STATICCALL     ;
+m_to_op('REVERT')         -> ?REVERT         ;
+m_to_op('COMMENT')        -> ?COMMENT        ;
+m_to_op('SUICIDE')        -> ?SUICIDE        .
