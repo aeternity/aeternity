@@ -40,7 +40,14 @@
     miner_balance/1,
     all_accounts_balances/1,
     all_accounts_balances_empty/1,
-    all_accounts_balances_disabled/1
+    all_accounts_balances_disabled/1,
+
+    % infos
+    version/1,
+    info_disabled/1,
+    info_empty/1,
+    info_more_than_30/1,
+    info_less_than_30/1
    ]).
 %%
 %% test case exports
@@ -89,8 +96,14 @@ groups() ->
        miner_balance,
        all_accounts_balances,
        all_accounts_balances_empty,
-       all_accounts_balances_disabled
+       all_accounts_balances_disabled,
 
+       % infos
+       version,
+       info_empty,
+       info_more_than_30,
+       info_less_than_30,
+       info_disabled
       ]},
      {internal_endpoints, [sequence],
       [
@@ -470,10 +483,74 @@ all_accounts_balances_empty(_Config) ->
 
 all_accounts_balances_disabled(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
-    {ok, 404, _} = get_all_accounts_balances(),
+    {ok, 403, #{<<"reason">> := <<"Balances not enabled">>}} = get_all_accounts_balances(),
     ok.
 
-%% TODO: GetInfo: should it be disabled?
+version(_Config) ->
+    {ok, 200, #{<<"version">> := V,
+                <<"revision">> := Rev,
+                <<"genesis_hash">> := EncodedGH}} = get_version(),
+    V0 = rpc(aeu_info, get_version, []),
+    Rev0 = rpc(aeu_info, get_revision, []),
+    GenHash0 = rpc(aec_conductor, genesis_hash, []),
+    % asserts
+    V = V0,
+    Rev = Rev0,
+    GenHash0 = base64:decode(EncodedGH),
+    ok.
+
+info_disabled(_Config) ->
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
+    {ok, 403, #{<<"reason">> := <<"Info not enabled">>}} = get_info(),
+    ok.
+
+info_empty(_Config) ->
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
+    ExpectedEmpty = #{<<"last_30_blocks_time">> => [ #{<<"difficulty">> => 1.0,
+                                                       <<"height">> => 0,
+                                                       <<"time">>  => 0}]},
+    {ok, 200, ExpectedEmpty} = get_info(),
+    ok.
+
+info_more_than_30(_Config) ->
+    test_info(40).
+
+info_less_than_30(_Config) ->
+    test_info(20).
+
+test_info(BlocksToMine) ->
+    rpc(application, set_env, [aecore, expected_mine_rate, 100]),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   BlocksToMine),
+    {ok, 200, #{<<"last_30_blocks_time">> := Summary}} = get_info(),
+    ExpectedCnt = min(BlocksToMine + 1, 30),
+    ExpectedCnt = length(Summary),
+    lists:foldl(
+        fun(BlockSummary, 0) ->
+            #{<<"difficulty">> := 1.0,
+              <<"height">> := 0,
+              <<"time">>  := 0} = BlockSummary;
+        (BlockSummary, ExpectedHeight) ->
+            #{<<"height">> := ExpectedHeight} = BlockSummary,
+            {ok, 200, BlockMap} = get_block_by_height(ExpectedHeight),
+            #{<<"time">> := Time, <<"target">> := Target} = BlockMap,
+            #{<<"time">> := Time} = BlockSummary,
+            Difficulty = aec_pow:target_to_difficulty(Target),
+            #{<<"difficulty">> := Difficulty} = BlockSummary,
+            {ok, 200, PreviousBlockMap} = get_block_by_height(ExpectedHeight -1),
+            #{<<"time">> := PrevTime} = PreviousBlockMap,
+            TimeDelta = Time - PrevTime,
+            #{<<"time_delta_to_parent">> := TimeDelta} = BlockSummary,
+            ExpectedHeight -1
+        end,
+        BlocksToMine,
+        Summary),
+
+    ok.
+
+
+
+    
 
 %% possitive test of spend_tx is handled in pending_transactions test
 broken_spend_tx(_Config) ->
@@ -543,6 +620,14 @@ get_all_accounts_balances() ->
 get_miner_pub_key() ->
     Host = internal_address(),
     http_request(Host, get, "account/pub-key", []).
+
+get_version() ->
+    Host = external_address(),
+    http_request(Host, get, "version", []).
+
+get_info() ->
+    Host = external_address(),
+    http_request(Host, get, "info", []).
 
 %% ============================================================
 %% private functions

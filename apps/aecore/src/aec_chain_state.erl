@@ -833,37 +833,40 @@ get_N_nodes_time_summary(undefined, _State, _N) ->
     [];
 get_N_nodes_time_summary(TopNode, State, N) ->
     Time = node_time(TopNode),
+    Difficulty = node_difficulty(TopNode),
     case node_is_genesis(TopNode, State) of
         true ->
-            [{node_height(TopNode), Time}];
+            [{node_height(TopNode), Time, Difficulty}];
         false ->
             PrevHash = prev_hash(TopNode),
             case blocks_db_find(PrevHash, State) of
                 error ->
                     [];
                 {ok, PrevNode} ->
-                    Summary = get_N_nodes_time_summary(PrevNode, Time, State, [], N),
+                    Summary = get_N_nodes_time_summary(PrevNode, Time,
+                                                       Difficulty, State, [], N),
                     lists:reverse(Summary)
             end
 
     end.
 
-get_N_nodes_time_summary(_Node, _ParentTime, _State, Acc, 0) ->
+get_N_nodes_time_summary(_Node, _ParentTime, _ParentDifficulty,  _State, Acc, 0) ->
     Acc;
-get_N_nodes_time_summary(Node, ParentTime, State, Acc0, N) ->
+get_N_nodes_time_summary(Node, ParentTime, ParentDifficulty, State, Acc0, N) ->
     Height = node_height(Node),
     Time = node_time(Node),
-    Acc = [{Height + 1, ParentTime, ParentTime - Time} | Acc0],
+    Difficulty = node_difficulty(Node),
+    Acc = [{Height + 1, ParentTime, ParentTime - Time, ParentDifficulty} | Acc0],
     case node_is_genesis(Node, State) of
         true ->
-            [{Height, Time} | Acc];
+            [{Height, Time, Difficulty} | Acc];
         false ->
             PrevHash = prev_hash(Node),
             case blocks_db_find(PrevHash, State) of
                 error ->
                     Acc;
                 {ok, PrevNode} ->
-                    get_N_nodes_time_summary(PrevNode, Time, State, Acc, N - 1)
+                    get_N_nodes_time_summary(PrevNode, Time, Difficulty, State, Acc, N - 1)
             end
     end.
 

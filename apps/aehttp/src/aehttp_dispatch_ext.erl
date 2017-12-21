@@ -140,25 +140,35 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
                   end, [], AccountsBalances),
             {200, [], #{accounts_balances => FormattedAccountsBalances}};
         false ->
-            {404, [], #{}}
+            {403, [], #{reason => <<"Balances not enabled">>}}
     end;
 
-handle_request('GetInfo', _Req, _Context) ->
-    TimeSummary0 = aec_conductor:get_top_30_blocks_time_summary(),
-    TimeSummary =
-        lists:foldl(
-          fun({Height, Ts, Delta}, Acc) ->
-                  [#{height => Height,
-                     time => Ts,
-                     time_delta_to_parent => Delta} | Acc];
-             ({Height, Ts}, Acc) ->
-                  [#{height => Height,
-                     time => Ts} | Acc]
-          end, [], TimeSummary0),
+handle_request('GetVersion', _Req, _Context) ->
     {200, [], #{version => aeu_info:get_version(),
                 revision => aeu_info:get_revision(),
-                genesis_hash => base64:encode(aec_conductor:genesis_hash()),
-                last_30_blocks_time => lists:reverse(TimeSummary)}};
+                genesis_hash => base64:encode(aec_conductor:genesis_hash())}};
+
+handle_request('GetInfo', _Req, _Context) ->
+    case application:get_env(aehttp, enable_debug_endpoints, false) of
+        true ->
+            TimeSummary0 = aec_conductor:get_top_30_blocks_time_summary(),
+            TimeSummary =
+                lists:foldl(
+                  fun({Height, Ts, Delta, Difficulty}, Acc) ->
+                          [#{height => Height,
+                            time => Ts,
+                            difficulty => Difficulty,
+                            time_delta_to_parent => Delta} | Acc];
+                    ({Height, Ts, Difficulty}, Acc) ->
+                          [#{height => Height,
+                            time => Ts,
+                            difficulty => Difficulty} | Acc]
+                  end, [], TimeSummary0),
+            {200, [], #{last_30_blocks_time => lists:reverse(TimeSummary)}};
+        false ->
+            {403, [], #{reason => <<"Info not enabled">>}}
+    end;
+
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
