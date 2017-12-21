@@ -134,20 +134,13 @@ If the file is valid YAML but does not contain a valid configuration, it prints 
 
 #### Start node
 
-It is recommended that at least 1024 files can be opened in the session where you start the node: this is needed not only for files on disk (e.g. persisted chain) but also for network connections with peers.
-You can check your max number of open files:
-* On Ubuntu, by running `ulimit -n`;
-* On macOS, by running `ulimit -n`.
-
-If your max number of open files is lower than 1024, you are recommended to raise such configuration:
-* On Ubuntu, `ulimit -n 1024` shall be sufficient;
-* On macOS, `ulimit -n 1024` shall be sufficient; if not sufficient on your OS, please report also the output of `sysctl -a | grep files`.
-
 Start the node:
 ```
 cd /tmp/node
 bin/epoch start
 ```
+
+(You can stop the node by running `bin/epoch stop` from the same directory.)
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```
