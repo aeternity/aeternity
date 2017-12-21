@@ -1,14 +1,14 @@
 %%%=============================================================================
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%   SipHash-2-4 specialized to precomputed key and 8 byte nonces
+%%%   SipHash-2-4 without standard IV xor and specialized to precomputed key and 8 byte nonces
 %%% @end
 %%%=============================================================================
 
 -module(aeu_siphash24).
 
--export([create_keypair/1,
-         hash/3]).
+-export([create_keys/1,
+         hash/5]).
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -27,29 +27,25 @@
 %%% API
 %%%=============================================================================
 
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Generate a siphash keypair from a string+nonce
-%% @end
-%%------------------------------------------------------------------------------
--spec create_keypair(binary()) ->
-          {aeu_siphash24:siphash_key(), aeu_siphash24:siphash_key()}.
-create_keypair(Header) ->
-    AuxHash = aeu_blake2b:blake2b(Header, <<>>, 32),
-    <<K0:64/little-unsigned, K1:64/little-unsigned, _/binary>> = AuxHash,
-    {K0, K1}.
+-spec create_keys(binary()) ->
+          {aeu_siphash24:siphash_key(),
+           aeu_siphash24:siphash_key(),
+           aeu_siphash24:siphash_key(),
+           aeu_siphash24:siphash_key()}.
+create_keys(Header) ->
+    AuxHash = <<_:32/binary>> = aeu_blake2b:blake2b(Header, <<>>, 32),
+    <<K0:64/little-unsigned,
+      K1:64/little-unsigned,
+      K2:64/little-unsigned,
+      K3:64/little-unsigned>> = AuxHash,
+    {K0, K1, K2, K3}.
 
-%%------------------------------------------------------------------------------
-%% @doc
-%%   Calculate the SipHash-2-4 of Nonce with two precomputed keys
-%% @end
-%%------------------------------------------------------------------------------
--spec hash(siphash_key(), siphash_key(), hashable()) -> hashable().
-hash(K0, K1, Nonce) ->
-    V0 = K0 bxor 16#736f6d6570736575,
-    V1 = K1 bxor 16#646f72616e646f6d,
-    V2 = K0 bxor 16#6c7967656e657261,
-    V3 = K1 bxor 16#7465646279746573 bxor Nonce,
+-spec hash(siphash_key(), siphash_key(), siphash_key(), siphash_key(), hashable()) -> hashable().
+hash(K0, K1, K2, K3, Nonce) ->
+    V0 = K0,
+    V1 = K1,
+    V2 = K2,
+    V3 = K3 bxor Nonce,
     {V01, V11, V21, V31} =
         sip_round(sip_round(sip_round(sip_round(sip_change(Nonce, sip_round(sip_round({V0, V1, V2, V3}))))))),
     ((V01 bxor V11) bxor (V21 bxor V31)) band 16#ffffffffffffffff.

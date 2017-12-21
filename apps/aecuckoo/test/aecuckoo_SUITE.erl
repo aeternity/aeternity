@@ -33,8 +33,8 @@ groups() ->
     ].
 
 init_per_group(smoke_tests_16, Config) ->
-    [{nonce, 66},
-     {cyclehash, "4851c33f03e1a1403ac902b921f8551e35aedeae5bf0a76a0815fb83597ad653"},
+    [{nonce, 86},
+     {cyclehash, "c6bf28762af60c78600203ea018de966ebee3f37d84ea21f07b114553fe1692f"},
      {verifier, verify16} | Config];
 init_per_group(mean16, Config) ->
     [{miner, 'mean16s-generic'} | Config];
