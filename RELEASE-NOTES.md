@@ -16,9 +16,9 @@ The instructions below also describe the simplest way to test sending tokens bet
 Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.0) corresponding to your platform, e.g. `epoch-0.4.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
-* Ubuntu 16.04.3 LTS;
-* macOS Sierra;
-* macOS High Sierra.
+* Ubuntu 16.04.3 LTS (x86-64);
+* macOS Sierra (x86-64);
+* macOS High Sierra (x86-64).
 
 The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
 In case you have installed it in a non-default path, you could use a symlink to work around the issue.
@@ -41,6 +41,9 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 ### Setup your node
 
 #### Deploy node
+
+In the instructions below, the node is deployed in directory `/tmp/node`: you may prefer to deploy the node in an alternative (and less ephemeral) location - e.g. a `node` directory inside your home directory - by amending the instructions accordingly.
+It is recommended that the partition where the node directory is has at least 10 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
 
@@ -133,6 +136,8 @@ Res = {ok,[{<<"chain">>,[{<<"db_path">>,<<"./my_db">>},{<<"persist">>,true}]},
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
 
 #### Start node
+
+It is recommended that the node has at least 4 GB of memory available.
 
 Start the node:
 ```
