@@ -253,8 +253,9 @@ init(Options) ->
     TopBlockHash = aec_conductor_chain:get_top_block_hash(State3),
     State4 = State3#state{seen_top_block_hash = TopBlockHash},
     epoch_mining:info("Miner process initilized ~p", [State4]),
-    %% NOTE: The init continues at handle_info(timeout, State).
-    {ok, State4, 0}.
+    %% NOTE: The init continues at handle_info(init_continue, State).
+    self() ! init_continue,
+    {ok, State4}.
 
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
@@ -327,8 +328,8 @@ handle_cast(Other, State) ->
     epoch_mining:error("Received unknown cast: ~p", [Other]),
     {noreply, State}.
 
-handle_info(timeout, State) ->
-    %% Initial timeout
+handle_info(init_continue, State) ->
+    %% Continue the initialization by (possibly) starting the miner
     {noreply, start_mining(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
