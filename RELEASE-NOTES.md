@@ -139,6 +139,8 @@ If the file is valid YAML but does not contain a valid configuration, it prints 
 
 It is recommended that the node has at least 4 GB of memory available.
 
+When it starts, the node checks the maximum number of open files (`ulimit -n`) and warns if below the recommended limit: proper max number of open files is essential to managing network connections and you should make sure you configure it in the session where you start the node.
+
 Start the node:
 ```
 cd /tmp/node
