@@ -43,13 +43,12 @@ teardown_minimal(TmpKeysDir) ->
     ok.
 
 setup_cuckoo_pow() ->
-    meck:new(application, [unstick, passthrough]),
+    ok = meck:new(aeu_env, [passthrough]),
     aec_test_utils:mock_fast_cuckoo_pow(),
     ok = application:ensure_started(erlexec).
 
 teardown_cuckoo_pow(_) ->
-    meck:unload(application),
-    ok.
+    ok = meck:unload(aeu_env).
 
 setup_common() ->
     setup_cuckoo_pow(),
@@ -119,8 +118,8 @@ miner_timeout_test_() ->
     {foreach,
      fun() ->
              ok = meck:new(aec_pow_cuckoo, [passthrough]),
-             ok = meck:new(application, [unstick, passthrough]),
-             ok = meck:expect(application, get_env, 3,
+             ok = meck:new(aeu_env, [passthrough]),
+             ok = meck:expect(aeu_env, get_env, 3,
                               fun
                                   (aecore, mining_attempt_timeout, _) ->
                                       500;
@@ -134,7 +133,7 @@ miner_timeout_test_() ->
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
              teardown_minimal(TmpKeysDir),
-             ok = meck:unload(application),
+             ok = meck:unload(aeu_env),
              ok = meck:unload(aec_pow_cuckoo)
      end,
      [{"Time out miner that does not return", fun test_time_out_miner/0}

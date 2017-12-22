@@ -459,7 +459,7 @@ spawn_worker(Tag, Fun) ->
 worker_timeout(create_block_candidate) ->
     infinity;
 worker_timeout(mining) ->
-    application:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
+    aeu_env:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
 worker_timeout(wait_for_keys) ->
     infinity.
 
