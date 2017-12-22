@@ -9,6 +9,7 @@
          fee/1,
          nonce/1,
          origin/1,
+         recipient/1,
          check/3,
          process/3,
          signers/1,
@@ -45,6 +46,10 @@ nonce(#spend_tx{nonce = Nonce}) ->
 -spec origin(spend_tx()) -> pubkey().
 origin(#spend_tx{sender = Sender}) ->
     Sender.
+
+-spec recipient(spend_tx()) -> pubkey().
+recipient(#spend_tx{recipient = Recipient}) ->
+    Recipient.
 
 -spec check(spend_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->

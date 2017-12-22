@@ -12,8 +12,8 @@
 
 -export([start_node/2,
          stop_node/2,
-         mine_one_block/1,
-         mine_blocks/2]).
+         mine_blocks/2,
+         mine_blocks/3]).
 
 -export([node_tuple/1,
          node_name/1,
@@ -93,27 +93,12 @@ stop_node(N, Config) ->
     cmd(["(cd ", node_shortcut(N, Config),
          " && ./bin/epoch stop)"]).
 
-mine_one_block(Node) ->
-    aecore_suite_utils:subscribe(Node, block_created),
-    StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
-    ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
-    receive
-        {gproc_ps_event, block_created, Info} ->
-            StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
-            aecore_suite_utils:unsubscribe(Node, block_created),
-            ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-            ct:log("block created, Info=~p", [Info]),
-            ok
-    after 30000 ->
-            StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
-            aecore_suite_utils:unsubscribe(Node, block_created),
-            ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-            ct:log("timeout waiting for block event~n"
-                   "~p", [process_info(self(), messages)]),
-            error(timeout_waiting_for_block)
-    end.
-
 mine_blocks(Node, NumBlocksToMine) ->
+    mine_blocks(Node, NumBlocksToMine, 100).
+
+mine_blocks(Node, NumBlocksToMine, MiningRate) ->
+    rpc:call(Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
+             5000),
     aecore_suite_utils:subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
@@ -122,19 +107,23 @@ mine_blocks(Node, NumBlocksToMine) ->
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
     aecore_suite_utils:unsubscribe(Node, block_created),
     case Res of
-        ok ->
-            ok;
+        {ok, _BlocksReverse} = OK ->
+            OK;
         {error, Reason} ->
             erlang:error(Reason)
     end.
 
-mine_blocks_loop(0) ->
-    ok;
-mine_blocks_loop(BlocksToMine) ->
+mine_blocks_loop(Cnt) ->
+    mine_blocks_loop([], Cnt).
+
+mine_blocks_loop(Blocks, 0) ->
+    {ok, Blocks};
+mine_blocks_loop(Blocks, BlocksToMine) ->
     receive
         {gproc_ps_event, block_created, Info} ->
             ct:log("block created, Info=~p", [Info]),
-            mine_blocks_loop(BlocksToMine -1)
+            #{info := Block} = Info,
+            mine_blocks_loop([Block | Blocks], BlocksToMine - 1)
     after 30000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),

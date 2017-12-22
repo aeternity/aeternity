@@ -86,7 +86,7 @@ create_dev1_chain(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    Blocks = [ mine_one_block(N1) || _ <- lists:seq(1,8)],
+    {ok, Blocks} = aecore_suite_utils:mine_blocks(N1, 8), 
     true = (length(lists:usort(Blocks)) >= 4),
     N1Top = lists:last(Blocks),
     ct:log("top of chain dev1: ~p", [ N1Top ]),
@@ -97,7 +97,7 @@ create_dev2_chain(Config) ->
     aecore_suite_utils:start_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
-    mine_one_block(N2),
+    aecore_suite_utils:mine_blocks(N2, 1),
     ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     aecore_suite_utils:stop_node(dev2, Config),
@@ -164,25 +164,5 @@ check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
             lists:delete(node(From), Nodes);
         _ ->
             Nodes
-    end.
-
-
-mine_one_block(N) ->
-    aecore_suite_utils:subscribe(N, block_created),
-    rpc:call(N, application, set_env, [aecore, aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}], 5000), 
-    StartRes = rpc:call(N, aec_conductor, start_mining, [], 5000),
-    ct:log("aec_conductor:start_mining() (~p) -> ~p", [N, StartRes]),
-    receive
-        {gproc_ps_event, block_created, Info} ->
-            StopRes = rpc:call(N, aec_conductor, stop_mining, [], 5000),
-            ct:log("aec_conductor:stop_mining() (~p) -> ~p", [N, StopRes]),
-            ct:log("block created, Info=~p", [Info]),
-            maps:get(info, Info)
-    after 30000 ->
-            StopRes = rpc:call(N, aec_conductor, stop_mining, [], 5000),
-            ct:log("aec_conductor:stop_mining() (~p) -> ~p", [N, StopRes]),
-            ct:log("timeout waiting for block event~n"
-                   "~p", [process_info(self(), messages)]),
-            error(timeout_waiting_for_block)
     end.
 
