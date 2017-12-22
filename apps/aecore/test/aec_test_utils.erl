@@ -81,7 +81,7 @@ mock_fast_and_deterministic_cuckoo_pow() ->
     mock_fast_cuckoo_pow({"mean16s-generic", "", 16}).
 
 mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
-    meck:expect(application, get_env, 3,
+    meck:expect(aeu_env, get_env, 3,
                 fun
                     (aecore, aec_pow_cuckoo, _) ->
                        Cfg;

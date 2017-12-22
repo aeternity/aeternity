@@ -144,7 +144,7 @@ difficulty_recalculation_test_() ->
 setup(PoWMod) ->
     case PoWMod of
         aec_pow_cuckoo ->
-            meck:new(application, [unstick, passthrough]),
+            ok = meck:new(aeu_env, [passthrough]),
             aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
             ok = application:ensure_started(erlexec);
         aec_pow_sha256 ->
@@ -195,7 +195,7 @@ cleanup(_, PoWMod) ->
     ok = aec_tx_pool:stop(),
     case PoWMod of
         aec_pow_cuckoo ->
-            meck:unload(application);
+            ok = meck:unload(aeu_env);
         aec_pow_sha256 ->
             ok
     end.
