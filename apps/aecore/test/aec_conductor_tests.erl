@@ -198,7 +198,7 @@ chain_test_() ->
       {"Test preemption of mining", fun test_preemption/0},
       {"Test chain api"           , fun test_chain_api/0},
       {"Test chain genesis state" , fun test_chain_genesis_state/0},
-      {"Test block publishing"    , fun test_block_publishing/0}
+      {timeout, 20, {"Test block publishing"    , fun test_block_publishing/0}}
      ]}.
 
 test_start_mining_add_block() ->
