@@ -80,37 +80,35 @@ local_ping_object() ->
 compare_ping_objects(Local, Remote) ->
     lager:debug("Compare, Local: ~p; Remote: ~p", [pp(Local), pp(Remote)]),
     Src = maps:get(<<"source">>, Remote),
-    Res = case {maps:get(<<"genesis_hash">>, Local),
-                maps:get(<<"genesis_hash">>, Remote)} of
-              {G, G} ->
-                  lager:debug("genesis blocks match", []),
-                  %% same genesis block - continue
-                  case {maps:get(<<"best_hash">>, Local),
-                        maps:get(<<"best_hash">>, Remote)} of
-                      {T, T} ->
-                          lager:debug("same top blocks", []),
-                          %% headers in sync; check missing blocks
-                          %% Note that in this case, both will publish
-                          %% events as if they're the server (basically
-                          %% meaning that they were tied for server position).
-                          server_get_missing_blocks(Src);
-                      _ ->
-                          Dl = maps:get(<<"difficulty">>, Local),
-                          Dr = maps:get(<<"difficulty">>, Remote),
-                          if Dl > Dr ->
-                                  lager:debug("Our difficulty is higher", []),
-                                  server_get_missing_blocks(Src),
-                                  ok;
-                             true ->
-                                  start_sync(Src)
-                          end
-                  end,
-                  ok;
-              _ ->
-                  {error, different_genesis_blocks}
-          end,
-    fetch_mempool(Src),
-    Res.
+    case {maps:get(<<"genesis_hash">>, Local),
+          maps:get(<<"genesis_hash">>, Remote)} of
+        {G, G} ->
+            lager:debug("genesis blocks match", []),
+            %% same genesis block - continue
+            case {maps:get(<<"best_hash">>, Local),
+                  maps:get(<<"best_hash">>, Remote)} of
+                {T, T} ->
+                    lager:debug("same top blocks", []),
+                    %% headers in sync; check missing blocks
+                    %% Note that in this case, both will publish
+                    %% events as if they're the server (basically
+                    %% meaning that they were tied for server position).
+                    server_get_missing_blocks(Src);
+                _ ->
+                    Dl = maps:get(<<"difficulty">>, Local),
+                    Dr = maps:get(<<"difficulty">>, Remote),
+                    if Dl > Dr ->
+                        lager:debug("Our difficulty is higher", []),
+                        server_get_missing_blocks(Src);
+                       true ->
+                         start_sync(Src)
+                    end
+             end,
+             fetch_mempool(Src),
+             ok;
+        _ ->
+             {error, different_genesis_blocks}
+    end.
 
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).

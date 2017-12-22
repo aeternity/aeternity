@@ -809,8 +809,8 @@ unique_peer() ->
             lists:seq(1, 4)),
     IP = string:join(IPsegments, "."),
     Port = integer_to_list(rand:uniform(65535)),
-    list_to_binary(IP ++ ":" ++ Port).
-
+    Unique = list_to_binary(IP ++ ":" ++ Port),
+    <<"http://", Unique/binary >>.
 
 random_hash() ->
     HList =

@@ -22,7 +22,7 @@ request(BaseUri, get, Endpoint, Params, Header, HTTPOptions, Options) ->
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
     process_http_return(R);
 request(BaseUri, post, Endpoint, Params, Header, HTTPOptions, Options) ->
-    URL = BaseUri ++ Endpoint,
+    URL = binary_to_list(iolist_to_binary([BaseUri, Endpoint])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
                            %% JSON-encoded

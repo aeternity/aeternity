@@ -17,7 +17,7 @@ all_test_() ->
      fun teardown/1,
      [{"Add a peer by Uri",
        fun() ->
-               ?assertEqual(ok, aec_peers:add("http://someone.somewhere:1337/v1"))
+               ?assertEqual(ok, aec_peers:add("http://someone.somewhere:1337/v1", true))
        end},
       {"Get a random peer (from list of 1)",
        fun() ->
@@ -27,13 +27,7 @@ all_test_() ->
        end},
       {"Add a peer by object",
        fun() ->
-               ?assertEqual(ok, aec_peers:add(#peer{uri="http://someonelse.somewhereelse:1337/v1", last_seen=123123}))
-       end},
-      {"Get info",
-       fun() ->
-               {Status, Peer} = aec_peers:info("http://someonelse.somewhereelse:1337/v1"),
-               ?assertEqual(ok, Status),
-               ?assertEqual(123123, Peer#peer.last_seen)
+               ?assertEqual(ok, aec_peers:add("http://someonelse.somewhereelse:1337/v1/", true))
        end},
       {"All",
        fun() ->
@@ -49,21 +43,20 @@ all_test_() ->
       {"Add peer",
        fun() ->
                ok = aec_peers:add("http://localhost:800", false),
-               ["http://localhost:800/"] =
-                   [aec_peers:uri(P) || P <- aec_peers:all()]
+               ["http://localhost:800/"] = aec_peers:all()
        end},
       {"Register source",
        fun() ->
-               ok = aec_peers:register_source("http://somenode:800",
-                                              "http://localhost:800"),
-               {ok, P} = aec_peers:info("http://localhost:800"),
-               "http://somenode:800/" = aec_peers:uri(P)
+               ok = aec_peers:register_source("http://localhost:800",
+                                              "http://somenode:800"),
+               ["http://localhost:800/"] = aec_peers:all(),
+               [{"http://somenode:800/", "http://localhost:800/"}] = aec_peers:aliases()
        end},
       {"Get random N",
        fun() ->
                do_remove_all(),
                Base = "http://localhost:",
-               [ok = aec_peers:add(Base ++ integer_to_list(N))
+               [ok = aec_peers:add(Base ++ integer_to_list(N), false)
                 || N <- lists:seq(900,910)],
                L1 = aec_peers:get_random(5),
                5 = length(L1)
