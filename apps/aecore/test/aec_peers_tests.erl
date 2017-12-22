@@ -81,7 +81,7 @@ do_remove_all() ->
 setup() ->
     application:ensure_started(crypto),
     application:ensure_started(gproc),
-    gproc:reg({n,l,{epoch,app,aehttp}}),  %% tricking aec_peers
+    aec_test_utils:fake_start_aehttp(), %% tricking aec_peers
     aec_peers:start_link(),
     ok.
 
