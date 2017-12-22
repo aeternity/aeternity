@@ -95,12 +95,26 @@ get_options() ->
     {_, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
 
 get_miner_options() ->
-    {MinerBin, MinerExtraArgs, _} = get_options(),
-    {MinerBin, MinerExtraArgs}.
+    case
+        {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
+         aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"extra_args">>])
+        }
+    of
+        {{ok, BinB}, {ok, ExtraArgsB}} ->
+            {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
+        {undefined, undefined} -> %% Both or neither - enforced by user config schema.
+            {Bin, ExtraArgs, _} = get_options(),
+            {Bin, ExtraArgs}
+    end.
 
 get_node_bits() ->
-    {_, _, NodeBits} = get_options(),
-    NodeBits.
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"node_bits">>]) of
+        {ok, NodeBits} ->
+            NodeBits;
+        undefined ->
+            {_, _, NodeBits} = get_options(),
+            NodeBits
+    end.
 
 %%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
