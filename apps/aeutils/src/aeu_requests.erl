@@ -94,7 +94,7 @@ transactions(Peer) ->
          end
     catch
         error:_Reason1 ->
-            lager:error("Wrong response type: ~p", [Response]),
+            lager:warning("Wrong response type: ~p", [Response]),
             {error, wrong_response_type}
     end.
 
