@@ -132,7 +132,7 @@ start_second_node(Config) ->
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
-    timer:sleep(2000),
+    aecore_suite_utils:await_aehttp(N2),
     ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
     B1 = rpc:call(N1, aec_conductor, top, [], 5000),
     true = expect_block(N2, B1).
