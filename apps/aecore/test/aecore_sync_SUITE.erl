@@ -95,8 +95,6 @@ init_per_group(one_blocked, Config) ->
     Config1 = config({devs, [dev1, dev2]}, Config),
     preblock_second(Config1),
     Config1;
-init_per_group(faulty_connect, Config) ->
-    config({devs, [dev1]}, Config);
 init_per_group(_Group, Config) ->
     Config.
 
