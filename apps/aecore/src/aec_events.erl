@@ -32,22 +32,13 @@ publish(Event, Info) ->
     Data = #{sender => self(),
              time => os:timestamp(),
              info => Info},
-    Res = gproc_ps:publish(l, Event, Data),
-    if Event =/= metric ->
-            lager:debug("publish(~p, ~p)", [Event, pp(Data)]);
-       true -> ok
-    end,
-    Res.
+    gproc_ps:publish(l, Event, Data).
 
 -spec subscribe(event()) -> true.
 subscribe(Event) ->
-    Res = gproc_ps:subscribe(l, Event),
-    lager:debug("subscribe(~p)", [Event]),
-    Res.
+    gproc_ps:subscribe(l, Event).
 
 -spec unsubscribe(event()) -> true.
 unsubscribe(Event) ->
-    Res = gproc_ps:unsubscribe(l, Event),
-    lager:debug("unsubscribe(~p)", [Event]),
-    Res.
+    gproc_ps:unsubscribe(l, Event).
 
