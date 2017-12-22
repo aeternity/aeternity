@@ -185,7 +185,7 @@ get_top_empty_chain(_Config) ->
     ok.
 
 get_top_non_empty_chain(_Config) ->
-    ok = aecore_suite_utils:mine_one_block(aecore_suite_utils:node_name(?NODE)),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     ExpectedH = rpc(aec_conductor, top_header, []), 
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
@@ -315,16 +315,14 @@ pending_transactions(_Config) ->
                   get_balance(base64:encode(ReceiverPubKey)),
 
 
-    % Currently aec_conductor:start fails to mine a new block;
-    % investigate this issue and uncomment the following lines
-    %ok = aecore_suite_utils:mine_one_block(aecore_suite_utils:node_name(?NODE)),
-    %{ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
-    %{ok, 200, []} = get_transactions(), 
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
+    {ok, 200, []} = get_transactions(), 
 
-    %{ok, 200, #{<<"balance">> := Bal1}} = get_balance(),  
-    %Bal1 = Bal0 + MineReward + Fee - AmountToSpent - Fee,
-    %{ok, 200, #{<<"balance">> := AmountToSpent}} = 
-    %             get_balance(base64:encode(ReceiverPubKey)),
+    {ok, 200, #{<<"balance">> := Bal1}} = get_balance(),  
+    Bal1 = Bal0 + MineReward + Fee - AmountToSpent - Fee,
+    {ok, 200, #{<<"balance">> := AmountToSpent}} = 
+                 get_balance(base64:encode(ReceiverPubKey)),
 
     ok.
 
@@ -437,12 +435,28 @@ all_accounts_balances(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
     BlocksToMine = 10,
+    Receivers = 10,
+    Fee = 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
+    ReceiversAccounts = [{random_hash(), Idx} || Idx <- lists:seq(1, Receivers)],
+    lists:foreach(
+        fun({ReceiverPubKey, AmountToSpent}) ->
+            {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee)
+        end,
+        ReceiversAccounts),
+
+    % mine a block to include the txs
+    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
     {ok, MinerBal} = rpc(aec_mining, get_miner_account_balance, []),
-    ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisAccounts],
+    ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisAccounts] ++  ReceiversAccounts,
+
+    % make sure all spend txs are part of the block
+    AllTxs = aec_blocks:txs(Block),
+    AllTxsCnt = length(AllTxs),
+    AllTxsCnt = Receivers + 1, % all spendTxs and a coinbaseTx
 
     true = length(Balances) =:= length(ExpectedBalances),
     true =
@@ -451,8 +465,6 @@ all_accounts_balances(_Config) ->
                 Account = {base64:decode(PKEncoded), Bal},
                 lists:member(Account, ExpectedBalances) end,
             Balances),
-    %% TODO: after fixing the aec_conductor mining issue, spend some txs
-    %% and check all accounts
     ok.
 
 all_accounts_balances_empty(_Config) ->

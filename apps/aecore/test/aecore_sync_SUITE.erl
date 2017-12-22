@@ -170,7 +170,7 @@ test_subscription(_Config) ->
 
 mine_on_first(_Config) ->
     N = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:mine_one_block(N),
+    aecore_suite_utils:mine_blocks(N, 1),
     ok.
 
 start_second_node(Config) ->
@@ -273,7 +273,7 @@ mine_on_third(Config) ->
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_conductor, top, [], 5000),
-    ok = aecore_suite_utils:mine_one_block(N1),
+    aecore_suite_utils:mine_blocks(N1, 1),
     NewTop = rpc:call(N1, aec_conductor, top, [], 5000),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),
