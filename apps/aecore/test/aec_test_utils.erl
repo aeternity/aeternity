@@ -36,6 +36,7 @@
         , copy_genesis_dir/2
         , signed_coinbase_tx/0
         , signed_spend_tx/1
+        , fake_start_aehttp/0
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -275,6 +276,10 @@ create_temp_key_dir() ->
 
 mktempd({unix, _}) ->
     lib:nonl(?cmd("mktemp -d")).
+
+fake_start_aehttp() ->
+    gproc:reg({n,l,{epoch, app, aehttp}}).
+
 
 %%%=============================================================================
 %%% State trees setup
