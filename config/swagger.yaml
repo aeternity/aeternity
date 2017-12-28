@@ -114,6 +114,10 @@ paths:
           description: The block being found  
           schema:
             $ref: '#/definitions/Block'
+        '400':
+          description: Invalid hash 
+          schema:
+            $ref: '#/definitions/Error'
         '404':
           description: Block not found
           schema:
@@ -161,10 +165,14 @@ paths:
           required: true
           schema:
             $ref: '#/definitions/Tx'
-          responses:
-            '200':
-              description: Successful operation
-          security: []
+      responses:
+        '200':
+          description: Successful operation
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
   /transactions:
     get:
       tags:

@@ -312,6 +312,8 @@ validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
 
 validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
+validate_response('GetBlockByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetBlockByHash', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
@@ -341,6 +343,10 @@ validate_response('PostBlock', 200, Body, ValidatorState) ->
 validate_response('PostBlock', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('PostTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 
 validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
