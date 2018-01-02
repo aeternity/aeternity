@@ -112,6 +112,14 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetVersion'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'Ping'
     }
 ) ->
@@ -142,6 +150,9 @@ allowed_methods(Req, State) ->
         Req :: cowboy_req:req(),
         State :: state()
     }.
+
+
+
 
 
 
@@ -233,6 +244,16 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'GetTxs'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetVersion'
     }
 ) ->
     Headers = [],

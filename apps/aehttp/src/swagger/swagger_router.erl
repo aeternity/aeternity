@@ -90,6 +90,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetVersion' => #{
+            path => "/v1/version",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'Ping' => #{
             path => "/v1/ping",
             method => <<"POST">>,

@@ -809,7 +809,8 @@ time_summary_only_genesis() ->
     {ok, State} = insert_block(Genesis, InitState),
 
     ?assertEqual([{aec_blocks:height(Genesis),
-                   aec_blocks:time_in_msecs(Genesis)}],
+                   aec_blocks:time_in_msecs(Genesis),
+                   aec_blocks:difficulty(Genesis)}],
                  aec_chain_state:get_top_N_blocks_time_summary(State, 30)),
     ok.
 
@@ -826,11 +827,11 @@ time_summary_N_blocks() ->
     B4Time = aec_blocks:time_in_msecs(B4),
 
     Expected30Blocks = Expected5Blocks =
-        [{aec_blocks:height(B4), B4Time, B4Time - B3Time},
-         {aec_blocks:height(B3), B3Time, B3Time - B2Time},
-         {aec_blocks:height(B2), B2Time, B2Time - B1Time},
-         {aec_blocks:height(B1), B1Time, B1Time - B0Time},
-         {aec_blocks:height(B0), B0Time}],
+        [{aec_blocks:height(B4), B4Time, B4Time - B3Time, aec_blocks:difficulty(B4)},
+         {aec_blocks:height(B3), B3Time, B3Time - B2Time, aec_blocks:difficulty(B3)},
+         {aec_blocks:height(B2), B2Time, B2Time - B1Time, aec_blocks:difficulty(B2)},
+         {aec_blocks:height(B1), B1Time, B1Time - B0Time, aec_blocks:difficulty(B1)},
+         {aec_blocks:height(B0), B0Time, aec_blocks:difficulty(B0)}],
 
     ?assertEqual(Expected30Blocks,
                  aec_chain_state:get_top_N_blocks_time_summary(State, 30)),
@@ -838,8 +839,8 @@ time_summary_N_blocks() ->
                  aec_chain_state:get_top_N_blocks_time_summary(State, 5)),
 
     Expected2Blocks =
-        [{aec_blocks:height(B4), B4Time, B4Time - B3Time},
-         {aec_blocks:height(B3), B3Time, B3Time - B2Time}],
+        [{aec_blocks:height(B4), B4Time, B4Time - B3Time, aec_blocks:difficulty(B4)},
+         {aec_blocks:height(B3), B3Time, B3Time - B2Time, aec_blocks:difficulty(B3)}],
 
     ?assertEqual(Expected2Blocks,
                  aec_chain_state:get_top_N_blocks_time_summary(State, 2)),
