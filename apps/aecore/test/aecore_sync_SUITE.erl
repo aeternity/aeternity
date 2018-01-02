@@ -80,7 +80,13 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_configs(Config1, #{}, [{add_peers, true}]),
+    %% sync suite should not log any system metrics
+    %% (not automatically verified yet)
+    DefCfg = #{<<"metrics">> =>
+                   #{<<"rules">> =>
+                         [#{<<"name">> => <<"ae.epoch.system.**">>,
+                            <<"actions">> => <<"none">>}]}},
+    aecore_suite_utils:create_configs(Config1, DefCfg, [{add_peers, true}]),
     aecore_suite_utils:make_multi(Config1),
     Config1.
 

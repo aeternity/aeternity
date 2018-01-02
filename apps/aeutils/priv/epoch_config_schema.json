@@ -217,6 +217,42 @@
                     "How often (in ms) to try reconnecting to the daemon",
                     "type" : "integer",
                     "minimum" : 0
+                },
+                "rules" : {
+                    "description" :
+                    "Filter rules guiding logging/sending of metrics.",
+                    "type" : "array",
+                    "items" : {
+                        "type" : "object",
+                        "additionalProperties" : false,
+                        "properties" : {
+                            "name" : {
+                                "description" :
+                                "Name pattern for metric (incl wildcards)",
+                                "type" : "string",
+                                "pattern" : "^([a-zA-Z0-9\\-_]+|\\*{1,2})(\\.([a-zA-Z0-9\\-_]+|\\*{1,2}))*$",
+                                "example" : "ae.epoch.aecore.**"
+                            },
+                            "type" : {
+                                "description" :
+                                "type of metric",
+                                "type" : "string",
+                                "pattern" : "^(\\*|[a-zA-Z]*)$"
+                            },
+                            "datapoints" : {
+                                "type" : "string",
+                                "description" :
+                                "Specific datapoints: 'default', or names, comma-separated",
+                                "pattern" : "^[a-zA-Z0-9]+(\\,[a-zA-Z0-9]+)*$"
+                            },
+                            "actions" : {
+                                "description" :
+                                "What to do with matching metrics.",
+                                "type" : "string",
+                                "pattern" : "^((none)|(((log)|(send))(\\,((log)|(send))){0,1}))$"
+                            }
+                        }
+                    }
                 }
             }
         }
