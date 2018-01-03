@@ -239,7 +239,7 @@ mining:
             extra_args: ""
             node_bits: 28
 ```
-... then stop and start the node.
+... then stop and start the node (`( cd /tmp/node; bin/epoch stop; bin/epoch start; )`).
 
 #### Verify that node connected to the testnet
 
