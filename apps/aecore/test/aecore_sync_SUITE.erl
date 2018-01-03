@@ -25,7 +25,8 @@
     restart_second/1,
     restart_third/1,
     tx_first_pays_second/1,
-    ensure_tx_pools_empty/1
+    ensure_tx_pools_empty/1,
+    no_system_metrics_logged/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -49,7 +50,8 @@ groups() ->
        mine_on_second,
        tx_first_pays_second,
        restart_second,
-       restart_first]},
+       restart_first,
+       no_system_metrics_logged]},
      {three_nodes, [sequence],
       [start_first_node,
        test_subscription,
@@ -59,7 +61,8 @@ groups() ->
        mine_again_on_first,
        mine_on_second,
        mine_on_third,
-       restart_third]},
+       restart_third,
+       no_system_metrics_logged]},
       {one_blocked, [sequence],
        [start_first_node,
         mine_on_first,
@@ -80,7 +83,13 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    aecore_suite_utils:create_configs(Config1, #{}, [{add_peers, true}]),
+    %% sync suite should not log any system metrics
+    %% (not automatically verified yet)
+    DefCfg = #{<<"metrics">> =>
+                   #{<<"rules">> =>
+                         [#{<<"name">> => <<"ae.epoch.system.**">>,
+                            <<"actions">> => <<"none">>}]}},
+    aecore_suite_utils:create_configs(Config1, DefCfg, [{add_peers, true}]),
     aecore_suite_utils:make_multi(Config1),
     Config1.
 
@@ -224,6 +233,18 @@ ensure_tx_pools_empty(Config) ->
                            (_)  -> false
                         end, Results)
       end, {?LINE, ensure_tx_pools_empty, Ns}).
+
+no_system_metrics_logged(Config) ->
+    %% a user config filter is applied in init_per_suite, which turns off
+    %% metrics logging for "ae.epoch.system.**".
+    Dir = aecore_suite_utils:shortcut_dir(Config),
+    Cmd1 = ["grep peers ", Dir, "/dev?/log/epoch_metrics.log"],
+    Cmd2 = ["grep system ", Dir, "/dev?/log/epoch_metrics.log"],
+    Res1 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd1)),
+    Res2 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd2)),
+    {[_|_], [], _} = Res1,
+    {[]   , [], _} = Res2,
+    ok.
 
 
 mine_again_on_first(Config) ->

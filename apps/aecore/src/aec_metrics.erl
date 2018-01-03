@@ -43,6 +43,9 @@
           reconnect_interval = ?DEFAULT_RECONNECT_INTERVAL :: pos_integer()
          }).
 
+%% Hard-coded default
+default_dests() ->
+    [log, send].
 
 %%===================================================================
 %% Metrics API
@@ -82,6 +85,9 @@ start_reporters() ->
                                            {state, []}]},
                                   {output, [{mode, plugin},
                                             {module, ?MODULE},
+                                            {state, filter}]},
+                                  {output, [{mode, plugin},
+                                            {module, ?MODULE},
                                             {state, statsd}]},
                                   {output, [{mode, plugin},
                                             {module, ?MODULE},
@@ -113,19 +119,24 @@ subscriber_loop(Logger) ->
             subscriber_loop(Logger)
     end.
 
+logger_init_output(filter) ->
+    {ok, filter};
 logger_init_output(log) ->
     {ok, log};
 logger_init_output(statsd) ->
     {ok, init_statsd()}.
 
-logger_handle_data(#{} = Data, log = St) ->
+logger_handle_data(#{} = Data, filter = St) ->
+    apply_filter(Data, St);  % sets do_log and do_send flags
+logger_handle_data(#{do_log := true} = Data, log = St) ->
     epoch_metrics:info("~s", [line(Data)]),
     {Data, St};
-logger_handle_data(Data, log = St) ->
-    {Data, St};
-logger_handle_data(Data, #statsd{} = St) ->
-    statsd_handle_data(Data, St).
-
+logger_handle_data(#{do_send := true} = Data, #statsd{} = St) ->
+    statsd_handle_data(Data, St);
+logger_handle_data({statsd, Msg}, St) ->
+    statsd_handle_msg(Msg, St);
+logger_handle_data(Data, St) ->
+    {Data, St}.
 
 %%===================================================================
 %% exometer_report callbacks
@@ -261,13 +272,15 @@ init_statsd() ->
                 addr_type = AddrType, address = IP, port = Port},
     #statsd{} = try_connect(S).
 
-statsd_handle_data({statsd, Msg} = Data, S) ->
+%% statsd plugin talking to itself
+statsd_handle_msg({statsd, Msg} = Data, S) ->
     case Msg of
         reconnect ->
             {Data, try_connect(S)};
         prepare_reconnect ->
             {Data, reconnect_after(S)}
-    end;
+    end.
+
 statsd_handle_data(#{} = Data, S) ->
     try_send(line(Data), S),
     {Data, S}.
@@ -326,3 +339,18 @@ reconnect_interval() ->
     aeu_env:user_config_or_env(
       [<<"metrics">>, <<"reconnect_interval">>],
       aecore, metrics_reconnect_interval, ?DEFAULT_RECONNECT_INTERVAL).
+
+
+%%=====================================================================
+%% Filter
+%%=====================================================================
+
+apply_filter(#{metric := Name, datapoint := DP} = Data, St) ->
+    Dests0 = aec_metrics_rpt_dest:get_destinations(Name, DP),
+    Dests = case Dests0 of
+                undefined -> default_dests();
+                Ds -> Ds
+            end,
+    DoLog = lists:member(log, Dests),
+    DoSend = lists:member(send, Dests),
+    {Data#{do_log => DoLog, do_send => DoSend}, St}.

@@ -19,6 +19,7 @@ start(_StartType, _StartArgs) ->
 start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
     aec_metrics:create_metrics_probes();
 start_phase(start_reporters, _StartType, _PhaseArgs) ->
+    aec_metrics_rpt_dest:check_config(),
     aec_metrics:start_reporters().
 
 stop(_State) ->
