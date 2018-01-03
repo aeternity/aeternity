@@ -45,13 +45,6 @@ all_test_() ->
                ok = aec_peers:add("http://localhost:800", false),
                ["http://localhost:800/"] = aec_peers:all()
        end},
-      {"Register source",
-       fun() ->
-               ok = aec_peers:register_source("http://localhost:800",
-                                              "http://somenode:800"),
-               ["http://localhost:800/"] = aec_peers:all(),
-               [{"http://somenode:800/", "http://localhost:800/"}] = aec_peers:aliases()
-       end},
       {"Get random N",
        fun() ->
                do_remove_all(),
