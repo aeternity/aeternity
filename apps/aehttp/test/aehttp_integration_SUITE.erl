@@ -35,9 +35,12 @@
     post_correct_blocks/1,
     post_broken_blocks/1,
     post_correct_tx/1,
+    post_broken_tx/1,
+    post_broken_base64_tx/1,
 
     % balances
     miner_balance/1,
+    balance_broken_address/1,
     all_accounts_balances/1,
     all_accounts_balances_empty/1,
     all_accounts_balances_disabled/1,
@@ -91,9 +94,12 @@ groups() ->
        post_broken_blocks,
        pending_transactions,
        post_correct_tx,
+       post_broken_tx,
+       post_broken_base64_tx,
   
        % balances
        miner_balance,
+       balance_broken_address,
        all_accounts_balances,
        all_accounts_balances_empty,
        all_accounts_balances_disabled,
@@ -255,12 +261,8 @@ block_not_found_by_broken_hash(_Config) ->
     NumberOfChecks = 10,
     lists:foreach(
         fun(_) ->
-            H =
-                lists:map(
-                    fun(_) -> rand:uniform(26) + 96 end,
-                    lists:seq(1, 32)),
-            Hash = list_to_binary(H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash(Hash)
+            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} = get_block_by_hash(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
@@ -412,12 +414,7 @@ post_correct_tx(_Config) ->
     Amount = 7,
     Fee = 2,
     BlocksToMine = 10,
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty 
-    {ok, 200, _} = get_balance(), % account present
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
-    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
+    {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender => PubKey,
@@ -426,11 +423,66 @@ post_correct_tx(_Config) ->
             fee => Fee,
             nonce => Nonce}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-    post_tx(SignedTx),
+    {ok, 200, _} = post_tx(base64:encode(aec_tx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx 
     ok.
 
-%% TODO: POST broken tx (currently not handled in API Endpoint)
+post_broken_tx(_Config) ->
+    Amount = 7,
+    Fee = 2,
+    BlocksToMine = 10,
+    {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender => PubKey,
+            recipient => random_hash(),
+            amount => Amount,
+            fee => Fee,
+            nonce => Nonce}),
+    {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+    [T, V, SerializedTx, Sigs] = aec_tx_sign:serialize(SignedTx),
+    lists:foreach(
+        fun(Key) ->
+            BrokenTx = lists:filter(
+                fun(#{Key := _}) -> true;
+                (_) -> false
+                end,
+                SerializedTx),
+            EncodedBrokenTx = base64:encode(msgpack:pack([T, V, BrokenTx, Sigs])),
+            {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx)
+        end,
+        [<<"type">>,
+         <<"vsn">>,
+         <<"sender">>,
+         <<"recipient">>,
+         <<"amount">>,
+         <<"fee">>,
+         <<"nonce">>]),
+
+    ok.
+
+post_broken_base64_tx(_Config) ->
+    Amount = 7,
+    Fee = 2,
+    BlocksToMine = 10,
+    {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
+    NumberOfChecks = 10,
+    lists:foreach(
+        fun(_) ->
+            {ok, SpendTx} =
+                aec_spend_tx:new(
+                  #{sender => PubKey,
+                    recipient => random_hash(),
+                    amount => Amount,
+                    fee => Fee,
+                    nonce => Nonce}),
+            {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+            <<_, BrokenHash/binary>> =
+                base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
+            {ok, 400, #{<<"reason">> := <<"Invalid base64 encoding">>}} = post_tx(BrokenHash)
+        end,
+        lists:seq(1, NumberOfChecks)), % number
+    ok.
 
 %% changing of another account's balance is checked in pending_transactions test
 miner_balance(_Config) ->
@@ -442,6 +494,16 @@ miner_balance(_Config) ->
     {ok, 200, #{<<"balance">> := Bal}} = get_balance(),  
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
     {ok, 200, #{<<"balance">> := Bal}} = get_balance(base64:encode(PubKey)),
+    ok.
+
+balance_broken_address(_Config) ->
+    NumberOfChecks = 10,
+    lists:foreach(
+        fun(_) ->
+            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            {ok, 400, #{<<"reason">> := <<"Invalid address">>}} = get_balance(BrokenHash)
+        end,
+        lists:seq(1, NumberOfChecks)), % number
     ok.
 
 all_accounts_balances(_Config) ->
@@ -620,9 +682,8 @@ post_block(Block) ->
     BlockMap = aec_blocks:serialize_to_map(Block),
     http_request(Host, post, "block", BlockMap).
 
-post_tx(SignedTx) ->
+post_tx(TxSerialized) ->
     Host = external_address(),
-    TxSerialized = base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
     http_request(Host, post, "tx", #{tx => TxSerialized}).
 
 get_all_accounts_balances() ->
@@ -757,3 +818,13 @@ random_hash() ->
             fun(_) -> rand:uniform(255) end,
             lists:seq(1, 32)),
     list_to_binary(HList).
+
+prepare_for_spending(BlocksToMine) ->
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   BlocksToMine),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty 
+    {ok, 200, _} = get_balance(), % account present
+    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
+    {PubKey, Nonce}.
+
