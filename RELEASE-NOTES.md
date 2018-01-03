@@ -1,7 +1,6 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.0) is focused on stability of the testnet - the public test network of nodes.
-It also introduces a backward incompatible change in the chain format.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -13,7 +12,7 @@ The instructions below also describe the simplest way to test sending tokens bet
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.0) corresponding to your platform, e.g. `epoch-0.4.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.1) corresponding to your platform, e.g. `epoch-0.4.1-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -31,7 +30,7 @@ This section describes how to run a node as part of the testnet.
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.0/config/swagger.yaml).
+The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml).
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://31.13.248.103:3013/v1/top
@@ -51,7 +50,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -113,7 +112,6 @@ Ensure the configured path for storing the blockchain exists:
 ```
 mkdir /tmp/node/my_db
 ```
-As of release "v0.4.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous release "v0.3.5-big-spenders".
 
 You can validate the configuration file before starting the node:
 ```
@@ -180,6 +178,68 @@ If the node successfully mines a block, you shall read log entries like the foll
 ```
 2017-12-08 16:42:03.524 [info] <0.847.0>@aec_conductor:handle_mined_block:774 Block mined: Height = 1; Hash = 02764f5478587e34c04428e1b985925ca87a35258324412cf4749cce8e568136
 ```
+
+##### Troubleshooting node failing mining attempts
+
+If the node attempts to mine though fails to do so, you shall read error log entries in `/tmp/node/log/epoch_mining.log`.
+
+You may read log entries in `/tmp/node/log/epoch_mining.log` like the following...
+```
+2018-01-03 10:18:23.812 [info] <0.903.0>@aec_conductor:create_block_candidate:728 Creating block candidate
+2018-01-03 10:18:23.815 [info] <0.903.0>@aec_conductor:handle_block_candidate_reply:744 Created block candidate and nonce (max 13078180597498667020, current 13078180597498667021).
+2018-01-03 10:18:23.815 [info] <0.903.0>@aec_conductor:start_mining:643 Starting mining
+2018-01-03 10:18:25.871 [error] <0.903.0>@aec_conductor:handle_mining_reply:670 Failed to mine block, runtime error; retrying with different nonce (was 13078180597498667021). Error: {execution_failed,{signal,sigkill,false}}
+2018-01-03 10:18:25.872 [info] <0.903.0>@aec_conductor:start_mining:643 Starting mining
+2018-01-03 10:18:26.230 [error] <0.903.0>@aec_conductor:handle_mining_reply:670 Failed to mine block, runtime error; retrying with different nonce (was 13078180597498667022). Error: {execution_failed,{signal,sigabrt,true}}
+2018-01-03 10:18:26.230 [info] <0.903.0>@aec_conductor:start_mining:643 Starting mining
+2018-01-03 10:18:26.371 [error] <0.903.0>@aec_conductor:handle_mining_reply:670 Failed to mine block, runtime error; retrying with different nonce (was 13078180597498667023). Error: {execution_failed,{signal,sigabrt,true}}
+```
+... - notice "signal,sigabrt" - and you may read corresponding log entries in `/tmp/node/log/epoch_pow_cuckoo.log` like the following...
+```
+2018-01-03 10:18:23.816 [info] <0.913.0>@aec_pow_cuckoo:generate_int:156 Executing cmd: "env LD_LIBRARY_PATH=../lib:$LD_LIBRARY_PATH ./mean28s-generic -h uXkXZrU2tPmyYThehkTmZf6fqOuc6pvxCc87gv/BV8U=DWBQVvYHf7U= -t 5"
+2018-01-03 10:18:25.859 [error] <0.913.0>@aec_pow_cuckoo:wait_for_result:362 OS process died: {signal,sigkill,false}
+2018-01-03 10:18:25.880 [info] <0.1209.0>@aec_pow_cuckoo:generate_int:156 Executing cmd: "env LD_LIBRARY_PATH=../lib:$LD_LIBRARY_PATH ./mean28s-generic -h uXkXZrU2tPmyYThehkTmZf6fqOuc6pvxCc87gv/BV8U=DmBQVvYHf7U= -t 5"
+2018-01-03 10:18:25.935 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: terminate called after throwing an instance of '
+2018-01-03 10:18:25.938 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: std::bad_alloc
+2018-01-03 10:18:25.939 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: '
+
+2018-01-03 10:18:25.940 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR:   what():
+2018-01-03 10:18:25.941 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: std::bad_alloc
+2018-01-03 10:18:25.942 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:347 ERROR:
+
+2018-01-03 10:18:25.942 [debug] <0.1209.0>@aec_pow_cuckoo:parse_generation_result:420 Looking for 42-cycle on cuckoo28("uXkXZrU2tPmyYThehkTmZf6fqOuc6pvxCc87gv/BV8U=DmBQVvYHf7U=",0) with 50% edges
+2018-01-03 10:18:26.229 [error] <0.1209.0>@aec_pow_cuckoo:wait_for_result:362 OS process died: {signal,sigabrt,true}
+2018-01-03 10:18:26.230 [info] <0.1211.0>@aec_pow_cuckoo:generate_int:156 Executing cmd: "env LD_LIBRARY_PATH=../lib:$LD_LIBRARY_PATH ./mean28s-generic -h uXkXZrU2tPmyYThehkTmZf6fqOuc6pvxCc87gv/BV8U=D2BQVvYHf7U= -t 5"
+2018-01-03 10:18:26.233 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: terminate called after throwing an instance of '
+2018-01-03 10:18:26.234 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: std::bad_alloc
+2018-01-03 10:18:26.235 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: '
+
+2018-01-03 10:18:26.235 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR:   what():
+2018-01-03 10:18:26.235 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR: std::bad_alloc
+2018-01-03 10:18:26.236 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:347 ERROR:
+
+2018-01-03 10:18:26.236 [debug] <0.1211.0>@aec_pow_cuckoo:parse_generation_result:420 Looking for 42-cycle on cuckoo28("uXkXZrU2tPmyYThehkTmZf6fqOuc6pvxCc87gv/BV8U=D2BQVvYHf7U=",0) with 50% edges
+2018-01-03 10:18:26.371 [error] <0.1211.0>@aec_pow_cuckoo:wait_for_result:362 OS process died: {signal,sigabrt,true}
+```
+... - notice "bad_alloc".
+These are symptoms of memory allocation issues.
+In presence of memory constrains, you can configure a less memory-intensive (though usually slower) algorithm than the default one.
+Amend the `mining` section in file `/tmp/node/epoch.yaml` from:
+```yaml
+mining:
+    autostart: true
+```
+... to ...
+```yaml
+mining:
+    autostart: true
+    cuckoo:
+        miner:
+            executable: lean28
+            extra_args: ""
+            node_bits: 28
+```
+... then stop and start the node (`( cd /tmp/node; bin/epoch stop; bin/epoch start; )`).
 
 #### Verify that node connected to the testnet
 
@@ -257,14 +317,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node1
 cd /tmp/node1
-tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #1
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.4.0/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.4.1/vm.args
 ```
 
 Create the file `/tmp/node1/epoch.yaml` with the following content:
@@ -381,14 +441,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node2
 cd /tmp/node2
-tar xf ~/Downloads/epoch-0.4.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #2
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.4.0/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.4.1/vm.args
 ```
 
 Create the file `/tmp/node2/epoch.yaml` with the following content:
