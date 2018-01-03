@@ -293,9 +293,7 @@ handle_call(get_top_header,_From, State) ->
 handle_call(get_top_header_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_header_hash(State), State};
 handle_call(get_total_difficulty,_From, State) ->
-    Res = aec_conductor_chain:get_total_difficulty(State),
-    aec_metrics:try_update([ae,epoch,aecore,chain,total_difficulty], Res),
-    {reply, Res, State};
+    {reply, aec_conductor_chain:get_total_difficulty(State), State};
 handle_call({has_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:has_block(Hash, State), State};
 handle_call({hash_is_connected_to_genesis, Hash},_From, State) ->
