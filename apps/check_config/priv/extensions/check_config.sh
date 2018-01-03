@@ -6,3 +6,6 @@
 
 PATH=$BINDIR:$PATH
 $SCRIPT_DIR/check_config $@
+
+# Relx extensions require explicit exit
+exit $?

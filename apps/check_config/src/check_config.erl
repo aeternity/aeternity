@@ -16,8 +16,13 @@ check_config(Cfg, Schema) ->
     application:ensure_all_started(jesse),
     application:ensure_all_started(yamerl),
     application:ensure_all_started(jsx),
-    Res = aeu_env:check_config(Cfg, Schema),
-    io:fwrite("Res = ~p~n", [Res]).
+    case aeu_env:check_config(Cfg, Schema) of
+        {error, Reason} ->
+            io:fwrite("Configuration error (~p)~n", [Reason]),
+            halt(1);
+        {ok, _} ->
+            io:fwrite("OK~n")
+    end.
 
 usage() ->
     io:format("Usage: check_config file [schema]~n", []),
