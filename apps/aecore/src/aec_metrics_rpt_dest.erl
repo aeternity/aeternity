@@ -157,7 +157,7 @@ populate_tab(Tab) ->
                           make_destinations(Found, Actions, Tab)
                       catch
                           error:E ->
-                              lager:error("CRASH: ~p~n~p~n",
+                              lager:error("CRASH: ~p; ~p",
                                           [E, erlang:get_stacktrace()])
                       end
               end, Rules);

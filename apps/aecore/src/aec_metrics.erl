@@ -34,8 +34,6 @@
 -record(st, {type_map = [] :: list(),
              prefix = []   :: string()}).
 
--record(filter, {}).
-
 -record(statsd, {
           socket        :: inet:socket() | undefined,
           tref          :: reference() | undefined,
@@ -122,19 +120,21 @@ subscriber_loop(Logger) ->
     end.
 
 logger_init_output(filter) ->
-    {ok, #filter{}};
+    {ok, filter};
 logger_init_output(log) ->
     {ok, log};
 logger_init_output(statsd) ->
     {ok, init_statsd()}.
 
-logger_handle_data(#{} = Data, #filter{} = St) ->
+logger_handle_data(#{} = Data, filter = St) ->
     apply_filter(Data, St);  % sets do_log and do_send flags
 logger_handle_data(#{do_log := true} = Data, log = St) ->
     epoch_metrics:info("~s", [line(Data)]),
     {Data, St};
 logger_handle_data(#{do_send := true} = Data, #statsd{} = St) ->
     statsd_handle_data(Data, St);
+logger_handle_data({statsd, Msg}, St) ->
+    statsd_handle_msg(Msg, St);
 logger_handle_data(Data, St) ->
     {Data, St}.
 
@@ -272,13 +272,15 @@ init_statsd() ->
                 addr_type = AddrType, address = IP, port = Port},
     #statsd{} = try_connect(S).
 
-statsd_handle_data({statsd, Msg} = Data, S) ->
+%% statsd plugin talking to itself
+statsd_handle_msg({statsd, Msg} = Data, S) ->
     case Msg of
         reconnect ->
             {Data, try_connect(S)};
         prepare_reconnect ->
             {Data, reconnect_after(S)}
-    end;
+    end.
+
 statsd_handle_data(#{} = Data, S) ->
     try_send(line(Data), S),
     {Data, S}.

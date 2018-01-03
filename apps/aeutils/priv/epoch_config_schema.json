@@ -220,7 +220,7 @@
                 },
                 "rules" : {
                     "description" :
-                    "Filter rules guiding logging/sending of metrics.",
+                    "Filter rules guiding logging/sending of metrics. The provided search patterns are applied to existing metrics, and the related 'actions' control whether to 'log' the metric data to disk, 'send' it to the cloud, or neither. The default is to do both, i.e. 'log,send' for all 'ae.epoch.**' metrics.",
                     "type" : "array",
                     "items" : {
                         "type" : "object",

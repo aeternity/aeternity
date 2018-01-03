@@ -8,7 +8,11 @@
          create_config/4,
          make_multi/1,
          make_multi/2,
-         make_shortcut/1]).
+         make_shortcut/1,
+         shortcut_dir/1]).
+
+-export([cmd/1,
+         cmd_res/1]).
 
 -export([start_node/2,
          stop_node/2,
