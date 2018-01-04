@@ -81,27 +81,27 @@ block(Peer, Hash) ->
 transactions(Peer) ->
     Response = process_request(Peer, get, "transactions", []),
     lager:debug("transactions Response = ~p", [pp(Response)]),
-    try Txs = tx_response(Response),
-         try {ok, lists:map(
-                    fun(#{<<"tx">> := T}) ->
+    case tx_response(Response) of
+        bad_result -> 
+           lager:warning("Wrong response type: ~p", [Response]),
+           {error, wrong_response_type};
+        Txs when is_list(Txs) ->
+           try {ok, lists:map(
+                      fun(#{<<"tx">> := T}) ->
                             aec_tx_sign:deserialize_from_binary(
-                              base64:decode(T))
-                    end, Txs)}
-         catch
-             error:Reason ->
-                 lager:error("Error decoding transactions: ~p", [Reason]),
-                 {error, Reason}
-         end
-    catch
-        error:_Reason1 ->
-            lager:warning("Wrong response type: ~p", [Response]),
-            {error, wrong_response_type}
+                            base64:decode(T))
+                      end, Txs)}
+           catch
+               error:Reason ->
+                   lager:error("Error decoding transactions: ~p", [Reason]),
+                   {error, Reason}
+           end
     end.
 
 tx_response({ok, #{'Transactions' := Txs}}) -> Txs;
 tx_response({ok, [#{<<"tx">> := _}|_] = Txs}) -> Txs;
 tx_response({ok, []}) -> [];
-tx_response(Other) -> error({bad_result, Other}).
+tx_response(_Other) -> bad_result.
 
 
 -spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
@@ -173,7 +173,7 @@ check_returned_source(#{<<"source">> := Source}, Peer) ->
 
 -spec pp_uri({http_uri:schema(), http_uri:host(), http_uri:port()}) -> string().  %% TODO: | unicode:unicode_binary().
 pp_uri({Schema, Host, Port}) when is_binary(Host) ->
-  pp_uri({Schema, binary_to_list(Host), Port});
+    pp_uri({Schema, binary_to_list(Host), Port});
 pp_uri({Schema, Host, Port}) ->
     atom_to_list(Schema) ++ "://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/".
 
