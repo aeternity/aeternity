@@ -1,7 +1,7 @@
 %%%=============================================================================
 %%% @copyright 2017, Aeternity Anstalt
 %%% @doc
-%%%    Module storing peers list and providing funtionc for peers interaction
+%%%    Module storing peers list and providing funtions for peers interaction.
 %%% @end
 %%%=============================================================================
 -module(aec_peers).
@@ -24,8 +24,6 @@
          get_random/0,
          get_random/1,
          get_random/2,
-         uri_from_ip_port/2,
-         uri_from_scheme_ip_port/3,
          uri/1,
          set_local_peer_uri/1,
          get_local_peer_uri/0,
@@ -42,6 +40,9 @@
 -endif.
 
 -include("peers.hrl").
+-define(MIN_PING_INTERVAL,   3000).
+-define(MAX_PING_INTERVAL, 120000).
+
 
 -type uri() :: http_uri:uri().
 -type get_peer_result() :: {ok, peer()} | {error, string()}.
@@ -53,14 +54,14 @@
 %%------------------------------------------------------------------------------
 %% Add peer by url or supplying full peer() record. Try to connect.
 %%------------------------------------------------------------------------------
--spec add(uri() | peer()) -> ok.
+-spec add(http_uri:uri() | peer()) -> ok.
 add(Peer) ->
     add(Peer, true).
 
 %%------------------------------------------------------------------------------
 %% Add peer by url or supplying full peer() record. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
--spec add(uri() | peer(), boolean()) -> ok.
+-spec add(http_uri:uri() | peer(), boolean()) -> ok.
 add(Peer, Connect) when is_boolean(Connect) ->
     gen_server:cast(?MODULE, {add, peer_record(Peer), Connect}),
     ok.
@@ -74,7 +75,7 @@ add(Peer, Connect) when is_boolean(Connect) ->
 %% (and the 'uri' elem in the record reveals which is the origin and which
 %% is the alias; this usually doesn't matter.)
 %%------------------------------------------------------------------------------
--spec register_source(uri() | peer(), uri()) -> ok.
+-spec register_source(http_uri:uri() | peer(), uri()) -> ok.
 register_source(Peer, Alias) ->
     gen_server:cast(?MODULE, {source, normalize_uri(uri(Peer)),
                               normalize_uri(Alias)}),
@@ -83,43 +84,43 @@ register_source(Peer, Alias) ->
 %%------------------------------------------------------------------------------
 %% Add peer by url or supplying full peer() record. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
--spec add_and_ping_peers([uri()]) -> ok.
-add_and_ping_peers(Peers) ->
-    case [peer_record(P) || P <- Peers] of
+-spec add_and_ping_peers([http_uri:uri()]) -> ok.
+add_and_ping_peers(Uris) ->
+    case [peer_record(Uri) || Uri <- Uris] of
         [] -> ok;
-        [_|_] = PeerRecs ->
-            gen_server:cast(?MODULE, {add_and_ping, PeerRecs})
+        Peers when is_list(Peers) ->
+            gen_server:cast(?MODULE, {add_and_ping, Peers})
     end.
 
 %%------------------------------------------------------------------------------
 %% Block peer
 %%------------------------------------------------------------------------------
--spec block_peer(uri()) -> ok.
-block_peer(PeerUri) ->
-    gen_server:cast(?MODULE, {block, normalize_uri(uri(PeerUri))}),
+-spec block_peer(http_uri:uri()) -> ok.
+block_peer(Uri) ->
+    gen_server:cast(?MODULE, {block, normalize_uri(uri(Uri))}),
     ok.
 
 %%------------------------------------------------------------------------------
 %% Unblock peer
 %%------------------------------------------------------------------------------
--spec unblock_peer(uri()) -> ok.
-unblock_peer(PeerUri) ->
-    gen_server:cast(?MODULE, {unblock, normalize_uri(uri(PeerUri))}),
+-spec unblock_peer(http_uri:uri()) -> ok.
+unblock_peer(Uri) ->
+    gen_server:cast(?MODULE, {unblock, normalize_uri(uri(Uri))}),
     ok.
 
 %%------------------------------------------------------------------------------
 %% Check if peer is blocked
 %%------------------------------------------------------------------------------
--spec is_blocked(uri()) -> boolean().
-is_blocked(PeerUri) ->
-    gen_server:call(?MODULE, {is_blocked, normalize_uri(uri(PeerUri))}).
+-spec is_blocked(http_uri:uri()) -> boolean().
+is_blocked(Uri) ->
+    gen_server:call(?MODULE, {is_blocked, normalize_uri(uri(Uri))}).
 
 %%------------------------------------------------------------------------------
 %% Remove peer by url
 %%------------------------------------------------------------------------------
--spec remove(uri()) -> ok.
-remove(PeerUri) ->
-    gen_server:cast(?MODULE, {remove, normalize_uri(uri(PeerUri))}),
+-spec remove(http_uri:uri()) -> ok.
+remove(Uri) ->
+    gen_server:cast(?MODULE, {remove, normalize_uri(uri(Uri))}),
     ok.
 
 %%------------------------------------------------------------------------------
@@ -134,22 +135,22 @@ info() ->
 %% Normally returns {ok, Peer}
 %% If peer not found gives {error, "peer unknown"}
 %%------------------------------------------------------------------------------
--spec info(uri()) -> get_peer_result().
-info(PeerUri) ->
-    gen_server:call(?MODULE, {info, normalize_uri(uri(PeerUri))}).
+-spec info(http_uri:uri()) -> get_peer_result().
+info(Uri) ->
+    gen_server:call(?MODULE, {info, normalize_uri(uri(Uri))}).
 
 %%------------------------------------------------------------------------------
 %% Get list of all peers. The list may be big. Use with caution.
 %% Consider using get_random instead.
 %%------------------------------------------------------------------------------
--spec all() -> list(peer()).
+-spec all() -> list(http_uri:uri()).
 all() ->
     gen_server:call(?MODULE, all).
 
 %%------------------------------------------------------------------------------
 %% Get list of all aliases. The list may be big. Use with caution.
 %%------------------------------------------------------------------------------
--spec aliases() -> list({uri(), uri()}).
+-spec aliases() -> list({http_uri:uri(), http_uri:uri()}).
 aliases() ->
     gen_server:call(?MODULE, aliases).
 
@@ -185,27 +186,16 @@ get_random(N) when is_integer(N), N >= 0 ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(all | non_neg_integer(), [peer() | uri()]) -> [peer()].
+-spec get_random(all | non_neg_integer(), [peer() | http_uri:uri()]) -> [peer()].
 get_random(all, Exclude) when is_list(Exclude) ->
     gen_server:call(?MODULE, {get_random, all, Exclude});
 get_random(N, Exclude) when is_integer(N), N >= 0, is_list(Exclude) ->
     gen_server:call(?MODULE, {get_random, N, Exclude}).
 
 %%------------------------------------------------------------------------------
-%% Get url from IP and port. IP format: xxx.xxx.xxx.xxx
-%%------------------------------------------------------------------------------
--spec uri_from_ip_port(IP :: string(), Port :: number()) -> uri().
-uri_from_ip_port(IP, Port) ->
-    uri_from_scheme_ip_port(http, IP, Port).
-
--spec uri_from_scheme_ip_port(Scheme :: atom(), IP :: string(), Port :: number()) -> uri().
-uri_from_scheme_ip_port(Scheme, IP, Port) ->
-    atom_to_list(Scheme) ++ "://" ++ IP ++ ":" ++ integer_to_list(Port) ++ "/".
-
-%%------------------------------------------------------------------------------
 %% Get uri of peer
 %%------------------------------------------------------------------------------
--spec uri(peer() | uri()) -> uri().
+-spec uri(peer() | http_uri:uri()) -> http_uri:uri().
 uri(#peer{uri = Uri}) ->
     Uri;
 uri(Uri) when is_list(Uri) ->
@@ -224,14 +214,14 @@ set_local_peer_uri(Peer) ->
 %%------------------------------------------------------------------------------
 %% Set our own peer address
 %%------------------------------------------------------------------------------
--spec get_local_peer_uri() -> uri().
+-spec get_local_peer_uri() -> http_uri:uri().
 get_local_peer_uri() ->
     gen_server:call(?MODULE, get_local_peer_uri).
 
 %%------------------------------------------------------------------------------
 %% Update `last_seen` timestamp
 %%------------------------------------------------------------------------------
--spec update_last_seen(uri()) -> ok.
+-spec update_last_seen(http_uri:uri()) -> ok.
 update_last_seen(Uri) ->
     gen_server:cast(?MODULE, {update_last_seen, uri(Uri), timestamp()}).
 
@@ -255,21 +245,17 @@ check_env_(UKey, AKey) ->
     end.
 
 check_ping_interval_env() ->
-    {DefMin, DefMax} =
-        aeu_env:get_env(aecore, ping_interval_limits, ping_interval_default()),
-    Min = case aeu_env:user_config(
-                 [<<"sync">>,<<"ping_interval">>,<<"min">>]) of
-              {ok, Min1} -> Min1;
-              undefined  -> DefMin
+    {DefMin, DefMax} = ping_interval_limits(),
+    Min = case aeu_env:user_config([<<"sync">>,<<"ping_interval">>,<<"min">>]) of
+              {ok, UserMin} -> UserMin;
+              undefined -> DefMin
           end,
-    Max = case aeu_env:user_config(
-                 [<<"sync">>,<<"ping_interval">>,<<"max">>]) of
-              {ok, Max1} -> Max1;
-              undefined  -> DefMax
+    Max = case aeu_env:user_config([<<"sync">>,<<"ping_interval">>,<<"max">>]) of
+              {ok, UserMax} -> UserMax;
+              undefined -> DefMax
           end,
     application:set_env(aecore, ping_interval_limits, {Min, Max}).
 
-ping_interval_default() -> {3000, 120000}.
 
 %%%=============================================================================
 %%% gen_server functions
@@ -287,7 +273,8 @@ start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
 
 init(ok) ->
-    PeerUri = aehttp_app:local_peer_uri(),
+    LocalPeer = aeu_env:local_peer(),
+    PeerUri = aeu_requests:pp_uri(LocalPeer),  %% TODO: keep datatype, not string
     do_set_local_peer_uri(
       PeerUri,
       #state{peers=gb_trees:empty(),
@@ -330,7 +317,8 @@ handle_call({is_blocked, Uri}, _From, #state{blocked = Blocked} = State) ->
             end
     end;
 handle_call(all, _From, State) ->
-    {reply, gb_trees:values(State#state.peers), State};
+    Uris = [ uri(Peer) || Peer <-  gb_trees:values(State#state.peers) ],
+    {reply, Uris, State};
 handle_call(aliases, _From, State) ->
     {reply, gb_trees:to_list(State#state.aliases), State};
 handle_call({get_random, N, Exclude}, _From, State) ->
@@ -446,12 +434,11 @@ handle_cast({add_and_ping, PeerRecs}, State) ->
       fun(P0) ->
               %% need to fetch the stored peer record to get proper block
               %% status
-              Key = hash_uri(P0#peer.uri),
               case lookup_peer(P0#peer.uri, State1) of
                   none ->
                       lager:debug("Couldn't find just added ~p", [P0#peer.uri]),
                       ok;
-                  {value, Key, Peer} ->
+                  {value, _Key, Peer} ->
                       case has_been_seen_(Peer) of
                           true -> ok;
                           false ->
@@ -750,7 +737,7 @@ enter_peer(_Key, Peer, #state{aliases = As, peers = Peers} = State) ->
 insert_peers(PRecs, #state{} = S) ->
     lists:foldl(
       fun(#peer{uri = Uri} = P, #state{} = Sx) ->
-              case is_local_uri(Uri, Sx) of
+              case is_local_uri(Uri, Sx) orelse is_blocked(P, Sx) of
                   false ->
                       try_insert_peer(P, Sx);
                   _Other ->
@@ -786,6 +773,12 @@ check_block_status(#peer{uri = Uri} = P, Blocked) ->
                end,
     BlockFlag = P#peer.blocked orelse Preblocked,
     {P#peer{blocked = BlockFlag}, Blocked1}.
+
+is_blocked(Peer, #state{blocked = Blocked} = State) ->
+    Uri = uri(Peer),
+    lager:debug("Check for blocked ~p in ~p\n", [Uri, State]), 
+    %% Check whether it is an alias and if so, check whether it is blocked.
+    gb_sets:is_element(Uri, Blocked).
 
 
 log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
@@ -871,12 +864,12 @@ calc_retry(_, Min) ->
     Min.
 
 ping_interval_limits() ->
-    Default = ping_interval_default(),
+    Default = {?MIN_PING_INTERVAL, ?MAX_PING_INTERVAL},
     case aeu_env:get_env(aecore, ping_interval_limits, Default) of
-        {Min, Max} = Res when is_integer(Min),
-                              is_integer(Max),
-                              Max >= Min ->
-            Res;
+        {Min, Max} when is_integer(Min),
+                        is_integer(Max),
+                        Max >= Min ->
+            {Min, Max};
         Other ->
             lager:debug("invalid ping limits: ~p; using default (~p)",
                         [Other, Default]),

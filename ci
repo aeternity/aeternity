@@ -39,6 +39,9 @@ case "${1:?}"-"${2:?}" in
     script-test)
         make test
         ;;
+    script-eunit)
+        make eunit
+        ;;
     script-dialyzer)
         make dialyzer
         ;;
@@ -49,7 +52,7 @@ case "${1:?}"-"${2:?}" in
         # Configure a simpler PoW than the default one, in order to
         # speed up mining during the tests.
         make python-env
-        make release-integration-test TARBALL="${FinalPackagePath:?}"
+        make python-release-test TARBALL="${FinalPackagePath:?}"
         ;;
     after_failure-*)
         LogsDir="${BuildDir}/_build/test/logs"

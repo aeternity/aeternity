@@ -57,9 +57,9 @@
         ]).
 
 %% State trees API
--export([ get_miner_account_balance/0
-        , next_nonce_for_account/1
-        , get_all_accounts_balances/0
+-export([ get_block_state_by_hash/1 %% For testing
+        , get_account/1
+        , get_all_accounts_balances/1
         ]).
 
 %% Chain API
@@ -146,33 +146,21 @@ get_mining_workers() ->
 %%%===================================================================
 %%% State trees API
 
-%% TODO: Added for backwards compability.
--spec get_miner_account_balance() ->   {'ok', integer()}
-                                     | {'error', 'account_not_found'}.
-get_miner_account_balance() ->
-    {ok, Pubkey} = aec_keys:pubkey(),
-    LastBlock = top(),
-    Trees = aec_blocks:trees(LastBlock),
-    AccountsTree = aec_trees:accounts(Trees),
-    case aec_accounts:get(Pubkey, AccountsTree) of
-        {ok, #account{balance = B}} ->
-            {ok, B};
-        _ ->
-            {error, account_not_found}
-    end.
+-spec get_block_state_by_hash(BlockHeaderHash :: binary()) ->
+                                     {'ok', trees()} | {'error', any()}.
+get_block_state_by_hash(Hash) when is_binary(Hash) ->
+    gen_server:call(?SERVER, {get_block_state, Hash}).
 
--spec next_nonce_for_account(binary()) ->
-                                    {'ok', integer()} | {'error', 'account_not_found'}.
-next_nonce_for_account(PubKey) ->
-    Top = top(),
-    aec_next_nonce:pick_for_account(PubKey, Top).
+-spec get_account(pubkey()) -> 'no_top_block_hash' | 'no_state_trees' |
+                               'none' | {'value', account()}.
+get_account(Pubkey) ->
+    gen_server:call(?SERVER, {get_account, Pubkey}).
 
--spec get_all_accounts_balances() -> list({pubkey(), non_neg_integer()}).
-get_all_accounts_balances() ->
-    Top = top(),
-    Trees = aec_blocks:trees(Top),
-    AccountsTree = aec_trees:accounts(Trees),
-    aec_accounts:get_all_accounts_balances(AccountsTree).
+-spec get_all_accounts_balances(BlockHeaderHash :: binary()) ->
+                                       {'ok', [{pubkey(), non_neg_integer()}]} |
+                                       {'error', any()}.
+get_all_accounts_balances(Hash) when is_binary(Hash) ->
+    gen_server:call(?SERVER, {get_all_accounts_balances, Hash}).
 
 %%%===================================================================
 %%% Chain API
@@ -265,8 +253,9 @@ init(Options) ->
     TopBlockHash = aec_conductor_chain:get_top_block_hash(State3),
     State4 = State3#state{seen_top_block_hash = TopBlockHash},
     epoch_mining:info("Miner process initilized ~p", [State4]),
-    %% NOTE: The init continues at handle_info(timeout, State).
-    {ok, State4, 0}.
+    %% NOTE: The init continues at handle_info(init_continue, State).
+    self() ! init_continue,
+    {ok, State4}.
 
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
@@ -291,6 +280,12 @@ handle_call(get_top_30_blocks_time_summary,_From, State) ->
     {reply, aec_conductor_chain:get_top_30_blocks_time_summary(State), State};
 handle_call(get_top_block,_From, State) ->
     {reply, aec_conductor_chain:get_top_block(State), State};
+handle_call({get_block_state, Hash},_From, State) ->
+    {reply, aec_conductor_chain:get_block_state(Hash, State), State};
+handle_call({get_account, Pubkey},_From, State) ->
+    {reply, aec_conductor_chain:get_account(Pubkey, State), State};
+handle_call({get_all_accounts_balances, Hash},_From, State) ->
+    {reply, aec_conductor_chain:get_all_accounts_balances(Hash, State), State};
 handle_call(get_top_block_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_block_hash(State), State};
 handle_call(get_top_header,_From, State) ->
@@ -333,8 +328,8 @@ handle_cast(Other, State) ->
     epoch_mining:error("Received unknown cast: ~p", [Other]),
     {noreply, State}.
 
-handle_info(timeout, State) ->
-    %% Initial timeout
+handle_info(init_continue, State) ->
+    %% Continue the initialization by (possibly) starting the miner
     {noreply, start_mining(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
@@ -464,7 +459,7 @@ spawn_worker(Tag, Fun) ->
 worker_timeout(create_block_candidate) ->
     infinity;
 worker_timeout(mining) ->
-    application:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
+    aeu_env:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
 worker_timeout(wait_for_keys) ->
     infinity.
 
@@ -727,11 +722,14 @@ create_block_candidate(#state{keys_ready = false} = State) ->
     wait_for_keys(State);
 create_block_candidate(State) ->
     TopBlock = aec_conductor_chain:get_top_block(State),
+    {ok, TopHash} = aec_blocks:hash_internal_representation(TopBlock),
+    {ok, TopBlockState} = aec_conductor_chain:get_block_state(TopHash, State),
     AdjChain = aec_conductor_chain:get_adjustment_headers(State),
     epoch_mining:info("Creating block candidate"),
     Fun = fun() ->
-                  {aec_mining:create_block_candidate(TopBlock, AdjChain),
-                    State#state.seen_top_block_hash}
+                  {aec_mining:create_block_candidate(TopBlock, TopBlockState,
+                                                     AdjChain),
+                   State#state.seen_top_block_hash}
           end,
     dispatch_worker(create_block_candidate, Fun, State).
 

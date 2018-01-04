@@ -25,52 +25,77 @@
 %% API
 -export([ genesis_header/0,
           height/0,
-          genesis_block/0,
-          genesis_block/1,
+          genesis_block_with_state/0,
           populated_trees/0 ]).
+
+-export([prev_hash/0,
+         pow/0,
+         txs_hash/0,
+         transactions/0]).
+
+-ifdef(TEST).
+-export([genesis_block_with_state/1]).
+-endif.
 
 -include("common.hrl").
 -include("blocks.hrl").
 
 %% Since preset accounts are being loaded from a file - please use with caution
 genesis_header() ->
-    aec_blocks:to_header(genesis_block()).
+    {B, _S} = genesis_block_with_state(),
+    aec_blocks:to_header(B).
 
-%% Returns the genesis block including the state trees.
+prev_hash() ->
+    <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>.
+
+txs_hash() ->
+    <<0:?TXS_HASH_BYTES/unit:8>>.
+
+pow() ->
+    no_value.
+
+transactions() ->
+    [].
+
+%% Returns the genesis block and the state trees.
 %%
 %% The current implementation of state trees causes a new Erlang term,
 %% representing the initial state trees, to be allocated in the
 %% heap memory of the calling process.
 %%
 %% Since preset accounts are being loaded from a file - please use with caution
-genesis_block() ->
-  genesis_block(aec_genesis_block_settings:preset_accounts()).
+genesis_block_with_state() ->
+    genesis_block_with_state(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
-genesis_block(PresetAccounts) ->
-    Trees = populated_trees(PresetAccounts),
-    #block{
-      version = ?GENESIS_VERSION,
-      height = ?GENESIS_HEIGHT,
-      prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-      txs_hash = <<0:?TXS_HASH_BYTES/unit:8>>,
-      root_hash = aec_trees:all_trees_hash(Trees),
-      target = ?HIGHEST_TARGET_SCI,
-      pow_evidence = no_value,
-      nonce = 0,
-      time = 0, %% Epoch.
-      trees = Trees
-      }.
+genesis_block_with_state(Map) ->
+    Trees = populated_trees(Map),
+    Block =
+        #block{
+           version = ?GENESIS_VERSION,
+           height = ?GENESIS_HEIGHT,
+           prev_hash = prev_hash(),
+           txs_hash = txs_hash(),
+           root_hash = aec_trees:hash(Trees),
+           target = ?HIGHEST_TARGET_SCI,
+           txs = transactions(),
+           pow_evidence = pow(),
+           nonce = 0,
+           time = 0 %% Epoch.
+          },
+    {Block, Trees}.
 
 populated_trees() ->
-    populated_trees(aec_genesis_block_settings:preset_accounts()).
+    populated_trees(#{preset_accounts => aec_genesis_block_settings:preset_accounts()}).
 
-populated_trees(PresetAccounts) ->
-     {ok, Trees0} = aec_trees:all_trees_new(),    %% renaming required in aec_trees!
-     lists:foldl(fun({PubKey, Amount}, Ts) ->
-                       Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
-                       {ok, AccountTree} =  aec_accounts:put(Account, aec_trees:accounts(Ts)),
-                       aec_trees:set_accounts(Ts, AccountTree)
-                  end, Trees0, PresetAccounts).
+populated_trees(Map) ->
+    PresetAccounts = maps:get(preset_accounts, Map),
+    StateTrees = maps:get(state_tree, Map, aec_trees:new()),
+    PopulatedAccountsTree =
+        lists:foldl(fun({PubKey, Amount}, T) ->
+                            Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                            aec_accounts_trees:enter(Account, T)
+                    end, aec_trees:accounts(StateTrees), PresetAccounts),
+    aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
 height() ->
     ?GENESIS_HEIGHT.

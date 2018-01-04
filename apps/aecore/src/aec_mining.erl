@@ -1,9 +1,14 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/2,
+-export([create_block_candidate/3,
          need_to_regenerate/1,
-         mine/2]).
+         mine/2,
+         get_miner_account_balance/0]). %% For tests.
 
 -ifdef(TEST).
 -export([adjust_target/2]).
@@ -11,15 +16,18 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 %% API
 
--spec create_block_candidate(block(), list(header())) ->
-                        {ok, block(), aec_pow:nonce()} | {error, term()}.
-create_block_candidate(TopBlock, AdjHeaders) ->
-    create_block_candidate(get_txs_to_mine_in_pool(), TopBlock, AdjHeaders).
+-spec create_block_candidate(block(), trees(), list(header())) ->
+                                    {ok, block(), aec_pow:nonce()} |
+                                    {error, term()}.
+create_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
+    create_block_candidate(get_txs_to_mine_in_pool(),
+                           TopBlock, TopBlockTrees,
+                           AdjHeaders).
 
 -spec need_to_regenerate(block()) -> boolean().
 need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
@@ -43,6 +51,16 @@ mine(Block, Nonce) ->
             Error
     end.
 
+-spec get_miner_account_balance() -> {ok, non_neg_integer()} |
+                                     {error, account_not_found}.
+get_miner_account_balance() ->
+    {ok, Pubkey} = aec_keys:pubkey(),
+    case aec_conductor:get_account(Pubkey) of
+        {value, A} ->
+            {ok, aec_accounts:balance(A)};
+        none ->
+            {error, account_not_found}
+    end.
 
 %% Internal functions
 
@@ -51,19 +69,26 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(list(aec_tx_sign:signed_tx()), block(), list(header())) ->
-                  {ok, block(), aec_pow:nonce(), integer()} | {error, term()}.
-create_block_candidate(TxsToMineInPool, TopBlock, AdjHeaders) ->
+-spec create_block_candidate(
+        list(aec_tx_sign:signed_tx()),
+        block(), trees(),
+        list(header())) -> {ok, block(), aec_pow:nonce()} |
+                           {error, term()}.
+create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
     case create_signed_coinbase_tx() of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            Trees = aec_blocks:trees(TopBlock),
-            Block = aec_blocks:new(TopBlock, Txs, Trees),
+            Block = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
             case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
-                    adjust_target(Block, AdjHeaders);
+                    case adjust_target(Block, AdjHeaders) of
+                        {ok, AdjBlock} ->
+                            {ok, AdjBlock, aec_pow:pick_nonce()};
+                        {error, _} = Error ->
+                            Error
+                    end;
                 false ->
                     {error, coinbase_tx_rejected}
             end
@@ -93,18 +118,18 @@ create_coinbase_tx() ->
     end.
 
 -spec adjust_target(block(), list(header())) ->
-            {ok, block(), aec_pow:nonce()} | {error, term()}.
+            {ok, block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
     DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
-            {ok, Block, aec_pow:pick_nonce()};
+            {ok, Block};
         false when DeltaHeight == length(AdjHeaders) ->
             CalculatedTarget = aec_target:recalculate(Header, AdjHeaders),
             Block1 = aec_blocks:set_target(Block, CalculatedTarget),
-            {ok, Block1, aec_pow:pick_nonce()};
+            {ok, Block1};
         false -> %% Wrong number of headers in AdjHeaders...
             {error, wrong_headers_for_target_adjustment}
     end.

@@ -18,7 +18,6 @@ from py.tests.swagger_client.models.block import Block
 from py.tests.swagger_client.models.signed_tx import SignedTx
 from py.tests.swagger_client.models.coinbase_tx import CoinbaseTx
 from py.tests.swagger_client.models.balance import Balance 
-from py.tests import chain_downloader
 
 from nose.tools import assert_equals
 from testconfig import config
@@ -59,7 +58,7 @@ def start_node(name, config_filename=None):
             else:
                 config_prefix =  'ERL_FLAGS="-config `pwd`/' + config_filename + '" ' 
 
-        p = os.popen(config_prefix + "make " + name + "-start","r")
+        p = os.popen("(cd .. && " + config_prefix + "make " + name + "-start;)","r")
         while 1:
             line = p.readline()
             if not line: break
@@ -69,17 +68,10 @@ def start_node(name, config_filename=None):
 def stop_node(name):
     if should_start_node(name):
         print("Node " + name + " stopping")
-        p = os.popen("make " + name + "-stop","r")
+        p = os.popen("(cd .. && make " + name + "-stop;)","r")
         while 1:
             line = p.readline()
             if not line: break
-
-def post_blocks(api, blocks_cnt, chain_data_file):
-    premined_blocks = chain_downloader.load_from_file(chain_data_file)
-    for i in range(1, blocks_cnt + 1):
-        block = chain_downloader.get_block(premined_blocks, height=i)
-        api.post_block(block)
-        wait(lambda: api.get_top().height >= i, timeout_seconds=3, sleep_seconds=0.25)
 
 def coinbase_reward():
     return config["coinbase_reward"]
@@ -95,15 +87,6 @@ def test_settings(test_name):
 
 def tool_settings(test_name):
     return config['tools'][test_name]
-
-def post_fake_block(api, chain_file_name):
-    top = api.get_top()
-    block_height = top.height + 1
-    premined_blocks = chain_downloader.load_from_file(chain_file_name)
-    assert(len(premined_blocks) > block_height)
-    block = list(filter(lambda b: b.height == block_height, premined_blocks))[0]
-    res = api.post_block(block)
-    return res
 
 def genesis_hash(api):
     top = api.get_top()

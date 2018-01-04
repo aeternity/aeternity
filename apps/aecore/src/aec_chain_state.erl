@@ -28,6 +28,9 @@
         , new/1
         , new_from_persistance/2
         , top_block/1
+        , get_block_state/2
+        , account/2
+        , all_accounts_balances/2
         , top_block_hash/1
         , top_header/1
         , top_header_hash/1
@@ -112,7 +115,34 @@ top_block_hash(?match_state(top_block_hash := X)) ->
 -spec top_block(state()) -> 'undefined' | #block{}.
 top_block(?match_state(top_block_hash := undefined)) -> undefined;
 top_block(?match_state(top_block_hash := X) = State) ->
-    export_block(blocks_db_get(X, State), State).
+    export_block(blocks_db_get(X, State)).
+
+-spec get_block_state(binary(), state()) -> {'ok', trees()} | {'error', 'no_state_trees'}.
+get_block_state(Hash, ?assert_state() = State) ->
+    case state_db_find(Hash, State) of
+        {ok, Trees} -> {ok, Trees};
+        error -> {error, no_state_trees}
+    end.
+
+-spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
+                                    'none' | {value, account()}.
+account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
+account(Pubkey, ?match_state(top_block_hash := X) = State) ->
+    case state_db_find(X, State) of
+        {ok, Trees} ->
+            aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
+        error -> no_state_trees
+    end.
+
+-spec all_accounts_balances(binary(), state()) -> {'ok', [{pubkey(), non_neg_integer()}]} |
+                                                  {'error', 'no_state_trees'}.
+all_accounts_balances(BlockHeaderHash, ?assert_state() = State) ->
+    case state_db_find(BlockHeaderHash, State) of
+        {ok, Trees} ->
+            {ok, aec_accounts_trees:get_all_accounts_balances(
+                   aec_trees:accounts(Trees))};
+        error -> {error, no_state_trees}
+    end.
 
 -spec get_n_headers_from_top(non_neg_integer(), state()) ->
                           {'ok', list(#header{})} | {error, atom()}.
@@ -142,7 +172,7 @@ get_block(Hash, ?assert_state() = State) ->
     case blocks_db_find(Hash, State) of
         {ok, Node} ->
             case node_is_block(Node) of
-                true  -> {ok, export_block(Node, State)};
+                true  -> {ok, export_block(Node)};
                 false -> error
             end;
         error -> error
@@ -185,7 +215,7 @@ get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
     case get_node_by_height(Height, State) of
         {ok, Node} ->
             case node_is_block(Node) of
-                true  -> {ok, export_block(Node, State)};
+                true  -> {ok, export_block(Node)};
                 false -> {error, block_not_found}
             end;
         Error -> Error
@@ -365,11 +395,7 @@ wrap_header(Header) ->
 export_header(#node{type = header, content = H}) -> H;
 export_header(#node{type = block, content = H}) -> aec_blocks:to_header(H).
 
-export_block(#node{type = block, hash = H, content = B}, State) ->
-    case add_state_tree_to_block(B, H, State) of
-        {ok, ExportBlock} -> ExportBlock;
-        error -> B
-    end.
+export_block(#node{type = block, content = B}) -> B.
 
 -spec get_node_by_height(non_neg_integer(), state()) ->
                                   {'ok', #node{}} | {'error', atom()}.
@@ -440,16 +466,6 @@ total_difficulty_at_hash(Hash, Acc, State) ->
             end;
         error ->
             {error, not_rooted}
-    end.
-
-%%%-------------------------------------------------------------------
-%%% Handling the state trees
-%%%-------------------------------------------------------------------
-
-add_state_tree_to_block(Block, Hash, State) ->
-    case state_db_find(Hash, State) of
-        {ok, Trees} -> {ok, aec_blocks:set_trees(Block, Trees)};
-        error -> error
     end.
 
 %%%-------------------------------------------------------------------
@@ -683,14 +699,9 @@ do_assert_target_equal_to_parent(Header, PrevHeaders0, ForkHeight) ->
 
 genesis_state_tree(Node) ->
     %% TODO: This should be handled somewhere else.
-    Trees = aec_blocks:trees(Node#node.content),
     %% Assert current assumption.
     [] = aec_blocks:txs(Node#node.content),
-    case aec_trees:accounts(Trees) of
-        undefined  -> % persistence
-            aec_block_genesis:populated_trees();
-        _ -> Trees
-    end.
+    aec_block_genesis:populated_trees().
 
 %% Transitively compute the new state trees in the main chain
 %% starting from the node (which must be in the main chain).
@@ -706,7 +717,7 @@ update_state_tree(Node, State) ->
     end.
 
 assert_state_hash_valid(Trees, Node) ->
-    RootHash = aec_trees:all_trees_hash(Trees),
+    RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
     case RootHash =:= Expected of
         true -> ok;
@@ -761,21 +772,15 @@ update_top_block_hash(Hash, State) ->
 apply_node_transactions([Node|Left], Trees, State) ->
     Txs = aec_blocks:txs(Node#node.content),
     Height = node_height(Node),
-    {ok, FilteredTxs, NewTrees} = aec_tx:apply_signed(Txs, Trees, Height),
-    assert_transactions_valid(FilteredTxs, Txs),
-    assert_state_hash_valid(NewTrees, Node),
-    apply_node_transactions(Left, NewTrees, State);
+    case aec_tx:apply_signed_strict(Txs, Trees, Height) of
+        {ok, _, NewTrees} ->
+            assert_state_hash_valid(NewTrees, Node),
+            apply_node_transactions(Left, NewTrees, State);
+        {error,_What} ->
+            internal_error(invalid_transactions_in_block)
+    end;
 apply_node_transactions([], Trees,_State) ->
     Trees.
-
-assert_transactions_valid(ValidTxs, Txs) ->
-    %% Expect to have only valid transactions in a block we're adding to the chain
-    case ValidTxs =:= Txs of
-        true ->
-            ok;
-        false ->
-            internal_error(invalid_transactions_in_block)
-    end.
 
 is_node_in_main_chain(Node, State) ->
     case get_top_header_hash(State) of
@@ -828,37 +833,40 @@ get_N_nodes_time_summary(undefined, _State, _N) ->
     [];
 get_N_nodes_time_summary(TopNode, State, N) ->
     Time = node_time(TopNode),
+    Difficulty = node_difficulty(TopNode),
     case node_is_genesis(TopNode, State) of
         true ->
-            [{node_height(TopNode), Time}];
+            [{node_height(TopNode), Time, Difficulty}];
         false ->
             PrevHash = prev_hash(TopNode),
             case blocks_db_find(PrevHash, State) of
                 error ->
                     [];
                 {ok, PrevNode} ->
-                    Summary = get_N_nodes_time_summary(PrevNode, Time, State, [], N),
+                    Summary = get_N_nodes_time_summary(PrevNode, Time,
+                                                       Difficulty, State, [], N),
                     lists:reverse(Summary)
             end
 
     end.
 
-get_N_nodes_time_summary(_Node, _ParentTime, _State, Acc, 0) ->
+get_N_nodes_time_summary(_Node, _ParentTime, _ParentDifficulty,  _State, Acc, 0) ->
     Acc;
-get_N_nodes_time_summary(Node, ParentTime, State, Acc0, N) ->
+get_N_nodes_time_summary(Node, ParentTime, ParentDifficulty, State, Acc0, N) ->
     Height = node_height(Node),
     Time = node_time(Node),
-    Acc = [{Height + 1, ParentTime, ParentTime - Time} | Acc0],
+    Difficulty = node_difficulty(Node),
+    Acc = [{Height + 1, ParentTime, ParentTime - Time, ParentDifficulty} | Acc0],
     case node_is_genesis(Node, State) of
         true ->
-            [{Height, Time} | Acc];
+            [{Height, Time, Difficulty} | Acc];
         false ->
             PrevHash = prev_hash(Node),
             case blocks_db_find(PrevHash, State) of
                 error ->
                     Acc;
                 {ok, PrevNode} ->
-                    get_N_nodes_time_summary(PrevNode, Time, State, Acc, N - 1)
+                    get_N_nodes_time_summary(PrevNode, Time, Difficulty, State, Acc, N - 1)
             end
     end.
 

@@ -27,3 +27,5 @@ apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 .chain
 REVISION
+apps/aehttp/priv/swagger-ui
+apps/aehttp/priv/swagger-docs

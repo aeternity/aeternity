@@ -1,9 +1,9 @@
 -include("trees.hrl").
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 2).
+-define(PROTOCOL_VERSION, 3).
 
--define(GENESIS_VERSION, 2).
+-define(GENESIS_VERSION, 3).
 -define(GENESIS_HEIGHT, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).
@@ -23,8 +23,7 @@
 -record(block, {
           height = 0              :: height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees included in #block.trees
-          trees = #trees{}        :: trees(),
+          root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           txs = []                :: list(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
@@ -38,7 +37,7 @@
           height = 0              :: height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
-          root_hash = <<>>        :: binary(),
+          root_hash = <<>>        :: state_hash(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),

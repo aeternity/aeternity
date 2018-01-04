@@ -10,7 +10,6 @@
  {[ae,epoch,aecore,mining,interval]          , histogram   , []},
  {[ae,epoch,aecore,chain,height]             , gauge       , []},
  {[ae,epoch,aecore,chain,top_change,interval], histogram   , []},
- {[ae,epoch,aecore,chain]                    , chain_probe , []},
  {[ae,epoch,aecore,peers,count]              , gauge       , []},
  {[ae,epoch,aecore,peers,blocked]            , gauge       , []},
  {[ae,epoch,aecore,peers,errored]            , gauge       , []},

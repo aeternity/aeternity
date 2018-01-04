@@ -41,7 +41,13 @@
               "$ref" : "#/definitions/Ping"
             }
           },
-          "404" : {
+          "403" : {
+            "description" : "Not allowed (node is blocked)",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "409" : {
             "description" : "Different genesis blocks",
             "schema" : {
               "$ref" : "#/definitions/Error"
@@ -122,6 +128,12 @@
               "$ref" : "#/definitions/Block"
             }
           },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
           "404" : {
             "description" : "Block not found",
             "schema" : {
@@ -152,7 +164,7 @@
           "200" : {
             "description" : "successful operation"
           },
-          "404" : {
+          "400" : {
             "description" : "Block or header validation error",
             "schema" : {
               "$ref" : "#/definitions/Error"
@@ -177,7 +189,19 @@
           "schema" : {
             "$ref" : "#/definitions/Tx"
           }
-        } ]
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation"
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
       }
     },
     "/transactions" : {
@@ -265,6 +289,209 @@
         "security" : [ ]
       }
     },
+    "/oracles" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get active registered oracles",
+        "operationId" : "GetActiveRegisteredOracles",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Active registered oracles",
+            "schema" : {
+              "$ref" : "#/definitions/RegisteredOracles"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-questions" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get active oracle questions",
+        "operationId" : "GetOracleQuestions",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "oracle_pub_key",
+          "in" : "query",
+          "description" : "Oracle public key",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Active oracle questions",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQuestions"
+            }
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-register-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle register transaction",
+        "operationId" : "PostOracleRegisterTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new oracle register transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleRegisterTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle register transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-query-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle query transaction",
+        "operationId" : "PostOracleQueryTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new oracle query transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleQueryTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleInteractionId"
+            }
+          },
+          "404" : {
+            "description" : "Oracle query transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-response-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle response transaction",
+        "operationId" : "PostOracleResponseTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new oracle response transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleResponseTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle response transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-subscribe" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle interactions subscription",
+        "operationId" : "PostOracleSubscribe",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new subscription for oracle interactions",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleSubscribe"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/oracle-unsubscribe" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Remove oracle interactions subscriptions",
+        "operationId" : "PostOracleUnsubscribe",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Unsubscribe from oracle interactions notifications",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleSubscribe"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation"
+          },
+          "404" : {
+            "description" : "Oracle or subscription not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
     "/account/pub-key" : {
       "get" : {
         "tags" : [ "internal" ],
@@ -304,6 +531,31 @@
             "schema" : {
               "$ref" : "#/definitions/AccountsBalances"
             }
+          },
+          "403" : {
+            "description" : "Balances not enabled",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/version" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get node's version",
+        "operationId" : "GetVersion",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Version"
+            }
           }
         },
         "security" : [ ]
@@ -322,6 +574,12 @@
             "description" : "successful operation",
             "schema" : {
               "$ref" : "#/definitions/Info"
+            }
+          },
+          "403" : {
+            "description" : "Info not enabled",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           }
         },
@@ -418,6 +676,7 @@
     },
     "Ping" : {
       "type" : "object",
+      "required" : [ "best_hash", "difficulty", "genesis_hash", "source" ],
       "properties" : {
         "source" : {
           "type" : "string"
@@ -443,20 +702,46 @@
         }
       }
     },
-    "Error" : {
-      "type" : "object",
-      "properties" : {
-        "reason" : {
-          "type" : "string"
-        }
-      }
-    },
     "Balance" : {
       "type" : "object",
       "properties" : {
         "balance" : {
           "type" : "integer",
           "format" : "int64"
+        }
+      }
+    },
+    "Tx" : {
+      "type" : "object",
+      "properties" : {
+        "tx" : {
+          "type" : "string"
+        }
+      }
+    },
+    "Transactions" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/definitions/Tx"
+      }
+    },
+    "RegisteredOracles" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/definitions/RegisteredOracles_inner"
+      }
+    },
+    "OracleQuestions" : {
+      "type" : "array",
+      "items" : {
+        "$ref" : "#/definitions/OracleQuestions_inner"
+      }
+    },
+    "OracleSubscribe" : {
+      "type" : "object",
+      "properties" : {
+        "oracle_pub_key" : {
+          "type" : "string"
         }
       }
     },
@@ -476,18 +761,100 @@
         }
       }
     },
-    "Tx" : {
+    "OracleRegisterTx" : {
       "type" : "object",
       "properties" : {
-        "tx" : {
+        "query_format" : {
           "type" : "string"
+        },
+        "response_format" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
+          "$ref" : "#/definitions/TTL"
         }
       }
     },
-    "Transactions" : {
-      "type" : "array",
-      "items" : {
-        "$ref" : "#/definitions/Tx"
+    "OracleQueryTx" : {
+      "type" : "object",
+      "properties" : {
+        "oracle_pubkey" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "query_ttl" : {
+          "$ref" : "#/definitions/TTL"
+        },
+        "response_ttl" : {
+          "$ref" : "#/definitions/RelativeTTL"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "OracleResponseTx" : {
+      "type" : "object",
+      "properties" : {
+        "interaction_id" : {
+          "type" : "string"
+        },
+        "response" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "TTL" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+          "type" : "string",
+          "enum" : [ "delta", "block" ]
+        },
+        "value" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "RelativeTTL" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+          "type" : "string",
+          "enum" : [ "delta" ]
+        },
+        "value" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "OracleInteractionId" : {
+      "type" : "object",
+      "properties" : {
+        "interaction_id" : {
+          "type" : "string"
+        }
       }
     },
     "PubKey" : {
@@ -521,7 +888,7 @@
         }
       }
     },
-    "Info" : {
+    "Version" : {
       "type" : "object",
       "properties" : {
         "version" : {
@@ -532,7 +899,12 @@
         },
         "genesis_hash" : {
           "type" : "string"
-        },
+        }
+      }
+    },
+    "Info" : {
+      "type" : "object",
+      "properties" : {
         "last_30_blocks_time" : {
           "type" : "array",
           "items" : {
@@ -553,6 +925,54 @@
           "format" : "int64"
         },
         "time_delta_to_parent" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "difficulty" : {
+          "type" : "number"
+        }
+      }
+    },
+    "Error" : {
+      "type" : "object",
+      "properties" : {
+        "reason" : {
+          "type" : "string"
+        }
+      }
+    },
+    "RegisteredOracles_inner" : {
+      "properties" : {
+        "address" : {
+          "type" : "string"
+        },
+        "query_format" : {
+          "type" : "string"
+        },
+        "response_format" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "string"
+        },
+        "expires_at" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      }
+    },
+    "OracleQuestions_inner" : {
+      "properties" : {
+        "interaction_id" : {
+          "type" : "string"
+        },
+        "query" : {
+          "type" : "string"
+        },
+        "query_fee" : {
+          "type" : "string"
+        },
+        "expires_at" : {
           "type" : "integer",
           "format" : "int64"
         }

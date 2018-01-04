@@ -88,6 +88,35 @@ verify(Data, Nonce, Evd, Target) when is_list(Evd),
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
+%% Options handling
+%%------------------------------------------------------------------------------
+
+get_options() ->
+    {_, _, _} = aeu_env:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV).
+
+get_miner_options() ->
+    case
+        {aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"executable">>]),
+         aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"extra_args">>])
+        }
+    of
+        {{ok, BinB}, {ok, ExtraArgsB}} ->
+            {binary_to_list(BinB), binary_to_list(ExtraArgsB)};
+        {undefined, undefined} -> %% Both or neither - enforced by user config schema.
+            {Bin, ExtraArgs, _} = get_options(),
+            {Bin, ExtraArgs}
+    end.
+
+get_node_bits() ->
+    case aeu_env:user_config([<<"mining">>, <<"cuckoo">>, <<"miner">>, <<"node_bits">>]) of
+        {ok, NodeBits} ->
+            NodeBits;
+        undefined ->
+            {_, _, NodeBits} = get_options(),
+            NodeBits
+    end.
+
+%%------------------------------------------------------------------------------
 %% Proof of Work generation: use the hash provided
 %%------------------------------------------------------------------------------
 -spec generate_int(Hash :: binary(), Nonce :: aec_pow:nonce(), Target :: aec_pow:sci_int()) ->
@@ -117,9 +146,13 @@ generate_int(Hash, Nonce, Target) ->
                           {'ok', Solution :: pow_cuckoo_solution()} |
                           {'error', term()}.
 generate_int(Header, Target) ->
+    {MinerBin, MinerExtraArgs} = get_miner_options(),
+    generate_int(Header, Target, MinerBin, MinerExtraArgs).
+
+generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
     BinDir = aecuckoo:bin_dir(),
-    {Exe, Extra, _} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
-    Cmd = lists:concat([ld_lib_env(), " ",  "./", Exe, " -h ", Header, " ", Extra]),
+    Cmd = lists:concat([ld_lib_env(), " ",  "./", MinerBin,
+                        " -h ", Header, " ", MinerExtraArgs]),
     ?info("Executing cmd: ~p", [Cmd]),
     Old = process_flag(trap_exit, true),
     try exec:run(Cmd,
@@ -161,15 +194,16 @@ generate_int(Header, Target) ->
 -spec verify_proof(Hash :: binary(), Nonce :: aec_pow:nonce(),
                    Solution :: aec_pow:pow_evidence()) -> boolean().
 verify_proof(Hash, Nonce, Solution) ->
-    {_Exe, _Extra, Size} = application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV),
+    verify_proof(Hash, Nonce, Solution, get_node_bits()).
 
+verify_proof(Hash, Nonce, Solution, NodeBits) ->
     %% Cuckoo has an 80 byte header, we have to use that as well
     %% packed Hash + Nonce = 56 bytes, add 24 bytes of 0:s
     Header0 = pack_header_and_nonce(Hash, Nonce),
     Header = <<(list_to_binary(Header0))/binary, 0:(8*24)>>,
-    {K0, K1} = aeu_siphash24:create_keypair(Header),
+    {K0, K1, K2, K3} = aeu_siphash24:create_keys(Header),
 
-    EdgeMask = (1 bsl (Size - 1)) - 1,
+    EdgeMask = (1 bsl (NodeBits - 1)) - 1,
     try
         %% Generate Uv pairs representing endpoints by hashing the proof
         %% XOR points together: for a closed cycle they must match somewhere
@@ -181,8 +215,8 @@ verify_proof(Hash, Nonce, Solution) ->
                  (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
                       throw({?POW_TOO_SMALL, N, PrevN});
                  (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
-                      Uv0 = sipnode(K0, K1, N, 0, EdgeMask),
-                      Uv1 = sipnode(K0, K1, N, 1, EdgeMask),
+                      Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
+                      Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
                       {Xor0C bxor Uv0, Xor1C bxor Uv1, N, [{Uv0, Uv1} | UvsC]}
                end, {16#0, 16#0, -1, []}, Solution),
         case Xor0 bor Xor1 of
@@ -202,8 +236,8 @@ verify_proof(Hash, Nonce, Solution) ->
             false
     end.
 
-sipnode(K0, K1, Proof, UOrV, EdgeMask) ->
-    SipHash = aeu_siphash24:hash(K0, K1, 2*Proof + UOrV) band EdgeMask,
+sipnode(K0, K1, K2, K3, Proof, UOrV, EdgeMask) ->
+    SipHash = aeu_siphash24:hash(K0, K1, K2, K3, 2*Proof + UOrV) band EdgeMask,
     (SipHash bsl 1) bor UOrV.
 
 check_cycle(Nodes0) ->
@@ -409,17 +443,16 @@ stop_execution(OsPid) ->
 %%   control accordingly.
 %% @end
 %%------------------------------------------------------------------------------
--spec get_node_size() -> integer().
+-spec get_node_size() -> non_neg_integer().
 get_node_size() ->
-    case application:get_env(aecore, aec_pow_cuckoo, ?DEFAULT_CUCKOO_ENV) of
-        %% Refs:
-        %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
-        %% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/cuckoo.h#L26-L30
-        {_, _, L} when is_integer(L), L > 32 ->
-            8;
-        {_, _, L} when is_integer(L), L > 0 ->
-            4
-    end.
+    node_size(get_node_bits()).
+
+%% Refs:
+%% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/Makefile#L214-L215
+%% * https://github.com/tromp/cuckoo/blob/488c03f5dbbfdac6d2d3a7e1d0746c9a7dafc48f/src/cuckoo.h#L26-L30
+-spec node_size(non_neg_integer()) -> non_neg_integer().
+node_size(NodeBits) when is_integer(NodeBits), NodeBits > 32 -> 8;
+node_size(NodeBits) when is_integer(NodeBits), NodeBits >  0 -> 4.
 
 %%------------------------------------------------------------------------------
 %% White paper, section 9: rather than adjusting the nodes/edges ratio, a
@@ -429,7 +462,9 @@ get_node_size() ->
 -spec test_target(Soln :: pow_cuckoo_solution(), Target :: aec_pow:sci_int()) ->
                              boolean().
 test_target(Soln, Target) ->
-    NodeSize = get_node_size(),
+    test_target(Soln, Target, get_node_size()).
+
+test_target(Soln, Target, NodeSize) ->
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
     Hash = aec_sha256:hash(Bin),
     aec_pow:test_target(Hash, Target).

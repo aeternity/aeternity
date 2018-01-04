@@ -1,2 +1,1 @@
 -define(HASH_BYTES, 32).
--define(HASH_BITS, 256).

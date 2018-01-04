@@ -41,7 +41,11 @@ paths:
           description: Sample response
           schema:
             $ref: '#/definitions/Ping'
-        '404':
+        '403':
+          description: Not allowed (node is blocked) 
+          schema:
+            $ref: '#/definitions/Error'
+        '409':
           description: Different genesis blocks
           schema:
             $ref: '#/definitions/Error'
@@ -110,6 +114,10 @@ paths:
           description: The block being found  
           schema:
             $ref: '#/definitions/Block'
+        '400':
+          description: Invalid hash 
+          schema:
+            $ref: '#/definitions/Error'
         '404':
           description: Block not found
           schema:
@@ -135,7 +143,7 @@ paths:
       responses:
         '200':
           description: successful operation
-        '404':
+        '400':
           description: Block or header validation error
           schema:
             $ref: '#/definitions/Error'
@@ -157,10 +165,14 @@ paths:
           required: true
           schema:
             $ref: '#/definitions/Tx'
-          responses:
-            '200':
-              description: Successful operation
-          security: []
+      responses:
+        '200':
+          description: Successful operation
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
   /transactions:
     get:
       tags:
@@ -236,6 +248,179 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+  /oracles:
+  ## Not implemented yet, returns HTTP 501 response code
+    get:
+      tags:
+        - internal
+      operationId: GetActiveRegisteredOracles
+      description: 'Get active registered oracles'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Active registered oracles
+          schema:
+            $ref: '#/definitions/RegisteredOracles'
+      security: []
+  /oracle-questions:
+  ## Not implemented yet, returns HTTP 501 response code
+    get:
+      tags:
+        - internal
+      operationId: GetOracleQuestions
+      description: 'Get active oracle questions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: oracle_pub_key
+          description: 'Oracle public key'
+          required: true
+          type : string
+      responses:
+        '200':
+          description: Active oracle questions
+          schema:
+            $ref: '#/definitions/OracleQuestions'
+        '404':
+          description: Oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-register-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleRegisterTx
+      description: 'Create oracle register transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle register transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleRegisterTx'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle register transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-query-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleQueryTx
+      description: 'Create oracle query transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle query transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleQueryTx'
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/OracleInteractionId'
+        '404':
+          description: Oracle query transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-response-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleResponseTx
+      description: 'Create oracle response transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle response transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleResponseTx'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle response transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-subscribe:
+  ## Not implemented yet, returns HTTP 501 response code
+    post:
+      tags:
+        - internal
+      operationId: PostOracleSubscribe
+      description: 'Create oracle interactions subscription'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new subscription for oracle interactions
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /oracle-unsubscribe:
+  ## Not implemented yet, returns HTTP 501 response code
+    post:
+      tags:
+        - internal
+      operationId: PostOracleUnsubscribe
+      description: 'Remove oracle interactions subscriptions'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Unsubscribe from oracle interactions notifications
+          required: true
+          schema:
+            $ref: '#/definitions/OracleSubscribe'
+      responses:
+        '200':
+          description: successful operation
+        '404':
+          description: Oracle or subscription not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
   /account/pub-key:
     get:
       tags:
@@ -275,6 +460,27 @@ paths:
           description: successful operation
           schema:
             $ref: '#/definitions/AccountsBalances'
+        '403':
+          description: Balances not enabled
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /version:
+    get:
+      tags:
+        - external
+      operationId: GetVersion
+      description: 'Get node''s version'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Version'
       security: []
   /info:
     get:
@@ -292,6 +498,10 @@ paths:
           description: successful operation
           schema:
             $ref: '#/definitions/Info'
+        '403':
+          description: Info not enabled
+          schema:
+            $ref: '#/definitions/Error'
       security: []
 
 definitions:
@@ -373,26 +583,15 @@ definitions:
         type: array
         items:
           type: string
-  Error:
-    type: object
-    properties:
-      reason:
-        type: string
+    required:
+    - source
+    - genesis_hash
+    - best_hash
+    - difficulty
   Balance:
     type: object
     properties:
       balance:
-        type: integer
-        format: int64
-  SpendTx:
-    type: object
-    properties:
-      recipient_pubkey:
-        type: string
-      amount:
-        type: integer
-        format: int64
-      fee:
         type: integer
         format: int64
   Tx:
@@ -404,6 +603,117 @@ definitions:
     type: array
     items:
       $ref: '#/definitions/Tx'
+  RegisteredOracles:
+    type: array
+    items:
+      type: object
+      properties:
+        address:
+          type: string
+        query_format:
+          type: string
+        response_format:
+          type: string
+        query_fee:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+  OracleQuestions:
+    type: array
+    items:
+      type: object
+      properties:
+        interaction_id:
+          type: string
+        query:
+          type: string
+        query_fee:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+  OracleSubscribe:
+    type: object
+    properties:
+      oracle_pub_key:
+        type: string
+  SpendTx:
+    type: object
+    properties:
+      recipient_pubkey:
+        type: string
+      amount:
+        type: integer
+        format: int64
+      fee:
+        type: integer
+        format: int64
+  OracleRegisterTx:
+    type: object
+    properties:
+      query_format:
+        type: string
+      response_format:
+        type: string
+      query_fee:
+        type: integer
+        format: int64
+      fee:
+        type: integer
+        format: int64
+      ttl:
+        "$ref": '#/definitions/TTL'
+  OracleQueryTx:
+    type: object
+    properties:
+      oracle_pubkey:
+        type: string
+      query:
+        type: string
+      query_fee:
+        type: integer
+        format: int64
+      query_ttl:
+        "$ref": '#/definitions/TTL'
+      response_ttl:
+        "$ref": '#/definitions/RelativeTTL'
+      fee:
+        type: integer
+        format: int64
+  OracleResponseTx:
+    type: object
+    properties:
+      interaction_id:
+        type: string
+      response:
+        type: string
+      fee:
+        type: integer
+        format: int64
+  TTL:
+    type: object
+    properties:
+      type:
+        type: string
+        enum: ["delta", "block"]
+      value:
+        type: integer
+        format: int64
+  RelativeTTL:
+    type: object
+    properties:
+      type:
+        type: string
+        enum: ["delta"]
+      value:
+        type: integer
+        format: int64
+  OracleInteractionId:
+    type: object
+    properties:
+      interaction_id:
+        type: string
   PubKey:
     type: object
     properties:
@@ -424,7 +734,7 @@ definitions:
       balance:
         type: integer
         format: int64
-  Info:
+  Version:
     type: object
     properties:
       version:
@@ -433,6 +743,9 @@ definitions:
         type: string
       genesis_hash:
         type: string
+  Info:
+    type: object
+    properties:
       last_30_blocks_time:
         type: array
         items:
@@ -449,6 +762,14 @@ definitions:
       time_delta_to_parent:
         type: integer
         format: int64
+      difficulty:
+        type: number
+
+  Error:
+    type: object
+    properties:
+      reason:
+        type: string
 
 externalDocs:
   description: Find out more about Aeternity

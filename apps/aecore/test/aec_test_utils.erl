@@ -15,13 +15,18 @@
         , unmock_block_target_validation/0
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
+        , mock_genesis/0
+        , unmock_genesis/0
         , wait_for_it/2
-        , extend_block_chain/2
+        , extend_block_chain_with_state/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
-        , gen_block_chain/1
-        , gen_block_chain/2
+        , gen_block_chain_with_state/1
+        , gen_blocks_only_chain/1
+        , gen_block_chain_with_state/2
+        , blocks_only_chain/1
         , genesis_block/0
+        , genesis_block_with_state/0
         , preset_accounts/0
         , create_state_tree/0
         , create_state_tree_with_account/1
@@ -31,6 +36,7 @@
         , copy_genesis_dir/2
         , signed_coinbase_tx/0
         , signed_spend_tx/1
+        , fake_start_aehttp/0
         ]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -76,13 +82,22 @@ mock_fast_and_deterministic_cuckoo_pow() ->
     mock_fast_cuckoo_pow({"mean16s-generic", "", 16}).
 
 mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
-    meck:expect(application, get_env, 3,
+    meck:expect(aeu_env, get_env, 3,
                 fun
                     (aecore, aec_pow_cuckoo, _) ->
                        Cfg;
                     (App, Key, Def) ->
                        meck:passthrough([App, Key, Def])
                end).
+
+mock_genesis() ->
+    meck:new(aec_genesis_block_settings, []),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, preset_accounts()),
+    ok.
+
+unmock_genesis() ->
+    meck:unload(aec_genesis_block_settings),
+    ok.
 
 wait_for_it(Fun, Value) ->
     wait_for_it(Fun, Value, 0).
@@ -136,45 +151,57 @@ unmock_block_target_validation() ->
 
 
 genesis_block() ->
-    aec_block_genesis:genesis_block(?PRESET_ACCOUNTS).
+    {B, _} = genesis_block_with_state(),
+    B.
+
+genesis_block_with_state() ->
+    aec_block_genesis:genesis_block_with_state(#{preset_accounts => ?PRESET_ACCOUNTS}).
 
 %% Generic blockchain with only coinbase transactions
-gen_block_chain(Length) ->
-    gen_block_chain(Length, ?PRESET_ACCOUNTS).
-  
-gen_block_chain(Length, PresetAccounts) when Length > 0 ->
+gen_block_chain_with_state(Length) ->
+    gen_block_chain_with_state(Length, ?PRESET_ACCOUNTS).
+
+gen_blocks_only_chain(Length) ->
+    blocks_only_chain(gen_block_chain_with_state(Length)).
+
+gen_block_chain_with_state(Length, PresetAccounts) when Length > 0 ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
-    gen_block_chain(Length, MinerAccount, PresetAccounts, []).
+    gen_block_chain_with_state(Length, MinerAccount, PresetAccounts, []).
 
 
-gen_block_chain(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
-gen_block_chain(N, MinerAccount, PresetAccounts, []) ->
-    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [aec_block_genesis:genesis_block(PresetAccounts)]);
-gen_block_chain(N, MinerAccount, PresetAccounts, [PreviousBlock|_] = Acc) ->
-    Trees = aec_blocks:trees(PreviousBlock),
+gen_block_chain_with_state(0,_MinerAccount, _PresetAccounts, Acc) -> lists:reverse(Acc);
+gen_block_chain_with_state(N, MinerAccount, PresetAccounts, []) ->
+    {B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
+    gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
+gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Txs = [signed_coinbase_tx(MinerAccount)],
-    B = aec_blocks:new(PreviousBlock, Txs, Trees),
-    gen_block_chain(N - 1, MinerAccount, PresetAccounts, [B|Acc]).
+    {B, S} = aec_blocks:new_with_state(PreviousBlock, Txs, Trees),
+    gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
-extend_block_chain(PrevBlock, Data) ->
+extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
     Targets    = maps:get(targets, Data),
     Nonce      = maps:get(nonce, Data, 12345),
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
-    extend_block_chain(PrevBlock, Targets, Timestamps, Nonce, MinerAccount, []).
+    extend_block_chain_with_state(PrevBlock, PrevBlockState, Targets, Timestamps, Nonce, MinerAccount, []).
 
 
-extend_block_chain(_, [], _, _, _, Chain) ->
+extend_block_chain_with_state(_, _, [], _, _, _, Chain) ->
     lists:reverse(Chain);
-extend_block_chain(PrevBlock, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
-    Block = next_block(PrevBlock, Tgt, Ts, Nonce, MinerAcc),
-    extend_block_chain(Block, Tgts, Tss, Nonce, MinerAcc, [Block | Chain]).
+extend_block_chain_with_state(PrevBlock, PrevBlockState, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
+    {Block, BlockState} = next_block_with_state(PrevBlock, PrevBlockState, Tgt, Ts, Nonce, MinerAcc),
+    extend_block_chain_with_state(Block, BlockState, Tgts, Tss, Nonce, MinerAcc, [{Block, BlockState} | Chain]).
 
-next_block(PrevBlock, Target, Time0, Nonce, MinerAcc) ->
-    Trees = aec_blocks:trees(PrevBlock),
-    B = aec_blocks:new(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
-    B#block{ target = Target, nonce  = Nonce,
-             time   = case Time0 of undefined -> B#block.time; _ -> Time0 end }.
+
+blocks_only_chain(Chain) ->
+    lists:map(fun({B, _S}) -> B end, Chain).
+
+
+next_block_with_state(PrevBlock, Trees, Target, Time0, Nonce, MinerAcc) ->
+    {B, S} = aec_blocks:new_with_state(PrevBlock, [signed_coinbase_tx(MinerAcc)], Trees),
+    {B#block{ target = Target, nonce  = Nonce,
+              time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
+     S}.
 
 signed_coinbase_tx() ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
@@ -250,24 +277,24 @@ create_temp_key_dir() ->
 mktempd({unix, _}) ->
     lib:nonl(?cmd("mktemp -d")).
 
+fake_start_aehttp() ->
+    gproc:reg({n,l,{epoch, app, aehttp}}).
+
+
 %%%=============================================================================
 %%% State trees setup
 %%%=============================================================================
 
 create_state_tree() ->
-    {ok, AccountsTree} = aec_accounts:empty(),
-    StateTrees0 = #trees{},
-    aec_trees:set_accounts(StateTrees0, AccountsTree).
+    aec_trees:new().
 
 create_state_tree_with_account(Account) ->
     create_state_tree_with_accounts([Account]).
 
 create_state_tree_with_accounts(Accounts) ->
-    {ok, AccountsTree0} = aec_accounts:empty(),
-    AccountsTree1 = lists:foldl(
-                      fun(Account, Tree0) ->
-                              {ok, Tree} = aec_accounts:put(Account, Tree0),
-                              Tree
-                      end, AccountsTree0, Accounts),
-    StateTrees0 = #trees{},
+    StateTrees0 = create_state_tree(),
+    AccountsTree0 = aec_trees:accounts(StateTrees0),
+    AccountsTree1 = lists:foldl(fun aec_accounts_trees:enter/2,
+                                AccountsTree0, Accounts),
     aec_trees:set_accounts(StateTrees0, AccountsTree1).
+

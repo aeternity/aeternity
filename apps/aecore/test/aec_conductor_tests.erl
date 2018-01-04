@@ -12,7 +12,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_conductor).
 
@@ -23,8 +23,7 @@ setup_minimal() ->
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
-    meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, aec_test_utils:preset_accounts()),
+    aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
@@ -38,19 +37,18 @@ teardown_minimal(TmpKeysDir) ->
     _  = flush_gproc(),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    meck:unload(aec_genesis_block_settings),
+    aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 
 setup_cuckoo_pow() ->
-    meck:new(application, [unstick, passthrough]),
+    ok = meck:new(aeu_env, [passthrough]),
     aec_test_utils:mock_fast_cuckoo_pow(),
     ok = application:ensure_started(erlexec).
 
 teardown_cuckoo_pow(_) ->
-    meck:unload(application),
-    ok.
+    ok = meck:unload(aeu_env).
 
 setup_common() ->
     setup_cuckoo_pow(),
@@ -120,8 +118,8 @@ miner_timeout_test_() ->
     {foreach,
      fun() ->
              ok = meck:new(aec_pow_cuckoo, [passthrough]),
-             ok = meck:new(application, [unstick, passthrough]),
-             ok = meck:expect(application, get_env, 3,
+             ok = meck:new(aeu_env, [passthrough]),
+             ok = meck:expect(aeu_env, get_env, 3,
                               fun
                                   (aecore, mining_attempt_timeout, _) ->
                                       500;
@@ -135,7 +133,7 @@ miner_timeout_test_() ->
      fun(TmpKeysDir) ->
              ok = ?TEST_MODULE:stop(),
              teardown_minimal(TmpKeysDir),
-             ok = meck:unload(application),
+             ok = meck:unload(aeu_env),
              ok = meck:unload(aec_pow_cuckoo)
      end,
      [{"Time out miner that does not return", fun test_time_out_miner/0}
@@ -198,7 +196,8 @@ chain_test_() ->
       {"Start mining add a block.", fun test_start_mining_add_block/0},
       {"Test preemption of mining", fun test_preemption/0},
       {"Test chain api"           , fun test_chain_api/0},
-      {"Test block publishing"    , fun test_block_publishing/0}
+      {"Test chain genesis state" , fun test_chain_genesis_state/0},
+      {timeout, 20, {"Test block publishing"    , fun test_block_publishing/0}}
      ]}.
 
 test_start_mining_add_block() ->
@@ -206,7 +205,7 @@ test_start_mining_add_block() ->
     assert_stopped_and_genesis_at_top(),
 
     ?TEST_MODULE:start_mining(),
-    [_GB, B1, B2] = aec_test_utils:gen_block_chain(3),
+    [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     BH2 = aec_blocks:to_header(B2),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
     ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
@@ -219,7 +218,7 @@ test_preemption() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    Chain = aec_test_utils:gen_block_chain(7),
+    Chain = aec_test_utils:gen_blocks_only_chain(7),
     {Chain1, Chain2} = lists:split(3, Chain),
     Top1 = lists:last(Chain1),
     Top2 = lists:last(Chain2),
@@ -268,7 +267,7 @@ test_chain_api() ->
     ?assertMatch(#header{}, ?TEST_MODULE:top_header()),
 
     %% Seed the server with a chain
-    [_, B1, B2] = aec_test_utils:gen_block_chain(3),
+    [_, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     TopBlock = B2,
     TopHeader = aec_blocks:to_header(TopBlock),
     TopHash = block_hash(TopBlock),
@@ -297,6 +296,44 @@ test_chain_api() ->
     ?assertEqual(false, ?TEST_MODULE:has_block(FakeHash)),
 
     ?assertMatch({ok, F} when is_float(F), ?TEST_MODULE:get_total_difficulty()),
+
+    %% Check the chain state functions
+    ?assertMatch({ok, [{_,_} | _]},
+                 ?TEST_MODULE:get_all_accounts_balances(TopHash)),
+    ?assertMatch(?error_atom, ?TEST_MODULE:get_all_accounts_balances(FakeHash)),
+    {ok, [{PK, Balance} | _]} = ?TEST_MODULE:get_all_accounts_balances(TopHash),
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
+    ok.
+
+test_chain_genesis_state() ->
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
+
+    {GB, GBS} = aec_test_utils:genesis_block_with_state(),
+    GH = aec_blocks:to_header(GB),
+    GHH = header_hash(GH),
+
+    %% Check genesis block in chain, including state
+    ?assertEqual(GHH, ?TEST_MODULE:genesis_hash()),
+    ?assertEqual({ok, GH}, ?TEST_MODULE:genesis_header()),
+    ?assertEqual({ok, GB}, ?TEST_MODULE:genesis_block()),
+    ?assertMatch({ok, #trees{}}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+    ?assertEqual({ok, GBS}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+
+    %% Check that genesis is top
+    ?assertEqual(GHH, ?TEST_MODULE:top_header_hash()),
+    ?assertEqual(GHH, ?TEST_MODULE:top_block_hash()),
+
+    %% Check chain state functions
+    GenesisAccountsBalances = aec_test_utils:preset_accounts(),
+    ?assertEqual({ok, GenesisAccountsBalances},
+                 ?TEST_MODULE:get_all_accounts_balances(GHH)),
+    [{PK, Balance} | _] = GenesisAccountsBalances,
+    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+                 ?TEST_MODULE:get_account(PK)),
+    ?assertEqual(none, ?TEST_MODULE:get_account(<<"I am a fake public key">>)),
     ok.
 
 test_block_publishing() ->
@@ -304,7 +341,7 @@ test_block_publishing() ->
     assert_stopped_and_genesis_at_top(),
 
     %% Generate a chain
-    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_block_chain(6),
+    [_B0, B1, B2, B3, B4, B5] = Chain = aec_test_utils:gen_blocks_only_chain(6),
     [_H0, H1, H2, H3, H4, H5] = [block_hash(B) || B <- Chain],
 
     aec_events:subscribe(top_changed),

@@ -7,24 +7,23 @@
 -module(aec_sync).
 
 -behaviour(gen_server).
--compile({parse_transform, lager_transform}).
--include("peers.hrl").
 
 -import(aeu_debug, [pp/1]).
 
 %% API
--export([connect_peer/1
+-export([connect_peer/1,
+         start_link/0
         ]).
 
--export([subset_size/0,
-         set_subset_size/1]).
-
+%% API called from strongly connected component aec_peers
 -export([schedule_ping/2]).
+
+%% API called from both aehttp_dispatch_ext and aeu_requests
 -export([local_ping_object/0,
          compare_ping_objects/2]).
 
 %% gen_server callbacks
--export([start_link/0, init/1, handle_call/3, handle_cast/2,
+-export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2,  terminate/2, code_change/3]).
 
 %% Callback for jobs producer queue
@@ -43,15 +42,6 @@
 -spec connect_peer(http_uri:uri()) -> ok.
 connect_peer(Uri) ->
     gen_server:cast(?MODULE, {connect, Uri}).
-
--spec subset_size() -> non_neg_integer().
-subset_size() ->
-    gen_server:call(?MODULE, subset_size).
-
--spec set_subset_size(Sz :: non_neg_integer()) ->
-                             PrevSz when PrevSz :: non_neg_integer().
-set_subset_size(Sz) when is_integer(Sz), Sz > 0 ->
-    gen_server:call(?MODULE, {set_subset_size, Sz}).
 
 %% Builds a 'Ping' object for the initial ping.
 %% The 'Ping' object contains the following data:
@@ -90,37 +80,35 @@ local_ping_object() ->
 compare_ping_objects(Local, Remote) ->
     lager:debug("Compare, Local: ~p; Remote: ~p", [pp(Local), pp(Remote)]),
     Src = maps:get(<<"source">>, Remote),
-    Res = case {maps:get(<<"genesis_hash">>, Local),
-                maps:get(<<"genesis_hash">>, Remote)} of
-              {G, G} ->
-                  lager:debug("genesis blocks match", []),
-                  %% same genesis block - continue
-                  case {maps:get(<<"best_hash">>, Local),
-                        maps:get(<<"best_hash">>, Remote)} of
-                      {T, T} ->
-                          lager:debug("same top blocks", []),
-                          %% headers in sync; check missing blocks
-                          %% Note that in this case, both will publish
-                          %% events as if they're the server (basically
-                          %% meaning that they were tied for server position).
-                          server_get_missing_blocks(Src);
-                      _ ->
-                          Dl = maps:get(<<"difficulty">>, Local),
-                          Dr = maps:get(<<"difficulty">>, Remote),
-                          if Dl > Dr ->
-                                  lager:debug("Our difficulty is higher", []),
-                                  server_get_missing_blocks(Src),
-                                  ok;
-                             true ->
-                                  start_sync(Src)
-                          end
-                  end,
-                  ok;
-              _ ->
-                  {error, different_genesis_blocks}
-          end,
-    fetch_mempool(Src),
-    Res.
+    case {maps:get(<<"genesis_hash">>, Local),
+          maps:get(<<"genesis_hash">>, Remote)} of
+        {G, G} ->
+            lager:debug("genesis blocks match", []),
+            %% same genesis block - continue
+            case {maps:get(<<"best_hash">>, Local),
+                  maps:get(<<"best_hash">>, Remote)} of
+                {T, T} ->
+                    lager:debug("same top blocks", []),
+                    %% headers in sync; check missing blocks
+                    %% Note that in this case, both will publish
+                    %% events as if they're the server (basically
+                    %% meaning that they were tied for server position).
+                    server_get_missing_blocks(Src);
+                _ ->
+                    Dl = maps:get(<<"difficulty">>, Local),
+                    Dr = maps:get(<<"difficulty">>, Remote),
+                    if Dl > Dr ->
+                        lager:debug("Our difficulty is higher", []),
+                        server_get_missing_blocks(Src);
+                       true ->
+                         start_sync(Src)
+                    end
+             end,
+             fetch_mempool(Src),
+             ok;
+        _ ->
+             {error, different_genesis_blocks}
+    end.
 
 start_sync(PeerUri) ->
     gen_server:cast(?MODULE, {start_sync, PeerUri}).
@@ -138,11 +126,7 @@ schedule_ping(PeerUri, PingF) when is_function(PingF, 1) ->
 %%% gen_server functions
 %%%=============================================================================
 
-%% The 'subset_size' attribute is meant to denote the number of peers
-%% to use (in random order) for broadcasting blocks. It's not clear that
-%% using anything less than 'all' peers would be a good idea.
--record(state, {subset_size = all         :: all | non_neg_integer(),
-                peers = gb_trees:empty(),
+-record(state, {peers = gb_trees:empty(),
                 pings = gb_trees:empty()}).
 
 start_link() ->
@@ -158,11 +142,6 @@ init([]) ->
     aec_peers:add_and_ping_peers(Peers),
     {ok, #state{}}.
 
-handle_call(subset_size, _From, #state{subset_size = Sz} = State) ->
-    {reply, Sz, State};
-handle_call({set_subset_size, Sz}, _From, #state{subset_size = PrevSz} = State)
-  when is_integer(Sz), Sz > 0 ->
-    {reply, PrevSz, State#state{subset_size = Sz}};
 handle_call(_, _From, State) ->
     {reply, error, State}.
 
@@ -187,13 +166,13 @@ handle_cast(_, State) ->
 handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     case Event of
         block_created   -> enqueue(forward, #{status => created,
-                                              block => Info}, State);
+                                              block => Info});
         top_changed     -> enqueue(forward, #{status => top_changed,
-                                              block => Info}, State);
+                                              block => Info});
         tx_created      -> enqueue(forward, #{status => created,
-                                              tx => Info}, State);
+                                              tx => Info});
         tx_received     -> enqueue(forward, #{status => received,
-                                              tx => Info}, State);
+                                              tx => Info});
         _ -> ignore
     end,
     {noreply, State};
@@ -216,8 +195,7 @@ sync_worker() ->
     process_job(Res).
 
 %% Note: we always dequeue exactly ONE job
-process_job([{T, Job}]) ->
-    reg_worker(Job, T),
+process_job([{_T, Job}]) ->
     case Job of
         {forward, #{block := Block}, Peer} ->
             do_forward_block(Block, Peer);
@@ -235,16 +213,8 @@ process_job([{T, Job}]) ->
             lager:debug("unknown job", [])
     end.
 
-enqueue(Op, Msg, State) ->
-    case aec_peers:get_random(State#state.subset_size) of
-        [] ->
-            ok;
-        [_|_] = Peers ->
-            [enqueue_recv({Op, Msg, Peer}) || Peer <- Peers]
-    end.
-
-enqueue_recv(Job) ->
-    jobs:enqueue(sync_jobs, Job).
+enqueue(Op, Msg) ->
+    [ jobs:enqueue(sync_jobs, {Op, Msg, Peer}) || Peer <- aec_peers:get_random(all) ].
 
 do_forward_block(Block, Peer) ->
     Res = aeu_requests:send_block(Peer, Block),
@@ -395,12 +365,6 @@ do_fetch_mempool(PeerUri) ->
                         [PeerUri, Other]),
             Other
     end.
-
-reg_worker(Job, T) ->
-    gproc:reg(worker_prop(Job), T).
-
-worker_prop(Job) ->
-    {p, l, {?MODULE, worker, Job}}.
 
 %%%=============================================================================
 %%% Internal functions

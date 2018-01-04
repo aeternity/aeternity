@@ -3,8 +3,6 @@
 %%% @doc
 %%%   Unit tests for the aec_pow_cuckoo module
 %%% @end
-%%% @TODO Test negative case of verification of PoW: Attempt to verify wrong solution for a nonce that has a solution.
-%%% @TODO Test negative case of verification of PoW: Attempt to verify nonce that does not have a solution (providing a dummy solution).
 %%%=============================================================================
 -module(aec_pow_cuckoo_tests).
 
@@ -18,27 +16,28 @@
 
 -define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
 
+-define(TEST_HIGH_NONCE, 82). %% Nonce with solution with high target.
+
 pow_test_() ->
     {setup,
      fun() ->
-             meck:new(application, [unstick, passthrough]),
+             ok = meck:new(aeu_env, [passthrough]),
              aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
              ok = application:ensure_started(erlexec)
      end,
      fun(_) ->
-             meck:unload(application)
+             ok = meck:unload(aeu_env)
      end,
      [{"Generate with a winning nonce and high target threshold, verify it",
        {timeout, 60,
         fun() ->
                 Target = ?HIGHEST_TARGET_SCI,
-                Nonce = 33,
+                Nonce = ?TEST_HIGH_NONCE,
                 Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 {ok, {Nonce, Soln}} = Res,
                 ?assertMatch(L when length(L) == 42, Soln),
 
                 %% verify the nonce and the solution
-                {ok, {Nonce, Soln}} = Res,
                 Res2 = ?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln, Target),
                 ?assert(Res2)
         end}
@@ -47,7 +46,7 @@ pow_test_() ->
        {timeout, 90,
         fun() ->
                 Target = 16#01010000,
-                Nonce = 33,
+                Nonce = ?TEST_HIGH_NONCE,
                 Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
                 ?assertEqual({error, no_solution}, Res),
 
@@ -63,7 +62,31 @@ pow_test_() ->
                 %% nonce) with the low target threshold (shall fail).
                 ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, Soln2, Target))
         end}
-      }
+      },
+      {"Attempt to verify wrong solution for nonce that has a solution shall fail",
+       fun() ->
+               Target = ?HIGHEST_TARGET_SCI,
+               Nonce = ?TEST_HIGH_NONCE,
+               Res = ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce),
+               {ok, {Nonce, Soln}} = Res,
+               ?assertMatch(L when length(L) == 42, Soln),
+
+               WrongSoln = lists:seq(0, 41),
+               ?assertMatch(L when length(L) == 42, WrongSoln),
+               ?assertNotEqual(Soln, WrongSoln),
+               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, WrongSoln, Target))
+       end},
+      {"Attempt to verify nonce that does not have a solution (providing a dummy solution) shall fail",
+       fun() ->
+               Target = ?HIGHEST_TARGET_SCI,
+               Nonce = 1,
+               ?assertMatch({error, no_solution},
+                            ?TEST_MODULE:generate(?TEST_BIN, Target, Nonce)),
+
+               DummySoln = lists:seq(0, 41),
+               ?assertMatch(L when length(L) == 42, DummySoln),
+               ?assertNot(?TEST_MODULE:verify(?TEST_BIN, Nonce, DummySoln, Target))
+       end}
      ]
     }.
 

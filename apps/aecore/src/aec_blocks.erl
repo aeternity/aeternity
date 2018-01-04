@@ -1,17 +1,22 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%%-------------------------------------------------------------------
+
 -module(aec_blocks).
 
 %% API
 -export([prev_hash/1,
          height/1,
-         trees/1,
          target/1,
          txs/1,
+         txs_hash/1,
          difficulty/1,
          time_in_msecs/1,
+         pow/1,
          set_pow/3,
-         set_trees/2,
          set_target/2,
          new/3,
+         new_with_state/3,
          to_header/1,
          serialize_for_network/1,
          deserialize_from_network/1,
@@ -28,18 +33,16 @@
 -compile([export_all, nowarn_export_all]).
 -endif.
 
--export_type([block_serialized_for_network/0,
-              block_deserialized_from_network/0]).
+-export_type([block_serialized_for_network/0]).
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("txs.hrl").
+-include("core_txs.hrl").
 
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
 -type block_serialized_for_network() :: binary().
--type block_deserialized_from_network() :: #block{trees :: DummyTrees::trees()}.
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
@@ -48,10 +51,6 @@ prev_hash(Block) ->
 -spec height(block()) -> height().
 height(Block) ->
     Block#block.height.
-
--spec trees(block()) -> trees().
-trees(Block) ->
-    Block#block.trees.
 
 -spec target(block()) -> integer().
 target(Block) ->
@@ -74,10 +73,9 @@ set_pow(Block, Nonce, Evd) ->
     Block#block{nonce = Nonce,
                 pow_evidence = Evd}.
 
--spec set_trees(block(), aec_trees:trees()) -> block().
-set_trees(Block, Trees) ->
-    Block#block{trees = Trees}.
-
+-spec pow(block()) -> aec_pow:pow_evidence().
+pow(Block) ->
+    Block#block.pow_evidence.
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
@@ -87,8 +85,17 @@ set_target(Block, Target) ->
 txs(Block) ->
     Block#block.txs.
 
+-spec txs_hash(block()) -> binary().
+txs_hash(Block) ->
+    Block#block.txs_hash.
+
 -spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
+    {B, _} = new_with_state(LastBlock, Txs, Trees0),
+    B.
+
+-spec new_with_state(block(), list(aec_tx_sign:signed_tx()), trees()) -> {block(), trees()}.
+new_with_state(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
     Height = LastBlockHeight + 1,
@@ -99,17 +106,17 @@ new(LastBlock, Txs, Trees0) ->
     Txs = aec_tx:filter_out_invalid_signatures(Txs),
 
     {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
-    {ok, TxsTree} = aec_txs_trees:new(Txs1),
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
-    #block{height = Height,
-           prev_hash = LastBlockHeaderHash,
-           root_hash = aec_trees:all_trees_hash(Trees),
-           trees = Trees,
-           txs_hash = TxsRootHash,
-           txs = Txs1,
-           target = target(LastBlock),
-           time = aeu_time:now_in_msecs(),
-           version = ?CURRENT_BLOCK_VERSION}.
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
+    NewBlock =
+        #block{height = Height,
+               prev_hash = LastBlockHeaderHash,
+               root_hash = aec_trees:hash(Trees),
+               txs_hash = TxsRootHash,
+               txs = Txs1,
+               target = target(LastBlock),
+               time = aeu_time:now_in_msecs(),
+               version = ?CURRENT_BLOCK_VERSION},
+    {NewBlock, Trees}.
 
 -spec to_header(block()) -> header().
 to_header(#block{height = Height,
@@ -131,10 +138,7 @@ to_header(#block{height = Height,
             pow_evidence = Evd,
             version = Version}.
 
--spec serialize_for_network(BlockInternalRepresentation) ->
-                                   {ok, block_serialized_for_network()} when
-      BlockInternalRepresentation :: block()
-                                   | block_deserialized_from_network().
+-spec serialize_for_network(block()) -> {ok, block_serialized_for_network()}.
 serialize_for_network(B = #block{}) ->
     {ok, jsx:encode(serialize_to_map(B))}.
 
@@ -152,7 +156,7 @@ serialize_to_map(B = #block{}) ->
      }.
 
 serialize_tx(Tx) ->
-    #{tx => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
+    #{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
 
 deserialize_tx(#{<<"tx">> := Bin}) ->
     aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).
@@ -211,13 +215,12 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
 deserialize_from_store(_) -> false.
 
 
--spec deserialize_from_network(block_serialized_for_network()) ->
-                                      {ok, block_deserialized_from_network()}.
+-spec deserialize_from_network(block_serialized_for_network()) -> {ok, block()}.
 deserialize_from_network(B) when is_binary(B) ->
     deserialize_from_map(jsx:decode(B, [return_maps])).
 
 deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
-                                                   Nonce >= ?MAX_NONCE ->
+                                                   Nonce > ?MAX_NONCE ->
     %% Prevent forging a solution without performing actual work by prefixing digits
     %% to a valid nonce (produces valid PoW after truncating to the allowed range)
     {error, bad_nonce};
@@ -277,8 +280,7 @@ validate_coinbase_txs_count(#block{txs = Txs}) ->
 -spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
 validate_txs_hash(#block{txs = Txs,
                          txs_hash = BlockTxsHash}) ->
-    {ok, TxsTree} = aec_txs_trees:new(Txs),
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree),
+    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs)),
     case TxsRootHash of
         BlockTxsHash ->
             ok;

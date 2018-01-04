@@ -24,6 +24,9 @@
         , get_missing_block_hashes/1
         , get_top_30_blocks_time_summary/1
         , get_top_block/1
+        , get_block_state/2
+        , get_account/2
+        , get_all_accounts_balances/2
         , get_top_block_hash/1
         , get_top_header/1
         , get_top_header_hash/1
@@ -44,7 +47,7 @@
 init(State) ->
     case aec_persistence:get_chain() of
         [] ->
-            GB = aec_block_genesis:genesis_block(),
+            {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
             State1 = State#state{chain_state = aec_chain_state:new()},
             {ok, State2} = insert_block(GB, State1),
             State2;
@@ -77,7 +80,7 @@ common_ancestor(Hash1, Hash2, State) ->
 
 get_block(Hash, State) ->
     case aec_chain_state:get_block(Hash, State#state.chain_state) of
-        {ok, Res} -> {ok, Res};
+        {ok, _} = Res -> Res;
         error -> {error, 'block_not_found'}
     end.
 
@@ -101,6 +104,15 @@ get_top_30_blocks_time_summary(State) ->
 
 get_top_block(State) ->
     aec_chain_state:top_block(State#state.chain_state).
+
+get_block_state(Hash, State) ->
+    aec_chain_state:get_block_state(Hash, State#state.chain_state).
+
+get_account(Pubkey, State) ->
+    aec_chain_state:account(Pubkey, State#state.chain_state).
+
+get_all_accounts_balances(Hash, State) ->
+    aec_chain_state:all_accounts_balances(Hash, State#state.chain_state).
 
 get_top_block_hash(State) ->
     aec_chain_state:top_block_hash(State#state.chain_state).

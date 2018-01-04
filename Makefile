@@ -17,12 +17,7 @@ EUNIT_TEST_FLAGS += --module=$(TEST)
 endif
 
 PYTHON_DIR = py
-PYTHON_BIN = $(PYTHON_DIR)/bin
-NOSE = $(PYTHON_BIN)/nosetests
-PYTHON = $(PYTHON_BIN)/python
 PYTHON_TESTS = $(PYTHON_DIR)/tests
-PIP = $(PYTHON_BIN)/pip
-
 
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
@@ -130,32 +125,30 @@ venv-present:
 	@virtualenv -q $(PYTHON_DIR)
 
 python-env: venv-present
-	@. $(PYTHON_BIN)/activate && $(PIP) -q install -r $(PYTHON_DIR)/requirements.txt 
-
-python-tests:
-	@$(NOSE) --nocapture -c $(PYTHON_TESTS)/nose.cfg $(PYTHON_TESTS)
+	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
 python-ws-test:
-	@$(PYTHON) $(PYTHON_TESTS)/ws_client.py --port 3114 --log INFO --handler ws_logic
+	( cd $(PYTHON_DIR) && $(MAKE) websocket-test; )
 
-python-integration-tests:
-	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/
+python-uats:
+	( cd $(PYTHON_DIR) && $(MAKE) uats; )
 
-python-single-integration-test:
-	@$(NOSE)  --nocapture -c $(PYTHON_TESTS)/nose.cfg --tc-file $(PYTHON_TESTS)/integration/setup.yaml --tc-format yaml $(PYTHON_TESTS)/integration/test_$(TEST_NAME).py
+python-single-uat:
+	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
-release-integration-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --blocks=100 --version=$(VER)
-
-python-download-chain:
-	@$(PYTHON) $(PYTHON_TESTS)/chain_downloader.py --host=localhost --port=3013 --export_file=$(PYTHON_TESTS)/integration/data/bchain.txt
+python-release-test:
+	( cd $(PYTHON_DIR) && TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
 
 swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
+	( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
 	@rm -fr $(SWTEMP)
+
+swagger-docs:
+	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
 swagger-python: config/swagger.yaml
 	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
@@ -176,6 +169,7 @@ clean:
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
+	( cd $(HTTP_APP) && $(MAKE) distclean; )
 
 multi-build: dev1-build
 	@rm -rf _build/dev2 _build/dev3
