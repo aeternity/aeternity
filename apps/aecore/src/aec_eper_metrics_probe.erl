@@ -30,8 +30,7 @@
 ad_hoc_spec() ->
     [{module, ?MODULE},
      {type, probe},
-     {cache, 5000},
-     {options, []}].
+     {cache, 5000}].
 
 -spec behaviour() -> exometer:behaviour().
 behaviour() ->
