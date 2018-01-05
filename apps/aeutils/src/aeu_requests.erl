@@ -3,7 +3,7 @@
 %% API
 -export([ping/1,
          top/1,
-         block/2,
+         get_block/2,
          transactions/1,
          send_tx/2,
          send_block/2,
@@ -18,14 +18,13 @@
 
 -spec ping(aec_peers:peer()) -> response(map()).
 ping(Peer) ->
-    Req = "ping",
     Uri = aec_peers:uri(Peer),
     #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
     Peers = [iolist_to_binary(aec_peers:uri(P))
              || P <- aec_peers:get_random(Share, [Peer])],
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = PingObj0#{<<"peers">> => Peers},
-    Response = process_request(Peer, post, Req, PingObj),
+    Response = process_request(Uri, post, "ping", PingObj),
     case Response of
         {ok, #{<<"reason">> := Reason}} ->
             lager:debug("Got an error return: Reason = ~p", [Reason]),
@@ -42,20 +41,17 @@ ping(Peer) ->
             {error, Reason};
         {ok, Map} ->
             lager:debug("ping response (~p): ~p", [Uri, pp(Map)]),
-            case aec_sync:compare_ping_objects(PingObj, Map) of
-                ok ->  
-                    check_returned_source(Map, list_to_binary(aec_peers:uri(Peer))),
-                    {ok, Map};
-                Error ->
-                  Error
+            case aec_sync:compare_ping_objects(Uri, PingObj, Map) of
+                ok    -> {ok, Map};
+                Error -> Error
             end;
         {error, _Reason} = Error ->
             Error
     end.
 
--spec top(aec_peers:peer()) -> response(aec_headers:header()).
-top(Peer) ->
-    Response = process_request(Peer, get, "top", []),
+-spec top(http_uri:uri()) -> response(aec_headers:header()).
+top(Uri) ->
+    Response = process_request(Uri, get, "top", []),
     case Response of
         {ok, Data} ->
             {ok, Header} = aec_headers:deserialize_from_map(Data),
@@ -65,10 +61,10 @@ top(Peer) ->
     end.
 
 
--spec block(aec_peers:peer(), binary()) -> response(aec_blocks:block()).
-block(Peer, Hash) ->
+-spec get_block(http_uri:uri(), binary()) -> response(aec_blocks:block()).
+get_block(Uri, Hash) ->
     EncHash = base64:encode(Hash),
-    Response = process_request(Peer, get, "block-by-hash", [{"hash", EncHash}]),
+    Response = process_request(Uri, get, "block-by-hash", [{"hash", EncHash}]),
     case Response of
         {ok, Data} ->
             {ok, Block} = aec_blocks:deserialize_from_map(Data),
@@ -77,9 +73,9 @@ block(Peer, Hash) ->
             Error
     end.
 
--spec transactions(aec_peers:peer()) -> response([aec_tx:signed_tx()]).
-transactions(Peer) ->
-    Response = process_request(Peer, get, "transactions", []),
+-spec transactions(http_uri:uri()) -> response([aec_tx:signed_tx()]).
+transactions(Uri) ->
+    Response = process_request(Uri, get, "transactions", []),
     lager:debug("transactions Response = ~p", [pp(Response)]),
     case tx_response(Response) of
         bad_result -> 
@@ -104,11 +100,11 @@ tx_response({ok, []}) -> [];
 tx_response(_Other) -> bad_result.
 
 
--spec send_block(aec_peers:peer(), aec_blocks:block()) -> response(ok).
-send_block(Peer, Block) ->
+-spec send_block(http_uri:uri(), aec_blocks:block()) -> response(ok).
+send_block(Uri, Block) ->
     BlockSerialized = aec_blocks:serialize_to_map(Block),
     lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
-    Response = process_request(Peer, post, "block", BlockSerialized),
+    Response = process_request(Uri, post, "block", BlockSerialized),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -116,10 +112,10 @@ send_block(Peer, Block) ->
             Error
     end.
 
--spec send_tx(aec_peers:peer(), aec_tx:signed_tx()) -> response(ok).
-send_tx(Peer, SignedTx) ->
+-spec send_tx(http_uri:uri(), aec_tx:signed_tx()) -> response(ok).
+send_tx(Uri, SignedTx) ->
     TxSerialized = base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
-    Response = process_request(Peer, post, "tx", #{tx => TxSerialized}),
+    Response = process_request(Uri, post, "tx", #{tx => TxSerialized}),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -155,21 +151,9 @@ parse_uri(Uri) ->
     end.
 
 
-process_request(Peer, Method, Endpoint, Params) ->
-    BaseUri = aec_peers:uri(Peer) ++ "v1/",  %% TODO make this work for unicode
+process_request(Uri, Method, Endpoint, Params) ->
+    BaseUri = iolist_to_binary([Uri, <<"v1/">>]),
     aeu_http_client:request(BaseUri, Method, Endpoint, Params).
-
-check_returned_source(#{<<"source">> := Source}, Peer) ->
-    if Peer =/= Source ->
-            %% Consider Peer an alias of Source
-            %% (which should already be registered with aec_peers)
-            lager:debug("Source (~p) and Peer (~p) differ; adding alias",
-                        [Source, Peer]),
-            aec_peers:register_source(Source, Peer);
-       true ->
-            ok
-    end.
-
 
 -spec pp_uri({http_uri:schema(), http_uri:host(), http_uri:port()}) -> string().  %% TODO: | unicode:unicode_binary().
 pp_uri({Schema, Host, Port}) when is_binary(Host) ->

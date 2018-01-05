@@ -232,20 +232,18 @@ add_missing_to_genesis_block(Val) ->
 handle_ping(#{<<"source">> := Src} = PingObj) ->
     IsBlocked = aec_peers:is_blocked(Src),
     case IsBlocked of
-        false -> handle_ping_(PingObj);
+        false -> handle_ping_(Src, PingObj);
         true  ->
             abort_sync(Src, 403, <<"Not allowed">>)
     end.
 
-handle_ping_(PingObj) ->
+handle_ping_(Source, PingObj) ->
     LocalPingObj = aec_sync:local_ping_object(),
-    case aec_sync:compare_ping_objects(LocalPingObj, PingObj) of
+    case aec_sync:compare_ping_objects(Source, LocalPingObj, PingObj) of
         {error, different_genesis_blocks} ->
-            Source = maps:get(<<"source">>, PingObj),
             aec_peers:block_peer(Source),
             abort_sync(Source, 409, <<"Different genesis blocks">>);
         ok ->
-            Source = maps:get(<<"source">>, PingObj),
             aec_peers:update_last_seen(Source),
             TheirPeers = maps:get(<<"peers">>, PingObj, []),
             aec_peers:add_and_ping_peers(TheirPeers),

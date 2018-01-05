@@ -11,7 +11,6 @@
 %% API
 -export([add/1,
          add/2,
-         register_source/2,
          add_and_ping_peers/1,
          block_peer/1,
          unblock_peer/1,
@@ -20,7 +19,6 @@
          info/0,
          info/1,
          all/0,
-         aliases/0,
          get_random/0,
          get_random/1,
          get_random/2,
@@ -67,21 +65,6 @@ add(Peer, Connect) when is_boolean(Connect) ->
     ok.
 
 %%------------------------------------------------------------------------------
-%% Register a reported source address of known peer P. Ignored if P is unknown
-%%
-%% This is mainly intended to handle cases where a pinging peer and the
-%% pinged peer use different uris (peer uri vs "source" elem in ping obj).
-%% Use of peer uri and alias will both lead to the same peer record
-%% (and the 'uri' elem in the record reveals which is the origin and which
-%% is the alias; this usually doesn't matter.)
-%%------------------------------------------------------------------------------
--spec register_source(http_uri:uri() | peer(), uri()) -> ok.
-register_source(Peer, Alias) ->
-    gen_server:cast(?MODULE, {source, normalize_uri(uri(Peer)),
-                              normalize_uri(Alias)}),
-    ok.
-
-%%------------------------------------------------------------------------------
 %% Add peer by url or supplying full peer() record. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
 -spec add_and_ping_peers([http_uri:uri()]) -> ok.
@@ -124,9 +107,9 @@ remove(Uri) ->
     ok.
 
 %%------------------------------------------------------------------------------
-%% Get information on all known peers, aliases and the blocklist
+%% Get information on all known peers and the blocklist
 %%------------------------------------------------------------------------------
--spec info() -> [{peers | aliases | blocks, list()}].
+-spec info() -> [{peers | blocks, list()}].
 info() ->
     gen_server:call(?MODULE, info).
 
@@ -146,13 +129,6 @@ info(Uri) ->
 -spec all() -> list(http_uri:uri()).
 all() ->
     gen_server:call(?MODULE, all).
-
-%%------------------------------------------------------------------------------
-%% Get list of all aliases. The list may be big. Use with caution.
-%%------------------------------------------------------------------------------
--spec aliases() -> list({http_uri:uri(), http_uri:uri()}).
-aliases() ->
-    gen_server:call(?MODULE, aliases).
 
 %%------------------------------------------------------------------------------
 %% Get random peer. This may return error when no peer is known to us (unlikely).
@@ -262,7 +238,6 @@ check_ping_interval_env() ->
 %%%=============================================================================
 
 -record(state, {peers :: gb_trees:tree(binary(),peer()),
-                aliases :: gb_trees:tree(uri(), uri()),
                 blocked = gb_sets:new() :: gb_sets:set(uri()),
                 errored = gb_sets:new() :: gb_sets:set(uri()),
                 local_peer_uri :: uri(),
@@ -277,14 +252,11 @@ init(ok) ->
     PeerUri = aeu_requests:pp_uri(LocalPeer),  %% TODO: keep datatype, not string
     do_set_local_peer_uri(
       PeerUri,
-      #state{peers=gb_trees:empty(),
-             aliases=gb_trees:empty()}).
+      #state{peers=gb_trees:empty()}).
 
 handle_call(info, _From, #state{peers = Ps,
-                                aliases = As,
                                 blocked = Bs} = State) ->
     {reply, [{peers, gb_trees:to_list(Ps)},
-             {aliases, gb_trees:to_list(As)},
              {blocked, gb_sets:to_list(Bs)}], State};
 handle_call({set_local_peer_uri, PeerUri}, _From, State) ->
     case do_set_local_peer_uri(PeerUri, State) of
@@ -319,8 +291,6 @@ handle_call({is_blocked, Uri}, _From, #state{blocked = Blocked} = State) ->
 handle_call(all, _From, State) ->
     Uris = [ uri(Peer) || Peer <-  gb_trees:values(State#state.peers) ],
     {reply, Uris, State};
-handle_call(aliases, _From, State) ->
-    {reply, gb_trees:to_list(State#state.aliases), State};
 handle_call({get_random, N, Exclude}, _From, State) ->
     {reply, get_random_n(N, Exclude, State), State};
 handle_call(get_random, _From, State) ->
@@ -397,35 +367,6 @@ handle_cast({block, Uri}, State) ->
     {noreply, set_block_flag(true, Uri, State)};
 handle_cast({unblock, Uri}, State) ->
     {noreply, set_block_flag(false, Uri, State)};
-handle_cast({source, SrcUri, Alias} = _R,
-            State = #state{peers = Peers, aliases = As}) ->
-    lager:debug("R = ~p", [_R]),
-    case {do_lookup_peer(Alias, Peers),
-          do_lookup_peer(SrcUri, Peers)} of
-        {none, {value, _Hash, _Peer}} ->
-            As1 = gb_trees:enter(Alias, SrcUri, As),
-            {noreply, State#state{aliases = As1}};
-        {{value, Hash, Peer}, none} ->
-            NewPeer = Peer#peer{uri = SrcUri},
-            Peers1 = enter_peer(NewPeer,
-                                gb_trees:delete(Hash, Peers)),
-            As1 = gb_trees:enter(Alias, SrcUri, As),
-            {noreply, metrics(State#state{peers = Peers1, aliases = As1})};
-        {{value, Ha, Pa}, {value, _Hs, Ps}} ->
-            Peer = if Ps#peer.last_seen < Pa#peer.last_seen ->
-                           Pa;
-                      true ->
-                           Ps
-                   end,
-            Peers1 = enter_peer(
-                       Peer#peer{uri = SrcUri},
-                       gb_trees:delete(Ha, Peers)),
-            As1 = gb_trees:enter(Alias, SrcUri, As),
-            {noreply, metrics(State#state{peers = Peers1, aliases = As1})};
-        _Other ->
-            lager:debug("unexpected result (source): ~p", [_Other]),
-            {noreply, State}
-    end;
 handle_cast({add_and_ping, PeerRecs}, State) ->
     lager:debug("add and ping peers ~p", [PeerRecs]),
     #state{peers = Peers} = State1 = insert_peers(PeerRecs, State),
@@ -499,7 +440,7 @@ enter_peer(#peer{uri = Uri} = P, Peers) ->
 set_block_flag(Flag, Uri0, #state{peers = Peers,
                                   blocked = Blocked} = State)
   when is_boolean(Flag) ->
-    case do_lookup_peer(Uri0, Peers) of
+    case lookup_peer(Uri0, State) of
         none ->
             PrevInBlocked = gb_sets:is_element(Uri0, Blocked),
             Blocked1 = update_blocked(Flag, Uri0, Blocked),
@@ -688,15 +629,7 @@ await_aehttp() ->
       {error, timeout}
     end.
 
-lookup_peer(Uri, #state{aliases = As, peers = Peers}) ->
-    case gb_trees:lookup(Uri, As) of
-        none ->
-            do_lookup_peer(Uri, Peers);
-        {value, ToUri} ->
-            do_lookup_peer(ToUri, Peers)
-    end.
-
-do_lookup_peer(Uri, Peers) ->
+lookup_peer(Uri, #state{peers = Peers}) ->
     Key = hash_uri(uri(Uri)),
     case gb_trees:lookup(Key, Peers) of
         none -> none;
@@ -704,35 +637,15 @@ do_lookup_peer(Uri, Peers) ->
             {value, Key, P}
     end.
 
-do_remove_peer(Key, #peer{uri = Uri} = P,
-               #state{aliases = As, peers = Peers,
+do_remove_peer(Key, #peer{uri = Uri},
+               #state{peers = Peers,
                       blocked = Blocked} = State) ->
-    Peers1 = gb_trees:delete(Key, Peers),
-    As1 = lists:foldl(
-            fun(A, T) ->
-                    gb_trees:delete_any(A, T)
-            end, As, aliases(uri(P), As)),
-    State#state{peers = Peers1, aliases = As1,
+    State#state{peers   = gb_trees:delete(Key, Peers),
                 blocked = gb_sets:del_element(Uri, Blocked)}.
 
-aliases(Uri, As) ->
-    aliases(Uri, gb_trees:next(gb_trees:iterator(As)), []).
-
-aliases(Uri, {Key, Uri, Iter2}, Acc) ->
-    aliases(Uri, gb_trees:next(Iter2), [Key|Acc]);
-aliases(Uri, {_, _, Iter2}, Acc) ->
-    aliases(Uri, gb_trees:next(Iter2), Acc);
-aliases(_, none, Acc) ->
-    Acc.
-
-enter_peer(_Key, Peer, #state{aliases = As, peers = Peers} = State) ->
-    PeerUri = uri(Peer),
-    %% An uri shouldn't be both a peer and an alias (this would be, at best,
-    %% redundant if it points to itself, and at worst, very confusing if the
-    %% alias points to some other peer than the peer with the same uri.)
-    As1 = gb_trees:delete_any(PeerUri, As),
+enter_peer(_Key, Peer, #state{peers = Peers} = State) ->
     Peers1 = enter_peer(Peer, Peers),
-    State#state{aliases = As1, peers = Peers1}.
+    State#state{peers = Peers1}.
 
 insert_peers(PRecs, #state{} = S) ->
     lists:foldl(
@@ -747,19 +660,13 @@ insert_peers(PRecs, #state{} = S) ->
       end, S, PRecs).
 
 try_insert_peer(#peer{uri = Uri} = P0,
-                #state{aliases = As, peers = Peers} = S) ->
+                #state{peers = Peers} = S) ->
     Hash = hash_uri(Uri),
     case gb_trees:lookup(Hash, Peers) of
         none ->
-            case gb_trees:lookup(Uri, As) of
-                none ->
-                    {P, Blocked} = check_block_status(P0, S#state.blocked),
-                    Peers1 = gb_trees:insert(Hash, P, Peers),
-                    S#state{peers = Peers1, blocked = Blocked};
-                {value, _} ->
-                    %% known alias; don't insert as peer
-                    S
-            end;
+            {P, Blocked} = check_block_status(P0, S#state.blocked),
+            Peers1 = gb_trees:insert(Hash, P, Peers),
+            S#state{peers = Peers1, blocked = Blocked};       
         _ ->
             S
     end.
