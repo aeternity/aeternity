@@ -24,6 +24,8 @@
   remote_user: epoch
   # Facts are already collected in the previous playbook
   gather_facts: no
+  max_fail_percentage: 25
+  serial: "25%"
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
