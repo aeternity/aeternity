@@ -120,16 +120,7 @@ bin/epoch check_config epoch.yaml
 ```
 You shall read output like the following:
 ```
-Res = {ok,[{<<"chain">>,[{<<"db_path">>,<<"./my_db">>},{<<"persist">>,true}]},
-           {<<"http">>,
-            [{<<"external">>,
-              [{<<"peer_address">>,<<"http://1.2.3.4:8080/">>},
-               {<<"port">>,3003}]},
-             {<<"internal">>,[{<<"port">>,3103}]}]},
-           {<<"keys">>,[{<<"dir">>,<<"keys">>},{<<"password">>,<<"secret">>}]},
-           {<<"mining">>,[{<<"autostart">>,true}]},
-           {<<"peers">>,[<<"http://31.13.248.102:3013/">>]},
-           {<<"websocket">>,[{<<"internal">>,[{<<"port">>,3104}]}]}]}
+OK
 ```
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
 
