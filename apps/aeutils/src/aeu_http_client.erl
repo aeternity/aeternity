@@ -41,7 +41,6 @@ process_http_return(R) ->
         %% if Body == [] an error is thrown!
         {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
             try
-                %% lager:debug("Body to parse: ~s", [Body]),
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [Result]),
                 {ok, Result}

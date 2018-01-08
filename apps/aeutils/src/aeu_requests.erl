@@ -11,17 +11,14 @@
          pp_uri/1
         ]).
 
--export([parse_uri/1]).
 -import(aeu_debug, [pp/1]).
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(aec_peers:peer()) -> response(map()).
-ping(Peer) ->
-    Uri = aec_peers:uri(Peer),
+-spec ping(http_uri:uri()) -> response(map()).
+ping(Uri) ->
     #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
-    Peers = [iolist_to_binary(aec_peers:uri(P))
-             || P <- aec_peers:get_random(Share, [Peer])],
+    Peers = aec_peers:get_random(Share, [Uri]),
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = PingObj0#{<<"peers">> => Peers},
     Response = process_request(Uri, post, "ping", PingObj),
@@ -43,7 +40,7 @@ ping(Peer) ->
             lager:debug("ping response (~p): ~p", [Uri, pp(Map)]),
             case aec_sync:compare_ping_objects(Uri, PingObj, Map) of
                 ok    -> {ok, Map};
-                Error -> Error
+                {error, _} = Error -> Error
             end;
         {error, _Reason} = Error ->
             Error
@@ -137,19 +134,6 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
         {error, _Reason} = Error ->
             Error
     end.
-
--spec parse_uri(http_uri:uri()) -> {http_uri:scheme(), http_uri:host(), http_uri:port()} | error.
-parse_uri(Uri) ->
-    case http_uri:parse(Uri) of
-        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
-            {Scheme, Host, Port};
-        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
-            {Scheme, Host, Port};
-        {error, _Reason} ->
-            lager:debug("cannot parse Uri (~p): ~p", [Uri, _Reason]),
-            error
-    end.
-
 
 process_request(Uri, Method, Endpoint, Params) ->
     BaseUri = iolist_to_binary([Uri, <<"v1/">>]),

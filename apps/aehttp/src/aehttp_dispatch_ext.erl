@@ -247,17 +247,15 @@ handle_ping_(Source, PingObj) ->
             aec_peers:update_last_seen(Source),
             TheirPeers = maps:get(<<"peers">>, PingObj, []),
             aec_peers:add_and_ping_peers(TheirPeers),
-            Ok = LocalPingObj#{<<"pong">> => <<"pong">>},
+            Map = LocalPingObj#{<<"pong">> => <<"pong">>},
             Share = maps:get(<<"share">>, PingObj),
             Res = case mk_num(Share) of
                       N when is_integer(N), N > 0 ->
                           Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                          PeerUris = [iolist_to_binary(aec_peers:uri(P))
-                                      || P <- Peers],
-                          lager:debug("PeerUris = ~p~n", [PeerUris]),
-                          Ok#{<<"peers">> => PeerUris};
+                          lager:debug("PeerUris = ~p~n", [Peers]),
+                          Map#{<<"peers">> => Peers};
                       _ ->
-                          Ok
+                          Map
                   end,
             {200, [], Res}
     end.

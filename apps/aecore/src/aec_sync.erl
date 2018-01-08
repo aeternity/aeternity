@@ -62,7 +62,7 @@ connect_peer(Uri) ->
 local_ping_object() ->
     GHash = aec_conductor:genesis_hash(),
     TopHash = aec_conductor:top_header_hash(),
-    Source = source_uri(),
+    Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_conductor:get_total_difficulty(),
     #{<<"genesis_hash">> => base64:encode(GHash),
       <<"best_hash">>    => base64:encode(TopHash),
@@ -78,7 +78,7 @@ local_ping_object() ->
 %%    - Otherwise, trigger a sync, return 'ok'.
 -spec compare_ping_objects(http_uri:uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(RemoteUri, Local, Remote) ->
-    lager:debug("Compare, Local: ~p; Remote: ~p", [pp(Local), pp(Remote)]),
+    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, pp(Local), pp(Remote)]),
     case {maps:get(<<"genesis_hash">>, Local),
           maps:get(<<"genesis_hash">>, Remote)} of
         {G, G} ->
@@ -125,8 +125,7 @@ schedule_ping(Peer, PingF) when is_function(PingF, 1) ->
 %%% gen_server functions
 %%%=============================================================================
 
--record(state, {peers = gb_trees:empty(),
-                pings = gb_trees:empty()}).
+-record(state, {}).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -213,7 +212,7 @@ process_job([{_T, Job}]) ->
     end.
 
 enqueue(Op, Msg) ->
-    [ jobs:enqueue(sync_jobs, {Op, Msg, aec_peers:uri(Peer)}) || Peer <- aec_peers:get_random(all) ].
+    [ jobs:enqueue(sync_jobs, {Op, Msg, Uri}) || Uri <- aec_peers:get_random(all) ].
 
 do_forward_block(Block, Uri) ->
     Res = aeu_requests:send_block(Uri, Block),
@@ -374,5 +373,3 @@ header_hash(Block) ->
     {ok, HeaderHash} = aec_headers:hash_header(Header),
     HeaderHash.
 
-source_uri() ->
-    list_to_binary(aec_peers:get_local_peer_uri()).
