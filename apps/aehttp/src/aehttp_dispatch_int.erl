@@ -77,7 +77,7 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
               <<"fee">>           := Fee} = OracleQueryTxObj,
             QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            case aec_base58c:safe_decode(account_pubkey, EncodedOraclePubkey) of
+            case aec_base58c:safe_decode(oracle_pubkey, EncodedOraclePubkey) of
                 {ok, DecodedOraclePubkey} ->
                     {ok, OracleQueryTx} =
                         aeo_query_tx:new(
