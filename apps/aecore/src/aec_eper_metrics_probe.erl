@@ -23,15 +23,14 @@
           name,
           datapoints = ?DATAPOINTS,
           data = [],
-          ttl = 5000,
-          ref
+          ttl = 5000
          }).
 
 ad_hoc_spec() ->
     [{module, ?MODULE},
      {type, probe},
      {cache, 5000},
-     {options, []}].
+     {sample_interval, infinity}].
 
 -spec behaviour() -> exometer:behaviour().
 behaviour() ->
@@ -53,7 +52,7 @@ probe_terminate(Reason) ->
 probe_get_value(DPs, #st{data = Data0,
                          datapoints = DPs0} = S) ->
     Data1 = if Data0 =:= undefined ->
-                    sample(DPs0);
+                    [];
                true -> Data0
             end,
     DPs1 = if DPs =:= default -> DPs0;
@@ -74,12 +73,8 @@ probe_update(_, _) ->
 probe_reset(S) ->
     {ok, S#st{data = []}}.
 
-probe_sample(#st{datapoints = DPs} = S) ->
-    {_Pid, Ref} = spawn_monitor(
-                    fun() ->
-                            exit({sample, sample(DPs)})
-                    end),
-    {ok, S#st{ref = Ref}}.
+probe_sample(_) ->
+    {error, not_supported}.
 
 probe_setopts(_Entry, Opts, S) ->
     DPs = proplists:get_value(datapoints, Opts, S#st.datapoints),
@@ -88,27 +83,12 @@ probe_setopts(_Entry, Opts, S) ->
 probe_handle_msg({watchdog, _Node, _Ts, _Trigger, TriggerData}, S) ->
     update_metrics(TriggerData),
     {ok, update_counter(updates, 1, S)};
-probe_handle_msg({'DOWN', Ref, _, _, SampleRes}, #st{ref = Ref} = S) ->
-    case SampleRes of
-        {sample, Data} ->
-            lager:debug("got sample: ~p", [Data]),
-            {ok, S#st{ref = undefined, data = Data}};
-        Other ->
-            lager:debug("sampler died: ~p", [Other]),
-            {ok, S#st{ref = undefined}}
-    end;
 probe_handle_msg(_Msg, S) ->
     lager:debug("Unknown msg: ~p", [_Msg]),
     {ok, S}.
 
 probe_code_change(_, S, _) ->
     {ok, S}.
-
-sample(DPs) ->
-    lists:foldr(fun sample_/2, [], DPs).
-
-sample_(_, Acc) ->
-    Acc.
 
 update_counter(K, Value, #st{data = Data, name = Name, ttl = TTL} = S) ->
     Data1 =
