@@ -389,7 +389,7 @@ post_broken_blocks(Config) ->
                 {Key, BrokenBlock}
             end,
         [{<<"prev_hash">>, aec_base58c:encode(block_hash, <<"foo">>)},
-         {<<"state_hash">>, aec_base58c:encode(block_hash, <<"foo">>)},
+         {<<"state_hash">>, aec_base58c:encode(block_state_hash, <<"foo">>)},
          {<<"txs_hash">>, aec_base58c:encode(block_tx_hash, <<"foo">>)},
          {<<"target">>, 42},
          {<<"nonce">>, 42},

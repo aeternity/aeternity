@@ -65,7 +65,7 @@ serialize_to_map(H = #header{}) ->
     Serialized =
       #{<<"height">> =>  height(H),
         <<"prev_hash">> => aec_base58c:encode(block_hash, prev_hash(H)),
-        <<"state_hash">> => aec_base58c:encode(block_hash, H#header.root_hash),
+        <<"state_hash">> => aec_base58c:encode(block_state_hash, H#header.root_hash),
         <<"target">> => H#header.target,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
@@ -148,7 +148,7 @@ deserialize_from_map(H = #{}) ->
       } = H,
     try
         {block_hash, DecPrevHash} = aec_base58c:decode(PrevHash),
-        {block_hash, DecRootHash} = aec_base58c:decode(RootHash),
+        {block_state_hash, DecRootHash} = aec_base58c:decode(RootHash),
         {block_tx_hash, DecTxsHash} = aec_base58c:decode(TxsHash),
         {ok, #header{height = Height,
                      prev_hash = DecPrevHash,
