@@ -36,3 +36,6 @@
 
 -callback type() ->
     binary().
+
+-callback for_client(Tx :: term()) ->
+    map().

@@ -115,8 +115,63 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
+        'GetBlockByHashInternal' => #{
+            path => "/v1/block/hash/:hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockByHeightInternal' => #{
+            path => "/v1/block/height/:height",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockGenesis' => #{
+            path => "/v1/block/genesis",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockLatest' => #{
+            path => "/v1/block/latest",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockNumber' => #{
+            path => "/v1/block/number",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockPending' => #{
+            path => "/v1/block/pending",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockTxsCountByHash' => #{
+            path => "/v1/block/txs/count/hash/:hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockTxsCountByHeight' => #{
+            path => "/v1/block/txs/count/height/:height",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetGenesisBlockTxsCount' => #{
+            path => "/v1/block/txs/count/genesis",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetLatestBlockTxsCount' => #{
+            path => "/v1/block/txs/count/latest",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'GetOracleQuestions' => #{
             path => "/v1/oracle-questions",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetPendingBlockTxsCount' => #{
+            path => "/v1/block/txs/count/pending",
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },

@@ -134,13 +134,76 @@ handle_request('GetPubKey', _, _Context) ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
+handle_request('GetBlockNumber', _Req, _Context) ->
+    TopHeader = aec_conductor:top_header(),
+    Height = aec_headers:height(TopHeader),
+    {200, [], #{height => Height}};
+
+handle_request('GetBlockByHeightInternal', Req, _Context) ->
+    Height = maps:get('height', Req),
+    get_block(fun() -> aec_conductor:get_block_by_height(Height) end, Req);
+
+handle_request('GetBlockByHashInternal', Req, _Context) ->
+    Hash =
+        try base64:decode(maps:get('hash', Req))
+              catch _:_ -> not_base64_encoded
+              end,
+    case Hash of
+        not_base64_encoded ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        _ ->
+            get_block(fun() -> aec_conductor:get_block_by_hash(Hash) end, Req)
+    end;
+
+handle_request('GetBlockGenesis', Req, _Context) ->
+    get_block(fun aec_conductor:genesis_block/0, Req);
+
+handle_request('GetBlockLatest', Req, _Context) ->
+    get_block(
+        fun() ->
+            TopBlock = aec_conductor:top(),
+            {ok, TopBlock}
+        end, Req);
+
+handle_request('GetBlockPending', Req, _Context) ->
+    get_block(fun aec_conductor:get_block_candidate/0, Req);
+
+handle_request('GetBlockTxsCountByHash', Req, _Context) ->
+    Hash =
+        try base64:decode(maps:get('hash', Req))
+              catch _:_ -> not_base64_encoded
+              end,
+    case Hash of
+        not_base64_encoded ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        _ ->
+            get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end)
+    end;
+
+handle_request('GetBlockTxsCountByHeight', Req, _Context) ->
+    Height = maps:get('height', Req),
+    get_block_txs_count(fun() -> aec_conductor:get_block_by_height(Height) end);
+
+handle_request('GetGenesisBlockTxsCount', _Req, _Context) ->
+    get_block_txs_count(fun aec_conductor:genesis_block/0);
+
+handle_request('GetLatestBlockTxsCount', _Req, _Context) ->
+    get_block_txs_count(
+        fun() ->
+            TopBlock = aec_conductor:top(),
+            {ok, TopBlock}
+        end);
+
+handle_request('GetPendingBlockTxsCount', _Req, _Context) ->
+    get_block_txs_count(fun aec_conductor:get_block_candidate/0);
+
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-
 
 %% Internals
 
@@ -169,3 +232,66 @@ sign_and_push_to_mempool(Tx) ->
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
                 [pp(aec_tx_pool:peek(10))]).
+
+get_block(Fun, Req) when is_function(Fun, 0) ->
+    case get_block_from_chain(Fun) of
+        {ok, Block} ->
+            TxObjects = read_optional_bool_param('tx_objects', Req, false),
+            %% swagger generated code expects the Resp to be proplist or map
+            %% and always runs jsx:encode/1 on it - even if it is already
+            %% encoded to a binary; that's why we use
+            %% aec_blocks:serialize_to_map/1 instead of
+            %% aec_blocks:serialize_for_network/1
+            {SerializeFun, DataSchema} =
+                case TxObjects of
+                    true ->
+                        {fun aec_blocks:serialize_client_readable/1, <<"BlockWithTxs">>};
+                    false ->
+                        {fun aec_blocks:serialize_to_map/1, <<"BlockWithTxsHashes">>}
+                end,
+            Resp0 = aehttp_dispatch_ext:cleanup_genesis(SerializeFun(Block)),
+            % we add swagger's definition name to the object so the
+            % result could be validated against the schema
+            Resp = Resp0#{data_schema => DataSchema},
+            lager:debug("Resp = ~p", [pp(Resp)]),
+            {200, [], Resp};
+        {_Code, _, _Reason} = Err ->
+            Err
+    end.
+
+get_block_txs_count(Fun) when is_function(Fun, 0) ->
+    case get_block_from_chain(Fun) of
+        {ok, Block} ->
+            {200, [], #{count => length(aec_blocks:txs(Block))}};
+        {_Code, _, _Reason} = Err ->
+            Err
+    end.
+
+get_block_from_chain(Fun) when is_function(Fun, 0) ->
+    case Fun() of
+        {ok, _Block} = OK->
+            OK;
+        {error, no_top_header} ->
+            {404, [], #{reason => <<"No top header">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, chain_too_short} ->
+            {404, [], #{reason => <<"Chain too short">>}};
+        {error, miner_starting} ->
+            {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
+        {error, not_mining} ->
+            {404, [], #{reason => <<"Not mining, no pending block">>}}
+    end.
+
+
+-spec read_optional_bool_param(atom(), map(), boolean()) -> boolean().
+read_optional_bool_param(Key, Req, Default) when Default =:= true
+                                          orelse Default =:= false ->
+    %% swagger does not take into consideration the 'default'
+    %% if a query param is missing, swagger adds it to Req with a value of
+    %% 'undefined' 
+    case maps:get(Key, Req) of 
+        undefined -> Default;
+        Bool when is_boolean(Bool) -> Bool
+    end.
+        

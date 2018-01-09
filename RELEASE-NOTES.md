@@ -1,6 +1,6 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes and introduces some API for apps usability build on top of it.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -23,6 +23,8 @@ The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebr
 In case you have installed it in a non-default path, you could use a symlink to work around the issue.
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
+
+HTTP endpoints are documented in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml). A swagger.json version of the same documentation is present in the release: `lib/aehttp-0.1.0/priv/swagger.json`
 
 ## Join the testnet
 
@@ -247,6 +249,23 @@ curl http://127.0.0.1:3003/v1/top
 ```
 
 Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
+
+#### Verify that node mines on same chain as the testnet
+After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
+You can validate it observing the `hash` of the `/top` of the remote nodes:
+```
+curl http://31.13.248.102:3013/v1/top
+{"hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=","height":...}
+```
+
+This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
+```
+curl http://localhost:3113/v1/block/pending
+{"data_schema":"BlockWithTxsHashes","height":... ,"prev_hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=", ...}
+```
+Height would be +1 of what is in the `/top` of the remote node but this is not
+as strong guarantee as the `prev_hash`.
+
 
 ### Manage account
 

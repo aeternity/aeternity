@@ -10,6 +10,7 @@
          is_coinbase/1,
          signers/1]).
 -export([serialize/1,
+         serialize_for_client/1,
          deserialize/1,
          serialize_to_binary/1,
          deserialize_from_binary/1]).
@@ -115,6 +116,10 @@ signers(Tx) ->
 serialize(Tx) ->
     Mod = aec_tx_dispatcher:handler(Tx),
     Mod:serialize(Tx).
+
+serialize_for_client(Tx) ->
+    Mod = aec_tx_dispatcher:handler(Tx),
+    Mod:for_client(Tx).
 
 deserialize(Data) ->
     Mod = aec_tx_dispatcher:handler_by_type(type_of(Data)),

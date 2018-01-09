@@ -14,7 +14,8 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0]).
+         type/0,
+         for_client/1]).
 
 -behavior(aetx).
 
@@ -85,6 +86,11 @@ deserialize([#{<<"type">> := ?CB_TX_TYPE},
 -spec type() -> binary().
 type() ->
     ?CB_TX_TYPE.
+
+for_client(#coinbase_tx{account = Account}) ->
+    #{<<"account">> => base64:encode(Account),
+      <<"type">> => <<"CoinbaseTxObject">>, % swagger schema name
+      <<"vsn">> => ?CB_TX_VSN}.
 
 version() ->
     ?CB_TX_VSN.

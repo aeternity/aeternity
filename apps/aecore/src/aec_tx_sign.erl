@@ -28,6 +28,7 @@
 %% API that should be avoided to be used
 -export([verify/1,
          serialize/1,
+         serialize_for_client/1,
          serialize_to_binary/1,
          deserialize/1,
          deserialize_from_binary/1]).
@@ -136,3 +137,7 @@ deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
     {ok, Unpacked} = msgpack:unpack(SignedTxBin),
     lager:debug("unpacked Tx: ~p", [Unpacked]),
     deserialize(Unpacked).
+
+serialize_for_client(#signed_tx{data = Tx, signatures = Sigs}) ->
+    #{<<"tx">> => aec_tx:serialize_for_client(Tx),
+      <<"signatures">> => lists:map(fun base64:encode/1, Sigs)}. 
