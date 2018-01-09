@@ -33,6 +33,10 @@
 
     env: unknown
     config:
+      http:
+        external:
+          peer_address: http://{{ ansible_default_ipv4.address }}:3013/
+          port: 3013
       chain:
         persist: true
         db_path: "./db12"
@@ -141,3 +145,18 @@
     - name: Start epoch daemon
       command: "{{ project_root }}/bin/epoch start"
       tags: [daemon]
+
+    - name: Wait epoch node API to boot
+      wait_for:
+        port: "{{ config.http.external.port }}"
+        host: "{{ ansible_ssh_host }}"
+        timeout: 5
+      connection: local
+      tags: [health-check]
+
+    - name: API health check
+      uri:
+        url: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v1/top
+        timeout: 5
+      connection: local
+      tags: [health-check]

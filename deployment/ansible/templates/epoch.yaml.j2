@@ -10,7 +10,8 @@ keys:
 
 http:
     external:
-        peer_address: http://{{ ansible_default_ipv4.address }}:3013/
+        peer_address: {{ config.http.external.peer_address }}
+        port: {{ config.http.external.port }}
 
 mining:
     autostart: true
