@@ -1,7 +1,31 @@
 ---
+# Additional playbook that runs on a group first host only and gather facts from all hosts
+# This is required to allow deploying on fraction of group hosts
+# For example rolling updates and deploying only to single hosts of a group
+#
+# For example below command will deploy only to ae-dev2-epoch-n0 host in dev2 group
+# ansible-playbook --limit="ae-dev2-epoch-n0" --extra-vars "env=dev2" deploy.yml
+
+- name: Facts setup
+  hosts: all
+  remote_user: epoch
+  # Executor facts will be gathered anyway in the task below
+  gather_facts: no
+  tasks:
+    - name: Gather facts from all hosts in {{ env }} group
+      setup:
+      run_once: yes
+      delegate_to: "{{ item }}"
+      delegate_facts: yes
+      with_items: "{{ groups[env] }}"
+
 - name: Deploy epoch package
   hosts: all
   remote_user: epoch
+  # Facts are already collected in the previous playbook
+  gather_facts: no
+  max_fail_percentage: 25
+  serial: "25%"
 
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
@@ -9,6 +33,10 @@
 
     env: unknown
     config:
+      http:
+        external:
+          peer_address: http://{{ ansible_default_ipv4.address }}:3013/
+          port: 3013
       chain:
         persist: true
         db_path: "./db12"
@@ -117,3 +145,18 @@
     - name: Start epoch daemon
       command: "{{ project_root }}/bin/epoch start"
       tags: [daemon]
+
+    - name: Wait epoch node API to boot
+      wait_for:
+        port: "{{ config.http.external.port }}"
+        host: "{{ ansible_ssh_host }}"
+        timeout: 300
+      connection: local
+      tags: [health-check]
+
+    - name: API health check
+      uri:
+        url: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v1/top
+        timeout: 5
+      connection: local
+      tags: [health-check]
