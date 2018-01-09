@@ -161,3 +161,40 @@
           timeout: 5
         connection: local
         tags: [health-check]
+
+      - name: Read app version
+        command: "cat {{ project_root }}/VERSION"
+        register: version_output
+        tags: [datadog-event]
+
+      - name: Read app revision
+        command: "cat {{ project_root }}/REVISION"
+        register: revision_output
+        tags: [datadog-event]
+
+      - name: Send Datadog event
+        datadog_event:
+          alert_type: success
+          title: Deploy
+          text: |
+            %%%
+            Revision: [{{ revision_output.stdout }}](https://github.com/aeternity/epoch/commit/{{ revision_output.stdout }})
+            Package: {{ remote_package | default(local_package) | basename }}
+            %%%
+          api_key: "{{ datadog_api_key }}"
+          app_key: "{{ datadog_app_key }}"
+          tags: ["env:{{ env }}", "version:{{ version_output.stdout }}"]
+        tags: [datadog-event]
+      rescue:
+        - name: Send Datadog event
+          datadog_event:
+            alert_type: error
+            title: Deploy
+            text: "Package: {{ remote_package | default(local_package) | basename }}"
+            api_key: "{{ datadog_api_key }}"
+            app_key: "{{ datadog_app_key }}"
+            tags: ["env:{{ env }}"]
+          tags: [datadog-event]
+        - fail:
+            msg: "Failed deploy"
+            when: true
