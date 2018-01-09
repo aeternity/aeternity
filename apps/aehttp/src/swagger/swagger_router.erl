@@ -80,6 +80,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetName' => #{
+            path => "/v2/name",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetTop' => #{
             path => "/v2/top",
             method => <<"GET">>,
@@ -203,6 +208,31 @@ get_operations() ->
         'GetTxsListFromBlockRangeByHeight' => #{
             path => "/v2/block/txs/list/height",
             method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostNameClaimTx' => #{
+            path => "/v2/name-claim-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostNamePreclaimTx' => #{
+            path => "/v2/name-preclaim-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostNameRevokeTx' => #{
+            path => "/v2/name-revoke-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostNameTransferTx' => #{
+            path => "/v2/name-transfer-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostNameUpdateTx' => #{
+            path => "/v2/name-update-tx",
+            method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
         'PostOracleQueryTx' => #{

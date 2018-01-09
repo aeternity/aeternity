@@ -16,8 +16,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
               <<"amount">>           := Amount,
               <<"fee">>              := Fee} = SpendTxObj,
-            case aec_base58c:safe_decode(
-                   account_pubkey, EncodedRecipientPubkey) of
+            case aec_conductor:resolve_name(account_pubkey, EncodedRecipientPubkey) of
                 {ok, DecodedRecipientPubkey} ->
                     {ok, SpendTx} =
                         aec_spend_tx:new(
@@ -77,7 +76,7 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
               <<"fee">>           := Fee} = OracleQueryTxObj,
             QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            case aec_base58c:safe_decode(oracle_pubkey, EncodedOraclePubkey) of
+            case aec_conductor:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
                 {ok, DecodedOraclePubkey} ->
                     {ok, OracleQueryTx} =
                         aeo_query_tx:new(
@@ -142,6 +141,136 @@ handle_request('PostOracleSubscribe', _Req, _Context) ->
 handle_request('PostOracleUnsubscribe', _Req, _Context) ->
     %% TODO: Implement me
     {501, [], #{}};
+
+handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, PubKey, Nonce} ->
+            #{<<"commitment">> := Commitment,
+              <<"fee">>        := Fee} = NamePreclaimTxObj,
+            case aec_base58c:safe_decode(commitment, Commitment) of
+                {ok, DecodedCommitment} ->
+                    {ok, PreclaimTx} =
+                        aens_preclaim_tx:new(
+                          #{account    => PubKey,
+                            nonce      => Nonce,
+                            commitment => DecodedCommitment,
+                            fee        => Fee}),
+                    sign_and_push_to_mempool(PreclaimTx),
+                    {200, [], #{commitment => Commitment}};
+                {error, _Reason} ->
+                    {400, [], #{reason => <<"Invalid commitment hash">>}}
+            end;
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {400, [], #{reason => <<"Keys not configured">>}}
+    end;
+
+handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, PubKey, Nonce} ->
+            #{<<"name">>      := Name,
+              <<"name_salt">> := NameSalt,
+              <<"fee">>       := Fee} = NameClaimTxObj,
+            {ok, ClaimTx} =
+                aens_claim_tx:new(
+                  #{account   => PubKey,
+                    nonce     => Nonce,
+                    name      => Name,
+                    name_salt => NameSalt,
+                    fee       => Fee}),
+            sign_and_push_to_mempool(ClaimTx),
+            {200, [], #{name_hash => aec_base58c:encode(name, aens_hash:name_hash(Name))}};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {400, [], #{reason => <<"Keys not configured">>}}
+    end;
+
+handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, PubKey, Nonce} ->
+            #{<<"name_hash">> := NameHash,
+              <<"name_ttl">>  := NameTTL,
+              <<"pointers">>  := Pointers,
+              <<"ttl">>       := TTL,
+              <<"fee">>       := Fee} = NameUpdateTxObj,
+            case aec_base58c:safe_decode(name, NameHash) of
+                {ok, DecodedNameHash} ->
+                    {ok, UpdateTx} =
+                        aens_update_tx:new(
+                          #{account   => PubKey,
+                            nonce     => Nonce,
+                            name_hash => DecodedNameHash,
+                            name_ttl  => NameTTL,
+                            pointers  => jsx:decode(Pointers,[{labels, atom}]),
+                            ttl       => TTL,
+                            fee       => Fee}),
+                    sign_and_push_to_mempool(UpdateTx),
+                    {200, [], #{name_hash => NameHash}};
+                {error, _Reason} ->
+                    {400, [], #{reason => <<"Invalid name hash">>}}
+            end;
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {400, [], #{reason => <<"Keys not configured">>}}
+    end;
+
+handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, PubKey, Nonce} ->
+            #{<<"name_hash">>        := NameHash,
+              <<"recipient_pubkey">> := RecipientPubKey,
+              <<"fee">>              := Fee} = NameTransferTxObj,
+            case aec_base58c:safe_decode(name, NameHash) of
+                {ok, DecodedNameHash} ->
+                    case aec_base58c:safe_decode(account_pubkey, RecipientPubKey) of
+                        {ok, DecodedRecipientPubKey} ->
+                            {ok, TransferTx} =
+                                aens_transfer_tx:new(
+                                  #{account           => PubKey,
+                                    nonce             => Nonce,
+                                    name_hash         => DecodedNameHash,
+                                    recipient_account => DecodedRecipientPubKey,
+                                    fee               => Fee}),
+                            sign_and_push_to_mempool(TransferTx),
+                            {200, [], #{name_hash => NameHash}};
+                        {error, _Reason} ->
+                            {400, [], #{reason => <<"Invalid recipient pubkey">>}}
+                    end;
+                {error, _Reason} ->
+                    {400, [], #{reason => <<"Invalid name hash">>}}
+            end;
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {400, [], #{reason => <<"Keys not configured">>}}
+    end;
+
+handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, PubKey, Nonce} ->
+            #{<<"name_hash">> := NameHash,
+              <<"fee">>       := Fee} = NameRevokeTxObj,
+            case aec_base58c:safe_decode(name, NameHash) of
+                {ok, DecodedNameHash} ->
+                    {ok, RevokeTx} =
+                        aens_revoke_tx:new(
+                          #{account   => PubKey,
+                            nonce     => Nonce,
+                            name_hash => DecodedNameHash,
+                            fee       => Fee}),
+                    sign_and_push_to_mempool(RevokeTx),
+                    {200, [], #{name_hash => NameHash}};
+                {error, _Reason} ->
+                    {400, [], #{reason => <<"Invalid name hash">>}}
+            end;
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {400, [], #{reason => <<"Keys not configured">>}}
+    end;
 
 handle_request('GetPubKey', _, _Context) ->
     case aec_keys:pubkey() of

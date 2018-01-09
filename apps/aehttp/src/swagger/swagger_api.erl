@@ -38,6 +38,11 @@ request_params('GetInfo') ->
     [
     ];
 
+request_params('GetName') ->
+    [
+        'name'
+    ];
+
 request_params('GetTop') ->
     [
     ];
@@ -166,6 +171,31 @@ request_params('GetTxsListFromBlockRangeByHeight') ->
         'tx_objects'
     ];
 
+request_params('PostNameClaimTx') ->
+    [
+        'NameClaimTx'
+    ];
+
+request_params('PostNamePreclaimTx') ->
+    [
+        'NamePreclaimTx'
+    ];
+
+request_params('PostNameRevokeTx') ->
+    [
+        'NameRevokeTx'
+    ];
+
+request_params('PostNameTransferTx') ->
+    [
+        'NameTransferTx'
+    ];
+
+request_params('PostNameUpdateTx') ->
+    [
+        'NameUpdateTx'
+    ];
+
 request_params('PostOracleQueryTx') ->
     [
         'OracleQueryTx'
@@ -240,6 +270,15 @@ request_param_info('GetBlockByHeight', 'height') ->
         rules => [
             {type, 'integer'},
             required
+        ]
+    };
+
+request_param_info('GetName', 'name') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
         ]
     };
 
@@ -491,6 +530,51 @@ request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
         ]
     };
 
+request_param_info('PostNameClaimTx', 'NameClaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNamePreclaimTx', 'NamePreclaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameRevokeTx', 'NameRevokeTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameTransferTx', 'NameTransferTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameUpdateTx', 'NameUpdateTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
 request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
     #{
         source =>   body,
@@ -601,6 +685,11 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
 validate_response('GetInfo', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetName', 200, Body, ValidatorState) ->
+    validate_response_body('NameEntry', 'NameEntry', Body, ValidatorState);
+validate_response('GetName', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->
@@ -717,6 +806,41 @@ validate_response('GetTxsListFromBlockRangeByHeight', 200, Body, ValidatorState)
 validate_response('GetTxsListFromBlockRangeByHeight', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameClaimTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameClaimTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameClaimTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNamePreclaimTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
+validate_response('PostNamePreclaimTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNamePreclaimTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameRevokeTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameRevokeTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameRevokeTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameTransferTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameTransferTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameTransferTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameUpdateTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameUpdateTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameUpdateTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->

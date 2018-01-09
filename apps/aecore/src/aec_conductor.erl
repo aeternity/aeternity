@@ -55,6 +55,8 @@
 -export([ get_block_state_by_hash/1 %% For testing
         , get_account/1
         , get_all_accounts_balances/1
+        , get_name_entry/1
+        , resolve_name/2
         ]).
 
 %% Chain API
@@ -167,6 +169,18 @@ get_account(Pubkey) ->
                                        {'error', any()}.
 get_all_accounts_balances(Hash) when is_binary(Hash) ->
     gen_server:call(?SERVER, {get_all_accounts_balances, Hash}).
+
+-spec get_name_entry(Name :: binary()) ->
+                            {'ok', map()} |
+                            {'error', any()}.
+get_name_entry(Name) when is_binary(Name) ->
+    gen_server:call(?SERVER, {get_name_entry, Name}).
+
+-spec resolve_name(Type :: atom(), Name :: binary()) ->
+                          {'ok', binary()} |
+                          {'error', atom()}.
+resolve_name(Type, Name) ->
+    gen_server:call(?SERVER, {resolve_name, Type, Name}).
 
 %%%===================================================================
 %%% Chain API
@@ -381,6 +395,8 @@ handle_call({get_account, Pubkey},_From, State) ->
     {reply, aec_conductor_chain:get_account(Pubkey, State), State};
 handle_call({get_all_accounts_balances, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_all_accounts_balances(Hash, State), State};
+handle_call({get_name_entry, Name}, _From, State) ->
+    {reply, aec_conductor_chain:get_name_entry(Name, State), State};
 handle_call(get_top_block_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_block_hash(State), State};
 handle_call(get_top_header,_From, State) ->
@@ -399,6 +415,8 @@ handle_call({post_block, Block},_From, State) ->
 handle_call({post_header, Block},_From, State) ->
     {Reply, State1} = handle_post_header(Block, State),
     {reply, Reply, State1};
+handle_call({resolve_name, Type, Name}, _From, State) ->
+    {reply, aec_conductor_chain:resolve_name(Type, Name, State), State};
 handle_call(stop_mining,_From, State) ->
     epoch_mining:info("Mining stopped"),
     State1 = kill_all_workers(State),
