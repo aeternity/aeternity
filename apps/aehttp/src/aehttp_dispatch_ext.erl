@@ -24,7 +24,7 @@ handle_request('GetTop', _, _Context) ->
     {ok, HH} = aec_headers:hash_header(Header),
     {ok, Top} = aec_headers:serialize_to_map(Header),
     Resp = cleanup_genesis(Top),
-    {200, [], maps:put(hash, base64:encode(HH), Resp)};
+    {200, [], maps:put(hash, aec_base58c:encode(block_hash, HH), Resp)};
 
 handle_request('GetBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
@@ -48,8 +48,8 @@ handle_request('GetBlockByHeight', Req, _Context) ->
 
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
     lager:debug("got ~p; Req = ~p", [_Method, pp(Req)]),
-    case base64_safe_decode(maps:get('hash', Req)) of
-        {error, not_base64_encoded} ->
+    case safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
             case aec_conductor:get_header_by_hash(Hash) of
@@ -78,7 +78,9 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
-    Txs = [#{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(T))}
+    Txs = [#{<<"tx">> => aec_base58c:encode(
+                           transaction,
+                           aec_tx_sign:serialize_to_binary(T))}
            || T <- Txs0],
     {200, [], Txs};
 
@@ -99,11 +101,11 @@ handle_request('PostBlock', Req, _Context) ->
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
     lager:debug("Got PostTx; Req = ~p", [pp(Req)]),
-    case base64_safe_decode(maps:get(<<"tx">>, Tx)) of
-        {error, not_base64_encoded} ->
-            {400, [], #{reason => <<"Invalid base64 encoding">>}};
+    case safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid base58Check encoding">>}};
         {ok, DecodedTx} ->
-            DeserializedTx =  
+            DeserializedTx =
                 try {ok, aec_tx_sign:deserialize_from_binary(DecodedTx)}
                 catch _:_ -> {error, broken_tx}
                 end,
@@ -125,10 +127,10 @@ handle_request('GetAccountBalance', Req, _Context) ->
               {ok, PK} = aec_keys:pubkey(),
               {ok, PK};
           PK when is_binary(PK) ->
-              base64_safe_decode(PK)
+              safe_decode(account_pubkey, PK)
       end,
     case Decoded of
-        {error, not_base64_encoded} ->
+        {error, _} ->
             {400, [], #{reason => <<"Invalid address">>}};
         {ok, Pubkey} when is_binary(Pubkey) ->
             case aec_conductor:get_account(Pubkey) of
@@ -148,7 +150,8 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
             FormattedAccountsBalances =
                 lists:foldl(
                   fun({Pubkey, Balance}, Acc) ->
-                          [#{pub_key => base64:encode(Pubkey),
+                          [#{pub_key => aec_base58c:encode(
+                                          account_pubkey, Pubkey),
                              balance => Balance} | Acc]
                   end, [], AccountsBalances),
             {200, [], #{accounts_balances => FormattedAccountsBalances}};
@@ -159,7 +162,9 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
 handle_request('GetVersion', _Req, _Context) ->
     {200, [], #{version => aeu_info:get_version(),
                 revision => aeu_info:get_revision(),
-                genesis_hash => base64:encode(aec_conductor:genesis_hash())}};
+                genesis_hash => aec_base58c:encode(
+                                  block_hash,
+                                  aec_conductor:genesis_hash())}};
 
 handle_request('GetInfo', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
@@ -213,9 +218,11 @@ empty_fields_in_genesis() ->
 % empty_fields_in_genesis/0 and values_for_empty_fields_in_genesis/0
 values_for_empty_fields_in_genesis() ->
     true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
-    #{<<"prev_hash">> => base64:encode(aec_block_genesis:prev_hash()),
+    #{<<"prev_hash">> => aec_base58c:encode(
+                           block_hash, aec_block_genesis:prev_hash()),
       <<"pow">> => aec_headers:serialize_pow_evidence(aec_block_genesis:pow()),
-      <<"txs_hash">> => base64:encode(aec_block_genesis:txs_hash()),
+      <<"txs_hash">> => aec_base58c:encode(
+                          block_tx_hash, aec_block_genesis:txs_hash()),
       <<"transactions">> => aec_block_genesis:transactions()}.
 
 %% to be used for both headers and blocks
@@ -267,7 +274,12 @@ abort_sync(Uri, Code, Reason) ->
                        reason => Reason}}),
       {Code, [], #{reason => Reason}}.
 
-base64_safe_decode(K) when is_binary(K) ->
-      try {ok, base64:decode(K)}
-      catch _:_ -> {error, not_base64_encoded}
-      end.
+safe_decode(Type, Hash) ->
+    try aec_base58c:decode(Hash) of
+        {Type, Dec} -> {ok, Dec};
+        _           -> {error, invalid_prefix}
+    catch
+        error:_ ->
+            {error, invalid_encoding}
+    end.
+
