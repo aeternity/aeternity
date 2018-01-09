@@ -16,15 +16,20 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
               <<"amount">>           := Amount,
               <<"fee">>              := Fee} = SpendTxObj,
-            {ok, SpendTx} =
-                aec_spend_tx:new(
-                  #{sender    => SenderPubkey,
-                    recipient => base64:decode(EncodedRecipientPubkey),
-                    amount    => Amount,
-                    fee       => Fee,
-                    nonce     => Nonce}),
-            sign_and_push_to_mempool(SpendTx),
-            {200, [], #{}};
+            case safe_decode(account_pubkey, EncodedRecipientPubkey) of
+                {ok, DecodedRecipientPubkey} ->
+                    {ok, SpendTx} =
+                        aec_spend_tx:new(
+                          #{sender    => SenderPubkey,
+                            recipient => DecodedRecipientPubkey,
+                            amount    => Amount,
+                            fee       => Fee,
+                            nonce     => Nonce}),
+                    sign_and_push_to_mempool(SpendTx),
+                    {200, [], #{}};
+                {error, __} ->
+                    {404, [], #{reason => <<"Invalid key">>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -71,18 +76,23 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
               <<"fee">>           := Fee} = OracleQueryTxObj,
             QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            {ok, OracleQueryTx} =
-                aeo_query_tx:new(
-                  #{sender       => Pubkey,
-                    nonce        => Nonce,
-                    oracle       => base64:decode(EncodedOraclePubkey),
-                    query        => Query,
-                    query_fee    => QueryFee,
-                    query_ttl    => {QueryTTLType, QueryTTLValue},
-                    response_ttl => {delta, ResponseTTLValue},
-                    fee          => Fee}),
-            sign_and_push_to_mempool(OracleQueryTx),
-            {200, [], #{}};
+            case safe_decode(account_pubkey, EncodedOraclePubkey) of
+                {ok, DecodedOraclePubkey} ->
+                    {ok, OracleQueryTx} =
+                        aeo_query_tx:new(
+                          #{sender       => Pubkey,
+                            nonce        => Nonce,
+                            oracle       => DecodedOraclePubkey,
+                            query        => Query,
+                            query_fee    => QueryFee,
+                            query_ttl    => {QueryTTLType, QueryTTLValue},
+                            response_ttl => {delta, ResponseTTLValue},
+                            fee          => Fee}),
+                    sign_and_push_to_mempool(OracleQueryTx),
+                    {200, [], #{}};
+                {error, _} ->
+                    {404, [], #{reason => <<"Invalid key">>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -129,7 +139,7 @@ handle_request('PostOracleUnsubscribe', _Req, _Context) ->
 handle_request('GetPubKey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            {200, [], #{pub_key => base64:encode(Pubkey)}};
+            {200, [], #{pub_key => aec_base58c:encode(account_pubkey, Pubkey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -169,3 +179,14 @@ sign_and_push_to_mempool(Tx) ->
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
                 [pp(aec_tx_pool:peek(10))]).
+
+safe_decode(Type, Enc) ->
+    try aec_base58c:decode(Enc) of
+        {Type, Dec} ->
+            {ok, Dec};
+        {_, _} ->
+            {error, invalid_prefix}
+    catch
+        error:_ ->
+            {error, invalid_encoding}
+    end.

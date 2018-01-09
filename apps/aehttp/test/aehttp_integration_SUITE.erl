@@ -36,7 +36,7 @@
     post_broken_blocks/1,
     post_correct_tx/1,
     post_broken_tx/1,
-    post_broken_base64_tx/1,
+    post_broken_base58_tx/1,
 
     % balances
     miner_balance/1,
@@ -95,7 +95,7 @@ groups() ->
        pending_transactions,
        post_correct_tx,
        post_broken_tx,
-       post_broken_base64_tx,
+       post_broken_base58_tx,
   
        % balances
        miner_balance,
@@ -251,7 +251,7 @@ block_not_found_by_hash(_Config) ->
         fun(_) ->
             H = random_hash(),
             {error, block_not_found} = rpc(aec_conductor, get_block_by_hash, [H]), 
-            Hash = base64:encode(H),
+            Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash(Hash)
         end,
         lists:seq(1, NumberOfChecks)), % number
@@ -261,7 +261,7 @@ block_not_found_by_broken_hash(_Config) ->
     NumberOfChecks = 10,
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
             {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} = get_block_by_hash(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
@@ -277,7 +277,7 @@ block_by_hash(_Config) ->
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
-            Hash = base64:encode(H),
+            Hash = aec_base58c:encode(block_hash, H),
             ExpectedBlockMap = block_to_endpoint_map(ExpectedBlock), 
             {ok, 200, BlockMap} = get_block_by_hash(Hash),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
@@ -314,20 +314,22 @@ pending_transactions(_Config) ->
     %{ok, SenderPubKey} = rpc:call(?NODE, aec_keys, pubkey, [], 5000),
     ReceiverPubKey = random_hash(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_balance(base64:encode(ReceiverPubKey)),
+                  get_balance(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
     {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
     {ok, 200, ReturnedTxs} = get_transactions(), 
-    ExpectedTxs = [#{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(T))}
+    ExpectedTxs = [#{<<"tx">> => aec_base58c:encode(
+                                   transaction,
+                                   aec_tx_sign:serialize_to_binary(T))}
            || T <- NodeTxs],
     true = length(ExpectedTxs) =:= length(ReturnedTxs),
     true = lists:all(fun(Tx) -> lists:member(Tx, ExpectedTxs) end, ReturnedTxs),
 
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance(),  
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
-                  get_balance(base64:encode(ReceiverPubKey)),
+                  get_balance(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -337,7 +339,7 @@ pending_transactions(_Config) ->
     {ok, 200, #{<<"balance">> := Bal1}} = get_balance(),  
     Bal1 = Bal0 + MineReward + Fee - AmountToSpent - Fee,
     {ok, 200, #{<<"balance">> := AmountToSpent}} = 
-                 get_balance(base64:encode(ReceiverPubKey)),
+                 get_balance(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
     ok.
 
@@ -386,9 +388,9 @@ post_broken_blocks(Config) ->
                 BrokenBlock = maps:put(Key, Value, CorrectBlockMap),
                 {Key, BrokenBlock}
             end,
-        [{<<"prev_hash">>, base64:encode(<<"foo">>)},
-         {<<"state_hash">>, base64:encode(<<"foo">>)},
-         {<<"txs_hash">>, base64:encode(<<"foo">>)},
+        [{<<"prev_hash">>, aec_base58c:encode(block_hash, <<"foo">>)},
+         {<<"state_hash">>, aec_base58c:encode(block_hash, <<"foo">>)},
+         {<<"txs_hash">>, aec_base58c:encode(block_tx_hash, <<"foo">>)},
          {<<"target">>, 42},
          {<<"nonce">>, 42},
          {<<"time">>, 42},
@@ -423,7 +425,7 @@ post_correct_tx(_Config) ->
             fee => Fee,
             nonce => Nonce}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-    {ok, 200, _} = post_tx(base64:encode(aec_tx_sign:serialize_to_binary(SignedTx))),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx 
     ok.
 
@@ -448,7 +450,9 @@ post_broken_tx(_Config) ->
                 (_) -> false
                 end,
                 SerializedTx),
-            EncodedBrokenTx = base64:encode(msgpack:pack([T, V, BrokenTx, Sigs])),
+            EncodedBrokenTx = aec_base58c:encode(
+                                transaction,
+                                msgpack:pack([T, V, BrokenTx, Sigs])),
             {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx)
         end,
         [<<"type">>,
@@ -461,7 +465,7 @@ post_broken_tx(_Config) ->
 
     ok.
 
-post_broken_base64_tx(_Config) ->
+post_broken_base58_tx(_Config) ->
     Amount = 7,
     Fee = 2,
     BlocksToMine = 10,
@@ -478,8 +482,9 @@ post_broken_base64_tx(_Config) ->
                     nonce => Nonce}),
             {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
             <<_, BrokenHash/binary>> =
-                base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
-            {ok, 400, #{<<"reason">> := <<"Invalid base64 encoding">>}} = post_tx(BrokenHash)
+                aec_base58c:encode(transaction,
+                                   aec_tx_sign:serialize_to_binary(SignedTx)),
+            {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
@@ -493,14 +498,16 @@ miner_balance(_Config) ->
     {ok, Bal} = rpc(aec_mining, get_miner_account_balance, []),
     {ok, 200, #{<<"balance">> := Bal}} = get_balance(),  
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
-    {ok, 200, #{<<"balance">> := Bal}} = get_balance(base64:encode(PubKey)),
+    {ok, 200, #{<<"balance">> := Bal}} =
+        get_balance(aec_base58c:encode(account_pubkey, PubKey)),
     ok.
 
 balance_broken_address(_Config) ->
     NumberOfChecks = 10,
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(account_pubkey,
+                                                          random_hash()),
             {ok, 400, #{<<"reason">> := <<"Invalid address">>}} = get_balance(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
@@ -537,7 +544,8 @@ all_accounts_balances(_Config) ->
     true =
         lists:all(
             fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                Account = {base64:decode(PKEncoded), Bal},
+                    {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
+                    Account = {AccDec, Bal},
                 lists:member(Account, ExpectedBalances) end,
             Balances),
     ok.
@@ -550,7 +558,8 @@ all_accounts_balances_empty(_Config) ->
     true =
         lists:all(
             fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                Account = {base64:decode(PKEncoded), Bal},
+                    {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
+                Account = {AccDec, Bal},
                 lists:member(Account, GenesisAccounts) end,
             Balances),
     ok.
@@ -570,7 +579,7 @@ version(_Config) ->
     % asserts
     V = V0,
     Rev = Rev0,
-    GenHash0 = base64:decode(EncodedGH),
+    {block_hash, GenHash0} = aec_base58c:decode(EncodedGH),
     ok.
 
 info_disabled(_Config) ->
@@ -636,7 +645,9 @@ broken_spend_tx(_Config) ->
 miner_pub_key(_Config) ->
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
-    MinerPubKey = base64:decode(EncodedPubKey),
+    ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
+                                                    EncodedPubKey]),
+    {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
     ok.
 %% ============================================================
 %% HTTP Requests 
@@ -665,7 +676,8 @@ get_transactions() ->
 post_spend_tx(Recipient, Amount, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
-                 #{recipient_pubkey => base64:encode(Recipient),
+                 #{recipient_pubkey => aec_base58c:encode(
+                                         account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee}).
 
@@ -787,7 +799,7 @@ header_to_endpoint_top(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     {ok, HMap} = aec_headers:serialize_to_map(Header),
     CleanedH = aehttp_dispatch_ext:cleanup_genesis(HMap),
-    maps:put(<<"hash">>, base64:encode(Hash), CleanedH).
+    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), CleanedH).
 
 block_to_endpoint_map(Block) ->
     BMap = aec_blocks:serialize_to_map(Block),
