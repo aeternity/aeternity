@@ -60,7 +60,7 @@ top(Uri) ->
 
 -spec get_block(http_uri:uri(), binary()) -> response(aec_blocks:block()).
 get_block(Uri, Hash) ->
-    EncHash = base64:encode(Hash),
+    EncHash = aec_base58c:encode(block_hash, Hash),
     Response = process_request(Uri, get, "block-by-hash", [{"hash", EncHash}]),
     case Response of
         {ok, Data} ->
@@ -81,8 +81,9 @@ transactions(Uri) ->
         Txs when is_list(Txs) ->
            try {ok, lists:map(
                       fun(#{<<"tx">> := T}) ->
-                            aec_tx_sign:deserialize_from_binary(
-                            base64:decode(T))
+                              {transaction, Dec} =
+                                  aec_base58c:decode(T),
+                            aec_tx_sign:deserialize_from_binary(Dec)
                       end, Txs)}
            catch
                error:Reason ->
@@ -111,7 +112,8 @@ send_block(Uri, Block) ->
 
 -spec send_tx(http_uri:uri(), aec_tx:signed_tx()) -> response(ok).
 send_tx(Uri, SignedTx) ->
-    TxSerialized = base64:encode(aec_tx_sign:serialize_to_binary(SignedTx)),
+    TxSerialized = aec_base58c:encode(
+                     transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
     Response = process_request(Uri, post, "tx", #{tx => TxSerialized}),
     case Response of
         {ok, _Map} ->
@@ -126,7 +128,8 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
                         amount := Am,
                         fee := Fee} = Req0)
   when is_binary(Kr), is_integer(Am), is_integer(Fee) ->
-    Req = maps:put(recipient_pubkey, base64:encode(Kr), Req0),
+    Req = maps:put(
+            recipient_pubkey, aec_base58c:encode(account_pubkey, Kr), Req0),
     Response = process_request(IntPeer, post, "spend-tx", Req),
     case Response of
         {ok, _Map} ->

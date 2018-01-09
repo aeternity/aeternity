@@ -16,15 +16,21 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
               <<"amount">>           := Amount,
               <<"fee">>              := Fee} = SpendTxObj,
-            {ok, SpendTx} =
-                aec_spend_tx:new(
-                  #{sender    => SenderPubkey,
-                    recipient => base64:decode(EncodedRecipientPubkey),
-                    amount    => Amount,
-                    fee       => Fee,
-                    nonce     => Nonce}),
-            sign_and_push_to_mempool(SpendTx),
-            {200, [], #{}};
+            case aec_base58c:safe_decode(
+                   account_pubkey, EncodedRecipientPubkey) of
+                {ok, DecodedRecipientPubkey} ->
+                    {ok, SpendTx} =
+                        aec_spend_tx:new(
+                          #{sender    => SenderPubkey,
+                            recipient => DecodedRecipientPubkey,
+                            amount    => Amount,
+                            fee       => Fee,
+                            nonce     => Nonce}),
+                    sign_and_push_to_mempool(SpendTx),
+                    {200, [], #{}};
+                {error, __} ->
+                    {404, [], #{reason => <<"Invalid key">>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -71,18 +77,23 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
               <<"fee">>           := Fee} = OracleQueryTxObj,
             QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            {ok, OracleQueryTx} =
-                aeo_query_tx:new(
-                  #{sender       => Pubkey,
-                    nonce        => Nonce,
-                    oracle       => base64:decode(EncodedOraclePubkey),
-                    query        => Query,
-                    query_fee    => QueryFee,
-                    query_ttl    => {QueryTTLType, QueryTTLValue},
-                    response_ttl => {delta, ResponseTTLValue},
-                    fee          => Fee}),
-            sign_and_push_to_mempool(OracleQueryTx),
-            {200, [], #{}};
+            case aec_base58c:safe_decode(account_pubkey, EncodedOraclePubkey) of
+                {ok, DecodedOraclePubkey} ->
+                    {ok, OracleQueryTx} =
+                        aeo_query_tx:new(
+                          #{sender       => Pubkey,
+                            nonce        => Nonce,
+                            oracle       => DecodedOraclePubkey,
+                            query        => Query,
+                            query_fee    => QueryFee,
+                            query_ttl    => {QueryTTLType, QueryTTLValue},
+                            response_ttl => {delta, ResponseTTLValue},
+                            fee          => Fee}),
+                    sign_and_push_to_mempool(OracleQueryTx),
+                    {200, [], #{}};
+                {error, _} ->
+                    {404, [], #{reason => <<"Invalid key">>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -129,7 +140,7 @@ handle_request('PostOracleUnsubscribe', _Req, _Context) ->
 handle_request('GetPubKey', _, _Context) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            {200, [], #{pub_key => base64:encode(Pubkey)}};
+            {200, [], #{pub_key => aec_base58c:encode(account_pubkey, Pubkey)}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -289,9 +300,8 @@ read_optional_bool_param(Key, Req, Default) when Default =:= true
                                           orelse Default =:= false ->
     %% swagger does not take into consideration the 'default'
     %% if a query param is missing, swagger adds it to Req with a value of
-    %% 'undefined' 
-    case maps:get(Key, Req) of 
+    %% 'undefined'
+    case maps:get(Key, Req) of
         undefined -> Default;
         Bool when is_boolean(Bool) -> Bool
     end.
-        

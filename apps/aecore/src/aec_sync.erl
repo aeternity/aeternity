@@ -46,8 +46,8 @@ connect_peer(Uri) ->
 %% Builds a 'Ping' object for the initial ping.
 %% The 'Ping' object contains the following data:
 %% - source: our own peer uri
-%% - genesis_hash: base64-encoded hash of our genesis block
-%% - best_hash: base64-encoded hash of our top block
+%% - genesis_hash: base58Check-encoded hash of our genesis block
+%% - best_hash: base58Check-encoded hash of our top block
 %% - difficulty: (Ethereum: total_difficulty) our top_work
 %% - share: how many random peers we'd like the other node to share
 %% - peers: a random subset (size `Share`) that we know of
@@ -64,8 +64,8 @@ local_ping_object() ->
     TopHash = aec_conductor:top_header_hash(),
     Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_conductor:get_total_difficulty(),
-    #{<<"genesis_hash">> => base64:encode(GHash),
-      <<"best_hash">>    => base64:encode(TopHash),
+    #{<<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
+      <<"best_hash">>    => aec_base58c:encode(block_hash, TopHash),
       <<"difficulty">>   => Difficulty,
       <<"source">>       => Source,
       <<"share">>        => 32,  % TODO: make this configurable
@@ -84,29 +84,62 @@ compare_ping_objects(RemoteUri, Local, Remote) ->
         {G, G} ->
             lager:debug("genesis blocks match", []),
             %% same genesis block - continue
-            case {maps:get(<<"best_hash">>, Local),
-                  maps:get(<<"best_hash">>, Remote)} of
-                {T, T} ->
-                    lager:debug("same top blocks", []),
-                    %% headers in sync; check missing blocks
-                    %% Note that in this case, both will publish
-                    %% events as if they're the server (basically
-                    %% meaning that they were tied for server position).
+            compare_genesis_blocks_match(RemoteUri, Local, Remote);
+        _ ->
+            {error, different_genesis_blocks}
+    end.
+
+compare_genesis_blocks_match(RemoteUri, Local, Remote) ->
+    case compare_top_blocks(Local, Remote) of
+        {error, _} = Error ->
+            Error;
+        {ok, Next} ->
+            case Next of
+                get_missing_blocks ->
                     server_get_missing_blocks(RemoteUri);
-                _ ->
+                start_sync ->
+                    start_sync(RemoteUri)
+            end,
+            fetch_mempool(RemoteUri),
+            ok
+    end.
+
+compare_top_blocks(Local, Remote) ->
+    case {maps:get(<<"best_hash">>, Local),
+          maps:get(<<"best_hash">>, Remote)} of
+        {T, T} ->
+            lager:debug("same top blocks", []),
+            %% headers in sync; check missing blocks
+            %% Note that in this case, both will publish
+            %% events as if they're the server (basically
+            %% meaning that they were tied for server position).
+            {ok, get_missing_blocks};
+        {_, RemHash} ->
+            case validate_remote_hash(RemHash) of
+                true ->
                     Dl = maps:get(<<"difficulty">>, Local),
                     Dr = maps:get(<<"difficulty">>, Remote),
                     if Dl > Dr ->
-                        lager:debug("Our difficulty is higher", []),
-                        server_get_missing_blocks(RemoteUri);
+                            lager:debug("Our difficulty is higher", []),
+                            {ok, get_missing_blocks};
                        true ->
-                         start_sync(RemoteUri)
-                    end
-             end,
-             fetch_mempool(RemoteUri),
-             ok;
+                            {ok, start_sync}
+                    end;
+                false ->
+                    {error, invalid_block_hash}
+            end
+    end.
+
+
+validate_remote_hash(Hash) ->
+    try aec_base58c:decode(Hash) of
+        {block_hash, _} ->
+            true;
         _ ->
-             {error, different_genesis_blocks}
+            false
+    catch
+        error:_ ->
+            false
     end.
 
 start_sync(Uri) ->
