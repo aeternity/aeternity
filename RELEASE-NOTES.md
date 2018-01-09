@@ -122,7 +122,7 @@ bin/check_config epoch.yaml
 ```
 You shall read output like the following:
 ```
-OK
+Res = {ok, ...}
 ```
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
 
