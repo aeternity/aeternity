@@ -28,4 +28,3 @@
           response       :: aeo_interaction:oracle_response(),
           fee            :: integer()
           }).
-
