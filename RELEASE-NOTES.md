@@ -118,11 +118,11 @@ mkdir /tmp/node/my_db
 You can validate the configuration file before starting the node:
 ```
 cd /tmp/node
-bin/epoch check_config epoch.yaml
+bin/check_config epoch.yaml
 ```
 You shall read output like the following:
 ```
-OK
+Res = {ok, ...}
 ```
 If the file is valid YAML but does not contain a valid configuration, it prints a helpful output.
 
