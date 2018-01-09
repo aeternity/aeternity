@@ -150,7 +150,7 @@
       wait_for:
         port: "{{ config.http.external.port }}"
         host: "{{ ansible_ssh_host }}"
-        timeout: 5
+        timeout: 300
       connection: local
       tags: [health-check]
 
