@@ -1,7 +1,7 @@
 -module(aeu_requests).
 
 %% API
--export([ping/1,
+-export([ping/2,
          top/1,
          get_block/2,
          transactions/1,
@@ -15,12 +15,12 @@
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(http_uri:uri()) -> response(map()).
-ping(Uri) ->
+-spec ping(http_uri:uri(), map()) -> response(map()).
+ping(Uri, LocalPingObj) ->
     #{<<"share">> := Share, 
       <<"genesis_hash">> := GHash,
       <<"best_hash">> := TopHash
-     } = LocalPingObj = aec_sync:local_ping_object(),
+     } = LocalPingObj,
     Peers = aec_peers:get_random(Share, [Uri]),
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = LocalPingObj#{<<"peers">> => Peers,
@@ -48,9 +48,10 @@ ping(Uri) ->
               {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
                 RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                  <<"best_hash">>  => RemoteTopHash},
+                RemotePeers = maps:get(<<"peers">>, Map, []),
                 lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
                 case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
-                  ok    -> {ok, RemoteObj};
+                  ok    -> {ok, RemoteObj, RemotePeers};
                   {error, _} = Error -> Error
                 end;
               _ ->
