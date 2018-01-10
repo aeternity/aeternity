@@ -250,18 +250,25 @@ handle_ping_(Source, PingObj) ->
       #{<<"genesis_hash">> := EncRemoteGHash,
         <<"best_hash">> := EncRemoteTopHash,
         <<"share">> := Share} ->
-            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
-                {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
+            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
+                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
+                {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
                     RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
                                          <<"best_hash">>  => RemoteTopHash},
                     lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
-                    case aec_sync:compare_ping_objects(Source, LocalPingObj, RemoteObj) of    
+                    case aec_sync:compare_ping_objects(
+                           Source, LocalPingObj, RemoteObj) of
                         ok ->
                             aec_peers:update_last_seen(Source),
                             TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
                             aec_peers:add_and_ping_peers(TheirPeers),
-                            Map = LocalPingObj#{<<"pong">> => <<"pong">>},
-                            Res = 
+                            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
+                            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
+                            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
+                                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
+                                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
+                                               },
+                            Res =
                                 case mk_num(Share) of
                                     N when is_integer(N), N > 0 ->
                                         Peers = aec_peers:get_random(N, [Source|TheirPeers]),

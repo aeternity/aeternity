@@ -44,8 +44,9 @@ ping(Uri) ->
             {error, Reason};
         {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
                 <<"best_hash">> := EncRemoteTopHash} = Map} ->
-            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
-              {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
+            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
+                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
+              {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
                 RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                  <<"best_hash">>  => RemoteTopHash},
                 lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
@@ -55,7 +56,7 @@ ping(Uri) ->
                 end;
               _ ->
                 %% Something is wrong, block the peer later on
-                {error, different_genesis_blocks}
+                {error, protocol_violation}
             end;
         {error, _Reason} = Error ->
             Error

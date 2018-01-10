@@ -186,7 +186,6 @@ end_per_suite(_Config) ->
 
 init_per_group(_, Config) ->
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config].
-    
 
 end_per_group(_Group, _Config) ->
     ok.
@@ -208,8 +207,16 @@ end_per_testcase(_Case, Config) ->
 %% Test cases
 %% ============================================================
 correct_ping(_Config) ->
-    PingObj = rpc(aec_sync, local_ping_object, []),
-    {ok, 200, _} = post_ping(maps:put(<<"source">>, unique_peer(), PingObj)),
+    #{<<"genesis_hash">> := GHash,
+      <<"best_hash">> := TopHash
+     } = PingObj = rpc(aec_sync, local_ping_object, []),
+    EncGHash = aec_base58c:encode(block_hash, GHash),
+    EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    {ok, 200, _} =
+        post_ping(
+          maps:put(<<"source">>, unique_peer(),
+                   PingObj#{<<"genesis_hash">> => EncGHash,
+                            <<"best_hash">> => EncTopHash})),
     ok.
 
 broken_pings(_Config) ->
@@ -218,7 +225,7 @@ broken_pings(_Config) ->
     % no ping obj data
     {ok, 400, _} = post_ping(#{<<"source">> => unique_peer()}),
     PingObj = rpc(aec_sync, local_ping_object, []),
-    % wrong genesis hash 
+    % wrong genesis hash
     WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => unique_peer(),
                                              <<"genesis_hash">> => <<"foo">>}),
     {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =

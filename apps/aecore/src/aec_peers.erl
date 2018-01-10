@@ -497,7 +497,8 @@ ping_peer(Peer) ->
                     log_good_ping(Peer),
                     Peers = maps:get(<<"peers">>, Map, []),
                     add_and_ping_peers(Peers);
-                {error, different_genesis_blocks} ->
+                {error, Reason} when Reason =:= protocol_violation;
+                                     Reason =:= different_genesis_blocks ->
                     block_peer(Uri);
                 _ ->
                     log_ping_error(Peer)
