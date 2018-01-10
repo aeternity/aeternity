@@ -80,12 +80,13 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 -spec check(response_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           interaction_id = IId, fee = Fee}, Trees, Height) ->
-    case fetch_interaction(IId, Trees) of
+    case fetch_interaction(OraclePubKey, IId, Trees) of
         {value, I} ->
             ResponseTTL = aeo_interaction:response_ttl(I),
             QueryFee    = aeo_interaction:fee(I),
             Checks =
-                [fun() -> check_interaction(I, OraclePubKey)end,
+                [fun() -> check_oracle(OraclePubKey, Trees) end,
+                 fun() -> check_interaction(I, OraclePubKey) end,
                  fun() -> aetx_utils:check_account(OraclePubKey, Trees,
                                                    Height, Nonce, Fee - QueryFee) end,
                  fun() -> aeo_utils:check_ttl_fee(Height, ResponseTTL,
@@ -95,7 +96,7 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                 ok              -> {ok, Trees};
                 {error, Reason} -> {error, Reason}
             end;
-        none -> {error, oracle_interaction_id_does_not_exist}
+        none -> {error, no_matching_oracle_interaction}
     end.
 
 -spec signers(response_tx()) -> [pubkey()].
@@ -109,7 +110,7 @@ process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
-    Interaction0 = aeo_state_tree:get_interaction(IId, OraclesTree0),
+    Interaction0 = aeo_state_tree:get_interaction(OraclePubKey, IId, OraclesTree0),
     Interaction1 = aeo_interaction:set_response(Response, Interaction0),
     OraclesTree1 = aeo_state_tree:enter_interaction(Interaction1, OraclesTree0),
 
@@ -174,9 +175,9 @@ for_client(#oracle_response_tx{ oracle         = OraclePubKey,
 
 %% -- Local functions  -------------------------------------------------------
 
-fetch_interaction(IId, Trees) ->
+fetch_interaction(OId, IId, Trees) ->
     OraclesTree  = aec_trees:oracles(Trees),
-    aeo_state_tree:lookup_interaction(IId, OraclesTree).
+    aeo_state_tree:lookup_interaction(OId, IId, OraclesTree).
 
 check_interaction(I, OraclePubKey) ->
     case OraclePubKey == aeo_interaction:oracle_address(I) of
@@ -186,4 +187,11 @@ check_interaction(I, OraclePubKey) ->
                 false -> ok
             end;
         false -> {error, oracle_does_not_match_interaction_id}
+    end.
+
+check_oracle(OraclePubKey, Trees) ->
+    OraclesTree  = aec_trees:oracles(Trees),
+    case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
+        {value, _Oracle} -> ok;
+        none -> {error, oracle_does_not_exist}
     end.

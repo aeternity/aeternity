@@ -39,7 +39,7 @@
           port: 3013
       chain:
         persist: true
-        db_path: "./db12"
+        db_path: "./db13"
       keypair:
         dir: "keys"
         password: "{{ keys_password|default('secret') }}"
