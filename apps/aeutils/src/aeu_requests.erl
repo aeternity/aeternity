@@ -31,21 +31,20 @@ ping(Uri, LocalPingObj) ->
     case Response of
         {ok, #{<<"reason">> := Reason}} ->
             lager:debug("Got an error return: Reason = ~p", [Reason]),
-            case Reason of
-                <<"Different genesis", _/binary>> ->
-                    aec_peers:block_peer(Uri);
-                <<"Not allowed", _/binary>> ->
-                    aec_peers:block_peer(Uri);
-                _ -> ok
-            end,
             aec_events:publish(chain_sync,
                                {sync_aborted, #{uri => Uri,
                                                 reason => Reason}}),
-            {error, Reason};
+            case Reason of
+                <<"Different genesis", _/binary>> ->
+                    {error, protocol_violation};
+                <<"Not allowed", _/binary>> ->
+                    {error, protocol_violation};
+                _ -> {error, Reason}
+            end;
         {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
                 <<"best_hash">> := EncRemoteTopHash} = Map} ->
-            case catch {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
-              {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
+            try {block_hash, RemoteGHash} = aec_base58c:decode(EncRemoteGHash), 
+                {block_hash, RemoteTopHash} = aec_base58c:decode(EncRemoteTopHash),
                 RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                  <<"best_hash">>  => RemoteTopHash},
                 RemotePeers = maps:get(<<"peers">>, Map, []),
@@ -53,10 +52,11 @@ ping(Uri, LocalPingObj) ->
                 case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
                   ok    -> {ok, RemoteObj, RemotePeers};
                   {error, _} = Error -> Error
-                end;
-              _ ->
+                end
+            catch _:_ ->
                 %% Something is wrong, block the peer later on
-                {error, different_genesis_blocks}
+                lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
+                {error, protocol_violation}
             end;
         {error, _Reason} = Error ->
             Error

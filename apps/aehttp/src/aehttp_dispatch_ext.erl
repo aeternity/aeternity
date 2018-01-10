@@ -250,38 +250,37 @@ handle_ping_(Source, PingObj) ->
       #{<<"genesis_hash">> := EncRemoteGHash,
         <<"best_hash">> := EncRemoteTopHash,
         <<"share">> := Share} ->
-            case catch {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
-                {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
-                    RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
-                                         <<"best_hash">>  => RemoteTopHash},
-                    lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
-                    case aec_sync:compare_ping_objects(Source, LocalPingObj, RemoteObj) of    
-                        ok ->
-                            aec_peers:update_last_seen(Source),
-                            TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
-                            aec_peers:add_and_ping_peers(TheirPeers),
-                            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
-                            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
-                            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
-                                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
-                                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
-                                               },
-                            Res = 
-                                case mk_num(Share) of
-                                    N when is_integer(N), N > 0 ->
-                                        Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                                        lager:debug("PeerUris = ~p~n", [Peers]),
-                                        Map#{<<"peers">> => Peers};
-                                    _ ->
-                                        Map
-                                end,
-                            {200, [], Res};
-                        {error, different_genesis_blocks} ->
-                            abort_ping(Source)
-                    end;
-                _ ->
-                    lager:debug("Block hashes wrongly encoded ~p\n"),
-                    abort_ping(Source)
+           try {block_hash, RemoteGHash} = aec_base58c:decode(EncRemoteGHash), 
+               {block_hash, RemoteTopHash} = aec_base58c:decode(EncRemoteTopHash),
+                RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
+                                     <<"best_hash">>  => RemoteTopHash},
+                lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
+                case aec_sync:compare_ping_objects(Source, LocalPingObj, RemoteObj) of    
+                    ok ->
+                        aec_peers:update_last_seen(Source),
+                        TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
+                        aec_peers:add_and_ping_peers(TheirPeers),
+                        LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
+                        LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
+                        Map = LocalPingObj#{<<"pong">> => <<"pong">>,
+                                            <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
+                                            <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
+                                           },
+                        Res = case mk_num(Share) of
+                                  N when is_integer(N), N > 0 ->
+                                      Peers = aec_peers:get_random(N, [Source|TheirPeers]),
+                                      lager:debug("PeerUris = ~p~n", [Peers]),
+                                      Map#{<<"peers">> => Peers};
+                                  _ ->
+                                      Map
+                              end,
+                        {200, [], Res};
+                    {error, different_genesis_blocks} ->
+                        abort_ping(Source)
+                end
+            catch _:_ ->
+                lager:debug("Block hashes wrongly encoded ~p\n"),
+                abort_ping(Source)
             end;
         _ ->
           %% violation of protocol
