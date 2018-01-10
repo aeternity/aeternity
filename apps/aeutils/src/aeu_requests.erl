@@ -31,17 +31,16 @@ ping(Uri, LocalPingObj) ->
     case Response of
         {ok, #{<<"reason">> := Reason}} ->
             lager:debug("Got an error return: Reason = ~p", [Reason]),
-            case Reason of
-                <<"Different genesis", _/binary>> ->
-                    aec_peers:block_peer(Uri);
-                <<"Not allowed", _/binary>> ->
-                    aec_peers:block_peer(Uri);
-                _ -> ok
-            end,
             aec_events:publish(chain_sync,
                                {sync_aborted, #{uri => Uri,
                                                 reason => Reason}}),
-            {error, Reason};
+            {error, case Reason of
+                      <<"Different genesis", _/binary>> ->
+                          protocol_violation;
+                      <<"Not allowed", _/binary>> ->
+                          protocol_violation;
+                      _ -> Reason
+                    end};
         {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
                 <<"best_hash">> := EncRemoteTopHash} = Map} ->
             case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
