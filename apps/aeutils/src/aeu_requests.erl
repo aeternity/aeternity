@@ -17,10 +17,16 @@
 
 -spec ping(http_uri:uri()) -> response(map()).
 ping(Uri) ->
-    #{<<"share">> := Share} = PingObj0 = aec_sync:local_ping_object(),
+    #{<<"share">> := Share, 
+      <<"genesis_hash">> := GHash,
+      <<"best_hash">> := TopHash
+     } = LocalPingObj = aec_sync:local_ping_object(),
     Peers = aec_peers:get_random(Share, [Uri]),
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
-    PingObj = PingObj0#{<<"peers">> => Peers},
+    PingObj = LocalPingObj#{<<"peers">> => Peers,
+                        <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
+                        <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
+                       },
     Response = process_request(Uri, post, "ping", PingObj),
     case Response of
         {ok, #{<<"reason">> := Reason}} ->
@@ -36,11 +42,20 @@ ping(Uri) ->
                                {sync_aborted, #{uri => Uri,
                                                 reason => Reason}}),
             {error, Reason};
-        {ok, Map} ->
-            lager:debug("ping response (~p): ~p", [Uri, pp(Map)]),
-            case aec_sync:compare_ping_objects(Uri, PingObj, Map) of
-                ok    -> {ok, Map};
-                {error, _} = Error -> Error
+        {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
+                <<"best_hash">> := EncRemoteTopHash} = Map} ->
+            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
+              {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
+                RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
+                                 <<"best_hash">>  => RemoteTopHash},
+                lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
+                case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
+                  ok    -> {ok, RemoteObj};
+                  {error, _} = Error -> Error
+                end;
+              _ ->
+                %% Something is wrong, block the peer later on
+                {error, different_genesis_blocks}
             end;
         {error, _Reason} = Error ->
             Error

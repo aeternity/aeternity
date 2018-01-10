@@ -64,8 +64,8 @@ local_ping_object() ->
     TopHash = aec_conductor:top_header_hash(),
     Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_conductor:get_total_difficulty(),
-    #{<<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
-      <<"best_hash">>    => aec_base58c:encode(block_hash, TopHash),
+    #{<<"genesis_hash">> => GHash,
+      <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
       <<"source">>       => Source,
       <<"share">>        => 32,  % TODO: make this configurable
@@ -78,69 +78,37 @@ local_ping_object() ->
 %%    - Otherwise, trigger a sync, return 'ok'.
 -spec compare_ping_objects(http_uri:uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(RemoteUri, Local, Remote) ->
-    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, pp(Local), pp(Remote)]),
+    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, Local, Remote]),
     case {maps:get(<<"genesis_hash">>, Local),
           maps:get(<<"genesis_hash">>, Remote)} of
         {G, G} ->
             lager:debug("genesis blocks match", []),
             %% same genesis block - continue
-            compare_genesis_blocks_match(RemoteUri, Local, Remote);
+            case {maps:get(<<"best_hash">>, Local),
+                  maps:get(<<"best_hash">>, Remote)} of
+                {T, T} ->
+                    lager:debug("same top blocks", []),
+                    %% headers in sync; check missing blocks
+                    %% Note that in this case, both will publish
+                    %% events as if they're the server (basically
+                    %% meaning that they were tied for server position).
+                    server_get_missing_blocks(RemoteUri);
+                _ ->
+                    Dl = maps:get(<<"difficulty">>, Local),
+                    Dr = maps:get(<<"difficulty">>, Remote),
+                    if Dl > Dr ->
+                         lager:debug("Our difficulty is higher", []),
+                         server_get_missing_blocks(RemoteUri);
+                       true ->
+                         start_sync(RemoteUri)
+                    end
+            end,
+            fetch_mempool(RemoteUri),
+            ok;
         _ ->
             {error, different_genesis_blocks}
     end.
 
-compare_genesis_blocks_match(RemoteUri, Local, Remote) ->
-    case compare_top_blocks(Local, Remote) of
-        {error, _} = Error ->
-            Error;
-        {ok, Next} ->
-            case Next of
-                get_missing_blocks ->
-                    server_get_missing_blocks(RemoteUri);
-                start_sync ->
-                    start_sync(RemoteUri)
-            end,
-            fetch_mempool(RemoteUri),
-            ok
-    end.
-
-compare_top_blocks(Local, Remote) ->
-    case {maps:get(<<"best_hash">>, Local),
-          maps:get(<<"best_hash">>, Remote)} of
-        {T, T} ->
-            lager:debug("same top blocks", []),
-            %% headers in sync; check missing blocks
-            %% Note that in this case, both will publish
-            %% events as if they're the server (basically
-            %% meaning that they were tied for server position).
-            {ok, get_missing_blocks};
-        {_, RemHash} ->
-            case validate_remote_hash(RemHash) of
-                true ->
-                    Dl = maps:get(<<"difficulty">>, Local),
-                    Dr = maps:get(<<"difficulty">>, Remote),
-                    if Dl > Dr ->
-                            lager:debug("Our difficulty is higher", []),
-                            {ok, get_missing_blocks};
-                       true ->
-                            {ok, start_sync}
-                    end;
-                false ->
-                    {error, invalid_block_hash}
-            end
-    end.
-
-
-validate_remote_hash(Hash) ->
-    try aec_base58c:decode(Hash) of
-        {block_hash, _} ->
-            true;
-        _ ->
-            false
-    catch
-        error:_ ->
-            false
-    end.
 
 start_sync(Uri) ->
     gen_server:cast(?MODULE, {start_sync, Uri}).
