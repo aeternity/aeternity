@@ -50,10 +50,7 @@ ping(Uri, LocalPingObj) ->
                                    <<"best_hash">>  => RemoteTopHash},
                   RemotePeers = maps:get(<<"peers">>, Map, []),
                   lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
-                  case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
-                      ok    -> {ok, RemoteObj, RemotePeers};
-                      {error, _} = Error -> Error
-                  end;
+                  {ok, RemoteObj, RemotePeers};
               _ ->
                 %% Something is wrong, block the peer later on
                 lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),

@@ -494,11 +494,14 @@ ping_peer(Peer) ->
             Res = aeu_requests:ping(Uri, LocalPingObj),
             lager:debug("ping result (~p): ~p", [Uri, Res]),
             case Res of
-                {ok, _RemotePingObj, RemotePeers} ->
-                    log_good_ping(Peer),
-                    add_and_ping_peers(RemotePeers);
-                {error, different_genesis_blocks} ->
-                    block_peer(Uri);
+                {ok, RemotePingObj, RemotePeers} ->
+                    case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemotePingObj) of
+                        ok ->
+                            log_good_ping(Peer),
+                            add_and_ping_peers(RemotePeers);
+                        {error, different_genesis_blocks} ->
+                            block_peer(Uri)
+                    end;
                 {error, protocol_violation} ->
                     block_peer(Uri);
                 _ ->
