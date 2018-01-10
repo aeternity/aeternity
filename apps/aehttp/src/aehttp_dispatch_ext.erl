@@ -246,26 +246,45 @@ handle_ping(#{<<"source">> := Src} = PingObj) ->
 
 handle_ping_(Source, PingObj) ->
     LocalPingObj = aec_sync:local_ping_object(),
-    case aec_sync:compare_ping_objects(Source, LocalPingObj, PingObj) of
-        {error, different_genesis_blocks} ->
-            aec_peers:block_peer(Source),
-            abort_sync(Source, 409, <<"Different genesis blocks">>);
-        ok ->
-            aec_peers:update_last_seen(Source),
-            TheirPeers = maps:get(<<"peers">>, PingObj, []),
-            aec_peers:add_and_ping_peers(TheirPeers),
-            Map = LocalPingObj#{<<"pong">> => <<"pong">>},
-            Share = maps:get(<<"share">>, PingObj),
-            Res = case mk_num(Share) of
-                      N when is_integer(N), N > 0 ->
-                          Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                          lager:debug("PeerUris = ~p~n", [Peers]),
-                          Map#{<<"peers">> => Peers};
-                      _ ->
-                          Map
-                  end,
-            {200, [], Res}
+    case PingObj of
+      #{<<"genesis_hash">> := EncRemoteGHash,
+        <<"best_hash">> := EncRemoteTopHash,
+        <<"share">> := Share} ->
+            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
+                {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
+                    RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
+                                         <<"best_hash">>  => RemoteTopHash},
+                    lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
+                    case aec_sync:compare_ping_objects(Source, LocalPingObj, RemoteObj) of    
+                        ok ->
+                            aec_peers:update_last_seen(Source),
+                            TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
+                            aec_peers:add_and_ping_peers(TheirPeers),
+                            Map = LocalPingObj#{<<"pong">> => <<"pong">>},
+                            Res = 
+                                case mk_num(Share) of
+                                    N when is_integer(N), N > 0 ->
+                                        Peers = aec_peers:get_random(N, [Source|TheirPeers]),
+                                        lager:debug("PeerUris = ~p~n", [Peers]),
+                                        Map#{<<"peers">> => Peers};
+                                    _ ->
+                                        Map
+                                end,
+                            {200, [], Res};
+                        {error, different_genesis_blocks} ->
+                            abort_ping(Source)
+                    end;
+                _ ->
+                    abort_ping(Source)
+            end;
+        _ ->
+          %% violation of protocol
+          abort_ping(Source)
     end.
+
+abort_ping(Source) ->
+    aec_peers:block_peer(Source),
+    abort_sync(Source, 409, <<"Different genesis blocks">>).
 
 abort_sync(Uri, Code, Reason) ->
     aec_events:publish(
