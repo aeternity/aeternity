@@ -44,7 +44,7 @@ ping(Uri) ->
             {error, Reason};
         {ok, #{ <<"genesis_hash">> := EncRemoteGHash,
                 <<"best_hash">> := EncRemoteTopHash} = Map} ->
-            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
+            case catch {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
               {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
                 RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                  <<"best_hash">>  => RemoteTopHash},

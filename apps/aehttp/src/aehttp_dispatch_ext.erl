@@ -250,7 +250,7 @@ handle_ping_(Source, PingObj) ->
       #{<<"genesis_hash">> := EncRemoteGHash,
         <<"best_hash">> := EncRemoteTopHash,
         <<"share">> := Share} ->
-            case {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
+            case catch {aec_base58c:decode(EncRemoteGHash), aec_base58c:decode(EncRemoteTopHash)} of
                 {{block_hash, RemoteGHash}, {block_hash, RemoteTopHash}} ->
                     RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
                                          <<"best_hash">>  => RemoteTopHash},
