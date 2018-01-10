@@ -24,9 +24,9 @@ ping(Uri) ->
     Peers = aec_peers:get_random(Share, [Uri]),
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = LocalPingObj#{<<"peers">> => Peers,
-                        <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
-                        <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
-                       },
+                            <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
+                            <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
+                           },
     Response = process_request(Uri, post, "ping", PingObj),
     case Response of
         {ok, #{<<"reason">> := Reason}} ->

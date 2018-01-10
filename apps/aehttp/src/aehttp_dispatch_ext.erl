@@ -260,7 +260,12 @@ handle_ping_(Source, PingObj) ->
                             aec_peers:update_last_seen(Source),
                             TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
                             aec_peers:add_and_ping_peers(TheirPeers),
-                            Map = LocalPingObj#{<<"pong">> => <<"pong">>},
+                            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
+                            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
+                            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
+                                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
+                                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
+                                               },
                             Res = 
                                 case mk_num(Share) of
                                     N when is_integer(N), N > 0 ->
@@ -275,10 +280,12 @@ handle_ping_(Source, PingObj) ->
                             abort_ping(Source)
                     end;
                 _ ->
+                    lager:debug("Block hashes wrongly encoded ~p\n"),
                     abort_ping(Source)
             end;
         _ ->
           %% violation of protocol
+          lager:debug("Protocol violation\n"),
           abort_ping(Source)
     end.
 
