@@ -169,8 +169,8 @@ correct_ping(_Config) ->
       <<"best_hash">> := TopHash
      } = PingObj = rpc(aec_sync, local_ping_object, []),
     {ok, 200, _} = post_ping(maps:put(<<"source">>, unique_peer(), 
-                                      PingObj#{<<"genesis_hash">> := aec_base58c:encode(block_hash, GHash),
-                                               <<"best_hash">> := aec_base58c:encode(block_hash,TopHash)})),
+                                      PingObj#{<<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
+                                               <<"best_hash">> => aec_base58c:encode(block_hash,TopHash)})),
     ok.
 
 broken_pings(_Config) ->
