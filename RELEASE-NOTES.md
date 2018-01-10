@@ -78,7 +78,7 @@ The storage of the key pair by the node is basic:
 * A fresh key pair is generated if none is found in the configured location.
 
 You do not need to create a key pair yourself: the node will generate one (`keys` > `dir` parameter) in the configured location if none found there.
-After the node generates the key pair in the configured location, you should backup of that directory (and remember the password): if you destroy the node, you can setup a new node with the same account in order to lose the tokens you had obtained by mining on the chain.
+After the node generates the key pair in the configured location, you should back up that directory (and remember the password): if you destroy the node, you can setup a new node with the same account in order not to lose the tokens you had obtained by mining on the chain.
 You shall not share the private key (or the password) with anyone.
 
 Create the file `/tmp/node/epoch.yaml` with the following content (amend the `http` > `external` > `peer_address` parameter and `http` > `external` > `port` parameter with your actual values):
@@ -147,7 +147,7 @@ curl http://127.0.0.1:3003/v1/top
 
 If the node is unresponsive, inspect the `log` directory for errors.
 
-Backup the key pair:
+Back up the key pair:
 ```
 cp -pr /tmp/node/keys ~/my_epoch_keys
 ```
