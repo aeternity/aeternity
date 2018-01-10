@@ -112,7 +112,7 @@ add_and_ping_peers(Uris) ->
 -spec block_peer(http_uri:uri()) -> ok | {error, any()}.
 block_peer(Uri) ->
     valid_uri(Uri, 
-              fun(Peer) -> gen_server:cast(?MODULE, {block, Peer}) end).
+              fun(Peer) -> gen_server:call(?MODULE, {block, Peer}) end).
 
 
 %%------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ block_peer(Uri) ->
 -spec unblock_peer(http_uri:uri()) -> ok | {error, any()}.
 unblock_peer(Uri) ->
     valid_uri(Uri, 
-              fun(Peer) -> gen_server:cast(?MODULE, {unblock, Peer}) end).
+              fun(Peer) -> gen_server:call(?MODULE, {unblock, Peer}) end).
 
 %%------------------------------------------------------------------------------
 %% Check if peer is blocked. Erroneous URI is by definition blocked.
@@ -257,6 +257,29 @@ handle_call(get_local_peer_uri, _From, State) ->
     {reply, uri_of_peer(State#state.local_peer), State};
 handle_call({is_blocked, Peer}, _From, State) ->
     {reply, is_blocked(Peer, State), State};
+handle_call({block, Peer}, _From, #state{peers = Peers,
+                                  blocked = Blocked} = State) ->
+    Uri = uri_of_peer(Peer),
+    Key = hash_uri(Uri),
+    NewState = 
+        case gb_sets:is_element(Uri, Blocked) of
+            true -> State;
+            false ->
+               aec_events:publish(peers, {blocked, Uri}),
+               State#state{peers   = gb_trees:delete_any(Key, Peers),
+                           blocked = gb_sets:add_element(Uri, Blocked)}
+        end,
+    {reply, ok, NewState};
+handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
+    Uri = uri_of_peer(Peer),
+    NewState = 
+        case gb_sets:is_element(Uri, Blocked) of
+            false -> State;
+            true ->
+                aec_events:publish(peers, {unblocked, Uri}),
+                State#state{blocked = gb_sets:del_element(Uri, Blocked)}
+        end,
+    {reply, ok, NewState};
 handle_call(all, _From, State) ->
     Uris = [ uri_of_peer(Peer) || Peer <- gb_trees:values(State#state.peers) ],
     {reply, Uris, State};
@@ -348,29 +371,6 @@ handle_cast({add_and_ping, Peers}, State) ->
           end, State, Peers),
     lager:debug("known peers: ~p", [gb_trees:to_list(State1#state.peers)]),
     {noreply, metrics(State1)};
-handle_cast({block, Peer}, #state{peers = Peers,
-                                  blocked = Blocked} = State) ->
-    Uri = uri_of_peer(Peer),
-    Key = hash_uri(Uri),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
-            true -> State;
-            false ->
-               aec_events:publish(peers, {blocked, Uri}),
-               State#state{peers   = gb_trees:delete_any(Key, Peers),
-                           blocked = gb_sets:add_element(Uri, Blocked)}
-        end,
-    {noreply, NewState};
-handle_cast({unblock, Peer}, #state{blocked = Blocked} = State) ->
-    Uri = uri_of_peer(Peer),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
-            false -> State;
-            true ->
-                aec_events:publish(peers, {unblocked, Uri}),
-                State#state{blocked = gb_sets:del_element(Uri, Blocked)}
-        end,
-    {noreply, NewState};
 handle_cast({remove, Peer}, State = #state{peers = Peers, blocked = Blocked}) ->
     Uri = uri_of_peer(Peer),
     NewState = 
@@ -497,8 +497,9 @@ ping_peer(Peer) ->
                 {ok, _RemotePingObj, RemotePeers} ->
                     log_good_ping(Peer),
                     add_and_ping_peers(RemotePeers);
-                {error, Reason} when Reason =:= protocol_violation;
-                                     Reason =:= different_genesis_blocks ->
+                {error, different_genesis_blocks} ->
+                    block_peer(Uri);
+                {error, protocol_violation} ->
                     block_peer(Uri);
                 _ ->
                     log_ping_error(Peer)

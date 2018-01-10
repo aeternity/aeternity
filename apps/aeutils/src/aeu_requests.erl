@@ -46,16 +46,17 @@ ping(Uri, LocalPingObj) ->
             case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
                   aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
               {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
-                RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
-                                 <<"best_hash">>  => RemoteTopHash},
-                RemotePeers = maps:get(<<"peers">>, Map, []),
-                lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
-                case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
-                  ok    -> {ok, RemoteObj, RemotePeers};
-                  {error, _} = Error -> Error
-                end;
+                  RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
+                                   <<"best_hash">>  => RemoteTopHash},
+                  RemotePeers = maps:get(<<"peers">>, Map, []),
+                  lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
+                  case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemoteObj) of
+                      ok    -> {ok, RemoteObj, RemotePeers};
+                      {error, _} = Error -> Error
+                  end;
               _ ->
                 %% Something is wrong, block the peer later on
+                lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
                 {error, protocol_violation}
             end;
         {error, _Reason} = Error ->
