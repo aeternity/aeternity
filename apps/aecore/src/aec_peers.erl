@@ -490,13 +490,13 @@ ping_peer(Peer) ->
     Uri = uri_of_peer(Peer),
     case await_aehttp() of
         ok ->
-            Res = aeu_requests:ping(Uri),
+            LocalPingObj = aec_sync:local_ping_object(),
+            Res = aeu_requests:ping(Uri, LocalPingObj),
             lager:debug("ping result (~p): ~p", [Uri, Res]),
             case Res of
-                {ok, Map} ->
+                {ok, _RemotePingObj, RemotePeers} ->
                     log_good_ping(Peer),
-                    Peers = maps:get(<<"peers">>, Map, []),
-                    add_and_ping_peers(Peers);
+                    add_and_ping_peers(RemotePeers);
                 {error, Reason} when Reason =:= protocol_violation;
                                      Reason =:= different_genesis_blocks ->
                     block_peer(Uri);
