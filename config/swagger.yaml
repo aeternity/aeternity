@@ -783,6 +783,109 @@ paths:
                 type: integer
                 description: Count
       security: []
+  /block/tx/height/{height}/{tx_index}:
+    get:
+      tags:
+        - internal
+      operationId: GetTransactionFromBlockHeight
+      description: 'Get a transaction by index in the block by height'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: height
+          description: 'Height of the block to search for'
+          required: true
+          type: integer
+        - in: path 
+          name: tx_index
+          description: 'Index of the transaction in the block'
+          required: true
+          type: integer
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The transaction found 
+          schema:
+            $ref: '#/definitions/SingleTxHashOrObject'
+        '404':
+          description: Block or transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/tx/hash/{hash}/{tx_index}:
+    get:
+      tags:
+        - internal
+      operationId: GetTransactionFromBlockHash
+      description: 'Get a transaction by index in the block by hash'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: hash
+          description: 'Hash of the block to search for'
+          required: true
+          type: string 
+        - in: path 
+          name: tx_index
+          description: 'Index of the transaction in the block'
+          required: true
+          type: integer
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as message pack hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The transaction found 
+          schema:
+            $ref: '#/definitions/SingleTxHashOrObject'
+        '404':
+          description: Block or transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/tx/latest/{tx_index}:
+    get:
+      tags:
+        - internal
+      operationId: GetTransactionFromBlockLatest
+      description: 'Get a transaction by index in the latest block'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: path 
+          name: tx_index
+          description: 'Index of the transaction in the block'
+          required: true
+          type: integer
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as message pack hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The transaction found 
+          schema:
+            $ref: '#/definitions/SingleTxHashOrObject'
+        '404':
+          description: Block or transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
 
 definitions:
   Header:
@@ -1066,11 +1169,37 @@ definitions:
     required:
     - height
 
+  SingleTxHashOrObject:
+    type: object
+    discriminator: data_schema 
+    properties:
+      data_schema:
+        type: string
+    required:
+    - data_schema
+  SingleTxObject:
+    allOf:
+      - $ref: '#/definitions/TxHashOrObject'
+      - type: object
+        properties:
+          transaction:
+            $ref: '#/definitions/SignedTxObject'
+        required:
+        - transaction
+  SingleTxHash:
+    allOf:
+      - $ref: '#/definitions/TxHashOrObject'
+      - type: object
+        properties:
+          transaction:
+            $ref: '#/definitions/Tx'
+        required:
+        - transaction
   SignedTxObject:
     type: object
     properties:
       tx:
-        "$ref": '#/definitions/GenericTxObject'
+        $ref: '#/definitions/GenericTxObject'
       signatures:
         type: array
         minItems: 1
@@ -1081,9 +1210,10 @@ definitions:
     type: object
     discriminator: type 
     properties:
-      data_schema:
+      type:
         type: string
-        vsn: integer
+      vsn:
+        type: integer
     required:
     - type
   CoinbaseTxObject:

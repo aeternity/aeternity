@@ -81,7 +81,12 @@
 
     block_txs_count_by_height_not_found/1,
     block_txs_count_by_hash_not_found/1,
-    block_txs_count_by_broken_hash/1
+    block_txs_count_by_broken_hash/1,
+
+    block_tx_index_by_height/1,
+    block_tx_index_by_hash/1,
+    block_tx_index_latest/1,
+    block_tx_index_not_founds/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -158,7 +163,12 @@ groups() ->
 
        block_txs_count_by_height_not_found,
        block_txs_count_by_hash_not_found,
-       block_txs_count_by_broken_hash
+       block_txs_count_by_broken_hash,
+
+       block_tx_index_by_height,
+       block_tx_index_by_hash,
+       block_tx_index_latest,
+       block_tx_index_not_founds
       ]}
     ].
 
@@ -751,7 +761,7 @@ internal_block_not_found_by_hash(_Config) ->
                     H = random_hash(),
                     {error, block_not_found} = rpc(aec_conductor,
                                                    get_block_by_hash, [H]), 
-                    Hash = base64:encode(H),
+                    Hash = aec_base58c:encode(block_hash, H),
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_internal_block_by_hash(Hash, Opt)
                 end,
@@ -763,7 +773,7 @@ internal_block_not_found_by_hash(_Config) ->
 internal_block_not_found_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
             lists:foreach(
                 fun(Opt) ->
                     {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
@@ -940,7 +950,7 @@ block_txs_count_by_hash_not_found(_Config) ->
             H = random_hash(),
             {error, block_not_found} = rpc(aec_conductor,
                                             get_block_by_hash, [H]), 
-            Hash = base64:encode(H),
+            Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
         end,
@@ -950,12 +960,109 @@ block_txs_count_by_hash_not_found(_Config) ->
 block_txs_count_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
             {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
                 get_block_txs_count_by_hash(BrokenHash)
         end,
         lists:seq(1, 10)),
     ok.
+
+block_tx_index_by_height(_Config) ->
+    generic_block_tx_index_test(fun get_block_tx_by_index_height/3).
+
+block_tx_index_by_hash(_Config) ->
+    CallApiFun =
+        fun(H, Index, Opts) ->
+            {ok, Hash} = block_hash_by_height(H),
+            get_block_tx_by_index_hash(Hash, Index, Opts)
+        end,
+    generic_block_tx_index_test(CallApiFun).
+
+block_tx_index_latest(_Config) ->
+    generic_block_tx_index_test(
+        fun(_, Index, Opts) ->
+            get_block_tx_by_index_latest(Index, Opts)
+        end).
+
+block_tx_index_not_founds(_Config) ->
+    RandomHeight = rand:uniform(999) + 1, % 1..1000
+    Test =
+        fun(Code, ErrMsg, Fun, Cases) ->
+            lists:foreach(
+                fun({H, I}) ->
+                    lists:foreach(
+                        fun(Opt) ->
+                            {ok, Code, #{<<"reason">> := ErrMsg}} = Fun(H, I, Opt) end,
+                        [default, false, true])
+                end,
+                Cases)
+        end,
+    Test(404, <<"Chain too short">>, fun get_block_tx_by_index_height/3,
+         [{1, 0},
+          {1, 1},
+          {RandomHeight, 0},
+          {RandomHeight, 1},
+          {RandomHeight + 1, 0},
+          {RandomHeight + 1, 1}]),
+    Test(404, <<"Block not found">>, fun get_block_tx_by_index_hash/3,
+         [{aec_base58c:encode(block_hash, random_hash()), 0},
+          {aec_base58c:encode(block_hash, random_hash()), 1}]),
+    BlocksToMine = 3,
+    lists:foreach(
+        fun(Height) ->
+            {ok, 200, #{<<"count">> := TxsCount}} = get_block_txs_count_by_height(Height),
+            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_height/3,
+                [{Height, TxsCount + 1},
+                 {Height, TxsCount + 2},
+                 {Height, TxsCount + rand:uniform(1000) + 1}
+                ]),
+            {ok, Hash} = block_hash_by_height(Height),
+            Test(404, <<"Transaction not found">>, fun get_block_tx_by_index_hash/3,
+                [{Hash, TxsCount + 1},
+                 {Hash, TxsCount + 2},
+                 {Hash, TxsCount + rand:uniform(1000) + 1}
+                ]),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+            add_spend_txs()
+        end, lists:seq(0, BlocksToMine)),
+    
+    ok.
+
+
+generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
+    BlocksToMine = 10,
+    lists:foreach(
+        fun(Height) ->
+            lists:foreach(
+                fun({Opts, DataSchema}) ->
+                    {ok, 200, BlockMap} =
+                        get_internal_block_by_height(Height, Opts),
+                    AllTxs = maps:get(<<"transactions">>, BlockMap, []),
+                    TxsIdxs =
+                        case length(AllTxs) of
+                            0 ->
+                                [];
+                            TxsLength ->
+                                lists:seq(1, TxsLength)
+                        end,
+                    lists:foreach(
+                        fun({Tx, Index}) ->
+                            {ok, 200, #{<<"data_schema">> := DataSchema,
+                                        <<"transaction">> := Tx}} = CallApi(Height,
+                                                                            Index,
+                                                                            Opts)
+                        end,
+                        lists:zip(AllTxs, TxsIdxs))
+                end,
+                [{default, <<"SingleTxHash">>},
+                 {false,  <<"SingleTxHash">>},
+                 {true,  <<"SingleTxObject">>}]),
+            aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+            add_spend_txs()
+        end,
+        lists:seq(0, BlocksToMine)), % from genesis
+    ok.
+
 
 %% ============================================================
 %% HTTP Requests 
@@ -1059,6 +1166,24 @@ get_block_txs_count_preset(Segment) ->
     Host = internal_address(),
     http_request(Host, get, "block/txs/count/" ++ Segment, []).
 
+get_block_tx_by_index_height(Height, Index, TxObjects) ->
+    Params = tx_objects_params(TxObjects),
+    Host = internal_address(),
+    http_request(Host, get, "block/tx/height/" ++ integer_to_list(Height) ++
+                                       "/" ++ integer_to_list(Index), Params).
+
+get_block_tx_by_index_hash(Hash, Index, TxObjects) when is_binary(Hash) ->
+    get_block_tx_by_index_hash(binary_to_list(Hash), Index, TxObjects);
+get_block_tx_by_index_hash(Hash, Index, TxObjects) ->
+    Params = tx_objects_params(TxObjects),
+    Host = internal_address(),
+    http_request(Host, get, "block/tx/hash/" ++ http_uri:encode(Hash) ++
+                                       "/" ++ integer_to_list(Index), Params).
+
+get_block_tx_by_index_latest(Index, TxObjects) ->
+    Params = tx_objects_params(TxObjects),
+    Host = internal_address(),
+    http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
 %% ============================================================
 %% private functions
 %% ============================================================
@@ -1196,7 +1321,7 @@ prepare_for_spending(BlocksToMine) ->
 block_hash_by_height(Height) ->
     {ok, B} = rpc(aec_conductor, get_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
-    Hash = binary_to_list(base64:encode(HBin)),
+    Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.
 
 -spec get_pending_block() -> {error, no_candidate}

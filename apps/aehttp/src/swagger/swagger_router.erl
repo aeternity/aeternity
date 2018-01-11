@@ -180,6 +180,21 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
+        'GetTransactionFromBlockHash' => #{
+            path => "/v1/block/tx/hash/:hash/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTransactionFromBlockHeight' => #{
+            path => "/v1/block/tx/height/:height/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTransactionFromBlockLatest' => #{
+            path => "/v1/block/tx/latest/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'PostOracleQueryTx' => #{
             path => "/v1/oracle-query-tx",
             method => <<"POST">>,
