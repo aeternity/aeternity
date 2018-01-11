@@ -112,7 +112,7 @@ add_and_ping_peers(Uris) ->
 -spec block_peer(http_uri:uri()) -> ok | {error, any()}.
 block_peer(Uri) ->
     valid_uri(Uri, 
-              fun(Peer) -> gen_server:cast(?MODULE, {block, Peer}) end).
+              fun(Peer) -> gen_server:call(?MODULE, {block, Peer}) end).
 
 
 %%------------------------------------------------------------------------------
@@ -121,7 +121,7 @@ block_peer(Uri) ->
 -spec unblock_peer(http_uri:uri()) -> ok | {error, any()}.
 unblock_peer(Uri) ->
     valid_uri(Uri, 
-              fun(Peer) -> gen_server:cast(?MODULE, {unblock, Peer}) end).
+              fun(Peer) -> gen_server:call(?MODULE, {unblock, Peer}) end).
 
 %%------------------------------------------------------------------------------
 %% Check if peer is blocked. Erroneous URI is by definition blocked.
@@ -257,6 +257,29 @@ handle_call(get_local_peer_uri, _From, State) ->
     {reply, uri_of_peer(State#state.local_peer), State};
 handle_call({is_blocked, Peer}, _From, State) ->
     {reply, is_blocked(Peer, State), State};
+handle_call({block, Peer}, _From, #state{peers = Peers,
+                                  blocked = Blocked} = State) ->
+    Uri = uri_of_peer(Peer),
+    Key = hash_uri(Uri),
+    NewState = 
+        case gb_sets:is_element(Uri, Blocked) of
+            true -> State;
+            false ->
+               aec_events:publish(peers, {blocked, Uri}),
+               State#state{peers   = gb_trees:delete_any(Key, Peers),
+                           blocked = gb_sets:add_element(Uri, Blocked)}
+        end,
+    {reply, ok, NewState};
+handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
+    Uri = uri_of_peer(Peer),
+    NewState = 
+        case gb_sets:is_element(Uri, Blocked) of
+            false -> State;
+            true ->
+                aec_events:publish(peers, {unblocked, Uri}),
+                State#state{blocked = gb_sets:del_element(Uri, Blocked)}
+        end,
+    {reply, ok, NewState};
 handle_call(all, _From, State) ->
     Uris = [ uri_of_peer(Peer) || Peer <- gb_trees:values(State#state.peers) ],
     {reply, Uris, State};
@@ -348,29 +371,6 @@ handle_cast({add_and_ping, Peers}, State) ->
           end, State, Peers),
     lager:debug("known peers: ~p", [gb_trees:to_list(State1#state.peers)]),
     {noreply, metrics(State1)};
-handle_cast({block, Peer}, #state{peers = Peers,
-                                  blocked = Blocked} = State) ->
-    Uri = uri_of_peer(Peer),
-    Key = hash_uri(Uri),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
-            true -> State;
-            false ->
-               aec_events:publish(peers, {blocked, Uri}),
-               State#state{peers   = gb_trees:delete_any(Key, Peers),
-                           blocked = gb_sets:add_element(Uri, Blocked)}
-        end,
-    {noreply, NewState};
-handle_cast({unblock, Peer}, #state{blocked = Blocked} = State) ->
-    Uri = uri_of_peer(Peer),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
-            false -> State;
-            true ->
-                aec_events:publish(peers, {unblocked, Uri}),
-                State#state{blocked = gb_sets:del_element(Uri, Blocked)}
-        end,
-    {noreply, NewState};
 handle_cast({remove, Peer}, State = #state{peers = Peers, blocked = Blocked}) ->
     Uri = uri_of_peer(Peer),
     NewState = 
@@ -434,7 +434,7 @@ log_good_ping(Peer) ->
 
 -spec hash_uri(http_uri:uri()) -> binary().
 hash_uri(Uri) ->
-    Hash = crypto:hash(md4,Uri),  %TODO add some random for execution but constant salt, so people can't mess with uri-s to hide on our list.
+    Hash = crypto:hash(md4, Uri),
     <<Hash/binary, Uri/binary>>.
 
 exclude_from_set(Set, Tree, S) ->
@@ -490,13 +490,20 @@ ping_peer(Peer) ->
     Uri = uri_of_peer(Peer),
     case await_aehttp() of
         ok ->
-            Res = aeu_requests:ping(Uri),
+            LocalPingObj = aec_sync:local_ping_object(),
+            Res = aeu_requests:ping(Uri, LocalPingObj),
             lager:debug("ping result (~p): ~p", [Uri, Res]),
             case Res of
-                {ok, Map} ->
-                    log_good_ping(Peer),
-                    Peers = maps:get(<<"peers">>, Map, []),
-                    add_and_ping_peers(Peers);
+                {ok, RemotePingObj, RemotePeers} ->
+                    case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemotePingObj) of
+                        ok ->
+                            log_good_ping(Peer),
+                            add_and_ping_peers(RemotePeers);
+                        {error, different_genesis_blocks} ->
+                            block_peer(Uri)
+                    end;
+                {error, protocol_violation} ->
+                    block_peer(Uri);
                 _ ->
                     log_ping_error(Peer)
             end;
@@ -644,30 +651,15 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query, _Fragment}} ->
-            #peer{uri = pp_uri({Scheme, Host, Port}), 
-                  scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query}} ->
-            #peer{uri = pp_uri({Scheme, Host, Port}), 
-                  scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
         {error, _} = Error ->
             Error
     end.
 
 -spec uri_of_peer(peer()) -> http_uri:uri().
-uri_of_peer(Peer) ->
-  uri_of_peer(Peer, <<>>).
+uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->
+    aeu_requests:pp_uri({Scheme, Host, Port}).
 
-%% Creates a Uri of a peer with additional path
--spec uri_of_peer(peer(), binary()) -> http_uri:uri().
-uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}, Path) ->
-  BaseUri = pp_uri({Scheme, Host, Port}),
-  << BaseUri/binary, Path/binary >>.
 
-%% This can be moved to utility module
--spec pp_uri({http_uri:scheme(), http_uri:host(), http_uri:port()}) -> binary().
-pp_uri({Scheme, Host, Port}) when is_list(Host) ->
-    pp_uri({Scheme, unicode:characters_to_binary(Host, utf8), Port});
-pp_uri({Scheme, Host, Port}) ->
-    Pre = unicode:characters_to_binary(atom_to_list(Scheme) ++ "://", utf8),
-    Post = unicode:characters_to_binary(":" ++ integer_to_list(Port) ++ "/", utf8),
-    << Pre/binary, Host/binary, Post/binary >>.

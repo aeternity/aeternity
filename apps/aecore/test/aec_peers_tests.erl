@@ -16,25 +16,25 @@ all_test_() ->
      fun teardown/1,
      [{"Add a peer by Uri",
        fun() ->
-               ?assertEqual(ok, aec_peers:add("http://someone.somewhere:1337/v1", true))
+               ?assertEqual(ok, aec_peers:add("http://someone.somewhere:1337/baseuri", true))
        end},
       {"Get a random peer (from list of 1)",
        fun() ->
                [Uri] = aec_peers:get_random(1),
-               ?assertEqual(<<"http://someone.somewhere:1337/">>, Uri)
+               ?assertEqual(<<"http://someone.somewhere:1337">>, Uri)
        end},
       {"Add a peer by object",
        fun() ->
-               ?assertEqual(ok, aec_peers:add("http://someonelse.somewhereelse:1337/v1/", true))
+               ?assertEqual(ok, aec_peers:add("http://someonelse.somewhereelse:1337/baseuri/", true))
        end},
       {"All and randomly getting peers",
        fun() ->
                ?assertEqual(2, length(aec_peers:all())),
                [Uri] = aec_peers:get_random(1),
                ?assert(lists:member(Uri, 
-                                    [<<"http://someone.somewhere:1337/">>,
-                                     <<"http://someonelse.somewhereelse:1337/">>])),
-               ?assertEqual([<<"http://someonelse.somewhereelse:1337/">>],
+                                    [<<"http://someone.somewhere:1337">>,
+                                     <<"http://someonelse.somewhereelse:1337">>])),
+               ?assertEqual([<<"http://someonelse.somewhereelse:1337">>],
                             aec_peers:get_random(2, [<<"http://someone.somewhere:1337/">>]))
        end},
       {"Remove a peer",
@@ -51,7 +51,7 @@ all_test_() ->
       {"Add peer",
        fun() ->
                ok = aec_peers:add("http://localhost:800", false),
-               [<<"http://localhost:800/">>] = aec_peers:all()
+               [<<"http://localhost:800">>] = aec_peers:all()
        end},
       {"Get random N",
        fun() ->

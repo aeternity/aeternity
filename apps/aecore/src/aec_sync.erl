@@ -46,8 +46,8 @@ connect_peer(Uri) ->
 %% Builds a 'Ping' object for the initial ping.
 %% The 'Ping' object contains the following data:
 %% - source: our own peer uri
-%% - genesis_hash: base64-encoded hash of our genesis block
-%% - best_hash: base64-encoded hash of our top block
+%% - genesis_hash: base58Check-encoded hash of our genesis block
+%% - best_hash: base58Check-encoded hash of our top block
 %% - difficulty: (Ethereum: total_difficulty) our top_work
 %% - share: how many random peers we'd like the other node to share
 %% - peers: a random subset (size `Share`) that we know of
@@ -64,8 +64,8 @@ local_ping_object() ->
     TopHash = aec_conductor:top_header_hash(),
     Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_conductor:get_total_difficulty(),
-    #{<<"genesis_hash">> => base64:encode(GHash),
-      <<"best_hash">>    => base64:encode(TopHash),
+    #{<<"genesis_hash">> => GHash,
+      <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
       <<"source">>       => Source,
       <<"share">>        => 32,  % TODO: make this configurable
@@ -78,7 +78,7 @@ local_ping_object() ->
 %%    - Otherwise, trigger a sync, return 'ok'.
 -spec compare_ping_objects(http_uri:uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(RemoteUri, Local, Remote) ->
-    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, pp(Local), pp(Remote)]),
+    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, Local, Remote]),
     case {maps:get(<<"genesis_hash">>, Local),
           maps:get(<<"genesis_hash">>, Remote)} of
         {G, G} ->
@@ -97,17 +97,18 @@ compare_ping_objects(RemoteUri, Local, Remote) ->
                     Dl = maps:get(<<"difficulty">>, Local),
                     Dr = maps:get(<<"difficulty">>, Remote),
                     if Dl > Dr ->
-                        lager:debug("Our difficulty is higher", []),
-                        server_get_missing_blocks(RemoteUri);
+                         lager:debug("Our difficulty is higher", []),
+                         server_get_missing_blocks(RemoteUri);
                        true ->
                          start_sync(RemoteUri)
                     end
-             end,
-             fetch_mempool(RemoteUri),
-             ok;
+            end,
+            fetch_mempool(RemoteUri),
+            ok;
         _ ->
-             {error, different_genesis_blocks}
+            {error, different_genesis_blocks}
     end.
+
 
 start_sync(Uri) ->
     gen_server:cast(?MODULE, {start_sync, Uri}).
