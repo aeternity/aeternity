@@ -122,7 +122,7 @@ init_dir(#aecp_state{path = Path
 
 sync() ->  gen_server:call(?SERVER, sync).
 path() ->  gen_server:call(?SERVER, path).
-get_chain() ->  gen_server:call(?SERVER, get_chain).
+get_chain() ->  gen_server:call(?SERVER, get_chain, infinity).
 write_block(Block) -> gen_server:call(?SERVER, {write_block, Block}).
 write_block_state(Hash, State) ->
     gen_server:call(?SERVER, {write_block_state, Hash, State}).
