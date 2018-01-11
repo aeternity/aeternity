@@ -651,9 +651,9 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query, _Fragment}} ->
-            #peer{scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query}} ->
-            #peer{scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
         {error, _} = Error ->
             Error
     end.
