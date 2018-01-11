@@ -434,7 +434,7 @@ log_good_ping(Peer) ->
 
 -spec hash_uri(http_uri:uri()) -> binary().
 hash_uri(Uri) ->
-    Hash = crypto:hash(md4,Uri),  %TODO add some random for execution but constant salt, so people can't mess with uri-s to hide on our list.
+    Hash = crypto:hash(md4, Uri),
     <<Hash/binary, Uri/binary>>.
 
 exclude_from_set(Set, Tree, S) ->
