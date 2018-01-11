@@ -651,30 +651,15 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query, _Fragment}} ->
-            #peer{uri = pp_uri({Scheme, Host, Port}), 
-                  scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = Host, port = Port, path = Path};
         {ok, {Scheme, _UserInfo, Host, Port, Path, _Query}} ->
-            #peer{uri = pp_uri({Scheme, Host, Port}), 
-                  scheme = Scheme, host = Host, port = Port, path = Path};
+            #peer{scheme = Scheme, host = Host, port = Port, path = Path};
         {error, _} = Error ->
             Error
     end.
 
 -spec uri_of_peer(peer()) -> http_uri:uri().
-uri_of_peer(Peer) ->
-  uri_of_peer(Peer, <<>>).
+uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->
+    aeu_requests:pp_uri({Scheme, Host, Port}).
 
-%% Creates a Uri of a peer with additional path
--spec uri_of_peer(peer(), binary()) -> http_uri:uri().
-uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}, Path) ->
-  BaseUri = pp_uri({Scheme, Host, Port}),
-  << BaseUri/binary, Path/binary >>.
 
-%% This can be moved to utility module
--spec pp_uri({http_uri:scheme(), http_uri:host(), http_uri:port()}) -> binary().
-pp_uri({Scheme, Host, Port}) when is_list(Host) ->
-    pp_uri({Scheme, unicode:characters_to_binary(Host, utf8), Port});
-pp_uri({Scheme, Host, Port}) ->
-    Pre = unicode:characters_to_binary(atom_to_list(Scheme) ++ "://", utf8),
-    Post = unicode:characters_to_binary(":" ++ integer_to_list(Port) ++ "/", utf8),
-    << Pre/binary, Host/binary, Post/binary >>.

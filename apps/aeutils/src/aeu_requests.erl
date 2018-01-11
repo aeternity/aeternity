@@ -153,12 +153,15 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
     end.
 
 process_request(Uri, Method, Endpoint, Params) ->
-    BaseUri = iolist_to_binary([Uri, <<"v1/">>]),
+    BaseUri = iolist_to_binary([Uri, <<"/v1/">>]),
     aeu_http_client:request(BaseUri, Method, Endpoint, Params).
 
--spec pp_uri({http_uri:schema(), http_uri:host(), http_uri:port()}) -> string().  %% TODO: | unicode:unicode_binary().
-pp_uri({Schema, Host, Port}) when is_binary(Host) ->
-    pp_uri({Schema, binary_to_list(Host), Port});
-pp_uri({Schema, Host, Port}) ->
-    atom_to_list(Schema) ++ "://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/".
+%% No trailing /, since BaseUri starts with /
+-spec pp_uri({http_uri:scheme(), http_uri:host(), http_uri:port()}) -> binary().
+pp_uri({Scheme, Host, Port}) when is_list(Host) ->
+    pp_uri({Scheme, unicode:characters_to_binary(Host, utf8), Port});
+pp_uri({Scheme, Host, Port}) ->
+    Pre = unicode:characters_to_binary(atom_to_list(Scheme) ++ "://", utf8),
+    Post = unicode:characters_to_binary(":" ++ integer_to_list(Port), utf8),
+    << Pre/binary, Host/binary, Post/binary >>.
 
