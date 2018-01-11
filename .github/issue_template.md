@@ -22,12 +22,10 @@
 
 ## Specifications
 
-  - Version:
-  - Platform:
-  - Subsystem:
+
   - Virtualization: [*none / metal / container / VM*]
   - Hardware specs: 
     * RAM: 
     * CPU:
   - OS: [*distribution, version*]
-  - node version:
+  - Node Version:
