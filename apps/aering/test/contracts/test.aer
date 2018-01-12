@@ -1,0 +1,46 @@
+
+contract type Identity = {
+  type state;
+
+  let main: int => int;
+};
+
+contract Identity = {
+  type pair('a) = a=>a;
+
+  // let main(x:int) = {
+  //   switch(rev([1,2,3])) {
+  //   | h::t => h;
+  //   };
+  //   //if (x==42) 1 else (x*x);
+  // };
+  //let baz() = {age:3, name:(4:int)};
+  //let foo(a,b,c) = c;
+  let fac(n) = if(n==0) 1 else (n*(n-1));
+  let main(x) = fac(6);
+  // let lentr(l) = lent(0,l);
+  // let len(l) =
+  //   switch(l) {
+  //    | [] => 0;
+  //    | x::xs => 1+len(xs);
+  //    };
+  // let lent(n,l) =
+  //   switch (l) {
+  //   | [] => n;
+  //   | (x::xs) => lent(n+1,xs);
+  //   };
+  // let app(a:int,b:int) =
+  //    switch(a) {
+  //    | [] => b;
+  //    | (x::xs) => x::app(xs,b);
+  //    };
+  // let rev(l) = revt(l,[]);
+  // let revt(l,r) =
+  //   switch(l) {
+  //   | [] => r;
+  //   | x::xs => revt(xs,x::r);
+  //   };
+  //let fac(n:int) = {
+  //  if (n==0) 1 else (n*fac(n-1));
+  //};
+};
