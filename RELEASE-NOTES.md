@@ -1,6 +1,6 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1.1) is focused on stability of the testnet - the public test network of nodes.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -12,7 +12,7 @@ The instructions below also describe the simplest way to test sending tokens bet
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.1) corresponding to your platform, e.g. `epoch-0.4.1-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.1.1) corresponding to your platform, e.g. `epoch-0.4.1.1-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -30,7 +30,7 @@ This section describes how to run a node as part of the testnet.
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml).
+The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.1.1/config/swagger.yaml).
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://31.13.248.103:3013/v1/top
@@ -50,7 +50,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -317,14 +317,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node1
 cd /tmp/node1
-tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #1
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.4.1/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch1/g' releases/0.4.1.1/vm.args
 ```
 
 Create the file `/tmp/node1/epoch.yaml` with the following content:
@@ -441,14 +441,14 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node2
 cd /tmp/node2
-tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.4.1.1-osx-10.12.6.tar.gz
 ```
 
 #### Configure node #2
 
 Make the name of the node more specific (in order to allow running multiple nodes on the same host):
 ```
-sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.4.1/vm.args
+sed -ibkp 's/-sname epoch/-sname epoch2/g' releases/0.4.1.1/vm.args
 ```
 
 Create the file `/tmp/node2/epoch.yaml` with the following content:
