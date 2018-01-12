@@ -505,6 +505,8 @@ ping_peer(Peer) ->
                 {error, protocol_violation} ->
                     block_peer(Uri);
                 _ ->
+                    %% If we ping a peer with wrong API version, time out in aue_request 
+                    %% and Peer is errored until it upgrades/downgrades to the same version.
                     log_ping_error(Peer)
             end;
         {error, timeout} ->
@@ -661,5 +663,3 @@ parse_uri(Uri) ->
 -spec uri_of_peer(peer()) -> http_uri:uri().
 uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->
     aeu_requests:pp_uri({Scheme, Host, Port}).
-
-

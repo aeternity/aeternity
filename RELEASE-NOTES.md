@@ -36,9 +36,10 @@ This section describes how to run a node as part of the testnet.
 The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml).
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
-* http://31.13.248.103:3013/v1/top
-* http://31.13.248.102:3013/v1/top
-* http://31.13.248.105:3013/v1/top
+* http://31.13.248.103:3013/v2/top
+* http://31.13.248.102:3013/v2/top
+* http://31.13.248.105:3013/v2/top
+
 
 ### Setup your node
 
@@ -144,7 +145,7 @@ bin/epoch start
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```
-curl http://127.0.0.1:3003/v1/top
+curl http://127.0.0.1:3003/v2/top
 ```
 
 If the node is unresponsive, inspect the `log` directory for errors.
@@ -242,12 +243,12 @@ Verify that your node sees the same longest blockchain as the testnet.
 
 Inspect the current top of the blockchain as seen by the testnet:
 ```
-curl http://31.13.248.102:3013/v1/top
+curl http://31.13.248.102:3013/v2/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
 ```
-curl http://127.0.0.1:3003/v1/top
+curl http://127.0.0.1:3003/v2/top
 ```
 
 Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
@@ -256,13 +257,13 @@ Verify that the height is the same; it may take a few minutes for your node to c
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/top` of the remote nodes:
 ```
-curl http://31.13.248.102:3013/v1/top
+curl http://31.13.248.102:3013/v2/top
 {"hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=","height":...}
 ```
 
 This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
 ```
-curl http://localhost:3113/v1/block/pending
+curl http://localhost:3113/v2/block/pending
 {"data_schema":"BlockWithTxsHashes","height":... ,"prev_hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=", ...}
 ```
 Height would be +1 of what is in the `/top` of the remote node but this is not
@@ -275,7 +276,7 @@ as strong guarantee as the `prev_hash`.
 
 Retrieve the public key of your node:
 ```
-curl http://127.0.0.1:3103/v1/account/pub-key
+curl http://127.0.0.1:3103/v2/account/pub-key
 ```
 You shall read output like the following:
 ```
@@ -286,7 +287,7 @@ You shall read output like the following:
 
 Retrieve the balance associated to the retrieved public key (replace the public key):
 ```
-curl -G http://127.0.0.1:3003/v1/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
+curl -G http://127.0.0.1:3003/v2/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
 ```
 You shall read output like the following...
 ```
@@ -306,7 +307,7 @@ You need to know the public key to send tokens to.
 
 In order to instruct your node to sign and broadcast a transaction sending tokens to the public key of the other account (recipient - replace the public key):
 ```
-curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3103/v1/spend-tx
+curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3103/v2/spend-tx
 ```
 
 ## Send tokens between two accounts in local network of two nodes
@@ -382,7 +383,7 @@ bin/epoch start
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```
-curl http://127.0.0.1:3013/v1/top
+curl http://127.0.0.1:3013/v2/top
 ```
 
 If the node is unresponsive, inspect the `log` directory for errors.
@@ -411,7 +412,7 @@ If node #1 successfully mines a block, you shall read log entries like the follo
 
 Inspect the current top of the blockchain as seen by node #1:
 ```
-curl http://127.0.0.1:3013/v1/top
+curl http://127.0.0.1:3013/v2/top
 ```
 You should read output like the following (notice the height):
 ```
@@ -429,7 +430,7 @@ In order to check the balance of node #1, retrieve its public key then the balan
 
 Retrieve the public key of node #1:
 ```
-curl http://127.0.0.1:3113/v1/account/pub-key
+curl http://127.0.0.1:3113/v2/account/pub-key
 ```
 You shall read output like the following:
 ```
@@ -438,7 +439,7 @@ You shall read output like the following:
 
 Retrieve the balance associated to the retrieved public key (replace the public key retrieved in the previous command):
 ```
-curl -G http://127.0.0.1:3013/v1/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
+curl -G http://127.0.0.1:3013/v2/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
 ```
 You shall read output like the following:
 ```
@@ -507,7 +508,7 @@ bin/epoch start
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```
-curl http://127.0.0.1:3023/v1/top
+curl http://127.0.0.1:3023/v2/top
 ```
 
 If the node is unresponsive, inspect the `log` directory for errors.
@@ -516,8 +517,8 @@ If the node is unresponsive, inspect the `log` directory for errors.
 
 Inspect the top of the blockchain as seen by nodes #1 and #2: you shall notice that node #2 is at the same height as node #1 - meaning that node #2 synced with node #1.
 ```
-curl http://127.0.0.1:3013/v1/top
-curl http://127.0.0.1:3023/v1/top
+curl http://127.0.0.1:3013/v2/top
+curl http://127.0.0.1:3023/v2/top
 ```
 
 ### Spend tokens from account of node #1 to account of node #2
@@ -526,7 +527,7 @@ Account on node #1 has a positive balance (as check in previous instructions) he
 
 Retrieve the public key of node #2:
 ```
-curl http://127.0.0.1:3123/v1/account/pub-key
+curl http://127.0.0.1:3123/v2/account/pub-key
 ```
 You shall read output like the following:
 ```
@@ -535,7 +536,7 @@ You shall read output like the following:
 
 Instruct node #1 to sign and broadcast a transaction sending tokens to the public key of node #2 (replace the public key retrieved in the previous command):
 ```
-curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3113/v1/spend-tx
+curl -X POST -H "Content-Type: application/json" -d '{"recipient_pubkey":"BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM=", "amount":2, "fee":1}' http://127.0.0.1:3113/v2/spend-tx
 ```
 
 Node #1 will share the transaction with other nodes in the block and also consider it for inclusion in block for future mining.
@@ -558,18 +559,18 @@ You shall read a log entry like the following:
 2017-12-08 16:49:24.080 [info] <0.1644.0> Attempt to process operation: 'PostTx'
 ```
 
-Retrieve the balance of node #1 until you notice that tokens have been subtracted i.e. 2 tokens to account of node #2 and 1 token to the miner - either node #1 or #2 (replace the public key retrieved by command `curl http://127.0.0.1:3113/v1/account/pub-key`):
+Retrieve the balance of node #1 until you notice that tokens have been subtracted i.e. 2 tokens to account of node #2 and 1 token to the miner - either node #1 or #2 (replace the public key retrieved by command `curl http://127.0.0.1:3113/v2/account/pub-key`):
 ```
-curl -G http://127.0.0.1:3013/v1/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
+curl -G http://127.0.0.1:3013/v2/account/balance --data-urlencode "pub_key=BNngPLE0UBkgJN+z3JR6jOO5Z/7Cz9zseB1JBzexa+ru3x3y/P1hDh5BL7QRfzZ0Mb0Y7PLcVUKik7JDKE7SEo4="
 ```
 You shall read output like the following:
 ```
 {"balance":167}
 ```
 
-Retrieve the balance of node #2 (replace the public key retrieved by command `curl http://127.0.0.1:3123/v1/account/pub-key`):
+Retrieve the balance of node #2 (replace the public key retrieved by command `curl http://127.0.0.1:3123/v2/account/pub-key`):
 ```
-curl -G http://127.0.0.1:3023/v1/account/balance --data-urlencode "pub_key=BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM="
+curl -G http://127.0.0.1:3023/v2/account/balance --data-urlencode "pub_key=BJ6H04FSfz0KwteJCcSNo5tXTWr5Tw9eg4QlxYAlTbPqAcmPMl2KNZ+1SsTT7PTRDNseSemh7YlNNZBx/SxCyXM="
 ```
 You shall read output like the following:
 ```

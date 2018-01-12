@@ -237,6 +237,9 @@ add_missing_to_genesis_block(Val) ->
     Val.
 
 handle_ping(#{<<"source">> := Src} = PingObj) ->
+    %% Source only contains host and port
+    %% If the http API version differs, then response ping will go
+    %% to wrong endpoint and eventually timeout.
     IsBlocked = aec_peers:is_blocked(Src),
     case IsBlocked of
         false -> handle_ping_(Src, PingObj);

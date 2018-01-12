@@ -39,6 +39,7 @@ all_test_() ->
        end},
       {"Remove a peer",
        fun() ->
+               %% Note that v1 is unimportant and ignored
                ?assertEqual(ok, aec_peers:remove("http://someone.somewhere:1337/v1")),
                ?assertEqual(1, length(aec_peers:all()))
        end},

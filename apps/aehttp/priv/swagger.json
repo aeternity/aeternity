@@ -9,7 +9,7 @@
       "email" : "apiteam@aeternity.com"
     }
   },
-  "basePath" : "/v1",
+  "basePath" : "/v2",
   "tags" : [ {
     "name" : "external",
     "description" : "External API"
@@ -1068,6 +1068,19 @@
     }
   },
   "definitions" : {
+    "EncodedHash" : {
+      "type" : "string"
+    },
+    "Pow" : {
+      "type" : "array",
+      "items" : {
+        "type" : "integer",
+        "format" : "int32"
+      }
+    },
+    "Uri" : {
+      "type" : "string"
+    },
     "Header" : {
       "type" : "object",
       "properties" : {
@@ -1076,13 +1089,13 @@
           "format" : "int64"
         },
         "prev_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "state_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "txs_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "target" : {
           "type" : "integer",
@@ -1097,14 +1110,10 @@
           "format" : "int64"
         },
         "version" : {
-          "type" : "integer",
-          "format" : "int64"
+          "type" : "integer"
         },
         "pow" : {
-          "type" : "array",
-          "items" : {
-            "type" : "integer"
-          }
+          "$ref" : "#/definitions/Pow"
         }
       }
     },
@@ -1237,12 +1246,12 @@
         },
         "share" : {
           "type" : "integer",
-          "format" : "int64"
+          "maximum" : 32
         },
         "peers" : {
           "type" : "array",
           "items" : {
-            "type" : "string"
+            "$ref" : "#/definitions/Uri"
           }
         }
       }
