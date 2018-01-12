@@ -2,11 +2,11 @@
 contract type Identity = {
   type state;
 
-  let id: int => int;
+  let main: int => int;
 };
 
 contract Identity = {
-  let id(x:int) = {
+  let main(x:int) = {
     x;
   };
 };
