@@ -64,14 +64,14 @@ serialize_to_network(H = #header{}) ->
 serialize_to_map(H = #header{}) ->
     Serialized =
       #{<<"height">> =>  height(H),
-        <<"prev_hash">> => base64:encode(prev_hash(H)),
-        <<"state_hash">> => base64:encode(H#header.root_hash),
+        <<"prev_hash">> => aec_base58c:encode(block_hash, prev_hash(H)),
+        <<"state_hash">> => aec_base58c:encode(block_state_hash, H#header.root_hash),
         <<"target">> => H#header.target,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
         <<"pow">> => serialize_pow_evidence(H#header.pow_evidence),
         <<"version">> => H#header.version,
-        <<"txs_hash">> => base64:encode(H#header.txs_hash)
+        <<"txs_hash">> => aec_base58c:encode(block_tx_hash, H#header.txs_hash)
       },
     {ok, Serialized}.
 
@@ -146,15 +146,23 @@ deserialize_from_map(H = #{}) ->
         <<"pow">> := PowEvidence,
         <<"txs_hash">> := TxsHash
       } = H,
-    {ok, #header{height = Height,
-                 prev_hash = base64:decode(PrevHash),
-                 root_hash = base64:decode(RootHash),
-                 target = Target,
-                 nonce = Nonce,
-                 time = Time,
-                 version = Version,
-                 pow_evidence = deserialize_pow_evidence(PowEvidence),
-                 txs_hash = base64:decode(TxsHash)}}.
+    try
+        {block_hash, DecPrevHash} = aec_base58c:decode(PrevHash),
+        {block_state_hash, DecRootHash} = aec_base58c:decode(RootHash),
+        {block_tx_hash, DecTxsHash} = aec_base58c:decode(TxsHash),
+        {ok, #header{height = Height,
+                     prev_hash = DecPrevHash,
+                     root_hash = DecRootHash,
+                     target = Target,
+                     nonce = Nonce,
+                     time = Time,
+                     version = Version,
+                     pow_evidence = deserialize_pow_evidence(PowEvidence),
+                     txs_hash = DecTxsHash}}
+    catch
+        error:_ ->
+            {error, deserialize}
+    end.
 
 -spec serialize_for_hash(header()) -> deterministic_header_binary().
 serialize_for_hash(H) ->
