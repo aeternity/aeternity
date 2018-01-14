@@ -32,7 +32,8 @@
     erlexec,
     aecuckoo,
     aetx,
-    aeoracle
+    aeoracle,
+    aens
    ]},
   {env, [
          {exometer_predefined,
