@@ -155,14 +155,10 @@ handle_request('GetBlockByHeightInternal', Req, _Context) ->
     get_block(fun() -> aec_conductor:get_block_by_height(Height) end, Req);
 
 handle_request('GetBlockByHashInternal', Req, _Context) ->
-    Hash =
-        try base64:decode(maps:get('hash', Req))
-              catch _:_ -> not_base64_encoded
-              end,
-    case Hash of
-        not_base64_encoded ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
-        _ ->
+        {ok, Hash} ->
             get_block(fun() -> aec_conductor:get_block_by_hash(Hash) end, Req)
     end;
 
@@ -180,14 +176,10 @@ handle_request('GetBlockPending', Req, _Context) ->
     get_block(fun aec_conductor:get_block_candidate/0, Req);
 
 handle_request('GetBlockTxsCountByHash', Req, _Context) ->
-    Hash =
-        try base64:decode(maps:get('hash', Req))
-              catch _:_ -> not_base64_encoded
-              end,
-    case Hash of
-        not_base64_encoded ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
-        _ ->
+        {ok, Hash} ->
             get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end)
     end;
 

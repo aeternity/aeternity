@@ -140,4 +140,4 @@ deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
 
 serialize_for_client(#signed_tx{data = Tx, signatures = Sigs}) ->
     #{<<"tx">> => aec_tx:serialize_for_client(Tx),
-      <<"signatures">> => lists:map(fun base64:encode/1, Sigs)}. 
+      <<"signatures">> => lists:map(fun(Sig) -> aec_base58c:encode(signature, Sig) end, Sigs)}. 

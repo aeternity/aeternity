@@ -86,5 +86,5 @@ create_message_from_event(block_created, #{info := Block}) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     Payload =
         [{height, BlockHeight},
-         {hash, base64:encode(BlockHash)}],
+         {hash, aec_base58c:encode(block_hash, BlockHash)}],
     create_message(miner, mined_block, Payload).

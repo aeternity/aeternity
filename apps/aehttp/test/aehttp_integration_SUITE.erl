@@ -751,7 +751,7 @@ internal_block_not_found_by_hash(_Config) ->
                     H = random_hash(),
                     {error, block_not_found} = rpc(aec_conductor,
                                                    get_block_by_hash, [H]), 
-                    Hash = base64:encode(H),
+                    Hash = aec_base58c:encode(block_hash, H),
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_internal_block_by_hash(Hash, Opt)
                 end,
@@ -763,7 +763,7 @@ internal_block_not_found_by_hash(_Config) ->
 internal_block_not_found_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
             lists:foreach(
                 fun(Opt) ->
                     {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
@@ -940,7 +940,7 @@ block_txs_count_by_hash_not_found(_Config) ->
             H = random_hash(),
             {error, block_not_found} = rpc(aec_conductor,
                                             get_block_by_hash, [H]), 
-            Hash = base64:encode(H),
+            Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
         end,
@@ -950,7 +950,7 @@ block_txs_count_by_hash_not_found(_Config) ->
 block_txs_count_by_broken_hash(_Config) ->
     lists:foreach(
         fun(_) ->
-            <<_, BrokenHash/binary>> = base64:encode(random_hash()),
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
             {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
                 get_block_txs_count_by_hash(BrokenHash)
         end,
@@ -1196,7 +1196,7 @@ prepare_for_spending(BlocksToMine) ->
 block_hash_by_height(Height) ->
     {ok, B} = rpc(aec_conductor, get_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
-    Hash = binary_to_list(base64:encode(HBin)),
+    Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.
 
 -spec get_pending_block() -> {error, no_candidate}
