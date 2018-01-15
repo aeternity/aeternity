@@ -1,6 +1,7 @@
 # About this release
 
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes and introduces some API for apps usability build on top of it.
+It also introduces a backward incompatible change in the chain format.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -114,6 +115,7 @@ Ensure the configured path for storing the blockchain exists:
 ```
 mkdir /tmp/node/my_db
 ```
+As of release "v0.5.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.4.x".
 
 You can validate the configuration file before starting the node:
 ```

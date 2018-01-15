@@ -99,15 +99,14 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
-%% TODO: Check the query? Check TTL relative to Oracle TTL?
 -spec check(query_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
-                       query_ttl = TTL, fee = Fee} = Q, Trees, Height) ->
+                       query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Height, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
-         fun() -> check_oracle(OraclePubKey, Trees, QFee) end,
+         fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, TTL, RTTL) end,
          fun() -> check_interaction(Q, Trees, Height) end
         ],
 
@@ -215,20 +214,34 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
 %% -- Local functions  -------------------------------------------------------
 
 check_interaction(Q, Trees, Height) ->
-    Oracles = aec_trees:oracles(Trees),
-    Id      = aeo_interaction:id(aeo_interaction:new(Q, Height)),
-    case aeo_state_tree:lookup_interaction(Id, Oracles) of
+    Oracles  = aec_trees:oracles(Trees),
+    I        = aeo_interaction:new(Q, Height),
+    OracleId = aeo_interaction:oracle_address(I),
+    Id       = aeo_interaction:id(I),
+    case aeo_state_tree:lookup_interaction(OracleId, Id, Oracles) of
         none       -> ok;
         {value, _} -> {error, oracle_interaction_already_present}
     end.
 
-check_oracle(OraclePubKey, Trees, QueryFee) ->
+check_oracle(OraclePubKey, Trees, QueryFee, Height, QTTL, RTTL) ->
     OraclesTree  = aec_trees:oracles(Trees),
     case aeo_state_tree:lookup_oracle(OraclePubKey, OraclesTree) of
         {value, Oracle} ->
             case QueryFee >= aeo_oracles:query_fee(Oracle) of
-                true  -> ok;
+                true  -> check_oracle_ttl(Oracle, Height, QTTL, RTTL);
                 false -> {error, query_fee_too_low}
             end;
         none -> {error, oracle_does_not_exist}
+    end.
+
+check_oracle_ttl(O, Height, QTTL, RTTL) ->
+    try
+        Delta  = aeo_utils:ttl_delta(Height, QTTL),
+        MaxTTL = aeo_utils:ttl_expiry(Height + Delta, RTTL),
+        case aeo_oracles:expires(O) < MaxTTL of
+            false -> ok;
+            true  -> {error, too_long_ttl}
+        end
+    catch _:_ ->
+        {error, invalid_ttl}
     end.
