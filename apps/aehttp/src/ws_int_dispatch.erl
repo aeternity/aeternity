@@ -33,7 +33,7 @@ do_execute(chain, get, QueryPayload) ->
             #{<<"height">> := Height} ->
                 {aec_conductor:get_block_by_height(Height), {height, Height}};
             #{<<"hash">> := Hash0} ->
-                Hash = base64:decode(Hash0),
+                {ok, Hash} = aec_base58c:safe_decode(block_hash, Hash0),
                 {aec_conductor:get_block_by_hash(Hash), {hash, Hash0}}
         end,
     case BlockFound of

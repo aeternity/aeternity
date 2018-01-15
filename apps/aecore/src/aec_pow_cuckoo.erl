@@ -63,6 +63,7 @@
 generate(Data, Target, Nonce) when Nonce >= 0,
                                    Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
+    %% Since this hash is purely internal, we don't use base58
     Hash = aec_sha256:hash(Data),
     generate_int(Hash, Nonce, Target).
 
@@ -287,6 +288,7 @@ find_node(X, [N1, N2 | Nodes], Acc) ->
 %% @doc
 %%   Creates the Cuckoo buffer (hex encoded) from a base64-encoded hash and a
 %%   uint64 nonce.
+%%   Since this hash is purely internal, we don't use base58.
 %% @end
 %%------------------------------------------------------------------------------
 -spec pack_header_and_nonce(binary(), aec_pow:nonce()) -> string().

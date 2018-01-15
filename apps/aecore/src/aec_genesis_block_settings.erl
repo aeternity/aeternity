@@ -16,7 +16,9 @@ preset_accounts() ->
             Accounts =
                 lists:map(
                     fun({EncodedPubKey, Amt}) ->
-                        {base64:decode(EncodedPubKey), Amt}
+                        {ok, PubKey} = aec_base58c:safe_decode(account_pubkey, EncodedPubKey),
+                        %% PubKey = base64:decode(EncodedPubKey),
+                        {PubKey, Amt}
                     end,
                     jsx:decode(JSONData)),
             % ensure deterministic ordering of accounts
