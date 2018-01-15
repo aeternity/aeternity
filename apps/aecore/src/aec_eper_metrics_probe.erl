@@ -18,18 +18,16 @@
 -include_lib("exometer_core/include/exometer.hrl").
 
 -define(DATAPOINTS, [updates]).
+-define(INITIAL_DATA, [{updates, 0}]).
 
 -record(st, {
-          name,
           datapoints = ?DATAPOINTS,
-          data = [],
-          ttl = 5000
+          data
          }).
 
 ad_hoc_spec() ->
     [{module, ?MODULE},
      {type, probe},
-     {cache, 5000},
      {sample_interval, infinity}].
 
 -spec behaviour() -> exometer:behaviour().
@@ -39,11 +37,10 @@ behaviour() ->
 probe_init(Name, _, Opts) ->
     lager:debug("probe_init(~p, _, ~p)", [Name, Opts]),
     ensure_metrics(),
-    TTL = proplists:get_value(cache, Opts, (#st{})#st.ttl),
-    exometer_cache:write([ae,epoch,aecore,eper], updates, 0, TTL),
     watchdog:add_proc_subscriber(self()),
     DP = proplists:get_value(datapoints, Opts, ?DATAPOINTS),
-    {ok, #st{datapoints = DP, name = Name, ttl = TTL}}.
+    D = initial_data(DP),
+    {ok, #st{datapoints = DP, data = D}}.
 
 probe_terminate(Reason) ->
     lager:debug("eper_metrics probe terminating: ~p", [Reason]),
@@ -51,14 +48,10 @@ probe_terminate(Reason) ->
 
 probe_get_value(DPs, #st{data = Data0,
                          datapoints = DPs0} = S) ->
-    Data1 = if Data0 =:= undefined ->
-                    [];
-               true -> Data0
-            end,
     DPs1 = if DPs =:= default -> DPs0;
               true -> DPs
            end,
-    {ok, probe_get_value_(Data1, DPs1), S#st{data = Data1}}.
+    {ok, probe_get_value_(Data0, DPs1), S}.
 
 probe_get_value_(Data, DPs) ->
     [D || {K,_} = D <- Data,
@@ -71,7 +64,7 @@ probe_update(_, _) ->
     {error, not_supported}.
 
 probe_reset(S) ->
-    {ok, S#st{data = []}}.
+    {ok, S#st{data = initial_data(S#st.datapoints)}}.
 
 probe_sample(_) ->
     {error, not_supported}.
@@ -90,12 +83,14 @@ probe_handle_msg(_Msg, S) ->
 probe_code_change(_, S, _) ->
     {ok, S}.
 
-update_counter(K, Value, #st{data = Data, name = Name, ttl = TTL} = S) ->
+initial_data(DPs) ->
+    probe_get_value_(?INITIAL_DATA, DPs).
+
+update_counter(K, Value, #st{data = Data} = S) ->
     Data1 =
         case lists:keyfind(K, 1, Data) of
             {_, Prev} ->
                 New = Prev + Value,
-                exometer_cache:write(Name, K, New, TTL),
                 lists:keyreplace(K, 1, Data, {K, New});
             false ->
                 [{K, Value}|Data]
