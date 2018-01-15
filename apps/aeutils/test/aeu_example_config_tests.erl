@@ -22,7 +22,8 @@ all_test_() ->
     }.
 
 test_data_config_files() ->
-  ["apps/aeutils/doc/examples/epoch.yaml"].
+  ["apps/aeutils/doc/examples/epoch_full.yaml",
+    "apps/aeutils/doc/examples/epoch_testnet.yaml"].
 
 setup() ->
     application:ensure_all_started(jesse),
