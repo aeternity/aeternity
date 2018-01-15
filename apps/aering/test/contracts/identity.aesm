@@ -1,0 +1,63 @@
+;; CONTRACT: Identity
+
+             PUSH1              0
+             CALLDATALOAD
+
+             DUP1
+             ;; Should be the has of
+             ;; the signature of the
+             ;; first function (use 0 as placeholder)
+             PUSH32             0x0000000000000000000000000000
+             EQ
+             PUSH32             id_entry
+             JUMPI              
+
+             STOP
+
+id_entry:    JUMPDEST
+             ;; Skip the function name in the calldata
+             PUSH1              1
+             ;; Load argument on stack                               
+             CALLDATALOAD
+             ;; This function only takes one immidiate as argument.
+
+             ;; Call the local version of the function
+             ;; Get return address
+             PC
+             PUSH1              6
+             ADD
+             ;; Get Argument
+             SWAP1
+             PUSH32             id_local
+             JUMP
+
+
+             ;; return here from local call
+             ;; Store top of stack at mem[0]
+             JUMPDEST
+             PUSH1              0
+             MSTORE
+             ;; Return mem[0]-mem[32] 
+             PUSH1             32
+             PUSH1              0
+             RETURN
+
+             ;; for local calls
+             ;; Stack:
+             ;; |        |
+             ;; | Arg    | <- SP
+             ;; | RetAdr |
+             ;;    ...
+
+id_local:    JUMPDEST
+
+             ;; Just return the argument
+             SWAP1
+             ;; Stack:
+             ;; |        |
+             ;; | RetAdr | <- SP
+             ;; | RetVal | (Arg in this case)
+             ;;    ...
+             
+             JUMP
+
