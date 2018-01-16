@@ -107,7 +107,7 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Height, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
          fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, TTL, RTTL) end,
-         fun() -> check_interaction(Q, Trees, Height) end
+         fun() -> check_query(Q, Trees, Height) end
         ],
 
     case aeu_validation:run(Checks) of
@@ -129,8 +129,8 @@ process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
     {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
 
-    Interaction = aeo_interaction:new(Query, Height),
-    OraclesTree1 = aeo_state_tree:insert_interaction(Interaction, OraclesTree0),
+    Query = aeo_query:new(Query, Height),
+    OraclesTree1 = aeo_state_tree:insert_query(Query, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
     Trees2 = aec_trees:set_oracles(Trees1, OraclesTree1),
@@ -167,7 +167,7 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
              #{<<"oracle">>       := OraclePubKey},
              #{<<"query">>        := Query},
              #{<<"query_fee">>    := QueryFee},
-             #{<<"query_ttl">>    := #{<<"type">>  := QueryTLLType,
+             #{<<"query_ttl">>    := #{<<"type">>  := QueryTTLType,
                                        <<"value">> := QueryTTLValue}},
              #{<<"response_ttl">> := #{<<"type">>  := delta,
                                        <<"value">> := ResponseTTLValue}},
@@ -177,7 +177,7 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
                      oracle        = OraclePubKey,
                      query         = Query,
                      query_fee     = QueryFee,
-                     query_ttl     = {binary_to_existing_atom(QueryTLLType, utf8),
+                     query_ttl     = {binary_to_existing_atom(QueryTTLType, utf8),
                                       QueryTTLValue},
                      response_ttl  = {delta, ResponseTTLValue},
                      fee           = Fee}.
@@ -213,14 +213,14 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
 
 %% -- Local functions  -------------------------------------------------------
 
-check_interaction(Q, Trees, Height) ->
+check_query(Q, Trees, Height) ->
     Oracles  = aec_trees:oracles(Trees),
-    I        = aeo_interaction:new(Q, Height),
-    OracleId = aeo_interaction:oracle_address(I),
-    Id       = aeo_interaction:id(I),
-    case aeo_state_tree:lookup_interaction(OracleId, Id, Oracles) of
+    I        = aeo_query:new(Q, Height),
+    OracleId = aeo_query:oracle_address(I),
+    Id       = aeo_query:id(I),
+    case aeo_state_tree:lookup_query(OracleId, Id, Oracles) of
         none       -> ok;
-        {value, _} -> {error, oracle_interaction_already_present}
+        {value, _} -> {error, oracle_query_already_present}
     end.
 
 check_oracle(OraclePubKey, Trees, QueryFee, Height, QTTL, RTTL) ->

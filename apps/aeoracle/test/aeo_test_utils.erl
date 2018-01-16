@@ -116,11 +116,11 @@ response_tx(PubKey, ID, Response, State) ->
 
 response_tx(PubKey, ID, Response, Spec0, State) ->
     Spec = maps:merge(response_tx_default_spec(PubKey, State), Spec0),
-    #oracle_response_tx{ oracle         = PubKey
-                       , nonce          = maps:get(nonce, Spec)
-                       , interaction_id = ID
-                       , response       = Response
-                       , fee            = maps:get(fee, Spec)
+    #oracle_response_tx{ oracle   = PubKey
+                       , nonce    = maps:get(nonce, Spec)
+                       , query_id = ID
+                       , response = Response
+                       , fee      = maps:get(fee, Spec)
                        }.
 
 response_tx_default_spec(PubKey, State) ->

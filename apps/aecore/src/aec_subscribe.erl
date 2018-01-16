@@ -24,7 +24,7 @@
 
 -type id() :: {ws, ws_handler:id()}.
 -type aeo_event() :: {query, aeo_oracles:id()}
-                   | {response,  aeo_oracles:id(), aeo_interaction:id()}.
+                   | {response, aeo_query:id()}.
 -type event() :: {aeo, aeo_event()}.
 
 -export_type([event/0, id/0]).

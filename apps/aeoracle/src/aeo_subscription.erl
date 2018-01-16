@@ -25,7 +25,7 @@ notify_query_tx(Tx, Subs) ->
 -spec notify_response_tx(any(), %% Dialyzer can't handle aeo_response_tx:response_tx(),
                          list({aec_subscribe:id(), aec_subscribe:event()})) -> ok.
 notify_response_tx(Tx, Subs) ->
-    [ WS ! {oracle_response_tx, Tx} || {{ws, WS}, {aeo, {response, IId}}} <- Subs,
-                                       IId == aeo_response_tx:interaction_id(Tx) ],
+    [ WS ! {oracle_response_tx, Tx} || {{ws, WS}, {aeo, {response, QId}}} <- Subs,
+                                       QId == aeo_response_tx:query_id(Tx) ],
     ok.
 

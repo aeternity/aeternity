@@ -338,7 +338,7 @@ paths:
         '200':
           description: successful operation
           schema:
-            $ref: '#/definitions/OracleInteractionId'
+            $ref: '#/definitions/OracleQueryId'
         '404':
           description: Oracle query transaction validation error
           schema:
@@ -1077,7 +1077,7 @@ definitions:
     items:
       type: object
       properties:
-        interaction_id:
+        query_id:
           type: string
         query:
           type: string
@@ -1132,7 +1132,7 @@ definitions:
   OracleResponseTx:
     type: object
     properties:
-      interaction_id:
+      query_id:
         type: string
       response:
         type: string
@@ -1157,10 +1157,10 @@ definitions:
       value:
         type: integer
         format: int64
-  OracleInteractionId:
+  OracleQueryId:
     type: object
     properties:
-      interaction_id:
+      query_id:
         type: string
   PubKey:
     type: object
