@@ -8,11 +8,12 @@
 
 -module(aeb_opcodes).
 
--export([ opcode/1
+-export([ dup/1
         , mnemonic/1
         , m_to_op/1
+        , opcode/1
+        , op_size/1
         , push/1
-        , dup/1
         , swap/1
         ]).
 
@@ -437,7 +438,11 @@ m_to_op('REVERT')         -> ?REVERT         ;
 m_to_op('COMMENT')        -> ?COMMENT        ;
 m_to_op('SUICIDE')        -> ?SUICIDE        .
 
+
 push(N) when N >= 1, N =< 32 -> ?PUSH1 + N - 1.
 dup(N)  when N >= 1, N =< 16 -> ?DUP1  + N - 1.
 swap(N) when N >= 1, N =< 16 -> ?SWAP1 + N - 1.
 
+op_size(OP) when OP >= ?PUSH1 andalso OP =< ?PUSH32 ->
+    (OP - ?PUSH1) + 2;
+op_size(_) -> 1.
