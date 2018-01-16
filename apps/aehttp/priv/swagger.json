@@ -389,7 +389,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/OracleInteractionId"
+              "$ref" : "#/definitions/OracleQueryId"
             }
           },
           "404" : {
@@ -1348,7 +1348,7 @@
     "OracleResponseTx" : {
       "type" : "object",
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         },
         "response" : {
@@ -1386,10 +1386,10 @@
         }
       }
     },
-    "OracleInteractionId" : {
+    "OracleQueryId" : {
       "type" : "object",
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         }
       }
@@ -1641,7 +1641,7 @@
     },
     "OracleQuestions_inner" : {
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         },
         "query" : {

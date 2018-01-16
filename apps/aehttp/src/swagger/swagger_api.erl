@@ -720,7 +720,7 @@ validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState)
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
-    validate_response_body('OracleInteractionId', 'OracleInteractionId', Body, ValidatorState);
+    validate_response_body('OracleQueryId', 'OracleQueryId', Body, ValidatorState);
 validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
