@@ -486,7 +486,7 @@ paths:
           type : integer
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions as objects (default is as MessagePack hashes)'
           type: boolean
           default: false
       responses:
@@ -517,7 +517,7 @@ paths:
           type : string 
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions as objects (default is as MessagePack hashes)'
           type: boolean
           default: false
       responses:
@@ -547,7 +547,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions as objects (default is as MessagePack hashes)'
           type: boolean
           default: false
       responses:
@@ -569,7 +569,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions as objects (default is as MessagePack hashes)'
           type: boolean
           default: false
       responses:
@@ -591,7 +591,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions as objects (default is as MessagePack hashes)'
           type: boolean
           default: false
       responses:
@@ -767,6 +767,48 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
+  /block/txs/list/height:
+    get:
+      tags:
+        - internal
+      operationId: GetTxsListFromBlockRangeByHeight
+      description: 'Get transactions list from a block range by height'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: query 
+          name: from 
+          description: 'Height of the block to start the range'
+          required: true
+          type : integer
+          minimum: 0
+        - in: query 
+          name: to
+          description: 'Height of the block to end the range'
+          required: true
+          type : integer
+          minimum: 0
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as MessagePack hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The list of transactions in block range
+          schema:
+            $ref: '#/definitions/GenericTxArray'
+        '400':
+          description: Invalid range
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Range not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
   /block/tx/hash/{hash}/{tx_index}:
     get:
       tags:
@@ -831,6 +873,48 @@ paths:
             $ref: '#/definitions/SingleTxHashOrObject'
         '404':
           description: Block or transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security: []
+  /block/txs/list/hash:
+    get:
+      tags:
+        - internal
+      operationId: GetTxsListFromBlockRangeByHash
+      description: 'Get transactions list from a block range by hash'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters: 
+        - in: query 
+          name: from 
+          description: 'Hash of the block to start the range'
+          required: true
+          type : string
+          minimum: 0
+        - in: query 
+          name: to
+          description: 'Hash of the block to end the range'
+          required: true
+          type : string
+          minimum: 0
+        - in: query
+          name: tx_objects
+          description: 'Transactions as objects (default is as MessagePack hashes)'
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: The list of transactions in block range
+          schema:
+            $ref: '#/definitions/GenericTxArray'
+        '400':
+          description: Invalid range
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Range not found
           schema:
             $ref: '#/definitions/Error'
       security: []
@@ -908,6 +992,32 @@ definitions:
         properties:
           hash:
             type: string
+  GenericTxArray:
+    type: object
+    discriminator: data_schema
+    properties:
+      data_schema:
+        type: string
+    required:
+    - data_schema
+  TxMsgPackHashes:
+    allOf:
+      - $ref: '#/definitions/GenericTxArray'
+      - type: object
+        properties:
+          transactions:
+            type: array
+            items:
+              $ref: '#/definitions/Tx'
+  TxObjects:
+    allOf:
+      - $ref: '#/definitions/GenericTxArray'
+      - type: object
+        properties:
+          transactions:
+            type: array
+            items:
+              $ref: '#/definitions/SignedTxObject'
   Ping:
     type: object
     properties:

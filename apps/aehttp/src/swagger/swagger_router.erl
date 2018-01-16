@@ -195,6 +195,16 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
+        'GetTxsListFromBlockRangeByHash' => #{
+            path => "/v1/block/txs/list/hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTxsListFromBlockRangeByHeight' => #{
+            path => "/v1/block/txs/list/height",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'PostOracleQueryTx' => #{
             path => "/v1/oracle-query-tx",
             method => <<"POST">>,

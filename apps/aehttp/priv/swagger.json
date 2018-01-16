@@ -561,7 +561,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -599,7 +599,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -637,7 +637,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -663,7 +663,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -689,7 +689,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -858,7 +858,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as message pack hashes)",
+          "description" : "Transactions as objects (default is as hashes)",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -872,6 +872,58 @@
           },
           "404" : {
             "description" : "Block or transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/list/height" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get transactions list from a block range by height",
+        "operationId" : "GetTxsListFromBlockRangeByHeight",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Height of the block to start the range",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Height of the block to end the range",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The list of transactions in block range",
+            "schema" : {
+              "$ref" : "#/definitions/GenericTxArray"
+            }
+          },
+          "400" : {
+            "description" : "Invalid range",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Range not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -954,6 +1006,58 @@
           },
           "404" : {
             "description" : "Block or transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/list/hash" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get transactions list from a block range by hash",
+        "operationId" : "GetTxsListFromBlockRangeByHash",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Hash of the block to start the range",
+          "required" : true,
+          "type" : "string",
+          "minimum" : 0
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Hash of the block to end the range",
+          "required" : true,
+          "type" : "string",
+          "minimum" : 0
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The list of transactions in block range",
+            "schema" : {
+              "$ref" : "#/definitions/GenericTxArray"
+            }
+          },
+          "400" : {
+            "description" : "Invalid range",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Range not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1071,6 +1175,46 @@
         "properties" : {
           "hash" : {
             "type" : "string"
+          }
+        }
+      } ]
+    },
+    "GenericTxArray" : {
+      "type" : "object",
+      "required" : [ "data_schema" ],
+      "discriminator" : "data_schema",
+      "properties" : {
+        "data_schema" : {
+          "type" : "string"
+        }
+      }
+    },
+    "TxMsgPackHashes" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxArray"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          }
+        }
+      } ]
+    },
+    "TxObjects" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxArray"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/SignedTxObject"
+            }
           }
         }
       } ]

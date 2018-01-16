@@ -1,7 +1,7 @@
 -module(swagger_server).
 
 
--define(DEFAULT_ACCEPTORS_POOLSIZE, 10).
+-define(DEFAULT_ACCEPTORS_POOLSIZE, 100).
 -define(DEFAULT_LOGIC_HANDLER, swagger_default_logic_handler).
 
 -export([child_spec/2]).

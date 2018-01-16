@@ -86,7 +86,12 @@
     block_tx_index_by_height/1,
     block_tx_index_by_hash/1,
     block_tx_index_latest/1,
-    block_tx_index_not_founds/1
+    block_tx_index_not_founds/1,
+
+    block_txs_list_by_height/1,
+    block_txs_list_by_hash/1,
+    block_txs_list_by_height_invalid_range/1,
+    block_txs_list_by_hash_invalid_range/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -168,7 +173,12 @@ groups() ->
        block_tx_index_by_height,
        block_tx_index_by_hash,
        block_tx_index_latest,
-       block_tx_index_not_founds
+       block_tx_index_not_founds,
+
+       block_txs_list_by_height,
+       block_txs_list_by_hash,
+       block_txs_list_by_height_invalid_range,
+       block_txs_list_by_hash_invalid_range
       ]}
     ].
 
@@ -1063,6 +1073,138 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
         lists:seq(0, BlocksToMine)), % from genesis
     ok.
 
+block_txs_list_by_height(_Config) ->
+    generic_range_test(fun get_block_txs_list_by_height/3,
+                        fun(H) -> H end).
+
+block_txs_list_by_hash(_Config) ->
+    generic_range_test(fun get_block_txs_list_by_hash/3,
+                        fun(H) ->
+                            {ok, Hash} = block_hash_by_height(H),
+                            Hash
+                        end).
+
+generic_range_test(GetTxsApi, HeightToKey) ->
+    MaximumRange = rpc(aec_conductor, max_block_range, []),
+    BlocksToMine = 2 * MaximumRange,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   BlocksToMine),
+    lists:foreach(
+        fun(From) ->
+            lists:foreach(
+                fun(Length) ->
+                    single_range_test(From, From + Length,
+                                       GetTxsApi, HeightToKey)
+                end,
+                lists:seq(0, MaximumRange))
+        end,
+        lists:seq(0, MaximumRange)),
+    ok.
+
+single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
+    lists:foreach(
+        fun(Opts) ->
+            From = HeightToKey(HeightFrom),
+            To = HeightToKey(HeightTo),
+            {ok, 200, Result} = GetTxsApi(From, To, Opts),
+            ExpectedResult =
+                expected_range_result(HeightFrom, HeightTo, Opts),
+            ct:log("Expected Result ~p, Actual result ~p",
+                    [ExpectedResult, Result]),
+            ExpectedResult = Result
+        end,
+        [default, false, true]).
+
+expected_range_result(HeightFrom, HeightTo, TxObjects) ->
+    Txs =
+        lists:foldl(
+            fun(Height, Accum) ->
+                {ok, 200, BlockMap} =
+                    get_internal_block_by_height(Height, TxObjects),
+                % genesis block doesn't have transactions
+                BlockTxs = maps:get(<<"transactions">>, BlockMap, []),
+                BlockTxs ++ Accum
+            end,
+            [],
+            lists:seq(HeightFrom, HeightTo)),
+    DataSchema =
+        case TxObjects of
+            default -> 
+                <<"TxMsgPackHashes">>;
+            false ->
+                <<"TxMsgPackHashes">>;
+            true ->
+                <<"TxObjects">>
+          end,
+    #{<<"data_schema">> => DataSchema,
+      <<"transactions">> => Txs}.
+
+block_txs_list_by_height_invalid_range(_Config) ->
+    MaximumRange = rpc(aec_conductor, max_block_range, []),
+    BlocksToMine = 2 * MaximumRange,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   BlocksToMine),
+    ValidateError =
+        fun(From, To, Error) ->
+            lists:foreach(
+                fun(Opts) ->
+                    Error = get_block_txs_list_by_height(From, To, Opts)
+                end,
+                [default, false, true])
+        end,
+    InvalidRange = {ok, 400, #{<<"reason">> => <<"From's height is bigger than To's">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, InvalidRange) end,
+        [{BlocksToMine, 0}, {BlocksToMine, 1}]),
+    RangeTooBig = {ok, 400, #{<<"reason">> => <<"Range too big">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, RangeTooBig) end,
+        [{0, MaximumRange +1}, {1, MaximumRange + 2}]),
+    ChainTooShort = {ok, 404, #{<<"reason">> => <<"Chain too short">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, ChainTooShort) end,
+        [{BlocksToMine -1, BlocksToMine + 1},
+         {BlocksToMine, BlocksToMine + 1},
+         {BlocksToMine +1, BlocksToMine + 1}]),
+    ok.
+
+block_txs_list_by_hash_invalid_range(_Config) ->
+    MaximumRange = rpc(aec_conductor, max_block_range, []),
+    BlocksToMine = 2 * MaximumRange,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   BlocksToMine),
+    ValidateError =
+        fun(From, To, Error) ->
+            lists:foreach(
+                fun(Opts) ->
+                    Error = get_block_txs_list_by_hash(From, To, Opts)
+                end,
+                [default, false, true])
+        end,
+    {ok, GenBlockHash} = block_hash_by_height(0),
+    {ok, Block1Hash} = block_hash_by_height(1),
+    {ok, Block2Hash} = block_hash_by_height(2),
+    {ok, BlockX1Hash} = block_hash_by_height(MaximumRange + 1),
+    {ok, BlockX2Hash} = block_hash_by_height(MaximumRange + 2),
+    InvalidRange = {ok, 400, #{<<"reason">> => <<"From's height is bigger than To's">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, InvalidRange) end,
+        [{Block1Hash, GenBlockHash},
+         {Block2Hash, Block1Hash}]),
+    RangeTooBig = {ok, 400, #{<<"reason">> => <<"Range too big">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, RangeTooBig) end,
+        [{GenBlockHash, BlockX1Hash},
+         {Block1Hash, BlockX2Hash}]),
+    ChainTooShort = {ok, 404, #{<<"reason">> => <<"Block not found">>}},
+    lists:foreach(
+        fun({From, To}) -> ValidateError(From, To, ChainTooShort) end,
+        [{GenBlockHash, aec_base58c:encode(block_hash, random_hash())},
+         {Block1Hash, aec_base58c:encode(block_hash, random_hash())},
+         {aec_base58c:encode(block_hash, random_hash()), Block1Hash},
+         {aec_base58c:encode(block_hash, random_hash()), GenBlockHash}
+        ]),
+    ok.
 
 %% ============================================================
 %% HTTP Requests 
@@ -1148,7 +1290,7 @@ get_internal_block_preset(Segment, TxObjects) ->
     Host = internal_address(),
     http_request(Host, get, "block/" ++ Segment, Params).
 
-tx_objects_params(default) -> [];
+tx_objects_params(default) -> #{};
 tx_objects_params(true) -> #{tx_objects => <<"true">>};
 tx_objects_params(false) -> #{tx_objects => <<"false">>}.
 
@@ -1184,6 +1326,18 @@ get_block_tx_by_index_latest(Index, TxObjects) ->
     Params = tx_objects_params(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
+
+get_block_txs_list_by_height(From, To, TxObjects) ->
+    Params0 = tx_objects_params(TxObjects),
+    Params = maps:merge(Params0, #{from => From, to => To}),
+    Host = internal_address(),
+    http_request(Host, get, "block/txs/list/height", Params).
+
+get_block_txs_list_by_hash(From, To, TxObjects) ->
+    Params0 = tx_objects_params(TxObjects),
+    Params = maps:merge(Params0, #{from => From, to => To}),
+    Host = internal_address(),
+    http_request(Host, get, "block/txs/list/hash", Params).
 %% ============================================================
 %% private functions
 %% ============================================================
