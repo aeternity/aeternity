@@ -200,6 +200,35 @@ handle_request('GetLatestBlockTxsCount', _Req, _Context) ->
 handle_request('GetPendingBlockTxsCount', _Req, _Context) ->
     get_block_txs_count(fun aec_conductor:get_block_candidate/0);
 
+handle_request('GetTransactionFromBlockHeight', Req, _Context) ->
+    Height = maps:get('height', Req),
+    Index = maps:get('tx_index', Req),
+    get_block_tx_by_index(fun() -> aec_conductor:get_block_by_height(Height) end,
+                          Index,
+                          Req);
+
+handle_request('GetTransactionFromBlockHash', Req, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            Index = maps:get('tx_index', Req),
+            get_block_tx_by_index(
+                fun() -> aec_conductor:get_block_by_hash(Hash) end,
+                Index,
+                Req)
+    end;
+
+handle_request('GetTransactionFromBlockLatest', Req, _Context) ->
+    Index = maps:get('tx_index', Req),
+    get_block_tx_by_index(
+        fun() -> 
+            TopBlock = aec_conductor:top(),
+            {ok, TopBlock}
+        end,
+        Index,
+        Req);
+
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
@@ -266,6 +295,35 @@ get_block_txs_count(Fun) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
             {200, [], #{count => length(aec_blocks:txs(Block))}};
+        {_Code, _, _Reason} = Err ->
+            Err
+    end.
+
+get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
+    case get_block_from_chain(Fun) of
+        {ok, Block} ->
+            Txs = aec_blocks:txs(Block),
+            case try {ok, lists:nth(Index, Txs)} catch _:_ -> not_found end of
+                not_found ->
+                    {404, [], #{reason => <<"Transaction not found">>}};
+                {ok, Tx} ->
+                    TxObjects = read_optional_bool_param('tx_objects', Req, false),
+                    {SerializeFun, DataSchema} =
+                        case TxObjects of
+                            true ->
+                                {fun aec_tx_sign:serialize_for_client/1,
+                                 <<"SingleTxObject">>};
+                            false ->
+                                {fun(T) ->
+                                     #{tx =>
+                                       aec_base58c:encode(transaction,
+                                                          aec_tx_sign:serialize_to_binary(T))}
+                                 end,
+                                 <<"SingleTxHash">>}
+                        end,
+                    {200, [], #{transaction => SerializeFun(Tx),
+                                data_schema => DataSchema}}
+            end;
         {_Code, _, _Reason} = Err ->
             Err
     end.

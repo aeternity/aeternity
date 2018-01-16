@@ -132,6 +132,26 @@ request_params('GetPubKey') ->
     [
     ];
 
+request_params('GetTransactionFromBlockHash') ->
+    [
+        'hash',
+        'tx_index',
+        'tx_objects'
+    ];
+
+request_params('GetTransactionFromBlockHeight') ->
+    [
+        'height',
+        'tx_index',
+        'tx_objects'
+    ];
+
+request_params('GetTransactionFromBlockLatest') ->
+    [
+        'tx_index',
+        'tx_objects'
+    ];
+
 request_params('PostOracleQueryTx') ->
     [
         'OracleQueryTx'
@@ -334,6 +354,78 @@ request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
         rules => [
             {type, 'binary'},
             required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
         ]
     };
 
@@ -552,6 +644,21 @@ validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->
 validate_response('GetPubKey', 200, Body, ValidatorState) ->
     validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
 validate_response('GetPubKey', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockHash', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockHeight', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockLatest', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockLatest', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
