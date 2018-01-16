@@ -60,8 +60,6 @@
 -export([ get_block_state_by_hash/1 %% For testing
         , get_account/1
         , get_all_accounts_balances/1
-        , get_oracle/1
-        , get_oracle_interaction/2
         ]).
 
 %% Chain API
@@ -170,15 +168,6 @@ get_account(Pubkey) ->
                                        {'error', any()}.
 get_all_accounts_balances(Hash) when is_binary(Hash) ->
     gen_server:call(?SERVER, {get_all_accounts_balances, Hash}).
-
--spec get_oracle(aeo_oracles:id()) -> 'none' | {'value', aeo_oracles:oracle()}.
-get_oracle(OracleId) when is_binary(OracleId) ->
-    gen_server:call(?SERVER, {get_oracle, OracleId}).
-
--spec get_oracle_interaction(aeo_oracles:id(), aeo_interaction:id()) ->
-                                    'none' | {'value', aeo_oracles:oracle()}.
-get_oracle_interaction(OId, IId) when is_binary(OId), is_binary(IId) ->
-    gen_server:call(?SERVER, {get_oracle_interaction, OId, IId}).
 
 %%%===================================================================
 %%% Chain API
