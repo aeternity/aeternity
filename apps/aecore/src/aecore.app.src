@@ -54,6 +54,7 @@
           ]},
          {metrics_probes,
           [{[ae,epoch,aecore,chain], aec_chain_metrics_probe},
+           {[ae,epoch,aecore,tx_pool], aec_tx_pool_metrics_probe},
            {[ae,epoch,aecore,eper] , aec_eper_metrics_probe}]},
          {'$setup_hooks',
           [

@@ -24,7 +24,8 @@
          delete/1,
          peek/1,
          fork_update/2,
-         get_max_nonce/1]).
+         get_max_nonce/1,
+         size/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -98,6 +99,10 @@ fork_update(AddedToChain, RemovedFromChain) ->
     %% Mind that we don't need to remove those that were included in the old chain
     delete(AddedToChain -- RemovedFromChain),
     ok.
+
+-spec size() -> non_neg_integer() | undefined.
+size() ->
+    ets:info(?MEMPOOL, size).
 
 %%%===================================================================
 %%% gen_server callbacks
