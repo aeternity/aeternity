@@ -45,9 +45,16 @@ create_tx() ->
     create_tx(#{}).
 
 create_tx(Override) ->
-    Map = #{ owner => <<4711:65/unit:8>>
-           , nonce => 42
-           , fee   => 10
+    Map = #{ owner      => <<4711:65/unit:8>>
+           , nonce      => 42
+           , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
+           , vm_version => 1
+           , fee        => 10
+           , deposit    => 100
+           , amount     => 50
+           , gas        => 100
+           , gas_price  => 5
+           , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
            },
     Map1 = maps:merge(Map, Override),
     {ok, R} = aect_create_tx:new(Map1),
