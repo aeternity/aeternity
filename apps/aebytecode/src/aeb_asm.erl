@@ -1,7 +1,29 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
-%%% @doc
-%%%     Assembler for aevm machine code
+%%% @doc Assembler for aevm machine code.
+%%%
+%%%      Assembler code can be read from a file.
+%%%      The assembler has the following format
+%%%      Comments start with 2 semicolons and runs till end of line
+%%%         ;; This is a comment
+%%%      Opcode mnemonics start with an upper case letter.
+%%%         DUP1
+%%%      Identifiers start with a lower case letter
+%%%         an_identifier
+%%%      All identifiers has to be decleard with a label.
+%%%      A label is an identifier that ends with a colon.
+%%%      The label is the byte code address of the next instruction.
+%%%         a_label:
+%%%      Immidiates can be of four types:
+%%%       1. integers
+%%%          42
+%%%       2. hexadecimal integers starting with 0x
+%%%          0x0deadbeef0
+%%%       3. 256-bit hash strings starting with #
+%%%          followed by up to 64 hex chars
+%%%          #00000deadbeef
+%%%       4. lables as descibed above. 
+%%%
 %%% @end
 %%% Created : 21 Dec 2017
 %%%-------------------------------------------------------------------
@@ -20,8 +42,26 @@ pp(Asm) ->
     Listing = format(Asm),
     io:format("~p~n", [Listing]).
 
-format(Asm) ->
-    Asm.
+format(Asm) -> format(Asm, 0).
+
+format([Mnemonic | Rest], Address) ->
+    Op = aeb_opcodes:m_to_op(Mnemonic),
+    case (Op >= ?PUSH1) andalso (Op =< ?PUSH32) of
+        true ->
+            Arity = aeb_opcodes:op_size(Op) - 1,
+            {Arg, Code} = get_arg(Arity, Rest),
+            "        " ++ atom_to_list(Mnemonic)
+                ++ "        " ++ Arg ++"\n" 
+                ++ format(Code, Address + Arity + 1);
+        false ->
+            "        " ++ atom_to_list(Mnemonic)
+                ++ format(Rest, Address + 1)
+    end;
+format([],_) -> [].
+
+%% TODO: Are args encoded as one list element or as a number of bytes...
+get_arg(_, [Arg|Code]) ->
+    {Arg, Code}.
 
 
 file(Filename, Options) ->
@@ -99,7 +139,3 @@ expand_args([OP, Arg | Rest]) when OP >= ?PUSH1 andalso OP =< ?PUSH32 ->
 expand_args([OP | Rest]) ->
     [OP | expand_args(Rest)];
 expand_args([]) -> [].
-
-to_bytecode([Op|Rest], Options) ->
-    [aeb_opcodes:m_to_op(Op)|to_bytecode(Rest, Options)];
-to_bytecode([], _) -> [].
