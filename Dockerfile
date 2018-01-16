@@ -26,7 +26,7 @@ WORKDIR /home/epoch/node
 # Erl handle SIGQUIT instead of the default SIGINT
 STOPSIGNAL SIGQUIT
 
-EXPOSE 3013
+EXPOSE 3013 3113 3114
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/docker-entrypoint.sh"]
