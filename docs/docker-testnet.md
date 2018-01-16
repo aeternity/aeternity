@@ -16,12 +16,19 @@ docker pull aetrnty/epoch
 
 To start a docker node and join the testnet run:
 ```bash
-docker run -d -p 3013:3013 aetrnty/epoch
+docker run -d --name epoch_node0 -p 3013:3013 aetrnty/epoch
 ```
 
 Verify the node is running:
 ```bash
 curl localhost:3013/v1/top
+```
+
+## Stop a Node
+
+To stop a docker node run:
+```bash
+docker stop epoch_node0
 ```
 
 ## Configuration
@@ -37,7 +44,7 @@ Docker environment variable `EXTERNAL_PEER_ADDRESS` may be used in case external
 docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aetrnty/epoch
 ```
 
-### Peers addresses
+### Peer addresses
 
 Docker image has packaged the address of one of the testnet nodes in the configuration. This can be changed by setting `PEERS_ADDRESS_0` Docker environment variable:
 
