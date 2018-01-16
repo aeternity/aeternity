@@ -5,7 +5,7 @@
 %%%     Translator from Aering Icode to Aevm Assebly
 %%% @end
 %%% Created : 21 Dec 2017
-%%% 
+%%%
 %%%-------------------------------------------------------------------
 -module(aer_icode_to_asm).
 
@@ -39,7 +39,7 @@ assemble([], Env, Code) -> {Env, Code}.
 
 assemble_body({var_ref, Id}, #{sp := SP} = Env, Code) ->
     SL = lookup_var(Id, Env),
-    Instr = aeb_opcodes:mnemonic(?DUP1 + SP + SL),
+    Instr = aeb_opcodes:mnemonic(aeb_opcodes:dup(1 + SP + SL)),
     NewEnv = inc_sp(Env),
     {Code ++ [Instr], NewEnv}.
 
@@ -58,6 +58,6 @@ var_sp(ID, [{ID,_Type, SP} | _]) ->  SP;
 var_sp(ID, [_|Rest] ) -> var_sp(ID, Rest);
 var_sp(ID, []) -> error({var_out_of_scope, ID}).
 
-          
+
 add_function(Name, Address, #{ functions := Functions } = Env) ->
     Env#{ functions => [{Name, Address} | Functions]}.
