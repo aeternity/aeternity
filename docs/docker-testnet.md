@@ -19,8 +19,17 @@ To start a docker node and join the testnet run:
 docker run -d -p 3013:3013 aetrnty/epoch
 ```
 
-- *Your public IP address will be automatically determined and used in `peer_address` configuration option*
-- *Make sure you have a working port forwarding setup on your firewall to be able to fully participate in the testnet*
+Verify the node is running:
+```bash
+curl localhost:3013/v1/top
+```
+
+Your public IP address will be automatically determined and used in `peer_address` configuration option. You can change your `peer_address` by using `PEER_ADDRESS` Docker environment variable e.g.:
+```bash
+docker run -d -p 3013:3013 -e PEER_ADDRESS=1.2.3.4 aetrnty/epoch
+```
+
+**Make sure you have a working port forwarding setup on your firewall to be able to fully participate in the testnet**
 
 ## Persisting Data
 
