@@ -35,4 +35,4 @@ apps/aecore/priv
 aevm_external
 apps/aering/src/aer_parser.erl
 apps/aering/src/aer_scan.erl
-
+apps/aebytecode/src/aeb_asm_scan.erl
