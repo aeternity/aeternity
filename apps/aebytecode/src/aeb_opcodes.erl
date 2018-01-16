@@ -11,6 +11,9 @@
 -export([ opcode/1
         , mnemonic/1
         , m_to_op/1
+        , push/1
+        , dup/1
+        , swap/1
         ]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
@@ -433,3 +436,8 @@ m_to_op('STATICCALL')     -> ?STATICCALL     ;
 m_to_op('REVERT')         -> ?REVERT         ;
 m_to_op('COMMENT')        -> ?COMMENT        ;
 m_to_op('SUICIDE')        -> ?SUICIDE        .
+
+push(N) when N >= 1, N =< 32 -> ?PUSH1 + N - 1.
+dup(N)  when N >= 1, N =< 16 -> ?DUP1  + N - 1.
+swap(N) when N >= 1, N =< 16 -> ?SWAP1 + N - 1.
+
