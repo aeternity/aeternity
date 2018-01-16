@@ -50,7 +50,7 @@ sender(#oracle_query_tx{sender = SenderPubKey}) ->
 oracle(#oracle_query_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
--spec query(query_tx()) -> string().
+-spec query(query_tx()) -> aeo_oracles:query().
 query(#oracle_query_tx{query = Query}) ->
     Query.
 
@@ -200,9 +200,9 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
                             fee           = Fee}) ->
     #{<<"type">> => <<"OracleQueryTxObject">>, % swagger schema name
       <<"vsn">> => version(),
-      <<"sender">> => base64:encode(SenderPubKey),
+      <<"sender">> => aec_base58c:encode(account_pubkey, SenderPubKey),
       <<"nonce">> => Nonce,
-      <<"oracle">> => base64:encode(OraclePubKey),
+      <<"oracle">> => aec_base58c:encode(oracle_pubkey, OraclePubKey),
       <<"query">> => Query,
       <<"query_fee">> => QueryFee,
       <<"query_ttl">> => #{<<"type">> => QueryTLLType,

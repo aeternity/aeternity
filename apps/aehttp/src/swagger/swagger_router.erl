@@ -210,16 +210,6 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
-        'PostOracleSubscribe' => #{
-            path => "/v1/oracle-subscribe",
-            method => <<"POST">>,
-            handler => 'swagger_internal_handler'
-        },
-        'PostOracleUnsubscribe' => #{
-            path => "/v1/oracle-unsubscribe",
-            method => <<"POST">>,
-            handler => 'swagger_internal_handler'
-        },
         'PostSpendTx' => #{
             path => "/v1/spend-tx",
             method => <<"POST">>,

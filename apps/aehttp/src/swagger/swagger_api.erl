@@ -167,16 +167,6 @@ request_params('PostOracleResponseTx') ->
         'OracleResponseTx'
     ];
 
-request_params('PostOracleSubscribe') ->
-    [
-        'OracleSubscribe'
-    ];
-
-request_params('PostOracleUnsubscribe') ->
-    [
-        'OracleSubscribe'
-    ];
-
 request_params('PostSpendTx') ->
     [
         'SpendTx'
@@ -456,24 +446,6 @@ request_param_info('PostOracleResponseTx', 'OracleResponseTx') ->
         ]
     };
 
-request_param_info('PostOracleSubscribe', 'OracleSubscribe') ->
-    #{
-        source =>   body,
-        rules => [
-            schema,
-            required
-        ]
-    };
-
-request_param_info('PostOracleUnsubscribe', 'OracleSubscribe') ->
-    #{
-        source =>   body,
-        rules => [
-            schema,
-            required
-        ]
-    };
-
 request_param_info('PostSpendTx', 'SpendTx') ->
     #{
         source =>   body,
@@ -674,16 +646,6 @@ validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
 validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
-validate_response('PostOracleSubscribe', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
-validate_response('PostOracleSubscribe', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
-validate_response('PostOracleUnsubscribe', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
-validate_response('PostOracleUnsubscribe', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->

@@ -21,7 +21,8 @@ execute(Target, Action, Payload) ->
 
 -spec is_valid(Target :: atom(), Action :: atom(), Payload :: map()) ->
                 true | {false, ErrMsg :: binary}.
-is_valid(chain, get, #{<<"height">> := Height}) when Height < 0->
+is_valid(chain, get, #{<<"height">> := Height})
+    when not is_integer(Height); Height < 0 ->
     {false, <<"Invalid height">>};
 is_valid(_, _, _) ->
     true.
@@ -44,13 +45,71 @@ do_execute(chain, get, QueryPayload) ->
                   case Type of
                       <<"header">> ->
                           {ok, HH} = aec_headers:serialize_to_map(
-                              aec_blocks:to_header(Block)), 
+                              aec_blocks:to_header(Block)),
                           HH;
                       <<"block">> ->
                           aec_blocks:serialize_to_map(Block)
                   end,
             Val = aehttp_dispatch_ext:cleanup_genesis(Val0),
-            {ok, chain, requested_data, [{type, Type}, Query, {Type, Val}]} 
+            {ok, chain, requested_data, [{type, Type}, Query, {Type, Val}]}
+    end;
+do_execute(oracle, subscribe, SubscribeData) ->
+    try
+        #{<<"type">> := SubType, <<"ws_pid">> := WsPid} = SubscribeData,
+        Event =
+            case SubType of
+                <<"query">> ->
+                    #{<<"oracle_id">> := EncodedOId} = SubscribeData,
+                    {ok, OId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
+                    {query, OId};
+                <<"response">> ->
+                    #{<<"interaction_id">> := EncodedIId} = SubscribeData,
+                    {ok, IId} = aec_base58c:safe_decode(oracle_interaction_id, EncodedIId),
+                    {response, IId}
+            end,
+        aec_subscribe:subscribe({ws, WsPid}, {aeo, Event}),
+        {ok, oracle, subscribe, [{result, ok}, {subscribed_to, maps:remove(<<"ws_pid">>, SubscribeData)}]}
+    catch _:_ ->
+        {error, <<"Bad subscription request">>}
+    end;
+do_execute(oracle, register, RegisterData) ->
+    try
+        case aehttp_dispatch_int:handle_request('PostOracleRegisterTx',
+                                                #{'OracleRegisterTx' => RegisterData},
+                                                #{}) of
+            {200, _, #{oracle_id := OId}} ->
+                {ok, oracle, register, [{result, ok}, {oracle_id, OId}]};
+            {_, _, #{reason := Reason}} ->
+                {error, Reason}
+        end
+    catch _:_ ->
+        {error, <<"Bad Oracle register request">>}
+    end;
+do_execute(oracle, query, QueryData) ->
+    try
+        case aehttp_dispatch_int:handle_request('PostOracleQueryTx',
+                                                #{'OracleQueryTx' => QueryData},
+                                                #{}) of
+            {200, _, #{query_id := QId}} ->
+                {ok, oracle, query, [{result, ok}, {query_id, QId}]};
+            {_, _, #{reason := Reason}} ->
+                {error, Reason}
+        end
+    catch _:_ ->
+        {error, <<"Bad Oracle query request">>}
+    end;
+do_execute(oracle, response, ResponseData) ->
+    try
+        case aehttp_dispatch_int:handle_request('PostOracleResponseTx',
+                                                #{'OracleResponseTx' => ResponseData},
+                                                #{}) of
+            {200, _, #{query_id := QId}} ->
+                {ok, oracle, response, [{result, ok}, {query_id, QId}]};
+            {_, _, #{reason := Reason}} ->
+                {error, Reason}
+        end
+    catch _:_ ->
+        {error, <<"Bad Oracle response request">>}
     end;
 do_execute(_, _, _) -> % a catch all for a prettier error when action is missing
     {error, <<"Missing action">>}.

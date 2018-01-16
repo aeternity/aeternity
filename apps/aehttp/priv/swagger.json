@@ -432,66 +432,6 @@
         "security" : [ ]
       }
     },
-    "/oracle-subscribe" : {
-      "post" : {
-        "tags" : [ "internal" ],
-        "description" : "Create oracle interactions subscription",
-        "operationId" : "PostOracleSubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new subscription for oracle interactions",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-unsubscribe" : {
-      "post" : {
-        "tags" : [ "internal" ],
-        "description" : "Remove oracle interactions subscriptions",
-        "operationId" : "PostOracleUnsubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Unsubscribe from oracle interactions notifications",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle or subscription not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
     "/account/pub-key" : {
       "get" : {
         "tags" : [ "internal" ],
@@ -1196,14 +1136,6 @@
       "type" : "array",
       "items" : {
         "$ref" : "#/definitions/OracleQuestions_inner"
-      }
-    },
-    "OracleSubscribe" : {
-      "type" : "object",
-      "properties" : {
-        "oracle_pub_key" : {
-          "type" : "string"
-        }
       }
     },
     "SpendTx" : {
