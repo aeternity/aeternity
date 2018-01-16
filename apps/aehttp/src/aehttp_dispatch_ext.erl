@@ -244,6 +244,7 @@ handle_ping(#{<<"source">> := Src} = PingObj) ->
     case IsBlocked of
         false -> handle_ping_(Src, PingObj);
         true  ->
+            %% invalid Source URIs are by definition blocked
             abort_sync(Src, 403, <<"Not allowed">>)
     end.
 
