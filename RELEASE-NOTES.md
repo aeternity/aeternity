@@ -1,11 +1,17 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes and introduces some API for apps usability build on top of it.
-In this release the [Oracle WebSocket API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_api.md) is now documented and can be used to interact with Oracles on the block chain
-(See also [Oracles - intended usage](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/oracles/oracle_ws_api.md).
-This release introduces backward incompatible changes in the chain format.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.5.0) is focused on oracles: the [Oracle WebSocket API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_ws_api.md) is documented and can be used to interact with Oracles on the block chain (see also [Oracles - intended usage](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_api_usage.md)).
 
-Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
+This release also:
+* Refines the HTTP API by replacing Base64 encoding with Base58Check;
+* Expands the HTTP API for enabling building apps on top of it;
+* Introduces a Docker image for the node;
+* Improves the stability of the testnet.
+
+This release introduces backward incompatible changes in the chain format.
+After upgrading your node, you will not have your previous balance (even if you keep your key pair).
+
+Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
 The instructions below describe:
 * How to retrieve the released software for running a node;
@@ -13,7 +19,7 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.4.1) corresponding to your platform, e.g. `epoch-0.4.1-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.5.0) corresponding to your platform, e.g. `epoch-0.5.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -23,37 +29,27 @@ The binaries are tested on the following platforms:
 The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
 In case you have installed it in a non-default path, you could use a symlink to work around the issue.
 
+Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image, documented at [this location](https://github.com/aeternity/epoch/blob/v0.5.0/docs/docker-testnet.md).
+
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
-HTTP endpoints are documented in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml). A swagger.json version of the same documentation is present in the release: `lib/aehttp-0.1.0/priv/swagger.json`
+HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.5.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`.
+WebSocket API endpoints are specified at [this location](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md).
 
-There is also more general [Epoch Node API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md) documentation.
+The intended usage of the API (HTTP and WebSocket) of the node is documented at [this location](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md).
 
 ## Join the testnet
 
-This section describes how to run a node as part of the testnet.
+This section describes how to run a node as part of the testnet - the public test network of nodes - by using the release binary.
 
 ### Inspect the testnet
 
-The core nodes of the public test network are accessible from the Internet and expose [an HTTP API](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml).
+The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://31.13.248.103:3013/v2/top
 * http://31.13.248.102:3013/v2/top
 * http://31.13.248.105:3013/v2/top
-
-
-### Using Docker
-
-The easier way to join the testnet is to [use docker](docs/docker-testnet.md), just run:
-```bash
-docker run -d -p 3013:3013 aetrnty/epoch
-```
-
-It will start a docker container with epoch node in background and map port 3013 of the container to the same port on localhost. Verify it's running by inspecting the height of the top block:
-```bash
-curl localhost:3013/v2/top
-```
 
 ### Setup your node
 
@@ -68,7 +64,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.4.1-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.5.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -178,15 +174,15 @@ less /tmp/node/log/epoch_mining.log
 
 If the node is mining, you shall read log entries like the following:
 ```
-2017-12-08 16:41:54.179 [info] <0.847.0>@aec_conductor:create_block_candidate:731 Creating block candidate
-2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:handle_block_candidate_reply:746 Created block candidate and nonce (max 12950827015446283813, current 12950827015446283814).
-2017-12-08 16:41:54.182 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
-2017-12-08 16:41:57.265 [info] <0.847.0>@aec_conductor:start_mining:648 Starting mining
+... Creating block candidate
+... Created block candidate and nonce ...
+... Starting mining
+... Starting mining
 ```
 
 If the node successfully mines a block, you shall read log entries like the following:
 ```
-2017-12-08 16:42:03.524 [info] <0.847.0>@aec_conductor:handle_mined_block:774 Block mined: Height = 1; Hash = 02764f5478587e34c04428e1b985925ca87a35258324412cf4749cce8e568136
+... Block mined: Height = 1; Hash = ...
 ```
 
 ##### Troubleshooting node failing mining attempts
@@ -268,17 +264,18 @@ curl http://127.0.0.1:3003/v2/top
 Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
 
 #### Verify that node mines on same chain as the testnet
+
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/top` of the remote nodes:
 ```
 curl http://31.13.248.102:3013/v2/top
-{"hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=","height":...}
+{"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
 ```
 
 This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
 ```
 curl http://localhost:3113/v2/block/pending
-{"data_schema":"BlockWithTxsHashes","height":... ,"prev_hash":"HcebFAby1g7uLgj5KEp3jBsFnKXYEthrP5+r5P2BE9Q=", ...}
+{...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
 ```
 Height would be +1 of what is in the `/top` of the remote node but this is not
 as strong guarantee as the `prev_hash`.
