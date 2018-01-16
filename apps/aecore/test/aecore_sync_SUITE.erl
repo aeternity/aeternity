@@ -25,7 +25,9 @@
     restart_second/1,
     restart_third/1,
     tx_first_pays_second/1,
+    tx_first_pays_second_more_it_can_afford/1,
     ensure_tx_pools_empty/1,
+    ensure_tx_pools_one_tx/1,
     no_system_metrics_logged/1
    ]).
 
@@ -38,6 +40,7 @@ groups() ->
     [
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
+                              {group, semantically_invalid_tx},
                               {group, one_blocked}]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -63,10 +66,17 @@ groups() ->
        mine_on_third,
        restart_third,
        no_system_metrics_logged]},
-      {one_blocked, [sequence],
-       [start_first_node,
-        mine_on_first,
-        start_blocked_second]}
+     {semantically_invalid_tx, [sequence],
+      [start_first_node,
+       start_second_node,
+       ensure_tx_pools_empty,
+       tx_first_pays_second_more_it_can_afford,
+       mine_on_second,
+       ensure_tx_pools_one_tx]},
+     {one_blocked, [sequence],
+      [start_first_node,
+       mine_on_first,
+       start_blocked_second]}
     ].
 
 suite() ->
@@ -100,6 +110,8 @@ init_per_group(two_nodes, Config) ->
     config({devs, [dev1, dev2]}, Config);
 init_per_group(three_nodes, Config) ->
     config({devs, [dev1, dev2, dev3]}, Config);
+init_per_group(semantically_invalid_tx, Config) ->
+    config({devs, [dev1, dev2]}, Config);
 init_per_group(one_blocked, Config) ->
     Config1 = config({devs, [dev1, dev2]}, Config),
     preblock_second(Config1),
@@ -197,6 +209,12 @@ start_blocked_second(Config) ->
     await_sync_abort(T0, [N1, N2]).
 
 tx_first_pays_second(Config) ->
+    tx_first_pays_second_(Config, fun(_) -> 1 end).
+
+tx_first_pays_second_more_it_can_afford(Config) ->
+    tx_first_pays_second_(Config, fun(Bal1) -> Bal1 + 1 end).
+
+tx_first_pays_second_(Config, AmountFun) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
@@ -211,7 +229,7 @@ tx_first_pays_second(Config) ->
     Pool11 = Pool21,                % tx pools are ordered
     ok = new_tx(#{node1  => N1,
                   node2  => N2,
-                  amount => 1,
+                  amount => AmountFun(Bal1),
                   sender    => PK1,
                   recipient => PK2,
                   fee    => 1}),
@@ -220,19 +238,33 @@ tx_first_pays_second(Config) ->
     true = ensure_new_tx(N2, NewTx).
 
 ensure_tx_pools_empty(Config) ->
+    ensure_tx_pools_n_txs_(Config, 0).
+
+ensure_tx_pools_one_tx(Config) ->
+    ensure_tx_pools_n_txs_(Config, 1).
+
+ensure_tx_pools_n_txs_(Config, TxsCount) ->
     Ns = [N || {_,N} <- ?config(nodes, Config)],
     retry(
       fun() ->
-              Results = lists:map(
-                          fun(N) ->
-                                  {ok, Pool} = get_pool(N),
-                                  ct:log("Pool (~p) = ~p", [N, Pool]),
-                                  Pool
-                          end, Ns),
-              lists:all(fun([]) -> true;
-                           (_)  -> false
-                        end, Results)
-      end, {?LINE, ensure_tx_pools_empty, Ns}).
+              [APool | RestPools] =
+                  lists:map(
+                    fun(N) ->
+                            case get_pool(N) of
+                                {ok, Pool} when is_list(Pool) ->
+                                    ct:log("Pool (~p) = ~p", [N, Pool]),
+                                    Pool
+                            end
+                    end, Ns),
+              if
+                  length(APool) =:= TxsCount ->
+                      lists:all(fun(P) when P =:= APool -> true;
+                                   (_) -> false
+                                end, RestPools);
+                  true ->
+                      false
+              end
+      end, {?LINE, ensure_tx_pools_n_txs_, TxsCount, Ns}).
 
 no_system_metrics_logged(Config) ->
     %% a user config filter is applied in init_per_suite, which turns off
