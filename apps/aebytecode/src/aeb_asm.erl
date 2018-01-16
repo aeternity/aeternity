@@ -24,11 +24,27 @@ format(Asm) ->
     Asm.
 
 
-file(Filename,_Opts) ->
+file(Filename, Options) ->
     {ok, File} = file:read_file(Filename),
     {ok, Tokens, _} = aeb_asm_scan:scan(binary_to_list(File)),
-    io:format("Tokens ~p~n",[Tokens]),
-    ByteList = to_bytecode(Tokens, 0, #{}, []),
+
+    case proplists:lookup(pp_tokens, Options) of
+        {pp_tokens, true} ->
+            io:format("Tokens ~p~n",[Tokens]);
+        none ->
+            ok
+    end,
+
+    ByteList = to_bytecode(Tokens, 0, #{}, [], Options),
+
+    case proplists:lookup(pp_hex_string, Options) of
+        {pp_hex_string, true} ->
+            io:format("Code: ~s~n",[to_hexstring(ByteList)]);
+        none ->
+            ok
+    end,
+
+
     list_to_binary(ByteList).
 
 to_hexstring(ByteList) ->
@@ -37,25 +53,37 @@ to_hexstring(ByteList) ->
                || X <- ByteList]).
 
 
-to_bytecode([{mnemonic,_line, Op}|Rest], Address, Env, Code) ->
+to_bytecode([{mnemonic,_line, Op}|Rest], Address, Env, Code, Opts) ->
     OpCode = aeb_opcodes:m_to_op(Op),
     OpSize = aeb_opcodes:op_size(OpCode),
-    to_bytecode(Rest, Address + OpSize, Env, [OpCode|Code]);
-to_bytecode([{int,_line, Int}|Rest], Address, Env, Code) ->
-    to_bytecode(Rest, Address, Env, [Int|Code]);
-to_bytecode([{hash,_line, Hash}|Rest], Address, Env, Code) ->
-    to_bytecode(Rest, Address, Env, [Hash|Code]);
-to_bytecode([{id,_line, ID}|Rest], Address, Env, Code) ->
-    to_bytecode(Rest, Address, Env, [{ref, ID}|Code]);
-to_bytecode([{lable,_line, Lable}|Rest], Address, Env, Code) ->
-    to_bytecode(Rest, Address, Env#{Lable => Address}, Code);
-to_bytecode([], _Address, Env, Code) ->
-    io:format("Code ~p~n", [lists:reverse(Code)]),
+    to_bytecode(Rest, Address + OpSize, Env, [OpCode|Code], Opts);
+to_bytecode([{int,_line, Int}|Rest], Address, Env, Code, Opts) ->
+    to_bytecode(Rest, Address, Env, [Int|Code], Opts);
+to_bytecode([{hash,_line, Hash}|Rest], Address, Env, Code, Opts) ->
+    to_bytecode(Rest, Address, Env, [Hash|Code], Opts);
+to_bytecode([{id,_line, ID}|Rest], Address, Env, Code, Opts) ->
+    to_bytecode(Rest, Address, Env, [{ref, ID}|Code], Opts);
+to_bytecode([{lable,_line, Lable}|Rest], Address, Env, Code, Opts) ->
+    to_bytecode(Rest, Address, Env#{Lable => Address}, Code, Opts);
+to_bytecode([], _Address, Env, Code, Opts) ->
+    case proplists:lookup(pp_opcodes, Opts) of
+        {pp_opcodes, true} ->
+            io:format("opcodes ~p~n", [lists:reverse(Code)]);
+        none ->
+            ok
+    end,
+
     PatchedCode = resolve_refs(Code, Env, []),
-    io:format("PatchedCode ~p~n", [PatchedCode]),
+    case proplists:lookup(pp_patched_code, Opts) of
+        {pp_patched_code, true} ->
+            io:format("Patched Code: ~p~n", [PatchedCode]);
+        none ->
+            ok
+    end,
+
     expand_args(PatchedCode).
 
-%% Also reverses the code.
+%% Also reverses the code (back to unreversed state).
 resolve_refs([{ref, ID} | Rest], Env, Code) ->
     Address = maps:get(ID, Env),
     resolve_refs(Rest, Env, [Address | Code]);
