@@ -486,7 +486,7 @@ paths:
           type : integer
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -517,7 +517,7 @@ paths:
           type : string 
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -547,7 +547,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -569,7 +569,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -591,7 +591,7 @@ paths:
       parameters:
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -754,7 +754,7 @@ paths:
           type: integer
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -792,7 +792,7 @@ paths:
           minimum: 0
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -832,7 +832,7 @@ paths:
           type: integer
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as message pack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -901,7 +901,7 @@ paths:
           minimum: 0
         - in: query
           name: tx_objects
-          description: 'Transactions as objects (default is as MessagePack hashes)'
+          description: 'Transactions encoding: MessagePack (default) or JSON'
           type: boolean
           default: false
       responses:
@@ -974,6 +974,8 @@ definitions:
         properties:
           data_schema:
             type: string
+          hash:
+            $ref: '#/definitions/EncodedHash'
         required:
         - data_schema
   BlockWithTxs:
