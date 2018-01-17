@@ -96,6 +96,7 @@
 
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
+-define(DEFAULT_TESTS_COUNT, 5).
 
 all() ->
     [
@@ -106,79 +107,81 @@ groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints}]},
-     {external_endpoints, [sequence],
+     {external_endpoints, [sequence], 
       [
-       % pings
-       broken_pings,
-       blocked_ping,
-       correct_ping,
+        % pings
+        broken_pings,
+        blocked_ping,
+        correct_ping,
 
-       % get block-s
-       get_top_empty_chain,
-       get_top_non_empty_chain,
-       block_not_found_by_height,
-       block_by_height,
-       block_by_hash,
-       block_not_found_by_broken_hash,
-       block_not_found_by_hash,
+        % get block-s
+        get_top_empty_chain,
+        get_top_non_empty_chain,
+        block_by_height,
+        block_not_found_by_height,
+        block_by_hash,
+        block_not_found_by_broken_hash,
+        block_not_found_by_hash,
 
-       % sync APIs
-       post_correct_blocks,
-       post_broken_blocks,
-       pending_transactions,
-       post_correct_tx,
-       post_broken_tx,
-       post_broken_base58_tx,
-  
-       % balances
-       miner_balance,
-       balance_broken_address,
-       all_accounts_balances,
-       all_accounts_balances_empty,
-       all_accounts_balances_disabled,
+        % sync gossip 
+        pending_transactions,
+        post_correct_blocks,
+        post_broken_blocks,
+        post_correct_tx,
+        post_broken_tx,
+        post_broken_base58_tx,
 
-       % infos
-       version,
-       info_empty,
-       info_more_than_30,
-       info_less_than_30,
-       info_disabled
+        % balances
+        miner_balance,
+        balance_broken_address,
+        all_accounts_balances,
+        all_accounts_balances_empty,
+        all_accounts_balances_disabled,
+
+        % infos
+        version,
+        info_disabled,
+        info_empty,
+        info_more_than_30,
+        info_less_than_30
       ]},
-     {internal_endpoints, [sequence],
+     {internal_endpoints, [sequence], 
       [
-       broken_spend_tx,
-       miner_pub_key,
-       block_number,
+        broken_spend_tx,
+        miner_pub_key,
 
-       internal_block_by_height,
-       internal_block_by_hash,
-       internal_block_genesis,
-       internal_block_pending,
-       internal_block_latest,
+        %% requested Endpoints
+        block_number,
 
-       internal_block_not_found_by_height,
-       internal_block_not_found_by_broken_hash,
-       internal_block_not_found_by_hash,
+        internal_block_by_height,
+        internal_block_by_hash,
+        internal_block_genesis,
+        internal_block_pending,
+        internal_block_latest,
 
-       block_txs_count_by_height,
-       block_txs_count_by_hash,
-       block_txs_count_genesis,
-       block_txs_count_latest,
-       block_txs_count_pending,
+        internal_block_not_found_by_height,
+        internal_block_not_found_by_broken_hash,
+        internal_block_not_found_by_hash,
 
-       block_txs_count_by_height_not_found,
-       block_txs_count_by_hash_not_found,
-       block_txs_count_by_broken_hash,
+        block_txs_count_by_height,
+        block_txs_count_by_hash,
+        block_txs_count_genesis,
+        block_txs_count_latest,
+        block_txs_count_pending,
 
-       block_tx_index_by_height,
-       block_tx_index_by_hash,
-       block_tx_index_latest,
-       block_tx_index_not_founds,
+        block_txs_count_by_height_not_found,
+        block_txs_count_by_hash_not_found,
+        block_txs_count_by_broken_hash,
 
-       block_txs_list_by_height,
-       block_txs_list_by_hash,
-       block_txs_list_by_height_invalid_range,
-       block_txs_list_by_hash_invalid_range
+        block_tx_index_by_height,
+        block_tx_index_by_hash,
+        block_tx_index_latest,
+        block_tx_index_not_founds,
+
+        block_txs_list_by_height,
+        block_txs_list_by_hash,
+        block_txs_list_by_height_invalid_range,
+        block_txs_list_by_hash_invalid_range
       ]}
     ].
 
@@ -199,25 +202,43 @@ init_per_suite(Config) ->
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
                                                  #{<<"persist">> => false}}),
     aecore_suite_utils:make_multi(Config1, [?NODE]),
-    Config1.
+    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config1].
 
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(all_endpoints, Config) ->
+    Config;
+init_per_group(Group, Config) when Group =:= external_endpoints
+                            orelse Group =:= internal_endpoints ->
+    aecore_suite_utils:start_node(?NODE, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    [{start_node_per_tc, false} | Config];
 init_per_group(_, Config) ->
-    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config].
+    [{start_node_per_tc, true} | Config].
 
-end_per_group(_Group, _Config) ->
+end_per_group(_Group, Config) ->
+    case proplists:get_value(start_node_per_tc, Config, false) of
+        true -> pass;
+        false -> aecore_suite_utils:stop_node(?NODE, Config)
+    end,
     ok.
 
 init_per_testcase(_Case, Config) ->
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    case proplists:get_value(start_node_per_tc, Config, true) of
+        true ->
+            aecore_suite_utils:start_node(?NODE, Config),
+            aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE));
+        false -> pass 
+    end,
     ct:log("testcase pid: ~p", [self()]),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
-    aecore_suite_utils:stop_node(?NODE, Config),
+    case proplists:get_value(start_node_per_tc, Config, true) of
+        false -> pass;
+        true -> aecore_suite_utils:stop_node(?NODE, Config)
+    end,
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
@@ -232,24 +253,30 @@ correct_ping(_Config) ->
      } = PingObj = rpc(aec_sync, local_ping_object, []),
     EncGHash = aec_base58c:encode(block_hash, GHash),
     EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    Peer = unique_peer(),
     {ok, 200, _} =
         post_ping(
-          maps:put(<<"source">>, unique_peer(),
+          maps:put(<<"source">>, Peer,
                    PingObj#{<<"genesis_hash">> => EncGHash,
                             <<"best_hash">> => EncTopHash})),
+    rpc(aec_peers, remove, [Peer]),
     ok.
 
 broken_pings(_Config) ->
     % no 'source'
     {ok, 400, _} = post_ping(#{}),
     % no ping obj data
-    {ok, 400, _} = post_ping(#{<<"source">> => unique_peer()}),
+    Peer = unique_peer(),
+    {ok, 400, _} = post_ping(#{<<"source">> => Peer}),
     PingObj = rpc(aec_sync, local_ping_object, []),
     % wrong genesis hash
-    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => unique_peer(),
+    Peer1 = unique_peer(),
+    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer1,
                                              <<"genesis_hash">> => <<"foo">>}),
     {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
         post_ping(WrongGenHashPing),
+    rpc(aec_peers, remove, [Peer]),
+    rpc(aec_peers, remove, [Peer1]),
     ok.
 
 blocked_ping(_Config) ->
@@ -261,9 +288,11 @@ blocked_ping(_Config) ->
     % node is blocked now 
     {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
         post_ping(maps:put(<<"source">>, Peer, PingObj)),
+    rpc(aec_peers, remove, [Peer]),
     ok.
 
 get_top_empty_chain(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(), 
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
     {ok, 200, GenBlockMap} = get_block_by_height(0),
@@ -287,10 +316,17 @@ get_top_non_empty_chain(_Config) ->
 
 block_by_height(_Config) ->
     BlocksToCheck = 4,
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToCheck),
+                                   BlocksToMine),
     TopHeader = rpc(aec_conductor, top_header, []), 
-    BlocksToCheck = aec_headers:height(TopHeader),
+    %% assert there are enough blocks
+    case aec_headers:height(TopHeader) of
+        TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
+          pass
+    end,
+    % fetch and validate blocks
     lists:foreach(
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
@@ -305,19 +341,20 @@ block_by_height(_Config) ->
     ok.
 
 block_not_found_by_height(_Config) ->
-    TopHeader = rpc(aec_conductor, top_header, []), 
-    0 = aec_headers:height(TopHeader), %chain is empty
-    NumberOfChecks = 10,
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    % ensure no mining (and thus - no new blocks)
+    {error, not_mining}  = rpc(aec_conductor, get_block_candidate, []),
+    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(_) ->
-            Height = rand:uniform(99) + 1, % random number 1-100
+            Height = rand:uniform(99) + 1 + InitialHeight, % random number 1-100 + CurrentTopHeight
             {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height(Height)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
 block_not_found_by_hash(_Config) ->
-    NumberOfChecks = 10,
+    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(_) ->
             H = random_hash(),
@@ -329,7 +366,7 @@ block_not_found_by_hash(_Config) ->
     ok.
 
 block_not_found_by_broken_hash(_Config) ->
-    NumberOfChecks = 10,
+    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(_) ->
             <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
@@ -340,10 +377,17 @@ block_not_found_by_broken_hash(_Config) ->
 
 block_by_hash(_Config) ->
     BlocksToCheck = 4,
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToCheck),
+                                   BlocksToMine),
     TopHeader = rpc(aec_conductor, top_header, []), 
-    BlocksToCheck = aec_headers:height(TopHeader),
+    %% assert there are enough blocks
+    case aec_headers:height(TopHeader) of
+        TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
+          pass
+    end,
+    % fetch and validate blocks
     lists:foreach(
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
@@ -367,16 +411,19 @@ block_by_hash(_Config) ->
 pending_transactions(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty 
     {ok, 200, []} = get_transactions(), 
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance(),
-    BlocksToMine = 10,
-    AmountToSpent = 7,
-    Fee = 2,
+    InitialBalance =
+        case get_balance() of
+            {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
+            {ok, 200, #{<<"balance">> := Bal00}} -> Bal00
+        end,
+    AmountToSpent = 1,
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, 1),
     MineReward = rpc(aec_governance, block_mine_reward, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance(),  
 
-    Bal0 = BlocksToMine * MineReward,
+    Bal0 = InitialBalance + BlocksToMine * MineReward,
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty 
@@ -411,11 +458,13 @@ pending_transactions(_Config) ->
     Bal1 = Bal0 + MineReward + Fee - AmountToSpent - Fee,
     {ok, 200, #{<<"balance">> := AmountToSpent}} = 
                  get_balance(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
-
     ok.
 
-post_correct_blocks(Config) ->
-    BlocksToPost = 10,
+post_correct_blocks(_Config) ->
+    ok = rpc(aec_conductor, stop_mining, []),
+    ok = rpc(aec_conductor, reinit_chain, []),
+    timer:sleep(100),
+    BlocksToPost = ?DEFAULT_TESTS_COUNT,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToPost),
     Blocks =
@@ -425,9 +474,7 @@ post_correct_blocks(Config) ->
                 B
             end,
             lists:seq(1, BlocksToPost)),
-    % consider a rpc call for cleaning the aec_chain_state's state
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:start_node(?NODE, Config),
+    ok = rpc(aec_conductor, reinit_chain, []),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
     GH = rpc(aec_conductor, top_header, []), 
     0 = aec_headers:height(GH), %chain is empty
@@ -484,9 +531,8 @@ post_broken_blocks(Config) ->
 %% Even though a tx with a unknown sender pubkey would be accepted, we need
 %% a valid account nonce; that's why we mine a while
 post_correct_tx(_Config) ->
-    Amount = 7,
-    Fee = 2,
-    BlocksToMine = 10,
+    Amount = 1,
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
@@ -501,9 +547,16 @@ post_correct_tx(_Config) ->
     ok.
 
 post_broken_tx(_Config) ->
-    Amount = 7,
-    Fee = 2,
-    BlocksToMine = 10,
+    Amount = 1,
+    FieldsToTest = 
+        [<<"type">>,
+         <<"vsn">>,
+         <<"sender">>,
+         <<"recipient">>,
+         <<"amount">>,
+         <<"fee">>,
+         <<"nonce">>],
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, length(FieldsToTest)),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     {ok, SpendTx} =
         aec_spend_tx:new(
@@ -526,22 +579,14 @@ post_broken_tx(_Config) ->
                                 msgpack:pack([T, V, BrokenTx, Sigs])),
             {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx)
         end,
-        [<<"type">>,
-         <<"vsn">>,
-         <<"sender">>,
-         <<"recipient">>,
-         <<"amount">>,
-         <<"fee">>,
-         <<"nonce">>]),
-
+        FieldsToTest),
     ok.
 
 post_broken_base58_tx(_Config) ->
-    Amount = 7,
-    Fee = 2,
-    BlocksToMine = 10,
+    Amount = 1,
+    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, NumberOfChecks),
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
-    NumberOfChecks = 10,
     lists:foreach(
         fun(_) ->
             {ok, SpendTx} =
@@ -562,8 +607,9 @@ post_broken_base58_tx(_Config) ->
 
 %% changing of another account's balance is checked in pending_transactions test
 miner_balance(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance(),
-    BlocksToMine = 10,
+    BlocksToMine = ?DEFAULT_TESTS_COUNT,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     {ok, Bal} = rpc(aec_mining, get_miner_account_balance, []),
@@ -574,7 +620,7 @@ miner_balance(_Config) ->
     ok.
 
 balance_broken_address(_Config) ->
-    NumberOfChecks = 10,
+    NumberOfChecks = 5,
     lists:foreach(
         fun(_) ->
             <<_, BrokenHash/binary>> = aec_base58c:encode(account_pubkey,
@@ -585,16 +631,17 @@ balance_broken_address(_Config) ->
     ok.
 
 all_accounts_balances(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
-    BlocksToMine = 10,
-    Receivers = 10,
-    Fee = 1,
+    Receivers = ?DEFAULT_TESTS_COUNT,
+    AmountToSpent = 1,
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    ReceiversAccounts = [{random_hash(), Idx} || Idx <- lists:seq(1, Receivers)],
+    ReceiversAccounts = [{random_hash(), AmountToSpent} || _Idx <- lists:seq(1, Receivers)],
     lists:foreach(
-        fun({ReceiverPubKey, AmountToSpent}) ->
+        fun({ReceiverPubKey, _}) ->
             {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee)
         end,
         ReceiversAccounts),
@@ -622,6 +669,7 @@ all_accounts_balances(_Config) ->
     ok.
 
 all_accounts_balances_empty(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
     {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
@@ -659,6 +707,7 @@ info_disabled(_Config) ->
     ok.
 
 info_empty(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     ExpectedEmpty = #{<<"last_30_blocks_time">> => [ #{<<"difficulty">> => 1.0,
                                                        <<"height">> => 0,
@@ -673,6 +722,8 @@ info_less_than_30(_Config) ->
     test_info(20).
 
 test_info(BlocksToMine) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     rpc(application, set_env, [aecore, expected_mine_rate, 100]),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
@@ -731,7 +782,7 @@ block_number(_Config) ->
             {ok, 200, #{<<"height">> := Num}} = get_block_number(),
             ExpectedNum = Num
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 internal_block_by_height(_Config) ->
@@ -741,6 +792,7 @@ internal_block_by_height(_Config) ->
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
 
 internal_block_not_found_by_height(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     lists:foreach(
         fun(H) ->
             lists:foreach(
@@ -750,7 +802,7 @@ internal_block_not_found_by_height(_Config) ->
                 end,
                 [default, false, true])
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 internal_block_by_hash(_Config) ->
@@ -777,7 +829,7 @@ internal_block_not_found_by_hash(_Config) ->
                 end,
                 [default, false, true])
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 internal_block_not_found_by_broken_hash(_Config) ->
@@ -791,7 +843,7 @@ internal_block_not_found_by_broken_hash(_Config) ->
                 end,
                 [default, false, true])
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 internal_block_genesis(_Config) ->
@@ -838,16 +890,20 @@ internal_block_pending(_Config) ->
                 block_to_endpoint_map(PendingBlock)),
     ct:log("Expected pending block ~p", [ExpectedPendingTx]),
     GetPending =
-        fun TryToGet(_Opt, Attempts) when Attempts < 1 ->
-                {error, no_pending_block_returned};
-            TryToGet(Opt, Attempts) ->
-                case get_internal_block_preset("pending", Opt) of
-                    {ok, 200, P} -> {ok, P};
-                    {ok, 404, _} -> TryToGet(Opt, Attempts -1)
-                end
+        fun(Opt)->
+            aec_test_utils:exec_with_timeout(
+               fun TryGetting() ->
+                   case get_internal_block_preset("pending", Opt) of
+                      {ok, 200, B} -> B;
+                      {ok, 404, _} ->
+                          timer:sleep(100),
+                          TryGetting()
+                  end
+               end,
+               10000)
         end,
-    {ok, PendingTxDefault} = GetPending(default, 10),
-    {ok, PendingTxHashes} = GetPending(false, 10),
+    {ok, PendingTxDefault} = GetPending(default),
+    {ok, PendingTxHashes} = GetPending(false),
     ValidateKeys =
         fun(Map1, Map2, Key) ->
             true = maps:get(Key, Map1, not_found1) =:=
@@ -866,14 +922,16 @@ internal_block_pending(_Config) ->
                 block_to_endpoint_map(PendingBlock, #{tx_objects => true})),
     ct:log("Expected pending block with tx objects~p",
            [ExpectedPendingTxsObjects]),
-    {ok, PendingTxObjects} = GetPending(true, 10),
+    {ok, PendingTxObjects} = GetPending(true),
     
     % no block should have been mined, so the same prev_hash
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"prev_hash">>),
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"data_schema">>),
+    rpc(aec_conductor, stop_mining, []),
     ok.
 
 internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     BlocksToCheck = 4,
     lists:foreach(
         fun(Height) ->
@@ -945,26 +1003,30 @@ block_txs_count_pending(_Config) ->
     InsertedTxsCount = add_spend_txs(),
     rpc(aec_conductor, start_mining, []),
     GetPending =
-        fun TryToGet(Attempts) when Attempts < 1 ->
-                {error, no_pending_block_returned};
-            TryToGet(Attempts) ->
-                case get_block_txs_count_preset("pending") of
-                    {ok, 200, P} -> {ok, P};
-                    {ok, 404, _} ->
-                        TryToGet(Attempts -1)
-                end
+        fun()->
+            aec_test_utils:exec_with_timeout(
+               fun TryGetting() ->
+                  case get_block_txs_count_preset("pending") of
+                      {ok, 200, B} -> B;
+                      {ok, 404, _} ->
+                          timer:sleep(100),
+                          TryGetting()
+                  end
+               end,
+               10000)
         end,
-    {ok, #{<<"count">> := TxsCount}} = GetPending(10),
+    {ok, #{<<"count">> := TxsCount}} = GetPending(),
     ct:log("Inserted transactions count ~p, transactions count in the pending block ~p",
            [InsertedTxsCount, TxsCount]),
     % the assert bellow rellies on no block being mined durring the test run
     % this is achieved by mining BlocksToPremine number of blocks and setting
     % a high value for expected_mine_rate
     true = TxsCount =:= InsertedTxsCount + 1,
+    rpc(aec_conductor, start_mining, []),
     ok.
 
 generic_counts_test(GetBlock, CallApi) ->
-    BlocksToMine = 10,
+    BlocksToMine = 5,
     lists:foreach(
         fun(Height) ->
             {ok, B} = GetBlock(Height),
@@ -977,12 +1039,13 @@ generic_counts_test(GetBlock, CallApi) ->
     ok.
 
 block_txs_count_by_height_not_found(_Config) ->
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
     lists:foreach(
         fun(H) ->
             {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
                         = get_block_txs_count_by_height(H)
         end,
-        lists:seq(1, 10)),
+        lists:seq(InitialHeight + 1, InitialHeight + ?DEFAULT_TESTS_COUNT)),
     ok.
 
 block_txs_count_by_hash_not_found(_Config) ->
@@ -995,7 +1058,7 @@ block_txs_count_by_hash_not_found(_Config) ->
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 block_txs_count_by_broken_hash(_Config) ->
@@ -1005,7 +1068,7 @@ block_txs_count_by_broken_hash(_Config) ->
             {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
                 get_block_txs_count_by_hash(BrokenHash)
         end,
-        lists:seq(1, 10)),
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
 block_tx_index_by_height(_Config) ->
@@ -1026,7 +1089,8 @@ block_tx_index_latest(_Config) ->
         end).
 
 block_tx_index_not_founds(_Config) ->
-    RandomHeight = rand:uniform(999) + 1, % 1..1000
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    RandomHeight = InitialHeight + rand:uniform(999) + 1, % CurrentTop + 1..1000
     Test =
         fun(Code, ErrMsg, Fun, Cases) ->
             lists:foreach(
@@ -1039,9 +1103,7 @@ block_tx_index_not_founds(_Config) ->
                 Cases)
         end,
     Test(404, <<"Chain too short">>, fun get_block_tx_by_index_height/3,
-         [{1, 0},
-          {1, 1},
-          {RandomHeight, 0},
+         [{RandomHeight, 0},
           {RandomHeight, 1},
           {RandomHeight + 1, 0},
           {RandomHeight + 1, 1}]),
@@ -1071,7 +1133,8 @@ block_tx_index_not_founds(_Config) ->
 
 
 generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
-    BlocksToMine = 10,
+    ok = rpc(aec_conductor, reinit_chain, []),
+    BlocksToMine = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(Height) ->
             lists:foreach(
@@ -1117,7 +1180,8 @@ block_txs_list_by_hash(_Config) ->
 
 generic_range_test(GetTxsApi, HeightToKey) ->
     MaximumRange = rpc(aec_conductor, max_block_range, []),
-    BlocksToMine = 2 * MaximumRange,
+    CurrentHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    BlocksToMine = max(2 * MaximumRange - CurrentHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     lists:foreach(
@@ -1127,9 +1191,9 @@ generic_range_test(GetTxsApi, HeightToKey) ->
                     single_range_test(From, From + Length,
                                        GetTxsApi, HeightToKey)
                 end,
-                lists:seq(0, MaximumRange))
+                [0, 1, MaximumRange - 1, MaximumRange])
         end,
-        lists:seq(0, MaximumRange)),
+        [0, 1, MaximumRange - 1, MaximumRange]),
     ok.
 
 single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
@@ -1171,8 +1235,9 @@ expected_range_result(HeightFrom, HeightTo, TxObjects) ->
       <<"transactions">> => Txs}.
 
 block_txs_list_by_height_invalid_range(_Config) ->
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
     MaximumRange = rpc(aec_conductor, max_block_range, []),
-    BlocksToMine = 2 * MaximumRange,
+    BlocksToMine = max(2 * MaximumRange - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     ValidateError =
@@ -1186,20 +1251,22 @@ block_txs_list_by_height_invalid_range(_Config) ->
     InvalidRange = {ok, 400, #{<<"reason">> => <<"From's height is bigger than To's">>}},
     lists:foreach(
         fun({From, To}) -> ValidateError(From, To, InvalidRange) end,
-        [{BlocksToMine, 0}, {BlocksToMine, 1}]),
+        [{1, 0}, {3, 1}]),
     RangeTooBig = {ok, 400, #{<<"reason">> => <<"Range too big">>}},
     lists:foreach(
         fun({From, To}) -> ValidateError(From, To, RangeTooBig) end,
         [{0, MaximumRange +1}, {1, MaximumRange + 2}]),
     ChainTooShort = {ok, 404, #{<<"reason">> => <<"Chain too short">>}},
+    CurrentHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
     lists:foreach(
         fun({From, To}) -> ValidateError(From, To, ChainTooShort) end,
-        [{BlocksToMine -1, BlocksToMine + 1},
-         {BlocksToMine, BlocksToMine + 1},
-         {BlocksToMine +1, BlocksToMine + 1}]),
+        [{CurrentHeight - 1, CurrentHeight + 1},
+         {CurrentHeight, CurrentHeight + 1},
+         {CurrentHeight + 1, CurrentHeight + 1}]),
     ok.
 
 block_txs_list_by_hash_invalid_range(_Config) ->
+    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
     MaximumRange = rpc(aec_conductor, max_block_range, []),
     BlocksToMine = 2 * MaximumRange,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -1213,10 +1280,10 @@ block_txs_list_by_hash_invalid_range(_Config) ->
                 [default, false, true])
         end,
     {ok, GenBlockHash} = block_hash_by_height(0),
-    {ok, Block1Hash} = block_hash_by_height(1),
-    {ok, Block2Hash} = block_hash_by_height(2),
-    {ok, BlockX1Hash} = block_hash_by_height(MaximumRange + 1),
-    {ok, BlockX2Hash} = block_hash_by_height(MaximumRange + 2),
+    {ok, Block1Hash} = block_hash_by_height(InitialHeight),
+    {ok, Block2Hash} = block_hash_by_height(InitialHeight + 1),
+    {ok, BlockX1Hash} = block_hash_by_height(InitialHeight + MaximumRange + 1),
+    {ok, BlockX2Hash} = block_hash_by_height(InitialHeight + MaximumRange + 2),
     InvalidRange = {ok, 400, #{<<"reason">> => <<"From's height is bigger than To's">>}},
     lists:foreach(
         fun({From, To}) -> ValidateError(From, To, InvalidRange) end,
@@ -1513,19 +1580,18 @@ block_hash_by_height(Height) ->
                            | {error, not_mining}
                            | {ok, term()}.
 get_pending_block() ->
-    GetPendingBlock =
-        fun TryGetPending(N) when N < 1 -> {error, no_candidate};
-            TryGetPending(Attempts) ->
-                case rpc(aec_conductor, get_block_candidate, []) of
-                    {ok, _} = OK -> OK;
-                    {error, not_mining} = Err->
-                        Err;
-                    {error, miner_starting} ->
-                        timer:sleep(200),
-                        TryGetPending(Attempts - 1)
-                end
+    aec_test_utils:exec_with_timeout(
+        fun TryGetting() ->
+            case rpc(aec_conductor, get_block_candidate, []) of
+                {ok, OK} -> OK;
+                {error, not_mining} = Err->
+                    Err;
+                {error, miner_starting} ->
+                    timer:sleep(10),
+                    TryGetting()
+            end
         end,
-    GetPendingBlock(10).
+        10000).
 
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
@@ -1574,3 +1640,9 @@ equal_block_maps(MapL0, MapR0) ->
     ct:log("Sorted txs right: ~p", [SortedTxsR]),
     MapL1 =:= MapR1 andalso SortedTxsL =:= SortedTxsR. 
 
+minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
+    Fee = rpc(aec_governance, minimum_tx_fee, []),
+    MineReward = rpc(aec_governance, block_mine_reward, []),
+    TokensRequired = (Amount + Fee) * ChecksCnt,
+    BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)),
+    {BlocksToMine, Fee}.

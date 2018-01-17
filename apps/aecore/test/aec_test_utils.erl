@@ -18,6 +18,8 @@
         , mock_genesis/0
         , unmock_genesis/0
         , wait_for_it/2
+        , wait_for_it_or_timeout/3
+        , exec_with_timeout/2
         , extend_block_chain_with_state/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
@@ -111,6 +113,25 @@ wait_for_it(Fun, Value, Sleep) ->
             timer:sleep(Sleep),
             wait_for_it(Fun, Value, Sleep + 10)
     end.
+
+wait_for_it_or_timeout(Fun, Value, Timeout) ->
+    exec_with_timeout(fun() -> wait_for_it(Fun, Value) end, Timeout).
+
+exec_with_timeout(Fun, Timeout)  when is_function(Fun, 0) ->
+    Pid = self(),
+    spawn(
+        fun() ->
+            Res = Fun(),
+            Pid ! {exec_result, Res}
+        end),
+    receive
+        {exec_result, Res} ->
+            {ok, Res}
+    after
+        Timeout ->
+            {error, timeout}
+    end.
+
 
 %%%=============================================================================
 %%% Chain related util functions

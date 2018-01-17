@@ -90,6 +90,10 @@
         , top_header_hash/0
         ]).
 
+%% for tests
+-export([reinit_chain/0
+        ]).
+
 %% gen_server API
 -export([ start_link/0
         , start_link/1
@@ -305,6 +309,10 @@ top_header() ->
 top_header_hash() ->
     gen_server:call(?SERVER, get_top_header_hash).
 
+-spec reinit_chain() -> header().
+reinit_chain() ->
+    gen_server:call(?SERVER, reinit_chain).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -409,6 +417,22 @@ handle_call(get_mining_state,_From, State) ->
     {reply, State#state.mining_state, State};
 handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
+handle_call(reinit_chain, _From, State0) ->
+    State1 = aec_conductor_chain:init(State0),
+    TopBlockHash = aec_conductor_chain:get_top_block_hash(State1),
+    State2 = State1#state{seen_top_block_hash = TopBlockHash},
+    State =
+        case State2#state.mining_state of
+            stopped  ->
+                State2;
+            running ->
+                epoch_mining:info("Mining stopped"),
+                State3 = kill_all_workers(State2),
+                epoch_mining:info("Mining started"),
+                start_mining(State3#state{mining_state = running,
+                                          block_candidate = undefined})
+        end,
+    {reply, ok, State};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
