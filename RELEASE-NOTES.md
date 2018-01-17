@@ -54,7 +54,7 @@ docker run -d -p 3013:3013 aetrnty/epoch
 
 It will start a docker container with epoch node in background and map port 3013 of the container to the same port on localhost. Verify it's running by inspecting the height of the top block:
 ```bash
-curl localhost:3013/v1/top
+curl localhost:3013/v2/top
 ```
 
 ### Setup your node

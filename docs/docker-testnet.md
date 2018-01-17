@@ -21,7 +21,7 @@ docker run -d --name epoch_node0 -p 3013:3013 aetrnty/epoch
 
 Verify the node is running:
 ```bash
-curl localhost:3013/v1/top
+curl localhost:3013/v2/top
 ```
 
 ## Stop a Node
