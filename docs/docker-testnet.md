@@ -31,6 +31,18 @@ To stop a docker node run:
 docker stop epoch_node0
 ```
 
+## Execute command on a running node
+
+To execute any command on a running node use:
+```bash
+docker exec epoch_node0 CMD
+```
+
+For example to check what's in the epoch logs run:
+```bash
+docker exec epoch_node0 tail log/epoch.log
+```
+
 ## Configuration
 
 ### External Peer Address
