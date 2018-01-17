@@ -274,7 +274,7 @@ curl http://31.13.248.102:3013/v2/top
 
 This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
 ```
-curl http://localhost:3113/v2/block/pending
+curl http://localhost:3103/v2/block/pending
 {...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
 ```
 Height would be +1 of what is in the `/top` of the remote node but this is not
