@@ -1,10 +1,13 @@
 -module(aeu_http_client).
 
 %% API
--export([request/4]).
+-export([request/3]).
 
+%% include generated code
+-include("../include/endpoints.hrl").
 
-request(BaseUri, Method, Endpoint, Params) ->
+-spec request(iodata(), atom(), list({string(), iodata()}) | map()) -> {ok, any()} | {error, any()}. 
+request(BaseUri, OperationId, Params) ->
     Timeout = aeu_env:user_config_or_env(
                 [<<"http">>, <<"external">>,<<"request_timeout">>],
                 aehttp, http_request_timeout, 1000),
@@ -12,6 +15,7 @@ request(BaseUri, Method, Endpoint, Params) ->
                  [<<"http">>, <<"external">>, <<"connect_timeout">>],
                  aehttp, http_connect_timeout, min(Timeout, 1000)),
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
+    #{path := Endpoint, method := Method} = operation(OperationId),
     request(BaseUri, Method, Endpoint, Params, [], HTTPOptions, []).
 
 request(BaseUri, get, Endpoint, Params, Header, HTTPOptions, Options) ->
@@ -54,20 +58,10 @@ process_http_return(R) ->
             Error
     end.
 
+-spec encode_get_params(map() | list({string(), iodata()})) -> iodata().
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
-encode_get_params([{K,V}|T]) ->
-    ["?", [str(K),"=",uenc(V)
-           | [["&", str(K1), "=", uenc(V1)]
-              || {K1, V1} <- T]]];
-encode_get_params([]) ->
-    [].
-
-%% str(A) when is_atom(A) ->
-%%     atom_to_binary(A, latin1);
-str(S) when is_list(S); is_binary(S) ->
-    S.
-
-uenc(V) ->
-    http_uri:encode(V).
+encode_get_params(Params) when is_list(Params) ->
+    ["?", lists:join( "&", [ [http_uri:encode(K), "=" , http_uri:encode(V)] 
+                             || {K,V} <- Params ] ) ].
 

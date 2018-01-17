@@ -1389,12 +1389,12 @@ internal_address() ->
 
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
-            iolist_to_binary([Host, "/v1/", Path, encode_get_params(Params)])),
+            iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
     R = httpc:request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
-    URL = binary_to_list(iolist_to_binary([Host, "/v1/", Path])),
+    URL = binary_to_list(iolist_to_binary([Host, "/v2/", Path])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
                            %% JSON-encoded

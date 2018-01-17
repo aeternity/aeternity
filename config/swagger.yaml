@@ -7,7 +7,7 @@ info:
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
     email: apiteam@aeternity.com
-basePath: /v1
+basePath: /v2
 tags:
   - name: external
     description: External API
@@ -920,6 +920,18 @@ paths:
       security: []
 
 definitions:
+  EncodedHash:
+    type: string
+  Pow:
+    type: array
+    items:
+      type: integer
+      format: int32
+    minItems: 42
+    maxItems: 42
+  Uri:
+    type: string
+    ## format: uri
   Header:
     type: object
     properties:
@@ -927,11 +939,11 @@ definitions:
         type: integer
         format: int64
       prev_hash:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       state_hash:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       txs_hash:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       target:
         type: integer
         format: int64
@@ -943,11 +955,8 @@ definitions:
         format: int64
       version:
         type: integer
-        format: int64
       pow:
-        type: array
-        items:
-          type: integer
+        $ref: '#/definitions/Pow'
   Block:
     allOf:
       - $ref: '#/definitions/Header'
@@ -1031,11 +1040,12 @@ definitions:
         type: number
       share:
         type: integer
-        format: int64
+        maximum: 32
       peers:
         type: array
         items:
-          type: string
+          $ref: '#/definitions/Uri'
+          maxItems: 32
     required:
     - source
     - genesis_hash
@@ -1111,7 +1121,7 @@ definitions:
         type: integer
         format: int64
       ttl:
-        "$ref": '#/definitions/TTL'
+        $ref: '#/definitions/TTL'
   OracleQueryTx:
     type: object
     properties:
@@ -1123,9 +1133,9 @@ definitions:
         type: integer
         format: int64
       query_ttl:
-        "$ref": '#/definitions/TTL'
+        $ref: '#/definitions/TTL'
       response_ttl:
-        "$ref": '#/definitions/RelativeTTL'
+        $ref: '#/definitions/RelativeTTL'
       fee:
         type: integer
         format: int64
@@ -1303,7 +1313,7 @@ definitions:
           que: string
           response_spec: string
           ttl: 
-            "$ref": '#/definitions/TTL'
+            $ref: '#/definitions/TTL'
           fee: integer
         required:
         - account
@@ -1323,9 +1333,9 @@ definitions:
           query: string
           query_fee: integer
           query_ttl: 
-            "$ref": '#/definitions/TTL'
+            $ref: '#/definitions/TTL'
           response_ttl: 
-            "$ref": '#/definitions/TTL'
+            $ref: '#/definitions/TTL'
           fee: integer
         required:
         - sender
@@ -1347,9 +1357,9 @@ definitions:
           query: string
           query_fee: integer
           query_ttl: 
-            "$ref": '#/definitions/TTL'
+            $ref: '#/definitions/TTL'
           response_ttl: 
-            "$ref": '#/definitions/TTL'
+            $ref: '#/definitions/TTL'
           fee: integer
         required:
         - account

@@ -28,12 +28,12 @@ logging.getLogger("urllib3").setLevel(logging.ERROR)
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
     EXT_API[node] = ExternalApi(ApiClient(host=node_config['host'] + ':'
-                + str(node_config['ports']['external_api']) + '/v1'))
+                + str(node_config['ports']['external_api']) + '/v2'))
 
 INT_API = {}
 for node, node_config in config['nodes'].iteritems():
     INT_API[node] = InternalApi(ApiClient(host=node_config['host'] + ':'
-                + str(node_config['ports']['internal_api']) + '/v1'))
+                + str(node_config['ports']['internal_api']) + '/v2'))
 
 def external_api(name):
     return EXT_API[name]

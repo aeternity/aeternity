@@ -1,3 +1,38 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%%     HTTP request support.
+%%%     This module contains a function for each HTTP endpoint with 
+%%%     as arguments
+%%%     1) the host (e.g. http://localhost:3013) in binary format
+%%%        to allow utf8 characters,
+%%%     2) the query parameters.
+%%%
+%%%     This module is transforming the query parameters into a map 
+%%%     that fits the specified endpoint. That is, it checks types and 
+%%%     business logic of the input and creates a map that can automatically
+%%%     be transformed into a JSON object that validates with the JSON 
+%%%     schema(s) for those query parameters.
+%%%
+%%%     After a HTTP request via  aeu_http_client:request the response
+%%%     is verified against its JSON schema and transformed back to 
+%%      Erlang maps or other types used internally. 
+%%%     Some business logic may be verified already here. 
+%%      For example,
+%%%     the ping request provides a "share" parameter stating how many
+%%%     peers it maximally want to receive in the response.
+%%%     It is hard to express this relation in the JSON schema(s), but 
+%%%     easy to verify here that the list of returned pings has a length 
+%%%     not exceeding Share. 
+%%%     
+%%%     Note that we perform both the JSON encoding and the actual 
+%%%     request in the separate aeu_http_request module. This allows
+%%%     mocking on the request layer during testing.
+%%% @end
+%%% Created: 2017
+%%% 
+%%%-------------------------------------------------------------------
+
 -module(aeu_requests).
 
 %% API
@@ -27,7 +62,7 @@ ping(Uri, LocalPingObj) ->
                             <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
                             <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
                            },
-    Response = process_request(Uri, post, "ping", PingObj),
+    Response = process_request(Uri, 'Ping', PingObj),
     case Response of
         {ok, #{<<"reason">> := Reason}} ->
             lager:debug("Got an error return: Reason = ~p", [Reason]),
@@ -62,7 +97,7 @@ ping(Uri, LocalPingObj) ->
 
 -spec top(http_uri:uri()) -> response(aec_headers:header()).
 top(Uri) ->
-    Response = process_request(Uri, get, "top", []),
+    Response = process_request(Uri, 'GetTop', []),
     case Response of
         {ok, Data} ->
             {ok, Header} = aec_headers:deserialize_from_map(Data),
@@ -75,7 +110,7 @@ top(Uri) ->
 -spec get_block(http_uri:uri(), binary()) -> response(aec_blocks:block()).
 get_block(Uri, Hash) ->
     EncHash = aec_base58c:encode(block_hash, Hash),
-    Response = process_request(Uri, get, "block-by-hash", [{"hash", EncHash}]),
+    Response = process_request(Uri,'GetBlockByHash', [{"hash", EncHash}]),
     case Response of
         {ok, Data} ->
             {ok, Block} = aec_blocks:deserialize_from_map(Data),
@@ -86,7 +121,7 @@ get_block(Uri, Hash) ->
 
 -spec transactions(http_uri:uri()) -> response([aec_tx:signed_tx()]).
 transactions(Uri) ->
-    Response = process_request(Uri, get, "transactions", []),
+    Response = process_request(Uri, 'GetTxs', []),
     lager:debug("transactions Response = ~p", [pp(Response)]),
     case tx_response(Response) of
         bad_result -> 
@@ -116,7 +151,7 @@ tx_response(_Other) -> bad_result.
 send_block(Uri, Block) ->
     BlockSerialized = aec_blocks:serialize_to_map(Block),
     lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
-    Response = process_request(Uri, post, "block", BlockSerialized),
+    Response = process_request(Uri, 'PostBlock', BlockSerialized),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -128,7 +163,7 @@ send_block(Uri, Block) ->
 send_tx(Uri, SignedTx) ->
     TxSerialized = aec_base58c:encode(
                      transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
-    Response = process_request(Uri, post, "tx", #{tx => TxSerialized}),
+    Response = process_request(Uri, 'PostTx', #{tx => TxSerialized}),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -144,7 +179,7 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
   when is_binary(Kr), is_integer(Am), is_integer(Fee) ->
     Req = maps:put(
             recipient_pubkey, aec_base58c:encode(account_pubkey, Kr), Req0),
-    Response = process_request(IntPeer, post, "spend-tx", Req),
+    Response = process_request(IntPeer, 'PostSpendTx', Req),
     case Response of
         {ok, _Map} ->
             {ok, ok};
@@ -152,9 +187,8 @@ new_spend_tx(IntPeer, #{recipient_pubkey := Kr,
             Error
     end.
 
-process_request(Uri, Method, Endpoint, Params) ->
-    BaseUri = iolist_to_binary([Uri, <<"/v1/">>]),
-    aeu_http_client:request(BaseUri, Method, Endpoint, Params).
+process_request(Uri, OperationId, Params) ->
+    aeu_http_client:request(Uri, OperationId, Params).
 
 %% No trailing /, since BaseUri starts with /
 -spec pp_uri({http_uri:scheme(), http_uri:host(), http_uri:port()}) -> binary().

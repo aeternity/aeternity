@@ -43,6 +43,7 @@
       keypair:
         dir: "keys"
         password: "{{ keys_password|default('secret') }}"
+    api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
   tasks:
     - block:
@@ -157,7 +158,7 @@
 
       - name: API health check
         uri:
-          url: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v1/top
+          url: "{{ api_base_uri }}/top"
           timeout: 5
         connection: local
         tags: [health-check]
