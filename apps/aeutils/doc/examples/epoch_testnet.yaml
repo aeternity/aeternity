@@ -1,0 +1,19 @@
+---
+# Minimal configuration file to join the TestNet with enabled chain persisting and mining
+peers:
+    # TestNet Addresses
+    - "http://31.13.248.102:3013/"
+
+http:
+    external:
+        # Make sure to change this address to your public facing IP to be able participate
+        peer_address: http://127.0.0.1:3013/
+
+keys:
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: true

@@ -45,6 +45,18 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 * http://31.13.248.105:3013/v2/top
 
 
+### Using Docker
+
+The easier way to join the testnet is to [use docker](docs/docker-testnet.md), just run:
+```bash
+docker run -d -p 3013:3013 aetrnty/epoch
+```
+
+It will start a docker container with epoch node in background and map port 3013 of the container to the same port on localhost. Verify it's running by inspecting the height of the top block:
+```bash
+curl localhost:3013/v2/top
+```
+
 ### Setup your node
 
 #### Deploy node

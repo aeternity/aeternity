@@ -1,0 +1,6 @@
+.vagrant/
+_build/
+apps/aecuckoo/c_src
+apps/aecuckoo/priv/bin
+apps/aecuckoo/priv/lib
+apps/aecore/priv/keys
