@@ -1,33 +1,33 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%% Unit tests for oracle interaction object ADTs
+%%% Unit tests for oracle query object ADTs
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aeo_interaction_tests).
+-module(aeo_query_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(aeo_interaction, [ deserialize/1
-                         , expires/1
-                         , fee/1
-                         , id/1
-                         , new/2
-                         , oracle_address/1
-                         , response/1
-                         , response_ttl/1
-                         , sender_address/1
-                         , sender_nonce/1
-                         , serialize/1
-                         , set_expires/2
-                         , set_fee/2
-                         , set_oracle_address/2
-                         , set_response/2
-                         , set_response_ttl/2
-                         , set_sender_address/2
-                         , set_sender_nonce/2
-                         ]).
+-import(aeo_query, [ deserialize/1
+                   , expires/1
+                   , fee/1
+                   , id/1
+                   , new/2
+                   , oracle_address/1
+                   , response/1
+                   , response_ttl/1
+                   , sender_address/1
+                   , sender_nonce/1
+                   , serialize/1
+                   , set_expires/2
+                   , set_fee/2
+                   , set_oracle_address/2
+                   , set_response/2
+                   , set_response_ttl/2
+                   , set_sender_address/2
+                   , set_sender_nonce/2
+                   ]).
 
 basic_test_() ->
     [ {"Serialization test", fun basic_serialize/0}
@@ -53,7 +53,7 @@ basic_getters() ->
     ok.
 
 basic_setters() ->
-    I = aeo_interaction:new(query_tx(), 1),
+    I = aeo_query:new(query_tx(), 1),
     ?assertError({illegal, _, _}, set_expires(foo, I)),
     _ = set_expires(100, I),
     ?assertError({illegal, _, _}, set_fee(foo, I)),

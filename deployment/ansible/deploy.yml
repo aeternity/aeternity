@@ -39,7 +39,7 @@
           port: 3013
       chain:
         persist: true
-        db_path: "./db14"
+        db_path: "./db15"
       keypair:
         dir: "keys"
         password: "{{ keys_password|default('secret') }}"
@@ -184,7 +184,7 @@
             %%%
           api_key: "{{ datadog_api_key }}"
           app_key: "{{ datadog_app_key }}"
-          tags: 
+          tags:
             - "env:{{ env }}"
             - "version:{{ version_output.stdout }}"
         connection: local
@@ -198,7 +198,7 @@
             text: "Package: {{ remote_package | default(local_package) | basename }}"
             api_key: "{{ datadog_api_key }}"
             app_key: "{{ datadog_app_key }}"
-            tags: 
+            tags:
               - "env:{{ env }}"
           connection: local
           tags: [datadog-event]

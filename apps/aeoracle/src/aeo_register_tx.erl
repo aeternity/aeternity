@@ -159,7 +159,7 @@ deserialize([#{<<"type">>          := ?ORACLE_REGISTER_TX_TYPE},
                         query_spec    = QuerySpec,
                         response_spec = ResponseSpec,
                         query_fee     = QueryFee,
-                        ttl           = {TTLType, TTLValue},
+                        ttl           = {binary_to_existing_atom(TTLType, utf8), TTLValue},
                         fee           = Fee}.
 
 -spec type() -> binary().

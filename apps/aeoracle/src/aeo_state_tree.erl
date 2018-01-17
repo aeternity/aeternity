@@ -8,44 +8,44 @@
 -module(aeo_state_tree).
 
 %% API
--export([ get_interaction/3
+-export([ get_query/3
         , get_oracle/2
         , empty/0
-        , enter_interaction/2
-        , insert_interaction/2
+        , enter_query/2
+        , insert_query/2
         , insert_oracle/2
-        , lookup_interaction/3
+        , lookup_query/3
         , lookup_oracle/2
         , prune/2
         , root_hash/1
         ]).
 
 -ifdef(TEST).
--export([ interaction_list/1
+-export([ query_list/1
         , oracle_list/1
         ]).
 -endif.
 
 %% The oracle state tree keep track of oracles and its associated queries
-%% (interaction objects). The naive approach, storing the interactions directly
+%% (query objects). The naive approach, storing the queries directly
 %% in the oracle field in the state tree, does not work well. Since the state
 %% tree has to be a Merkle tree all nodes are serialized. This would mean
-%% deserialize/serialize of all interactions when adding or updating a single
-%% interaction. Instead we have a forest of Merkle trees (on Merkle tree per
+%% deserialize/serialize of all queries when adding or updating a single
+%% query. Instead we have a forest of Merkle trees (on Merkle tree per
 %% oracle) in a separate structure, and only store the root hash of that
-%% interactions tree in the oracle field.
+%% queries tree in the oracle field.
 
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
 -type otree() :: aeu_mtrees:tree(aeo_oracles:id(), aeo_oracles:serialized()).
--type itree() :: aeu_mtrees:tree(aeo_interaction:id(), aeo_interaction:serialized()).
--type interaction() :: aeo_interaction:interaction().
+-type itree() :: aeu_mtrees:tree(aeo_query:id(), aeo_query:serialized()).
+-type query() :: aeo_query:query().
 -type oracle() :: aeo_oracles:oracle().
 -type itrees() :: gb_trees:tree(aeo_oracles:id(), itree()).
 -type cache_item() :: {oracle, aeo_oracles:id()}
-                    | {interaction, aeo_oracles:id(), aeo_interaction:id()}.
+                    | {query, aeo_oracles:id(), aeo_query:id()}.
 -type cache() :: gb_sets:set({integer(), cache_item()}).
 -type block_height() :: non_neg_integer().
 
@@ -81,26 +81,26 @@ prune(Height, #oracle_tree{} = Tree) ->
     %% since we prune before the block, use Height - 1 for pruning.
     int_prune(Height - 1, Tree).
 
--spec enter_interaction(interaction(), tree()) -> tree().
-enter_interaction(I, Tree) ->
-    add_interaction(enter, I, Tree).
+-spec enter_query(query(), tree()) -> tree().
+enter_query(I, Tree) ->
+    add_query(enter, I, Tree).
 
--spec insert_interaction(interaction(), tree()) -> tree().
-insert_interaction(I, Tree) ->
-    add_interaction(insert, I, Tree).
+-spec insert_query(query(), tree()) -> tree().
+insert_query(I, Tree) ->
+    add_query(insert, I, Tree).
 
--spec get_interaction(aeo_oracles:id(), aeo_interactions:id(), tree()) -> interaction().
-get_interaction(OracleId, Id, Tree) ->
+-spec get_query(aeo_oracles:id(), aeo_query:id(), tree()) -> query().
+get_query(OracleId, Id, Tree) ->
     ITree = gb_trees:get(OracleId, Tree#oracle_tree.itrees),
-    aeo_interaction:deserialize(aeu_mtrees:get(Id, ITree)).
+    aeo_query:deserialize(aeu_mtrees:get(Id, ITree)).
 
--spec lookup_interaction(aeo_oracles:id(), aeo_interactions:id(), tree()) ->
-                                                {'value', interaction()} | none.
-lookup_interaction(OracleId, Id, Tree) ->
+-spec lookup_query(aeo_oracles:id(), aeo_query:id(), tree()) ->
+                                                {'value', query()} | none.
+lookup_query(OracleId, Id, Tree) ->
     case gb_trees:lookup(OracleId, Tree#oracle_tree.itrees) of
         {value, ITree} ->
             case aeu_mtrees:lookup(Id, ITree) of
-                {value, Val} -> {value, aeo_interaction:deserialize(Val)};
+                {value, Val} -> {value, aeo_query:deserialize(Val)};
                 none -> none
             end;
         none -> none
@@ -140,23 +140,23 @@ root_hash(#oracle_tree{otree = OTree}) ->
 oracle_list(#oracle_tree{otree = OTree}) ->
     [ aeo_oracles:deserialize(Val) || {_, Val} <- aeu_mtrees:to_list(OTree) ].
 
--spec interaction_list(tree()) -> list(interaction()).
-interaction_list(#oracle_tree{itrees = ITrees}) ->
-    [ aeo_interaction:deserialize(Val) || {_, ITree} <- gb_trees:to_list(ITrees),
-                                          {_, Val} <- aeu_mtrees:to_list(ITree) ].
+-spec query_list(tree()) -> list(query()).
+query_list(#oracle_tree{itrees = ITrees}) ->
+    [ aeo_query:deserialize(Val) || {_, ITree} <- gb_trees:to_list(ITrees),
+                                    {_, Val} <- aeu_mtrees:to_list(ITree) ].
 -endif.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
-add_interaction(How, I, Tree) ->
-    OracleId    = aeo_interaction:oracle_address(I),
+add_query(How, I, Tree) ->
+    OracleId    = aeo_query:oracle_address(I),
     Oracle      = get_oracle(OracleId, Tree),
     ITree       = gb_trees:get(OracleId, Tree#oracle_tree.itrees),
-    Id          = aeo_interaction:id(I),
-    SerializedI = aeo_interaction:serialize(I),
-    Expires     = aeo_interaction:expires(I),
+    Id          = aeo_query:id(I),
+    SerializedI = aeo_query:serialize(I),
+    Expires     = aeo_query:expires(I),
     ITree1      = case How of
                       enter  -> aeu_mtrees:enter(Id, SerializedI, ITree);
                       insert -> aeu_mtrees:insert(Id, SerializedI, ITree)
@@ -164,11 +164,11 @@ add_interaction(How, I, Tree) ->
 
     IRoot       = safe_root_hash(ITree1),
     SerializedO = aeo_oracles:serialize(
-                      aeo_oracles:set_interactions_hash(IRoot, Oracle)),
+                      aeo_oracles:set_queries_hash(IRoot, Oracle)),
 
     OTree  = aeu_mtrees:enter(OracleId, SerializedO, Tree#oracle_tree.otree),
     ITrees = gb_trees:update(OracleId, ITree1, Tree#oracle_tree.itrees),
-    Cache  = cache_push({interaction, OracleId, Id}, Expires, Tree#oracle_tree.cache),
+    Cache  = cache_push({query, OracleId, Id}, Expires, Tree#oracle_tree.cache),
     Tree#oracle_tree{ otree  = OTree
                     , itrees = ITrees
                     , cache  = Cache
@@ -190,9 +190,9 @@ delete({oracle, Id}, Tree) ->
     OTree  = aeu_mtrees:delete(Id, Tree#oracle_tree.otree),
     ITrees = gb_trees:delete(Id, Tree#oracle_tree.itrees),
     Tree#oracle_tree{ otree = OTree, itrees = ITrees };
-delete({interaction, OracleId, Id}, Tree) ->
+delete({query, OracleId, Id}, Tree) ->
     %% It is possible that the oracle expired first.
-    %% Since {X, {oracle, Hash}} sorts before {X, {interaction, H1, H2}} the
+    %% Since {X, {oracle, Hash}} sorts before {X, {query, H1, H2}} the
     %% inverse cannot happen.
     case gb_trees:lookup(OracleId, Tree#oracle_tree.itrees) of
         {value, ITree} ->
@@ -201,7 +201,7 @@ delete({interaction, OracleId, Id}, Tree) ->
             Oracle = get_oracle(OracleId, Tree),
             IRoot  = safe_root_hash(ITree1),
             SerializedO = aeo_oracles:serialize(
-                              aeo_oracles:set_interactions_hash(IRoot, Oracle)),
+                              aeo_oracles:set_queries_hash(IRoot, Oracle)),
 
             OTree  = aeu_mtrees:enter(OracleId, SerializedO, Tree#oracle_tree.otree),
             Tree#oracle_tree{ otree = OTree, itrees = ITrees };

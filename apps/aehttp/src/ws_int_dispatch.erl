@@ -63,9 +63,9 @@ do_execute(oracle, subscribe, SubscribeData) ->
                     {ok, OId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
                     {query, OId};
                 <<"response">> ->
-                    #{<<"interaction_id">> := EncodedIId} = SubscribeData,
-                    {ok, IId} = aec_base58c:safe_decode(oracle_interaction_id, EncodedIId),
-                    {response, IId}
+                    #{<<"query_id">> := EncodedQId} = SubscribeData,
+                    {ok, QId} = aec_base58c:safe_decode(oracle_query_id, EncodedQId),
+                    {response, QId}
             end,
         aec_subscribe:subscribe({ws, WsPid}, {aeo, Event}),
         {ok, oracle, subscribe, [{result, ok}, {subscribed_to, maps:remove(<<"ws_pid">>, SubscribeData)}]}

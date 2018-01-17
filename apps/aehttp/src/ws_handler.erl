@@ -144,16 +144,16 @@ create_message_from_event(oracle_query_tx, OracleQueryTx) ->
     Sender = aeo_query_tx:sender(OracleQueryTx),
     Nonce  = aeo_query_tx:nonce(OracleQueryTx),
     Oracle = aeo_query_tx:oracle(OracleQueryTx),
-    IId    = aeo_interaction:id(Sender, Nonce, Oracle),
+    QId    = aeo_query:id(Sender, Nonce, Oracle),
     Payload =
-        [{sender,         aec_base58c:encode(account_pubkey, Sender)},
-         {query,          aeo_query_tx:query(OracleQueryTx)},
-         {interaction_id, aec_base58c:encode(oracle_interaction_id, IId)}],
+        [{sender,   aec_base58c:encode(account_pubkey, Sender)},
+         {query,    aeo_query_tx:query(OracleQueryTx)},
+         {query_id, aec_base58c:encode(oracle_query_id, QId)}],
     create_message(node, new_oracle_query, Payload);
 create_message_from_event(oracle_response_tx, OracleResponseTx) ->
     %% TODO: Add TTL of the response to payload
-    IId = aeo_response_tx:interaction_id(OracleResponseTx),
+    QId = aeo_response_tx:query_id(OracleResponseTx),
     Payload =
-        [{interaction_id, aec_base58c:encode(oracle_interaction_id, IId)},
-         {response,       aeo_response_tx:response(OracleResponseTx)}],
+        [{query_id, aec_base58c:encode(oracle_query_id, QId)},
+         {response, aeo_response_tx:response(OracleResponseTx)}],
     create_message(node, new_oracle_response, Payload).

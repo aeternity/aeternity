@@ -1,7 +1,9 @@
 # About this release
 
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.4.1) is focused on stability of the testnet - the public test network of nodes and introduces some API for apps usability build on top of it.
-It also introduces a backward incompatible change in the chain format.
+In this release the [Oracle WebSocket API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_api.md) is now documented and can be used to interact with Oracles on the block chain
+(See also [Oracles - intended usage](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/oracles/oracle_ws_api.md).
+This release introduces backward incompatible changes in the chain format.
 
 Please follow the instructions below and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
@@ -26,6 +28,8 @@ In case you have installed it in a non-default path, you could use a symlink to 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
 HTTP endpoints are documented in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.4.1/config/swagger.yaml). A swagger.json version of the same documentation is present in the release: `lib/aehttp-0.1.0/priv/swagger.json`
+
+There is also more general [Epoch Node API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md) documentation.
 
 ## Join the testnet
 

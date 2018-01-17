@@ -90,8 +90,8 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee}),
                     sign_and_push_to_mempool(OracleQueryTx),
-                    QId = aeo_interaction:id(Pubkey, Nonce, DecodedOraclePubkey),
-                    {200, [], #{query_id => aec_base58c:encode(oracle_interaction_id, QId)}};
+                    QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
+                    {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId)}};
                 {error, _} ->
                     {404, [], #{reason => <<"Invalid key">>}}
             end;
@@ -104,22 +104,22 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
 handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of
         {ok, Pubkey, Nonce} ->
-            #{<<"interaction_id">> := EncodedInteractionId,
-              <<"response">>       := Response,
-              <<"fee">>            := Fee} = OracleResponseTxObj,
-            case aec_base58c:safe_decode(oracle_interaction_id, EncodedInteractionId) of
-                {ok, DecodedInteractionId} ->
+            #{<<"query_id">> := EncodedQueryId,
+              <<"response">> := Response,
+              <<"fee">>      := Fee} = OracleResponseTxObj,
+            case aec_base58c:safe_decode(oracle_query_id, EncodedQueryId) of
+                {ok, DecodedQueryId} ->
                     {ok, OracleResponseTx} =
                         aeo_response_tx:new(
-                          #{oracle         => Pubkey,
-                            nonce          => Nonce,
-                            interaction_id => DecodedInteractionId,
-                            response       => Response,
-                            fee            => Fee}),
+                          #{oracle   => Pubkey,
+                            nonce    => Nonce,
+                            query_id => DecodedQueryId,
+                            response => Response,
+                            fee      => Fee}),
                     sign_and_push_to_mempool(OracleResponseTx),
-                    {200, [], #{query_id => EncodedInteractionId}};
+                    {200, [], #{query_id => EncodedQueryId}};
                 {error, _} ->
-                    {404, [], #{reason => <<"Invalid interaction Id">>}}
+                    {404, [], #{reason => <<"Invalid Query Id">>}}
             end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
