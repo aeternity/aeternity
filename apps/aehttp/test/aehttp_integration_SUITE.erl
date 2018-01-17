@@ -837,20 +837,40 @@ internal_block_pending(_Config) ->
                 <<"BlockWithTxsHashes">>,
                 block_to_endpoint_map(PendingBlock)),
     ct:log("Expected pending block ~p", [ExpectedPendingTx]),
-    {ok, 200, PendingTxDefault} = get_internal_block_preset("pending",
-                                                             default),
-    {ok, 200, PendingTxHashes} = get_internal_block_preset("pending",
-                                                             false),
-    true = equal_block_maps(ExpectedPendingTx, PendingTxDefault), 
-    true = equal_block_maps(ExpectedPendingTx, PendingTxHashes), 
+    GetPending =
+        fun TryToGet(_Opt, Attempts) when Attempts < 1 ->
+                {error, no_pending_block_returned};
+            TryToGet(Opt, Attempts) ->
+                case get_internal_block_preset("pending", Opt) of
+                    {ok, 200, P} -> {ok, P};
+                    {ok, 404, _} -> TryToGet(Opt, Attempts -1)
+                end
+        end,
+    {ok, PendingTxDefault} = GetPending(default, 10),
+    {ok, PendingTxHashes} = GetPending(false, 10),
+    ValidateKeys =
+        fun(Map1, Map2, Key) ->
+            true = maps:get(Key, Map1, not_found1) =:=
+                   maps:get(Key, Map2, not_found2)
+        end,
+    % no block should have been mined, so the same prev_hash
+    ValidateKeys(ExpectedPendingTx, PendingTxDefault, <<"prev_hash">>),
+    ValidateKeys(ExpectedPendingTx, PendingTxDefault, <<"data_schema">>),
+
+    % no block should have been mined, so the same prev_hash
+    ValidateKeys(ExpectedPendingTx, PendingTxHashes, <<"prev_hash">>),
+    ValidateKeys(ExpectedPendingTx, PendingTxHashes, <<"data_schema">>),
+
     ExpectedPendingTxsObjects = maps:put(<<"data_schema">>,
                 <<"BlockWithTxs">>,
                 block_to_endpoint_map(PendingBlock, #{tx_objects => true})),
     ct:log("Expected pending block with tx objects~p",
            [ExpectedPendingTxsObjects]),
-    {ok, 200, PendingTxsObjects} = get_internal_block_preset("pending",
-                                                             true),
-    true = equal_block_maps(ExpectedPendingTxsObjects, PendingTxsObjects),
+    {ok, PendingTxObjects} = GetPending(true, 10),
+    
+    % no block should have been mined, so the same prev_hash
+    ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"prev_hash">>),
+    ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"data_schema">>),
     ok.
 
 internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
@@ -922,14 +942,25 @@ block_txs_count_pending(_Config) ->
                     get_block_txs_count_preset("pending"),
     rpc(application, set_env, [aecore, expected_mine_rate,
                                60 * 60 * 1000]), % aim at one block an hour
+    InsertedTxsCount = add_spend_txs(),
     rpc(aec_conductor, start_mining, []),
-    rpc(aec_conductor, start_mining, []),
-    timer:sleep(100),% so the miner is started
-    add_spend_txs(),
-    {ok, PendingBlock} = get_pending_block(),
-    TxsCount = length(aec_blocks:txs(PendingBlock)), 
-    {ok, 200, #{<<"count">> := TxsCount}} =
-        get_block_txs_count_preset("pending"),
+    GetPending =
+        fun TryToGet(Attempts) when Attempts < 1 ->
+                {error, no_pending_block_returned};
+            TryToGet(Attempts) ->
+                case get_block_txs_count_preset("pending") of
+                    {ok, 200, P} -> {ok, P};
+                    {ok, 404, _} ->
+                        TryToGet(Attempts -1)
+                end
+        end,
+    {ok, #{<<"count">> := TxsCount}} = GetPending(10),
+    ct:log("Inserted transactions count ~p, transactions count in the pending block ~p",
+           [InsertedTxsCount, TxsCount]),
+    % the assert bellow rellies on no block being mined durring the test run
+    % this is achieved by mining BlocksToPremine number of blocks and setting
+    % a high value for expected_mine_rate
+    true = TxsCount =:= InsertedTxsCount + 1,
     ok.
 
 generic_counts_test(GetBlock, CallApi) ->
@@ -1499,7 +1530,10 @@ get_pending_block() ->
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
     MinFee = rpc(aec_governance, minimum_tx_fee, []),
-    MaxTxs = MineReward div (1 + MinFee),
+    MaxSpendTxsInBlock = rpc(aec_governance, max_txs_in_block, []) - 1, % coinbase
+    MinimalAmount = 1,
+    MaxTxs = min(MineReward div (MinimalAmount + MinFee), % enough tokens
+                 MaxSpendTxsInBlock), % so it can fit in one block
     true = MaxTxs > 0,
     TxsCnt =
         case MaxTxs of
@@ -1510,10 +1544,11 @@ add_spend_txs() ->
     Txs =
         lists:map(
             fun(_) ->
-                #{recipient => random_hash(), amount => 1, fee => MinFee}
+                #{recipient => random_hash(), amount => MinimalAmount, fee => MinFee}
             end,
-            lists:seq(0, TxsCnt)),
-    populate_block(#{spend_txs => Txs}).
+            lists:seq(0, TxsCnt -1)),
+    populate_block(#{spend_txs => Txs}),
+    TxsCnt.
 
 populate_block(Txs) ->
     lists:foreach(

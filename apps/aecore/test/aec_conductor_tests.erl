@@ -381,6 +381,74 @@ test_block_publishing() ->
     ok.
 
 %%%===================================================================
+%%% Pending block tests
+%%%===================================================================
+
+block_candidate_test_() ->
+    {foreach,
+     fun() ->
+          TmpKeysDir = setup_common(),
+          {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
+          meck:new(aec_mining, [passthrough]),
+          meck:expect(aec_mining, create_block_candidate,
+              fun(TopBlock, TopBlockState, AdjChain) ->
+                  timer:sleep(100),
+                  meck:passthrough([TopBlock, TopBlockState, AdjChain])
+              end),
+          meck:expect(aec_mining, mine,
+              fun(_, _) ->
+                  timer:sleep(3000),
+                  {error, no_solution}
+              end),
+          TmpKeysDir
+     end,
+     fun(TmpKeysDir) ->
+          meck:unload(aec_mining),
+          teardown_common(TmpKeysDir),
+          ok
+     end,
+     [
+      {"Get block candidate", fun test_get_block_candidate/0}
+     ]}.
+
+test_get_block_candidate() ->
+    assert_stopped_and_genesis_at_top(),
+    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_block_candidate()),
+    {ok, MyAccount} = aec_keys:pubkey(),
+    lists:foreach(
+        fun(_) ->
+            Tx = #spend_tx{sender = MyAccount,
+                          recipient = MyAccount,
+                          nonce = 0, fee = 0},
+            {ok, STx} = aec_keys:sign(Tx),
+            ok = aec_tx_pool:push(STx, tx_received)
+        end,
+        lists:seq(1, 3)),
+    ?TEST_MODULE:start_mining(),
+    ?assertEqual({error, miner_starting}, ?TEST_MODULE:get_block_candidate()),
+    true = aec_test_utils:wait_for_it(
+              fun() -> {error, miner_starting} =/= ?TEST_MODULE:get_block_candidate() end,
+              true),
+    TopBlock = ?TEST_MODULE:top(),
+    {ok, BlockCandidate} = ?TEST_MODULE:get_block_candidate(),
+    {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
+    ?assertEqual(TopBlockHash, aec_blocks:prev_hash(BlockCandidate)),
+    {ok, AllTxsInPool} = aec_tx_pool:peek(infinity),
+    ?assertEqual(true,
+        lists:all(
+            fun(SignedTx) ->
+                Tx = aec_tx_sign:data(SignedTx),
+                case aec_tx_dispatcher:handler(Tx) of
+                    aec_coinbase_tx -> true;
+                    _ ->
+                        lists:member(Tx, AllTxsInPool)
+                end
+            end,
+            aec_blocks:txs(BlockCandidate))),
+    ?TEST_MODULE:stop_mining(),
+    ?assertEqual({error, not_mining}, ?TEST_MODULE:get_block_candidate()),
+    ok.
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
 
