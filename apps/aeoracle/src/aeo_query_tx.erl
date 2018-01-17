@@ -121,7 +121,7 @@ signers(#oracle_query_tx{sender = SenderPubKey}) ->
 
 -spec process(query_tx(), trees(), height()) -> {ok, trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
-                         query_fee = QueryFee} = Query, Trees0, Height) ->
+                         query_fee = QueryFee} = QueryTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -129,7 +129,7 @@ process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
     {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
 
-    Query = aeo_query:new(Query, Height),
+    Query = aeo_query:new(QueryTx, Height),
     OraclesTree1 = aeo_state_tree:insert_query(Query, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
