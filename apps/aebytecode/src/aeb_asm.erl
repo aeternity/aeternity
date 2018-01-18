@@ -14,7 +14,7 @@
 %%%      A label is an identifier that ends with a colon.
 %%%      The label is the byte code address of the next instruction.
 %%%         a_label:
-%%%      Immidiates can be of four types:
+%%%      Immediates can be of four types:
 %%%       1. integers
 %%%          42
 %%%       2. hexadecimal integers starting with 0x
