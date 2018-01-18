@@ -30,6 +30,7 @@
   vars:
     project_root: "{{ ansible_env.HOME }}/node"
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
+    is_remote_package: false
 
     env: unknown
     config:
@@ -47,9 +48,10 @@
 
   tasks:
     - block:
-      - name: "Required variables"
-        fail: msg="Either remote_package or local_package variables must be defined"
-        when: remote_package is not defined and local_package is not defined
+      - name: Fail on missing package variable
+        fail:
+          msg: '"package" variable must be defined'
+        when: package is not defined
         tags: [package]
 
       - name: "Make sure {{ project_root }} exists"
@@ -58,13 +60,6 @@
             state: directory
             # allow group read for integration purposes  (e.g. logs)
             mode: 0750
-
-      - name: Download epoch package
-        get_url:
-          url: "{{ remote_package }}"
-          dest: "{{ project_root }}/{{ remote_package | basename }}"
-        when: remote_package is defined
-        tags: [package]
 
       - name: Check if epoch binary exists
         stat:
@@ -84,22 +79,19 @@
         when: epoch.stat.exists == True and ping.stdout == "pong"
         tags: [daemon]
 
-      - name: Extract remote epoch package into {{ project_root }}
-        unarchive:
-          remote_src: yes
-          keep_newer: true
-          src: "{{ project_root }}/{{ remote_package | basename }}"
-          dest: "{{ project_root }}"
-        when: remote_package is defined
+      - name: Register remote package
+        set_fact:
+          is_remote_package: true
+        when: "'http' in package"
         tags: [package]
 
-      - name: Extract local epoch package into {{ project_root }}
+      - name: Extract epoch package into {{ project_root }}
         unarchive:
-          remote_src: no
+          remote_src: "{{ is_remote_package | bool }}"
           keep_newer: true
-          src: "{{ local_package }}"
+          src: "{{ package }}"
           dest: "{{ project_root }}"
-        when: local_package is defined
+        when: package is defined
         tags: [package]
 
       - name: Plant ENV file
@@ -181,7 +173,7 @@
           text: |
             %%%
             Revision: [{{ revision_output.stdout }}](https://github.com/aeternity/epoch/commit/{{ revision_output.stdout }})
-            Package: {{ remote_package | default(local_package) | basename }}
+            Package: {{ package }}
             %%%
           api_key: "{{ datadog_api_key }}"
           app_key: "{{ datadog_app_key }}"
@@ -196,7 +188,7 @@
             host: "{{ inventory_hostname }}"
             alert_type: error
             title: Deploy
-            text: "Package: {{ remote_package | default(local_package) | basename }}"
+            text: "Package: {{ package }}"
             api_key: "{{ datadog_api_key }}"
             app_key: "{{ datadog_app_key }}"
             tags:
