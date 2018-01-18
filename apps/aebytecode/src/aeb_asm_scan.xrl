@@ -21,7 +21,7 @@ LABEL    = {ID}:
 
 Rules.
 {LABEL} :
- {token, {lable, TokenLine, TokenChars -- ":"}}.
+ {token, {label, TokenLine, TokenChars -- ":"}}.
 {MNEMONIC} :
  {token, {mnemonic, TokenLine, list_to_existing_atom(TokenChars)}}.
 {ID} :

@@ -22,7 +22,7 @@
 %%%       3. 256-bit hash strings starting with #
 %%%          followed by up to 64 hex chars
 %%%          #00000deadbeef
-%%%       4. lables as descibed above. 
+%%%       4. labels as descibed above. 
 %%%
 %%% @end
 %%% Created : 21 Dec 2017
@@ -103,8 +103,8 @@ to_bytecode([{hash,_line, Hash}|Rest], Address, Env, Code, Opts) ->
     to_bytecode(Rest, Address, Env, [Hash|Code], Opts);
 to_bytecode([{id,_line, ID}|Rest], Address, Env, Code, Opts) ->
     to_bytecode(Rest, Address, Env, [{ref, ID}|Code], Opts);
-to_bytecode([{lable,_line, Lable}|Rest], Address, Env, Code, Opts) ->
-    to_bytecode(Rest, Address, Env#{Lable => Address}, Code, Opts);
+to_bytecode([{label,_line, Label}|Rest], Address, Env, Code, Opts) ->
+    to_bytecode(Rest, Address, Env#{Label => Address}, Code, Opts);
 to_bytecode([], _Address, Env, Code, Opts) ->
     case proplists:lookup(pp_opcodes, Opts) of
         {pp_opcodes, true} ->
