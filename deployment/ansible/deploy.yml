@@ -151,7 +151,7 @@
       - name: API health check
         uri:
           url: "{{ api_base_uri }}/top"
-          timeout: 5
+          timeout: 30
         connection: local
         tags: [health-check]
 
