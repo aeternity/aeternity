@@ -22,7 +22,9 @@
          update_last_seen/1]).
 
 %% API only used in aec_sync
--export([ add/2 ]).
+-export([ add/2,
+          log_ping/2
+        ]).
 
 -export([check_env/0]).
 
@@ -199,6 +201,13 @@ update_last_seen(Uri) ->
                   gen_server:cast(?MODULE, {update_last_seen, Peer, timestamp()}) 
               end).
 
+-spec log_ping(http_uri:uri(), good | error) -> ok | {error, any()}.
+log_ping(Uri, Result) ->
+    valid_uri(Uri,
+              fun(Peer) -> 
+                  gen_server:cast(?MODULE, {log_ping, Result, Peer, timestamp()})
+              end).
+
 %%------------------------------------------------------------------------------
 %% Check user-provided environment
 %%------------------------------------------------------------------------------
@@ -291,7 +300,6 @@ handle_call({get_random, N0, Exclude}, _From, #state{peers = Tree0,
             all -> gb_trees:size(Tree);
             N0 when is_integer(N0) -> N0
         end,
-    lager:debug("Tree0 = ~p and Tree = ~p", [Tree0, Tree]),
     Pruned = lists:foldl(
                fun(P, Acc) ->
                        remove_peer(P, Acc)
@@ -330,22 +338,25 @@ handle_cast({update_last_seen, Peer, Time}, State = #state{peers = Peers}) ->
             lager:debug("Ignoring last_seen ~p", [Uri]),
             {noreply, State}
     end;
-handle_cast({ping_error, Peer, Time}, State) ->
+handle_cast({log_ping, error, Peer, Time}, State) ->
     {noreply, log_ping_and_set_reping(
-                error,
-                fun calc_backoff_retry/1, uri_of_peer(Peer), Time, State)};
-handle_cast({good_ping, Peer, Time}, State) ->
+              error,
+              fun calc_backoff_retry/1, uri_of_peer(Peer), Time, State)};
+handle_cast({log_ping, good, Peer, Time}, State) ->
     {noreply, log_ping_and_set_reping(
-                ok,
-                fun set_max_retry/1, uri_of_peer(Peer), Time, State)};
+              ok,
+              fun set_max_retry/1, uri_of_peer(Peer), Time, State)};
 handle_cast({add, Peer, Connect}, State0) ->
     Uri = uri_of_peer(Peer),
-    case is_local_uri(Peer, State0) orelse is_blocked(Peer, State0) of
+    %% only add if not already present: prevent overwriting other fields
+    case is_local_uri(Peer, State0) orelse is_blocked(Peer, State0) orelse 
+         lookup_peer(Uri, State0) =/= none of
         false ->
             State1 = State0#state{peers = enter_peer(Peer, State0#state.peers)}, 
             case Connect andalso not has_been_seen(Peer) of
                 true ->
-                    maybe_ping_peer(Peer, State1);
+                    lager:debug("will ping peer ~p", [Uri]),
+                    aec_sync:schedule_ping(Uri);
                 false -> ok
             end,
             {noreply, metrics(State1)};
@@ -362,7 +373,7 @@ handle_cast({add_and_ping, Peers}, State) ->
               case is_local_uri(P, S) orelse is_blocked(P, S) orelse lookup_peer(Uri, S) =/= none of
                   false ->
                       lager:debug("will ping peer ~p", [Uri]),
-                      aec_sync:schedule_ping(P, fun ping_peer/1),
+                      aec_sync:schedule_ping(Uri),
                       S#state{peers = enter_peer(P, Ps)};
                   true ->
                       lager:debug("Don't insert nor ping peer (~p)", [Uri]),
@@ -418,19 +429,12 @@ metrics(#state{peers = Peers, blocked = Blocked,
                            gb_sets:size(Errored)),
     State.
 
+%% Updates if already exists.
 enter_peer(#peer{} = P, Peers) ->
     gb_trees:enter(hash_uri(uri_of_peer(P)), P, Peers).
 
 timestamp() ->
     erlang:system_time(millisecond).
-
--spec log_ping_error(peer()) -> ok.
-log_ping_error(Peer) ->
-    gen_server:cast(?MODULE, {ping_error, Peer, timestamp()}).
-
--spec log_good_ping(peer()) -> ok.
-log_good_ping(Peer) ->
-    gen_server:cast(?MODULE, {good_ping, Peer, timestamp()}).
 
 -spec hash_uri(http_uri:uri()) -> binary().
 hash_uri(Uri) ->
@@ -481,50 +485,6 @@ pick_values(Ps, N, {_, _, Iter}, Acc) ->
 
 has_been_seen(Peer) ->
     Peer#peer.last_seen =/= 0.
-
-ping_peer(Peer) ->
-    %% Don't ping until our own HTTP endpoint is up. This is not strictly
-    %% needed for the ping itself, but given that a ping can quickly
-    %% lead to a greater discovery, we should be prepared to handle pings
-    %% ourselves at this point.
-    Uri = uri_of_peer(Peer),
-    case await_aehttp() of
-        ok ->
-            LocalPingObj = aec_sync:local_ping_object(),
-            Res = aeu_requests:ping(Uri, LocalPingObj),
-            lager:debug("ping result (~p): ~p", [Uri, Res]),
-            case Res of
-                {ok, RemotePingObj, RemotePeers} ->
-                    case aec_sync:compare_ping_objects(Uri, LocalPingObj, RemotePingObj) of
-                        ok ->
-                            log_good_ping(Peer),
-                            add_and_ping_peers(RemotePeers);
-                        {error, different_genesis_blocks} ->
-                            block_peer(Uri)
-                    end;
-                {error, protocol_violation} ->
-                    block_peer(Uri);
-                _ ->
-                    %% If we ping a peer with wrong API version, time out in aue_request 
-                    %% and Peer is errored until it upgrades/downgrades to the same version.
-                    log_ping_error(Peer)
-            end;
-        {error, timeout} ->
-            lager:debug("timeout waiting for aehttp - no ping (~p) will retry", [Uri]),
-            ping_peer(Peer)
-    end.
-
-%% The gproc name below is registered in the start function of
-%% aehttp_app, and serves as a synch point. The timeout is hopefully
-%% large enough to reflect only error conditions. Expected wait time
-%% should be a fraction of a second, if any.
-await_aehttp() ->
-    try
-      gproc:await({n,l,{epoch,app,aehttp}}, 10000), % should (almost) never timeout
-      ok
-    catch error:{_Reason, _Args} ->
-      {error, timeout}
-    end.
 
 lookup_peer(Uri, #state{peers = Peers}) when is_binary(Uri) ->
     Key = hash_uri(Uri),
@@ -589,7 +549,7 @@ save_ping_event(Res, T, Peer) ->
 save_ping_timer(TRef, #peer{ping_tref = Prev} = Peer) ->
     case Prev of
         undefined -> ok;
-        _ -> try erlang:cancel_timer(Prev, [{async,true}, {info, false}])
+        _ -> try erlang:cancel_timer(Prev, [{async, true}, {info, false}])
              catch error:_ -> ok end
     end,
     Peer#peer{ping_tref = TRef}.
@@ -637,7 +597,7 @@ maybe_ping_peer(Peer, State) ->
     case is_local_uri(Peer, State) orelse is_blocked(Peer, State) of
         false ->
             lager:debug("will ping peer ~p", [Uri]),
-            aec_sync:schedule_ping(Peer, fun ping_peer/1);
+            aec_sync:schedule_ping(Uri);
         true ->
             lager:debug("will not ping ~p", [Uri]),
             ignore
