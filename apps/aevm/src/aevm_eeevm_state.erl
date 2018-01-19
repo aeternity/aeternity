@@ -1,4 +1,3 @@
--module(aevm_eeevm_state).
 %%%-------------------------------------------------------------------
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
@@ -8,6 +7,7 @@
 %%% Created : 2 Oct 2017
 %%%-------------------------------------------------------------------
 
+-module(aevm_eeevm_state).
 -export([ accountbalance/2
 	, address/1
 	, blockhash/3

@@ -1,4 +1,3 @@
--module(aevm_eeevm_utils).
 %%%-------------------------------------------------------------------
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
@@ -7,12 +6,12 @@
 %%% @end
 %%% Created : 7 Oct 2017
 %%%-------------------------------------------------------------------
-
+-module(aevm_eeevm_utils).
 -export([bin_copy/3]).
 
 
 %%  @spec bin_copy(Pos::integer(), N::integer(), Bin::binary()) -> binary()
-%%  Return a zero extended copy of size N from position Pos of Bin.
+%%  @doc Return a zero extended copy of size N from position Pos of Bin.
 bin_copy(Pos, N, Bin) ->
     Size = byte_size(Bin),
     BitPos = Pos * 8,
