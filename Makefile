@@ -158,6 +158,7 @@ swagger: config/swagger.yaml
 	( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
 	@rm -fr $(SWTEMP)
+	@./rebar3 swagger_endpoints
 
 swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
