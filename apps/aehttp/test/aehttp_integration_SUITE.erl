@@ -94,9 +94,17 @@
     block_txs_list_by_hash_invalid_range/1
    ]).
 
+%% internal endpoints
+-export(
+   [ws_get_genesis/1,
+    ws_block_mined/1,
+    ws_refused_on_limit_reached/1
+   ]).
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
+-define(WS, aehttp_ws_test_utils).
 
 all() ->
     [
@@ -106,7 +114,9 @@ all() ->
 groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
-                                  {group, internal_endpoints}]},
+                                  {group, internal_endpoints},
+                                  {group, websocket}
+                                  ]},
      {external_endpoints, [sequence], 
       [
         % pings
@@ -182,7 +192,14 @@ groups() ->
         block_txs_list_by_hash,
         block_txs_list_by_height_invalid_range,
         block_txs_list_by_hash_invalid_range
+      ]},
+     {websocket, [sequence],
+      [
+       ws_get_genesis,
+       ws_block_mined,
+       ws_refused_on_limit_reached
       ]}
+
     ].
 
 suite() ->
@@ -209,36 +226,21 @@ end_per_suite(_Config) ->
 
 init_per_group(all_endpoints, Config) ->
     Config;
-init_per_group(Group, Config) when Group =:= external_endpoints
-                            orelse Group =:= internal_endpoints ->
+init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    [{start_node_per_tc, false} | Config];
-init_per_group(_, Config) ->
-    [{start_node_per_tc, true} | Config].
+    Config.
 
+end_per_group(all_endpoints, _Config) ->
+    ok;
 end_per_group(_Group, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, false) of
-        true -> pass;
-        false -> aecore_suite_utils:stop_node(?NODE, Config)
-    end,
+    aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, true) of
-        true ->
-            aecore_suite_utils:start_node(?NODE, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE));
-        false -> pass 
-    end,
-    ct:log("testcase pid: ~p", [self()]),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, true) of
-        false -> pass;
-        true -> aecore_suite_utils:stop_node(?NODE, Config)
-    end,
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
@@ -1310,6 +1312,68 @@ block_txs_list_by_hash_invalid_range(_Config) ->
     ok.
 
 %% ============================================================
+%% Websocket tests 
+%% ============================================================
+
+ws_get_genesis(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    ?WS:send(ConnPid, chain, get, #{height => 0, type => block}),
+    {ok, Payload} = ?WS:wait_for_event(chain, requested_data),
+    {ok, Block} = maps:find(<<"block">>, Payload),
+    {ok, 200, BlockMap} = get_internal_block_by_height(0, false),
+    ExpectedBlockMap = 
+        maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
+    Block = ExpectedBlockMap,
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+ws_block_mined(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(miner, mined_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
+
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    ?WS:send(ConnPid, chain, get, #{height => Height, type => block}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => block}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{height => Height, type => header}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => header}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+ws_refused_on_limit_reached(_Config) ->
+    AllowedWsCount = rpc(aeu_env, user_config_or_env,
+                          [[<<"websocket">>, <<"internal">>, <<"acceptors">>],
+                          aehttp, [internal, websocket, handlers], 10]), 
+    %% assert no WS running on the node
+    0 = open_websockets_count(), 
+    WSPids =
+        lists:map(
+            fun(_) ->
+              {ok, ConnPid} = ws_start_link(),
+              ConnPid
+            end,
+            lists:seq(1, AllowedWsCount)),
+    AllowedWsCount = open_websockets_count(), 
+    {error, timeout} = ws_start_link(),
+    lists:foreach(
+        fun(ConnPid) -> ?WS:stop(ConnPid) end,
+        WSPids),
+    ok.
+
+%% ============================================================
 %% HTTP Requests 
 %% ============================================================
 
@@ -1458,6 +1522,12 @@ internal_address() ->
               [ [<<"http">>, <<"internal">>, <<"port">>], 
                 aehttp, [internal, swagger_port], 8143]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}).
+
+ws_host_and_port() ->
+    Port = rpc(aeu_env, user_config_or_env, 
+              [ [<<"websocket">>, <<"internal">>, <<"port">>],
+                aehttp, [internal, websocket, port], 8144]),
+    {"127.0.0.1", Port}.
 
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
@@ -1651,3 +1721,14 @@ minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     TokensRequired = (Amount + Fee) * ChecksCnt,
     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)),
     {BlocksToMine, Fee}.
+
+ws_start_link() ->
+    {Host, Port} = ws_host_and_port(),
+    ?WS:start_link(Host, Port).
+
+open_websockets_count() ->
+    QueueName = ws_handlers_queue,
+    % ensure queue exsits
+    true = undefined =/= rpc(jobs, queue_info, [QueueName]),
+    length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
+                 QName =:= QueueName]).
