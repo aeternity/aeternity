@@ -1,0 +1,74 @@
+;; CONTRACT: Identity
+
+             PUSH1              0
+             CALLDATALOAD
+
+             DUP1
+             ;; Should be the hash of
+             ;; the signature of the
+             ;; first function (use 0 as placeholder)
+             PUSH32             0x0000000000000000000000000000
+             EQ
+             PUSH32             id_entry
+             JUMPI              
+
+             STOP
+
+id_entry:    JUMPDEST
+             ;; Skip the function name in the calldata
+             PUSH1              32
+             ;; Load argument on stack                               
+             CALLDATALOAD
+             ;; This function only takes one immidiate as argument.
+
+             ;; Call the local version of the function
+             ;; Get return address
+             PC
+             PUSH1              39
+             ADD
+             ;; Get Argument
+             SWAP1
+             PUSH32             id_local
+             JUMP
+
+
+             ;; return here from local call
+             ;; Store top of stack at mem[0]
+             JUMPDEST
+             PUSH1              0
+             MSTORE
+             ;; Return mem[0]-mem[32] 
+             PUSH1             32
+             PUSH1              0
+             RETURN
+
+             ;; for local calls
+             ;; Stack:
+             ;; |        |
+             ;; | Arg    | <- SP
+             ;; | RetAdr |
+             ;;    ...
+
+id_local:    JUMPDEST
+
+             ;; Just return the argument
+             SWAP1
+             ;; Stack:
+             ;; |        |
+             ;; | RetAdr | <- SP
+             ;; | RetVal | (Arg in this case)
+             ;;    ...
+             
+             JUMP
+
+;; Test the code from the shell
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => list_to_binary(aeb_asm:file("apps/aering/test/contracts/identity.aesm", [])), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{})).
+
+;; Test the code from the shell with tracing.
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aering/test/contracts/identity.aesm", []), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
+
+
+;; Test the code from the shell with tracing.
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aering/test/contracts/identity.aesm", [pp_tokens, pp_opcodes, pp_patched_code, pp_hex_string]), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
+
+;; aec_conductor:stop_mining().

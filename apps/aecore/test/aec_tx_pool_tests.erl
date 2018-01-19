@@ -10,7 +10,7 @@
 
 -define(TAB, aec_tx_pool_test_keys).
 
-all_test_() ->
+tx_pool_test_() ->
     {foreach,
      fun() ->
              application:ensure_started(gproc),
@@ -32,9 +32,11 @@ all_test_() ->
        fun() ->
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
                ?assertEqual({ok, []}, aec_tx_pool:peek(3)),
+               ?assertEqual(0, aec_tx_pool:size()),
 
                STx1 = a_signed_tx(me, new_pubkey(), 1, 1),
-               ?assertEqual(ok, aec_tx_pool:delete(STx1))
+               ?assertEqual(ok, aec_tx_pool:delete(STx1)),
+               ?assertEqual(0, aec_tx_pool:size())
        end},
       {"As a healthy network peer, the node stores in mempool txs received from peers and serves txs in mempool to peers",
        fun() ->
@@ -172,6 +174,9 @@ all_test_() ->
                %% ... so now none.
                ?assertEqual({ok, []}, aec_tx_pool:peek(2 = MaxTxs))
       end}]}.
+
+no_tx_pool_size_test() ->
+    ?assertEqual(undefined, aec_tx_pool:size()).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     Tx = #spend_tx{sender = acct(Sender),

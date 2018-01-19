@@ -18,20 +18,17 @@
 -include_lib("exometer_core/include/exometer.hrl").
 
 -define(DATAPOINTS, [updates]).
+-define(INITIAL_DATA, [{updates, 0}]).
 
 -record(st, {
-          name,
           datapoints = ?DATAPOINTS,
-          data = [],
-          ttl = 5000,
-          ref
+          data
          }).
 
 ad_hoc_spec() ->
     [{module, ?MODULE},
      {type, probe},
-     {cache, 5000},
-     {options, []}].
+     {sample_interval, infinity}].
 
 -spec behaviour() -> exometer:behaviour().
 behaviour() ->
@@ -40,11 +37,10 @@ behaviour() ->
 probe_init(Name, _, Opts) ->
     lager:debug("probe_init(~p, _, ~p)", [Name, Opts]),
     ensure_metrics(),
-    TTL = proplists:get_value(cache, Opts, (#st{})#st.ttl),
-    exometer_cache:write([ae,epoch,aecore,eper], updates, 0, TTL),
     watchdog:add_proc_subscriber(self()),
     DP = proplists:get_value(datapoints, Opts, ?DATAPOINTS),
-    {ok, #st{datapoints = DP, name = Name, ttl = TTL}}.
+    D = initial_data(DP),
+    {ok, #st{datapoints = DP, data = D}}.
 
 probe_terminate(Reason) ->
     lager:debug("eper_metrics probe terminating: ~p", [Reason]),
@@ -52,14 +48,10 @@ probe_terminate(Reason) ->
 
 probe_get_value(DPs, #st{data = Data0,
                          datapoints = DPs0} = S) ->
-    Data1 = if Data0 =:= undefined ->
-                    sample(DPs0);
-               true -> Data0
-            end,
     DPs1 = if DPs =:= default -> DPs0;
               true -> DPs
            end,
-    {ok, probe_get_value_(Data1, DPs1), S#st{data = Data1}}.
+    {ok, probe_get_value_(Data0, DPs1), S}.
 
 probe_get_value_(Data, DPs) ->
     [D || {K,_} = D <- Data,
@@ -72,14 +64,10 @@ probe_update(_, _) ->
     {error, not_supported}.
 
 probe_reset(S) ->
-    {ok, S#st{data = []}}.
+    {ok, S#st{data = initial_data(S#st.datapoints)}}.
 
-probe_sample(#st{datapoints = DPs} = S) ->
-    {_Pid, Ref} = spawn_monitor(
-                    fun() ->
-                            exit({sample, sample(DPs)})
-                    end),
-    {ok, S#st{ref = Ref}}.
+probe_sample(_) ->
+    {error, not_supported}.
 
 probe_setopts(_Entry, Opts, S) ->
     DPs = proplists:get_value(datapoints, Opts, S#st.datapoints),
@@ -88,15 +76,6 @@ probe_setopts(_Entry, Opts, S) ->
 probe_handle_msg({watchdog, _Node, _Ts, _Trigger, TriggerData}, S) ->
     update_metrics(TriggerData),
     {ok, update_counter(updates, 1, S)};
-probe_handle_msg({'DOWN', Ref, _, _, SampleRes}, #st{ref = Ref} = S) ->
-    case SampleRes of
-        {sample, Data} ->
-            lager:debug("got sample: ~p", [Data]),
-            {ok, S#st{ref = undefined, data = Data}};
-        Other ->
-            lager:debug("sampler died: ~p", [Other]),
-            {ok, S#st{ref = undefined}}
-    end;
 probe_handle_msg(_Msg, S) ->
     lager:debug("Unknown msg: ~p", [_Msg]),
     {ok, S}.
@@ -104,18 +83,14 @@ probe_handle_msg(_Msg, S) ->
 probe_code_change(_, S, _) ->
     {ok, S}.
 
-sample(DPs) ->
-    lists:foldr(fun sample_/2, [], DPs).
+initial_data(DPs) ->
+    probe_get_value_(?INITIAL_DATA, DPs).
 
-sample_(_, Acc) ->
-    Acc.
-
-update_counter(K, Value, #st{data = Data, name = Name, ttl = TTL} = S) ->
+update_counter(K, Value, #st{data = Data} = S) ->
     Data1 =
         case lists:keyfind(K, 1, Data) of
             {_, Prev} ->
                 New = Prev + Value,
-                exometer_cache:write(Name, K, New, TTL),
                 lists:keyreplace(K, 1, Data, {K, New});
             false ->
                 [{K, Value}|Data]

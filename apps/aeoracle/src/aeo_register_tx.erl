@@ -21,7 +21,8 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0
+         type/0,
+         for_client/1
         ]).
 
 %% Additional getters
@@ -158,7 +159,7 @@ deserialize([#{<<"type">>          := ?ORACLE_REGISTER_TX_TYPE},
                         query_spec    = QuerySpec,
                         response_spec = ResponseSpec,
                         query_fee     = QueryFee,
-                        ttl           = {TTLType, TTLValue},
+                        ttl           = {binary_to_existing_atom(TTLType, utf8), TTLValue},
                         fee           = Fee}.
 
 -spec type() -> binary().
@@ -168,6 +169,24 @@ type() ->
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_REGISTER_TX_VSN.
+
+for_client(#oracle_register_tx{ account       = AccountPubKey,
+                                nonce         = Nonce,
+                                query_spec    = QuerySpec,
+                                response_spec = ResponseSpec,
+                                query_fee     = QueryFee,
+                                ttl           = {TTLType, TTLValue},
+                                fee           = Fee}) ->
+    #{<<"type">> => <<"OracleRegisterTxObject">>, % swagger schema name
+      <<"vsn">> => version(),
+      <<"account">> => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"nonce">> => Nonce,
+      <<"query_spec">> => QuerySpec,
+      <<"response_spec">> => ResponseSpec,
+      <<"query_fee">> => QueryFee,
+      <<"ttl">> => #{<<"type">> => TTLType,
+                     <<"value">> => TTLValue},
+      <<"fee">> => Fee}.
 
 %% -- Local functions  -------------------------------------------------------
 

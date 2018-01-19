@@ -2,48 +2,43 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Main conductor of the mining
-%%% @end
-%%%-------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
+%%%
 %% The aec_conductor is the main hub of the mining engine.
-%%
-%% The mining has two states of operation 'running' and 'stopped'
-%% Passing the option {autostart, bool()} to the initialization
-%% controls which mode to start in. In the running mode, block candidates
-%% are generated and mined in separate workers. When mining is successful,
-%% the mined block is published and added to the chain if the state of the
-%% chain allows that. In the stopped mode only blocks arriving from other
-%% miners are added to the chain.
-%%
-%% The mining can be controlled by the API functions start_mining/0
-%% and stop_mining/0. The stop_mining is preemptive (i.e., all workers
-%% involved in mining are killed).
-%%
-%% The aec_conductor operates by delegating all heavy operations to
-%% worker processes in order to be responsive. (See doc at the worker
-%% handling section.)
-%%
-%% The work flow in mining is divided into stages:
-%%  - wait for keys (of the miner)
-%%  - generate block candidate
-%%  - start mining
-%%  - retry mining
-%%
-%% The principle is to optimistically try to start mining, and fall
-%% back to an earlier stage if the preconditions are not met. The next
-%% stage of mining should be triggered in the worker reply for each
-%% stage based on the postconditions of that stage.
-%%
-%% E.g. If the start_mining stage is attempted without having a block
-%% candidate, it should fall back to generating a block candidate.
-%%
-%% E.g. When the mining worker returns it should either start mining a
-%% new block or retry mining based on the return of the mining.
-%%
-%% --------------------------------------------------------------------
+%%%
+%%% The mining has two states of operation 'running' and 'stopped'
+%%% Passing the option {autostart, bool()} to the initialization
+%%% controls which mode to start in. In the running mode, block candidates
+%%% are generated and mined in separate workers. When mining is successful,
+%%% the mined block is published and added to the chain if the state of the
+%%% chain allows that. In the stopped mode only blocks arriving from other
+%%% miners are added to the chain.
+%%%
+%%% The mining can be controlled by the API functions start_mining/0
+%%% and stop_mining/0. The stop_mining is preemptive (i.e., all workers
+%%% involved in mining are killed).
+%%%
+%%% The aec_conductor operates by delegating all heavy operations to
+%%% worker processes in order to be responsive. (See doc at the worker
+%%% handling section.)
+%%%
+%%% The work flow in mining is divided into stages:
+%%%  - wait for keys (of the miner)
+%%%  - generate block candidate
+%%%  - start mining
+%%%  - retry mining
+%%%
+%%% The principle is to optimistically try to start mining, and fall
+%%% back to an earlier stage if the preconditions are not met. The next
+%%% stage of mining should be triggered in the worker reply for each
+%%% stage based on the postconditions of that stage.
+%%%
+%%% E.g. If the start_mining stage is attempted without having a block
+%%% candidate, it should fall back to generating a block candidate.
+%%%
+%%% E.g. When the mining worker returns it should either start mining a
+%%% new block or retry mining based on the return of the mining.
+%%% @end
+%%% --------------------------------------------------------------------
 
 -module(aec_conductor).
 
@@ -67,8 +62,14 @@
         , genesis_block/0
         , genesis_header/0
         , genesis_hash/0
+        , get_block_candidate/0
         , get_block_by_hash/1
         , get_block_by_height/1
+        , get_block_pair_by_height/2
+        , get_block_pair_by_hash/2
+        , max_block_range/0
+        , get_block_range_by_height/2
+        , get_block_range_by_hash/2
         , get_header_by_hash/1
         , get_header_by_height/1
         , get_missing_block_hashes/0
@@ -107,6 +108,7 @@
 -define(SERVER, ?MODULE).
 
 -define(DEFAULT_MINING_ATTEMPT_TIMEOUT, 60 * 60 * 1000). %% milliseconds
+-define(MAXIMUM_BLOCK_RANGE, 10).
 
 %%%===================================================================
 %%% API
@@ -205,6 +207,63 @@ get_block_by_hash(Hash) when is_binary(Hash) ->
 get_block_by_height(Height) ->
     gen_server:call(?SERVER, {get_block_by_height, Height}).
 
+-spec get_block_pair_by_height(integer(), integer()) -> {ok, #block{}, #block{}} | {error, atom()}.
+get_block_pair_by_height(Height1, Height2) ->
+    gen_server:call(?SERVER, {get_block_pair, height, Height1, Height2}).
+
+-spec get_block_pair_by_hash(binary(), binary()) -> {ok, #block{}, #block{}} | {error, atom()}.
+get_block_pair_by_hash(Hash1, Hash2) ->
+    gen_server:call(?SERVER, {get_block_pair, hash, Hash1, Hash2}).
+
+max_block_range() -> ?MAXIMUM_BLOCK_RANGE.
+
+get_block_range_by_height(Height1, Height2) ->
+    get_block_range(get_block_pair_by_height(Height1, Height2)).
+
+get_block_range_by_hash(Hash1, Hash2) ->
+    get_block_range(get_block_pair_by_hash(Hash1, Hash2)).
+
+get_block_range({error, _} = Err) ->
+    Err;
+get_block_range({ok, Block, Block}) ->
+    {ok, [Block]};
+get_block_range({ok, BlockFrom, BlockTo}) ->
+    HeightFrom = aec_blocks:height(BlockFrom),
+    HeightTo = aec_blocks:height(BlockTo),
+    case validate_block_range(HeightFrom, HeightTo) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            do_get_block_range(HeightTo - HeightFrom, [BlockTo],
+                                aec_blocks:prev_hash(BlockTo))
+    end.
+
+do_get_block_range(BlocksLeft, Accum, _) when BlocksLeft < 1 ->
+    {ok, Accum};
+do_get_block_range(BlocksLeft, Accum, Hash) ->
+    case aec_conductor:get_block_by_hash(Hash) of
+        {ok, B} ->
+            PrevHash = aec_blocks:prev_hash(B),
+            do_get_block_range(BlocksLeft - 1, [B | Accum], PrevHash);
+        {error, _} ->
+            {error, missing_block}
+    end.
+
+validate_block_range(HeightFrom, HeightTo)
+  when HeightFrom > HeightTo ->
+    {error, invalid_range};
+validate_block_range(HeightFrom, HeightTo) ->
+    case HeightTo - HeightFrom > max_block_range() of
+        true ->
+            {error, range_too_big};
+        false ->
+            ok
+    end.
+
+-spec get_block_candidate() -> {'ok', block()} | {'error', atom()}.
+get_block_candidate() ->
+    gen_server:call(?SERVER, get_block_candidate).
+
 -spec get_header_by_hash(block_header_hash()) -> {'ok', header()} | {'error', atom()}.
 get_header_by_hash(Hash) when is_binary(Hash) ->
     gen_server:call(?SERVER, {get_header, Hash}).
@@ -262,6 +321,17 @@ handle_call({add_synced_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(genesis_block,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_block(State), State};
+handle_call(get_block_candidate,_From, State) ->
+    Res =
+        case State#state.block_candidate of
+            undefined when State#state.mining_state =:= stopped ->
+                {error, not_mining};
+            undefined when State#state.mining_state =:= running ->
+                {error, miner_starting};
+            #candidate{block=Block} ->
+                {ok, Block}
+        end,
+    {reply, Res, State};
 handle_call(genesis_hash,_From, State) ->
     {reply, aec_conductor_chain:get_genesis_hash(State), State};
 handle_call(genesis_header,_From, State) ->
@@ -270,6 +340,23 @@ handle_call({get_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_block(Hash, State), State};
 handle_call({get_block_by_height, Height},_From, State) ->
     {reply, aec_conductor_chain:get_block_by_height(Height, State), State};
+handle_call({get_block_pair, Type, H1, H2},_From, State) 
+  when Type =:= height orelse Type =:= hash ->
+    ExtractFun =
+        case Type of
+            height -> fun aec_conductor_chain:get_block_by_height/2;
+            hash -> fun aec_conductor_chain:get_block/2
+        end,
+    Resp =
+        case {ExtractFun(H1, State),ExtractFun(H2, State)} of
+            {{ok, Block1}, {ok, Block2}} ->
+                {ok, Block1, Block2};
+            {{error, Err}, _} ->
+                {error, Err};
+            {_, {error, Err}} ->
+                {error, Err}
+        end,
+    {reply, Resp, State};
 handle_call({get_header, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_header(Hash, State), State};
 handle_call({get_header_by_height, Height},_From, State) ->
@@ -293,9 +380,7 @@ handle_call(get_top_header,_From, State) ->
 handle_call(get_top_header_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_header_hash(State), State};
 handle_call(get_total_difficulty,_From, State) ->
-    Res = aec_conductor_chain:get_total_difficulty(State),
-    aec_metrics:try_update([ae,epoch,aecore,chain,total_difficulty], Res),
-    {reply, Res, State};
+    {reply, aec_conductor_chain:get_total_difficulty(State), State};
 handle_call({has_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:has_block(Hash, State), State};
 handle_call({hash_is_connected_to_genesis, Hash},_From, State) ->

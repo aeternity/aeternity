@@ -9,7 +9,7 @@
       "email" : "apiteam@aeternity.com"
     }
   },
-  "basePath" : "/v1",
+  "basePath" : "/v2",
   "tags" : [ {
     "name" : "external",
     "description" : "External API"
@@ -389,7 +389,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/OracleInteractionId"
+              "$ref" : "#/definitions/OracleQueryId"
             }
           },
           "404" : {
@@ -424,66 +424,6 @@
           },
           "404" : {
             "description" : "Oracle response transaction validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-subscribe" : {
-      "post" : {
-        "tags" : [ "internal" ],
-        "description" : "Create oracle interactions subscription",
-        "operationId" : "PostOracleSubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Creates new subscription for oracle interactions",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        },
-        "security" : [ ]
-      }
-    },
-    "/oracle-unsubscribe" : {
-      "post" : {
-        "tags" : [ "internal" ],
-        "description" : "Remove oracle interactions subscriptions",
-        "operationId" : "PostOracleUnsubscribe",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Unsubscribe from oracle interactions notifications",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/OracleSubscribe"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "404" : {
-            "description" : "Oracle or subscription not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -585,10 +525,563 @@
         },
         "security" : [ ]
       }
+    },
+    "/block/number" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the current block's height",
+        "operationId" : "GetBlockNumber",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "The current block's height",
+            "schema" : {
+              "$ref" : "#/definitions/BlockHeight"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/height/{height}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a block by height",
+        "operationId" : "GetBlockByHeightInternal",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Height of the block to fetch",
+          "required" : true,
+          "type" : "integer"
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The block being found",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a block by hash",
+        "operationId" : "GetBlockByHashInternal",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the block to fetch",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The block being found",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/genesis" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the genesis block",
+        "operationId" : "GetBlockGenesis",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The genesis block",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/latest" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the top block",
+        "operationId" : "GetBlockLatest",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The top block",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/pending" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the block being mined",
+        "operationId" : "GetBlockPending",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The pending block with invalid nonce and pow evidence",
+            "schema" : {
+              "$ref" : "#/definitions/GenericBlock"
+            }
+          },
+          "404" : {
+            "description" : "No pending block (node not mining)",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/count/hash/{hash}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a block transactions count by hash",
+        "operationId" : "GetBlockTxsCountByHash",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the block to fetch",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The count of transactions in the block",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/count/height/{height}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a block transactions count by height",
+        "operationId" : "GetBlockTxsCountByHeight",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Height of the block to fetch",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The count of transactions in the block",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          },
+          "404" : {
+            "description" : "Block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/count/genesis" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the genesis block transactions count",
+        "operationId" : "GetGenesisBlockTxsCount",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "The count of transactions in the genesis block",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/count/latest" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the latest block transactions count",
+        "operationId" : "GetLatestBlockTxsCount",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "The count of transactions in the latest block",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/count/pending" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get the pending block transactions count",
+        "operationId" : "GetPendingBlockTxsCount",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "The count of transactions in the pending block",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/tx/height/{height}/{tx_index}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a transaction by index in the block by height",
+        "operationId" : "GetTransactionFromBlockHeight",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "path",
+          "description" : "Height of the block to search for",
+          "required" : true,
+          "type" : "integer"
+        }, {
+          "name" : "tx_index",
+          "in" : "path",
+          "description" : "Index of the transaction in the block",
+          "required" : true,
+          "type" : "integer"
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The transaction found",
+            "schema" : {
+              "$ref" : "#/definitions/SingleTxHashOrObject"
+            }
+          },
+          "404" : {
+            "description" : "Block or transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/list/height" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get transactions list from a block range by height",
+        "operationId" : "GetTxsListFromBlockRangeByHeight",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Height of the block to start the range",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Height of the block to end the range",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The list of transactions in block range",
+            "schema" : {
+              "$ref" : "#/definitions/GenericTxArray"
+            }
+          },
+          "400" : {
+            "description" : "Invalid range",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Range not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/tx/hash/{hash}/{tx_index}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a transaction by index in the block by hash",
+        "operationId" : "GetTransactionFromBlockHash",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "path",
+          "description" : "Hash of the block to search for",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "tx_index",
+          "in" : "path",
+          "description" : "Index of the transaction in the block",
+          "required" : true,
+          "type" : "integer"
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as message pack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The transaction found",
+            "schema" : {
+              "$ref" : "#/definitions/SingleTxHashOrObject"
+            }
+          },
+          "404" : {
+            "description" : "Block or transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/tx/latest/{tx_index}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get a transaction by index in the latest block",
+        "operationId" : "GetTransactionFromBlockLatest",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_index",
+          "in" : "path",
+          "description" : "Index of the transaction in the block",
+          "required" : true,
+          "type" : "integer"
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as message pack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The transaction found",
+            "schema" : {
+              "$ref" : "#/definitions/SingleTxHashOrObject"
+            }
+          },
+          "404" : {
+            "description" : "Block or transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
+    },
+    "/block/txs/list/hash" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get transactions list from a block range by hash",
+        "operationId" : "GetTxsListFromBlockRangeByHash",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "from",
+          "in" : "query",
+          "description" : "Hash of the block to start the range",
+          "required" : true,
+          "type" : "string",
+          "minimum" : 0
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "description" : "Hash of the block to end the range",
+          "required" : true,
+          "type" : "string",
+          "minimum" : 0
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The list of transactions in block range",
+            "schema" : {
+              "$ref" : "#/definitions/GenericTxArray"
+            }
+          },
+          "400" : {
+            "description" : "Invalid range",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Range not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        },
+        "security" : [ ]
+      }
     }
   },
   "definitions" : {
-    "Block" : {
+    "EncodedHash" : {
+      "type" : "string"
+    },
+    "Pow" : {
+      "type" : "array",
+      "items" : {
+        "type" : "integer",
+        "format" : "int32"
+      }
+    },
+    "Uri" : {
+      "type" : "string"
+    },
+    "Header" : {
       "type" : "object",
       "properties" : {
         "height" : {
@@ -596,13 +1089,13 @@
           "format" : "int64"
         },
         "prev_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "state_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "txs_hash" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "target" : {
           "type" : "integer",
@@ -617,62 +1110,123 @@
           "format" : "int64"
         },
         "version" : {
-          "type" : "integer",
-          "format" : "int64"
+          "type" : "integer"
         },
         "pow" : {
-          "type" : "array",
-          "items" : {
-            "type" : "integer"
-          }
-        },
-        "transactions" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/Tx"
-          }
+          "$ref" : "#/definitions/Pow"
         }
       }
     },
+    "Block" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/Header"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          }
+        }
+      } ]
+    },
+    "GenericBlock" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/Header"
+      }, {
+        "type" : "object",
+        "required" : [ "data_schema" ],
+        "discriminator" : "data_schema",
+        "properties" : {
+          "data_schema" : {
+            "type" : "string"
+          }
+        }
+      } ]
+    },
+    "BlockWithTxs" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericBlock"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/SignedTxObject"
+            }
+          }
+        }
+      } ]
+    },
+    "BlockWithTxsHashes" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericBlock"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          }
+        }
+      } ]
+    },
     "Top" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/Header"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "hash" : {
+            "type" : "string"
+          }
+        }
+      } ]
+    },
+    "GenericTxArray" : {
       "type" : "object",
+      "required" : [ "data_schema" ],
+      "discriminator" : "data_schema",
       "properties" : {
-        "height" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "hash" : {
-          "type" : "string"
-        },
-        "prev_hash" : {
-          "type" : "string"
-        },
-        "state_hash" : {
-          "type" : "string"
-        },
-        "txs_hash" : {
-          "type" : "string"
-        },
-        "difficulty" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "nonce" : {
-          "type" : "integer",
-          "format" : "uint64"
-        },
-        "time" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "version" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "pow" : {
+        "data_schema" : {
           "type" : "string"
         }
       }
+    },
+    "TxMsgPackHashes" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxArray"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          }
+        }
+      } ]
+    },
+    "TxObjects" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxArray"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "transactions" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/definitions/SignedTxObject"
+            }
+          }
+        }
+      } ]
     },
     "Ping" : {
       "type" : "object",
@@ -692,12 +1246,12 @@
         },
         "share" : {
           "type" : "integer",
-          "format" : "int64"
+          "maximum" : 32
         },
         "peers" : {
           "type" : "array",
           "items" : {
-            "type" : "string"
+            "$ref" : "#/definitions/Uri"
           }
         }
       }
@@ -735,14 +1289,6 @@
       "type" : "array",
       "items" : {
         "$ref" : "#/definitions/OracleQuestions_inner"
-      }
-    },
-    "OracleSubscribe" : {
-      "type" : "object",
-      "properties" : {
-        "oracle_pub_key" : {
-          "type" : "string"
-        }
       }
     },
     "SpendTx" : {
@@ -811,7 +1357,7 @@
     "OracleResponseTx" : {
       "type" : "object",
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         },
         "response" : {
@@ -849,10 +1395,10 @@
         }
       }
     },
-    "OracleInteractionId" : {
+    "OracleQueryId" : {
       "type" : "object",
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         }
       }
@@ -933,11 +1479,152 @@
         }
       }
     },
+    "BlockHeight" : {
+      "type" : "object",
+      "required" : [ "height" ],
+      "properties" : {
+        "height" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Blocks's height"
+        }
+      }
+    },
+    "SingleTxHashOrObject" : {
+      "type" : "object",
+      "required" : [ "data_schema" ],
+      "discriminator" : "data_schema",
+      "properties" : {
+        "data_schema" : {
+          "type" : "string"
+        }
+      }
+    },
+    "SingleTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TxHashOrObject"
+      }, {
+        "type" : "object",
+        "required" : [ "transaction" ],
+        "properties" : {
+          "transaction" : {
+            "$ref" : "#/definitions/SignedTxObject"
+          }
+        }
+      } ]
+    },
+    "SingleTxHash" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/TxHashOrObject"
+      }, {
+        "type" : "object",
+        "required" : [ "transaction" ],
+        "properties" : {
+          "transaction" : {
+            "$ref" : "#/definitions/Tx"
+          }
+        }
+      } ]
+    },
+    "SignedTxObject" : {
+      "type" : "object",
+      "properties" : {
+        "tx" : {
+          "$ref" : "#/definitions/GenericTxObject"
+        },
+        "signatures" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          },
+          "minItems" : 1
+        }
+      }
+    },
+    "GenericTxObject" : {
+      "type" : "object",
+      "required" : [ "type" ],
+      "discriminator" : "type",
+      "properties" : {
+        "type" : {
+          "type" : "string"
+        },
+        "vsn" : {
+          "type" : "integer"
+        }
+      }
+    },
+    "CoinbaseTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "SpendTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "OracleRegisterTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object",
+        "required" : [ "ttl" ],
+        "properties" : {
+          "ttl" : {
+            "$ref" : "#/definitions/TTL"
+          }
+        }
+      } ]
+    },
+    "OracleQueryTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object",
+        "required" : [ "query_ttl", "response_ttl" ],
+        "properties" : {
+          "query_ttl" : {
+            "$ref" : "#/definitions/TTL"
+          },
+          "response_ttl" : {
+            "$ref" : "#/definitions/TTL"
+          }
+        }
+      } ]
+    },
+    "OracleResponseTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object",
+        "properties" : {
+          "query_ttl" : {
+            "$ref" : "#/definitions/TTL"
+          },
+          "response_ttl" : {
+            "$ref" : "#/definitions/TTL"
+          }
+        }
+      } ]
+    },
     "Error" : {
       "type" : "object",
       "properties" : {
         "reason" : {
           "type" : "string"
+        }
+      }
+    },
+    "inline_response_200" : {
+      "properties" : {
+        "count" : {
+          "type" : "integer",
+          "description" : "Count"
         }
       }
     },
@@ -963,7 +1650,7 @@
     },
     "OracleQuestions_inner" : {
       "properties" : {
-        "interaction_id" : {
+        "query_id" : {
           "type" : "string"
         },
         "query" : {

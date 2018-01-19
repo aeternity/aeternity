@@ -56,102 +56,172 @@ group_paths() ->
 get_operations() ->
     #{ 
         'GetAccountBalance' => #{
-            path => "/v1/account/balance",
+            path => "/v2/account/balance",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetAccountsBalances' => #{
-            path => "/v1/balances",
+            path => "/v2/balances",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetBlockByHash' => #{
-            path => "/v1/block-by-hash",
+            path => "/v2/block-by-hash",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetBlockByHeight' => #{
-            path => "/v1/block-by-height",
+            path => "/v2/block-by-height",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetInfo' => #{
-            path => "/v1/info",
+            path => "/v2/info",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetTop' => #{
-            path => "/v1/top",
+            path => "/v2/top",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetTxs' => #{
-            path => "/v1/transactions",
+            path => "/v2/transactions",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'GetVersion' => #{
-            path => "/v1/version",
+            path => "/v2/version",
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
         'Ping' => #{
-            path => "/v1/ping",
+            path => "/v2/ping",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
         'PostBlock' => #{
-            path => "/v1/block",
+            path => "/v2/block",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
         'PostTx' => #{
-            path => "/v1/tx",
+            path => "/v2/tx",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
         'GetActiveRegisteredOracles' => #{
-            path => "/v1/oracles",
+            path => "/v2/oracles",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockByHashInternal' => #{
+            path => "/v2/block/hash/:hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockByHeightInternal' => #{
+            path => "/v2/block/height/:height",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockGenesis' => #{
+            path => "/v2/block/genesis",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockLatest' => #{
+            path => "/v2/block/latest",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockNumber' => #{
+            path => "/v2/block/number",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockPending' => #{
+            path => "/v2/block/pending",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockTxsCountByHash' => #{
+            path => "/v2/block/txs/count/hash/:hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetBlockTxsCountByHeight' => #{
+            path => "/v2/block/txs/count/height/:height",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetGenesisBlockTxsCount' => #{
+            path => "/v2/block/txs/count/genesis",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetLatestBlockTxsCount' => #{
+            path => "/v2/block/txs/count/latest",
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
         'GetOracleQuestions' => #{
-            path => "/v1/oracle-questions",
+            path => "/v2/oracle-questions",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetPendingBlockTxsCount' => #{
+            path => "/v2/block/txs/count/pending",
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
         'GetPubKey' => #{
-            path => "/v1/account/pub-key",
+            path => "/v2/account/pub-key",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTransactionFromBlockHash' => #{
+            path => "/v2/block/tx/hash/:hash/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTransactionFromBlockHeight' => #{
+            path => "/v2/block/tx/height/:height/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTransactionFromBlockLatest' => #{
+            path => "/v2/block/tx/latest/:tx_index",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTxsListFromBlockRangeByHash' => #{
+            path => "/v2/block/txs/list/hash",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
+        'GetTxsListFromBlockRangeByHeight' => #{
+            path => "/v2/block/txs/list/height",
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
         'PostOracleQueryTx' => #{
-            path => "/v1/oracle-query-tx",
+            path => "/v2/oracle-query-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
         'PostOracleRegisterTx' => #{
-            path => "/v1/oracle-register-tx",
+            path => "/v2/oracle-register-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
         'PostOracleResponseTx' => #{
-            path => "/v1/oracle-response-tx",
-            method => <<"POST">>,
-            handler => 'swagger_internal_handler'
-        },
-        'PostOracleSubscribe' => #{
-            path => "/v1/oracle-subscribe",
-            method => <<"POST">>,
-            handler => 'swagger_internal_handler'
-        },
-        'PostOracleUnsubscribe' => #{
-            path => "/v1/oracle-unsubscribe",
+            path => "/v2/oracle-response-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },
         'PostSpendTx' => #{
-            path => "/v1/spend-tx",
+            path => "/v2/spend-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         }

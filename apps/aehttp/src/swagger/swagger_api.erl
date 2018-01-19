@@ -70,13 +70,100 @@ request_params('GetActiveRegisteredOracles') ->
     [
     ];
 
+request_params('GetBlockByHashInternal') ->
+    [
+        'hash',
+        'tx_objects'
+    ];
+
+request_params('GetBlockByHeightInternal') ->
+    [
+        'height',
+        'tx_objects'
+    ];
+
+request_params('GetBlockGenesis') ->
+    [
+        'tx_objects'
+    ];
+
+request_params('GetBlockLatest') ->
+    [
+        'tx_objects'
+    ];
+
+request_params('GetBlockNumber') ->
+    [
+    ];
+
+request_params('GetBlockPending') ->
+    [
+        'tx_objects'
+    ];
+
+request_params('GetBlockTxsCountByHash') ->
+    [
+        'hash'
+    ];
+
+request_params('GetBlockTxsCountByHeight') ->
+    [
+        'height'
+    ];
+
+request_params('GetGenesisBlockTxsCount') ->
+    [
+    ];
+
+request_params('GetLatestBlockTxsCount') ->
+    [
+    ];
+
 request_params('GetOracleQuestions') ->
     [
         'oracle_pub_key'
     ];
 
+request_params('GetPendingBlockTxsCount') ->
+    [
+    ];
+
 request_params('GetPubKey') ->
     [
+    ];
+
+request_params('GetTransactionFromBlockHash') ->
+    [
+        'hash',
+        'tx_index',
+        'tx_objects'
+    ];
+
+request_params('GetTransactionFromBlockHeight') ->
+    [
+        'height',
+        'tx_index',
+        'tx_objects'
+    ];
+
+request_params('GetTransactionFromBlockLatest') ->
+    [
+        'tx_index',
+        'tx_objects'
+    ];
+
+request_params('GetTxsListFromBlockRangeByHash') ->
+    [
+        'from',
+        'to',
+        'tx_objects'
+    ];
+
+request_params('GetTxsListFromBlockRangeByHeight') ->
+    [
+        'from',
+        'to',
+        'tx_objects'
     ];
 
 request_params('PostOracleQueryTx') ->
@@ -92,16 +179,6 @@ request_params('PostOracleRegisterTx') ->
 request_params('PostOracleResponseTx') ->
     [
         'OracleResponseTx'
-    ];
-
-request_params('PostOracleSubscribe') ->
-    [
-        'OracleSubscribe'
-    ];
-
-request_params('PostOracleUnsubscribe') ->
-    [
-        'OracleSubscribe'
     ];
 
 request_params('PostSpendTx') ->
@@ -194,12 +271,223 @@ request_param_info('PostTx', 'Tx') ->
     };
 
 
+request_param_info('GetBlockByHashInternal', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHashInternal', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockByHeightInternal', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHeightInternal', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockGenesis', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockLatest', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockPending', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHash', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHeight', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
 request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
     #{
         source => qs_val  ,
         rules => [
             {type, 'binary'},
             required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
         ]
     };
 
@@ -222,24 +510,6 @@ request_param_info('PostOracleRegisterTx', 'OracleRegisterTx') ->
     };
 
 request_param_info('PostOracleResponseTx', 'OracleResponseTx') ->
-    #{
-        source =>   body,
-        rules => [
-            schema,
-            required
-        ]
-    };
-
-request_param_info('PostOracleSubscribe', 'OracleSubscribe') ->
-    #{
-        source =>   body,
-        rules => [
-            schema,
-            required
-        ]
-    };
-
-request_param_info('PostOracleUnsubscribe', 'OracleSubscribe') ->
     #{
         source =>   body,
         rules => [
@@ -363,18 +633,94 @@ validate_response('PostTx', 400, Body, ValidatorState) ->
 validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
     validate_response_body('RegisteredOracles', 'RegisteredOracles', Body, ValidatorState);
 
+validate_response('GetBlockByHashInternal', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockByHashInternal', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetBlockByHashInternal', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockByHeightInternal', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockByHeightInternal', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockGenesis', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+
+validate_response('GetBlockLatest', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+
+validate_response('GetBlockNumber', 200, Body, ValidatorState) ->
+    validate_response_body('BlockHeight', 'BlockHeight', Body, ValidatorState);
+
+validate_response('GetBlockPending', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockPending', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockTxsCountByHash', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockTxsCountByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetGenesisBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+
+validate_response('GetLatestBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+
 validate_response('GetOracleQuestions', 200, Body, ValidatorState) ->
     validate_response_body('OracleQuestions', 'OracleQuestions', Body, ValidatorState);
 validate_response('GetOracleQuestions', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
 
 validate_response('GetPubKey', 200, Body, ValidatorState) ->
     validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
 validate_response('GetPubKey', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('GetTransactionFromBlockHash', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockHeight', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockLatest', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockLatest', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHash', 200, Body, ValidatorState) ->
+    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
-    validate_response_body('OracleInteractionId', 'OracleInteractionId', Body, ValidatorState);
+    validate_response_body('OracleQueryId', 'OracleQueryId', Body, ValidatorState);
 validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
@@ -386,16 +732,6 @@ validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
 validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
-validate_response('PostOracleSubscribe', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
-validate_response('PostOracleSubscribe', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
-validate_response('PostOracleUnsubscribe', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
-validate_response('PostOracleUnsubscribe', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpendTx', 200, Body, ValidatorState) ->

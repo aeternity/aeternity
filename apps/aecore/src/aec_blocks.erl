@@ -24,6 +24,7 @@
          deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
+         serialize_client_readable/1,
          hash_internal_representation/1,
          root_hash/1,
          validate/1,
@@ -142,24 +143,32 @@ to_header(#block{height = Height,
 serialize_for_network(B = #block{}) ->
     {ok, jsx:encode(serialize_to_map(B))}.
 
+serialize_client_readable(B) ->
+    serialize_to_map(B, fun aec_tx_sign:serialize_for_client/1).
+
 serialize_to_map(B = #block{}) ->
+    serialize_to_map(B, fun serialize_tx/1).
+
+serialize_to_map(B = #block{}, SerializeTxFun) ->
     #{<<"height">> => height(B),
-      <<"prev_hash">> => base64:encode(prev_hash(B)),
-      <<"state_hash">> => base64:encode(B#block.root_hash),
-      <<"txs_hash">> => base64:encode(B#block.txs_hash),
+      <<"prev_hash">> => aec_base58c:encode(block_hash, prev_hash(B)),
+      <<"state_hash">> => aec_base58c:encode(block_state_hash, B#block.root_hash),
+      <<"txs_hash">> => aec_base58c:encode(block_tx_hash, B#block.txs_hash),
       <<"target">> => B#block.target,
       <<"nonce">> => B#block.nonce,
       <<"time">> => B#block.time,
       <<"version">> => B#block.version,
       <<"pow">> => aec_headers:serialize_pow_evidence(B#block.pow_evidence),
-      <<"transactions">> => lists:map(fun serialize_tx/1, B#block.txs)
+      <<"transactions">> => lists:map(SerializeTxFun, B#block.txs)
      }.
 
 serialize_tx(Tx) ->
-    #{<<"tx">> => base64:encode(aec_tx_sign:serialize_to_binary(Tx))}.
+    #{<<"tx">> => aec_base58c:encode(
+                    transaction, aec_tx_sign:serialize_to_binary(Tx))}.
 
 deserialize_tx(#{<<"tx">> := Bin}) ->
-    aec_tx_sign:deserialize_from_binary(base64:decode(Bin)).
+    {transaction, Dec} = aec_base58c:decode(Bin),
+    aec_tx_sign:deserialize_from_binary(Dec).
 
 -define(STORAGE_VERSION, 1).
 serialize_for_store(B = #block{}) ->
@@ -234,11 +243,14 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"version">> := Version,
                        <<"pow">> := PowEvidence,
                        <<"transactions">> := Txs}) ->
+    {block_hash, DecPrevHash}       = aec_base58c:decode(PrevHash),
+    {block_state_hash, DecRootHash} = aec_base58c:decode(RootHash),
+    {block_tx_hash, DecTxsHash}     = aec_base58c:decode(TxsHash),
     {ok, #block{
             height = Height,
-            prev_hash = base64:decode(PrevHash),
-            root_hash = base64:decode(RootHash),
-            txs_hash = base64:decode(TxsHash),
+            prev_hash = DecPrevHash,
+            root_hash = DecRootHash,
+            txs_hash = DecTxsHash,
             target = Target,
             nonce = Nonce,
             time = Time,

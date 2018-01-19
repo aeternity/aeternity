@@ -54,6 +54,7 @@ default_dests() ->
 update(Metric, Value) ->
     exometer:update(Metric, Value).
 
+-spec try_update(exometer:name(), number()) -> ok | {error, not_found}.
 try_update(Metric, Value) ->
     try update(Metric, Value)
     catch

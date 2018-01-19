@@ -88,8 +88,9 @@ create_dev1_chain(Config) ->
     aecore_suite_utils:connect(N1),
     {ok, Blocks} = aecore_suite_utils:mine_blocks(N1, 8), 
     true = (length(lists:usort(Blocks)) >= 4),
-    N1Top = lists:last(Blocks),
-    ct:log("top of chain dev1: ~p", [ N1Top ]),
+    N1Top = rpc:call(N1, aec_conductor, top, [], 5000),
+    ct:log("top of chain dev1: ~p (mined ~p)", [ N1Top, hd(Blocks)]),
+    N1Top = hd(Blocks),
     aecore_suite_utils:stop_node(dev1, Config),   %% make sure we do not sync with dev2.
     ok.
 

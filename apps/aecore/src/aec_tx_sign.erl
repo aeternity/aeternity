@@ -1,5 +1,3 @@
--module(aec_tx_sign).
-
 %% @doc Implements a data structure for cryptographically signed transactions.
 %% This is the envelope around transactions to make them cryptographically safe. 
 %% The transactions normally also have keys of the "signers" in the transaction,
@@ -17,6 +15,7 @@
 %% {@link sign/2} with these signers. There is a {@link sign/3} function that can sign
 %% with respect to a certain block height. This is handy whenever the governance
 %% variables on what crypto to use would change.
+-module(aec_tx_sign).
 
 %% API
 -export([sign/2,
@@ -28,6 +27,7 @@
 %% API that should be avoided to be used
 -export([verify/1,
          serialize/1,
+         serialize_for_client/1,
          serialize_to_binary/1,
          deserialize/1,
          deserialize_from_binary/1]).
@@ -51,9 +51,10 @@
 sign(Tx, PrivKeys) ->
   sign(Tx, PrivKeys, #{}).
 
+-spec sign(term(), list(binary()) | binary(), map()) -> signed_tx().
 %% @doc Given a transaction Tx, a private key and a crypto map, 
 %% return the cryptographically signed transaction.
-%% @equiv sign(Tx, [PrivKey], CryptoMap).
+%% A list of signers may be provided instead of one signer key.
 sign(Tx, PrivKey, CryptoMap) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey], CryptoMap);
 sign(Tx, PrivKeys, CryptoMap) when is_list(PrivKeys) ->
@@ -67,10 +68,10 @@ sign(Tx, PrivKeys, CryptoMap) when is_list(PrivKeys) ->
     #signed_tx{data = Tx,
                signatures = Signatures}.
 
-%% @doc Get the original transaction from a signed transaction.
-%% Note that no implicit verification is performed, it just returns the data.
 
 -spec data(signed_tx()) -> any().
+%% @doc Get the original transaction from a signed transaction.
+%% Note that no implicit verification is performed, it just returns the data.
 %% We have no type yest for any transaction, and coinbase_tx() | spend_tx()
 %% seems restricted as type.
 data(#signed_tx{data = Data}) ->
@@ -136,3 +137,7 @@ deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
     {ok, Unpacked} = msgpack:unpack(SignedTxBin),
     lager:debug("unpacked Tx: ~p", [Unpacked]),
     deserialize(Unpacked).
+
+serialize_for_client(#signed_tx{data = Tx, signatures = Sigs}) ->
+    #{<<"tx">> => aec_tx:serialize_for_client(Tx),
+      <<"signatures">> => lists:map(fun(Sig) -> aec_base58c:encode(signature, Sig) end, Sigs)}. 

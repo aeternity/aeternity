@@ -36,6 +36,7 @@ all() ->
 
 groups() ->
     [ {all_tests, [sequence], [ {group, transactions}
+                              , {group, state_tree}
                               ]}
     , {transactions, [sequence], [ register_oracle
                                  , register_oracle_negative
@@ -83,7 +84,7 @@ register_oracle_negative(_Cfg) ->
 
 register_oracle(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
-    Tx           = aeo_test_utils:register_tx(PubKey, S1),
+    Tx           = aeo_test_utils:register_tx(PubKey, #{ ttl => {delta, 100} }, S1),
     PrivKey      = aeo_test_utils:priv_key(PubKey, S1),
 
     %% Test that RegisterTX is accepted
@@ -127,6 +128,14 @@ query_oracle_negative(Cfg) ->
     BadOracleKey = <<42:65/unit:8>>,
     Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleKey, S2),
     {error, oracle_does_not_exist} = aeo_query_tx:check(Q5, Trees, CurrHeight),
+
+    %% Test too long query ttl
+    Q6 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ query_ttl => {block, 200} }, S2),
+    {error, too_long_ttl} = aeo_query_tx:check(Q6, Trees, CurrHeight),
+
+    %% Test too long response ttl
+    Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 50} }, S2),
+    {error, too_long_ttl} = aeo_query_tx:check(Q7, Trees, CurrHeight),
     ok.
 
 query_oracle(Cfg) ->
@@ -142,7 +151,7 @@ query_oracle(Cfg) ->
     {ok, [SignedTx], Trees2} =
         aec_tx:apply_signed([SignedTx], Trees, CurrHeight),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
-    ID = aeo_interaction:id(aeo_interaction:new(Q1, CurrHeight)),
+    ID = aeo_query:id(aeo_query:new(Q1, CurrHeight)),
     {OracleKey, ID, S3}.
 
 %%%===================================================================
@@ -157,7 +166,7 @@ query_response_negative(Cfg) ->
     %% Test bad oracle key
     BadOracleKey = <<42:65/unit:8>>,
     RTx1 = aeo_test_utils:response_tx(BadOracleKey, ID, <<"42">>, S1),
-    {error, oracle_does_not_match_interaction_id} =
+    {error, no_matching_oracle_query} =
         aeo_response_tx:check(RTx1, Trees, CurrHeight),
 
     %% Test too high nonce for account
@@ -169,11 +178,11 @@ query_response_negative(Cfg) ->
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
     {error, too_low_fee} = aeo_response_tx:check(RTx3, Trees, CurrHeight),
 
-    %% Test bad interaction id
-    OIO = aeo_state_tree:get_interaction(ID, aec_trees:oracles(Trees)),
-    BadId = aeo_interaction:id(aeo_interaction:set_sender_nonce(42, OIO)),
+    %% Test bad query id
+    OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees)),
+    BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
     RTx4 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
-    {error, oracle_interaction_id_does_not_exist} =
+    {error, no_matching_oracle_query} =
         aeo_response_tx:check(RTx4, Trees, CurrHeight),
     ok.
 
@@ -185,14 +194,13 @@ query_response(Cfg) ->
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
     SignedTx = aec_tx_sign:sign(RTx, <<"pkey1">>),
-    {_, _} = redbug:start("aeo_response_tx:check_interaction->return"),
     {ok, [SignedTx], Trees2} =
         aec_tx:apply_signed([SignedTx], Trees, CurrHeight),
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 
-    %% Test that the interaction is now closed.
-    OIO = aeo_state_tree:get_interaction(ID, aec_trees:oracles(Trees2)),
-    true = aeo_interaction:is_closed(OIO),
+    %% Test that the query is now closed.
+    OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees2)),
+    true = aeo_query:is_closed(OIO),
 
     {OracleKey, ID, S2}.
 
@@ -217,35 +225,35 @@ prune_oracle(Cfg) ->
     ok.
 
 prune_query(Cfg) ->
-    {_OracleKey, ID, S} = query_oracle(Cfg),
+    {OracleKey, ID, S} = query_oracle(Cfg),
     OTrees  = aeo_test_utils:oracles(S),
-    OIO     = aeo_state_tree:get_interaction(ID, OTrees),
-    Expires = aeo_interaction:expires(OIO),
+    OIO     = aeo_state_tree:get_query(OracleKey, ID, OTrees),
+    Expires = aeo_query:expires(OIO),
 
-    %% Test that the interaction is pruned
+    %% Test that the query is pruned
     Gone  = prune_from_until(0, Expires + 1, OTrees),
-    none  = aeo_state_tree:lookup_interaction(ID, Gone),
+    none  = aeo_state_tree:lookup_query(OracleKey, ID, Gone),
 
-    %% Test that the interaction remains
+    %% Test that the query remains
     Left  = prune_from_until(0, Expires, OTrees),
-    OIO2  = aeo_state_tree:get_interaction(ID, Left),
-    ID    = aeo_interaction:id(OIO2),
+    OIO2  = aeo_state_tree:get_query(OracleKey, ID, Left),
+    ID    = aeo_query:id(OIO2),
     ok.
 
 prune_response(Cfg) ->
-    {_OracleKey, ID, S} = query_response(Cfg),
+    {OracleKey, ID, S} = query_response(Cfg),
     OTrees  = aeo_test_utils:oracles(S),
-    OIO     = aeo_state_tree:get_interaction(ID, OTrees),
-    Expires = aeo_interaction:expires(OIO),
+    OIO     = aeo_state_tree:get_query(OracleKey, ID, OTrees),
+    Expires = aeo_query:expires(OIO),
 
-    %% Test that the interaction is pruned
+    %% Test that the query is pruned
     Gone  = prune_from_until(0, Expires + 1, OTrees),
-    none  = aeo_state_tree:lookup_interaction(ID, Gone),
+    none  = aeo_state_tree:lookup_query(OracleKey, ID, Gone),
 
-    %% Test that the interaction remains
+    %% Test that the query remains
     Left  = prune_from_until(0, Expires, OTrees),
-    OIO2  = aeo_state_tree:get_interaction(ID, Left),
-    ID    = aeo_interaction:id(OIO2),
+    OIO2  = aeo_state_tree:get_query(OracleKey, ID, Left),
+    ID    = aeo_query:id(OIO2),
     ok.
 
 prune_from_until(From, Until, OTree) when is_integer(From),

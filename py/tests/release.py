@@ -24,7 +24,7 @@ NODE_SETUP_COMMANDS = [
 # node's setup
 SETUP = {
         "node1": {
-            "host": "localhost:9813/v1",
+            "host": "localhost:9813/v2",
             "name": "epoch1",
             "config": '''[
 {aecore,
@@ -49,7 +49,7 @@ SETUP = {
 '''
                 },
         "node2": {
-            "host": "localhost:9823/v1",
+            "host": "localhost:9823/v2",
             "name": "epoch2",
             "config": '''[
 {aecore,
@@ -73,7 +73,7 @@ SETUP = {
 '''
                 },
         "node3": {
-            "host": "localhost:9833/v1",
+            "host": "localhost:9833/v2",
             "name": "epoch3",
             "config": '''[
 {aecore,

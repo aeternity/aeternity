@@ -64,6 +64,86 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetBlockByHashInternal'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockByHeightInternal'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockGenesis'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockLatest'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockNumber'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockPending'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockTxsCountByHash'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetBlockTxsCountByHeight'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetGenesisBlockTxsCount'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetLatestBlockTxsCount'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetOracleQuestions'
     }
 ) ->
@@ -72,7 +152,55 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetPendingBlockTxsCount'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetPubKey'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockHash'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockHeight'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockLatest'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetTxsListFromBlockRangeByHash'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetTxsListFromBlockRangeByHeight'
     }
 ) ->
     {[<<"GET">>], Req, State};
@@ -104,22 +232,6 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'PostOracleSubscribe'
-    }
-) ->
-    {[<<"POST">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
-        operation_id = 'PostOracleUnsubscribe'
-    }
-) ->
-    {[<<"POST">>], Req, State};
-
-allowed_methods(
-    Req,
-    State = #state{
         operation_id = 'PostSpendTx'
     }
 ) ->
@@ -134,6 +246,29 @@ allowed_methods(Req, State) ->
         Req :: cowboy_req:req(),
         State :: state()
     }.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -168,6 +303,106 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
+        operation_id = 'GetBlockByHashInternal'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockByHeightInternal'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockGenesis'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockLatest'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockNumber'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockPending'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockTxsCountByHash'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetBlockTxsCountByHeight'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetGenesisBlockTxsCount'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetLatestBlockTxsCount'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
         operation_id = 'GetOracleQuestions'
     }
 ) ->
@@ -178,7 +413,67 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
+        operation_id = 'GetPendingBlockTxsCount'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
         operation_id = 'GetPubKey'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockHash'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockHeight'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetTransactionFromBlockLatest'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetTxsListFromBlockRangeByHash'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetTxsListFromBlockRangeByHeight'
     }
 ) ->
     Headers = [],
@@ -209,26 +504,6 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostOracleResponseTx'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'PostOracleSubscribe'
-    }
-) ->
-    Headers = [],
-    {Result, Req} = validate_headers(Headers, Req0),
-    {Result, Req, State};
-
-valid_content_headers(
-    Req0,
-    State = #state{
-        operation_id = 'PostOracleUnsubscribe'
     }
 ) ->
     Headers = [],
