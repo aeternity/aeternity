@@ -14,12 +14,12 @@
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [ identity_functions ].
+    [ execute_identy_fun_from_file ].
 
-
-identity_function(_Cfg) ->
-    Code = aeb_asm:file("apps/aering/test/contracts/identity.aesm",
-                        []),
+execute_identy_fun_from_file(_Cfg) ->
+    CodeDir = code:lib_dir(aebytecode, test),
+    FileName = filename:join(CodeDir, "asm_code/identity.aesm"),
+    Code = aeb_asm:file(FileName, []),
     Res = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
@@ -40,6 +40,6 @@ identity_function(_Cfg) ->
             #{trace => false})
          ),
     #{ out := << RetVal:256 >> } = Res,
-    true == (Retval == 42),
+    42 = RetVal,
     ok.
 
