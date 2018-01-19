@@ -9,6 +9,7 @@
 
 -export([ new/0
         , new/2
+        , commit_to_db/1
         , delete/2
         , get/2
         , pp/1
@@ -16,11 +17,13 @@
         , root_hash/1
         ]).
 
--export_type([tree/0
+-export_type([ tree/0
+             , key/0
+             , value/0
              ]).
 
--record(mpt, { hash = <<>> :: <<>> | hash() %% <<>> for the empty tree
-             , db   = dict:new() :: dict:dict()
+-record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
+             , db   = new_dict_db() :: aeu_mp_trees:db()
              }).
 
 -opaque tree() :: #mpt{}.
@@ -52,14 +55,7 @@
 -type value()        :: aeu_rlp:encodable().
 -type hash()         :: <<_:256>>.
 
--type db()           :: dict:dict().
-
-%%-define(debug_on, true).
--ifdef(debug_on).
--define(debug(___FMT___, ___ARGS___), io:format(___FMT___, ___ARGS___)).
--else.
--define(debug(___FMT___, ___ARGS___), ok).
--endif.
+-type db()           :: aeu_mp_trees_db:db().
 
 %%%===================================================================
 %%% API
@@ -71,13 +67,14 @@ new() ->
 
 -spec new(hash(), db()) -> tree().
 new(RootHash, DB) ->
+    %% Assert that at least the root hash is present in the db.
+    _ = db_get(RootHash, DB),
     #mpt{ hash = RootHash
         , db   = DB
         }.
 
 -spec get(bitstring(), tree()) -> value() | <<>>.
 get(Key, #mpt{hash = Hash, db = DB}) ->
-    ?debug("\n", []),
     int_get(Key, decode_node(Hash, DB), DB).
 
 -spec put(key(), value() | <<>>, tree()) -> tree().
@@ -108,6 +105,13 @@ delete(Key, #mpt{} = Mpt) when is_bitstring(Key) ->
 
 -spec root_hash(tree()) -> <<>> | hash().
 root_hash(#mpt{hash = H}) -> H.
+
+-spec commit_to_db(tree()) -> {'ok', tree()} | {'error', term()}.
+commit_to_db(#mpt{db = DB} = MPT) ->
+    case db_commit(DB) of
+        {ok, DB1} -> {ok, MPT#mpt{db = DB1}};
+        {error, _} = E -> E
+    end.
 
 -spec pp(tree()) -> 'ok'.
 pp(#mpt{hash = Hash, db = DB}) ->
@@ -238,13 +242,11 @@ find_common_path_1(_, _) ->
 int_delete(_Key, <<>>,_DB) ->
     throw(unchanged);
 int_delete(Key1, {leaf, Key2, _} = _Node, DB) ->
-    ?debug("~w: ~s ~s\n", [?LINE, hexstring(Key1), pp_node(_Node, DB)]),
     case Key1 =:= Key2 of
         true  -> {<<>>, DB};
         false -> throw(unchanged)
     end;
 int_delete(Key1, {ext, Key2, Hash} = _Node, DB) ->
-    ?debug("~w: ~s ~s\n", [?LINE, hexstring(Key1), pp_node(_Node, DB)]),
     S = bit_size(Key2),
     case Key1 of
         <<Key2:S/bits, Rest/bits>> ->
@@ -261,7 +263,6 @@ int_delete(Key1, {ext, Key2, Hash} = _Node, DB) ->
             throw(unchanged)
     end;
 int_delete(Key, {branch, Branch} = _Node, DB) ->
-    ?debug("~w: ~s ~s\n", [?LINE, hexstring(Key), pp_node(_Node, DB)]),
     Val = branch_value(Branch),
     case Key of
         <<>> when Val =:= <<>> -> throw(unchanged);
@@ -489,15 +490,39 @@ set_branch_value(Branch, Value) ->
     setelement(17, Branch, Value).
 
 %%%===================================================================
-%%% DB interface (currently dict)
-%% TODO: Make a local cache, and a proper db interface.
+%%% DB interface
 
 db_get(Hash, DB) ->
-  dict:fetch(Hash, DB).
+    case aeu_mp_trees_db:get(Hash, DB) of
+        {value, Val} -> Val;
+        none -> error({hash_not_present_in_db, Hash})
+    end.
 
 db_put(Hash, Val, DB) ->
-  dict:store(Hash, Val, DB).
+    aeu_mp_trees_db:put(Hash, Val, DB).
 
+db_commit(DB) ->
+    aeu_mp_trees_db:commit(DB).
+
+%%%===================================================================
+%%% Dict db backend (default if nothing else was given in new/2)
+
+new_dict_db() ->
+    aeu_mp_trees_db:new(dict_db_spec()).
+
+dict_db_spec() ->
+    #{ handle => dict:new()
+     , cache  => dict:new()
+     , get    => fun dict_db_get/2
+     , put    => fun dict:store/3
+     , commit => fun dict_db_commit/2
+     }.
+
+dict_db_get(Key, Dict) ->
+    {value, dict:fetch(Key, Dict)}.
+
+dict_db_commit(Cache, DB) ->
+    {ok, dict:new(), dict:merge(fun(_, _, Val) -> Val end, Cache, DB)}.
 
 %%%===================================================================
 %%% Compact encoding of hex sequence with optional terminator
