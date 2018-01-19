@@ -561,7 +561,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -599,7 +599,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -637,7 +637,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -663,7 +663,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -689,7 +689,7 @@
         "parameters" : [ {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -858,7 +858,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -904,7 +904,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -954,7 +954,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as message pack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -1038,7 +1038,7 @@
         }, {
           "name" : "tx_objects",
           "in" : "query",
-          "description" : "Transactions as objects (default is as MessagePack hashes)",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
           "required" : false,
           "type" : "boolean",
           "default" : false
@@ -1142,6 +1142,9 @@
         "properties" : {
           "data_schema" : {
             "type" : "string"
+          },
+          "hash" : {
+            "$ref" : "#/definitions/EncodedHash"
           }
         }
       } ]

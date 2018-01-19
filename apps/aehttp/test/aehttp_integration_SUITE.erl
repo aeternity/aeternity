@@ -879,8 +879,14 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
         fun(Height) ->
             {ok, 200, #{<<"height">> := Height}} = get_top(),
             {ok, ExpectedBlock} = GetExpectedBlockFun(Height),
-            ExpectedBlockMap = maps:put(<<"data_schema">>,
-                <<"BlockWithTxsHashes">>,
+            Specific =
+                fun(DataSchema) ->
+                    {ok, Hash} =
+                        aec_blocks:hash_internal_representation(ExpectedBlock),
+                    #{<<"data_schema">> => DataSchema,
+                      <<"hash">> => aec_base58c:encode(block_hash, Hash)}
+                end,
+            ExpectedBlockMap = maps:merge(Specific(<<"BlockWithTxsHashes">>),
                 block_to_endpoint_map(ExpectedBlock)),
             {ok, 200, BlockMap} = CallApiFun(Height, default),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
@@ -889,8 +895,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             true = equal_block_maps(BlockMap, ExpectedBlockMap), 
             true = equal_block_maps(BlockMap1, ExpectedBlockMap), 
 
-            ExpectedBlockMapTxsObjects = maps:put(<<"data_schema">>,
-                <<"BlockWithTxs">>,
+            ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithTxs">>),
                 block_to_endpoint_map(ExpectedBlock, #{tx_objects => true})),
             {ok, 200, BlockMap2} = CallApiFun(Height, true),
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
