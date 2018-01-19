@@ -5,11 +5,11 @@
 %%% The root hash depends on the order of the operations performed on
 %%% the tree.
 %%%
-%%% This module is a wrapper for `gb_merkle_trees`, implementing the
+%%% This module is a wrapper for 'gb_merkle_trees', implementing the
 %%% following enhancements:
 %%% * Stricter checks on arguments;
 %%% * Some less ambiguous return values;
-%%% * API compatible with the OTP `gb_trees` module;
+%%% * API compatible with the OTP 'gb_trees' module;
 %%% * It enables better type specifications in code using this module.
 %%%
 %%% @see gb_merkle_trees
@@ -50,7 +50,8 @@
 %% Both key and value must be binaries.
 -type mtree(_K, _V) :: gb_merkle_trees:tree().
 
--type root_hash() :: <<_:(?HASH_BYTES*8)>>.
+%% 256 bits as of ?HASH_BYTES * 8
+-type root_hash() :: <<_:256>>.
 
 -type proof() :: gb_merkle_trees:merkle_proof().
 

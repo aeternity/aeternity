@@ -30,7 +30,8 @@
 -define(NONCE_RANGE, 1000000000000000000000000).
 -define(POW_MODULE, aec_pow_cuckoo).
 
--type nonce() :: 0..?MAX_NONCE.
+%% 0..?MAX_NONCE
+-type nonce() :: 0..16#ffffffffffffffff.
 -export_type([nonce/0]).
 
 %%------------------------------------------------------------------------------
