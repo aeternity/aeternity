@@ -2,48 +2,43 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Main conductor of the mining
-%%% @end
-%%%-------------------------------------------------------------------
-
-%%--------------------------------------------------------------------
-%% @private
-%% @doc
+%%%
 %% The aec_conductor is the main hub of the mining engine.
-%%
-%% The mining has two states of operation 'running' and 'stopped'
-%% Passing the option {autostart, bool()} to the initialization
-%% controls which mode to start in. In the running mode, block candidates
-%% are generated and mined in separate workers. When mining is successful,
-%% the mined block is published and added to the chain if the state of the
-%% chain allows that. In the stopped mode only blocks arriving from other
-%% miners are added to the chain.
-%%
-%% The mining can be controlled by the API functions start_mining/0
-%% and stop_mining/0. The stop_mining is preemptive (i.e., all workers
-%% involved in mining are killed).
-%%
-%% The aec_conductor operates by delegating all heavy operations to
-%% worker processes in order to be responsive. (See doc at the worker
-%% handling section.)
-%%
-%% The work flow in mining is divided into stages:
-%%  - wait for keys (of the miner)
-%%  - generate block candidate
-%%  - start mining
-%%  - retry mining
-%%
-%% The principle is to optimistically try to start mining, and fall
-%% back to an earlier stage if the preconditions are not met. The next
-%% stage of mining should be triggered in the worker reply for each
-%% stage based on the postconditions of that stage.
-%%
-%% E.g. If the start_mining stage is attempted without having a block
-%% candidate, it should fall back to generating a block candidate.
-%%
-%% E.g. When the mining worker returns it should either start mining a
-%% new block or retry mining based on the return of the mining.
-%%
-%% --------------------------------------------------------------------
+%%%
+%%% The mining has two states of operation 'running' and 'stopped'
+%%% Passing the option {autostart, bool()} to the initialization
+%%% controls which mode to start in. In the running mode, block candidates
+%%% are generated and mined in separate workers. When mining is successful,
+%%% the mined block is published and added to the chain if the state of the
+%%% chain allows that. In the stopped mode only blocks arriving from other
+%%% miners are added to the chain.
+%%%
+%%% The mining can be controlled by the API functions start_mining/0
+%%% and stop_mining/0. The stop_mining is preemptive (i.e., all workers
+%%% involved in mining are killed).
+%%%
+%%% The aec_conductor operates by delegating all heavy operations to
+%%% worker processes in order to be responsive. (See doc at the worker
+%%% handling section.)
+%%%
+%%% The work flow in mining is divided into stages:
+%%%  - wait for keys (of the miner)
+%%%  - generate block candidate
+%%%  - start mining
+%%%  - retry mining
+%%%
+%%% The principle is to optimistically try to start mining, and fall
+%%% back to an earlier stage if the preconditions are not met. The next
+%%% stage of mining should be triggered in the worker reply for each
+%%% stage based on the postconditions of that stage.
+%%%
+%%% E.g. If the start_mining stage is attempted without having a block
+%%% candidate, it should fall back to generating a block candidate.
+%%%
+%%% E.g. When the mining worker returns it should either start mining a
+%%% new block or retry mining based on the return of the mining.
+%%% @end
+%%% --------------------------------------------------------------------
 
 -module(aec_conductor).
 

@@ -2,6 +2,19 @@
 %%% @copyright 2017, Aeternity Anstalt
 %%% @doc
 %%%    Module storing peers list and providing functions for peers interaction.
+%%%
+%%% API
+%%%
+%%% The external API takes a http_uri:uri() as input. We first check
+%%% the validity of this input by parsing it (into a peer()). Only
+%%% valid peer() data types are send to the gen_server.
+%%%
+%%% Internally, the peer() data structure is known and the gen_server is 
+%%% called directly with the peer as argument.
+%%%
+%%% The parsing is performed with continuation style success and
+%%% error result continuations. The function valid_uri should only be
+%%% used internally.
 %%% @end
 %%%=============================================================================
 -module(aec_peers).
@@ -54,19 +67,6 @@
 
 -type peer() :: #peer{}.
 
-%%%=============================================================================
-%%% API
-%%%
-%%% The external API takes a http_uri:uri() as input. We first check
-%%% the validity of this input by parsing it (into a peer()). Only
-%%% valid peer() data types are send to the gen_server.
-%%%
-%%% Internally, the peer() data structure is known and the gen_server is 
-%%% called directly with the peer as argument.
-%%%
-%%% The parsing is performed with continuation style success and
-%%% error result continuations. The function valid_uri should only be
-%%% used internally.
 %%%=============================================================================
 
 -spec valid_uri(http_uri:uri(), fun((peer()) -> T)) -> T | {error, any()}.
