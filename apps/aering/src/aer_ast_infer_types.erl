@@ -119,6 +119,8 @@ unify1([A|B],[C|D]) ->
     unify(A,C) andalso unify(B,D);
 unify1(X,X) ->
     true;
+unify1({id,_,Name},{id,_,Name}) ->
+    true;
 unify1({fun_t,_,Args1,Result1},{fun_t,_,Args2,Result2}) ->
     unify(Args1,Args2) andalso unify(Result1,Result2);
 unify1(A,B) ->
