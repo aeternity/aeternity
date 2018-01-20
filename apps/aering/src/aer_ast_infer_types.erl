@@ -20,13 +20,34 @@ infer_contract(Env,[Def={type_def,_,_,_,_}|Rest]) ->
     %% TODO: handle type defs
     [Def|infer_contract(Env,Rest)];
 infer_contract(Env,[Fun={letfun,_,_,_,_,_}|Rest]) ->
-    {TypeSig,NewFun} = infer_letfun(Env,Fun),
+    {TypeSig,NewFun} = infer_nonrec(Env,Fun),
     [NewFun|infer_contract([TypeSig|Env],Rest)];
+infer_contract(Env,[Rec={letrec,_,_}|Rest]) ->
+    {TypeSigs,NewRec} = infer_letrec(Env,Rec),
+    [NewRec|infer_contract(TypeSigs++Env,Rest)];
 infer_contract(_,[]) ->
     [].
 
-infer_letfun(Env,{letfun,Attrib,{id,NameAttrib,Name},Args,What,Body}) ->
+infer_nonrec(Env,LetFun) ->
     ets:new(type_vars,[set,named_table,public]),
+    Result = {TypeSig,_} = instantiate(infer_letfun(Env,LetFun)),
+    ets:delete(type_vars),
+    print_typesig(TypeSig),
+    Result.
+    
+infer_letrec(Env,{letrec,Attrs,Defs}) ->
+    ets:new(type_vars,[set,named_table,public]),
+    ExtendEnv = [{Name,fresh_uvar(A)}
+		 || {letfun,_,{id,A,Name},_,_,_} <- Defs]
+	++ Env,
+    Inferred = [infer_letfun(ExtendEnv,LF) || LF <- Defs],
+    TypeSigs = instantiate([Sig || {Sig,_} <- Inferred]),
+    NewDefs = instantiate([D || {_,D} <- Inferred]),
+    [print_typesig(S) || S <- TypeSigs],
+    ets:delete(type_vars),
+    {TypeSigs,{letrec,Attrs,NewDefs}}.
+    
+infer_letfun(Env,{letfun,Attrib,{id,NameAttrib,Name},Args,What,Body}) ->
     ArgTypes  = [{ArgName,arg_type(T)} || {arg,_,{id,_,ArgName},T} <- Args],
     NewBody={typed,_,_,ResultType} = infer_expr(ArgTypes++Env,Body),
     unify(ResultType,arg_type(What)),
@@ -34,11 +55,12 @@ infer_letfun(Env,{letfun,Attrib,{id,NameAttrib,Name},Args,What,Body}) ->
 	       || {{ArgName,T},{arg,A1,{id,A2,ArgName},_}} <- lists:zip(ArgTypes,Args)],
     NewWhat = instantiate(ResultType),
     IBody = instantiate(NewBody),
-    ets:delete(type_vars),
     TypeSig = {type_sig,[T || {arg,_,_,T} <- NewArgs],NewWhat},
-    io:format("Inferred ~p : ~s\n",[Name,pp(TypeSig)]),
     {{Name,TypeSig},
      {letfun,Attrib,{id,NameAttrib,Name},NewArgs,NewWhat,IBody}}.
+
+print_typesig({Name,TypeSig}) ->
+    io:format("Inferred ~p : ~s\n",[Name,pp(TypeSig)]).
 
 arg_type({id,Attrs,"_"}) ->
     fresh_uvar(Attrs);

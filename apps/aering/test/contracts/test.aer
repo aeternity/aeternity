@@ -16,8 +16,8 @@ contract Identity = {
   // };
   //let baz() = {age:3, name:(4:int)};
   //let foo(a,b,c) = c;
-  let fac(n) = if(n==0) 1 else (n*(n-1));
-  let main(x) = fac(6);
+  let rec fac(n) = if(n==0) 1 else (n*fac(n-1))
+      and main(x) = fac(6);
   // let lentr(l) = lent(0,l);
   // let len(l) =
   //   switch(l) {

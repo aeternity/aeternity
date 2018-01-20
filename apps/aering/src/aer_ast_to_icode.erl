@@ -48,6 +48,13 @@ contract_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
     FunBody = ast_body(Body),
     NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
     contract_to_icode(Rest, NewIcode);
+contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
+    %% OBS! This code ignores the letrec structure of the source,
+    %% because the back end treats ALL declarations as recursive! We
+    %% need to decide whether to (a) modify the back end to respect
+    %% the letrec structure, or (b) (preferably) modify the front end
+    %% just to parse a list of (mutually recursive) definitions.
+    contract_to_icode(Defs++Rest, Icode);
 contract_to_icode([], Icode) -> Icode;
 contract_to_icode(Code, Icode) ->
     io:format("Unhandled code ~p~n",[Code]),
