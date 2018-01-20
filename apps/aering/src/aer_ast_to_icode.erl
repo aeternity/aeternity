@@ -15,8 +15,8 @@
 
 convert(Tree, Options) ->
 %% Add this line to turn on the type-checker:
-%%    code(aer_ast_infer_types:infer(Tree),
-    code(Tree,
+    code(aer_ast_infer_types:infer(Tree),
+%%    code(Tree,
 	 #{ functions => []
 	  , env => []
 	  , options => Options}).
