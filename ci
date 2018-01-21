@@ -30,7 +30,7 @@ case "${1:?}"-"${2:?}" in
         erl -version
         epmd -daemon
         ;;
-    install-dialyzer)
+    install-static_analysis)
         make dialyzer-install
         ;;
     install-*)
@@ -42,7 +42,8 @@ case "${1:?}"-"${2:?}" in
     script-eunit)
         make eunit
         ;;
-    script-dialyzer)
+    script-static_analysis)
+        ./rebar3 edoc
         make dialyzer
         ;;
     script-package)
