@@ -38,7 +38,7 @@
                          value()}.
 
 -type enc_node()       :: null() | short_rlp_node() | hash().
--type short_rlp_node() :: aeu_rlp:encoded(). %% size < 32 bytes
+-type short_rlp_node() :: aeu_rlp:encoded(). %% size `< 32 bytes'
 
 -type raw_node()      :: null() | raw_leaf() | raw_extension() | raw_branch().
 -type raw_leaf()      :: [encoded_path()|value()]. %% [encoded_path(), value()].
@@ -81,7 +81,7 @@ get(Key, #mpt{hash = Hash, db = DB}) ->
     int_get(Key, decode_node(Hash, DB), DB).
 
 -spec put(key(), value() | <<>>, tree()) -> tree().
-%% @doc Note that putting <<>> as value is equivalent to deleting the value.
+%% @doc Note that putting `<<>>' as value is equivalent to deleting the value.
 put(Key, <<>>, #mpt{} = Mpt) when is_bitstring(Key), Key =/= <<>> ->
     delete(Key, Mpt);
 put(Key, Val, #mpt{} = Mpt) when is_bitstring(Key), Key =/= <<>> ->
