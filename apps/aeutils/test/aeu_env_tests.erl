@@ -4,7 +4,7 @@
 %%%   Unit tests for the example configuration in doc/examples
 %%% @end
 %%%=============================================================================
--module(aeu_example_config_tests).
+-module(aeu_env_tests).
 
 -ifdef(TEST).
 
@@ -22,8 +22,17 @@ all_test_() ->
     }.
 
 test_data_config_files() ->
-  ["apps/aeutils/doc/examples/epoch_full.yaml",
-    "apps/aeutils/doc/examples/epoch_testnet.yaml"].
+    %% differentiate between Eunit run in top directory and
+    %% common test run in _build/test/logs/...
+    %% This should be rebar3 thingy, if only one would know how.
+    DataDir = "aeutils/test/data/",
+    Dir = 
+        case filelib:is_dir(filename:join("apps", DataDir)) of
+            true -> "apps/";
+            false -> "../../lib/"
+        end,
+    [filename:join([Dir, DataDir, "epoch_full.yaml"]),
+       filename:join([Dir, DataDir, "epoch_testnet.yaml"])].
 
 setup() ->
     application:ensure_all_started(jesse),
@@ -32,6 +41,7 @@ setup() ->
     ok.
 
 teardown(_) ->
+    application:stop(rfc3339),
     application:stop(jesse),
     application:stop(yamerl),
     application:stop(jsx).

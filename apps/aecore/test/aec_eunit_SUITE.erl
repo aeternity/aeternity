@@ -19,8 +19,11 @@
          prfTarg  %% by eper
         ]).
 
-all() ->
-    [{group, eunit}, application_test, aec_sync_test].
+-ifdef(EUNIT_INCLUDED).
+all() -> [ {group, eunit}, application_test, aec_sync_test].
+-else.
+all() -> [ application_test, aec_sync_test ].
+-endif.
 
 groups() ->
     [].
@@ -145,8 +148,9 @@ prepare_app_start(App, Config) ->
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
 
 app_stop(Apps, TempDir) ->
+    timer:sleep(500),  %% time to terminate erlexec child
     aec_test_utils:remove_temp_key_dir(TempDir),
-    [ ok = application:stop(App) || App <- Apps ],
+    [ application:stop(App) || App <- Apps ],
     timer:sleep(200),
     ok.
 
