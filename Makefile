@@ -118,12 +118,8 @@ dialyzer-install:
 dialyzer:
 	@./rebar3 dialyzer
 
-test: test-app-integration
+test:
 	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
-
-test-app-integration:
-	@./rebar3 ct $(CT_TEST_FLAGS) --dir test/*/
-
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
