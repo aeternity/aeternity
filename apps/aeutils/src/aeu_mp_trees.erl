@@ -10,11 +10,13 @@
 -export([ new/0
         , new/2
         , commit_to_db/1
+        , construct_proof/3
         , delete/2
         , get/2
         , pp/1
         , put/3
         , root_hash/1
+        , verify_proof/4
         ]).
 
 -export_type([ tree/0
@@ -111,6 +113,25 @@ commit_to_db(#mpt{db = DB} = MPT) ->
     case db_commit(DB) of
         {ok, DB1} -> {ok, MPT#mpt{db = DB1}};
         {error, _} = E -> E
+    end.
+
+-spec construct_proof(key(), db(), tree()) -> {hash(), db()}.
+construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
+    ProofDB1 = proof_db_insert(Hash, DB, ProofDB),
+    {Hash, int_c_proof(Key, decode_node(Hash, DB), DB, ProofDB1)}.
+
+-type verify_error() :: 'bad_proof'
+                      | {'bad_value', term()}
+                      | {'bad_hash', hash()}.
+
+-spec verify_proof(key(), value(), hash(), db()) -> 'ok'
+                                                  | {'error', verify_error()}.
+verify_proof(Key, Val, Hash, ProofDB) ->
+    try decode_node_and_check_hash(Hash, ProofDB) of
+        {ok, Node} -> int_verify_proof(Key, Node, Val, ProofDB);
+        {bad_hash, H} -> {bad_hash, H}
+    catch
+        _:_ -> bad_proof
     end.
 
 -spec pp(tree()) -> 'ok'.
@@ -316,6 +337,96 @@ get_singleton_branch(Branch, N, Acc) ->
     end.
 
 %%%===================================================================
+%%% @doc Construct proof for a key.
+%%%
+%%% A proof consists of a root hash for the tree, and the parts of the
+%%% database that is needed to traverse to the path of the key, or to
+%%% show that the key is not present.
+%%%
+%%% The proof takes a proof db (aeu_mp_trees_db) as input. This db is
+%%% filled with the partial original db. Serializing the proof db is
+%%% the responsibility of the caller.
+
+int_c_proof(_Key, <<>>,_DB, ProofDB) ->
+    ProofDB;
+int_c_proof(<<>>, {branch,_Branch},_DB, ProofDB) ->
+    ProofDB;
+int_c_proof(Path, {branch, Branch}, DB, ProofDB) ->
+    <<Next:4, Rest/bits>> = Path,
+    NextEncoded = branch_next(Next, Branch),
+    NextNode = decode_node(NextEncoded, DB),
+    ProofDB1 = proof_db_insert(NextEncoded, DB, ProofDB),
+    int_c_proof(Rest, NextNode, DB, ProofDB1);
+int_c_proof(Path, {Type, NodePath, NodeVal}, DB, ProofDB) when Type =:= ext;
+                                                               Type =:= leaf ->
+    S = bit_size(NodePath),
+    case Path of
+        NodePath when Type =:= leaf ->
+            ProofDB;
+        <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
+            ProofDB;
+        <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
+            NextNode = decode_node(NodeVal, DB),
+            ProofDB1 = proof_db_insert(NodeVal, DB, ProofDB),
+            int_c_proof(Rest, NextNode, DB, ProofDB1);
+        _ ->
+            ProofDB
+    end.
+
+proof_db_insert(<<>>,_DB, ProofDB) ->
+    ProofDB;
+proof_db_insert(Rlp,_DB, ProofDB) when byte_size(Rlp) < 32 ->
+    %% The node is included in the parent.
+    ProofDB;
+proof_db_insert(Hash, DB, ProofDB) when byte_size(Hash) =:= 32 ->
+    Node = db_get(Hash, DB),
+    db_put(Hash, Node, ProofDB).
+
+%%%===================================================================
+%%% @doc Verify proof for a key value pair
+%%%
+%%% Verifying the proof is more of less exactly the same as getting a
+%%% value and comparing it. However, we need also to check that all
+%%% nodes conforms to their hashes along the way.
+
+int_verify_proof(_Path, <<>>, <<>>, _ProofDB) ->
+    ok;
+int_verify_proof(<<>>, {branch, Branch}, Val, _ProofDB) ->
+    case branch_value(Branch) of
+        Val  -> ok;
+        Val1 -> {bad_value, Val1}
+    end;
+int_verify_proof(Path, {branch, Branch}, Val, ProofDB) ->
+    <<Next:4, Rest/bits>> = Path,
+    try decode_node_and_check_hash(branch_next(Next, Branch), ProofDB) of
+        {ok, NextNode} -> int_verify_proof(Rest, NextNode, Val, ProofDB);
+        {bad_hash, H}  -> {bad_hash, H}
+    catch
+        _:_ -> bad_proof
+    end;
+int_verify_proof(Path, {Type, NodePath, NodeVal}, Val, ProofDB)
+  when Type =:= ext; Type =:= leaf ->
+    S = bit_size(NodePath),
+    case Path of
+        NodePath when Type =:= leaf, Val =:= NodeVal ->
+            ok;
+        NodePath when Type =:= leaf, Val =/= NodeVal ->
+            {bad_value, NodeVal};
+        <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
+            try decode_node_and_check_hash(NodeVal, ProofDB) of
+                {ok, Next} -> int_verify_proof(Rest, Next, Val, ProofDB);
+                {bad_hash, H} -> {bad_hash, H}
+            catch
+                _:_ -> bad_proof
+            end;
+        _ ->
+            case Val =:= <<>> of
+                true  -> ok;
+                false -> {bad_value, <<>>}
+            end
+    end.
+
+%%%===================================================================
 %%% Prettyprinter
 
 pp_node(Node, DB) ->
@@ -392,6 +503,19 @@ decode_node(Hash, DB) when byte_size(Hash) =:= 32 ->
         [_|_] = Branch ->
             {branch, list_to_tuple(Branch)}
     end.
+
+-spec decode_node_and_check_hash(enc_node(), db()) -> {'ok', tree_node()}
+                                                    | {'bad_hash', hash()}.
+decode_node_and_check_hash(Rlp, DB) when byte_size(Rlp) < 32 ->
+    {ok, decode_node(Rlp, DB)};
+decode_node_and_check_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
+    EncNode = db_get(Hash, DB),
+    Actual = crypto:hash(sha256, aeu_rlp:encode(EncNode)),
+    case Actual =:= Hash of
+        true  -> {ok, decode_node(Hash, DB)};
+        false -> {bad_hash, Hash}
+    end.
+
 
 -spec encode_node(raw_node(), db()) -> {enc_node(), db()}.
 encode_node(Node, DB) ->
