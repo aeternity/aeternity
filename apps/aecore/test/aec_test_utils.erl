@@ -153,9 +153,10 @@ unmock_block_target_validation() ->
 
 
 start_chain_db() ->
-    mnesia:start(),
-    [mnesia:create_table(Tab, Spec) ||
-        {Tab, Spec} <- aec_db:tables(ram)].
+    ok = mnesia:start(),
+    Res = [{Tab, {atomic, ok} = mnesia:create_table(Tab, Spec)} ||
+              {Tab, Spec} <- aec_db:tables(ram)],
+    ok = mnesia:wait_for_tables([T || {T,_} <- Res], 5000).
 
 stop_chain_db() ->
     application:stop(mnesia).

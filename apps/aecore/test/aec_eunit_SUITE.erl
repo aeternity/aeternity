@@ -16,7 +16,8 @@
         [cover_server, timer_server, %% by test framework
          exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
-         prfTarg  %% by eper
+         prfTarg,  %% by eper
+         dets_sup, dets  %% by mnesia
         ]).
 
 all() ->
