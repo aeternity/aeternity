@@ -18,6 +18,7 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
+    ok = aec_test_utils:start_chain_db(),
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
                 fun() ->
@@ -39,6 +40,7 @@ teardown_minimal(TmpKeysDir) ->
     meck:unload(aec_governance),
     aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
+    ok = aec_test_utils:stop_chain_db(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 
