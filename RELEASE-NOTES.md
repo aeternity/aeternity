@@ -14,8 +14,9 @@ After upgrading your node, you will not have your previous balance (even if you 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 
 The instructions below describe:
-* How to retrieve the released software for running a node;
-* How to join the testnet.
+* [How to retrieve the released software for running a node](#retrieve-the-software-for-running-a-node);
+* [How to join the testnet](#join-the-testnet);
+* [How to identify and address common issues (troubleshooting)](#troubleshooting).
 
 ## Retrieve the software for running a node
 
@@ -185,7 +186,42 @@ If the node successfully mines a block, you shall read log entries like the foll
 ... Block mined: Height = 1; Hash = ...
 ```
 
-##### Troubleshooting node failing mining attempts
+#### Verify that node connected to the testnet
+
+Verify that your node sees the same longest blockchain as the testnet.
+
+Inspect the current top of the blockchain as seen by the testnet:
+```
+curl http://31.13.248.102:3013/v2/top
+```
+
+Inspect the current top of the blockchain as seen by your node:
+```
+curl http://127.0.0.1:3003/v2/top
+```
+
+Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
+
+#### Verify that node mines on same chain as the testnet
+
+After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
+You can validate it observing the `hash` of the `/top` of the remote nodes:
+```
+curl http://31.13.248.102:3013/v2/top
+{"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
+```
+
+This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
+```
+curl http://localhost:3103/v2/block/pending
+{...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
+```
+Height would be +1 of what is in the `/top` of the remote node but this is not
+as strong guarantee as the `prev_hash`.
+
+## Troubleshooting
+
+### Troubleshooting node failing mining attempts
 
 If the node attempts to mine though fails to do so, you shall read error log entries in `/tmp/node/log/epoch_mining.log`.
 
@@ -246,36 +282,3 @@ mining:
             node_bits: 28
 ```
 ... then stop and start the node (`( cd /tmp/node; bin/epoch stop; bin/epoch start; )`).
-
-#### Verify that node connected to the testnet
-
-Verify that your node sees the same longest blockchain as the testnet.
-
-Inspect the current top of the blockchain as seen by the testnet:
-```
-curl http://31.13.248.102:3013/v2/top
-```
-
-Inspect the current top of the blockchain as seen by your node:
-```
-curl http://127.0.0.1:3003/v2/top
-```
-
-Verify that the height is the same; it may take a few minutes for your node to catch up with the testnet blockchain.
-
-#### Verify that node mines on same chain as the testnet
-
-After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
-You can validate it observing the `hash` of the `/top` of the remote nodes:
-```
-curl http://31.13.248.102:3013/v2/top
-{"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
-```
-
-This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
-```
-curl http://localhost:3103/v2/block/pending
-{...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
-```
-Height would be +1 of what is in the `/top` of the remote node but this is not
-as strong guarantee as the `prev_hash`.
