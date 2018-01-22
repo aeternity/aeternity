@@ -133,10 +133,6 @@ else
 	@./rebar3 as test do ct $(CT_APP_INTEGRATION_TEST_FLAGS) --dir test/*/
 endif
 
-test-app-integration:
-	@./rebar3 as test do ct $(CT_TEST_FLAGS) --dir test/*/
-
-
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
