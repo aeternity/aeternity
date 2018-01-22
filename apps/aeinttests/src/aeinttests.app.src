@@ -1,0 +1,14 @@
+{application, aeinttests,
+ [{description, "Integration tests of (co-)dependent applications without starting the whole epoch node and all servers."},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
