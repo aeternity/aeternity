@@ -1,0 +1,214 @@
+%%%=============================================================================
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%%    Unit tests for Merkle Patricia Trees
+%%% @end
+%%%=============================================================================
+-module(aeu_mp_trees_tests).
+
+-include_lib("eunit/include/eunit.hrl").
+
+basic_test_() ->
+    [ {"Put", fun test_put/0}
+    , {"Lookup", fun test_lookup/0}
+    , {"Delete one", fun test_delete_one_by_one/0}
+    , {"Delete all", fun test_delete_all/0}
+    , {"Missing lookups", fun test_lookup_missing/0}
+    , {"Put rlp values", fun test_put_rlp_vals/0}
+    , {"Collapse extension", fun test_collapse_ext/0}
+    ].
+
+hash_test_() ->
+    [ {"Reversed put", fun test_reversed_put/0}
+    , {"Put and delete", fun test_put_and_delete/0}
+    , {"Merge of ext", fun test_ext_merge_of_paths/0}
+    ].
+
+extension_test_() ->
+    [ {"One step", fun test_extension_one_step/0}
+    , {"Two step", fun test_extension_two_step/0}
+    ].
+
+%%%=============================================================================
+%%% Basic tests
+
+test_put() ->
+    {_Tree,_Vals} = gen_mp_tree({23, 123534, 345345}, 1000),
+    ok.
+
+test_lookup() ->
+    {Tree, Vals} = gen_mp_tree({123, 1234, 1234123}, 1000),
+    [?assertEqual(Y, aeu_mp_trees:get(X, Tree)) || {X, Y} <- Vals],
+    ok.
+
+test_lookup_missing() ->
+    Val = <<0,0,0,0>>,
+    K1 = <<0:4, 0:4>>,
+    K2 = <<0:4, 1:4, 0:4>>,
+    K3 = <<0:4, 0:4, 0:4, 0:4, 0:4>>,
+    K4 = <<0:4, 0:4, 0:4, 0:4, 1:4>>,
+    Keys = [K1, K2, K3, K4],
+    NotPresentLong = [<<K/bits, 15:4>> || K <- Keys],
+    NotPresentShort = [ begin S = bit_size(Key) - 4,
+                              <<X:S/bits, _:4>> = Key,
+                              X
+                        end || Key <- Keys],
+    T = insert_vals([{K1,Val}, {K2, Val}, {K3, Val}, {K4, Val}],
+                    aeu_mp_trees:new()),
+    [?assertEqual(<<>>, aeu_mp_trees:get(Key, T))
+     || Key <- NotPresentShort ++ NotPresentLong].
+
+test_delete_one_by_one() ->
+    {Tree, Vals} = gen_mp_tree({123, 1234, 1234123}, 1000),
+    [begin
+         T = aeu_mp_trees:delete(X, Tree),
+         ?assertEqual(<<>>, aeu_mp_trees:get(X, T))
+     end
+     || {X,_Y} <- Vals],
+    ok.
+
+test_delete_all() ->
+    {Tree, Vals} = gen_mp_tree({123, 1234, 1234123}, 1000),
+    Tree1 = test_delete_all(Vals, Tree),
+    ?assertEqual(aeu_mp_trees:root_hash(aeu_mp_trees:new()),
+                 aeu_mp_trees:root_hash(Tree1)).
+
+test_delete_all([{X, Y}|Left], Tree) ->
+    ?assertEqual(Y, aeu_mp_trees:get(X, Tree)),
+    Tree1 = aeu_mp_trees:delete(X, Tree),
+    ?assertEqual(<<>>, aeu_mp_trees:get(X, Tree1)),
+    ?assertNotEqual(aeu_mp_trees:root_hash(Tree),
+                    aeu_mp_trees:root_hash(Tree1)),
+    test_delete_all(Left, Tree1);
+test_delete_all([], Tree) ->
+    Tree.
+
+test_put_rlp_vals() ->
+    apply_ops([{put, <<7:4>>, [<<0>>]},
+               {put, <<7:4, 0:4>>, <<0>>}
+              ], aeu_mp_trees:new()).
+
+test_collapse_ext() ->
+    T = apply_ops([{put, <<15:4>>, <<0>>},
+                   {put, <<15:4, 13:4, 0:4>>, <<0>>},
+                   {put, <<15:4, 13:4>>, <<0>>}
+                  ], aeu_mp_trees:new()),
+    aeu_mp_trees:pp(T),
+    apply_ops([ {delete, <<15:4>>},
+                {delete, <<15:4, 13:4>>}
+              ], T).
+
+%%%=============================================================================
+%%% Hash tests
+
+test_reversed_put() ->
+    rand:seed(exs1024s, {143, 14132, 4163}),
+    Vals = gen_vals(1000),
+    T0 = aeu_mp_trees:new(),
+    T1 = insert_vals(Vals, T0),
+    T2 = insert_vals(lists:reverse(Vals), T0),
+    ?assertEqual(aeu_mp_trees:root_hash(T1),
+                 aeu_mp_trees:root_hash(T2)).
+
+test_put_and_delete() ->
+    %% From an existing tree, add and delete some nodes and see that
+    %% we arrive at the same hash again.
+    {T0, _} = gen_mp_tree({345, 2345, 1234}, 1000),
+    Vals = gen_vals(1000),
+    ?assertEqual([], [X || {X, _} <- Vals, aeu_mp_trees:get(X, T0) =/= <<>>]),
+    T1 = insert_vals(Vals, T0),
+    T2 = delete_vals(Vals, T1),
+    ?assertEqual(aeu_mp_trees:root_hash(T0), aeu_mp_trees:root_hash(T2)),
+
+    T3 = delete_vals(lists:reverse(Vals), T1),
+    ?assertEqual(aeu_mp_trees:root_hash(T0), aeu_mp_trees:root_hash(T3)),
+    ok.
+
+test_ext_merge_of_paths() ->
+    Val = <<0,0,0,0>>,
+    Key1 = <<81,0:4>>,
+    Key2 = <<81>>,
+    Key3 = <<81,0>>,
+
+    T0 = aeu_mp_trees:new(),
+
+    T1 = apply_ops([ {put, Key1, Val}
+                   , {put, Key2, Val}
+                   , {put, Key3, Val}
+                   , {delete, Key2}
+                   ], T0),
+    T2 = apply_ops([ {put, Key1, Val}
+                   , {put, Key3, Val}
+                   ], T0),
+    ?assertEqual(aeu_mp_trees:root_hash(T1),
+                 aeu_mp_trees:root_hash(T2)).
+
+%%%=============================================================================
+%%% Extension tests
+
+test_extension_one_step() ->
+    rand:seed(exs1024s, {1413, 1432, 413}),
+    test_extension_n_step(1).
+
+test_extension_two_step() ->
+    rand:seed(exs1024s, {141323, 1423432, 415133}),
+    test_extension_n_step(1).
+
+test_extension_n_step(Step) ->
+    Key = random_hexstring(65),
+    Val = random_hexstring(65*2+2),
+    T   = insert_step(Key, Val, 1, aeu_mp_trees:new()),
+    lookup_step(Key, Val, Step, T),
+    ok.
+
+insert_step(Key, Val, Step, T) ->
+    case {Key, Val} of
+        { <<_:Step/unit:4, Key1/bitstring>>
+        , <<_:Step/unit:8, Val1/binary>>} when Key1 =/= <<>> ->
+            T1 = aeu_mp_trees:put(Key1, Val1, T),
+            insert_step(Key1, Val1, Step, T1);
+        {_, _} -> T
+    end.
+
+lookup_step(Key, Val, Step, T) ->
+    case {Key, Val} of
+        { <<_:Step/unit:4, Key1/bitstring>>
+        , <<_:Step/unit:8, Val1/binary>>} when Key1 =/= <<>> ->
+            ?assertEqual(Val1, aeu_mp_trees:get(Key1, T)),
+            lookup_step(Key1, Val1, Step, T);
+        {_, _} -> ok
+    end.
+
+
+%%%=============================================================================
+%%% Test utils
+
+gen_mp_tree(Seed, NofNodes) ->
+    rand:seed(exs1024s, Seed),
+    Vals = gen_vals(NofNodes),
+    ?assertEqual(length(Vals), length(lists:ukeysort(1, Vals))),
+    {insert_vals(Vals, aeu_mp_trees:new()), Vals}.
+
+gen_vals(NofNodes) ->
+    [{random_hexstring(65), random_hexstring(8)}
+     || _ <- lists:seq(1, NofNodes)].
+
+apply_ops([{put, Key, Val}|Left], T) ->
+    apply_ops(Left, aeu_mp_trees:put(Key, Val, T));
+apply_ops([{delete, Key}|Left], T) ->
+    apply_ops(Left, aeu_mp_trees:delete(Key, T));
+apply_ops([], T) ->
+    T.
+
+insert_vals([{X, Y}|Left], T) ->
+    insert_vals(Left, aeu_mp_trees:put(X, Y, T));
+insert_vals([], T) ->
+    T.
+
+delete_vals([{X,_Y}|Left], T) ->
+    delete_vals(Left, aeu_mp_trees:delete(X, T));
+delete_vals([], T) ->
+    T.
+
+random_hexstring(N) when N >= 1 ->
+    << <<(rand:uniform(15)):4>> || _ <- lists:seq(1, N) >>.
