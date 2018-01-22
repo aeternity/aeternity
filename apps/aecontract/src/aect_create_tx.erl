@@ -40,6 +40,9 @@
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_FEE, 4).
 
+%% Should this be in a header file somewhere?
+-define(PUB_SIZE, 65).
+
 -type amount() :: aect_contracts:amount().
 
 -opaque create_tx() :: #contract_create_tx{}.
@@ -135,11 +138,30 @@ signers(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
 -spec process(create_tx(), trees(), height()) -> {ok, trees()}.
-process(#contract_create_tx{owner = _OwnerPubKey,
-                            nonce = _Nonce,
-                            fee   = _Fee} = _CreateTx, Trees, _Height) ->
-    %% PLACEHOLDER
-    {ok, Trees}.
+process(#contract_create_tx{owner = OwnerPubKey,
+                            nonce = Nonce,
+                            fee   = Fee} = CreateTx, Trees0, Height) ->
+    AccountsTree0  = aec_trees:accounts(Trees0),
+    ContractsTree0 = aec_trees:contracts(Trees0),
+
+    %% Charge the fee to the contract owner (caller)
+    Owner0        = aec_accounts_trees:get(OwnerPubKey, AccountsTree0),
+    {ok, Owner1}  = aec_accounts:spend(Owner0, Fee, Nonce, Height),
+    AccountsTree1 = aec_accounts_trees:enter(Owner1, AccountsTree0),
+
+    %% Create the contract and insert it into the contract state tree
+    %%   The public key for the contract is generated from the owners pubkey
+    %%   and the nonce, so that no one has the private key. Though, even if
+    %%   someone did have the private key, we should not accept spend
+    %%   transactions on a contract account.
+    ContractPubKey = create_contract_pubkey(OwnerPubKey, Nonce),
+    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+
+    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
+
+    {ok, Trees2}.
 
 serialize(#contract_create_tx{owner      = OwnerPubKey,
                               nonce      = Nonce,
@@ -229,3 +251,10 @@ hex_byte(N) ->
 hex_bytes(Bin) ->
     lists:flatten("0x" ++ [io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
 
+-spec create_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
+create_contract_pubkey(Owner, Nonce) ->
+    %% TODO: do this in a less ad-hoc way?
+    Hash = aec_sha256:hash(<<Nonce:64, Owner/binary>>),
+    <<"0x", HexHash/binary>> = list_to_binary(hex_bytes(Hash)),
+    <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
+    PubKey.
