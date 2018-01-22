@@ -12,8 +12,9 @@
 %% API
 -export([ deserialize/1
         , id/1
-        , new/2
+        , new/3
         , owner/1
+        , account/1
         , serialize/1
         , set_owner/2
         ]).
@@ -22,7 +23,8 @@
 %%% Types
 %%%===================================================================
 
--record(contract, { owner             :: pubkey()
+-record(contract, { owner   :: pubkey()
+                  , account :: pubkey()
                   }).
 
 -opaque contract() :: #contract{}.
@@ -41,36 +43,45 @@
 
 -spec id(contract()) -> pubkey().
 id(C) ->
-  owner(C).
+  account(C).
 
--spec new(aect_create_tx:create_tx(), height()) -> contract().
-new(RTx, _BlockHeight) ->
-    C = #contract{ owner = aect_create_tx:owner(RTx)
+-spec new(pubkey(), aect_create_tx:create_tx(), height()) -> contract().
+new(ContractPubKey, RTx, _BlockHeight) ->
+    C = #contract{ owner   = aect_create_tx:owner(RTx),
+                   account = ContractPubKey
                  },
     assert_fields(C).
 
 -spec serialize(contract()) -> binary().
 serialize(#contract{} = C) ->
-    msgpack:pack([ #{<<"type">>              => ?CONTRACT_TYPE}
-                 , #{<<"vsn">>               => ?CONTRACT_VSN}
-                 , #{<<"owner">>             => owner(C)}
+    msgpack:pack([ #{<<"type">>    => ?CONTRACT_TYPE}
+                 , #{<<"vsn">>     => ?CONTRACT_VSN}
+                 , #{<<"owner">>   => owner(C)}
+                 , #{<<"account">> => account(C)}
                  ]).
 
 -spec deserialize(binary()) -> contract().
 deserialize(Bin) ->
     {ok, List} = msgpack:unpack(Bin),
-    [ #{<<"type">>              := ?CONTRACT_TYPE}
-    , #{<<"vsn">>               := ?CONTRACT_VSN}
-    , #{<<"owner">>             := Owner}
+    [ #{<<"type">>    := ?CONTRACT_TYPE}
+    , #{<<"vsn">>     := ?CONTRACT_VSN}
+    , #{<<"owner">>   := Owner}
+    , #{<<"account">> := Account}
     ] = List,
-    #contract{ owner             = Owner
+    #contract{ owner   = Owner
+             , account = Account
              }.
 
 %%%===================================================================
 %%% Getters
 
+%% The owner of the contract is (initially) the account that created it.
 -spec owner(contract()) -> pubkey().
 owner(C) -> C#contract.owner.
+
+%% The address of the contract account.
+-spec account(contract()) -> pubkey().
+account(C) -> C#contract.account.
 
 %%%===================================================================
 %%% Setters

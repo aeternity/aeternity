@@ -13,6 +13,7 @@
                         , id/1
                         , new/2
                         , owner/1
+                        , account/1
                         , serialize/1
                         , set_owner/2
                         ]).
@@ -24,18 +25,22 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    C = aect_contracts:new(create_tx(), 1),
+    ContractPubKey = <<12345:65/unit:8>>,
+    C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assertEqual(C, deserialize(serialize(C))),
     ok.
 
 basic_getters() ->
-    C = aect_contracts:new(create_tx(), 1),
+    ContractPubKey = <<12345:65/unit:8>>,
+    C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assert(is_binary(id(C))),
     ?assert(is_binary(owner(C))),
+    ?assert(is_binary(account(C))),
     ok.
 
 basic_setters() ->
-    C = aect_contracts:new(create_tx(), 1),
+    ContractPubKey = <<12345:65/unit:8>>,
+    C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assertError({illegal, _, _}, set_owner(<<4711:64/unit:8>>, C)),
     _ = set_owner(<<42:65/unit:8>>, C),
     ok.
