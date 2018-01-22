@@ -177,6 +177,7 @@ restart_test_() ->
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
@@ -187,6 +188,7 @@ restart_test_() ->
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db(),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
