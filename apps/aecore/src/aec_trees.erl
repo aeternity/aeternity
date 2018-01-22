@@ -14,9 +14,11 @@
          hash/1,
          new/0,
          oracles/1,
+         contracts/1,
          perform_pre_transformations/2,
          set_accounts/2,
-         set_oracles/2
+         set_oracles/2,
+         set_contracts/2
         ]).
 
 %%%%=============================================================================
@@ -25,8 +27,9 @@
 
 -spec new() -> trees().
 new() ->
-    #trees{accounts = aec_accounts_trees:empty(),
-           oracles  = aeo_state_tree:empty()
+    #trees{accounts  = aec_accounts_trees:empty(),
+           oracles   = aeo_state_tree:empty(),
+           contracts = aect_state_tree:empty()
           }.
 
 hash(Trees) ->
@@ -50,6 +53,14 @@ set_oracles(Trees, Oracles) ->
 
 perform_pre_transformations(Trees, Height) ->
     set_oracles(Trees, aeo_state_tree:prune(Height, oracles(Trees))).
+
+-spec contracts(trees()) -> aect_state_tree:tree().
+contracts(Trees) ->
+    Trees#trees.contracts.
+
+-spec set_contracts(trees(), aect_state_tree:tree()) -> trees().
+set_contracts(Trees, Contracts) ->
+    Trees#trees{contracts = Contracts}.
 
 %%%=============================================================================
 %%% Internal functions

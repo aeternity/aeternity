@@ -7,4 +7,30 @@
 
 -module(aect_state_tree).
 
-%% PLACEHOLDER
+%% API
+-export([empty/0, insert_contract/2]).
+
+-export_type([tree/0]).
+
+%%%===================================================================
+%%% Types
+%%%===================================================================
+
+-record(contract_tree, {}).
+
+-opaque tree() :: #contract_tree{}.
+
+%%%===================================================================
+%%% API
+%%%===================================================================
+
+-spec empty() -> tree().
+empty() ->
+    %% PLACEHOLDER
+    #contract_tree{}.
+
+-spec insert_contract(aect_contracts:contract(), tree()) -> tree().
+insert_contract(_Contract, Tree) ->
+    %% PLACEHOLDER
+    Tree.
+
