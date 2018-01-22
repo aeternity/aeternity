@@ -18,6 +18,8 @@
         , mock_genesis/0
         , unmock_genesis/0
         , wait_for_it/2
+        , start_chain_db/0
+        , stop_chain_db/0
         , extend_block_chain_with_state/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
@@ -149,6 +151,14 @@ unmock_block_target_validation() ->
     meck:unload(aec_governance),
     meck:unload(aec_target).
 
+
+start_chain_db() ->
+    mnesia:start(),
+    [mnesia:create_table(Tab, Spec) ||
+        {Tab, Spec} <- aec_db:tables(ram)].
+
+stop_chain_db() ->
+    application:stop(mnesia).
 
 genesis_block() ->
     {B, _} = genesis_block_with_state(),

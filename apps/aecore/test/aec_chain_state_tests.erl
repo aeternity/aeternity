@@ -64,12 +64,14 @@
 basic_access_test_() ->
     {setup,
      fun() ->
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Access for header chain", fun basic_access_test_header_chain/0}
      , {"Access for block chain", fun basic_access_test_block_chain/0}
@@ -225,7 +227,7 @@ gc_test_fun(Length, Max, Interval, KeepAll) ->
     State2 = write_blocks_to_chain(BC, State1),
 
     %% Get the state trees that we would have persisted.
-    Trees = aec_chain_state:get_state_trees_for_persistance(State2),
+    Trees = aec_chain_state:get_state_trees_for_persistence(State2),
 
     %% Check that the top block hash is among the persisted.
     TopHash = top_block_hash(State2),
@@ -263,12 +265,14 @@ gc_test_fun(Length, Max, Interval, KeepAll) ->
 out_of_order_test_() ->
     {setup,
      fun() ->
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Out of order insert of header chain",
         fun out_of_order_test_header_chain/0}

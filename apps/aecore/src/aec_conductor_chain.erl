@@ -45,7 +45,10 @@
 %%%===================================================================
 
 init(State) ->
-    case aec_persistence:get_chain() of
+    aec_db:transaction(fun() -> init_state(State) end).
+
+init_state(State) ->
+    case aec_db:get_chain() of
         [] ->
             {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
             State1 = State#state{chain_state = aec_chain_state:new()},
@@ -53,10 +56,10 @@ init(State) ->
             State2;
         Chain ->
             %% TODO: This needs protection against not finding the block.
-            Hash = aec_persistence:get_top_block(),
-            TopState = aec_persistence:get_block_state(Hash),
+            Hash = aec_db:get_top_block(),
+            TopState = aec_db:get_block_state(Hash),
             InitTrees = [{Hash, TopState}],
-            ChainState = aec_chain_state:new_from_persistance(Chain, InitTrees),
+            ChainState = aec_chain_state:new_from_persistence(Chain, InitTrees),
             State#state{chain_state = ChainState}
     end.
 
@@ -191,7 +194,7 @@ persistence_store_block(Block, StateBefore, State) ->
     try begin
             %% Best effort persistence.
             %% If the server is not there, ignore it.
-            aec_persistence:write_block(Block),
+            aec_db:write_block(Block),
             persist_chain(StateBefore, State)
         end
     catch T:E ->
@@ -203,7 +206,7 @@ persistence_store_header(Header, StateBefore, State) ->
     try begin
             %% Best effort persistence.
             %% If the server is not there, ignore it.
-            aec_persistence:write_header(Header),
+            aec_db:write_header(Header),
             persist_chain(StateBefore, State)
         end
     catch T:E ->
@@ -216,23 +219,26 @@ persistence_store_header(Header, StateBefore, State) ->
 %%       should not be written unless we have persisted the state trees
 %%       to avoid problems on restart.
 persist_chain(StateBefore, StateAfter) ->
+    aec_db:transaction(fun() -> do_persist_chain(StateBefore, StateAfter) end).
+
+do_persist_chain(StateBefore, StateAfter) ->
     case aec_chain_state:top_header_hash(StateAfter) of
         undefined -> ok;
         TopHeaderHash ->
-            aec_persistence:write_top_header(TopHeaderHash),
+            aec_db:write_top_header(TopHeaderHash),
             case aec_chain_state:top_block_hash(StateAfter) of
                 undefined -> ok;
                 TopBlockHash ->
                     persist_state_trees(StateBefore, StateAfter),
-                    aec_persistence:write_top_block(TopBlockHash)
+                    aec_db:write_top_block(TopBlockHash)
             end
     end.
 
 persist_state_trees(StateBefore, StateAfter) ->
     %% Persist the state trees
-    Trees1 = aec_chain_state:get_state_trees_for_persistance(StateBefore),
-    Trees2 = aec_chain_state:get_state_trees_for_persistance(StateAfter),
+    Trees1 = aec_chain_state:get_state_trees_for_persistence(StateBefore),
+    Trees2 = aec_chain_state:get_state_trees_for_persistence(StateAfter),
     Persist = Trees2 -- Trees1,
     lists:foreach(fun({Hash, Trees}) ->
-                          aec_persistence:write_block_state(Hash, Trees)
+                          aec_db:write_block_state(Hash, Trees)
                   end, Persist).
