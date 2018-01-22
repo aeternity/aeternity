@@ -59,10 +59,10 @@ read(Tab, Key) ->
     mnesia:read(Tab, Key).
 
 write(Tab, Obj) ->
-    mnesia:write(Tab, Obj).
+    mnesia:write(Tab, Obj, write).
 
 delete(Tab, Key) ->
-    mnesia:write(Tab, Key).
+    mnesia:delete(Tab, Key, write).
 
 %% old-style chain_state initialization API
 
@@ -86,7 +86,7 @@ write_block(Block) ->
 
 write_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    ?t(mnesia:write(aec_headers, #aec_headers{key = Hash, value = Header})).
+    ?t(mnesia:write(#aec_headers{key = Hash, value = Header})).
 
 write_block_state(Hash, Trees) ->
     ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees})).
