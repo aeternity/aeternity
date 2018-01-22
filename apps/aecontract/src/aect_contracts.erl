@@ -23,6 +23,8 @@
 %%% Types
 %%%===================================================================
 
+-type amount() :: non_neg_integer().
+
 -record(contract, { owner   :: pubkey()
                   , account :: pubkey()
                   }).
@@ -30,6 +32,8 @@
 -opaque contract() :: #contract{}.
 
 -export_type([ contract/0
+             , pubkey/0
+             , amount/0
              ]).
 
 -define(PUB_SIZE, 65).

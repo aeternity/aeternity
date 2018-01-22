@@ -7,6 +7,7 @@
 -module(aect_create_tx).
 
 -include("contract_txs.hrl").
+-include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
@@ -38,6 +39,8 @@
 -define(CONTRACT_CREATE_TX_TYPE, <<"contract_create">>).
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_FEE, 4).
+
+-type amount() :: aect_contracts:amount().
 
 -opaque create_tx() :: #contract_create_tx{}.
 
