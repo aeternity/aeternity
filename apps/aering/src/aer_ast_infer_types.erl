@@ -51,13 +51,11 @@ infer_letfun(Env,{letfun,Attrib,{id,NameAttrib,Name},Args,What,Body}) ->
     ArgTypes  = [{ArgName,arg_type(T)} || {arg,_,{id,_,ArgName},T} <- Args],
     NewBody={typed,_,_,ResultType} = infer_expr(ArgTypes++Env,Body),
     unify(ResultType,arg_type(What)),
-    NewArgs = [{arg,A1,{id,A2,ArgName},instantiate(T)}
+    NewArgs = [{arg,A1,{id,A2,ArgName},T}
 	       || {{ArgName,T},{arg,A1,{id,A2,ArgName},_}} <- lists:zip(ArgTypes,Args)],
-    NewWhat = instantiate(ResultType),
-    IBody = instantiate(NewBody),
-    TypeSig = {type_sig,[T || {arg,_,_,T} <- NewArgs],NewWhat},
+    TypeSig = {type_sig,[T || {arg,_,_,T} <- NewArgs],ResultType},
     {{Name,TypeSig},
-     {letfun,Attrib,{id,NameAttrib,Name},NewArgs,NewWhat,IBody}}.
+     {letfun,Attrib,{id,NameAttrib,Name},NewArgs,ResultType,NewBody}}.
 
 print_typesig({Name,TypeSig}) ->
     io:format("Inferred ~p : ~s\n",[Name,pp(TypeSig)]).
