@@ -2,18 +2,13 @@ CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
 
 CT_TEST_FLAGS =
-CT_APP_INTEGRATION_TEST_FLAGS =
 EUNIT_TEST_FLAGS =
-ifneq (,$(findstring apps,$(SUITE)))
+ifdef SUITE
 	CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
-else ifneq (,$(findstring test,$(SUITE)))
-	CT_APP_INTEGRATION_TEST_FLAGS += --suite=$(SUITE)_SUITE
 endif
 
-ifneq (,$(findstring apps,$(GROUP)))
+ifdef GROUP
 	CT_TEST_FLAGS += --group=$(GROUP)
-else ifneq (,$(findstring test,$(GROUP)))
-	CT_APP_INTEGRATION_TEST_FLAGS += --group=$(GROUP)
 endif
 
 ifdef TEST
@@ -124,14 +119,7 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-ifneq (,$(findstring apps,$(SUITE)))
 	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
-else ifneq (,$(findstring test,$(SUITE)))
-	@./rebar3 as test do ct $(CT_APP_INTEGRATION_TEST_FLAGS)
-else
-	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
-	@./rebar3 as test do ct $(CT_APP_INTEGRATION_TEST_FLAGS) --dir test/*/
-endif
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
