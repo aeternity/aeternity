@@ -18,6 +18,8 @@
         , commit/1
         , new/1
         , is_db/1
+        , get_cache/1
+        , get_handle/1
         ]).
 
 -export_type([ db/0
@@ -92,6 +94,14 @@ commit(#db{commit = Commit, cache = Cache, handle = Handle} = DB) ->
 -spec is_db(term()) -> boolean().
 is_db(#db{}) -> true;
 is_db(_) -> false.
+
+-spec get_cache(db()) -> cache().
+get_cache(#db{cache = Cache}) ->
+    Cache.
+
+-spec get_handle(db()) -> handle().
+get_handle(#db{handle = Handle}) ->
+    Handle.
 
 %%%===================================================================
 %%% Cache

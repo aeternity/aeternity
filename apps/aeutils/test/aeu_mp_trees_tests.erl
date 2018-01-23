@@ -29,6 +29,11 @@ extension_test_() ->
     , {"Two step", fun test_extension_two_step/0}
     ].
 
+proof_test_() ->
+    [ {"Create and verify proofs", fun test_proofs/0}
+    , {"Check that bogus proofs don't work", fun test_bogus_proofs/0}
+    ].
+
 %%%=============================================================================
 %%% Basic tests
 
@@ -179,6 +184,60 @@ lookup_step(Key, Val, Step, T) ->
         {_, _} -> ok
     end.
 
+%%%=============================================================================
+%%% Proof tests
+
+test_proofs() ->
+    {T, Vals} = gen_mp_tree({634, 2345, 6987}, 1000),
+    test_create_proofs(Vals, T).
+
+test_create_proofs([{Key, Val}|Left], T) ->
+    {Hash, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    ?assertEqual(ok, aeu_mp_trees:verify_proof(Key, Val, Hash, ProofDB)),
+    test_create_proofs(Left, T);
+test_create_proofs([],_T) ->
+    ok.
+
+test_bogus_proofs() ->
+    {T, Vals} = gen_mp_tree({634, 2345, 6987}, 1000),
+    test_bogus_proofs(Vals, T).
+
+test_bogus_proofs([{Key, Val}|Left], T) ->
+    {Hash, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    BogusHash = case Hash of
+                    <<1, Rest/binary>> -> <<2, Rest/binary>>;
+                    <<_, Rest/binary>> -> <<1, Rest/binary>>
+                end,
+    BogusVal = <<0, Val/binary>>,
+    {BadHash, BogusDB} = alter_one_hash_value(ProofDB),
+    ?assertEqual(bad_proof,
+                 aeu_mp_trees:verify_proof(Key, Val, BogusHash, ProofDB)),
+    ?assertEqual({bad_value, Val},
+                 aeu_mp_trees:verify_proof(Key, BogusVal, Hash, ProofDB)),
+    ?assertMatch({bad_hash, BadHash},
+                 aeu_mp_trees:verify_proof(Key, Val, Hash, BogusDB)),
+    test_bogus_proofs(Left, T);
+test_bogus_proofs([],_T) ->
+    ok.
+
+alter_one_hash_value(DB) ->
+    Dict = aeu_mp_trees_db:get_cache(DB),
+    Size = dict:size(Dict),
+    Pos  = rand:uniform(Size - 1),
+    {Hash, Node} = lists:nth(Pos + 1, dict:to_list(Dict)),
+    NewNode =
+        case Node of
+            [X, Y] ->
+                [<<X/binary, 0>>, Y]; %% Leaf or Ext
+            Branch ->
+                case lists:reverse(Branch) of
+                    [<<>>|Rev] -> lists:reverse([<<1>>|Rev]);
+                    [_|Rev] -> lists:reverse([<<>>|Rev])
+                end
+        end,
+    BogusDB = aeu_mp_trees_db:put(Hash, NewNode, DB),
+    {Hash, BogusDB}.
+
 
 %%%=============================================================================
 %%% Test utils
@@ -212,3 +271,20 @@ delete_vals([], T) ->
 
 random_hexstring(N) when N >= 1 ->
     << <<(rand:uniform(15)):4>> || _ <- lists:seq(1, N) >>.
+
+new_dict_db() ->
+    aeu_mp_trees_db:new(dict_db_spec()).
+
+dict_db_spec() ->
+    #{ handle => dict:new()
+     , cache  => dict:new()
+     , get    => fun dict_db_get/2
+     , put    => fun dict:store/3
+     , commit => fun dict_db_commit/2
+     }.
+
+dict_db_get(Key, Dict) ->
+    {value, dict:fetch(Key, Dict)}.
+
+dict_db_commit(Cache, DB) ->
+    {ok, dict:new(), dict:merge(fun(_, _, Val) -> Val end, Cache, DB)}.
