@@ -24,6 +24,13 @@
          lookup_name/2,
          root_hash/1]).
 
+%% Export for test
+-ifdef(TEST).
+-export([ name_list/1
+        , commitment_list/1
+        ]).
+-endif.
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -124,6 +131,27 @@ root_hash(#ns_tree{mtree = MTree}) ->
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(#ns_tree{mtree = MTree} = Tree) ->
     Tree#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree)}.
+
+-ifdef(TEST).
+-spec commitment_list(tree()) -> list(commitment()).
+commitment_list(#ns_tree{mtree = Tree}) ->
+    IsCommitment = fun(MaybeC) ->
+                       try [aens_commitments:deserialize(MaybeC)]
+                       catch _:_ -> [] end
+                   end,
+    [ C || {_, Val} <- aeu_mtrees:to_list(Tree),
+           C <- IsCommitment(Val) ].
+
+-spec name_list(tree()) -> list(name()).
+name_list(#ns_tree{mtree = Tree}) ->
+    IsName = fun(MaybeC) ->
+                 try [aens_names:deserialize(MaybeC)]
+                 catch _:_ -> [] end
+             end,
+    [ C || {_, Val} <- aeu_mtrees:to_list(Tree),
+           C <- IsName(Val) ].
+-endif.
+
 
 %%%===================================================================
 %%% Internal functions
