@@ -93,6 +93,10 @@ infer_expr(Env,{list,As,Elems}) ->
     ElemType = fresh_uvar(As),
     [unify(ElemType,T) || {typed,_,_,T} <- NewElems],
     {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};    
+infer_expr(Env,{typed,As,Body,Type}) ->
+    {typed,_,NewBody,NewType} = infer_expr(Env,Body),
+    unify(NewType,Type),
+    {typed,As,NewBody,Type};
 infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
     TypedArgs = [infer_expr(Env,A) || A <- Args],
     ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
