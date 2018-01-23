@@ -16,6 +16,8 @@
          write_block_state/2,
          write_top_block/1,
          write_top_header/1,
+         get_block/1,
+         get_header/1,
          get_top_block/0,
          get_top_header/0,
          get_block_state/1]).
@@ -87,6 +89,20 @@ write_block(Block) ->
 write_header(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     ?t(mnesia:write(#aec_headers{key = Hash, value = Header})).
+
+get_block(Hash) ->
+    ?t(begin
+           [#aec_blocks{value = Block}] =
+               mnesia:read(aec_blocks, Hash),
+           Block
+       end).
+
+get_header(Hash) ->
+    ?t(begin
+           [#aec_headers{value = Header}] =
+               mnesia:read(aec_headers, Hash),
+           Header
+       end).
 
 write_block_state(Hash, Trees) ->
     ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees})).
@@ -186,17 +202,28 @@ persist_chain(ChainState) ->
 %% Initialization routines
 
 check_db() ->
-    io:fwrite("check_db()~n", []),
-    ok = application:ensure_started(mnesia),
-    ensure_disc_schema(),
-    ensure_mnesia_tables(disc),
-    io:fwrite("done: ~p~n", [mnesia:info()]).
+    try
+        Mode = case application:get_env(aecore, persist, false) of
+                   true  -> disc;
+                   false -> ram
+               end,
+        ensure_schema_storage_mode(Mode),
+        ok = application:ensure_started(mnesia),
+        ensure_mnesia_tables(Mode),
+        ok
+    catch
+        error:Reason ->
+            lager:error("CAUGHT error:~p / ~p",
+                        [Reason, erlang:get_stacktrace()]),
+            error(Reason)
+    end.
 
 ensure_mnesia_tables(Mode) ->
     Tabs = mnesia:system_info(tables),
-    Res = [mnesia:create_table(T, Spec) || {T, Spec} <- tables(Mode),
-                                           not lists:member(T, Tabs)],
-    io:fwrite("Tabs = ~p~n", [Res]).
+    [{atomic,ok} = mnesia:create_table(T, Spec)
+     || {T, Spec} <- tables(Mode),
+        not lists:member(T, Tabs)],
+    ok.
 
 
 set(Mode, Attrs) ->
@@ -205,10 +232,10 @@ set(Mode, Attrs) ->
 copies(disc) -> {disc_copies, [node()]};
 copies(ram ) -> {ram_copies , [node()]}.
 
-ensure_disc_schema() ->
-    case mnesia:table_info(schema, disc_copies) of
-        [] ->
-            mnesia:change_table_copy_type(schema, node(), disc_copies);
-        [_|_] ->
-            ok
+ensure_schema_storage_mode(ram) ->
+    ok = mnesia:delete_schema([node()]);
+ensure_schema_storage_mode(disc) ->
+    case mnesia:create_schema([node()]) of
+        {error, {_, {already_exists, _}}} -> ok;
+        ok -> ok
     end.

@@ -15,7 +15,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"},
+                                 {mnesia, "MNESIA  CXC 138 12", "4.15.1"}]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server,
          exec_app, exec, inet_gethost_native_sup, inet_gethost_native,
