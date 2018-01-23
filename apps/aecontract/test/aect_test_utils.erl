@@ -7,6 +7,7 @@
 
 -export([ new_state/0
         , contracts/1
+        , set_contracts/2
         , priv_key/2
         , call_tx/3
         , call_tx/4
@@ -51,9 +52,12 @@ priv_key(PubKey, State) ->
 %%% Info API
 %%%===================================================================
 
-contracts(_State) ->
-    %% PLACEHOLDER
-    [].
+contracts(State) ->
+    aec_trees:contracts(trees(State)).
+
+set_contracts(Contracts, State) ->
+    Trees = trees(State),
+    set_trees(aec_trees:set_contracts(Trees, Contracts), State).
 
 %%%===================================================================
 %%% Register tx
