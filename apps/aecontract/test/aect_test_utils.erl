@@ -64,14 +64,28 @@ create_tx(PubKey, State) ->
 
 create_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(PubKey, State), Spec0),
-    #contract_create_tx{ owner = PubKey
-                       , nonce = maps:get(nonce, Spec)
-                       , fee   = maps:get(fee, Spec)
+    #contract_create_tx{ owner      = PubKey
+                       , nonce      = maps:get(nonce, Spec)
+                       , fee        = maps:get(fee, Spec)
+                       , code       = maps:get(code, Spec)
+                       , vm_version = maps:get(vm_version, Spec)
+                       , deposit    = maps:get(deposit, Spec)
+                       , amount     = maps:get(amount, Spec)
+                       , gas        = maps:get(gas, Spec)
+                       , gas_price  = maps:get(gas_price, Spec)
+                       , call_data  = maps:get(call_data, Spec)
                        }.
 
 create_tx_default_spec(PubKey, State) ->
-    #{ fee   => 5
-     , nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end
+    #{ fee        => 5
+     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , code       => <<"NOT PROPER BYTE CODE">>
+     , vm_version => 0
+     , deposit    => 10
+     , amount     => 200
+     , gas        => 10
+     , gas_price  => 1
+     , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
      }.
 
 %%%===================================================================

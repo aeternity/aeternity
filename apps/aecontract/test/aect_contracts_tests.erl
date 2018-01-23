@@ -13,7 +13,7 @@
                         , id/1
                         , new/2
                         , owner/1
-                        , account/1
+                        , pubkey/1
                         , serialize/1
                         , set_owner/2
                         ]).
@@ -35,7 +35,7 @@ basic_getters() ->
     C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assert(is_binary(id(C))),
     ?assert(is_binary(owner(C))),
-    ?assert(is_binary(account(C))),
+    ?assert(is_binary(pubkey(C))),
     ok.
 
 basic_setters() ->
