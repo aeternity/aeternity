@@ -75,8 +75,6 @@ ast_body({id, _, Name}) ->
     #var_ref{name = Name};
 ast_body({int, _, Value}) ->
     #integer{value = Value};
-ast_body({typed, _, Body, _}) ->
-    ast_body(Body);
 ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
@@ -97,7 +95,22 @@ ast_body({switch,_,A,Cases}) ->
     %% patterns appear in cases.
     #switch{expr=ast_body(A),
 	    cases=[{ast_body(Pat),ast_body(Body)}
-		   || {'case',_,Pat,Body} <- Cases]}.
+		   || {'case',_,Pat,Body} <- Cases]};
+ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
+    %% Compile as a tuple with the fields in the order they appear in the definition.
+    NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
+    ast_body({tuple,Attrs,
+	      [case proplists:get_value(Name,NamedFields) of
+		   undefined ->
+		       [{line,Line}] = Attrs,
+		       io:format("Missing field in record: ~s (on line ~p)\n",[Name,Line]),
+		       exit({missing_field,Name});
+		   E ->
+		       E
+	       end
+	       || {field_t,_,_,{id,_,Name},_} <- DefFields]});
+ast_body({typed, _, Body, _}) ->
+    ast_body(Body).
     
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->

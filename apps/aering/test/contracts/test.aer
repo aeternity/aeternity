@@ -6,7 +6,8 @@ contract type Identity = {
 };
 
 contract Identity = {
-  type pair('a) = list('a);
+  type point('a) = {x:'a, y:'a};
+  type cp('a) = {x:'a, y:'a, color:'a};
 
   //   //if (x==42) 1 else (x*x);
   // };
@@ -30,18 +31,18 @@ contract Identity = {
   //    | [] => b;
   //    | (x::xs) => x::app(xs,b);
   //    };
-  let rec revt(l,r) =
-    switch(l) {
-    | [] => r;
-    | x::xs => revt(xs,x::r);
-    };
-  let rev(l) = revt(l,[]);
-  let main(x:int) = {
-    switch(rev([1,2,3])) {
-    | h::h => h;
-    };
-    };
- //let fac(n:int) = {
+  // let rec revt(l,r) =
+  //   switch(l) {
+  //   | [] => r;
+  //   | x::xs => revt(xs,x::r);
+  //   };
+  // let rev(l) = revt(l,[]);
+  // let main(x:int) = {
+  //   switch(rev([1,2,3])) {
+  //   | h::_ => h;
+  //   };
+  //   };
+  //let fac(n:int) = {
   //  if (n==0) 1 else (n*fac(n-1));
   //};
   //let main(x) = switch((12,34)) {
@@ -49,4 +50,6 @@ contract Identity = {
   //| (_,a) => x+a;
   //    | y => y+1;
   //  }
+  let main(x) = ({y:0>1, x:x==0}:point(bool));
+  //let main(x) = x;
 };
