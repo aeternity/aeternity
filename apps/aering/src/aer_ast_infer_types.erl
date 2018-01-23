@@ -71,6 +71,8 @@ arg_type(T) ->
 
 infer_expr(_Env,Body={int,As,_}) ->
     {typed,As,Body,{id,As,"int"}};
+infer_expr(_Env,Body={id,As,"_"}) ->
+    {typed,As,Body,fresh_uvar(As)};
 infer_expr(Env,Body={id,As,Name}) ->
     case proplists:get_value(Name,Env) of
 	undefined ->
@@ -117,8 +119,38 @@ infer_expr(Env,{'if',Attrs,Cond,Then,Else}) ->
     NewThen={typed,_,_,ThenType} = infer_expr(Env,Then),
     NewElse={typed,_,_,ElseType} = infer_expr(Env,Else),
     unify(ThenType,ElseType),
-    {typed,Attrs,{'if',Attrs,NewCond,NewThen,NewElse},ThenType}.
+    {typed,Attrs,{'if',Attrs,NewCond,NewThen,NewElse},ThenType};
+infer_expr(Env,{switch,Attrs,Expr,Cases}) ->
+    NewExpr = {typed,_,_,ExprType} = infer_expr(Env,Expr),
+    SwitchType = fresh_uvar(Attrs),
+    NewCases = [infer_case(Env,As,Pattern,ExprType,Branch,SwitchType) 
+		|| {'case',As,Pattern,Branch} <- Cases],
+    {typed,Attrs,{switch,Attrs,NewExpr,NewCases},SwitchType}.
 
+infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
+    Vars = free_vars(Pattern),
+    Names = [N || {id,_,N} <- Vars,
+		  N /= "_"],
+    case Names--lists:usort(Names) of
+	[] ->
+	    ok;
+	Nonlinear ->
+	    Plural = case lists:usort(Nonlinear) of
+			 [_] -> 
+			     "";
+			 _ ->
+			     "s"
+		     end,
+	    io:format("Repeated name~s in pattern on line ~p: ~s\n",
+		      [Plural,Line,[[N," "] || N <- lists:usort(Nonlinear)]]),
+	    error({non_linear_pattern,Pattern})
+    end,
+    NewEnv = [{Name,fresh_uvar(Attr)} || {id,Attr,Name} <- Vars] ++ Env,
+    NewPattern = {typed,_,_,PatType} = infer_expr(NewEnv,Pattern),
+    NewBranch = {typed,_,_,BranchType} = infer_expr(NewEnv,Branch),
+    unify(PatType,ExprType),
+    unify(BranchType,SwitchType),
+    {'case',Attrs,NewPattern,NewBranch}.
 
 infer_infix({IntOp,As}) 
   when IntOp=='+'; IntOp=='-'; IntOp=='*'; IntOp=='/';
@@ -131,12 +163,26 @@ infer_infix({RelOp,As})
        RelOp=='<='; RelOp=='>=' ->
     Int = {id,As,"int"},
     Bool = {id,As,"bool"},
-    {fun_t,As,[Int,Int],Bool}.
     {fun_t,As,[Int,Int],Bool};
 infer_infix({'::',As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t,As,{id,As,"list"},[ElemType]},
     {fun_t,As,[ElemType,ListType],ListType}.
+
+free_vars({int,_,_}) ->
+    [];
+free_vars(Id={id,_,_}) ->
+    [Id];
+free_vars({tuple,_,Cpts}) ->
+    free_vars(Cpts);
+free_vars({list,_,Elems}) ->
+    free_vars(Elems);
+free_vars({app,_,{'::',_},Args}) ->
+    free_vars(Args);
+free_vars(L) when is_list(L) ->
+    [V || Elem <- L,
+	  V <- free_vars(Elem)].
+
 
 unify(T1,T2) ->
   unify1(dereference(T1),dereference(T2)).
