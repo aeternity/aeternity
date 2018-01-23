@@ -1,4 +1,4 @@
--module(asm_call_SUITE).
+-module(aebytecode_aevm_SUITE).
 
 %% common_test exports
 -export(
