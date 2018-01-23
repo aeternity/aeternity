@@ -84,6 +84,15 @@ infer_expr(Env,Body={id,As,Name}) ->
 	Type ->
 	    {typed,As,Body,Type}
     end;
+infer_expr(Env,{tuple,As,Cpts}) ->
+    NewCpts = [infer_expr(Env,C) || C <- Cpts],
+    CptTypes = [T || {typed,_,_,T} <- NewCpts],
+    {typed,As,{tuple,As,NewCpts},{tuple_t,As,CptTypes}};
+infer_expr(Env,{list,As,Elems}) ->
+    NewElems = [infer_expr(Env,X) || X <- Elems],
+    ElemType = fresh_uvar(As),
+    [unify(ElemType,T) || {typed,_,_,T} <- NewElems],
+    {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};    
 infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
     TypedArgs = [infer_expr(Env,A) || A <- Args],
     ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
@@ -119,6 +128,11 @@ infer_infix({RelOp,As})
     Int = {id,As,"int"},
     Bool = {id,As,"bool"},
     {fun_t,As,[Int,Int],Bool}.
+    {fun_t,As,[Int,Int],Bool};
+infer_infix({'::',As}) ->
+    ElemType = fresh_uvar(As),
+    ListType = {app_t,As,{id,As,"list"},[ElemType]},
+    {fun_t,As,[ElemType,ListType],ListType}.
 
 unify(T1,T2) ->
   unify1(dereference(T1),dereference(T2)).
@@ -145,6 +159,12 @@ unify1({id,_,Name},{id,_,Name}) ->
     true;
 unify1({fun_t,_,Args1,Result1},{fun_t,_,Args2,Result2}) ->
     unify(Args1,Args2) andalso unify(Result1,Result2);
+unify1({app_t,_,{id,_,F},Args1},{app_t,_,{id,_,F},Args2}) 
+  when length(Args1)==length(Args2) ->
+    unify(Args1,Args2);
+unify1({tuple_t,_,As},{tuple_t,_,Bs}) 
+  when length(As)==length(Bs) ->
+    unify(As,Bs);
 unify1(A,B) ->
     cannot_unify(A,B),
     false.
@@ -201,19 +221,47 @@ instantiate1(X) ->
 
 
 cannot_unify(A,B) ->
+    create_uvar_names(),
     io:format("Cannot unify ~s (from line ~p)\n"
 	      "         and ~s (from line ~p)\n",
-	      [pp(A),line_number(A),pp(B),line_number(B)]).
+	      [pp(A),line_number(A),pp(B),line_number(B)]),
+    destroy_uvar_names().
 
 line_number(T) when is_tuple(T) ->
     proplists:get_value(line,element(2,T)).
 
 pp({type_sig,As,B}) ->
     ["(",pp(As),") => ",pp(B)];
+pp([]) ->
+    "";
 pp([T]) ->
     pp(T);
+pp([T|Ts]) ->
+    [pp(T),", "|pp(Ts)];
 pp({id,_,Name}) ->
     Name;
 pp({tvar,_,Name}) ->
-    Name.
+    Name;
+pp({uvar,_,R}) ->
+    uvar_name(R);
+pp({tuple_t,_,Cpts}) ->
+    ["(",pp(Cpts),")"];
+pp({app_t,_,{id,_,Name},Args}) ->
+    [Name,"(",pp(Args),")"].
 
+create_uvar_names() ->
+    ets:new(uvar_names,[named_table,public,set]),
+    ets:insert(uvar_names,{next,1}).
+
+uvar_name(R) ->
+    case ets:lookup(uvar_names,R) of
+	[] ->
+	    [{next,N}] = ets:lookup(uvar_names,next),
+	    ets:insert(uvar_names,[{next,N+1},{R,N}]);
+	[{R,N}] ->
+	    ok
+    end,
+    ["'_",integer_to_list(N)].
+
+destroy_uvar_names() ->
+    ets:delete(uvar_names).
