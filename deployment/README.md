@@ -40,5 +40,5 @@ Make sure you have SSH access to "epoch" remote user.
 ```bash
 PACKAGE="https://github.com/aeternity/epoch/releases/download/v0.2.0-good-peers/ubuntu-epoch-0.2.0.tar.gz"
 cd ansible && ansible-playbook -i inventory/openstack.yml --limit="epoch:&integration" \
-   --extra-vars "remote_package=$PACKAGE" deploy.yml
+   --extra-vars "package=$PACKAGE" deploy.yml
 ```
