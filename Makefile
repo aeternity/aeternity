@@ -4,11 +4,11 @@ VER := $(shell cat VERSION)
 CT_TEST_FLAGS =
 EUNIT_TEST_FLAGS =
 ifdef SUITE
-	CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
+CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
 endif
 
 ifdef GROUP
-	CT_TEST_FLAGS += --group=$(GROUP)
+CT_TEST_FLAGS += --group=$(GROUP)
 endif
 
 ifdef TEST
