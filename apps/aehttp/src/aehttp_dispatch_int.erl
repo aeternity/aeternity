@@ -179,7 +179,7 @@ handle_request('GetBlockLatest', Req, _Context) ->
         end, Req);
 
 handle_request('GetBlockPending', Req, _Context) ->
-    get_block(fun aec_conductor:get_block_candidate/0, Req);
+    get_block(fun aec_conductor:get_block_candidate/0, Req, false);
 
 handle_request('GetBlockTxsCountByHash', Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
@@ -290,7 +290,10 @@ sign_and_push_to_mempool(Tx) ->
     lager:debug("pushed; peek() -> ~p",
                 [pp(aec_tx_pool:peek(10))]).
 
-get_block(Fun, Req) when is_function(Fun, 0) ->
+get_block(Fun, Req) ->
+    get_block(Fun, Req, true).
+
+get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
             TxObjects = read_optional_bool_param('tx_objects', Req, false),
@@ -309,7 +312,15 @@ get_block(Fun, Req) when is_function(Fun, 0) ->
             Resp0 = aehttp_dispatch_ext:cleanup_genesis(SerializeFun(Block)),
             % we add swagger's definition name to the object so the
             % result could be validated against the schema
-            Resp = Resp0#{data_schema => DataSchema},
+            Resp1 = Resp0#{data_schema => DataSchema},
+            Resp =
+                case AddHash of
+                    true ->
+                        {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                        Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
+                    false ->
+                        Resp1
+                end,
             lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
         {_Code, _, _Reason} = Err ->

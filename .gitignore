@@ -29,6 +29,7 @@ apps/aecore/priv/keys
 REVISION
 apps/aehttp/priv/swagger-ui
 apps/aehttp/priv/swagger-docs
+apps/aeutils/src/endpoints.erl
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
 apps/aecore/priv
@@ -36,4 +37,7 @@ aevm_external
 apps/aering/src/aer_parser.erl
 apps/aering/src/aer_scan.erl
 apps/aebytecode/src/aeb_asm_scan.erl
-apps/*/doc/
+apps/*/doc/*.html
+apps/*/doc/edoc-info
+apps/*/doc/erlang.png
+apps/*/doc/stylesheet.css

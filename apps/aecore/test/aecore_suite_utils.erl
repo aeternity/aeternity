@@ -98,7 +98,7 @@ stop_node(N, Config) ->
          " && ./bin/epoch stop)"]).
 
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 100).
+    mine_blocks(Node, NumBlocksToMine, 10).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
     rpc:call(Node, application, set_env, [aecore, expected_mine_rate, MiningRate],

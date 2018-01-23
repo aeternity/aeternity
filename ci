@@ -30,7 +30,7 @@ case "${1:?}"-"${2:?}" in
         erl -version
         epmd -daemon
         ;;
-    install-dialyzer)
+    install-static_analysis)
         make dialyzer-install
         ;;
     install-*)
@@ -42,7 +42,8 @@ case "${1:?}"-"${2:?}" in
     script-eunit)
         make eunit
         ;;
-    script-dialyzer)
+    script-static_analysis)
+        ./rebar3 edoc
         make dialyzer
         ;;
     script-package)
@@ -80,7 +81,7 @@ case "${1:?}"-"${2:?}" in
 
         cd deployment/ansible
         ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv:?}" \
-            --extra-vars "local_package=${FinalPackagePath:?} env=${DeployEnv:?} tester_keys_password='${tester_keys_password:?}' datadog_api_key=${datadog_api_key:?} datadog_app_key=${datadog_app_key:?}" \
+            --extra-vars "package=${FinalPackagePath:?} env=${DeployEnv:?} tester_keys_password='${tester_keys_password:?}' datadog_api_key=${datadog_api_key:?} datadog_app_key=${datadog_app_key:?}" \
             deploy.yml
         ;;
     deploy-*)
