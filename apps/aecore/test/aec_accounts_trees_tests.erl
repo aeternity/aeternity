@@ -66,5 +66,6 @@ get_all_accounts_balances_test() ->
     T1 = aec_accounts_trees:enter(A1, T0),
     T2 = aec_accounts_trees:enter(A2, T1),
 
-    ?assertEqual([{<<"k2">>, 13}, {<<"k1">>, 11}],
-                 aec_accounts_trees:get_all_accounts_balances(T2)).
+    Expected = [{<<"k2">>, 13}, {<<"k1">>, 11}],
+    Actual   = aec_accounts_trees:get_all_accounts_balances(T2),
+    ?assertEqual(lists:sort(Actual), lists:sort(Expected)).
