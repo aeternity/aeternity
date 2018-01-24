@@ -1,7 +1,8 @@
 -record(trees, {
           accounts  :: aec_accounts_trees:tree(),
-          oracles   :: aeo_state_tree:tree(),
-          contracts :: aect_state_tree:tree()}).
+          oracles   :: aeo_state_tree:tree()
+          %% contracts :: aect_state_tree:tree()
+         }).
 -type(trees() :: #trees{}).
 
 %% Placeholder to define state Merkle trees
