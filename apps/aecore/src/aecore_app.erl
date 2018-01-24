@@ -39,7 +39,7 @@ check_env() ->
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
-               {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]).
+               {[<<"chain">>, <<"db_path">>]   , {set_env, db_path}}]). %% To be deleted alongside aec_persistence
 
 check_env(Spec) ->
     lists:foreach(

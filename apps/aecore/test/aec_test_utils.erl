@@ -153,13 +153,13 @@ unmock_block_target_validation() ->
 
 
 start_chain_db() ->
-    ok = mnesia:start(),
-    Res = [{Tab, {atomic, ok} = mnesia:create_table(Tab, Spec)} ||
-              {Tab, Spec} <- aec_db:tables(ram)],
-    ok = mnesia:wait_for_tables([T || {T,_} <- Res], 5000).
+    ok = application:start(setup),
+    ok = application:start(aemnesia),
+    ok = mnesia:wait_for_tables(mnesia:system_info(tables) -- [schema], 5000).
 
 stop_chain_db() ->
-    application:stop(mnesia).
+    ok = application:stop(aemnesia),
+    ok = application:stop(setup).
 
 genesis_block() ->
     {B, _} = genesis_block_with_state(),
