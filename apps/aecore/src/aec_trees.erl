@@ -68,9 +68,11 @@ set_contracts(Trees, Contracts) ->
 
 internal_hash(Trees) ->
     AccountsHash = pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
+    ContractsHash = pad_empty(aect_state_tree:root_hash(contracts(Trees))),
     OraclesHash = pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
-    List = lists:sort([ {<<"accounts"/utf8>>, AccountsHash}
-                      , {<<"oracles"/utf8>> , OraclesHash}
+    List = lists:sort([ {<<"accounts"/utf8>> , AccountsHash}
+                      , {<<"contracts"/utf8>>, ContractsHash}
+                      , {<<"oracles"/utf8>>  , OraclesHash}
                       ]),
     TopTree = lists:foldl(fun({Key, Val}, Acc) ->
                                   aeu_mtrees:enter(Key, Val, Acc)
