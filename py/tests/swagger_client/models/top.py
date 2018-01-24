@@ -32,58 +32,56 @@ class Top(object):
     """
     swagger_types = {
         'height': 'int',
-        'hash': 'str',
-        'prev_hash': 'str',
-        'state_hash': 'str',
-        'txs_hash': 'str',
-        'difficulty': 'int',
+        'prev_hash': 'EncodedHash',
+        'state_hash': 'EncodedHash',
+        'txs_hash': 'EncodedHash',
+        'target': 'int',
         'nonce': 'int',
         'time': 'int',
         'version': 'int',
-        'pow': 'str'
+        'pow': 'Pow',
+        'hash': 'str'
     }
 
     attribute_map = {
         'height': 'height',
-        'hash': 'hash',
         'prev_hash': 'prev_hash',
         'state_hash': 'state_hash',
         'txs_hash': 'txs_hash',
-        'difficulty': 'difficulty',
+        'target': 'target',
         'nonce': 'nonce',
         'time': 'time',
         'version': 'version',
-        'pow': 'pow'
+        'pow': 'pow',
+        'hash': 'hash'
     }
 
-    def __init__(self, height=None, hash=None, prev_hash=None, state_hash=None, txs_hash=None, difficulty=None, nonce=None, time=None, version=None, pow=None):
+    def __init__(self, height=None, prev_hash=None, state_hash=None, txs_hash=None, target=None, nonce=None, time=None, version=None, pow=None, hash=None):
         """
         Top - a model defined in Swagger
         """
 
         self._height = None
-        self._hash = None
         self._prev_hash = None
         self._state_hash = None
         self._txs_hash = None
-        self._difficulty = None
+        self._target = None
         self._nonce = None
         self._time = None
         self._version = None
         self._pow = None
+        self._hash = None
 
         if height is not None:
           self.height = height
-        if hash is not None:
-          self.hash = hash
         if prev_hash is not None:
           self.prev_hash = prev_hash
         if state_hash is not None:
           self.state_hash = state_hash
         if txs_hash is not None:
           self.txs_hash = txs_hash
-        if difficulty is not None:
-          self.difficulty = difficulty
+        if target is not None:
+          self.target = target
         if nonce is not None:
           self.nonce = nonce
         if time is not None:
@@ -92,6 +90,8 @@ class Top(object):
           self.version = version
         if pow is not None:
           self.pow = pow
+        if hash is not None:
+          self.hash = hash
 
     @property
     def height(self):
@@ -115,33 +115,12 @@ class Top(object):
         self._height = height
 
     @property
-    def hash(self):
-        """
-        Gets the hash of this Top.
-
-        :return: The hash of this Top.
-        :rtype: str
-        """
-        return self._hash
-
-    @hash.setter
-    def hash(self, hash):
-        """
-        Sets the hash of this Top.
-
-        :param hash: The hash of this Top.
-        :type: str
-        """
-
-        self._hash = hash
-
-    @property
     def prev_hash(self):
         """
         Gets the prev_hash of this Top.
 
         :return: The prev_hash of this Top.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._prev_hash
 
@@ -151,7 +130,7 @@ class Top(object):
         Sets the prev_hash of this Top.
 
         :param prev_hash: The prev_hash of this Top.
-        :type: str
+        :type: EncodedHash
         """
 
         self._prev_hash = prev_hash
@@ -162,7 +141,7 @@ class Top(object):
         Gets the state_hash of this Top.
 
         :return: The state_hash of this Top.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._state_hash
 
@@ -172,7 +151,7 @@ class Top(object):
         Sets the state_hash of this Top.
 
         :param state_hash: The state_hash of this Top.
-        :type: str
+        :type: EncodedHash
         """
 
         self._state_hash = state_hash
@@ -183,7 +162,7 @@ class Top(object):
         Gets the txs_hash of this Top.
 
         :return: The txs_hash of this Top.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._txs_hash
 
@@ -193,31 +172,31 @@ class Top(object):
         Sets the txs_hash of this Top.
 
         :param txs_hash: The txs_hash of this Top.
-        :type: str
+        :type: EncodedHash
         """
 
         self._txs_hash = txs_hash
 
     @property
-    def difficulty(self):
+    def target(self):
         """
-        Gets the difficulty of this Top.
+        Gets the target of this Top.
 
-        :return: The difficulty of this Top.
+        :return: The target of this Top.
         :rtype: int
         """
-        return self._difficulty
+        return self._target
 
-    @difficulty.setter
-    def difficulty(self, difficulty):
+    @target.setter
+    def target(self, target):
         """
-        Sets the difficulty of this Top.
+        Sets the target of this Top.
 
-        :param difficulty: The difficulty of this Top.
+        :param target: The target of this Top.
         :type: int
         """
 
-        self._difficulty = difficulty
+        self._target = target
 
     @property
     def nonce(self):
@@ -288,7 +267,7 @@ class Top(object):
         Gets the pow of this Top.
 
         :return: The pow of this Top.
-        :rtype: str
+        :rtype: Pow
         """
         return self._pow
 
@@ -298,10 +277,31 @@ class Top(object):
         Sets the pow of this Top.
 
         :param pow: The pow of this Top.
-        :type: str
+        :type: Pow
         """
 
         self._pow = pow
+
+    @property
+    def hash(self):
+        """
+        Gets the hash of this Top.
+
+        :return: The hash of this Top.
+        :rtype: str
+        """
+        return self._hash
+
+    @hash.setter
+    def hash(self, hash):
+        """
+        Sets the hash of this Top.
+
+        :param hash: The hash of this Top.
+        :type: str
+        """
+
+        self._hash = hash
 
     def to_dict(self):
         """

@@ -33,16 +33,18 @@ class BlockTimeSummary(object):
     swagger_types = {
         'height': 'int',
         'time': 'int',
-        'time_delta_to_parent': 'int'
+        'time_delta_to_parent': 'int',
+        'difficulty': 'float'
     }
 
     attribute_map = {
         'height': 'height',
         'time': 'time',
-        'time_delta_to_parent': 'time_delta_to_parent'
+        'time_delta_to_parent': 'time_delta_to_parent',
+        'difficulty': 'difficulty'
     }
 
-    def __init__(self, height=None, time=None, time_delta_to_parent=None):
+    def __init__(self, height=None, time=None, time_delta_to_parent=None, difficulty=None):
         """
         BlockTimeSummary - a model defined in Swagger
         """
@@ -50,6 +52,7 @@ class BlockTimeSummary(object):
         self._height = None
         self._time = None
         self._time_delta_to_parent = None
+        self._difficulty = None
 
         if height is not None:
           self.height = height
@@ -57,6 +60,8 @@ class BlockTimeSummary(object):
           self.time = time
         if time_delta_to_parent is not None:
           self.time_delta_to_parent = time_delta_to_parent
+        if difficulty is not None:
+          self.difficulty = difficulty
 
     @property
     def height(self):
@@ -120,6 +125,27 @@ class BlockTimeSummary(object):
         """
 
         self._time_delta_to_parent = time_delta_to_parent
+
+    @property
+    def difficulty(self):
+        """
+        Gets the difficulty of this BlockTimeSummary.
+
+        :return: The difficulty of this BlockTimeSummary.
+        :rtype: float
+        """
+        return self._difficulty
+
+    @difficulty.setter
+    def difficulty(self, difficulty):
+        """
+        Sets the difficulty of this BlockTimeSummary.
+
+        :param difficulty: The difficulty of this BlockTimeSummary.
+        :type: float
+        """
+
+        self._difficulty = difficulty
 
     def to_dict(self):
         """

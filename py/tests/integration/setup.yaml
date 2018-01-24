@@ -69,7 +69,7 @@ tests: # test specific settings
         alice: dev1
       blocks_to_mine: 7
       spend_tx:
-        bob_pubkey: Ym9iX2FkZHJlc3M= 
+        bob_pubkey: ak$3kj9ijauBtf2SZQdJm1f1 
         amount: 42
         fee: 2
     test_not_enough_tokens:
@@ -85,6 +85,6 @@ tests: # test specific settings
         bob: dev1
       blocks_to_mine: 3
       spend_tx:
-        alice_pubkey: YWxpY2VfYWRkcmVzcw==
+        alice_pubkey: ak$v6kQV2Z6uXv2PsUJdv955gE
         amount: 1000
         fee: 20

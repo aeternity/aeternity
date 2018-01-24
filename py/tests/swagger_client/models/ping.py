@@ -36,7 +36,7 @@ class Ping(object):
         'best_hash': 'str',
         'difficulty': 'float',
         'share': 'int',
-        'peers': 'list[str]'
+        'peers': 'list[Uri]'
     }
 
     attribute_map = {
@@ -60,14 +60,10 @@ class Ping(object):
         self._share = None
         self._peers = None
 
-        if source is not None:
-          self.source = source
-        if genesis_hash is not None:
-          self.genesis_hash = genesis_hash
-        if best_hash is not None:
-          self.best_hash = best_hash
-        if difficulty is not None:
-          self.difficulty = difficulty
+        self.source = source
+        self.genesis_hash = genesis_hash
+        self.best_hash = best_hash
+        self.difficulty = difficulty
         if share is not None:
           self.share = share
         if peers is not None:
@@ -91,6 +87,8 @@ class Ping(object):
         :param source: The source of this Ping.
         :type: str
         """
+        if source is None:
+            raise ValueError("Invalid value for `source`, must not be `None`")
 
         self._source = source
 
@@ -112,6 +110,8 @@ class Ping(object):
         :param genesis_hash: The genesis_hash of this Ping.
         :type: str
         """
+        if genesis_hash is None:
+            raise ValueError("Invalid value for `genesis_hash`, must not be `None`")
 
         self._genesis_hash = genesis_hash
 
@@ -133,6 +133,8 @@ class Ping(object):
         :param best_hash: The best_hash of this Ping.
         :type: str
         """
+        if best_hash is None:
+            raise ValueError("Invalid value for `best_hash`, must not be `None`")
 
         self._best_hash = best_hash
 
@@ -154,6 +156,8 @@ class Ping(object):
         :param difficulty: The difficulty of this Ping.
         :type: float
         """
+        if difficulty is None:
+            raise ValueError("Invalid value for `difficulty`, must not be `None`")
 
         self._difficulty = difficulty
 
@@ -175,6 +179,8 @@ class Ping(object):
         :param share: The share of this Ping.
         :type: int
         """
+        if share is not None and share > 32:
+            raise ValueError("Invalid value for `share`, must be a value less than or equal to `32`")
 
         self._share = share
 
@@ -184,7 +190,7 @@ class Ping(object):
         Gets the peers of this Ping.
 
         :return: The peers of this Ping.
-        :rtype: list[str]
+        :rtype: list[Uri]
         """
         return self._peers
 
@@ -194,7 +200,7 @@ class Ping(object):
         Sets the peers of this Ping.
 
         :param peers: The peers of this Ping.
-        :type: list[str]
+        :type: list[Uri]
         """
 
         self._peers = peers
