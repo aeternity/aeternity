@@ -223,14 +223,14 @@ for_client(#contract_create_tx{ owner      = OwnerPubKey,
       <<"vsn">>        => version(),
       <<"owner">>      => aec_base58c:encode(account_pubkey, OwnerPubKey),
       <<"nonce">>      => Nonce,
-      <<"code">>       => hex_bytes(Code),
-      <<"vm_version">> => hex_byte(VmVersion),
+      <<"code">>       => aect_utils:hex_bytes(Code),
+      <<"vm_version">> => aect_utils:hex_byte(VmVersion),
       <<"fee">>        => Fee,
       <<"deposit">>    => Deposit,
       <<"amount">>     => Amount,
       <<"gas">>        => Gas,
       <<"gas_price">>  => GasPrice,
-      <<"call_data">>  => hex_bytes(CallData)}.
+      <<"call_data">>  => aect_utils:hex_bytes(CallData)}.
 
 %%%===================================================================
 %%% Internal functions
@@ -243,18 +243,10 @@ type() ->
 version() ->
     ?CONTRACT_CREATE_TX_VSN.
 
--spec hex_byte(byte()) -> string().
-hex_byte(N) ->
-    hex_bytes(<<N:8>>).
-
--spec hex_bytes(binary()) -> string().
-hex_bytes(Bin) ->
-    lists:flatten("0x" ++ [io_lib:format("~2.16.0B", [B]) || <<B:8>> <= Bin]).
-
 -spec create_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
 create_contract_pubkey(Owner, Nonce) ->
     %% TODO: do this in a less ad-hoc way?
     Hash = aec_sha256:hash(<<Nonce:64, Owner/binary>>),
-    <<"0x", HexHash/binary>> = list_to_binary(hex_bytes(Hash)),
+    <<"0x", HexHash/binary>> = list_to_binary(aect_utils:hex_bytes(Hash)),
     <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
     PubKey.
