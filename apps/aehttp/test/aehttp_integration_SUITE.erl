@@ -98,7 +98,8 @@
 -export(
    [ws_get_genesis/1,
     ws_block_mined/1,
-    ws_refused_on_limit_reached/1
+    ws_refused_on_limit_reached/1,
+    ws_oracles/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -197,7 +198,8 @@ groups() ->
       [
        ws_get_genesis,
        ws_block_mined,
-       ws_refused_on_limit_reached
+       ws_refused_on_limit_reached,
+       ws_oracles
       ]}
 
     ].
@@ -1423,8 +1425,95 @@ ws_refused_on_limit_reached(_Config) ->
                                               0, WSDieTimeout),
     ok.
 
+ws_oracles(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Mine a block to make sure the Pubkey has some funds!
+    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"height">> := _Height, <<"hash">> := _Hash}} = ?WS:wait_for_event(miner, mined_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
+
+    %% Fetch the pubkey via HTTP
+    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
+
+    %% Register an oracle
+    ok = ?WS:register_test_for_event(ConnPid, oracle, register),
+    ?WS:send(ConnPid, oracle, register,
+             #{ type => 'OracleRegisterTxObject',
+                account => PK,
+                query_format => <<"the query spec">>,
+                response_format => <<"the response spec">>,
+                query_fee => 4,
+                ttl => #{ type => delta, value => 500 },
+                fee => 5 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"oracle_id">> := OId }} = ?WS:wait_for_event(oracle, register),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, register),
+
+    %% Mine a block to get the oracle onto the chain
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Register for events when the freshly registered oracle is queried!
+    ok = ?WS:register_test_for_event(ConnPid, oracle, subscribe),
+    ?WS:send(ConnPid, oracle, subscribe,
+             #{ type => query,
+                oracle_id => OId }),
+    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+
+    %% Post a query
+    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_query),
+    ok = ?WS:register_test_for_event(ConnPid, oracle, query),
+    ?WS:send(ConnPid, oracle, query,
+             #{ type => 'OracleQueryTxObject',
+                oracle_pubkey => OId,
+                query_ttl => #{ type => delta, value => 10 },
+                response_ttl => #{ type => delta, value => 10 },
+                query => <<"How are you doing?">>,
+                query_fee => 4,
+                fee => 7 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, query),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, query),
+
+    %% Mine a block and check that an event is receieved corresponding to
+    %% the query.
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_query),
+    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_query),
+
+    %% Subscribe to responses to the query.
+    ?WS:send(ConnPid, oracle, subscribe,
+             #{ type => response,
+                query_id => QId }),
+    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+
+    %% Post a response to the query
+    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_response),
+    ok = ?WS:register_test_for_event(ConnPid, oracle, response),
+    ?WS:send(ConnPid, oracle, response,
+             #{ type => 'OracleResponseTxObject',
+                query_id => QId,
+                response => <<"I am fine, thank you!">>,
+                fee => 3 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, response),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, response),
+
+    %% Finally mine a block and check that an event is received
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_response),
+    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_response),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
 %% ============================================================
-%% HTTP Requests 
+%% HTTP Requests
 %% ============================================================
 
 get_top() ->
