@@ -155,6 +155,9 @@ assemble_expr(Funs,Stack,Tail,{binop,'&&',A,B}) ->
     assemble_expr(Funs,Stack,Tail,{ifte,A,B,{integer,0}});
 assemble_expr(Funs,Stack,Tail,{binop,'||',A,B}) ->
     assemble_expr(Funs,Stack,Tail,{ifte,A,{integer,1},B});
+assemble_expr(Funs,Stack,Tail,{binop,'::',A,B}) ->
+    %% Take advantage of optimizations in tuple construction.
+    assemble_expr(Funs,Stack,Tail,{tuple,[A,B]});
 assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
     %% EEVM binary instructions take their first argument from the top
     %% of the stack, so to get operands on the stack in the right
@@ -399,8 +402,8 @@ assemble_infix('>') -> aeb_opcodes:mnemonic(?SGT);
 assemble_infix('==') -> aeb_opcodes:mnemonic(?EQ);
 assemble_infix('<=') -> [aeb_opcodes:mnemonic(?SGT),aeb_opcodes:mnemonic(?ISZERO)];
 assemble_infix('>=') -> [aeb_opcodes:mnemonic(?SLT),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
+assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)].
+%% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
 %% shuffle_stack reorders the stack before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
