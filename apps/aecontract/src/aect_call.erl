@@ -55,7 +55,7 @@
 
 -spec new(aect_call_tx:call_tx(), height()) -> call().
 new(CallTx, _BlockHeight) ->
-    C = #call{ sender_address   = aect_call_tx:sender(CallTx)
+    C = #call{ sender_address   = aect_call_tx:caller(CallTx)
              , sender_nonce     = aect_call_tx:nonce(CallTx)
              , contract_address = aect_call_tx:contract(CallTx)
              , fee              = aect_call_tx:fee(CallTx)

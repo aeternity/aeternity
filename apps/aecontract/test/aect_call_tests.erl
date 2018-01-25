@@ -59,10 +59,15 @@ call_tx() ->
     call_tx(#{}).
 
 call_tx(Override) ->
-    Map = #{ sender   => <<42:65/unit:8>>
-           , nonce    => 42
-           , contract => <<4711:65/unit:8>>
-           , fee      => 100
+    Map = #{ caller     => <<42:65/unit:8>>
+           , nonce      => 42
+           , contract   => <<4711:65/unit:8>>
+           , fee        => 100
+           , vm_version => 1
+           , amount     => 100
+           , gas        => 100
+           , gas_price  => 1
+           , call_data  => <<"CALL DATA">>
            },
     Map1 = maps:merge(Map, Override),
     {ok, Q} = aect_call_tx:new(Map1),
