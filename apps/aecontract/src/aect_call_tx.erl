@@ -76,16 +76,16 @@ nonce(#contract_call_tx{nonce = Nonce}) ->
 origin(#contract_call_tx{caller = CallerPubKey}) ->
     CallerPubKey.
 
-%% CallerAccount should exist, and have enough funds for the fee + the call_fee.
-%% Contract should exist, and call_fee should be enough
-%% Fee should cover TTL
+%% CallerAccount should exist, and have enough funds for the fee + gas cost
+%% Contract should exist and its vm_version should match the one in the call.
 -spec check(call_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
-                        contract = ContractPubKey,
-                        fee = Fee} = CallTx, Trees, Height) ->
+                        fee = Fee,
+                        gas = GasLimit, gas_price = GasPrice
+                       } = CallTx, Trees, Height) ->
+    RequiredAmount = Fee + GasLimit * GasPrice,
     Checks =
-        [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, Fee) end,
-         fun() -> check_contract(ContractPubKey, Trees, Height) end,
+        [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
          fun() -> check_call(CallTx, Trees, Height) end
         ],
 
@@ -99,10 +99,33 @@ signers(Tx) ->
     [caller(Tx)].
 
 -spec process(call_tx(), trees(), height()) -> {ok, trees()}.
-process(#contract_call_tx{caller = _CallerPubKey, nonce = _Nonce, fee = _Fee
-                         } = _Query, Trees, _Height) ->
-    %% PLACEHOLDER
-    {ok, Trees}.
+process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
+                          gas_price = GasPrice
+                         } = CallTx, Trees0, Height) ->
+    AccountsTree0  = aec_trees:accounts(Trees0),
+    ContractsTree0 = aec_trees:contracts(Trees0),
+
+    %% Create the call. Also runs the contract code and computes the amount of
+    %% gas used.
+    Call = aect_call:new(CallTx, Height),
+
+    %% TODO: handle transactions performed by the contract code
+
+    %% Charge the fee and the used gas to the caller
+    Amount         = Fee + aect_call:gas_used(Call) * GasPrice,
+    Caller0        = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
+    {ok, Caller1}  = aec_accounts:spend(Caller0, Amount, Nonce, Height),
+    AccountsTree1  = aec_accounts_trees:enter(Caller1, AccountsTree0),
+
+    %% Insert the call into the state tree. This is mainly to remember what the
+    %% return value was so that the caller can access it easily.
+    ContractsTree1 = aect_state_tree:insert_call(Call, ContractsTree0),
+
+    %% Update the state tree
+    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
+
+    {ok, Trees2}.
 
 serialize(#contract_call_tx{caller     = CallerPubKey,
                             nonce      = Nonce,
@@ -200,11 +223,17 @@ call_data(C) -> C#contract_call_tx.call_data.
 
 %% -- Local functions  -------------------------------------------------------
 
-check_call(_CallTx, _Trees, _Height) ->
-    %% PLACEHOLDER
-    ok.
-
-check_contract(_ContractPubKey, _Trees, _Height) ->
-    %% PLACEHOLDER
-    ok.
+%% Check that the contract exists and has the right VM version.
+check_call(#contract_call_tx{ contract   = ContractPubKey,
+                              vm_version = VmVersion },
+               Trees, _Height) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
+        {value, C} ->
+            case aect_contracts:vm_version(C) == VmVersion of
+                true  -> ok;
+                false -> {error, wrong_vm_version}
+            end;
+        none -> {error, contract_does_not_exist}
+    end.
 

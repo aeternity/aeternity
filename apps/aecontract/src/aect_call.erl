@@ -69,7 +69,10 @@ new(CallTx, BlockHeight) ->
              , gas_used         = 0
              , return_value     = <<>>
              },
-    assert_fields(C).
+    C = assert_fields(C),
+                             %% TODO: actually run the code!
+    {ReturnValue, GasUsed} = {<<"(not called)">>, 0},
+    C#call{ return_value = ReturnValue, gas_used = GasUsed }.
 
 -spec id(call()) -> id().
 id(I) ->
