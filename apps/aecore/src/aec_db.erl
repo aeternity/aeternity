@@ -2,7 +2,9 @@
 
 -export([check_db/0,           % called from setup hook
          load_database/0,      % called in aecore app start phase
-         tables/1]).           % for e.g. test database setup
+         tables/1,             % for e.g. test database setup
+         clear_db/0            % mostly for test purposes
+        ]).
 
 -export([transaction/1,
          write/2,
@@ -43,6 +45,12 @@
 
 -define(TAB(Record), {Record, set(Mode, record_info(fields, Record))}).
 
+%% start a transaction if there isn't already one
+-define(t(Expr), case get(mnesia_activity_state) of undefined ->
+                         transaction(fun() -> Expr end);
+                     _ -> Expr
+                 end).
+
 tables(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers)
@@ -53,6 +61,15 @@ tables(Mode) ->
    , ?TAB(aec_name_service_state)
     ].
 
+clear_db() ->
+    ?t([clear_table(T) || {T, _} <- tables(ram)]).
+
+clear_table(Tab) ->
+    ?t(begin
+           Keys = mnesia:all_keys(Tab),
+           [mnesia:delete(Tab, K, write) || K <- Keys],
+           ok
+       end).
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
@@ -67,12 +84,6 @@ delete(Tab, Key) ->
     mnesia:delete(Tab, Key, write).
 
 %% old-style chain_state initialization API
-
-%% start a transaction if there isn't already one
--define(t(Expr), case get(mnesia_activity_state) of undefined ->
-                         transaction(fun() -> Expr end);
-                     _ -> Expr
-                 end).
 
 get_chain() ->
     ?t(mnesia:select(
@@ -233,9 +244,55 @@ copies(disc) -> {disc_copies, [node()]};
 copies(ram ) -> {ram_copies , [node()]}.
 
 ensure_schema_storage_mode(ram) ->
-    ok = mnesia:delete_schema([node()]);
+    case disc_db_exists() of
+        {true, Dir} ->
+            lager:warning("Will not use existing Mnesia db (~s)", [Dir]),
+            set_dummy_mnesia_dir(Dir);
+        false ->
+            ok
+    end;
 ensure_schema_storage_mode(disc) ->
     case mnesia:create_schema([node()]) of
         {error, {_, {already_exists, _}}} -> ok;
         ok -> ok
+    end.
+
+disc_db_exists() ->
+    Dir = default_dir(),
+    case f_exists(Dir) of
+        true ->
+            {true, Dir};
+        false ->
+            false
+    end.
+
+f_exists(F) ->
+    case file:read_link_info(F) of
+        {ok, _} -> true;
+        _ -> false
+    end.
+
+set_dummy_mnesia_dir(Dir) ->
+    TS = erlang:system_time(millisecond),
+    NewDir = find_nonexisting(filename:absname(Dir), TS),
+    application:set_env(mnesia, dir, NewDir).
+
+find_nonexisting(Dir, N) ->
+    Path = Dir ++ "-" ++ integer_to_list(N),
+    case f_exists(Path) of
+        true ->
+            find_nonexisting(Dir, N+1);
+        false ->
+            Path
+    end.
+
+default_dir() ->
+    case application:get_env(mnesia, dir) of
+        undefined ->
+            %% This is is how mnesia produces the default. The result will
+            %% be the same as long as the current working directory doesn't
+            %% change between now and when mnesia starts.
+            filename:absname(lists:concat(["Mnesia.", node()]));
+        {ok, Dir} ->
+            Dir
     end.

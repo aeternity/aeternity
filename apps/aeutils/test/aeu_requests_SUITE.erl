@@ -90,6 +90,7 @@ application_test(Config) ->
     {ok, Started} = application:ensure_all_started(aehttp),
     application:stop(aehttp),
     application:stop(aecore),
+    application:stop(mnesia), % started by aecore
     timer:sleep(500),  %% time to terminate erlexec child
 
     [ application:stop(D) || D <- lists:reverse(Started -- AlreadyRunning) ],

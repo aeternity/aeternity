@@ -413,7 +413,7 @@ handle_call(get_mining_state,_From, State) ->
 handle_call(get_mining_workers, _From, State) ->
     {reply, worker_pids_by_tag(mining, State), State};
 handle_call(reinit_chain, _From, State0) ->
-    State1 = aec_conductor_chain:init(State0),
+    State1 = aec_conductor_chain:reinit(State0),
     TopBlockHash = aec_conductor_chain:get_top_block_hash(State1),
     State2 = State1#state{seen_top_block_hash = TopBlockHash},
     State =

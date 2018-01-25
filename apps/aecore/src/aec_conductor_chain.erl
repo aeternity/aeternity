@@ -13,6 +13,7 @@
 
 %% API
 -export([ init/1
+        , reinit/1
         , get_block/2
         , get_block_by_height/2
         , get_genesis_block/1
@@ -46,6 +47,12 @@
 
 init(State) ->
     aec_db:transaction(fun() -> init_state(State) end).
+
+reinit(State) ->
+    aec_db:transaction(fun() ->
+                               aec_db:clear_db(),
+                               init_state(State)
+                       end).
 
 init_state(State) ->
     case aec_db:get_chain() of
