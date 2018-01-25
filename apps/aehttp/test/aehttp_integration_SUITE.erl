@@ -728,7 +728,7 @@ info_less_than_30(_Config) ->
 test_info(BlocksToMine) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    rpc(application, set_env, [aecore, expected_mine_rate, 100]),
+    ok = rpc(application, set_env, [aecore, expected_mine_rate, 100]),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     {ok, 200, #{<<"last_30_blocks_time">> := Summary}} = get_info(),
@@ -883,8 +883,8 @@ internal_block_pending(_Config) ->
                     get_internal_block_preset("pending", Opt)
         end,
         [default, true, false]),
-    rpc(application, set_env, [aecore, expected_mine_rate,
-                               60 * 60 * 1000]), % aim at one block an hour
+    ok = rpc(application, set_env, [aecore, expected_mine_rate,
+                                    60 * 60 * 1000]), % aim at one block an hour
     add_spend_txs(),
     rpc(aec_conductor, start_mining, []),
     timer:sleep(100),% so the miner is started
@@ -1007,8 +1007,8 @@ block_txs_count_pending(_Config) ->
                                    BlocksToPremine),
         {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
                     get_block_txs_count_preset("pending"),
-    rpc(application, set_env, [aecore, expected_mine_rate,
-                               60 * 60 * 1000]), % aim at one block an hour
+    ok = rpc(application, set_env, [aecore, expected_mine_rate,
+                                    60 * 60 * 1000]), % aim at one block an hour
     InsertedTxsCount = add_spend_txs(),
     rpc(aec_conductor, start_mining, []),
     GetPending =

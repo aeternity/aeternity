@@ -101,8 +101,9 @@ mine_blocks(Node, NumBlocksToMine) ->
     mine_blocks(Node, NumBlocksToMine, 10).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
-    rpc:call(Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
-             5000),
+    ok = rpc:call(
+           Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
+           5000),
     aecore_suite_utils:subscribe(Node, block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
