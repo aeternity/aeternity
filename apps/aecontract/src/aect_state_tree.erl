@@ -8,7 +8,9 @@
 -module(aect_state_tree).
 
 %% API
--export([empty/0, insert_contract/2]).
+-export([ empty/0
+        , insert_contract/2
+        , root_hash/1]).
 
 -export_type([tree/0]).
 
@@ -33,4 +35,8 @@ empty() ->
 insert_contract(_Contract, Tree) ->
     %% PLACEHOLDER
     Tree.
+
+-spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
+root_hash(#contract_tree{}) ->
+    {error, empty}.
 
