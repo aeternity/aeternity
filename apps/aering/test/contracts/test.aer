@@ -14,7 +14,7 @@ contract Identity = {
   // };
   //let baz() = {age:3, name:(4:int)};
   //let foo(a,b,c) = c;
-  //let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1))
+  let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1));
   //    and main(x) = x::[x+1];
   // let lentr(l) = lent(0,l);
   //let rec len(l) =
@@ -65,7 +65,6 @@ contract Identity = {
   //              | {y:xx} => xx;
   //		};
   //let main(x) = {x:0, y:1, z:2};
-  let main(x) = switch (x) {
-      	      	| (y,z,4) => z;
-		};
+  let id(x) = x;
+  let double(x) = x+x;
 };

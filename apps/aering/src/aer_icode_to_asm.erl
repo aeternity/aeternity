@@ -18,13 +18,20 @@ convert(#{ contract_name := _ContractName
          , functions := Functions
               },
         _Options) ->
+    %% Create a function dispatcher
+    DispatchFun = {"_main",[{"arg","_"}],
+		   {switch,{var_ref,"arg"},
+		    [{{tuple,[fun_hash(FName)|make_args(Args)]},
+		      {funcall,{var_ref,FName},make_args(Args)}}
+		     || {FName,Args,_} <- Functions]}},
+    NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
-    	    || {Name, Args, _Body} <- Functions],
+    	    || {Name, Args, _Body} <- NewFunctions],
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
-    MainFunction = lookup_fun(Funs,"main",1),
+    MainFunction = lookup_fun(Funs,"_main",1),
     DispatchCode = [%% read all call data into memory at address zero
 		    aeb_opcodes:mnemonic(?CALLDATASIZE),
 		    push(0),
@@ -45,11 +52,17 @@ convert(#{ contract_name := _ContractName
     %% references take the form {push_label,Ref}, which is translated
     %% into a PUSH instruction.
     Code = [assemble_function(Funs,Name,Args,Body)
-	    || {Name,Args,Body} <- Functions],
+	    || {Name,Args,Body} <- NewFunctions],
     resolve_references(
         [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
 	 DispatchCode,
 	 Code]).
+
+make_args(Args) ->
+    [{var_ref,[I-1 + $a]} || I <- lists:seq(1,length(Args))].
+
+fun_hash(Name) ->
+    {tuple,[{integer,X} || X <- [length(Name)|aer_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
     [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name,length(Args))},
