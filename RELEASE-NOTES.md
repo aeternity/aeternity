@@ -123,10 +123,8 @@ chain:
     db_path: ./my_db
 ```
 
-Ensure the configured path for storing the blockchain exists:
-```
-mkdir /tmp/node/my_db
-```
+(The node automatically creates the directory `db_path` for storing the blockchain.)
+
 As of release "v0.5.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.4.x".
 
 You can validate the configuration file before starting the node:
