@@ -76,7 +76,7 @@ ast_body({id, _, Name}) ->
 ast_body({int, _, Value}) ->
     #integer{value = Value};
 ast_body({string,_,Bin}) ->
-    Cpts = [size(Bin)|binary_to_words(Bin)],
+    Cpts = [size(Bin)|aer_data:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
@@ -119,15 +119,7 @@ ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
 ast_body({typed, _, Body, _}) ->
-    ast_body(Body).
-
-binary_to_words(<<>>) ->
-    [];
-binary_to_words(<<N:256,Bin/binary>>) ->
-    [N|binary_to_words(Bin)];
-binary_to_words(Bin) ->
-    binary_to_words(<<Bin/binary,0>>).
-    
+    ast_body(Body).    
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body}| Funs],
