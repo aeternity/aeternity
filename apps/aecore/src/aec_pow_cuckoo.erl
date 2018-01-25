@@ -65,6 +65,8 @@ generate(Data, Target, Nonce) when Nonce >= 0,
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use base58
     Hash = aec_sha256:hash(Data),
+    ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
+           [Hash, Nonce, Target]),
     generate_int(Hash, Nonce, Target).
 
 %%------------------------------------------------------------------------------
@@ -415,7 +417,7 @@ parse_generation_result(["Solution" ++ ValuesStr | Rest], #state{os_pid = OsPid,
             {ok, Soln};
         false ->
             %% failed to meet target: go on, we may find another solution
-            ?debug("Failed to meet target", []),
+            ?debug("Failed to meet target (~p)", [Target]),
             parse_generation_result(Rest, State)
     end;
 parse_generation_result([Msg | T], State) ->
