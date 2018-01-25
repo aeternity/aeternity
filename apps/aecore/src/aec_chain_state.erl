@@ -18,7 +18,7 @@
         , get_missing_block_hashes/1
         , get_top_N_blocks_time_summary/2
         , get_n_headers_from_top/2
-        , get_state_trees_for_persistance/1
+        , get_state_trees_for_persistence/1
         , hash_is_connected_to_genesis/2
         , has_block/2
         , has_header/2
@@ -26,7 +26,7 @@
         , insert_header/2
         , new/0
         , new/1
-        , new_from_persistance/2
+        , new_from_persistence/2
         , top_block/1
         , get_block_state/2
         , account/2
@@ -36,6 +36,10 @@
         , top_header_hash/1
         , get_genesis_hash/1
         ]).
+
+%% used by aec_db for bootstrapping from persistence/backup
+-export([fold_blocks/3
+       , fold_headers/3]).
 
 -include("common.hrl"). %% Just for types
 -include("blocks.hrl"). %% Just for types
@@ -263,12 +267,12 @@ find_common_ancestor(Hash1, Hash2, ?assert_state() = State) ->
         _ -> {error, unknown_hash}
     end.
 
--spec get_state_trees_for_persistance(state())->[{Hash :: binary(), #trees{}}].
-get_state_trees_for_persistance(?assert_state() = State) ->
+-spec get_state_trees_for_persistence(state())->[{Hash :: binary(), #trees{}}].
+get_state_trees_for_persistence(?assert_state() = State) ->
     state_db_to_list(State).
 
--spec new_from_persistance([#block{}|#header{}], [{Hash :: binary(), #trees{}}]) -> state().
-new_from_persistance(Chain, StateTreesList) ->
+-spec new_from_persistence([#block{}|#header{}], [{Hash :: binary(), #trees{}}]) -> state().
+new_from_persistence(Chain, StateTreesList) ->
     State = state_db_init_from_list(StateTreesList, new()),
     NodeChain = [wrap_block_or_header(X) || X <- Chain],
     State1 = blocks_db_init_from_list(NodeChain, State),
@@ -998,3 +1002,15 @@ state_db_init_from_list(List, State) ->
 
 state_db_to_list(#{state_db := DB} =_State) ->
     db_to_list(DB).
+
+-spec fold_blocks(fun((_, _, _) -> any()), any(), state()) -> any().
+fold_blocks(Fun, Acc0, #{blocks_db := Store}) when is_function(Fun, 3) ->
+    dict:fold(fun(Hash, #node{type = block, content = Block}, Acc) ->
+                      Fun(Hash, Block, Acc)
+              end, Acc0, Store).
+
+-spec fold_headers(fun((_, _, _) -> any()), any(), state()) -> any().
+fold_headers(Fun, Acc0, #{blocks_db := Store}) when is_function(Fun, 3) ->
+    dict:fold(fun(Hash, #node{type = header, content = Hdr}, Acc) ->
+                      Fun(Hash, Hdr, Acc)
+              end, Acc0, Store).
