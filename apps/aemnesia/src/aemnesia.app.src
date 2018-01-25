@@ -1,0 +1,28 @@
+{application, aemnesia,
+ [{description, "Wrapper for the Mnesia OTP application in order to control related start order."},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { aemnesia_app, []}}, %% From https://github.com/erlang/otp/blob/OTP-20.2.2/lib/mnesia/src/mnesia.app.src#L51
+  {start_phases, [
+                  {ae_ensure_mnesia_tables, []} %% Start phase not defined in included app `mnesia` (see doc of `application:Module:start_phase/3`).
+                 ]},
+  {included_applications, [mnesia]},
+  {applications,
+   [kernel,
+    stdlib,
+    setup
+   ]},
+  {env,[
+        {'$setup_hooks',
+         [
+          {normal, [
+                    {110, {aemnesia_app, check_env, []}},
+                    {200, {aec_db, ensure_mnesia_schema_storage_mode, []}}
+                   ]}
+         ]}
+       ]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

@@ -1,8 +1,9 @@
 -module(aec_db).
 
--export([check_db/0,           % called from setup hook
-         load_database/0,      % called in aecore app start phase
-         tables/1]).           % for e.g. test database setup
+-export([ensure_mnesia_schema_storage_mode/0, % called in aemnesia app setup hook
+         ensure_mnesia_tables/0,  % called in aemnesia app start phase
+         load_database/0,         % called in aecore app start phase
+         tables/1]).              % for e.g. test database setup
 
 -export([transaction/1,
          write/2,
@@ -201,15 +202,9 @@ persist_chain(ChainState) ->
 
 %% Initialization routines
 
-check_db() ->
+ensure_mnesia_schema_storage_mode() ->
     try
-        Mode = case application:get_env(aecore, persist, false) of
-                   true  -> disc;
-                   false -> ram
-               end,
-        ensure_schema_storage_mode(Mode),
-        ok = application:ensure_started(mnesia),
-        ensure_mnesia_tables(Mode),
+        ensure_schema_storage_mode(schema_storage_mode()),
         ok
     catch
         error:Reason ->
@@ -218,7 +213,25 @@ check_db() ->
             error(Reason)
     end.
 
-ensure_mnesia_tables(Mode) ->
+ensure_mnesia_tables() ->
+    try
+        yes = mnesia:system_info(is_running),
+        ensure_tables(schema_storage_mode()),
+        ok
+    catch
+        error:Reason ->
+            lager:error("CAUGHT error:~p / ~p",
+                        [Reason, erlang:get_stacktrace()]),
+            error(Reason)
+    end.
+
+schema_storage_mode() ->
+    case application:get_env(aecore, persist, false) of
+        true  -> disc;
+        false -> ram
+    end.
+
+ensure_tables(Mode) ->
     Tabs = mnesia:system_info(tables),
     [{atomic,ok} = mnesia:create_table(T, Spec)
      || {T, Spec} <- tables(Mode),
