@@ -13,7 +13,6 @@
     stdlib,
     crypto,
     setup,
-    mnesia,
     eper,
     syntax_tools,
     compiler,

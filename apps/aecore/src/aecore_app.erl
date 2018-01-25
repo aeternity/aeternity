@@ -14,6 +14,7 @@
 
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
+    ok = application:ensure_started(mnesia),
     aecore_sup:start_link().
 
 start_phase(load_database, _StartType, _PhaseArgs) ->

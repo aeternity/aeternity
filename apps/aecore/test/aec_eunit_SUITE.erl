@@ -137,13 +137,21 @@ aec_sync_test(Config) ->
     app_stop(StartedApps, TempDir).
 
 
-prepare_app_start(App, Config) -> 
+prepare_app_start(App, Config) ->
+    try prepare_app_start_(App, Config)
+    catch
+        error:Reason ->
+            error({Reason, erlang:get_stacktrace()})
+    end.
+
+prepare_app_start_(App, Config) ->
     application:load(App),
     TempDir = aec_test_utils:create_temp_key_dir(),
     application:set_env(aecore, keys_dir, TempDir),
     application:set_env(aecore, password, <<"secret">>),
 
-    {ok, Deps} = application:get_key(App, applications), 
+    {ok, Deps0} = application:get_key(App, applications),
+    Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app
     AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
     [ ok = application:ensure_started(Dep) || Dep <- Deps ],
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
@@ -155,3 +163,8 @@ app_stop(Apps, TempDir) ->
     timer:sleep(200),
     ok.
 
+maybe_add_mnesia(App, Deps) ->
+    case lists:member(aecore, [App|Deps]) of
+        true  -> Deps ++ [mnesia];
+        false -> Deps
+    end.
