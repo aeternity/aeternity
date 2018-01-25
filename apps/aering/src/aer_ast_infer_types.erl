@@ -275,9 +275,32 @@ solve_ambiguous_field_constraints(Constraints) ->
 	    %% progress! Keep trying.
 	    solve_ambiguous_field_constraints(Unknown);
        true ->
-	    %% TODO: See if there is one record type that matches all
-	    %% the constraints on a uvar.
-	    error({ambiguous_constraints,Unknown})
+	    %% If there is a SMALLEST record type that solves all the
+	    %% field constraints for a variable, choose that
+	    %% type. This should enable, in particular, record
+	    %% expressions that list all the fields of a record, even
+	    %% if there is a record type with a superset of the
+	    %% fields.
+	    UVars = lists:usort([UVar || {UVar,_,_} <- Unknown]),
+	    Solutions = [solve_for_uvar(UVar,[Field || {U,{id,_,Field},_} <- Unknown,
+						       U==UVar])
+			 || UVar <- UVars],
+	    case lists:member(true,Solutions) of
+		true ->
+		    %% Progress!
+		    solve_ambiguous_field_constraints(Unknown);
+		false ->
+		    [io:format("Record\n  with fields ~s\n  on line ~p\n  could be any of ~s\n",
+			       [[[F," "] || F <- Fields],
+				Line,
+				[[T," "] || T <- Types]
+			       ])
+		     || {ambiguous_record,Line,Fields,Types} <- Solutions],
+		    [io:format("No record type has all the fields ~s(on line ~p)\n",
+			       [[[F," "] || F <- Fs], Line])
+		     || {no_records_with_all_fields,Line,Fs} <- Solutions],
+		    error({ambiguous_constraints,Solutions})
+	    end
     end.
 
 solve_known_record_types(Constraints) ->
@@ -311,6 +334,47 @@ solve_known_record_types(Constraints) ->
 	 end
 	 || {RecType={app_t,Attrs,RecId={id,_,RecName},_Args},FieldName,FieldType} <- DerefConstraints],
     DerefConstraints--SolvedConstraints.
+
+solve_for_uvar(UVar,Fields) ->
+    %% Does this set of fields uniquely identify a record type?
+    UniqueFields = lists:usort(Fields),
+    Candidates = [RecName || {_,_,{app_t,_,{id,_,RecName},_}} <- ets:lookup(record_fields,hd(Fields))],
+    TypesAndFields = [case ets:lookup(record_types,RecName) of
+			  [{RecName,_,RecFields}] ->		
+			      {RecName,[Field || {field_t,_,_,{id,_,Field},_} <- RecFields]};
+			  [] ->
+			      error({no_definition_for,RecName,in,Candidates})
+		      end
+		      || RecName <- Candidates],
+    SortByMissing = lists:sort([{length(RecFields--UniqueFields),RecName}
+				|| {RecName,RecFields} <- TypesAndFields,
+			       UniqueFields--RecFields==[]]),
+    {uvar,Attrs,_} = UVar,
+    Line = proplists:get_value(line,Attrs),
+    case lowest_scores(SortByMissing) of
+	[] ->
+	    {no_records_with_all_fields,Line,UniqueFields};
+	[RecName] ->
+	    [{RecName,Formals,_}] = ets:lookup(record_types,RecName),
+	    ets:new(freshen_tvars,[set,public,named_table]),
+	    FreshRecType = freshen({app_t,Attrs,{id,Attrs,RecName},Formals}),
+	    ets:delete(freshen_tvars),
+	    unify(UVar,FreshRecType),
+	    true;
+	StillPossible ->
+	    {ambiguous_record,Line,UniqueFields,StillPossible}
+    end.
+
+lowest_scores([{M,X},{N,Y}|More]) ->
+    if M<N ->
+	    [X];
+       M==N ->
+	    [X|lowest_scores([{N,Y}|More])]
+    end;
+lowest_scores([{M,X}]) ->
+    [X];
+lowest_scores([]) ->
+    [].
 
 %% During type inference, record types are represented by their
 %% names. But, before we pass the typed program to the code generator,

@@ -6,9 +6,10 @@ contract type Identity = {
 };
 
 contract Identity = {
-  type point('a) = {x:'a, y:'a};
-  type cp('a) = {x:'a, y:'a, color:'a};
-
+  type xy = {x:int, y:int};
+  type xz = {x:int, z:int};
+  type yz = {y:int, z:int};
+  type intpoint = point(int);
   //   //if (x==42) 1 else (x*x);
   // };
   //let baz() = {age:3, name:(4:int)};
@@ -60,7 +61,8 @@ contract Identity = {
   //		  |  "c" => 2;
   //		  };
   //let main(x) = x.color+1;
-  let main(x) = switch(({x:x, y:x+1}:point(int))) {
-                | {y:xx} => xx;
-		};
+  //let main(x) = switch(({x:x, y:x+1}:cp(int))) {
+  //              | {y:xx} => xx;
+  //		};
+  let main(x) = {x:0, y:1, z:2};
 };
