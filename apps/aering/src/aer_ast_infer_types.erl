@@ -208,6 +208,8 @@ free_vars({list,_,Elems}) ->
     free_vars(Elems);
 free_vars({app,_,{'::',_},Args}) ->
     free_vars(Args);
+free_vars({record,_,Fields}) ->
+    free_vars([E || {field,_,_,E} <- Fields]);
 free_vars(L) when is_list(L) ->
     [V || Elem <- L,
 	  V <- free_vars(Elem)].

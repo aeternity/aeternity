@@ -102,16 +102,16 @@ ast_body({switch,_,A,Cases}) ->
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
-    ast_body({tuple,Attrs,
-	      [case proplists:get_value(Name,NamedFields) of
-		   undefined ->
-		       [{line,Line}] = Attrs,
-		       io:format("Missing field in record: ~s (on line ~p)\n",[Name,Line]),
-		       exit({missing_field,Name});
-		   E ->
-		       E
-	       end
-	       || {field_t,_,_,{id,_,Name},_} <- DefFields]});
+    #tuple{cpts = 
+	       [case proplists:get_value(Name,NamedFields) of
+		    undefined ->
+			[{line,Line}] = Attrs,
+			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
+				       args = [Name,Line]};
+		    E ->
+			ast_body(E)
+		end
+		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I 
 	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
