@@ -124,6 +124,8 @@ test:
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
+all-tests: eunit test
+
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
 
