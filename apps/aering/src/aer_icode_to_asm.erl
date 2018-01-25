@@ -25,60 +25,31 @@ convert(#{ contract_name := _ContractName
     %% taken from the stack
     StopLabel = make_ref(),
     MainFunction = lookup_fun(Funs,"main",1),
-    EntryCode = entry_code(),
-    DummyCode = [%% push a return address to stop
-		 {push_label,StopLabel},
-		 %% swap argument to the top of the stack
-		 aeb_opcodes:mnemonic(?SWAP1),
-		 {push_label,MainFunction},
-		 aeb_opcodes:mnemonic(?JUMP),
-		 {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
-                 %% exit code get ret data.
-                 aeb_opcodes:mnemonic(?PUSH1), 0,
-                 aeb_opcodes:mnemonic(?MSTORE),
-                 %% Return mem[0]-mem[32]
-                 aeb_opcodes:mnemonic(?PUSH1), 32,
-                 aeb_opcodes:mnemonic(?PUSH1), 0,
-                 aeb_opcodes:mnemonic(?RETURN)
-		],
-   
+    DispatchCode = [%% read all call data into memory at address zero
+		    aeb_opcodes:mnemonic(?CALLDATASIZE),
+		    push(0),
+		    dup(1),
+		    aeb_opcodes:mnemonic(?CALLDATACOPY),
+		    %% push a return address to stop
+		    {push_label,StopLabel},
+		    %% push address of call data
+		    push(0),
+		    {push_label,MainFunction},
+		    aeb_opcodes:mnemonic(?JUMP),
+		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
+		    aeb_opcodes:mnemonic(?STOP)
+		   ],
+
     %% Code is a deep list of instructions, containing labels and
     %% references to them. Labels take the form {'JUMPDEST',Ref}, and
     %% references take the form {push_label,Ref}, which is translated
     %% into a PUSH instruction.
-    Code = [assemble_function(Funs,Name,Args,Body) 
+    Code = [assemble_function(Funs,Name,Args,Body)
 	    || {Name,Args,Body} <- Functions],
     resolve_references(
         [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
-         EntryCode,
-	 DummyCode,
+	 DispatchCode,
 	 Code]).
-
-entry_code() ->
-    [
-     aeb_opcodes:mnemonic(?PUSH1), 0,
-     aeb_opcodes:mnemonic(?CALLDATALOAD),
-     aeb_opcodes:mnemonic(?DUP1),
-     aeb_opcodes:mnemonic(?PUSH32),
-     %% Should be the hash of
-     %% the signature of the
-     %% first function (use 0 as placeholder)
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     aeb_opcodes:mnemonic(?EQ),
-     {push_label, "main_entry"},
-     aeb_opcodes:mnemonic(?JUMPI),
-     aeb_opcodes:mnemonic(?STOP),
-     {aeb_opcodes:mnemonic(?JUMPDEST), "main_entry"},
-     %% TODO: This code shoudl be dependent on the function arity.
-     %% Load data onto stack.
-     aeb_opcodes:mnemonic(?PUSH1),  32,
-     aeb_opcodes:mnemonic(?CALLDATALOAD)
-     %% TODO: Load complext data into memory.
-    ].
-
 
 assemble_function(Funs,Name,Args,Body) ->
     [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name,length(Args))},
@@ -305,11 +276,11 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
      assemble_cases(Funs,Stack,Tail,Close,Cases)].
 
 %% Entered with value to match on top of the stack.
-%% Generated code removes value, and 
+%% Generated code removes value, and
 %%   - jumps to Fail if no match, or
 %%   - binds variables, leaves them on the stack, and jumps to Succeed
 %% Result is a list of variables to add to the stack, and the matching
-%% code. 
+%% code.
 assemble_pattern(Succeed,Fail,{integer,N}) ->
     {[],[push(N),
 	 aeb_opcodes:mnemonic(?EQ),
@@ -352,7 +323,7 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
       {'JUMPDEST',Continue},
       %% Bring the pointer to the top of the stack--this reorders AVars!
       swap(length(AVars)),
-      push(32), 
+      push(32),
       aeb_opcodes:mnemonic(?ADD),
       BCode,
       case AVars of
@@ -430,7 +401,7 @@ shuffle_stack([N|Stack]) ->
 	    %% the job should be finished
 	    CorrectStack = lists:seq(N-1,1,-1),
 	    CorrectStack = Stack,
-	    [];		
+	    [];
 	MoveBy ->
 	    {Pref,[_|Suff]} = lists:split(MoveBy-1,Stack),
 	    [swap(MoveBy)|shuffle_stack([lists:nth(MoveBy,Stack)|Pref++[N|Suff]])]
@@ -490,7 +461,7 @@ pop_args(N) ->
 
 pop(N) ->
     [aeb_opcodes:mnemonic(?POP) || _ <- lists:seq(1,N)].
- 
+
 swap(0) ->
     %% Doesn't exist, but is logically a no-op.
     [];
@@ -562,7 +533,7 @@ use_labels(_,I) ->
 
 %% Peep-hole optimization.
 %% The compilation of conditionals can introduce jumps depending on
-%% constants 1 and 0. These are removed by peep-hole optimization. 
+%% constants 1 and 0. These are removed by peep-hole optimization.
 
 peep_hole(['PUSH1',0,{push_label,_},'JUMP1'|More]) ->
     peep_hole(More);
@@ -641,7 +612,7 @@ optimize_jumps(Code) ->
     NoDeadCode = eliminate_dead_code(ShortCircuited),
     MovedCode = merge_blocks(moveable_blocks(NoDeadCode)),
     %% Moving code may have made some labels superfluous.
-    eliminate_dead_code(MovedCode). 
+    eliminate_dead_code(MovedCode).
 
 
 jumps_to_jumps([{'JUMPDEST',Label},{push_label,Target},'JUMP'|More]) ->

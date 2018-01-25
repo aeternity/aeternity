@@ -64,5 +64,8 @@ contract Identity = {
   //let main(x) = switch(({x:x, y:x+1}:cp(int))) {
   //              | {y:xx} => xx;
   //		};
-  let main(x) = {x:0, y:1, z:2};
+  //let main(x) = {x:0, y:1, z:2};
+  let main(x) = switch (x) {
+      	      	| (y,z,4) => z;
+		};
 };
