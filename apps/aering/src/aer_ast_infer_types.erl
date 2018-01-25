@@ -146,7 +146,13 @@ infer_expr(Env,{record,Attrs,Fields}) ->
 		 || {field,A,FieldName,Expr} <- Fields],
     constrain([{RecordType,FieldName,T}
 	       || {field,_,FieldName,{typed,_,_,T}} <- NewFields]),
-    {typed,Attrs,{record,Attrs,NewFields},RecordType}.
+    {typed,Attrs,{record,Attrs,NewFields},RecordType};
+infer_expr(Env,{proj,Attrs,Record,FieldName}) ->
+    NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
+    FieldType = fresh_uvar(Attrs),
+    constrain({RecordType,FieldName,FieldType}),
+    {typed,Attrs,{proj,Attrs,NewRecord,FieldName},FieldType}.
+
 
 infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     Vars = free_vars(Pattern),

@@ -112,6 +112,12 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 		       E
 	       end
 	       || {field_t,_,_,{id,_,Name},_} <- DefFields]});
+ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
+    [Index] = [I 
+	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
+		      lists:zip(lists:seq(1,length(Fields)),Fields),
+		  Name==FieldName],
+    #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
 
