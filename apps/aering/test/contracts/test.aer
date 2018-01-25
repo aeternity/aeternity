@@ -16,11 +16,11 @@ contract Identity = {
   //let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1))
   //    and main(x) = x::[x+1];
   // let lentr(l) = lent(0,l);
-  // let len(l) =
-  //   switch(l) {
-  //    | [] => 0;
-  //    | x::xs => 1+len(xs);
-  //    };
+   let rec len(l) =
+     switch(l) {
+      | [] => 0;
+      | x::xs => 1+len(xs);
+      };
   // let lent(n,l) =
   //   switch (l) {
   //   | [] => n;
@@ -50,6 +50,13 @@ contract Identity = {
   //| (_,a) => x+a;
   //    | y => y+1;
   //  }
-  let main(x) = ({y:0>1, x:x==0}:point(bool));
+  //let main(x) = ({y:0>1, x:x==0}:point(bool));
   //let main(x) = x;
+  //let main(x) = len(1::2::[]);
+  //let main(x) = ((x,x):list('a));
+  let main(x) = switch("a") {
+      	      	|  "b" => 0;
+		|  "a" => 1;
+		|  "c" => 2;
+		};
 };

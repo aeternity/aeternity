@@ -83,6 +83,8 @@ arg_type(T) ->
 
 infer_expr(_Env,Body={int,As,_}) ->
     {typed,As,Body,{id,As,"int"}};
+infer_expr(_Env,Body={string,As,_}) ->
+    {typed,As,Body,{id,As,"string"}};
 infer_expr(_Env,Body={id,As,"_"}) ->
     {typed,As,Body,fresh_uvar(As)};
 infer_expr(Env,Body={id,As,Name}) ->
@@ -189,6 +191,8 @@ infer_infix({'::',As}) ->
     {fun_t,As,[ElemType,ListType],ListType}.
 
 free_vars({int,_,_}) ->
+    [];
+free_vars({string,_,_}) ->
     [];
 free_vars(Id={id,_,_}) ->
     [Id];

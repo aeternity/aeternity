@@ -75,6 +75,9 @@ ast_body({id, _, Name}) ->
     #var_ref{name = Name};
 ast_body({int, _, Value}) ->
     #integer{value = Value};
+ast_body({string,_,Bin}) ->
+    Cpts = [size(Bin)|binary_to_words(Bin)],
+    #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
@@ -111,6 +114,13 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 	       || {field_t,_,_,{id,_,Name},_} <- DefFields]});
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
+
+binary_to_words(<<>>) ->
+    [];
+binary_to_words(<<N:256,Bin/binary>>) ->
+    [N|binary_to_words(Bin)];
+binary_to_words(Bin) ->
+    binary_to_words(<<Bin/binary,0>>).
     
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
