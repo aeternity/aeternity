@@ -33,10 +33,12 @@ infer_contract(_,[]) ->
 
 infer_nonrec(Env,LetFun) ->
     ets:new(type_vars,[set,named_table,public]),
+    create_unification_errors(),
     create_field_constraints(),
     NewLetFun = infer_letfun(Env,LetFun),
     solve_field_constraints(),
     Result = {TypeSig,_} = instantiate(NewLetFun),
+    destroy_and_report_unification_errors(),
     destroy_field_constraints(),
     ets:delete(type_vars),
     print_typesig(TypeSig),
@@ -44,6 +46,7 @@ infer_nonrec(Env,LetFun) ->
     
 infer_letrec(Env,{letrec,Attrs,Defs}) ->
     ets:new(type_vars,[set,named_table,public]),
+    create_unification_errors(),
     create_field_constraints(),
     ExtendEnv = [{Name,fresh_uvar(A)}
 		 || {letfun,_,{id,A,Name},_,_,_} <- Defs]
@@ -52,6 +55,7 @@ infer_letrec(Env,{letrec,Attrs,Defs}) ->
     solve_field_constraints(),
     TypeSigs = instantiate([Sig || {Sig,_} <- Inferred]),
     NewDefs = instantiate([D || {_,D} <- Inferred]),
+    destroy_and_report_unification_errors(),
     [print_typesig(S) || S <- TypeSigs],
     destroy_field_constraints(),
     ets:delete(type_vars),
@@ -407,13 +411,21 @@ instantiate1([A|B]) ->
 instantiate1(X) ->
     X.
 
+%% Save unification failures for error messages.
 
 cannot_unify(A,B) ->
-    create_uvar_names(),
-    io:format("Cannot unify ~s (from line ~p)\n"
-	      "         and ~s (from line ~p)\n",
-	      [pp(A),line_number(A),pp(B),line_number(B)]),
-    destroy_uvar_names().
+    ets:insert(unification_errors,{A,B}).
+
+create_unification_errors() ->
+    ets:new(unification_errors,[bag,named_table,public]).
+
+destroy_and_report_unification_errors() ->
+    [io:format("Cannot unify ~s (from line ~p)\n"
+	       "         and ~s (from line ~p)\n",
+	       [pp(instantiate(A)),line_number(A),
+		pp(instantiate(B)),line_number(B)])
+     || {A,B} <- ets:tab2list(unification_errors)],
+    ets:delete(unification_errors).
 
 line_number(T) when is_tuple(T) ->
     proplists:get_value(line,element(2,T)).
@@ -430,26 +442,7 @@ pp({id,_,Name}) ->
     Name;
 pp({tvar,_,Name}) ->
     Name;
-pp({uvar,_,R}) ->
-    uvar_name(R);
 pp({tuple_t,_,Cpts}) ->
     ["(",pp(Cpts),")"];
 pp({app_t,_,{id,_,Name},Args}) ->
     [Name,"(",pp(Args),")"].
-
-create_uvar_names() ->
-    ets:new(uvar_names,[named_table,public,set]),
-    ets:insert(uvar_names,{next,1}).
-
-uvar_name(R) ->
-    case ets:lookup(uvar_names,R) of
-	[] ->
-	    [{next,N}] = ets:lookup(uvar_names,next),
-	    ets:insert(uvar_names,[{next,N+1},{R,N}]);
-	[{R,N}] ->
-	    ok
-    end,
-    ["'_",integer_to_list(N)].
-
-destroy_uvar_names() ->
-    ets:delete(uvar_names).
