@@ -3,7 +3,7 @@
           owner      :: aect_contracts:pubkey(),
           nonce      :: non_neg_integer(),
           code       :: binary(),
-          vm_version :: byte(),
+          vm_version :: aect_contracts:vm_version(),
           fee        :: aect_contracts:amount(),
           deposit    :: aect_contracts:amount(),
           amount     :: aect_contracts:amount(),

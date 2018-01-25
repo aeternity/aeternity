@@ -60,7 +60,7 @@ owner(#contract_create_tx{owner = OwnerPubKey}) ->
 code(#contract_create_tx{code = X}) ->
     X.
 
--spec vm_version(create_tx()) -> non_neg_integer().
+-spec vm_version(create_tx()) -> aect_contracts:vm_version().
 vm_version(#contract_create_tx{vm_version = X}) ->
     X.
 

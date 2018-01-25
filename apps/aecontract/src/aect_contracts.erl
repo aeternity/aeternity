@@ -57,7 +57,7 @@
         height     :: height(),
         %% Contract-specific fields
         owner      :: pubkey(),
-        vm_version :: non_neg_integer(),
+        vm_version :: vm_version(),
         code       :: binary(),     %% The byte code
         state      :: binary(),     %% The current state
         log        :: binary(),     %% The current event log
@@ -71,12 +71,14 @@
 
 -type id() :: pubkey().
 -type serialized() :: binary().
+-type vm_version() :: byte().
 
 -export_type([ contract/0
              , pubkey/0
              , amount/0
              , id/0
              , serialized/0
+             , vm_version/0
              ]).
 
 -define(PUB_SIZE, 65).
@@ -182,7 +184,7 @@ height(C) -> C#contract.height.
 owner(C) -> C#contract.owner.
 
 %% The VM version used by the contract.
--spec vm_version(contract()) -> non_neg_integer().
+-spec vm_version(contract()) -> vm_version().
 vm_version(C) -> C#contract.vm_version.
 
 %% The contract byte code.
@@ -232,7 +234,7 @@ set_height(X, C) ->
 set_owner(X, C) ->
     C#contract{owner = assert_field(owner, X)}.
 
--spec set_vm_version(non_neg_integer(), contract()) -> contract().
+-spec set_vm_version(vm_version(), contract()) -> contract().
 set_vm_version(X, C) ->
     C#contract{vm_version = assert_field(vm_version, X)}.
 
