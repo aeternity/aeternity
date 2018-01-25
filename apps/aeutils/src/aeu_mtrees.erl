@@ -1,18 +1,12 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
-%%% @doc In-memory Merkle trees.
+%%% @doc In-memory Merkle Patricia trees.
 %%%
-%%% The root hash depends on the order of the operations performed on
-%%% the tree.
-%%%
-%%% This module is a wrapper for 'gb_merkle_trees', implementing the
+%%% This module is a wrapper for 'aeu_mp_trees', implementing the
 %%% following enhancements:
-%%% * Stricter checks on arguments;
-%%% * Some less ambiguous return values;
 %%% * API compatible with the OTP 'gb_trees' module;
 %%% * It enables better type specifications in code using this module.
 %%%
-%%% @see gb_merkle_trees
 %%% @see gb_trees
 %%% @end
 %%%-------------------------------------------------------------------
@@ -48,12 +42,12 @@
 %% Enable specification of types of key and value for enabling code
 %% using this module to document types for readability.
 %% Both key and value must be binaries.
--type mtree(_K, _V) :: gb_merkle_trees:tree().
+-type mtree(_K, _V) :: aeu_mp_trees:tree().
 
 %% 256 bits as of ?HASH_BYTES * 8
 -type root_hash() :: <<_:256>>.
 
--type proof() :: gb_merkle_trees:merkle_proof().
+-type proof() :: aeu_mp_trees_db:db().
 
 %%%===================================================================
 %%% API - subset of OTP `gb_trees` module
@@ -61,37 +55,42 @@
 
 -spec empty() -> mtree().
 empty() ->
-    gb_merkle_trees:empty().
+    aeu_mp_trees:new().
 
 delete(Key, Tree) when ?IS_KEY(Key) ->
-    gb_merkle_trees:delete(Key, Tree).
+    aeu_mp_trees:delete(Key, Tree).
 
 get(Key, Tree) when ?IS_KEY(Key) ->
-    {value, Value} = lookup(Key, Tree),
-    Value.
+    case aeu_mp_trees:get(Key, Tree) of
+        <<>> -> error({not_present, Key});
+        Val -> Val
+    end.
 
 lookup(Key, Tree) when ?IS_KEY(Key) ->
-    case gb_merkle_trees:lookup(Key, Tree) of
-        none ->
+    case aeu_mp_trees:get(Key, Tree) of
+        <<>> ->
             none;
         Value when ?IS_VALUE(Value) ->
             {value, Value}
     end.
 
 enter(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
-    gb_merkle_trees:enter(Key, Value, Tree).
+    aeu_mp_trees:put(Key, Value, Tree).
 
-%% TODO: This should be implemented in gb_merkle_trees:insert/3
-%%       but that API is not present there.
 insert(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
     case lookup(Key, Tree) of
-        none -> gb_merkle_trees:enter(Key, Value, Tree);
+        none -> aeu_mp_trees:put(Key, Value, Tree);
         {value, _} -> error({already_present, Key})
     end.
 
 -spec to_list(mtree()) -> [{key(), value()}].
 to_list(Tree) ->
-    gb_merkle_trees:to_orddict(Tree).
+    Iterator = aeu_mp_trees:iterator(Tree),
+    to_list(aeu_mp_trees:iterator_next(Iterator), []).
+
+to_list('$end_of_table', Acc) -> Acc;
+to_list({Key, Val, Iter}, Acc) ->
+    to_list(aeu_mp_trees:iterator_next(Iter), [{Key, Val}|Acc]).
 
 %%%===================================================================
 %%% API - Merkle tree
@@ -100,8 +99,8 @@ to_list(Tree) ->
 %% Return root hash of specified non-empty Merkle tree.
 -spec root_hash(mtree()) -> {ok, root_hash()} | {error, empty}.
 root_hash(Tree) ->
-    case gb_merkle_trees:root_hash(Tree) of
-        undefined ->
+    case aeu_mp_trees:root_hash(Tree) of
+        <<>> ->
             {error, empty};
         Hash = <<_:?HASH_BYTES/unit:8>> ->
             {ok, Hash}
@@ -114,15 +113,36 @@ lookup_with_proof(Key, Tree) when ?IS_KEY(Key) ->
         none ->
             none;
         {value, Value} ->
-            Proof = gb_merkle_trees:merkle_proof(Key, Tree),
+            ProofDB = new_proof_db(),
+            {Value, Proof} = aeu_mp_trees:construct_proof(Key, ProofDB, Tree),
             {value_and_proof, Value, Proof}
     end.
 
 -spec verify_proof(key(), value(), root_hash(), proof()) -> {ok, verified} |
                                                             {error, term()}.
 verify_proof(Key, Value, RootHash, Proof) ->
-    gb_merkle_trees:verify_merkle_proof(Key, Value, RootHash, Proof).
+    case aeu_mp_trees:verify_proof(Key, Value, RootHash, Proof) of
+        ok -> {ok, verified};
+        Other -> {error, Other}
+    end.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+new_proof_db() ->
+    aeu_mp_trees_db:new(proof_db_spec()).
+
+proof_db_spec() ->
+    #{ handle => dict:new()
+     , cache  => dict:new()
+     , get    => fun proof_db_get/2
+     , put    => fun dict:store/3
+     , commit => fun proof_db_commit/2
+     }.
+
+proof_db_get(Key, Proof) ->
+    {value, dict:fetch(Key, Proof)}.
+
+proof_db_commit(_Cache,_DB) ->
+    error(no_commits_in_proof).

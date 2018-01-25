@@ -25,7 +25,6 @@
     exometer_core,
     yamerl,
     lager,
-    gb_merkle_trees,
     aeutils,
     msgpack,
     base58,
