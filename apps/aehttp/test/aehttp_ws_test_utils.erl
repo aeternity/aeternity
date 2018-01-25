@@ -8,6 +8,7 @@
          unregister_test_for_event/3,
          wait_for_event/2,
          wait_for_event/3,
+         wait_for_connect/1,
          stop/1]).
 
 %% behaviour exports
@@ -27,13 +28,18 @@ start_link(Host, Port) ->
     WsAddress = "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
+    wait_for_connect(Pid).
+
+wait_for_connect(Pid) ->
     case wait_for_event(websocket, connected, ?DEFAULT_SUB_TIMEOUT) of
         ok ->
             {ok, Pid};
         timeout ->
-            {error, timeout}
+            case process_info(Pid) of
+                undefined -> {error, rejected};
+                _ -> {error, still_connecting, Pid}
+            end
     end.
-    
 
 stop(ConnPid) ->
     ok = websocket_client:stop(ConnPid).
@@ -109,9 +115,12 @@ onconnect(_WSReq, Regs) ->
     inform_registered(WaitingPid, websocket, connected),
     {ok, Regs1}.
 
+
+ondisconnect({error, {400, <<"Bad Request">>}}, Regs) ->
+    {close, normal, Regs};
 ondisconnect({remote, closed}, Regs) ->
-    ct:log("Connection closed, reconnecting"),
-    {reconnect, Regs}.
+    ct:log("Connection closed, closing"),
+    {close, "closed", Regs}.
 
 websocket_handle({pong, _}, _ConnState, Regs) ->
     {ok, Regs};

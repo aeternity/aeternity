@@ -1353,24 +1353,74 @@ ws_block_mined(_Config) ->
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
+%% Currently the websockets are a queue: they have a maximim amount of
+%% acceptors. Every WS trying to connect after all acceptoprs are used
+%% goes into a queue. When the queue is full - the node starts rejecting
+%% any new incoming WS connections
 ws_refused_on_limit_reached(_Config) ->
-    AllowedWsCount = rpc(aeu_env, user_config_or_env,
+    %% maximum amount of acceptors
+    MaxWsCount = rpc(aeu_env, user_config_or_env,
                           [[<<"websocket">>, <<"internal">>, <<"acceptors">>],
                           aehttp, [internal, websocket, handlers], 10]), 
+    %% Maximum WS connections hanging in the queue
+    WSQueueSize = rpc(aehttp_app, ws_handlers_queue_max_size, []),
+    WSDieTimeout = 1000,
+    ct:log("Websocket acceptors: ~p, websocket acceptor's queue size ~p",
+           [MaxWsCount, WSQueueSize]),
     %% assert no WS running on the node
     0 = open_websockets_count(), 
+    %% start as many WS as needed to consume all acceptors
     WSPids =
         lists:map(
             fun(_) ->
               {ok, ConnPid} = ws_start_link(),
               ConnPid
             end,
-            lists:seq(1, AllowedWsCount)),
-    AllowedWsCount = open_websockets_count(), 
-    {error, timeout} = ws_start_link(),
+            lists:seq(1, MaxWsCount)),
+    %% assert expectation for amount of connected WSs
+    MaxWsCount = open_websockets_count(), 
+    WaitingPids =
+        lists:map(
+            fun(_) ->
+                %% try to connect a WS client; assert it does not connect and
+                %% is waiting
+                {error, still_connecting, WaitingPid} = ws_start_link(),
+                MaxWsCount = open_websockets_count(), 
+                WaitingPid
+            end,
+            lists:seq(1, WSQueueSize)),
+
+    %% Now both the acceptopr pool and queue are full. Try to connect a new WS
+    %% client and assert it fails
+    {error, rejected} = ws_start_link(),
+
+    %% split currently connected WS clients into two groups: first with as
+    %% many as there are WS clients waiting in the queue and all the rest in a
+    %% seperate list. The first group would be used for stopping WS clients
+    %% one by one while validating that one of the waiting WS clients connects
+    %% for each one stopped
+    {FirstWSsPids, OtherWSsPids} = lists:split(WSQueueSize, WSPids),
     lists:foreach(
-        fun(ConnPid) -> ?WS:stop(ConnPid) end,
-        WSPids),
+        fun(Pid) ->
+            %% stop one
+            ?WS:stop(Pid),
+            %% another one connects in its place and it doesn't matter which one
+            {ok, some_pid} = ?WS:wait_for_connect(some_pid),
+            %% total amount of connected WS clients is still the maximum
+            MaxWsCount = open_websockets_count()
+        end,
+        FirstWSsPids),
+    %% cleanup
+    lists:foreach(fun ?WS:stop/1, OtherWSsPids),
+    timer:sleep(100), % wait for all of them to die out
+    {ok, WSQueueSize} =
+        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
+                                              WSQueueSize, WSDieTimeout),
+    lists:foreach(fun ?WS:stop/1, WaitingPids),
+    timer:sleep(100), % wait for all of them to die out
+    {ok, 0} =
+        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
+                                              0, WSDieTimeout),
     ok.
 
 %% ============================================================
