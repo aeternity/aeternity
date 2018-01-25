@@ -18,10 +18,13 @@ start(_StartType, _StartArgs) ->
     aecore_sup:start_link().
 
 start_phase(load_database, _StartType, _PhaseArgs) ->
+    lager:debug("start_phase(load_database, _, _)", []),
     aec_db:load_database();
 start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
+    lager:debug("start_phase(create_metrics_probes, _, _)", []),
     aec_metrics:create_metrics_probes();
 start_phase(start_reporters, _StartType, _PhaseArgs) ->
+    lager:debug("start_phase(start_reporters, _, _)", []),
     aec_metrics_rpt_dest:check_config(),
     aec_metrics:start_reporters().
 

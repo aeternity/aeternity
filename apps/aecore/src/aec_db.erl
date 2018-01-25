@@ -148,11 +148,20 @@ get_chain_state_value(Key) ->
 %% start phase hook to load the database (maybe import from persistence)
 
 load_database() ->
-    wait_for_tables(),
-    maybe_import_data().
+    lager:debug("load_database()", []),
+    try
+        wait_for_tables(),
+        maybe_import_data()
+    catch
+        error:E ->
+            erlang:error({E, erlang:get_stacktrace()});
+        exit:E ->
+            exit({E, erlang:get_stacktrace()})
+    end.
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],
+    lager:debug("wait_for_tables (~p)", [Tabs]),
     case wait_for_tables(Tabs, 0, _TimePeriods = 5, _MaxWait = 60) of
         ok -> ok;
         {timeout, Mins, NotLoaded} ->
