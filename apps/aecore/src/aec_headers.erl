@@ -9,8 +9,6 @@
          difficulty/1,
          time_in_secs/1,
          time_in_msecs/1,
-         serialize_to_network/1,
-         deserialize_from_network/1,
          serialize_for_hash/1,
          serialize_for_store/1,
          deserialize_from_store/1,
@@ -54,11 +52,6 @@ time_in_secs(Header) ->
 
 time_in_msecs(Header) ->
     Header#header.time.
-
--spec serialize_to_network(header()) -> {ok, binary()}.
-serialize_to_network(H = #header{}) ->
-    {ok, Map} = serialize_to_map(H),
-    {ok, jsx:encode(Map)}.
 
 -spec serialize_to_map(header()) -> {ok, map()}.
 serialize_to_map(H = #header{}) ->
@@ -128,11 +121,6 @@ deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
     end;
 deserialize_from_store(_) -> false.
 
-
-
--spec deserialize_from_network(binary()) -> {ok, header()}.
-deserialize_from_network(B) when is_binary(B) ->
-    deserialize_from_map(jsx:decode(B, [return_maps])).
 
 -spec deserialize_from_map(map()) -> {ok, header()}.
 deserialize_from_map(H = #{}) ->

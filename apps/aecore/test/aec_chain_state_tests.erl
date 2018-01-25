@@ -41,8 +41,8 @@
         ]).
 
 -define(compareBlockResults(B1, B2),
-        ?assertEqual(aec_blocks:serialize_for_network(element(2,B1)),
-                     aec_blocks:serialize_for_network(element(2,B2)))).
+        ?assertEqual(aec_blocks:serialize_to_map(element(2,B1)),
+                     aec_blocks:serialize_to_map(element(2,B2)))).
 
 -define(FACTOR, 1000000000).
 -define(GENESIS_TARGET, 553713663).

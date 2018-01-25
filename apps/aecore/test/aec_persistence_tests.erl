@@ -5,8 +5,8 @@
 -include("blocks.hrl").
 
 -define(compareBlockResults(B1, B2),
-        ?assertEqual(aec_blocks:serialize_for_network(B1),
-                     aec_blocks:serialize_for_network(B2))).
+        ?assertEqual(aec_blocks:serialize_to_map(B1),
+                     aec_blocks:serialize_to_map(B2))).
 
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
