@@ -32,17 +32,15 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     ok = aeb_disassemble:pp(Code),
 
     %% Create the call data
-    Call = {<<"main">>, 42},
-    {0, Data} = aer_data:to_binary(Call),
-    Res =
-    io:format("Code: ~p~n", [Code]),
+    CallData = aer_abi:create_calldata(Code, "main", 42),
+    io:format("CallData: ~p~n", [CallData]),
     Res = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
                           address => 0,
                           caller => 0,
-                          data => Data,
+                          data => CallData,
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,

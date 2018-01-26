@@ -12,43 +12,30 @@
 
 -export([create_calldata/3]).
 
-create_calldata(Contract, Function, Arguments) ->
-    Arity = length(Arguments),
-    %% TODO: Verify that Function/Arity exists in Contract
-    _ArgumentTypes = get_types(Arguments),
-    %% TODO: Verify that the types matches the function signature.
-    FunctionHandle = encode_function(Contract, Function, Arity),
-    EncodedArguments = encode_arguments(Arguments, Arity),
-    <<FunctionHandle/binary,
-      EncodedArguments/binary>>.
+create_calldata(Contract, Function, Argument) ->
+    %% TODO: check that function exists in cotract.
+    FunctionHandle = encode_function(Contract, Function),
+    Call = {FunctionHandle, Argument},
+    {0, Data} = aer_data:to_binary(Call),
+    _ArgumentType = get_type(Argument),
+    %% TODO: Verify that the type matches the function signature.
+    Data.
 
-encode_function(_Contract,_Function,_Arity) ->
-    %% TODO: Get function encoding fom contract
-    %%       or use hash of function name.
-    <<0:?HASH_SIZE/unit:8>>.
-
-get_types(Arguments) ->
-    [get_type(A) || A <- Arguments].
+encode_function(_Contract, Function) ->
+     << <<X>> || X <- Function>>.
 
 %% TODO: Handle all ring data types.
-get_type(I) when is_integer(I) -> int.
+get_type(I) when is_integer(I) -> int;
+get_type(T) when is_tuple(T) ->
+    ListOfTypes = [get_type(E) || E <- tuple_to_list(T)],
+    {tuple, list_to_tuple(ListOfTypes)};
+get_type(B) when is_binary(B) ->
+    string;
+get_type([]) -> nil;
+get_type([E|_]) ->
+    {list, get_type(E)}.
+    
 
-encode_arguments(Arguments, Arity) ->
-    encode_arguments(Arguments, Arity, Arity, <<>>, <<>>).
 
-encode_arguments([Argument|Arguments], Arity, Mempos, Stack, Mem) ->
-    case encode_data(Argument) of
-        <<X:256>> -> encode_arguments(Arguments, Arity -1, Mempos,
-                                      <<Stack/binary, X:256>>,
-                                      Mem);
-        <<X:256, Data/binary>> ->
-            DataSize = size(Data),
-            encode_arguments(Arguments, Arity-1,
-                             Mempos+DataSize,
-                             <<Stack/binary, X:256>>,
-                             <<Mem/binary, Data/binary>>)
-    end;
-encode_arguments([], 0, _Mempos, Stack, Mem) ->
-    <<Stack/binary, Mem/binary>>.
 
-encode_data(I) when is_integer(I) -> <<I:256>>.
+
