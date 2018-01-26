@@ -14,6 +14,7 @@
         , id/1
         , new/3
         , serialize/1
+        , compute_contract_pubkey/2
           %% Getters
         , pubkey/1
         , balance/1
@@ -163,6 +164,14 @@ deserialize(Bin) ->
              , calls_hash = Calls
              , deposit    = Deposit
              }.
+
+-spec compute_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
+compute_contract_pubkey(Owner, Nonce) ->
+    %% TODO: do this in a less ad-hoc way?
+    Hash = aec_sha256:hash(<<Nonce:64, Owner/binary>>),
+    <<"0x", HexHash/binary>> = list_to_binary(aect_utils:hex_bytes(Hash)),
+    <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
+    PubKey.
 
 %%%===================================================================
 %%% Getters

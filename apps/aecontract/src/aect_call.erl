@@ -10,6 +10,7 @@
 %% API
 -export([ deserialize/1
         , id/1
+        , id/3
         , new/2
         , contract_address/1
         , caller_address/1
@@ -73,9 +74,15 @@ new(CallTx, BlockHeight) ->
 
 -spec id(call()) -> id().
 id(I) ->
-    Bin = <<(I#call.caller_address):?PUB_SIZE/binary,
-            (I#call.caller_nonce):?NONCE_SIZE,
-            (I#call.contract_address):?PUB_SIZE/binary>>,
+    id(I#call.caller_address,
+       I#call.caller_nonce,
+       I#call.contract_address).
+
+-spec id(pubkey(), non_neg_integer(), pubkey()) -> id().
+id(Caller, Nonce, Contract) ->
+    Bin = <<Caller:?PUB_SIZE/binary,
+            Nonce:?NONCE_SIZE,
+            Contract:?PUB_SIZE/binary>>,
     aec_sha256:hash(Bin).
 
 -spec serialize(call()) -> binary().
