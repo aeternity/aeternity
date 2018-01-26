@@ -66,13 +66,10 @@ new(CallTx, BlockHeight) ->
              , caller_nonce     = aect_call_tx:nonce(CallTx)
              , height           = BlockHeight
              , contract_address = aect_call_tx:contract(CallTx)
-             , gas_used         = 0
-             , return_value     = <<>>
+             , gas_used         = 0     %% These are filled later
+             , return_value     = <<>>  %% in aect_call_tx:process()
              },
-    C = assert_fields(C),
-                             %% TODO: actually run the code!
-    {ReturnValue, GasUsed} = {<<"(not called)">>, 0},
-    C#call{ return_value = ReturnValue, gas_used = GasUsed }.
+    assert_fields(C).
 
 -spec id(call()) -> id().
 id(I) ->

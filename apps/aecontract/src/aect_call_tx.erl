@@ -105,11 +105,14 @@ process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
 
-    %% Create the call. Also runs the contract code and computes the amount of
+    %% Create the call.
     %% gas used.
-    Call = aect_call:new(CallTx, Height),
+    Call0 = aect_call:new(CallTx, Height),
 
+    %% Run the contract code. Also computes the amount of gas left and updates
+    %% the call object.
     %% TODO: handle transactions performed by the contract code
+    Call = run_contract(CallTx, Call0, Height, Trees0),
 
     %% Charge the fee and the used gas to the caller
     Amount         = Fee + aect_call:gas_used(Call) * GasPrice,
@@ -236,4 +239,42 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
             end;
         none -> {error, contract_does_not_exist}
     end.
+
+%% -- Running contract code --------------------------------------------------
+
+%% Call the contract and update the call object with the return value and gas
+%% used.
+-spec run_contract(call_tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
+run_contract(#contract_call_tx
+             { caller    = Caller
+             , contract  = ContractPubKey
+             , gas       = Gas
+             , gas_price = GasPrice
+             , call_data = CallData
+             , amount    = Value
+             } = _Tx, Call, Height, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    Code          = aect_contracts:code(Contract),
+    InitState     =
+        aevm_eeevm_state:init(
+            #{ exec => #{ code     => Code,
+                          address  => 0,        %% We start executing at address 0
+                          caller   => Caller,
+                          data     => CallData,
+                          gas      => Gas,
+                          gasPrice => GasPrice,
+                          origin   => Caller,
+                          value    => Value },
+             %% TODO: set up the env properly
+             env => #{currentCoinbase   => 0,
+                      currentDifficulty => 0,
+                      currentGasLimit   => Gas,
+                      currentNumber     => Height,
+                      currentTimestamp  => 0},
+             pre => #{}},
+          #{trace => false}),
+    #{ gas := GasLeft, out := ReturnValue } = aevm_eeevm:eval(InitState),
+    aect_call:set_gas_used(Gas - GasLeft,
+        aect_call:set_return_value(ReturnValue, Call)).
 
