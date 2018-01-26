@@ -101,8 +101,40 @@ call_contract_negative(_Cfg) ->
     ok.
 
 call_contract(_Cfg) ->
-    %% PLACEHOLDER
-    ok.
+    S0            = aect_test_utils:new_state(),
+    {Owner,  S1}  = aect_test_utils:setup_new_account(S0),
+    {Caller, S2}  = aect_test_utils:setup_new_account(S1),
+    OwnerPrivKey  = aect_test_utils:priv_key(Owner, S2),
+    CallerPrivKey = aect_test_utils:priv_key(Caller, S2),
+
+    CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
+
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aer"),
+    CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract}, S2),
+
+    %% Test that the create transaction is accepted
+    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S2),
+    ContractKey = aect_contracts:compute_contract_pubkey(Owner, aect_create_tx:nonce(CreateTx)),
+
+    %% Now call check that we can call it.
+    Fee           = 107,
+    GasPrice      = 2,
+    Arg           = 42,
+    {0, CallData} = aer_data:to_binary({<<"main">>, Arg}),
+    CallTx = aect_test_utils:call_tx(Caller, ContractKey,
+                                     #{call_data => CallData, gas_price => GasPrice, fee => Fee}, S3),
+    {SignedTx1, [SignedTx1], S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),
+    CallId = aect_call:id(Caller, aect_call_tx:nonce(CallTx), ContractKey),
+
+    %% Check that it got stored and that we got the right return value
+    Call = aect_state_tree:get_call(ContractKey, CallId, aect_test_utils:contracts(S4)),
+    <<Arg:256>> = aect_call:return_value(Call),
+
+    %% ...and that we got charged the right amount for gas and fee.
+    NewCallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
+    NewCallerBalance = CallerBalance - Fee - GasPrice * aect_call:gas_used(Call),
+
+    {ok, S4}.
 
 %%%===================================================================
 %%% State trees

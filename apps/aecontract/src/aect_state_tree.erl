@@ -60,7 +60,7 @@ get_contract(Id, #contract_tree{ contracts = CtTree }) ->
 -spec lookup_contract(aect_contracts:id(), tree()) -> {value, aect_contracts:contract()} | none.
 lookup_contract(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#contract_tree.contracts) of
-        {value, Val} -> {value, aeo_contracts:deserialize(Val)};
+        {value, Val} -> {value, aect_contracts:deserialize(Val)};
         none         -> none
     end.
 

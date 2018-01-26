@@ -44,7 +44,13 @@ convert(#{ contract_name := _ContractName
 		    {push_label,MainFunction},
 		    aeb_opcodes:mnemonic(?JUMP),
 		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
-		    aeb_opcodes:mnemonic(?STOP)
+                    %% For now we simply return the top of the stack as an integer.
+                    aeb_opcodes:mnemonic(?PUSH1), 0,
+                    aeb_opcodes:mnemonic(?MSTORE),
+                    %% Return mem[0]-mem[32]
+                    aeb_opcodes:mnemonic(?PUSH1), 32,
+                    aeb_opcodes:mnemonic(?PUSH1), 0,
+                    aeb_opcodes:mnemonic(?RETURN)
 		   ],
 
     %% Code is a deep list of instructions, containing labels and

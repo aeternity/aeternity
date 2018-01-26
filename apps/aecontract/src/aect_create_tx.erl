@@ -154,7 +154,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    ContractPubKey = create_contract_pubkey(OwnerPubKey, Nonce),
+    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
     Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
     ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
 
@@ -243,10 +243,3 @@ type() ->
 version() ->
     ?CONTRACT_CREATE_TX_VSN.
 
--spec create_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
-create_contract_pubkey(Owner, Nonce) ->
-    %% TODO: do this in a less ad-hoc way?
-    Hash = aec_sha256:hash(<<Nonce:64, Owner/binary>>),
-    <<"0x", HexHash/binary>> = list_to_binary(aect_utils:hex_bytes(Hash)),
-    <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
-    PubKey.

@@ -49,7 +49,7 @@ execute_identy_fun_from_ring_file(_Cfg) ->
                pre => #{}},
             #{trace => true})
          ),
-    #{ stack := [RetVal] } = Res,
-    42 = RetVal,
+    #{ out := RetVal } = Res,
+    <<42:256>> = RetVal,
     ok.
 
