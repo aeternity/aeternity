@@ -2,5 +2,5 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-encode_call_with_integer_test_() -> 
+encode_call_with_integer_test() -> 
     <<0:256, 42:256>> = aer_abi:create_calldata("", "main", [42]).
