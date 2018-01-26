@@ -15,8 +15,8 @@
 
 convert(Tree, Options) ->
 %% Add this line to turn on the type-checker:
-%%    code(aer_ast_infer_types:infer(Tree),
-    code(Tree,
+    code(aer_ast_infer_types:infer(Tree),
+%%    code(Tree,
 	 #{ functions => []
 	  , env => []
 	  , options => Options}).
@@ -48,6 +48,13 @@ contract_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
     FunBody = ast_body(Body),
     NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
     contract_to_icode(Rest, NewIcode);
+contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
+    %% OBS! This code ignores the letrec structure of the source,
+    %% because the back end treats ALL declarations as recursive! We
+    %% need to decide whether to (a) modify the back end to respect
+    %% the letrec structure, or (b) (preferably) modify the front end
+    %% just to parse a list of (mutually recursive) definitions.
+    contract_to_icode(Defs++Rest, Icode);
 contract_to_icode([], Icode) -> Icode;
 contract_to_icode(Code, Icode) ->
     io:format("Unhandled code ~p~n",[Code]),
@@ -68,8 +75,9 @@ ast_body({id, _, Name}) ->
     #var_ref{name = Name};
 ast_body({int, _, Value}) ->
     #integer{value = Value};
-ast_body({typed, _, Body, _}) ->
-    ast_body(Body);
+ast_body({string,_,Bin}) ->
+    Cpts = [size(Bin)|aer_data:binary_to_words(Bin)],
+    #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
@@ -90,8 +98,28 @@ ast_body({switch,_,A,Cases}) ->
     %% patterns appear in cases.
     #switch{expr=ast_body(A),
 	    cases=[{ast_body(Pat),ast_body(Body)}
-		   || {'case',_,Pat,Body} <- Cases]}.
-    
+		   || {'case',_,Pat,Body} <- Cases]};
+ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
+    %% Compile as a tuple with the fields in the order they appear in the definition.
+    NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
+    #tuple{cpts = 
+	       [case proplists:get_value(Name,NamedFields) of
+		    undefined ->
+			[{line,Line}] = Attrs,
+			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
+				       args = [Name,Line]};
+		    E ->
+			ast_body(E)
+		end
+		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
+ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
+    [Index] = [I 
+	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
+		      lists:zip(lists:seq(1,length(Fields)),Fields),
+		  Name==FieldName],
+    #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
+ast_body({typed, _, Body, _}) ->
+    ast_body(Body).    
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body}| Funs],

@@ -6,20 +6,18 @@ contract type Identity = {
 };
 
 contract Identity = {
-  type pair('a) = a=>a;
-
-  // let main(x:int) = {
-  //   switch(rev([1,2,3])) {
-  //   | h::t => h;
-  //   };
+  type xy = {x:int, y:int};
+  type xz = {x:int, z:int};
+  type yz = {y:int, z:int};
+  type intpoint = point(int);
   //   //if (x==42) 1 else (x*x);
   // };
   //let baz() = {age:3, name:(4:int)};
   //let foo(a,b,c) = c;
-  let fac(n) = if(n==0) 1 else (n*(n-1));
-  let main(x) = fac(6);
+  let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1));
+  //    and main(x) = x::[x+1];
   // let lentr(l) = lent(0,l);
-  // let len(l) =
+  //let rec len(l) =
   //   switch(l) {
   //    | [] => 0;
   //    | x::xs => 1+len(xs);
@@ -34,13 +32,39 @@ contract Identity = {
   //    | [] => b;
   //    | (x::xs) => x::app(xs,b);
   //    };
-  // let rev(l) = revt(l,[]);
-  // let revt(l,r) =
+  // let rec revt(l,r) =
   //   switch(l) {
   //   | [] => r;
   //   | x::xs => revt(xs,x::r);
   //   };
+  // let rev(l) = revt(l,[]);
+  // let main(x:int) = {
+  //   switch(rev([1,2,3])) {
+  //   | h::_ => h;
+  //   };
+  //   };
   //let fac(n:int) = {
   //  if (n==0) 1 else (n*fac(n-1));
   //};
+  //let main(x) = switch((12,34)) {
+  //| (13,_) => x;
+  //| (_,a) => x+a;
+  //    | y => y+1;
+  //  }
+  //let main(x) = ({y:0>1, x:x==0}:point(bool));
+  //let main(x) = x;
+  //let main(x) = len(1::2::[]);
+  //let main(x) = ((x,x):list('a));
+  //let main(x) = switch("a") {
+  //    	  |  "b" => 0;
+  //		  |  "a" => 1;
+  //		  |  "c" => 2;
+  //		  };
+  //let main(x) = x.color+1;
+  //let main(x) = switch(({x:x, y:x+1}:cp(int))) {
+  //              | {y:xx} => xx;
+  //		};
+  //let main(x) = {x:0, y:1, z:2};
+  let id(x) = x;
+  let double(x) = x+x;
 };

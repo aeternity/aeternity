@@ -18,67 +18,51 @@ convert(#{ contract_name := _ContractName
          , functions := Functions
               },
         _Options) ->
+    %% Create a function dispatcher
+    DispatchFun = {"_main",[{"arg","_"}],
+		   {switch,{var_ref,"arg"},
+		    [{{tuple,[fun_hash(FName)|make_args(Args)]},
+		      {funcall,{var_ref,FName},make_args(Args)}}
+		     || {FName,Args,_} <- Functions]}},
+    NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
-    	    || {Name, Args, _Body} <- Functions],
+    	    || {Name, Args, _Body} <- NewFunctions],
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
-    MainFunction = lookup_fun(Funs,"main",1),
-    EntryCode = entry_code(),
-    DummyCode = [%% push a return address to stop
-		 {push_label,StopLabel},
-		 %% swap argument to the top of the stack
-		 aeb_opcodes:mnemonic(?SWAP1),
-		 {push_label,MainFunction},
-		 aeb_opcodes:mnemonic(?JUMP),
-		 {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
-                 %% exit code get ret data.
-                 aeb_opcodes:mnemonic(?PUSH1), 0,
-                 aeb_opcodes:mnemonic(?MSTORE),
-                 %% Return mem[0]-mem[32]
-                 aeb_opcodes:mnemonic(?PUSH1), 32,
-                 aeb_opcodes:mnemonic(?PUSH1), 0,
-                 aeb_opcodes:mnemonic(?RETURN)
-		],
-   
+    MainFunction = lookup_fun(Funs,"_main",1),
+    DispatchCode = [%% read all call data into memory at address zero
+		    aeb_opcodes:mnemonic(?CALLDATASIZE),
+		    push(0),
+		    dup(1),
+		    aeb_opcodes:mnemonic(?CALLDATACOPY),
+		    %% push a return address to stop
+		    {push_label,StopLabel},
+		    %% push address of call data
+		    push(0),
+		    {push_label,MainFunction},
+		    aeb_opcodes:mnemonic(?JUMP),
+		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
+		    aeb_opcodes:mnemonic(?STOP)
+		   ],
+
     %% Code is a deep list of instructions, containing labels and
     %% references to them. Labels take the form {'JUMPDEST',Ref}, and
     %% references take the form {push_label,Ref}, which is translated
     %% into a PUSH instruction.
-    Code = [assemble_function(Funs,Name,Args,Body) 
-	    || {Name,Args,Body} <- Functions],
+    Code = [assemble_function(Funs,Name,Args,Body)
+	    || {Name,Args,Body} <- NewFunctions],
     resolve_references(
         [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
-         EntryCode,
-	 DummyCode,
+	 DispatchCode,
 	 Code]).
 
-entry_code() ->
-    [
-     aeb_opcodes:mnemonic(?PUSH1), 0,
-     aeb_opcodes:mnemonic(?CALLDATALOAD),
-     aeb_opcodes:mnemonic(?DUP1),
-     aeb_opcodes:mnemonic(?PUSH32),
-     %% Should be the hash of
-     %% the signature of the
-     %% first function (use 0 as placeholder)
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     0, 0, 0, 0, 0, 0, 0, 0,
-     aeb_opcodes:mnemonic(?EQ),
-     {push_label, "main_entry"},
-     aeb_opcodes:mnemonic(?JUMPI),
-     aeb_opcodes:mnemonic(?STOP),
-     {aeb_opcodes:mnemonic(?JUMPDEST), "main_entry"},
-     %% TODO: This code shoudl be dependent on the function arity.
-     %% Load data onto stack.
-     aeb_opcodes:mnemonic(?PUSH1),  32,
-     aeb_opcodes:mnemonic(?CALLDATALOAD)
-     %% TODO: Load complext data into memory.
-    ].
+make_args(Args) ->
+    [{var_ref,[I-1 + $a]} || I <- lists:seq(1,length(Args))].
 
+fun_hash(Name) ->
+    {tuple,[{integer,X} || X <- [length(Name)|aer_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
     [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name,length(Args))},
@@ -100,6 +84,9 @@ assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
 		    error({undefined_name,Id})
 	    end
     end;
+assemble_expr(_,_,_,{missing_field,Format,Args}) ->
+    io:format(Format,Args),
+    error(missing_field);
 assemble_expr(_Funs,_Stack,_,{integer,N}) ->
     push(N);
 assemble_expr(Funs,Stack,_,{tuple,Cpts}) ->
@@ -155,6 +142,9 @@ assemble_expr(Funs,Stack,Tail,{binop,'&&',A,B}) ->
     assemble_expr(Funs,Stack,Tail,{ifte,A,B,{integer,0}});
 assemble_expr(Funs,Stack,Tail,{binop,'||',A,B}) ->
     assemble_expr(Funs,Stack,Tail,{ifte,A,{integer,1},B});
+assemble_expr(Funs,Stack,Tail,{binop,'::',A,B}) ->
+    %% Take advantage of optimizations in tuple construction.
+    assemble_expr(Funs,Stack,Tail,{tuple,[A,B]});
 assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
     %% EEVM binary instructions take their first argument from the top
     %% of the stack, so to get operands on the stack in the right
@@ -299,11 +289,11 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
      assemble_cases(Funs,Stack,Tail,Close,Cases)].
 
 %% Entered with value to match on top of the stack.
-%% Generated code removes value, and 
+%% Generated code removes value, and
 %%   - jumps to Fail if no match, or
 %%   - binds variables, leaves them on the stack, and jumps to Succeed
 %% Result is a list of variables to add to the stack, and the matching
-%% code. 
+%% code.
 assemble_pattern(Succeed,Fail,{integer,N}) ->
     {[],[push(N),
 	 aeb_opcodes:mnemonic(?EQ),
@@ -313,6 +303,9 @@ assemble_pattern(Succeed,Fail,{integer,N}) ->
 	 'JUMP']};
 assemble_pattern(Succeed,_Fail,{var_ref,"_"}) ->
     {[],[aeb_opcodes:mnemonic(?POP),{push_label,Succeed},'JUMP']};
+assemble_pattern(Succeed,Fail,{missing_field,_,_}) ->
+    %% Missing record fields are quite ok in patterns.
+    assemble_pattern(Succeed,Fail,{var_ref,"_"});
 assemble_pattern(Succeed,_Fail,{var_ref,Id}) ->
     {[{Id,"_"}],
      [{push_label,Succeed},'JUMP']};
@@ -343,7 +336,7 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
       {'JUMPDEST',Continue},
       %% Bring the pointer to the top of the stack--this reorders AVars!
       swap(length(AVars)),
-      push(32), 
+      push(32),
       aeb_opcodes:mnemonic(?ADD),
       BCode,
       case AVars of
@@ -400,7 +393,8 @@ assemble_infix('==') -> aeb_opcodes:mnemonic(?EQ);
 assemble_infix('<=') -> [aeb_opcodes:mnemonic(?SGT),aeb_opcodes:mnemonic(?ISZERO)];
 assemble_infix('>=') -> [aeb_opcodes:mnemonic(?SLT),aeb_opcodes:mnemonic(?ISZERO)];
 assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
+assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
+%% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
 %% shuffle_stack reorders the stack before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
@@ -420,7 +414,7 @@ shuffle_stack([N|Stack]) ->
 	    %% the job should be finished
 	    CorrectStack = lists:seq(N-1,1,-1),
 	    CorrectStack = Stack,
-	    [];		
+	    [];
 	MoveBy ->
 	    {Pref,[_|Suff]} = lists:split(MoveBy-1,Stack),
 	    [swap(MoveBy)|shuffle_stack([lists:nth(MoveBy,Stack)|Pref++[N|Suff]])]
@@ -480,7 +474,7 @@ pop_args(N) ->
 
 pop(N) ->
     [aeb_opcodes:mnemonic(?POP) || _ <- lists:seq(1,N)].
- 
+
 swap(0) ->
     %% Doesn't exist, but is logically a no-op.
     [];
@@ -493,15 +487,16 @@ swap(N) when 1=<N, N=<16 ->
 % write_words(N) ->
 %      [write_word(I) || I <- lists:seq(N-1,0,-1)].
 
-write_word(I) ->
-    [%% Stack: elements e ADDR
-       swap(1),
-       dup(2),
-       %% Stack: elements ADDR e ADDR
-       push(32*I),
-       aeb_opcodes:mnemonic(?ADD),
-       %% Stack: elements ADDR e ADDR+32I
-       aeb_opcodes:mnemonic(?MSTORE)].
+%% Unused at the moment. Comment out to please dialyzer.
+%% write_word(I) ->
+%%     [%% Stack: elements e ADDR
+%%        swap(1),
+%%        dup(2),
+%%        %% Stack: elements ADDR e ADDR
+%%        push(32*I),
+%%        aeb_opcodes:mnemonic(?ADD),
+%%        %% Stack: elements ADDR e ADDR+32I
+%%        aeb_opcodes:mnemonic(?MSTORE)].
 
 %% Resolve references, and convert code from deep list to flat list.
 %% List elements are:
@@ -552,7 +547,7 @@ use_labels(_,I) ->
 
 %% Peep-hole optimization.
 %% The compilation of conditionals can introduce jumps depending on
-%% constants 1 and 0. These are removed by peep-hole optimization. 
+%% constants 1 and 0. These are removed by peep-hole optimization.
 
 peep_hole(['PUSH1',0,{push_label,_},'JUMP1'|More]) ->
     peep_hole(More);
@@ -631,7 +626,7 @@ optimize_jumps(Code) ->
     NoDeadCode = eliminate_dead_code(ShortCircuited),
     MovedCode = merge_blocks(moveable_blocks(NoDeadCode)),
     %% Moving code may have made some labels superfluous.
-    eliminate_dead_code(MovedCode). 
+    eliminate_dead_code(MovedCode).
 
 
 jumps_to_jumps([{'JUMPDEST',Label},{push_label,Target},'JUMP'|More]) ->
