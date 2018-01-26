@@ -25,13 +25,18 @@ execute_identy_fun_from_ring_file(_Cfg) ->
                                     [pp_icode,
                                      pp_assembler,
                                      pp_bytecode]),
-    Res = 
+    ok = aeb_disassemble:pp(Code),
+
+    %% Create the call data
+    Call = {<<"main">>, 42},
+    {0, Data} = aer_data:to_binary(Call),
+    Res =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
                           address => 0,
                           caller => 0,
-                          data => <<0:256, 42:256>>,
+                          data => Data,
                           gas => 1000000,
                           gasPrice => 1,
                           origin => 0,
@@ -44,7 +49,7 @@ execute_identy_fun_from_ring_file(_Cfg) ->
                pre => #{}},
             #{trace => true})
          ),
-    #{ out := << RetVal:256 >> } = Res,
+    #{ stack := [RetVal] } = Res,
     42 = RetVal,
     ok.
 
