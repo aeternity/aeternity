@@ -13,6 +13,7 @@
         , get_contract/2
         , insert_call/2
         , insert_contract/2
+        , lookup_contract/2
         , root_hash/1]).
 
 -export_type([tree/0]).
@@ -55,6 +56,13 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree, calls = Cal
 -spec get_contract(aect_contracts:id(), tree()) -> aect_contracts:contract().
 get_contract(Id, #contract_tree{ contracts = CtTree }) ->
     aect_contracts:deserialize(aeu_mtrees:get(Id, CtTree)).
+
+-spec lookup_contract(aect_contracts:id(), tree()) -> {value, aect_contracts:contract()} | none.
+lookup_contract(Id, Tree) ->
+    case aeu_mtrees:lookup(Id, Tree#contract_tree.contracts) of
+        {value, Val} -> {value, aeo_contracts:deserialize(Val)};
+        none         -> none
+    end.
 
 %% -- Calls --
 
