@@ -17,7 +17,9 @@
         , set_trees/2
         , setup_new_account/1
         , setup_new_account/3
+        , get_account/2
         , trees/1
+        , compile_contract/1
         ]).
 
 -include_lib("apps/aecontract/include/contract_txs.hrl").
@@ -93,7 +95,7 @@ create_tx_default_spec(PubKey, State) ->
      }.
 
 %%%===================================================================
-%%% Query tx
+%%% Call tx
 %%%===================================================================
 
 call_tx(PubKey, ContractKey, State) ->
@@ -113,12 +115,11 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
                      }.
 
 call_tx_default_spec(PubKey, State) ->
-    #{ call        => <<"Hello world">>
-     , fee         => 5
+    #{ fee         => 5
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , vm_version  => 1
+     , vm_version  => 0
      , amount      => 100
-     , gas         => 100
+     , gas         => 10000
      , gas_price   => 1
      , call_data   => <<"CALL DATA">>
      }.
@@ -128,7 +129,7 @@ call_tx_default_spec(PubKey, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(1000, 1, State).
+    setup_new_account(100000, 1, State).
 
 setup_new_account(Balance, Height, State) ->
     {PubKey, PrivKey} = new_key_pair(),
@@ -152,6 +153,13 @@ set_account(Account, State) ->
     Trees   = trees(State),
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
+
+compile_contract(File) ->
+    CodeDir = code:lib_dir(aering, test),
+    FileName = filename:join(CodeDir, File),
+    {ok, ContractBin} = file:read_file(FileName),
+    Contract = binary_to_list(ContractBin),
+    aer_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]).
 
 %%%===================================================================
 %%% Keys TODO: Should move
