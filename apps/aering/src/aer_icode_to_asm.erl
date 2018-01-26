@@ -487,15 +487,16 @@ swap(N) when 1=<N, N=<16 ->
 % write_words(N) ->
 %      [write_word(I) || I <- lists:seq(N-1,0,-1)].
 
-write_word(I) ->
-    [%% Stack: elements e ADDR
-       swap(1),
-       dup(2),
-       %% Stack: elements ADDR e ADDR
-       push(32*I),
-       aeb_opcodes:mnemonic(?ADD),
-       %% Stack: elements ADDR e ADDR+32I
-       aeb_opcodes:mnemonic(?MSTORE)].
+%% Unused at the moment. Comment out to please dialyzer.
+%% write_word(I) ->
+%%     [%% Stack: elements e ADDR
+%%        swap(1),
+%%        dup(2),
+%%        %% Stack: elements ADDR e ADDR
+%%        push(32*I),
+%%        aeb_opcodes:mnemonic(?ADD),
+%%        %% Stack: elements ADDR e ADDR+32I
+%%        aeb_opcodes:mnemonic(?MSTORE)].
 
 %% Resolve references, and convert code from deep list to flat list.
 %% List elements are:
