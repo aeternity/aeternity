@@ -33,8 +33,7 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             %% swagger generated code expects the Resp to be proplist or map
             %% and always runs jsx:encode/1 on it - even if it is already
             %% encoded to a binary; that's why we use
-            %% aec_blocks:serialize_to_map/1 instead of
-            %% aec_blocks:serialize_for_network/1
+            %% aec_blocks:serialize_to_map/1
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
@@ -62,8 +61,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                             %% swagger generated code expects the Resp to be proplist
                             %% or map and always runs jsx:encode/1 on it - even if it
                             %% is already encoded to a binary; that's why we use
-                            %% aec_blocks:serialize_to_map/1 instead of
-                            %% aec_blocks:serialize_for_network/1
+                            %% aec_blocks:serialize_to_map/1
                             lager:debug("Block = ~p", [pp(Block)]),
                             Resp =
                               cleanup_genesis(aec_blocks:serialize_to_map(Block)),

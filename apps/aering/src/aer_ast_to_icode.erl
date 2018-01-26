@@ -14,9 +14,12 @@
 -include("aer_icode.hrl").
 
 convert(Tree, Options) ->
-    code(Tree,  #{ functions => []
-                 , env => []
-                 , options => Options}).
+%% Add this line to turn on the type-checker:
+%%    code(aer_ast_infer_types:infer(Tree),
+    code(Tree,
+	 #{ functions => []
+	  , env => []
+	  , options => Options}).
 
 code([{contract_type,_Attribs, {con, _, Name}, _TypeDecls}|Rest], Icode) ->
     %% TODO: Handle types for future type check.
@@ -42,7 +45,7 @@ contract_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
     %% TODO: push funname to env
     FunArgs = ast_args(Args, []),
     %% TODO: push args to env
-    FunBody = ast_body(Body, Icode),
+    FunBody = ast_body(Body),
     NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([], Icode) -> Icode;
@@ -53,13 +56,41 @@ contract_to_icode(Code, Icode) ->
 ast_id({id, _, Id}) -> Id.
 
 ast_args([{arg, _, Name, Type}|Rest], Acc) ->
-    ast_args(Rest, [{ast_id(Name), ast_id(Type)}| Acc]);
+    ast_args(Rest, [{ast_id(Name), ast_type(Type)}| Acc]);
 ast_args([], Acc) -> lists:reverse(Acc).
-                                 
 
-ast_body({id, _, Name},_Icode) ->
+%% ICode is untyped, surely?
+ast_type(T) ->
+    T.                                 
+
+ast_body({id, _, Name}) ->
     %% TODO Look up id in env
-    #var_ref{name = Name}.
+    #var_ref{name = Name};
+ast_body({int, _, Value}) ->
+    #integer{value = Value};
+ast_body({typed, _, Body, _}) ->
+    ast_body(Body);
+ast_body({tuple,_,Args}) ->
+    #tuple{cpts = [ast_body(A) || A <- Args]};
+ast_body({list,_,Args}) ->
+    #list{elems = [ast_body(A) || A <- Args]};
+ast_body({app,[_,{format,prefix}],{Op,_},[A]}) ->
+    #unop{op = Op, rand = ast_body(A)};
+ast_body({app,[_,{format,infix}],{Op,_},[A,B]}) ->
+    #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+ast_body({app,_,Fun,Args}) ->
+    #funcall{function=ast_body(Fun), 
+	     args=[ast_body(A) || A <- Args]};
+ast_body({'if',_,Dec,Then,Else}) ->
+    #ifte{decision = ast_body(Dec)
+	 ,then     = ast_body(Then)
+	 ,else     = ast_body(Else)};
+ast_body({switch,_,A,Cases}) ->
+    %% let's assume the parser has already ensured that only valid
+    %% patterns appear in cases.
+    #switch{expr=ast_body(A),
+	    cases=[{ast_body(Pat),ast_body(Body)}
+		   || {'case',_,Pat,Body} <- Cases]}.
     
 
 ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->

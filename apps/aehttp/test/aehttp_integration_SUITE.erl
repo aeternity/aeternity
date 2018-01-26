@@ -94,9 +94,18 @@
     block_txs_list_by_hash_invalid_range/1
    ]).
 
+%% internal endpoints
+-export(
+   [ws_get_genesis/1,
+    ws_block_mined/1,
+    ws_refused_on_limit_reached/1,
+    ws_oracles/1
+   ]).
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
+-define(WS, aehttp_ws_test_utils).
 
 all() ->
     [
@@ -106,7 +115,9 @@ all() ->
 groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
-                                  {group, internal_endpoints}]},
+                                  {group, internal_endpoints},
+                                  {group, websocket}
+                                  ]},
      {external_endpoints, [sequence], 
       [
         % pings
@@ -182,7 +193,15 @@ groups() ->
         block_txs_list_by_hash,
         block_txs_list_by_height_invalid_range,
         block_txs_list_by_hash_invalid_range
+      ]},
+     {websocket, [sequence],
+      [
+       ws_get_genesis,
+       ws_block_mined,
+       ws_refused_on_limit_reached,
+       ws_oracles
       ]}
+
     ].
 
 suite() ->
@@ -209,36 +228,21 @@ end_per_suite(_Config) ->
 
 init_per_group(all_endpoints, Config) ->
     Config;
-init_per_group(Group, Config) when Group =:= external_endpoints
-                            orelse Group =:= internal_endpoints ->
+init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    [{start_node_per_tc, false} | Config];
-init_per_group(_, Config) ->
-    [{start_node_per_tc, true} | Config].
+    Config.
 
+end_per_group(all_endpoints, _Config) ->
+    ok;
 end_per_group(_Group, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, false) of
-        true -> pass;
-        false -> aecore_suite_utils:stop_node(?NODE, Config)
-    end,
+    aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
 init_per_testcase(_Case, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, true) of
-        true ->
-            aecore_suite_utils:start_node(?NODE, Config),
-            aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE));
-        false -> pass 
-    end,
-    ct:log("testcase pid: ~p", [self()]),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
-    case proplists:get_value(start_node_per_tc, Config, true) of
-        false -> pass;
-        true -> aecore_suite_utils:stop_node(?NODE, Config)
-    end,
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
@@ -1310,7 +1314,206 @@ block_txs_list_by_hash_invalid_range(_Config) ->
     ok.
 
 %% ============================================================
-%% HTTP Requests 
+%% Websocket tests 
+%% ============================================================
+
+ws_get_genesis(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    ?WS:send(ConnPid, chain, get, #{height => 0, type => block}),
+    {ok, Payload} = ?WS:wait_for_event(chain, requested_data),
+    {ok, Block} = maps:find(<<"block">>, Payload),
+    {ok, 200, BlockMap} = get_internal_block_by_height(0, false),
+    ExpectedBlockMap = 
+        maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
+    Block = ExpectedBlockMap,
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+ws_block_mined(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(miner, mined_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
+
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    ?WS:send(ConnPid, chain, get, #{height => Height, type => block}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => block}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{height => Height, type => header}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => header}),
+    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+%% Currently the websockets are a queue: they have a maximim amount of
+%% acceptors. Every WS trying to connect after all acceptoprs are used
+%% goes into a queue. When the queue is full - the node starts rejecting
+%% any new incoming WS connections
+ws_refused_on_limit_reached(_Config) ->
+    %% maximum amount of acceptors
+    MaxWsCount = rpc(aeu_env, user_config_or_env,
+                          [[<<"websocket">>, <<"internal">>, <<"acceptors">>],
+                          aehttp, [internal, websocket, handlers], 10]), 
+    %% Maximum WS connections hanging in the queue
+    WSQueueSize = rpc(aehttp_app, ws_handlers_queue_max_size, []),
+    WSDieTimeout = 1000,
+    ct:log("Websocket acceptors: ~p, websocket acceptor's queue size ~p",
+           [MaxWsCount, WSQueueSize]),
+    %% assert no WS running on the node
+    0 = open_websockets_count(), 
+    %% start as many WS as needed to consume all acceptors
+    WSPids =
+        lists:map(
+            fun(_) ->
+              {ok, ConnPid} = ws_start_link(),
+              ConnPid
+            end,
+            lists:seq(1, MaxWsCount)),
+    %% assert expectation for amount of connected WSs
+    MaxWsCount = open_websockets_count(), 
+    WaitingPids =
+        lists:map(
+            fun(_) ->
+                %% try to connect a WS client; assert it does not connect and
+                %% is waiting
+                {error, still_connecting, WaitingPid} = ws_start_link(),
+                MaxWsCount = open_websockets_count(), 
+                WaitingPid
+            end,
+            lists:seq(1, WSQueueSize)),
+
+    %% Now both the acceptopr pool and queue are full. Try to connect a new WS
+    %% client and assert it fails
+    {error, rejected} = ws_start_link(),
+
+    %% split currently connected WS clients into two groups: first with as
+    %% many as there are WS clients waiting in the queue and all the rest in a
+    %% seperate list. The first group would be used for stopping WS clients
+    %% one by one while validating that one of the waiting WS clients connects
+    %% for each one stopped
+    {FirstWSsPids, OtherWSsPids} = lists:split(WSQueueSize, WSPids),
+    lists:foreach(
+        fun(Pid) ->
+            %% stop one
+            ?WS:stop(Pid),
+            %% another one connects in its place and it doesn't matter which one
+            {ok, some_pid} = ?WS:wait_for_connect(some_pid),
+            %% total amount of connected WS clients is still the maximum
+            MaxWsCount = open_websockets_count()
+        end,
+        FirstWSsPids),
+    %% cleanup
+    lists:foreach(fun ?WS:stop/1, OtherWSsPids),
+    timer:sleep(100), % wait for all of them to die out
+    {ok, WSQueueSize} =
+        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
+                                              WSQueueSize, WSDieTimeout),
+    lists:foreach(fun ?WS:stop/1, WaitingPids),
+    timer:sleep(100), % wait for all of them to die out
+    {ok, 0} =
+        aec_test_utils:wait_for_it_or_timeout(fun open_websockets_count/0,
+                                              0, WSDieTimeout),
+    ok.
+
+ws_oracles(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Mine a block to make sure the Pubkey has some funds!
+    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"height">> := _Height, <<"hash">> := _Hash}} = ?WS:wait_for_event(miner, mined_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
+
+    %% Fetch the pubkey via HTTP
+    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
+
+    %% Register an oracle
+    ok = ?WS:register_test_for_event(ConnPid, oracle, register),
+    ?WS:send(ConnPid, oracle, register,
+             #{ type => 'OracleRegisterTxObject',
+                account => PK,
+                query_format => <<"the query spec">>,
+                response_format => <<"the response spec">>,
+                query_fee => 4,
+                ttl => #{ type => delta, value => 500 },
+                fee => 5 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"oracle_id">> := OId }} = ?WS:wait_for_event(oracle, register),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, register),
+
+    %% Mine a block to get the oracle onto the chain
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Register for events when the freshly registered oracle is queried!
+    ok = ?WS:register_test_for_event(ConnPid, oracle, subscribe),
+    ?WS:send(ConnPid, oracle, subscribe,
+             #{ type => query,
+                oracle_id => OId }),
+    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+
+    %% Post a query
+    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_query),
+    ok = ?WS:register_test_for_event(ConnPid, oracle, query),
+    ?WS:send(ConnPid, oracle, query,
+             #{ type => 'OracleQueryTxObject',
+                oracle_pubkey => OId,
+                query_ttl => #{ type => delta, value => 10 },
+                response_ttl => #{ type => delta, value => 10 },
+                query => <<"How are you doing?">>,
+                query_fee => 4,
+                fee => 7 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, query),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, query),
+
+    %% Mine a block and check that an event is receieved corresponding to
+    %% the query.
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_query),
+    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_query),
+
+    %% Subscribe to responses to the query.
+    ?WS:send(ConnPid, oracle, subscribe,
+             #{ type => response,
+                query_id => QId }),
+    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+
+    %% Post a response to the query
+    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_response),
+    ok = ?WS:register_test_for_event(ConnPid, oracle, response),
+    ?WS:send(ConnPid, oracle, response,
+             #{ type => 'OracleResponseTxObject',
+                query_id => QId,
+                response => <<"I am fine, thank you!">>,
+                fee => 3 }
+             ),
+    {ok, #{<<"result">> := <<"ok">>,
+           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, response),
+    ok = ?WS:unregister_test_for_event(ConnPid, oracle, response),
+
+    %% Finally mine a block and check that an event is received
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_response),
+    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_response),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+%% ============================================================
+%% HTTP Requests
 %% ============================================================
 
 get_top() ->
@@ -1458,6 +1661,12 @@ internal_address() ->
               [ [<<"http">>, <<"internal">>, <<"port">>], 
                 aehttp, [internal, swagger_port], 8143]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}).
+
+ws_host_and_port() ->
+    Port = rpc(aeu_env, user_config_or_env, 
+              [ [<<"websocket">>, <<"internal">>, <<"port">>],
+                aehttp, [internal, websocket, port], 8144]),
+    {"127.0.0.1", Port}.
 
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
@@ -1651,3 +1860,14 @@ minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     TokensRequired = (Amount + Fee) * ChecksCnt,
     BlocksToMine = trunc(math:ceil(TokensRequired / MineReward)),
     {BlocksToMine, Fee}.
+
+ws_start_link() ->
+    {Host, Port} = ws_host_and_port(),
+    ?WS:start_link(Host, Port).
+
+open_websockets_count() ->
+    QueueName = ws_handlers_queue,
+    % ensure queue exsits
+    true = undefined =/= rpc(jobs, queue_info, [QueueName]),
+    length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
+                 QName =:= QueueName]).

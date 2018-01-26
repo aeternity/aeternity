@@ -170,7 +170,7 @@ def test_node_discovery():
     carol_api = common.external_api(carol_node)
     carol_top = carol_api.get_top()
     gen_hash = common.genesis_hash(carol_api)
-    ping_obj = Ping(source="localhost",
+    ping_obj = Ping(source="http://localhost:1234",
                     genesis_hash=gen_hash,
                     best_hash=carol_top.hash,
                     difficulty=1,
@@ -178,8 +178,8 @@ def test_node_discovery():
                     peers=[])
     ping = carol_api.ping(ping_obj)
 
-    carol_peers = ping.peers
-    synced = len(list(filter(lambda peer: peer == alice_peer_url, carol_peers))) == 1
+    carol_peers = [peer.encode('utf-8') + "/" for peer in ping.peers]
+    synced = alice_peer_url in carol_peers
 
     print("Carol now has peers " + str(carol_peers))
     assert_equals(synced, True) # for larger peer lists this might be too fragile

@@ -5,8 +5,8 @@
 -include("blocks.hrl").
 
 -define(compareBlockResults(B1, B2),
-        ?assertEqual(aec_blocks:serialize_for_network(B1),
-                     aec_blocks:serialize_for_network(B2))).
+        ?assertEqual(aec_blocks:serialize_to_map(B1),
+                     aec_blocks:serialize_to_map(B2))).
 
 block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
@@ -79,6 +79,7 @@ write_test_() ->
 write_chain_test_() ->
     {foreach,
      fun() ->
+             aec_test_utils:start_chain_db(),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
@@ -97,27 +98,27 @@ write_chain_test_() ->
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis(),
              cleanup_persistence(Path),
+             aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
                GB = aec_test_utils:genesis_block(),
                ok = aec_conductor:post_block(GB),
-               aec_persistence:sync(),
 
                Hash = block_hash(GB),
 
-               Block = aec_persistence:get_block(Hash),
+               Block = aec_db:get_block(Hash),
 
                %% Check block apart from state trees.
                ?compareBlockResults(GB, Block),
 
                %% Genesis should be top header
-               Header = aec_persistence:get_top_header(),
+               Header = aec_db:get_top_header(),
                ?assertEqual(Header, Hash),
 
                %% Genesis should be top block
-               TopBlockHash = aec_persistence:get_top_block(),
+               TopBlockHash = aec_db:get_top_block(),
                ?assertEqual(Header, TopBlockHash),
 
                ok
@@ -130,37 +131,35 @@ write_chain_test_() ->
                ?assertEqual(ok, aec_conductor:post_header(BH1)),
                BH2 = aec_blocks:to_header(B2),
                ?assertEqual(ok, aec_conductor:post_header(BH2)),
-               aec_persistence:sync(),
 
                GHash = block_hash(GB),
 
-               Block = aec_persistence:get_block(GHash),
+               Block = aec_db:get_block(GHash),
 
                %% Check block apart from state trees.
                ?compareBlockResults(GB, Block),
 
                %% BH2 should be top header
-               Header = aec_persistence:get_top_header(),
+               Header = aec_db:get_top_header(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, Header),
 
                %% Genesis should be top block
-               TopBlockHash = aec_persistence:get_top_block(),
+               TopBlockHash = aec_db:get_top_block(),
                ?assertEqual(GHash, TopBlockHash),
 
                %% Add one block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_conductor:post_block(B2)),
-               aec_persistence:sync(),
 
                %% GB should still be top block
-               NewTopBlockHash = aec_persistence:get_top_block(),
+               NewTopBlockHash = aec_db:get_top_block(),
                ?assertEqual(GHash, NewTopBlockHash),
 
                %% Add missing block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_conductor:post_block(B1)),
-               aec_persistence:sync(),
+
                %% Now B2 should be the top block
-               LastTopBlockHash = aec_persistence:get_top_block(),
+               LastTopBlockHash = aec_db:get_top_block(),
                ?assertEqual(B2Hash, LastTopBlockHash),
 
                ok
@@ -172,6 +171,7 @@ restart_test_() ->
     {foreach,
      fun() ->
              TmpDir = aec_test_utils:aec_keys_setup(),
+             aec_test_utils:start_chain_db(),
              Path = init_persistence(),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
@@ -187,6 +187,7 @@ restart_test_() ->
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db(),
              cleanup_persistence(Path),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
@@ -199,7 +200,7 @@ restart_test_() ->
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                aec_persistence:sync(),
                %% Now B2 should be the top block
-               TopBlockHash = aec_persistence:get_top_block(),
+               TopBlockHash = aec_db:get_top_block(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
                ChainTop1 = aec_conductor:top(),
@@ -212,12 +213,13 @@ restart_test_() ->
                {ok, ChainTop1State} =
                    aec_conductor:get_block_state_by_hash(ChainTop1Hash),
                ?assertEqual(ChainTop1State,
-                            aec_persistence:get_block_state(TopBlockHash)),
+                            aec_db:get_block_state(TopBlockHash)),
 
                %% Kill chain server
+
                kill_and_restart_conductor(),
-               aec_persistence:sync(),
-               NewTopBlockHash = aec_persistence:get_top_block(),
+               %% aec_persistence:sync(),
+               NewTopBlockHash = aec_db:get_top_block(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
                ChainTop2 = aec_conductor:top(),

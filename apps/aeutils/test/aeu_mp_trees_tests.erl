@@ -16,6 +16,7 @@ basic_test_() ->
     , {"Missing lookups", fun test_lookup_missing/0}
     , {"Put rlp values", fun test_put_rlp_vals/0}
     , {"Collapse extension", fun test_collapse_ext/0}
+    , {"Iterator test", fun test_iterator/0}
     ].
 
 hash_test_() ->
@@ -102,6 +103,21 @@ test_collapse_ext() ->
     apply_ops([ {delete, <<15:4>>},
                 {delete, <<15:4, 13:4>>}
               ], T).
+
+test_iterator() ->
+    {Tree, Vals} = gen_mp_tree({6234, 5234, 9273}, 1000),
+    Iterator = aeu_mp_trees:iterator(Tree),
+    Sorted = lists:keysort(1, Vals),
+    test_iterator(Iterator, Sorted).
+
+test_iterator(Iterator, [{Key, Val}|Left]) ->
+    {IKey, IVal, Iterator1} = aeu_mp_trees:iterator_next(Iterator),
+    ?assertEqual(IKey, Key),
+    ?assertEqual(IVal, Val),
+    test_iterator(Iterator1, Left);
+test_iterator(Iterator, []) ->
+    ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
+    ok.
 
 %%%=============================================================================
 %%% Hash tests
@@ -192,7 +208,8 @@ test_proofs() ->
     test_create_proofs(Vals, T).
 
 test_create_proofs([{Key, Val}|Left], T) ->
-    {Hash, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    Hash = aeu_mp_trees:root_hash(T),
     ?assertEqual(ok, aeu_mp_trees:verify_proof(Key, Val, Hash, ProofDB)),
     test_create_proofs(Left, T);
 test_create_proofs([],_T) ->
@@ -203,7 +220,8 @@ test_bogus_proofs() ->
     test_bogus_proofs(Vals, T).
 
 test_bogus_proofs([{Key, Val}|Left], T) ->
-    {Hash, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    Hash = aeu_mp_trees:root_hash(T),
     BogusHash = case Hash of
                     <<1, Rest/binary>> -> <<2, Rest/binary>>;
                     <<_, Rest/binary>> -> <<1, Rest/binary>>

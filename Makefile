@@ -124,6 +124,8 @@ test:
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
+all-tests: eunit test
+
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
 
@@ -155,19 +157,18 @@ swagger: config/swagger.yaml
 	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
 	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
-	( cd $(HTTP_APP) && $(MAKE) updateswagger; )
+	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
 	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
 	@rm -fr $(SWTEMP)
 	@./rebar3 swagger_endpoints
-
-swagger-docs:
-	(cd ./apps/aehttp && $(MAKE) swagger-docs);
-
-swagger-python: config/swagger.yaml
 	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
 	@echo "Swagger python tempdir: $(SWTEMP)"
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@rm -fr $(SWTEMP)
+
+swagger-docs:
+	(cd ./apps/aehttp && $(MAKE) swagger-docs);
+
 
 kill:
 	@echo "Kill all beam processes only from this directory tree"

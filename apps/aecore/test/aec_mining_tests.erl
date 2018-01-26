@@ -31,7 +31,7 @@ mine_block_test_() ->
          fun() ->
                  TopBlock = #block{height = 0,
                                    target = ?HIGHEST_TARGET_SCI},
-                 meck:expect(aec_pow, pick_nonce, 0, 39),
+                 meck:expect(aec_pow, pick_nonce, 0, 65),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),

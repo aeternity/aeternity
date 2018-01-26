@@ -63,6 +63,7 @@ bor   : {token, {'bor', TokenLine}}.
 bxor  : {token, {'bxor', TokenLine}}.
 bsl   : {token, {'bsl', TokenLine}}.
 bsr   : {token, {'bsr', TokenLine}}.
+bnot  : {token, {'bnot', TokenLine}}.
 
 "{STRINGTEXT}*" : parse_string(TokenLine, TokenChars).
 '{CHARTEXT}'    : parse_char(TokenLine, TokenChars).

@@ -31,100 +31,22 @@ class Info(object):
                             and the value is json key in definition.
     """
     swagger_types = {
-        'version': 'str',
-        'revision': 'str',
-        'genesis_hash': 'str',
         'last_30_blocks_time': 'list[BlockTimeSummary]'
     }
 
     attribute_map = {
-        'version': 'version',
-        'revision': 'revision',
-        'genesis_hash': 'genesis_hash',
         'last_30_blocks_time': 'last_30_blocks_time'
     }
 
-    def __init__(self, version=None, revision=None, genesis_hash=None, last_30_blocks_time=None):
+    def __init__(self, last_30_blocks_time=None):
         """
         Info - a model defined in Swagger
         """
 
-        self._version = None
-        self._revision = None
-        self._genesis_hash = None
         self._last_30_blocks_time = None
 
-        if version is not None:
-          self.version = version
-        if revision is not None:
-          self.revision = revision
-        if genesis_hash is not None:
-          self.genesis_hash = genesis_hash
         if last_30_blocks_time is not None:
           self.last_30_blocks_time = last_30_blocks_time
-
-    @property
-    def version(self):
-        """
-        Gets the version of this Info.
-
-        :return: The version of this Info.
-        :rtype: str
-        """
-        return self._version
-
-    @version.setter
-    def version(self, version):
-        """
-        Sets the version of this Info.
-
-        :param version: The version of this Info.
-        :type: str
-        """
-
-        self._version = version
-
-    @property
-    def revision(self):
-        """
-        Gets the revision of this Info.
-
-        :return: The revision of this Info.
-        :rtype: str
-        """
-        return self._revision
-
-    @revision.setter
-    def revision(self, revision):
-        """
-        Sets the revision of this Info.
-
-        :param revision: The revision of this Info.
-        :type: str
-        """
-
-        self._revision = revision
-
-    @property
-    def genesis_hash(self):
-        """
-        Gets the genesis_hash of this Info.
-
-        :return: The genesis_hash of this Info.
-        :rtype: str
-        """
-        return self._genesis_hash
-
-    @genesis_hash.setter
-    def genesis_hash(self, genesis_hash):
-        """
-        Sets the genesis_hash of this Info.
-
-        :param genesis_hash: The genesis_hash of this Info.
-        :type: str
-        """
-
-        self._genesis_hash = genesis_hash
 
     @property
     def last_30_blocks_time(self):

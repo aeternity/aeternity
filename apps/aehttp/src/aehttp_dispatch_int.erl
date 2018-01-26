@@ -300,8 +300,7 @@ get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
             %% swagger generated code expects the Resp to be proplist or map
             %% and always runs jsx:encode/1 on it - even if it is already
             %% encoded to a binary; that's why we use
-            %% aec_blocks:serialize_to_map/1 instead of
-            %% aec_blocks:serialize_for_network/1
+            %% aec_blocks:serialize_to_map/1
             {SerializeFun, DataSchema} =
                 case TxObjects of
                     true ->

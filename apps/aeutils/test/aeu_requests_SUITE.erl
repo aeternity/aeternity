@@ -15,7 +15,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"},
+                                 {mnesia, "MNESIA  CXC 138 12", "4.15.1"}]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server,
          exec_app, exec, inet_gethost_native_sup, inet_gethost_native,
@@ -87,7 +88,11 @@ application_test(Config) ->
     application:set_env(aecore, password, <<"secret">>), 
 
     {ok, Started} = application:ensure_all_started(aehttp),
+    application:stop(aehttp),
+    application:stop(aecore),
+    application:stop(mnesia), % started by aecore
+    timer:sleep(500),  %% time to terminate erlexec child
 
-    [ ok = application:stop(D) || D <- lists:reverse(Started -- AlreadyRunning) ],
+    [ application:stop(D) || D <- lists:reverse(Started -- AlreadyRunning) ],
     ok.
   

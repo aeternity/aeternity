@@ -7,6 +7,7 @@
 -module(aect_call_tx).
 
 -include("contract_txs.hrl").
+-include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).

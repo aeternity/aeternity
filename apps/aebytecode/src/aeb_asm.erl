@@ -49,9 +49,9 @@ format([Mnemonic | Rest], Address) ->
     case (Op >= ?PUSH1) andalso (Op =< ?PUSH32) of
         true ->
             Arity = aeb_opcodes:op_size(Op) - 1,
-            {Arg, Code} = get_arg(Arity, Rest),
+            {Args, Code} = get_args(Arity, Rest),
             "        " ++ atom_to_list(Mnemonic)
-                ++ "        " ++ Arg ++"\n" 
+                ++ "        " ++ Args ++"\n" 
                 ++ format(Code, Address + Arity + 1);
         false ->
             "        " ++ atom_to_list(Mnemonic)
@@ -60,8 +60,12 @@ format([Mnemonic | Rest], Address) ->
 format([],_) -> [].
 
 %% TODO: Are args encoded as one list element or as a number of bytes...
-get_arg(_, [Arg|Code]) ->
-    {Arg, Code}.
+get_args(1, [Arg|Code]) ->
+    {integer_to_list(Arg), Code};
+get_args(N, [Arg|Code]) ->
+    {Args, Rest} = get_args(N-1, Code),
+    {integer_to_list(Arg) ++ ", " ++ Args, Rest}.
+
 
 
 file(Filename, Options) ->

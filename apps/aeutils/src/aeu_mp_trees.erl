@@ -13,6 +13,8 @@
         , construct_proof/3
         , delete/2
         , get/2
+        , iterator/1
+        , iterator_next/1
         , pp/1
         , put/3
         , root_hash/1
@@ -20,6 +22,7 @@
         ]).
 
 -export_type([ tree/0
+             , iterator/0
              , key/0
              , value/0
              ]).
@@ -28,7 +31,13 @@
              , db   = new_dict_db() :: aeu_mp_trees:db()
              }).
 
+-record(iter, { key  = <<>>          :: <<>> | key()
+              , root = <<>>          :: <<>> | hash()
+              , db   = new_dict_db() :: aeu_mp_trees:db()
+              }).
+
 -opaque tree() :: #mpt{}.
+-opaque iterator() :: #iter{}.
 
 -type tree_node() :: null() | leaf() | extension() | branch().
 
@@ -115,10 +124,10 @@ commit_to_db(#mpt{db = DB} = MPT) ->
         {error, _} = E -> E
     end.
 
--spec construct_proof(key(), db(), tree()) -> {hash(), db()}.
+-spec construct_proof(key(), db(), tree()) -> {value(), db()}.
 construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
     ProofDB1 = proof_db_insert(Hash, DB, ProofDB),
-    {Hash, int_c_proof(Key, decode_node(Hash, DB), DB, ProofDB1)}.
+    int_c_proof(Key, decode_node(Hash, DB), DB, ProofDB1).
 
 -type verify_error() :: 'bad_proof'
                       | {'bad_value', term()}
@@ -132,6 +141,23 @@ verify_proof(Key, Val, Hash, ProofDB) ->
         {bad_hash, H} -> {bad_hash, H}
     catch
         _:_ -> bad_proof
+    end.
+
+-spec iterator(tree()) -> iterator().
+iterator(#mpt{hash = Hash, db = DB}) ->
+    #iter{key = <<>>, root = Hash, db = DB}.
+
+-spec iterator_next(iterator()) ->
+                           {key(), value(), iterator()} | '$end_of_table'.
+iterator_next(#iter{key = Key, root = Hash, db = DB} = Iter) ->
+    Res =
+        case Key =:= <<>> of
+            true  -> pick_first(decode_node(Hash, DB), DB);
+            false -> int_iter_next(Key, decode_node(Hash, DB), DB)
+        end,
+    case Res of
+        '$end_of_table' -> '$end_of_table';
+        {Key1, Val} -> {Key1, Val, Iter#iter{key = Key1}}
     end.
 
 -spec pp(tree()) -> 'ok'.
@@ -348,9 +374,9 @@ get_singleton_branch(Branch, N, Acc) ->
 %%% the responsibility of the caller.
 
 int_c_proof(_Key, <<>>,_DB, ProofDB) ->
-    ProofDB;
-int_c_proof(<<>>, {branch,_Branch},_DB, ProofDB) ->
-    ProofDB;
+    {<<>>, ProofDB};
+int_c_proof(<<>>, {branch, Branch},_DB, ProofDB) ->
+    {branch_value(Branch), ProofDB};
 int_c_proof(Path, {branch, Branch}, DB, ProofDB) ->
     <<Next:4, Rest/bits>> = Path,
     NextEncoded = branch_next(Next, Branch),
@@ -362,15 +388,15 @@ int_c_proof(Path, {Type, NodePath, NodeVal}, DB, ProofDB) when Type =:= ext;
     S = bit_size(NodePath),
     case Path of
         NodePath when Type =:= leaf ->
-            ProofDB;
+            {NodeVal, ProofDB};
         <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
-            ProofDB;
+            {<<>>, ProofDB};
         <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
             NextNode = decode_node(NodeVal, DB),
             ProofDB1 = proof_db_insert(NodeVal, DB, ProofDB),
             int_c_proof(Rest, NextNode, DB, ProofDB1);
         _ ->
-            ProofDB
+            {<<>>, ProofDB}
     end.
 
 proof_db_insert(<<>>,_DB, ProofDB) ->
@@ -424,6 +450,57 @@ int_verify_proof(Path, {Type, NodePath, NodeVal}, Val, ProofDB)
                 true  -> ok;
                 false -> {bad_value, <<>>}
             end
+    end.
+
+%%%===================================================================
+%%% Iterator traversal
+
+-spec int_iter_next(path(), tree_node(), db()) ->
+                           '$end_of_table' | {path(), value()}.
+
+int_iter_next(_Path, <<>>,_DB) ->
+    '$end_of_table';
+int_iter_next(<<>>, {branch, Branch}, DB) ->
+    pick_first_branch(Branch, 0, DB);
+int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, DB) ->
+    case int_iter_next(Rest, decode_node(branch_next(N, Branch), DB), DB) of
+        '$end_of_table' -> pick_first_branch(Branch, N + 1, DB);
+        {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+    end;
+int_iter_next(Path, {leaf, Path, _},_DB) ->
+    '$end_of_table';
+int_iter_next(<<>>, {leaf, Path, Val},_DB) ->
+    {Path, Val};
+int_iter_next(<<>>, {ext, NodePath, Hash}, DB) ->
+    {RestPath, Val} = pick_first(decode_node(Hash, DB), DB),
+    {<<NodePath/bits, RestPath/bits>>, Val};
+int_iter_next(Path, {ext, NodePath, Hash}, DB) ->
+    S = bit_size(NodePath),
+    <<NodePath:S/bits, Rest/bits>> = Path,
+    case int_iter_next(Rest, decode_node(Hash, DB), DB) of
+        '$end_of_table' -> '$end_of_table';
+        {RestPath, Val} -> {<<NodePath/bits, RestPath/bits>>, Val}
+    end.
+
+pick_first(<<>>,_DB) ->
+    '$end_of_table';
+pick_first({leaf, Path, Val},_DB) ->
+    {Path, Val};
+pick_first({ext, Path, Hash}, DB) ->
+    {RestPath, Val} = pick_first(decode_node(Hash, DB), DB),
+    {<<Path/bits, RestPath/bits>>, Val};
+pick_first({branch, Branch}, DB) ->
+    case branch_value(Branch) of
+        <<>> -> pick_first_branch(Branch, 0, DB);
+        Val  -> {<<>>, Val}
+    end.
+
+pick_first_branch(_Branch, N,_DB) when is_integer(N), N > 15 ->
+    '$end_of_table';
+pick_first_branch(Branch, N, DB) when is_integer(N) ->
+    case pick_first(decode_node(branch_next(N, Branch), DB), DB) of
+        '$end_of_table' -> pick_first_branch(Branch, N + 1, DB);
+        {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
     end.
 
 %%%===================================================================

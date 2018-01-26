@@ -32,14 +32,14 @@ class Block(object):
     """
     swagger_types = {
         'height': 'int',
-        'prev_hash': 'str',
-        'state_hash': 'str',
-        'txs_hash': 'str',
+        'prev_hash': 'EncodedHash',
+        'state_hash': 'EncodedHash',
+        'txs_hash': 'EncodedHash',
         'target': 'int',
         'nonce': 'int',
         'time': 'int',
         'version': 'int',
-        'pow': 'list[int]',
+        'pow': 'Pow',
         'transactions': 'list[Tx]'
     }
 
@@ -120,7 +120,7 @@ class Block(object):
         Gets the prev_hash of this Block.
 
         :return: The prev_hash of this Block.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._prev_hash
 
@@ -130,7 +130,7 @@ class Block(object):
         Sets the prev_hash of this Block.
 
         :param prev_hash: The prev_hash of this Block.
-        :type: str
+        :type: EncodedHash
         """
 
         self._prev_hash = prev_hash
@@ -141,7 +141,7 @@ class Block(object):
         Gets the state_hash of this Block.
 
         :return: The state_hash of this Block.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._state_hash
 
@@ -151,7 +151,7 @@ class Block(object):
         Sets the state_hash of this Block.
 
         :param state_hash: The state_hash of this Block.
-        :type: str
+        :type: EncodedHash
         """
 
         self._state_hash = state_hash
@@ -162,7 +162,7 @@ class Block(object):
         Gets the txs_hash of this Block.
 
         :return: The txs_hash of this Block.
-        :rtype: str
+        :rtype: EncodedHash
         """
         return self._txs_hash
 
@@ -172,7 +172,7 @@ class Block(object):
         Sets the txs_hash of this Block.
 
         :param txs_hash: The txs_hash of this Block.
-        :type: str
+        :type: EncodedHash
         """
 
         self._txs_hash = txs_hash
@@ -267,7 +267,7 @@ class Block(object):
         Gets the pow of this Block.
 
         :return: The pow of this Block.
-        :rtype: list[int]
+        :rtype: Pow
         """
         return self._pow
 
@@ -277,7 +277,7 @@ class Block(object):
         Sets the pow of this Block.
 
         :param pow: The pow of this Block.
-        :type: list[int]
+        :type: Pow
         """
 
         self._pow = pow

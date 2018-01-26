@@ -16,6 +16,9 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
+%% Tests only
+-export([ws_handlers_queue_max_size/0]).
+
 %%====================================================================
 %% API
 %%====================================================================
@@ -27,7 +30,8 @@ start(_StartType, _StartArgs) ->
     ok = start_swagger_internal(),
     ok = start_websocket_internal(),
     MaxWsHandlers = get_internal_websockets_acceptors(),
-    ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers}]),
+    ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers},
+                                            {max_size, ws_handlers_queue_max_size()}]),
     gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 
@@ -91,4 +95,5 @@ get_internal_websockets_acceptors() ->
     aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"acceptors">>],
                                aehttp, [internal, websocket, handlers], ?INT_ACCEPTORS_POOLSIZE).
 
+ws_handlers_queue_max_size() -> 5.
 

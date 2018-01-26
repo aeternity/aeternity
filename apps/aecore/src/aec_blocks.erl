@@ -18,8 +18,6 @@
          new/3,
          new_with_state/3,
          to_header/1,
-         serialize_for_network/1,
-         deserialize_from_network/1,
          serialize_for_store/1,
          deserialize_from_store/1,
          serialize_to_map/1,
@@ -34,16 +32,12 @@
 -compile([export_all, nowarn_export_all]).
 -endif.
 
--export_type([block_serialized_for_network/0]).
-
 -include("common.hrl").
 -include("blocks.hrl").
 -include("core_txs.hrl").
 
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
-
--type block_serialized_for_network() :: binary().
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
@@ -139,10 +133,6 @@ to_header(#block{height = Height,
             pow_evidence = Evd,
             version = Version}.
 
--spec serialize_for_network(block()) -> {ok, block_serialized_for_network()}.
-serialize_for_network(B = #block{}) ->
-    {ok, jsx:encode(serialize_to_map(B))}.
-
 serialize_client_readable(B) ->
     serialize_to_map(B, fun aec_tx_sign:serialize_for_client/1).
 
@@ -222,11 +212,6 @@ deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
             end
     end;
 deserialize_from_store(_) -> false.
-
-
--spec deserialize_from_network(block_serialized_for_network()) -> {ok, block()}.
-deserialize_from_network(B) when is_binary(B) ->
-    deserialize_from_map(jsx:decode(B, [return_maps])).
 
 deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
                                                    Nonce > ?MAX_NONCE ->

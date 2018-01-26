@@ -38,7 +38,7 @@ websocket_init(_TransportName, Req, _Opts) ->
               end,
               SubscribeEvents),
             {ok, Req1, JobId};
-        {error, rejected} ->
+        {error, _} ->
             {shutdown, Req1}
     end.
 

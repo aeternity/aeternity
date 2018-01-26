@@ -52,39 +52,31 @@ new_block_test_() ->
       end}}.
 
 network_serialization_test_() ->
-    [{"Serialize/deserialize block",
-      fun() ->
-             Block = #block{},
-             {ok, SerializedBlock} = ?TEST_MODULE:serialize_for_network(Block),
-             {ok, DeserializedBlock} =
-                 ?TEST_MODULE:deserialize_from_network(SerializedBlock),
-             ?assertEqual(Block, DeserializedBlock)
-     end},
-     {"Serialize/deserialize block with min nonce",
+    [{"Serialize/deserialize block with min nonce",
       fun() ->
               B = #block{nonce = 0},
-              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"Serialize/deserialize block with max nonce",
       fun() ->
               B = #block{nonce = ?MAX_NONCE},
-              {ok, SB} = ?TEST_MODULE:serialize_for_network(B),
-              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_network(SB))
+              SB = #{} = ?TEST_MODULE:serialize_to_map(B),
+              ?assertEqual({ok, B}, ?TEST_MODULE:deserialize_from_map(SB))
       end
      },
      {"try to deserialize a blocks with out-of-range nonce",
       fun() ->
              Block1 = #block{nonce = ?MAX_NONCE + 1},
-             {ok, SerializedBlock1} = ?TEST_MODULE:serialize_for_network(Block1),
+             SerializedBlock1 = #{} = ?TEST_MODULE:serialize_to_map(Block1),
              ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_network(SerializedBlock1)),
+                          ?TEST_MODULE:deserialize_from_map(SerializedBlock1)),
 
              Block2 = #block{nonce = -1},
-             {ok, SerializedBlock2} = ?TEST_MODULE:serialize_for_network(Block2),
+             SerializedBlock2 = #{} = ?TEST_MODULE:serialize_to_map(Block2),
              ?assertEqual({error,bad_nonce},
-                          ?TEST_MODULE:deserialize_from_network(SerializedBlock2))
+                          ?TEST_MODULE:deserialize_from_map(SerializedBlock2))
      end}].
 
 validate_test_() ->

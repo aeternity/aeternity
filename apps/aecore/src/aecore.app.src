@@ -5,6 +5,7 @@
   {registered, []},
   {mod, { aecore_app, []}},
   {start_phases, [
+                  {load_database, []},
                   {create_metrics_probes, []},
                   {start_reporters, []}
                  ]},
@@ -12,6 +13,7 @@
    [kernel,
     stdlib,
     crypto,
+    setup,
     eper,
     syntax_tools,
     compiler,
@@ -19,20 +21,19 @@
     gproc,
     jobs,
     hut,
-    setup,
     bear,
     folsom,
     exometer_core,
     yamerl,
     lager,
-    gb_merkle_trees,
     aeutils,
     msgpack,
     base58,
     erlexec,
     aecuckoo,
     aetx,
-    aeoracle
+    aeoracle,
+    aecontract
    ]},
   {env, [
          {exometer_predefined,
@@ -60,7 +61,8 @@
           [
            {normal, [
                      {110, {aec_peers, check_env, []}},
-                     {110, {aecore_app, check_env, []}}
+                     {110, {aecore_app, check_env, []}},
+                     {200, {aec_db, check_db, []}}
                     ]}
           ]}
         ]},
