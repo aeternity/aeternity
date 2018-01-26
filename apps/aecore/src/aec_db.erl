@@ -24,6 +24,8 @@
          get_top_header/0,
          get_block_state/1]).
 
+-export([import_old_persistence_data/0]).  % likely to be removed completely
+
 -include("common.hrl").
 -include("blocks.hrl").
 
@@ -145,13 +147,12 @@ get_chain_state_value(Key) ->
                undefined
        end).
 
-%% start phase hook to load the database (maybe import from persistence)
+%% start phase hook to load the database
 
 load_database() ->
     lager:debug("load_database()", []),
     try
-        wait_for_tables(),
-        maybe_import_data()
+        wait_for_tables()
     catch
         error:E ->
             erlang:error({E, erlang:get_stacktrace()});
@@ -182,7 +183,7 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
 wait_for_tables(Tabs, Sofar, _, _) ->
     {timeout, Sofar, Tabs}.
 
-maybe_import_data() ->
+import_old_persistence_data() ->
     case aec_persistence:get_chain() of
         [] ->
             ok;
