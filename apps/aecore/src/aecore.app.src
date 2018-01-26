@@ -5,7 +5,6 @@
   {registered, []},
   {mod, { aecore_app, []}},
   {start_phases, [
-                  {load_database, []},
                   {create_metrics_probes, []},
                   {start_reporters, []}
                  ]},

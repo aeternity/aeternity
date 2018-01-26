@@ -15,11 +15,9 @@
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     ok = application:ensure_started(mnesia),
+    aec_db:load_database(),
     aecore_sup:start_link().
 
-start_phase(load_database, _StartType, _PhaseArgs) ->
-    lager:debug("start_phase(load_database, _, _)", []),
-    aec_db:load_database();
 start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
     lager:debug("start_phase(create_metrics_probes, _, _)", []),
     aec_metrics:create_metrics_probes();
