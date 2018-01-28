@@ -12,17 +12,21 @@ request(BaseUri, OperationId, Params) ->
                  [<<"http">>, <<"external">>, <<"connect_timeout">>],
                  aehttp, http_connect_timeout, min(Timeout, 1000)),
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
-    #{path := Endpoint, method := Method} = endpoints:operation(OperationId),
-    request(BaseUri, Method, Endpoint, Params, [], HTTPOptions, []).
+    %% we support only one method at the moment
+    [Method|_] = maps:keys(endpoints:operation(OperationId)),
+    endpoints:validate_request(OperationId, Method, Params),
+    request(BaseUri, Method, OperationId, Params, [], HTTPOptions, []).
 
-request(BaseUri, get, Endpoint, Params, Header, HTTPOptions, Options) ->
+request(BaseUri, get, OperationId, Params, Header, HTTPOptions, Options) ->
+    Endpoint = endpoints:path(get, OperationId, Params),
     URL = binary_to_list(
             iolist_to_binary(
               [BaseUri, Endpoint, encode_get_params(Params)])),
     lager:debug("GET URL = ~p", [URL]),
     R = httpc:request(get, {URL, Header}, HTTPOptions, Options),
-    process_http_return(R);
-request(BaseUri, post, Endpoint, Params, Header, HTTPOptions, Options) ->
+    process_http_return(get, OperationId, R);
+request(BaseUri, post, OperationId, Params, Header, HTTPOptions, Options) ->
+    Endpoint = endpoints:path(post, OperationId, Params),
     URL = binary_to_list(iolist_to_binary([BaseUri, Endpoint])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
@@ -35,16 +39,16 @@ request(BaseUri, post, Endpoint, Params, Header, HTTPOptions, Options) ->
                    end,
     lager:debug("POST URL = ~p Type = ~p; Body = ~p", [URL, Type, Body]),
     R = httpc:request(post, {URL, Header, Type, Body}, HTTPOptions, Options),
-    process_http_return(R).
+    process_http_return(post, OperationId, R).
 
-process_http_return(R) ->
+process_http_return(Method, OperationId, R) ->
     case R of
         %% if Body == [] an error is thrown!
-        {ok, {{_, StatusCode, _State}, _Head, Body}} ->
+        {ok, {{_,ReturnCode, _State}, _Head, Body}} ->
             try
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [Result]),
-                {ok, StatusCode, Result}
+                endpoints:validate_response(OperationId, Method, ReturnCode, Result)
             catch
                 error:E ->
                     lager:error("http response ~p", [R]),
@@ -59,6 +63,15 @@ process_http_return(R) ->
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
 encode_get_params(Params) when is_list(Params) ->
-    ["?", lists:join( "&", [ [http_uri:encode(K), "=" , http_uri:encode(V)] 
+    ["?", lists:join( "&", [ [http_uri:encode(to_string(K)), "=" , http_uri:encode(to_string(V))] 
                              || {K,V} <- Params ] ) ].
+
+to_string(A) when is_atom(A) ->
+    atom_to_list(A);
+to_string(N) when is_integer(N) ->
+    integer_to_list(N);
+to_string(S) ->
+    S.
+
+
 
