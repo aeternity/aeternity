@@ -56,6 +56,22 @@ rest_init(Req0, {Operations, LogicHandler, ValidatorState}) ->
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'CallContract'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'CompileContract'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetAccountBalance'
     }
 ) ->
@@ -170,6 +186,9 @@ allowed_methods(Req, State) ->
 
 
 
+
+
+
 is_authorized(Req, State) ->
     {true, Req, State}.
 
@@ -187,6 +206,26 @@ content_types_accepted(Req, State) ->
 
 -spec valid_content_headers(Req :: cowboy_req:req(), State :: state()) ->
     {Value :: boolean(), Req :: cowboy_req:req(), State :: state()}.
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'CallContract'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'CompileContract'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
 
 valid_content_headers(
     Req0,
