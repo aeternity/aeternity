@@ -16,6 +16,13 @@
 
 -export([test/0]).
 
+-type option() :: pp_ring_code | pp_ast | pp_icode | pp_assembler | pp_bytecode.
+-type options() :: [option()].
+
+-export_type([ option/0
+             , options/0
+             ]).
+
 file(Filename) ->
     file(Filename, []).
 
