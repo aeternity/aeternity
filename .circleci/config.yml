@@ -26,7 +26,7 @@ references:
         if [ "$(uname -s)" == "Darwin" ]; then
             PKG_SUFFIX="osx-$(sw_vers -productVersion)"
         elif [ "$(uname -s)" == "Linux" ]; then
-            PKG_SUFFIX="linux"
+            PKG_SUFFIX="ubuntu"
         fi
         make prod-package
         mkdir ${PACKAGES_DIR:?}
@@ -41,7 +41,7 @@ references:
         if [ "$(uname -s)" == "Darwin" ]; then
             PKG_SUFFIX="osx-$(sw_vers -productVersion)"
         elif [ "$(uname -s)" == "Linux" ]; then
-            PKG_SUFFIX="linux"
+            PKG_SUFFIX="ubuntu"
         fi
         epmd -daemon
         make python-env
@@ -65,7 +65,7 @@ references:
         environment:
           PACKAGES_DIR: *packages_workspace
         command: |
-          export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-linux.tar.gz
+          export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu.tar.gz
           cd deployment/ansible
           ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
             --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?} \
