@@ -48,6 +48,10 @@ mining:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
 ''',
             "config": '''[
 {aecore,
@@ -86,6 +90,10 @@ mining:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
 ''',
             "config": '''[
 {aecore,
@@ -124,6 +132,10 @@ mining:
             executable: mean16s-generic
             extra_args: "-t 5"
             node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
 ''',
             "config": '''[
 {aecore,
@@ -254,6 +266,12 @@ def main(argv):
         test_failed = True
         print("node died")
     [stop_node(d) for d in node_dirs]
+
+    print("Checking that nodes are able to start with persisted non-empty DB")
+    [start_node(d) for d in node_dirs]
+    wait_all_nodes_are_online(node_objs)
+    [stop_node(d) for d in node_dirs]
+
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):
             print(name + " logs:")
