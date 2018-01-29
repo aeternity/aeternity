@@ -12,9 +12,10 @@ references:
     restore_cache:
       key: *rebar_cache_key
 
+  build_cache_key: &build_cache_key build-cache-v1-{{ .Revision }}
   restore_build_cache: &restore_build_cache
     restore_cache:
-      key: build-cache-v1
+      key: *build_cache_key
 
   packages_workspace: &packages_workspace /tmp/packages
   build_package: &build_package
@@ -82,7 +83,7 @@ jobs:
           name: Build
           command: ./rebar3 as test do release
       - save_cache:
-          key: build-cache-v1
+          key: *build_cache_key
           paths:
             - "_build"
             - "apps/aecuckoo/c_src"
