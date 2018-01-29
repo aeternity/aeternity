@@ -11,9 +11,11 @@
 -include("aens.hrl").
 
 %% API
--export([delete_commitment/2,
+-export([commit_to_db/1,
+         delete_commitment/2,
          delete_name/2,
          empty/0,
+         empty_with_backend/0,
          enter_commitment/2,
          enter_name/2,
          get_name/2,
@@ -59,6 +61,11 @@ delete_name(Id, Tree) ->
 -spec empty() -> tree().
 empty() ->
     MTree = aeu_mtrees:empty(),
+    #ns_tree{mtree = MTree}.
+
+-spec empty_with_backend() -> tree().
+empty_with_backend() ->
+    MTree = aeu_mtrees:empty_with_backend(aec_db_backends:ns_backend()),
     #ns_tree{mtree = MTree}.
 
 -spec prune(block_height(), tree()) -> tree().
@@ -113,6 +120,10 @@ lookup_name(Id, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#ns_tree{mtree = MTree}) ->
     aeu_mtrees:root_hash(MTree).
+
+-spec commit_to_db(tree()) -> tree().
+commit_to_db(#ns_tree{mtree = MTree} = Tree) ->
+    Tree#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree)}.
 
 %%%===================================================================
 %%% Internal functions

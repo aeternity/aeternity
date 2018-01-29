@@ -18,15 +18,13 @@
         , get_missing_block_hashes/1
         , get_top_N_blocks_time_summary/2
         , get_n_headers_from_top/2
-        , get_state_trees_for_persistence/1
         , hash_is_connected_to_genesis/2
         , has_block/2
         , has_header/2
         , insert_block/2
         , insert_header/2
         , new/0
-        , new/1
-        , new_from_persistence/2
+        , new_from_persistence/1
         , top_block/1
         , get_block_state/2
         , account/2
@@ -48,23 +46,12 @@
 
 -opaque(state() :: #{'type' => aec_chain_state
                     , 'blocks_db' => dict:dict()
-                    , 'state_db' => dict:dict()
                     , 'top_header_hash' => binary() | 'undefined'
                     , 'top_block_hash' => binary() | 'undefined'
-                    , 'max_snapshot_height' => pos_integer()
-                    , 'sparse_snapshots_interval' => pos_integer()
-                    , 'keep_all_snapshots_height' => pos_integer()
                     , 'genesis_block_hash' => 'undefined' | binary()
                     }).
 
--type(opts() :: #{ 'max_snapshot_height' := pos_integer()
-                 , 'sparse_snapshots_interval' := pos_integer()
-                 , 'keep_all_snapshots_height' := pos_integer()
-                 }).
-
-
 -export_type([ state/0
-             , opts/0
              ]).
 
 -define(match_state(___S___), #{type := aec_chain_state, ___S___}).
@@ -82,26 +69,11 @@
 
 -spec new() -> state().
 new() ->
-    new(default_opts()).
-
--spec new(opts()) -> state().
-new(OptsIn) ->
-    Opts = maps:merge(default_opts(), OptsIn),
     #{ type => aec_chain_state
      , blocks_db => db_new()
      , top_header_hash => undefined
      , top_block_hash  => undefined
-     , state_db => db_new()
-     , max_snapshot_height => maps:get(max_snapshot_height, Opts)
-     , sparse_snapshots_interval => maps:get(sparse_snapshots_interval, Opts)
-     , keep_all_snapshots_height => maps:get(keep_all_snapshots_height, Opts)
      , genesis_block_hash => undefined
-     }.
-
-default_opts() ->
-    #{ max_snapshot_height => ?MAX_SNAPSHOT_HEIGHT
-     , sparse_snapshots_interval => ?SPARSE_SNAPSHOTS_INTERVAL
-     , keep_all_snapshots_height => ?KEEP_ALL_SNAPSHOTS_HEIGHT
      }.
 
 -spec top_header(state()) -> 'undefined' | #header{}.
@@ -124,17 +96,19 @@ top_block(?match_state(top_block_hash := X) = State) ->
     export_block(blocks_db_get(X, State)).
 
 -spec get_block_state(binary(), state()) -> {'ok', trees()} | {'error', 'no_state_trees'}.
-get_block_state(Hash, ?assert_state() = State) ->
-    case state_db_find(Hash, State) of
+%% TODO: This can be rerouted at some point
+get_block_state(Hash, ?assert_state() =_State) ->
+    case state_db_find(Hash) of
         {ok, Trees} -> {ok, Trees};
         error -> {error, no_state_trees}
     end.
 
 -spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
                                     'none' | {value, account()}.
+%% TODO: This can be rerouted at some point
 account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
-account(Pubkey, ?match_state(top_block_hash := X) = State) ->
-    case state_db_find(X, State) of
+account(Pubkey, ?match_state(top_block_hash := X) =_State) ->
+    case state_db_find(X) of
         {ok, Trees} ->
             aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
         error -> no_state_trees
@@ -142,8 +116,9 @@ account(Pubkey, ?match_state(top_block_hash := X) = State) ->
 
 -spec all_accounts_balances(binary(), state()) -> {'ok', [{pubkey(), non_neg_integer()}]} |
                                                   {'error', 'no_state_trees'}.
-all_accounts_balances(BlockHeaderHash, ?assert_state() = State) ->
-    case state_db_find(BlockHeaderHash, State) of
+%% TODO: This can be rerouted at some point
+all_accounts_balances(BlockHeaderHash, ?assert_state() =_State) ->
+    case state_db_find(BlockHeaderHash) of
         {ok, Trees} ->
             {ok, aec_accounts_trees:get_all_accounts_balances(
                    aec_trees:accounts(Trees))};
@@ -269,13 +244,9 @@ find_common_ancestor(Hash1, Hash2, ?assert_state() = State) ->
         _ -> {error, unknown_hash}
     end.
 
--spec get_state_trees_for_persistence(state())->[{Hash :: binary(), #trees{}}].
-get_state_trees_for_persistence(?assert_state() = State) ->
-    state_db_to_list(State).
-
--spec new_from_persistence([#block{}|#header{}], [{Hash :: binary(), #trees{}}]) -> state().
-new_from_persistence(Chain, StateTreesList) ->
-    State = state_db_init_from_list(StateTreesList, new()),
+-spec new_from_persistence([#block{}|#header{}]) -> state().
+new_from_persistence(Chain) ->
+    State = new(),
     NodeChain = [wrap_block_or_header(X) || X <- Chain],
     State1 = blocks_db_init_from_list(NodeChain, State),
     case find_top_hash_from_genesis_node(State1) of
@@ -318,7 +289,7 @@ get_top_N_blocks_time_summary(?assert_state() = State, N)
                         {'error', 'name_not_found'}.
 name_entry(Name, ?assert_state() = State) ->
     TopHash = get_top_header_hash(State),
-    case state_db_find(TopHash, State) of
+    case state_db_find(TopHash) of
         {ok, Trees} ->
             aens:get_name_entry(Name, aec_trees:ns(Trees));
         error ->
@@ -329,7 +300,7 @@ name_entry(Name, ?assert_state() = State) ->
                                                  {error, atom()}.
 resolve_name(Type, Name, ?assert_state() = State) ->
     TopHash = get_top_header_hash(State),
-    case state_db_find(TopHash, State) of
+    case state_db_find(TopHash) of
         {ok, Trees} ->
             aens:resolve(Type, Name, aec_trees:ns(Trees));
         error ->
@@ -742,8 +713,8 @@ update_state_tree(Node, State) ->
             update_next_state_tree(Node, State);
         {calculated, Trees} ->
             assert_state_hash_valid(Trees, Node),
-            State1 = state_db_put(hash(Node), Trees, State),
-            update_next_state_tree(Node, State1)
+            ok = state_db_put(hash(Node), Trees),
+            update_next_state_tree(Node, State)
     end.
 
 assert_state_hash_valid(Trees, Node) ->
@@ -775,7 +746,7 @@ calculate_state_trees(#node{type = header},_Acc,_State) ->
     %% calculate the state of the block.
     error;
 calculate_state_trees(Node, Acc, State) ->
-    case state_db_find(hash(Node), State) of
+    case state_db_find(hash(Node)) of
         {ok, Trees} when Acc =:= [] -> {stored, Trees};
         {ok, Trees} -> {calculated, apply_node_transactions(Acc, Trees, State)};
         error ->
@@ -794,9 +765,7 @@ calculate_state_trees(Node, Acc, State) ->
 update_top_block_hash(Hash, State) ->
     case get_top_block_hash(State) =:= Hash of
         true -> State;
-        false ->
-            State1 = set_top_block_hash(Hash, State),
-            garbage_collect_state_trees(State1)
+        false -> set_top_block_hash(Hash, State)
     end.
 
 apply_node_transactions([Node|Left], Trees, State) ->
@@ -900,67 +869,6 @@ get_N_nodes_time_summary(Node, ParentTime, ParentDifficulty, State, Acc0, N) ->
             end
     end.
 
-
-%%%-------------------------------------------------------------------
-%%% Garbage collection of state trees
-%%% -------------------------------------------------------------------
-%%% @doc Garbage collection strategy: Keep all snapshots from the
-%%% block top until ?KEEP_ALL_SNAPSHOTS_HEIGHT, then keep only
-%%% snapshots spaced with ?SPARSE_SNAPSHOTS_INTERVAL until
-%%% ?MAX_SNAPSHOT_HEIGHT.
-%%% TODO: The parameters should be configurable from the environment.
-
-garbage_collect_state_trees(State) ->
-    case get_top_block_hash(State) of
-        undefined -> State;
-        Hash when is_binary(Hash) ->
-            Node = blocks_db_get(Hash, State),
-            %% NOTE: Order is important for the nodes in Keep.
-            %%       They must be in increasing height to avoid
-            %%       quadratic complexity.
-            Keep = gc_collect(Node, 0, State, []),
-            gc_init(Keep, State)
-    end.
-
-gc_init(Nodes, State) ->
-    gc_init(Nodes, State, []).
-
-gc_init([], State, Acc) ->
-    state_db_init_from_list(Acc, State);
-gc_init([Node|Left], State, Acc) ->
-    case calculate_state_trees(Node, State) of
-        {stored, Trees} -> gc_init(Left, State, [{hash(Node), Trees}|Acc]);
-        {calculated, Trees} ->
-            %% We must store the current state so that we don't need
-            %% to calculate it again if we need the next state as well.
-            Hash = hash(Node),
-            State1 = state_db_put(Hash, Trees, State),
-            gc_init(Left, State1, [{Hash, Trees}|Acc])
-    end.
-
-gc_collect(Node, HeightFromTop, State, Acc) ->
-    case node_height(Node) =:= 0 of
-        true  -> [Node|Acc];%% Always keep genesis if it falls into range
-        false ->
-            MaxHeight = maps:get(max_snapshot_height, State),
-            case HeightFromTop > MaxHeight of
-                true -> Acc;
-                false ->
-                    PrevNode = blocks_db_get(prev_hash(Node), State),
-                    Height = HeightFromTop + 1,
-                    case keep_state_snapshot(HeightFromTop, State) of
-                        true -> gc_collect(PrevNode, Height, State, [Node|Acc]);
-                        false -> gc_collect(PrevNode, Height, State, Acc)
-                    end
-            end
-    end.
-
-keep_state_snapshot(HeightFromTop, State) ->
-    KeepAll = maps:get(keep_all_snapshots_height, State),
-    Interval = maps:get(sparse_snapshots_interval, State),
-    (HeightFromTop < KeepAll)
-        orelse (((HeightFromTop - KeepAll) rem Interval) == 0).
-
 %%%-------------------------------------------------------------------
 %%% Internal interface for the blocks_db
 %%%-------------------------------------------------------------------
@@ -982,9 +890,6 @@ db_find(Key, Store) ->
         {ok, Res} -> {ok, Res};
         error -> error
     end.
-
-db_to_list(Store) ->
-    dict:to_list(Store).
 
 blocks_db_put(#node{hash = Hash} = Node, State) ->
     DB = maps:get(blocks_db, State),
@@ -1015,19 +920,15 @@ blocks_db_init_from_list(List, State) ->
     State#{blocks_db => DB, genesis_block_hash => GenesisHash}.
 
 
-state_db_put(Hash, Trees, #{state_db := DB} = State) ->
-    State#{state_db => db_put(Hash, Trees, DB)}.
+state_db_put(Hash, Trees) ->
+    Trees1 = aec_trees:commit_to_db(Trees),
+    ok = aec_db:write_block_state(Hash, Trees1).
 
-state_db_find(Key, #{state_db := Store}) ->
-    db_find(Key, Store).
-
-state_db_init_from_list(List, State) ->
-    Fun = fun({Key, Val}, Acc) -> db_put(Key, Val, Acc)end,
-    DB = lists:foldl(Fun, db_new(), List),
-    State#{state_db => DB}.
-
-state_db_to_list(#{state_db := DB} =_State) ->
-    db_to_list(DB).
+state_db_find(Hash) ->
+    case aec_db:find_block_state(Hash) of
+        {value, Trees} -> {ok, Trees};
+        none -> error
+    end.
 
 -spec fold_blocks(fun((_, _, _) -> any()), any(), state()) -> any().
 fold_blocks(Fun, Acc0, #{blocks_db := Store}) when is_function(Fun, 3) ->

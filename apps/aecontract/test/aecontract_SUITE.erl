@@ -208,10 +208,6 @@ state_tree(_Cfg) ->
     Call2 = ?call(insert_call, Acc2, Ct1, <<"Ct1.bar">>),
     Call1 = ?call(get_call, Ct1, Call1),
     Call2 = ?call(get_call, Ct1, Call2),
-    Ct1a  = ?call(get_contract, Ct1),
+    Ct1   = ?call(get_contract, Ct1),
     <<"Code for C1">> = aect_contracts:code(Ct1),
-    Hash1 = aect_contracts:calls_hash(Ct1),
-    Hash2 = aect_contracts:calls_hash(Ct1a),
-    true  = Hash1 /= Hash2,
-    true  = Ct1a == aect_contracts:set_calls_hash(Hash2, Ct1),
     ok.
