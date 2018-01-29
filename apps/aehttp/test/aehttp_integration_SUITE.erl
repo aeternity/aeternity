@@ -382,7 +382,7 @@ block_by_height(_Config) ->
     lists:foreach(
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
-            ExpectedBlockMap = block_to_endpoint_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
             {ok, 200, BlockMap} = get_block_by_height(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -445,7 +445,7 @@ block_by_hash(_Config) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
             Hash = aec_base58c:encode(block_hash, H),
-            ExpectedBlockMap = block_to_endpoint_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
             {ok, 200, BlockMap} = get_block_by_hash(Hash),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -1208,6 +1208,7 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
                         end,
                     lists:foreach(
                         fun({Tx, Index}) ->
+                            ct:log("Index: ~p, Transaction: ~p", [Index, Tx]),
                             {ok, 200, #{<<"data_schema">> := DataSchema,
                                         <<"transaction">> := Tx}} = CallApi(Height,
                                                                             Index,
@@ -1926,16 +1927,20 @@ header_to_endpoint_top(Header) ->
     CleanedH = aehttp_dispatch_ext:cleanup_genesis(HMap),
     maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), CleanedH).
 
+block_to_endpoint_gossip_map(Block) ->
+    BMap = aec_blocks:serialize_to_map(Block),
+    aehttp_dispatch_ext:cleanup_genesis(BMap).
+
 block_to_endpoint_map(Block) ->
     block_to_endpoint_map(Block, #{tx_objects => false}).
 
 block_to_endpoint_map(Block, Options) ->
-    SerializeFun =
+    Encoding =
         case maps:get(tx_objects, Options, false) of
-            true -> fun aec_blocks:serialize_client_readable/1;
-            false -> fun aec_blocks:serialize_to_map/1
+            false -> message_pack; 
+            true -> json
         end,
-    BMap = SerializeFun(Block),
+    BMap = aec_blocks:serialize_client_readable(Encoding, Block),
     aehttp_dispatch_ext:cleanup_genesis(BMap).
 
 %% misbehaving peers get blocked so we need unique ones

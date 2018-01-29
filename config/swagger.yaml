@@ -1542,6 +1542,10 @@ definitions:
     properties:
       tx:
         $ref: '#/definitions/GenericTxObject'
+      block_height:
+        type: integer
+      block_hash:
+        $ref: '#/definitions/EncodedHash'
       signatures:
         type: array
         minItems: 1

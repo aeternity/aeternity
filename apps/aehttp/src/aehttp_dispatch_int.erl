@@ -430,14 +430,15 @@ get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
             %% and always runs jsx:encode/1 on it - even if it is already
             %% encoded to a binary; that's why we use
             %% aec_blocks:serialize_to_map/1
-            {SerializeFun, DataSchema} =
+            {Encoding, DataSchema} =
                 case TxObjects of
-                    true ->
-                        {fun aec_blocks:serialize_client_readable/1, <<"BlockWithTxs">>};
                     false ->
-                        {fun aec_blocks:serialize_to_map/1, <<"BlockWithTxsHashes">>}
+                        {message_pack, <<"BlockWithTxsHashes">>};
+                    true ->
+                        {json, <<"BlockWithTxs">>}
                 end,
-            Resp0 = aehttp_dispatch_ext:cleanup_genesis(SerializeFun(Block)),
+            Resp0 = aehttp_dispatch_ext:cleanup_genesis(
+                      aec_blocks:serialize_client_readable(Encoding, Block)),
             % we add swagger's definition name to the object so the
             % result could be validated against the schema
             Resp1 = Resp0#{data_schema => DataSchema},
@@ -472,20 +473,15 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
                     {404, [], #{reason => <<"Transaction not found">>}};
                 {ok, Tx} ->
                     TxObjects = read_optional_bool_param('tx_objects', Req, false),
-                    {SerializeFun, DataSchema} =
+                    {Encoding, DataSchema} =
                         case TxObjects of
                             true ->
-                                {fun aec_tx_sign:serialize_for_client/1,
-                                 <<"SingleTxObject">>};
+                                {json, <<"SingleTxObject">>};
                             false ->
-                                {fun(T) ->
-                                     #{tx =>
-                                       aec_base58c:encode(transaction,
-                                                          aec_tx_sign:serialize_to_binary(T))}
-                                 end,
-                                 <<"SingleTxHash">>}
+                                {message_pack, <<"SingleTxHash">>}
                         end,
-                    {200, [], #{transaction => SerializeFun(Tx),
+                    H = aec_blocks:to_header(Block),
+                    {200, [], #{transaction => aec_tx_sign:serialize_for_client(Encoding, H, Tx),
                                 data_schema => DataSchema}}
             end;
         {_Code, _, _Reason} = Err ->
@@ -521,16 +517,13 @@ read_optional_bool_param(Key, Req, Default) when Default =:= true
     end.
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
-    {SerializeFun, DataSchema} =
+    {Encoding, DataSchema} =
         case read_optional_bool_param('tx_objects', Req, false) of
-            false ->
-                {fun(Tx) ->
-                    #{<<"tx">> => aec_base58c:encode(transaction,
-                                                     aec_tx_sign:serialize_to_binary(Tx))}
-                  end, <<"TxMsgPackHashes">>};
             true ->
-                {fun aec_tx_sign:serialize_for_client/1, <<"TxObjects">>}
-          end,
+                {json, <<"TxObjects">>};
+            false ->
+                {message_pack, <<"TxMsgPackHashes">>}
+        end,
     case GetFun() of
         {error, invalid_range} ->
             {400, [], #{reason => <<"From's height is bigger than To's">>}};
@@ -546,7 +539,10 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
             Txs = lists:foldl(
                 fun(Block, Accum) ->
                     BlockTxs = aec_blocks:txs(Block),
-                    lists:map(SerializeFun, BlockTxs) ++ Accum
+                    H = aec_blocks:to_header(Block),
+                    lists:map(
+                        fun(Tx) -> aec_tx_sign:serialize_for_client(Encoding, H, Tx) end,
+                        BlockTxs) ++ Accum
                 end,
                 [],
                 Blocks),
