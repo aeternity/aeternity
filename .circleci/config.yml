@@ -264,44 +264,44 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - deploy_integration:
-          requires:
-            - test
-            - eunit
-            - static_analysis
-            - linux_package
-          filters:
-            branches:
-              only: master
+      # - deploy_integration:
+      #     requires:
+      #       - test
+      #       - eunit
+      #       - static_analysis
+      #       - linux_package
+      #     filters:
+      #       branches:
+      #         only: master
 
-      - deploy_dev1:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: env/dev1
+      # - deploy_dev1:
+      #     requires:
+      #       - linux_package
+      #     filters:
+      #       branches:
+      #         only: env/dev1
 
-      - deploy_dev2:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: env/dev2
+      # - deploy_dev2:
+      #     requires:
+      #       - linux_package
+      #     filters:
+      #       branches:
+      #         only: env/dev2
 
-      - hodl:
-          type: approval
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v.*$/
+      # - hodl:
+      #     type: approval
+      #     filters:
+      #       branches:
+      #         ignore: /.*/
+      #       tags:
+      #         only: /^v.*$/
 
-      - deploy_uat:
-          requires:
-            - linux_package
-            - hodl
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: /^v.*$/
+      # - deploy_uat:
+      #     requires:
+      #       - linux_package
+      #       - hodl
+      #     filters:
+      #       branches:
+      #         ignore: /.*/
+      #       tags:
+      #         only: /^v.*$/
