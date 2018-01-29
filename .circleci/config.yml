@@ -263,6 +263,8 @@ workflows:
           filters:
             branches:
               only: master
+            tags:
+              only: /^v.*$/
 
       - deploy_integration:
           requires:
