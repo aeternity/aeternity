@@ -30,7 +30,7 @@ references:
         fi
         make prod-package
         mkdir ${PACKAGES_DIR:?}
-        cp _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
 
   test_package: &test_package
     run:
