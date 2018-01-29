@@ -1,4 +1,5 @@
 ansible ~= 2.4
 python-openstackclient ~= 3.12
 shade ~= 1.24
+pyyaml ~= 3.12
 datadog ~= 0.17
