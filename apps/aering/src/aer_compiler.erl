@@ -43,7 +43,7 @@ from_string(ContractString, Options) ->
     ok = pp_bytecode(ByteCode, Options),
     ByteCode.
 
-parse(C, Options) ->
+parse(C,_Options) ->
     parse_string(C).
     
 to_icode(Ast, Options) ->
