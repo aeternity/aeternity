@@ -156,8 +156,8 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
            #{<<"type">>   => QueryTTLType,
              <<"value">>  => QueryTTLValue}},
      #{<<"response_ttl">> =>
-           #{<<"type">>   => delta,
-             <<"value">>  => ResponseTTLValue}}
+           #{<<"type">>   => <<"delta">>,
+             <<"value">>  => ResponseTTLValue}},
      #{<<"fee">>          => Fee}].
 
 deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
@@ -169,7 +169,7 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
              #{<<"query_fee">>    := QueryFee},
              #{<<"query_ttl">>    := #{<<"type">>  := QueryTTLType,
                                        <<"value">> := QueryTTLValue}},
-             #{<<"response_ttl">> := #{<<"type">>  := delta,
+             #{<<"response_ttl">> := #{<<"type">>  := <<"delta">>,
                                        <<"value">> := ResponseTTLValue}},
              #{<<"fee">>          := Fee}]) ->
     #oracle_query_tx{sender        = SenderPubKey,
