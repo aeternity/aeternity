@@ -121,12 +121,13 @@ jobs:
             epmd -daemon
             make eunit
 
-  dialyzer:
+  static_analysis:
     <<: *container_config
     steps:
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
+      - run: ./rebar3 edoc
       - restore_cache:
           keys:
             - dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
@@ -198,7 +199,7 @@ jobs:
 # and all its transitively dependent jobs must also have a filters tags section.
 workflows:
   version: 2
-  build_and_test:
+  build_test_deploy:
     jobs:
       - build:
           requires: ~
@@ -232,7 +233,7 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - dialyzer:
+      - static_analysis:
           requires:
             - build
           filters:
@@ -257,7 +258,7 @@ workflows:
           requires:
             - test
             - eunit
-            - dialyzer
+            - static_analysis
           filters:
             branches:
               only: master
@@ -266,7 +267,7 @@ workflows:
           requires:
             - test
             - eunit
-            - dialyzer
+            - static_analysis
             - linux_package
           filters:
             branches:
