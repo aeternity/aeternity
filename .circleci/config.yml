@@ -107,8 +107,6 @@ jobs:
             make test
       - store_artifacts:
           path: _build/test/logs
-      - store_artifacts:
-          path: _build/test/logs/latest.sync/*/log/*.log
 
   eunit:
     <<: *container_config
