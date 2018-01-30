@@ -100,6 +100,8 @@ infer_expr(Env,Body={id,As,Name}) ->
 	Type ->
 	    {typed,As,Body,Type}
     end;
+infer_expr(Env,{unit,As}) ->
+    infer_expr(Env,{tuple,As,[]});
 infer_expr(Env,{tuple,As,Cpts}) ->
     NewCpts = [infer_expr(Env,C) || C <- Cpts],
     CptTypes = [T || {typed,_,_,T} <- NewCpts],
