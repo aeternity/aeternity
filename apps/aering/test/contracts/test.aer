@@ -27,11 +27,11 @@ contract Identity = {
   //   | [] => n;
   //   | (x::xs) => lent(n+1,xs);
   //   };
-  // let app(a:int,b:int) =
-  //    switch(a) {
-  //    | [] => b;
-  //    | (x::xs) => x::app(xs,b);
-  //    };
+   let rec app(a:int,b:int) =
+      switch(a) {
+      | [] => b;
+      | (x::xs) => x::app(xs,b);
+      };
   // let rec revt(l,r) =
   //   switch(l) {
   //   | [] => r;
@@ -70,4 +70,6 @@ contract Identity = {
   let pair(x) = (1,2);
   let unit(x) = ();
   let tuples(x) = ((1,x),(2,3,4));
+  let singleton(x) = [x];
+  let rec seq(n) = if (n==0) [] else (app(seq(n-1),[n]));
 };

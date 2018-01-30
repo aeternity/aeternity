@@ -481,6 +481,17 @@ make_encoder_body({tuple,TRs}) ->
 	{tuple,[{funcall,{var_ref,encoder_name(TR)},[{var_ref,"base"},V]}
 		|| {TR,V} <- lists:zip(TRs,Vars)]},
 	{var_ref,"base"}}}
+     ]};
+make_encoder_body({list,TR}) ->
+    {switch,{var_ref,"value"},
+     [{{list,[]},{list,[]}},
+      {{tuple,[{var_ref,"head"},{var_ref,"tail"}]},
+       {binop,'-',
+	{tuple,[{funcall,{var_ref,encoder_name(TR)},
+		 [{var_ref,"base"},{var_ref,"head"}]},
+		{funcall,{var_ref,encoder_name({list,TR})},
+		 [{var_ref,"base"},{var_ref,"tail"}]}]},
+	{var_ref,"base"}}}
      ]}.
 
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called

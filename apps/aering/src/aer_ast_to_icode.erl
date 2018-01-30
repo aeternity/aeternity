@@ -128,7 +128,9 @@ ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
 ast_typerep({tuple_t,_,Cpts}) ->
-    #tuple{cpts = [ast_typerep(C) || C<-Cpts]}.
+    #tuple{cpts = [ast_typerep(C) || C<-Cpts]};
+ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
+    #list{elems=ast_typerep(Elem)}.
 
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
