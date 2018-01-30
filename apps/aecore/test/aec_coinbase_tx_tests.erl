@@ -19,7 +19,6 @@
 %%%=============================================================================
 
 coinbase_tx_existing_account_test_() ->
-    fail.
     {foreach,
      fun() ->
              PubKey = <<"my_pubkey">>,
@@ -81,7 +80,7 @@ create_coinbase_tx_no_account_test() ->
               {"Check coinbase trx without existing account in state: shall create account",
                fun() ->
                        {Succ, Trees} = aec_coinbase_tx:check(CoinbaseTx, Trees0, 9),
-                       ?assertEqual(ok, Succ),
+                       ?assertEqual(fail, Succ),
                        AccountsTrees = aec_trees:accounts(Trees),
                        ?assertEqual({value, #account{pubkey = PubKey,
                                                      balance = 0,
