@@ -117,8 +117,9 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
     end.
 
 -spec accounts(query_tx()) -> [pubkey()].
-accounts(#oracle_query_tx{sender = SenderPubKey}) ->
-    [SenderPubKey].
+accounts(#oracle_query_tx{sender = SenderPubKey,
+                          oracle = OraclePubKey}) ->
+    [SenderPubKey, OraclePubKey].
 
 -spec signers(query_tx()) -> [pubkey()].
 signers(#oracle_query_tx{sender = SenderPubKey}) ->
