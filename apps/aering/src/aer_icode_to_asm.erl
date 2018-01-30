@@ -25,7 +25,11 @@ convert(#{ contract_name := _ContractName
 		      {encode,TypeRep,{funcall,{var_ref,FName},make_args(Args)}}}
 		     || {FName,Args,_,TypeRep} <- Functions]},
 		   word},
-    NewFunctions = Functions ++ [DispatchFun],
+    %% Find the type-reps we need encoders for
+    TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions]),
+    Encoders = [make_encoder(T) || T <- TypeReps],
+    io:format("Encoders:\n  ~p\n",[Encoders]),
+    NewFunctions = Functions ++ [DispatchFun] ++ Encoders,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
     	    || {Name, Args, _Body, _Type} <- NewFunctions],
@@ -105,8 +109,7 @@ assemble_expr(Funs,Stack,_,{tuple,Cpts}) ->
     %% keeping them for a long time on the stack.
     case lists:reverse(Cpts) of
 	[] ->
-	    %% It doesn't matter what the address of the empty tuple is.
-	    push(0);
+	    aeb_opcodes:mnemonic(?MSIZE);
 	[Last|Rest] ->
 	    [assemble_expr(Funs,Stack,nontail,Last),
 	     %% allocate the tuple memory
@@ -161,9 +164,37 @@ assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
      assemble_infix(Op)];
 assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
     [assemble_expr(Funs,Stack,nontail,A),
-     assemble_encoder(TypeRep)];
+     %% Allocate memory for the encoding (a binary)
+     aeb_opcodes:mnemonic(?MSIZE),
+     %% The contents of the encoding is a heap fragment with relative
+     %% addresses, whose first word is the value (perhaps a relative
+     %% pointer into the heap fragment). Compute the address of the
+     %% heap fragment--the "base" to which other addresses are
+     %% relative. 
+     push(32), aeb_opcodes:mnemonic(?ADD),
+     %% Write zero here, to ensure that ?MSIZE is increased.
+     push(0), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     %% Call the encoder function
+     assemble_expr(Funs,[{"base","_"},{"value","_"}|Stack],nontail,
+		   {funcall,{var_ref,encoder_name(TypeRep)},
+		    [{var_ref,"base"},{var_ref,"value"}]}),
+     %% Stack: value-to-encode, base address, encoded result
+     %% Store the encoded result in the first word of the heap fragment
+     dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     
+     %% Stack: value-to-encode, base address
+     %% Compute the size of the binary we just constructed
+     dup(1), aeb_opcodes:mnemonic(?MSIZE), aeb_opcodes:mnemonic(?SUB),
+     %% Stack: value-to-encode, base address, binary size
+     %% Reset the base address to the binary address
+     push(32), dup(3), aeb_opcodes:mnemonic(?SUB),
+     %% Stack: value-to-encode, base address, binary size, base-32
+     %% Save the size at the binary address
+     swap(1), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     %% Stack: value-to-encode, base address, base-32
+     %% and return the address of the binary.
+     {pop_args,2}];
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
-    %% TODO: tail-call optimization!
     Return = make_ref(),
     %% This is the obvious code:
     %%   [{push_label,Return},
@@ -406,86 +437,51 @@ assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)
 assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
 %% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
-%% Encoders convert a value to a binary (string).
-assemble_encoder(TypeRep) ->
-    [aeb_opcodes:mnemonic(?MSIZE), %% the address of the binary we will create
-     push(32), 
-     aeb_opcodes:mnemonic(?ADD),   %% the address of the memory area we copy into
-     %% Increment MSIZE by 2 words (length word and value word)
-     push(0), dup(2), aeb_opcodes:mnemonic(?MSTORE),
-     %% Stack: v, base (binptr)
-     push(0),
-     %% stack: v, base, offset
-     %% base refers to the start of the memory area we're copying into, not the string address.
-     assemble_encode_at(TypeRep),
-     %% stack: base
-     %% Compute number of bytes in the data area
-     dup(1),
-     aeb_opcodes:mnemonic(?MSIZE),
-     aeb_opcodes:mnemonic(?SUB),
-     %% stack: base, size
-     %% base:=base-32, *base=size
-     push(32), dup(3), aeb_opcodes:mnemonic(?SUB),
-     swap(2), aeb_opcodes:mnemonic(?POP), dup(2),
-     aeb_opcodes:mnemonic(?MSTORE)].
-     
-%% Stack before: v, base, offset
-%% Stack after:  base
-%% v written to *(base+offset)
-assemble_encode_at(word) ->
-    [dup(2),
-     aeb_opcodes:mnemonic(?ADD),
-     %% Stack: v, base, offset+base
-     swap(2), swap(1), swap(2),
-     %% Stack: base, v, offset+base
-     aeb_opcodes:mnemonic(?MSTORE)];
-assemble_encode_at({tuple,Cpts}) ->
-    [%% Stack: v, base, offset
+%% Type-directed encoders
 
-     %% Allocate memory for the tuple.
-     aeb_opcodes:mnemonic(?MSIZE),   %% the address of the new tuple
-     [[%% Expand memory to include the new tuple, unless it is of size zero
-       push(0),                        %% dummy value to write
-       push(32*(length(Cpts)-1)),
-       dup(3),
-       aeb_opcodes:mnemonic(?ADD),
-       aeb_opcodes:mnemonic(?MSTORE)]
-      || length(Cpts)>0],
-     
-     %% Stack: v, base, offset, v'
-     %% Convert v' to the OFFSET of the new tuple
-     dup(3),
-     swap(1),
-     aeb_opcodes:mnemonic(?SUB),
+%% Given the type-reps appearing in the program, include children and
+%% eliminate duplicates.
+all_type_reps(InSource) ->
+    all_type_reps(InSource,[]).
 
-     %% Stack: v, base, offset, offset(v')
-     %% Store the offset(v') at base[offset]
-     swap(1),
-     dup(3),
-     %% Stack: v, base, offset(v'), offset, base
-     aeb_opcodes:mnemonic(?ADD),
-     dup(2),
-     swap(1),
-     aeb_opcodes:mnemonic(?MSTORE),
-     %% Stack: v, base, offset(v')
+all_type_reps([],Found) ->
+    Found;
+all_type_reps([TR|InSource],Found) ->
+    case lists:member(TR,Found) of
+	true ->
+	    all_type_reps(InSource,Found);
+	false ->
+	    Nested = case TR of
+			 {tuple,TRs} ->
+			     TRs;
+			 _ ->
+			     []
+		     end,
+	    all_type_reps(Nested++InSource,[TR|Found])
+    end.
 
-     %% For each component, encode *v at offset(v'), increment v and offset(v')
-     [[%% Stack: v, base, offset(v')
-       swap(1), dup(3), aeb_opcodes:mnemonic(?MLOAD),
-       swap(1), dup(3),
-       %% Stack: v, offset(v'), v, base, offset(v')
-       assemble_encode_at(Cpt),
-       %% Stack: v, offset(v'), base
-       swap(2), push(32), aeb_opcodes:mnemonic(?ADD), swap(2),
-       swap(1), push(32), aeb_opcodes:mnemonic(?ADD)
-       %% Stack: v+32, base, offset(v')+32
-      ]
-      || Cpt <- Cpts],
-     
-     %% Stack: v+32*n, base, offset(v')+32*n
-     aeb_opcodes:mnemonic(?POP),
-     swap(1),
-       aeb_opcodes:mnemonic(?POP)].
+%% We generate encoder function definitions for each type
+%% rep. Encoders take a base address as an argument, and a value to
+%% copy, and construct a copy of the value with all addresses relative
+%% to the base address. Very untyped!
+
+encoder_name(TR) ->
+    "_encode_" ++ lists:flatten(io_lib:write(TR)).
+
+make_encoder(TR) ->
+    {encoder_name(TR),[{"base","_"},{"value","_"}],make_encoder_body(TR),word}.
+
+make_encoder_body(word) ->
+    {var_ref,"value"};
+make_encoder_body({tuple,TRs}) ->
+    Vars = [{var_ref,"_v"++integer_to_list(I)} || I <- lists:seq(1,length(TRs))],
+    {switch,{var_ref,"value"},
+     [{{tuple,Vars},
+       {binop,'-',
+	{tuple,[{funcall,{var_ref,encoder_name(TR)},[{var_ref,"base"},V]}
+		|| {TR,V} <- lists:zip(TRs,Vars)]},
+	{var_ref,"base"}}}
+     ]}.
 
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
