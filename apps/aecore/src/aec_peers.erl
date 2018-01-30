@@ -23,6 +23,7 @@
 
 %% API
 -export([add_and_ping_peers/1,
+         add_and_ping_peers/2,
          block_peer/1,
          unblock_peer/1,
          is_blocked/1,
@@ -52,6 +53,7 @@
 -define(MIN_PING_INTERVAL,   3000).
 -define(MAX_PING_INTERVAL, 120000).
 
+-define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000).
 
 %% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
@@ -62,7 +64,8 @@
           path              :: http_uri:path(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           last_pings = []   :: [integer()], % Erlang system time
-          ping_tref         :: reference() | undefined
+          ping_tref         :: reference() | undefined,
+          trusted = false   :: boolean() % Is it a pre-configured peer
          }).
 
 -type peer() :: #peer{}.
@@ -98,13 +101,22 @@ add(Uri, Connect) when is_boolean(Connect) ->
                    end).
 
 %%------------------------------------------------------------------------------
-%% Add peer by url or supplying full peer() record. Connect if `Connect==true`
+%% Add peers by uri.
 %%------------------------------------------------------------------------------
 -spec add_and_ping_peers([http_uri:uri()]) -> ok.
 add_and_ping_peers(Uris) ->
+    add_and_ping_peers(Uris, false).
+
+%%------------------------------------------------------------------------------
+%% Add peers by uri. Indicate whether they are trusted (i.e. pre-configured) or
+%% not.
+%%------------------------------------------------------------------------------
+-spec add_and_ping_peers([http_uri:uri()], boolean()) -> ok.
+add_and_ping_peers(Uris, Trusted) ->
     case valid_uris(Uris) of
         [] -> ok;
-        Peers when is_list(Peers) ->
+        Peers0 when is_list(Peers0) ->
+            Peers = [ P#peer{ trusted = Trusted } || P <- Peers0 ],
             gen_server:cast(?MODULE, {add_and_ping, Peers})
     end.
 
@@ -239,6 +251,10 @@ check_ping_interval_env() ->
           end,
     application:set_env(aecore, ping_interval_limits, {Min, Max}).
 
+-ifdef(TEST).
+unblock_all() ->
+    gen_server:call(?MODULE, unblock_all).
+-endif.
 
 %%%=============================================================================
 %%% gen_server functions
@@ -248,7 +264,8 @@ check_ping_interval_env() ->
 -record(state, {peers :: gb_trees:tree(binary(), peer()),
                 blocked = gb_sets:new() :: gb_sets:set(http_uri:uri()),
                 errored = gb_sets:new() :: gb_sets:set(http_uri:uri()),
-                local_peer :: peer()  %% for universal handling of URIs
+                local_peer :: peer(),  %% for universal handling of URIs
+                next_unblock = 0 :: integer() %% Erlang timestamp in ms.
                }).
 
 start_link() ->
@@ -264,19 +281,23 @@ handle_call({set_local_peer_uri, Peer}, _From, State) ->
     {reply, ok, State#state{local_peer = Peer}};
 handle_call(get_local_peer_uri, _From, State) ->
     {reply, uri_of_peer(State#state.local_peer), State};
-handle_call({is_blocked, Peer}, _From, State) ->
+handle_call({is_blocked, Peer}, _From, State0) ->
+    State = maybe_unblock(State0),
     {reply, is_blocked(Peer, State), State};
-handle_call({block, Peer}, _From, #state{peers = Peers,
-                                  blocked = Blocked} = State) ->
+handle_call({block, Peer}, _From, State0) ->
+    State = maybe_unblock(State0),
+    #state{peers = Peers, blocked = Blocked} = State,
     Uri = uri_of_peer(Peer),
-    Key = hash_uri(Uri),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
-            true -> State;
-            false ->
-               aec_events:publish(peers, {blocked, Uri}),
-               State#state{peers   = gb_trees:delete_any(Key, Peers),
-                           blocked = gb_sets:add_element(Uri, Blocked)}
+    NewState =
+        case lookup_peer(Uri, State) of
+            {value, _Key, #peer{ trusted = true }} -> State;
+            {value, Key, _} ->
+                aec_events:publish(peers, {blocked, Uri}),
+                State#state{peers   = gb_trees:delete_any(Key, Peers),
+                            blocked = gb_sets:add_element(Uri, Blocked)};
+            none ->
+                aec_events:publish(peers, {blocked, Uri}),
+                State#state{blocked = gb_sets:add_element(Uri, Blocked)}
         end,
     {reply, ok, NewState};
 handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
@@ -289,6 +310,9 @@ handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
                 State#state{blocked = gb_sets:del_element(Uri, Blocked)}
         end,
     {reply, ok, NewState};
+%% unblock_all is only available for test
+handle_call(unblock_all, _From, State) ->
+    {reply, ok, State#state{blocked = gb_sets:new(), next_unblock = next_unblock()}};
 handle_call(all, _From, State) ->
     Uris = [ uri_of_peer(Peer) || Peer <- gb_trees:values(State#state.peers) ],
     {reply, Uris, State};
@@ -364,7 +388,8 @@ handle_cast({add, Peer, Connect}, State0) ->
             lager:debug("Will not add peer ~p", [Uri]),
             {noreply, State0}
     end;
-handle_cast({add_and_ping, Peers}, State) ->
+handle_cast({add_and_ping, Peers}, State0) ->
+    State = maybe_unblock(State0),
     lager:debug("add and ping peers ~p", [Peers]),
     State1 = 
         lists:foldl(
@@ -428,6 +453,19 @@ metrics(#state{peers = Peers, blocked = Blocked,
     aec_metrics:try_update([ae,epoch,aecore,peers,errored],
                            gb_sets:size(Errored)),
     State.
+
+maybe_unblock(State = #state{ next_unblock = 0 }) ->
+    State#state{ next_unblock = next_unblock() };
+maybe_unblock(State = #state{ next_unblock = NextT }) ->
+    case timestamp() > NextT of
+        false -> State;
+        true  -> State#state{ blocked = gb_sets:new(),
+                              next_unblock = next_unblock() }
+    end.
+
+next_unblock() ->
+    timestamp() +
+        application:get_env(aecore, peer_unblock_interval, ?DEFAULT_UNBLOCK_INTERVAL).
 
 %% Updates if already exists.
 enter_peer(#peer{} = P, Peers) ->
