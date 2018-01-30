@@ -19,6 +19,7 @@
 %%%=============================================================================
 
 coinbase_tx_existing_account_test_() ->
+    fail.
     {foreach,
      fun() ->
              PubKey = <<"my_pubkey">>,

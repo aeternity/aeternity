@@ -33,6 +33,7 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
+    fail.
     eunit:start(),
     Config.
 
