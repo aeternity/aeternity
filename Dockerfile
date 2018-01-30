@@ -13,6 +13,9 @@ RUN apt-get -qq update && apt-get -qq -y install openssl curl \
 # Deploy application code from builder container
 COPY --from=builder /app/_build/prod/rel/epoch /home/epoch/node
 
+# Deploy TestNet user configuration template
+COPY --from=builder /app/apps/aeutils/test/data/epoch_testnet.yaml /home/epoch/node/epoch_testnet.yaml
+
 # Epoch app won't run as root for security reasons
 RUN useradd --shell /bin/bash epoch \
     && chown -R epoch:epoch /home/epoch

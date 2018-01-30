@@ -66,12 +66,12 @@ docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.248.103:3013/ aetrnty
 
 ## Persisting Data
 
-To persist blockchain data and node keys between container runs, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/). Replace `~/.aeternity/.chain` with location of your choice.
+To persist blockchain data and node keys between container runs, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/). Replace `~/.aeternity/db` with location of your choice.
 
 
 ```bash
 docker run -d -p 3013:3013 \
-    -v ~/.aeternity/.chain:/home/epoch/node/.chain \
+    -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
     -v ~/.aeternity/keys:/home/epoch/node/keys \
     aetrnty/epoch
 ```
