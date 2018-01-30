@@ -53,8 +53,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/top" : {
@@ -62,7 +61,6 @@
         "tags" : [ "external" ],
         "description" : "Get the top block header",
         "operationId" : "GetTop",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -72,8 +70,7 @@
               "$ref" : "#/definitions/Top"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block-by-height" : {
@@ -81,7 +78,6 @@
         "tags" : [ "external" ],
         "description" : "Get a block by height",
         "operationId" : "GetBlockByHeight",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -103,8 +99,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block-by-hash" : {
@@ -112,7 +107,6 @@
         "tags" : [ "external" ],
         "description" : "Get a block by hash",
         "operationId" : "GetBlockByHash",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -140,8 +134,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block" : {
@@ -170,8 +163,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/tx" : {
@@ -200,8 +192,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/transactions" : {
@@ -209,7 +200,6 @@
         "tags" : [ "external" ],
         "description" : "Get transactions in the mempool",
         "operationId" : "GetTxs",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -227,7 +217,6 @@
         "tags" : [ "external" ],
         "description" : "Get account's balance",
         "operationId" : "GetAccountBalance",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "pub_key",
@@ -255,8 +244,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/spend-tx" : {
@@ -285,8 +273,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/oracles" : {
@@ -294,7 +281,6 @@
         "tags" : [ "internal" ],
         "description" : "Get active registered oracles",
         "operationId" : "GetActiveRegisteredOracles",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -304,8 +290,7 @@
               "$ref" : "#/definitions/RegisteredOracles"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/oracle-questions" : {
@@ -313,7 +298,6 @@
         "tags" : [ "internal" ],
         "description" : "Get active oracle questions",
         "operationId" : "GetOracleQuestions",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "oracle_pub_key",
@@ -335,8 +319,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/oracle-register-tx" : {
@@ -365,8 +348,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/oracle-query-tx" : {
@@ -398,8 +380,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/oracle-response-tx" : {
@@ -428,8 +409,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/account/pub-key" : {
@@ -437,7 +417,6 @@
         "tags" : [ "internal" ],
         "description" : "Get user's public key address",
         "operationId" : "GetPubKey",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -453,8 +432,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/balances" : {
@@ -462,7 +440,6 @@
         "tags" : [ "external" ],
         "description" : "Get all users' balances",
         "operationId" : "GetAccountsBalances",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -478,8 +455,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/version" : {
@@ -487,7 +463,6 @@
         "tags" : [ "external" ],
         "description" : "Get node's version",
         "operationId" : "GetVersion",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -497,8 +472,7 @@
               "$ref" : "#/definitions/Version"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/info" : {
@@ -506,7 +480,6 @@
         "tags" : [ "external" ],
         "description" : "Get node info",
         "operationId" : "GetInfo",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -522,8 +495,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/number" : {
@@ -531,7 +503,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the current block's height",
         "operationId" : "GetBlockNumber",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -541,8 +512,7 @@
               "$ref" : "#/definitions/BlockHeight"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/height/{height}" : {
@@ -550,7 +520,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a block by height",
         "operationId" : "GetBlockByHeightInternal",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -579,8 +548,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/hash/{hash}" : {
@@ -588,7 +556,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a block by hash",
         "operationId" : "GetBlockByHashInternal",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -623,8 +590,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/genesis" : {
@@ -632,7 +598,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the genesis block",
         "operationId" : "GetBlockGenesis",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "tx_objects",
@@ -649,8 +614,7 @@
               "$ref" : "#/definitions/GenericBlock"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/latest" : {
@@ -658,7 +622,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the top block",
         "operationId" : "GetBlockLatest",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "tx_objects",
@@ -675,8 +638,7 @@
               "$ref" : "#/definitions/GenericBlock"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/pending" : {
@@ -684,7 +646,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the block being mined",
         "operationId" : "GetBlockPending",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "tx_objects",
@@ -707,8 +668,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/count/hash/{hash}" : {
@@ -716,7 +676,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a block transactions count by hash",
         "operationId" : "GetBlockTxsCountByHash",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -744,8 +703,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/count/height/{height}" : {
@@ -753,7 +711,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a block transactions count by height",
         "operationId" : "GetBlockTxsCountByHeight",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -775,8 +732,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/count/genesis" : {
@@ -784,7 +740,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the genesis block transactions count",
         "operationId" : "GetGenesisBlockTxsCount",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -794,8 +749,7 @@
               "$ref" : "#/definitions/inline_response_200"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/count/latest" : {
@@ -803,7 +757,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the latest block transactions count",
         "operationId" : "GetLatestBlockTxsCount",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -813,8 +766,7 @@
               "$ref" : "#/definitions/inline_response_200"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/count/pending" : {
@@ -822,7 +774,6 @@
         "tags" : [ "internal" ],
         "description" : "Get the pending block transactions count",
         "operationId" : "GetPendingBlockTxsCount",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ ],
         "responses" : {
@@ -832,8 +783,7 @@
               "$ref" : "#/definitions/inline_response_200"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/tx/height/{height}/{tx_index}" : {
@@ -841,7 +791,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a transaction by index in the block by height",
         "operationId" : "GetTransactionFromBlockHeight",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -876,8 +825,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/list/height" : {
@@ -885,7 +833,6 @@
         "tags" : [ "internal" ],
         "description" : "Get transactions list from a block range by height",
         "operationId" : "GetTxsListFromBlockRangeByHeight",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "from",
@@ -928,8 +875,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/tx/hash/{hash}/{tx_index}" : {
@@ -937,7 +883,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a transaction by index in the block by hash",
         "operationId" : "GetTransactionFromBlockHash",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -972,8 +917,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/tx/latest/{tx_index}" : {
@@ -981,7 +925,6 @@
         "tags" : [ "internal" ],
         "description" : "Get a transaction by index in the latest block",
         "operationId" : "GetTransactionFromBlockLatest",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "tx_index",
@@ -1010,8 +953,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     },
     "/block/txs/list/hash" : {
@@ -1019,7 +961,6 @@
         "tags" : [ "internal" ],
         "description" : "Get transactions list from a block range by hash",
         "operationId" : "GetTxsListFromBlockRangeByHash",
-        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "from",
@@ -1062,8 +1003,7 @@
               "$ref" : "#/definitions/Error"
             }
           }
-        },
-        "security" : [ ]
+        }
       }
     }
   },
@@ -1199,6 +1139,9 @@
         "data_schema" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "data_schema" : "data_schema"
       }
     },
     "TxMsgPackHashes" : {
@@ -1257,6 +1200,14 @@
             "$ref" : "#/definitions/Uri"
           }
         }
+      },
+      "example" : {
+        "difficulty" : 0.80082819046101150206595775671303272247314453125,
+        "genesis_hash" : "genesis_hash",
+        "peers" : [ { }, { } ],
+        "best_hash" : "best_hash",
+        "share" : 19,
+        "source" : "source"
       }
     },
     "Balance" : {
@@ -1266,6 +1217,9 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "balance" : 0
       }
     },
     "Tx" : {
@@ -1274,6 +1228,9 @@
         "tx" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "tx" : "tx"
       }
     },
     "Transactions" : {
@@ -1308,6 +1265,11 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "amount" : 0,
+        "fee" : 6,
+        "recipient_pubkey" : "recipient_pubkey"
       }
     },
     "OracleRegisterTx" : {
@@ -1330,6 +1292,16 @@
         "ttl" : {
           "$ref" : "#/definitions/TTL"
         }
+      },
+      "example" : {
+        "response_format" : "response_format",
+        "fee" : 6,
+        "query_fee" : 0,
+        "ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
+        "query_format" : "query_format"
       }
     },
     "OracleQueryTx" : {
@@ -1355,6 +1327,20 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "response_ttl" : {
+          "type" : "delta",
+          "value" : 6
+        },
+        "query" : "query",
+        "query_ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
+        "fee" : 1,
+        "query_fee" : 0,
+        "oracle_pubkey" : "oracle_pubkey"
       }
     },
     "OracleResponseTx" : {
@@ -1370,6 +1356,11 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "query_id" : "query_id",
+        "response" : "response",
+        "fee" : 0
       }
     },
     "TTL" : {
@@ -1383,6 +1374,10 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "type" : "delta",
+        "value" : 1
       }
     },
     "RelativeTTL" : {
@@ -1396,6 +1391,10 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "type" : "delta",
+        "value" : 6
       }
     },
     "OracleQueryId" : {
@@ -1404,6 +1403,9 @@
         "query_id" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "query_id" : "query_id"
       }
     },
     "PubKey" : {
@@ -1412,6 +1414,9 @@
         "pub_key" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "pub_key" : "pub_key"
       }
     },
     "AccountsBalances" : {
@@ -1423,6 +1428,15 @@
             "$ref" : "#/definitions/AccountBalance"
           }
         }
+      },
+      "example" : {
+        "accounts_balances" : [ {
+          "balance" : 0,
+          "pub_key" : "pub_key"
+        }, {
+          "balance" : 0,
+          "pub_key" : "pub_key"
+        } ]
       }
     },
     "AccountBalance" : {
@@ -1435,6 +1449,10 @@
           "type" : "integer",
           "format" : "int64"
         }
+      },
+      "example" : {
+        "balance" : 0,
+        "pub_key" : "pub_key"
       }
     },
     "Version" : {
@@ -1449,6 +1467,11 @@
         "genesis_hash" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "genesis_hash" : "genesis_hash",
+        "version" : "version",
+        "revision" : "revision"
       }
     },
     "Info" : {
@@ -1460,6 +1483,19 @@
             "$ref" : "#/definitions/BlockTimeSummary"
           }
         }
+      },
+      "example" : {
+        "last_30_blocks_time" : [ {
+          "difficulty" : 5.962133916683182377482808078639209270477294921875,
+          "time" : 6,
+          "time_delta_to_parent" : 1,
+          "height" : 0
+        }, {
+          "difficulty" : 5.962133916683182377482808078639209270477294921875,
+          "time" : 6,
+          "time_delta_to_parent" : 1,
+          "height" : 0
+        } ]
       }
     },
     "BlockTimeSummary" : {
@@ -1480,6 +1516,12 @@
         "difficulty" : {
           "type" : "number"
         }
+      },
+      "example" : {
+        "difficulty" : 5.962133916683182377482808078639209270477294921875,
+        "time" : 6,
+        "time_delta_to_parent" : 1,
+        "height" : 0
       }
     },
     "BlockHeight" : {
@@ -1491,6 +1533,9 @@
           "format" : "int64",
           "description" : "Blocks's height"
         }
+      },
+      "example" : {
+        "height" : 0
       }
     },
     "SingleTxHashOrObject" : {
@@ -1501,6 +1546,9 @@
         "data_schema" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "data_schema" : "data_schema"
       }
     },
     "SingleTxObject" : {
@@ -1629,6 +1677,9 @@
           "type" : "integer",
           "description" : "Count"
         }
+      },
+      "example" : {
+        "count" : 0
       }
     },
     "RegisteredOracles_inner" : {
