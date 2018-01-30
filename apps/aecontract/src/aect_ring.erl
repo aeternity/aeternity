@@ -60,7 +60,8 @@ hex_nibble(X) ->
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
-        {ok,  CallData} ->
+        {error, E} -> {error, E};
+        CallData ->
             Spec = #{ code => Code
                     , address => 0
                     , caller => 0
@@ -79,8 +80,7 @@ simple_call(Code, Function, Argument) ->
                 #{ out := Out } ->
                     {ok, hexstring_encode(Out)};
                 E -> {error, list_to_binary(io_lib:format("~p", [E]))}
-            end;
-        E -> {error, list_to_binary(io_lib:format("~p", [E]))}
+            end
     end.
 
 -spec create_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
