@@ -105,6 +105,8 @@ jobs:
           command: |
             epmd -daemon
             make test
+      - store_test_results:
+          path: _build/test/logs
       - store_artifacts:
           path: _build/test/logs
 
