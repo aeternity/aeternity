@@ -119,8 +119,8 @@ call_contract(_Cfg) ->
     %% Now call check that we can call it.
     Fee           = 107,
     GasPrice      = 2,
-    Arg           = 42,
-    {0, CallData} = aer_data:to_binary({<<"main">>, Arg}),
+    Arg           = <<"42">>,
+    CallData = aect_ring:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData, gas_price => GasPrice, fee => Fee}, S3),
     {SignedTx1, [SignedTx1], S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),

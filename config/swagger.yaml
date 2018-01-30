@@ -918,7 +918,31 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security: []
-
+  /contract/compile:
+    post:
+      tags:
+        - external
+      operationId: 'CompileContract'
+      description: 'Put a ring contract on the chain and return byte code'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: contract code
+          required: true
+          schema:
+            $ref: '#/definitions/Contract'
+      responses:
+        '200':
+          description: Byte code response
+          schema:
+            $ref: '#/definitions/ByteCode'
+        '403':
+          description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+            
 definitions:
   EncodedHash:
     type: string
@@ -1375,6 +1399,20 @@ definitions:
     properties:
       reason:
         type: string
+
+  Contract:
+    type: object
+    properties:
+      code:
+        type: string
+        options: string
+
+  ByteCode:
+    type: object
+    properties:
+      bytecode: string
+
+
 
 externalDocs:
   description: Find out more about Aeternity

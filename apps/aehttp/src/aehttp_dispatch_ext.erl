@@ -185,6 +185,20 @@ handle_request('GetInfo', _Req, _Context) ->
             {403, [], #{reason => <<"Info not enabled">>}}
     end;
 
+handle_request('CompileContract', Req, _Context) ->
+    case Req of
+        #{ code := Code
+         , options := Options } ->
+            %% TODO: Handle other languages
+            case aec_ring:compile(Code, Options) of
+                {ok, ByteCode} ->
+                    {200, [], #{ bytecode => ByteCode}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(

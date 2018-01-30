@@ -20,8 +20,8 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     CodeDir = code:lib_dir(aering, test),
     FileName = filename:join(CodeDir, "contracts/identity.aer"),
     {ok, ContractBin} = file:read_file(FileName),
-    Code = aect_ring:compile(ContractBin, []),
-    CallData = aect_ring:create_call(Code, "main", "42"),
+    {ok, Code} = aect_ring:compile(ContractBin, <<>>),
+    CallData = aect_ring:create_call(Code, <<"main">>, <<"42">>),
     {ok, {RetVal,_State,_Trace}} =
         aect_ring:execute_call(
           #{ code => Code,

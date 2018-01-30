@@ -28,7 +28,7 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     Code = aer_compiler:from_string(Contract, []),
 
     %% Create the call data
-    CallData = aer_abi:create_calldata(Code, "main", 42),
+    CallData = aer_abi:create_calldata(Code, "main", "42"),
 
     Res = 
         aevm_eeevm:eval(
