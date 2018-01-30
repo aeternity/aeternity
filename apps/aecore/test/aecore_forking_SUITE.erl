@@ -92,6 +92,7 @@ create_dev1_chain(Config) ->
     ct:log("top of chain dev1: ~p (mined ~p)", [ N1Top, hd(Blocks)]),
     N1Top = hd(Blocks),
     aecore_suite_utils:stop_node(dev1, Config),   %% make sure we do not sync with dev2.
+    ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
 create_dev2_chain(Config) ->
@@ -102,6 +103,7 @@ create_dev2_chain(Config) ->
     ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     aecore_suite_utils:stop_node(dev2, Config),
+    ok = aecore_suite_utils:check_for_logs([dev2], Config),
     ok.
 
 sync_fork_in_wrong_order(Config) ->
