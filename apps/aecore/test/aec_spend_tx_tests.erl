@@ -119,5 +119,28 @@ process_test_() ->
               ?assertEqual(80 + 50, aec_accounts:balance(ResultRecipientAccount)),
               ?assertEqual(12, aec_accounts:nonce(ResultRecipientAccount)),
               ?assertEqual(20, aec_accounts:height(ResultRecipientAccount))
+      end},
+      {"Check spend to oneself",
+       fun() ->
+              SenderAccount = #account{pubkey = ?SENDER_PUBKEY,
+                                       balance = 100,
+                                       nonce = 10,
+                                       height = 10},
+              StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount]),
+
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
+                                                 recipient => ?SENDER_PUBKEY,
+                                                 amount => 50,
+                                                 fee => 10,
+                                                 nonce => 11}),
+              {ok, StateTree0} = ?TEST_MODULE:check(SpendTx, StateTree0, 20),
+              {ok, StateTree} = ?TEST_MODULE:process(SpendTx, StateTree0, 20),
+
+              ResultAccountsTree = aec_trees:accounts(StateTree),
+              {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
+
+              ?assertEqual(100 - 50 - 10 + 50, aec_accounts:balance(ResultAccount)),
+              ?assertEqual(11, aec_accounts:nonce(ResultAccount)),
+              ?assertEqual(20, aec_accounts:height(ResultAccount))
       end}].
 
