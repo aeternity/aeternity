@@ -49,32 +49,28 @@ paths:
           description: Different genesis blocks
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /top:
     get:
       tags:
         - external
       operationId: GetTop
       description: 'Get the top block header'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: successful operation
           schema:
             $ref: '#/definitions/Top'
-      security: []
+      security:
   /block-by-height:
     get:
       tags:
         - external
       operationId: GetBlockByHeight
       description: 'Get a block by height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -92,15 +88,13 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block-by-hash:
     get:
       tags:
         - external
       operationId: GetBlockByHash 
       description: 'Get a block by hash'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -122,7 +116,7 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block:
     post:
       tags:
@@ -147,7 +141,7 @@ paths:
           description: Block or header validation error
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /tx:
     post:
       tags:
@@ -172,18 +166,16 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /transactions:
     get:
       tags:
         - external
       operationId: GetTxs
       description: 'Get transactions in the mempool'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: 'Successful operation'
@@ -195,8 +187,6 @@ paths:
         - external
       operationId: GetAccountBalance
       description: 'Get account''s balance'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters:
@@ -217,7 +207,7 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
 
 ###
 ## Internal APIs definitions
@@ -247,7 +237,7 @@ paths:
           description: Spend transaction validation error
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /oracles:
   ## Not implemented yet, returns HTTP 501 response code
     get:
@@ -255,8 +245,6 @@ paths:
         - internal
       operationId: GetActiveRegisteredOracles
       description: 'Get active registered oracles'
-      consumes:
-        - application/json
       produces:
         - application/json
       responses:
@@ -264,7 +252,7 @@ paths:
           description: Active registered oracles
           schema:
             $ref: '#/definitions/RegisteredOracles'
-      security: []
+      security:
   /oracle-questions:
   ## Not implemented yet, returns HTTP 501 response code
     get:
@@ -272,8 +260,6 @@ paths:
         - internal
       operationId: GetOracleQuestions
       description: 'Get active oracle questions'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters:
@@ -291,7 +277,7 @@ paths:
           description: Oracle not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /oracle-register-tx:
     post:
       tags:
@@ -316,7 +302,7 @@ paths:
           description: Oracle register transaction validation error
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /oracle-query-tx:
     post:
       tags:
@@ -343,7 +329,7 @@ paths:
           description: Oracle query transaction validation error
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /oracle-response-tx:
     post:
       tags:
@@ -368,18 +354,16 @@ paths:
           description: Oracle response transaction validation error
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /account/pub-key:
     get:
       tags:
         - internal
       operationId: GetPubKey
       description: 'Get user''s public key address'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: successful operation
@@ -389,7 +373,7 @@ paths:
           description: No key pair 
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
 
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:
@@ -398,11 +382,9 @@ paths:
         - external
       operationId: GetAccountsBalances
       description: 'Get all users'' balances'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: successful operation
@@ -412,35 +394,31 @@ paths:
           description: Balances not enabled
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /version:
     get:
       tags:
         - external
       operationId: GetVersion
       description: 'Get node''s version'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: successful operation
           schema:
             $ref: '#/definitions/Version'
-      security: []
+      security:
   /info:
     get:
       tags:
         - external
       operationId: GetInfo
       description: 'Get node info'
-      consumes:
-        - application/json
       produces:
         - application/json
-      parameters: []
+      parameters:
       responses:
         '200':
           description: successful operation
@@ -450,15 +428,13 @@ paths:
           description: Info not enabled
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/number:
     get:
       tags:
         - internal
       operationId: GetBlockNumber
       description: 'Get the current block''s height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -467,15 +443,13 @@ paths:
           description: The current block's height 
           schema:
             $ref: '#/definitions/BlockHeight'
-      security: []
+      security:
   /block/height/{height}:
     get:
       tags:
         - internal
       operationId: GetBlockByHeightInternal
       description: 'Get a block by height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -498,15 +472,13 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/hash/{hash}:
     get:
       tags:
         - internal
       operationId: GetBlockByHashInternal
       description: 'Get a block by hash'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -533,15 +505,13 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/genesis:
     get:
       tags:
         - internal
       operationId: GetBlockGenesis
       description: 'Get the genesis block'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters:
@@ -555,15 +525,13 @@ paths:
           description: The genesis block 
           schema:
             $ref: '#/definitions/GenericBlock'
-      security: []
+      security:
   /block/latest:
     get:
       tags:
         - internal
       operationId: GetBlockLatest
       description: 'Get the top block'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters:
@@ -577,15 +545,13 @@ paths:
           description: The top block 
           schema:
             $ref: '#/definitions/GenericBlock'
-      security: []
+      security:
   /block/pending:
     get:
       tags:
         - internal
       operationId: GetBlockPending
       description: 'Get the block being mined'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters:
@@ -603,15 +569,13 @@ paths:
           description: No pending block (node not mining)
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/txs/count/hash/{hash}:
     get:
       tags:
         - internal
       operationId: GetBlockTxsCountByHash
       description: 'Get a block transactions count by hash'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -637,15 +601,13 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/txs/count/height/{height}:
     get:
       tags:
         - internal
       operationId: GetBlockTxsCountByHeight
       description: 'Get a block transactions count by height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -667,15 +629,13 @@ paths:
           description: Block not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/txs/count/genesis:
     get:
       tags:
         - internal
       operationId: GetGenesisBlockTxsCount
       description: 'Get the genesis block transactions count'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -688,15 +648,13 @@ paths:
               count:
                 type: integer
                 description: Count
-      security: []
+      security:
   /block/txs/count/latest:
     get:
       tags:
         - internal
       operationId: GetLatestBlockTxsCount
       description: 'Get the latest block transactions count'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -709,15 +667,13 @@ paths:
               count:
                 type: integer
                 description: Count
-      security: []
+      security:
   /block/txs/count/pending:
     get:
       tags:
         - internal
       operationId: GetPendingBlockTxsCount
       description: 'Get the pending block transactions count'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -730,15 +686,13 @@ paths:
               count:
                 type: integer
                 description: Count
-      security: []
+      security:
   /block/tx/height/{height}/{tx_index}:
     get:
       tags:
         - internal
       operationId: GetTransactionFromBlockHeight
       description: 'Get a transaction by index in the block by height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -766,15 +720,13 @@ paths:
           description: Block or transaction not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/txs/list/height:
     get:
       tags:
         - internal
       operationId: GetTxsListFromBlockRangeByHeight
       description: 'Get transactions list from a block range by height'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -808,15 +760,13 @@ paths:
           description: Range not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/tx/hash/{hash}/{tx_index}:
     get:
       tags:
         - internal
       operationId: GetTransactionFromBlockHash
       description: 'Get a transaction by index in the block by hash'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -844,15 +794,13 @@ paths:
           description: Block or transaction not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/tx/latest/{tx_index}:
     get:
       tags:
         - internal
       operationId: GetTransactionFromBlockLatest
       description: 'Get a transaction by index in the latest block'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -875,15 +823,13 @@ paths:
           description: Block or transaction not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
   /block/txs/list/hash:
     get:
       tags:
         - internal
       operationId: GetTxsListFromBlockRangeByHash
       description: 'Get transactions list from a block range by hash'
-      consumes:
-        - application/json
       produces:
         - application/json
       parameters: 
@@ -917,7 +863,7 @@ paths:
           description: Range not found
           schema:
             $ref: '#/definitions/Error'
-      security: []
+      security:
 
 definitions:
   EncodedHash:
