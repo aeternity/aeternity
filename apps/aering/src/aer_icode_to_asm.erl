@@ -408,22 +408,31 @@ assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)]
 
 %% Encoders convert a value to a binary (string).
 
-assemble_encoder(word) ->
+assemble_encoder(TypeRep) ->
     [aeb_opcodes:mnemonic(?MSIZE),
-     %% word ptr
-     push(32),  %% length of one word
-     dup(2),
-     %% word ptr 32 ptr
-     aeb_opcodes:mnemonic(?MSTORE),
-     %% word ptr
-     swap(1),
-     dup(2),
-     %% ptr word ptr
      push(32),
+     %% stack: v, base, offset
+     assemble_encode_at(TypeRep),
+     %% stack: base
+     dup(1),
+     push(32),
+     aeb_opcodes:mnemonic(?MSIZE),
+     aeb_opcodes:mnemonic(?SUB),
+     aeb_opcodes:mnemonic(?SUB),
+     %% stack: base, size-32
+     dup(2),
+     aeb_opcodes:mnemonic(?MSTORE)].
+     
+%% Stack before: v, base, offset
+%% Stack after:  base
+%% v written to *(base+offset)
+assemble_encode_at(word) ->
+    [dup(2),
      aeb_opcodes:mnemonic(?ADD),
-     %% ptr word ptr+32
-     aeb_opcodes:mnemonic(?MSTORE)
-    ].
+     %% Stack: v, base, offset+base
+     swap(2), swap(1), swap(2),
+     %% Stack: base, v, offset+base
+     aeb_opcodes:mnemonic(?MSTORE)].
 
 %% shuffle_stack reorders the stack before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
