@@ -39,14 +39,15 @@ code([], Icode) -> Icode.
 contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
     %% TODO: Handle types
     contract_to_icode(Rest, Icode);
-contract_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
+contract_to_icode([{letfun,_Attrib, Name, Args,_What, {typed,_,Body,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
     %% TODO: push funname to env
     FunArgs = ast_args(Args, []),
     %% TODO: push args to env
     FunBody = ast_body(Body),
-    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
+    TypeRep = ast_typerep(T),
+    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, TypeRep, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
     %% OBS! This code ignores the letrec structure of the source,
@@ -121,8 +122,15 @@ ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).    
 
-ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
-    NewFuns = [{Name, Args, Body}| Funs],
+ast_typerep({id,_,"int"}) ->
+    word;
+ast_typerep({tvar,_,_}) ->
+    %% We serialize type variables just as addresses in the originating VM.
+    word.
+
+
+ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
+    NewFuns = [{Name, Args, Body, TypeRep}| Funs],
     set_functions(NewFuns, Icode).
 
 %% -------------------------------------------------------------------

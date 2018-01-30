@@ -51,4 +51,5 @@ run_contract(Name, Fun, Args) ->
     State = aevm_eeevm:eval(dummy_state(Code, Data)),
     %%io:format("\nFinal state:\n~p\n", [State]),
     io:format("\nFinal stack: ~p\n", [maps:get(stack, State)++[end_of_stack]]),
+    io:format("\nReturn value: ~p\n",[aer_data:binary_to_words(maps:get(out,State))]),
     ok.

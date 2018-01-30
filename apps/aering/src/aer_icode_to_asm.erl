@@ -22,12 +22,13 @@ convert(#{ contract_name := _ContractName
     DispatchFun = {"_main",[{"arg","_"}],
 		   {switch,{var_ref,"arg"},
 		    [{{tuple,[fun_hash(FName)|make_args(Args)]},
-		      {funcall,{var_ref,FName},make_args(Args)}}
-		     || {FName,Args,_} <- Functions]}},
+		      {encode,TypeRep,{funcall,{var_ref,FName},make_args(Args)}}}
+		     || {FName,Args,_,TypeRep} <- Functions]},
+		   word},
     NewFunctions = Functions ++ [DispatchFun],
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
-    	    || {Name, Args, _Body} <- NewFunctions],
+    	    || {Name, Args, _Body, _Type} <- NewFunctions],
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
@@ -44,12 +45,12 @@ convert(#{ contract_name := _ContractName
 		    {push_label,MainFunction},
 		    aeb_opcodes:mnemonic(?JUMP),
 		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
-                    %% For now we simply return the top of the stack as an integer.
-                    aeb_opcodes:mnemonic(?PUSH1), 0,
-                    aeb_opcodes:mnemonic(?MSTORE),
-                    %% Return mem[0]-mem[32]
-                    aeb_opcodes:mnemonic(?PUSH1), 32,
-                    aeb_opcodes:mnemonic(?PUSH1), 0,
+		    %% A pointer to a binary is on top of the stack
+		    %% Get size of data area
+		    dup(1), aeb_opcodes:mnemonic(?MLOAD), swap(1),
+		    %% Get address of data area
+		    push(32), aeb_opcodes:mnemonic(?ADD),
+		    %% Return byte vector
                     aeb_opcodes:mnemonic(?RETURN)
 		   ],
 
@@ -58,7 +59,7 @@ convert(#{ contract_name := _ContractName
     %% references take the form {push_label,Ref}, which is translated
     %% into a PUSH instruction.
     Code = [assemble_function(Funs,Name,Args,Body)
-	    || {Name,Args,Body} <- NewFunctions],
+	    || {Name,Args,Body,_Type} <- NewFunctions],
     resolve_references(
         [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
 	 DispatchCode,
@@ -158,6 +159,9 @@ assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
     [assemble_expr(Funs,Stack,nontail,B),
      assemble_expr(Funs,[dummy|Stack],nontail,A),
      assemble_infix(Op)];
+assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
+    [assemble_expr(Funs,Stack,nontail,A),
+     assemble_encoder(TypeRep)];
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     %% TODO: tail-call optimization!
     Return = make_ref(),
@@ -401,6 +405,25 @@ assemble_infix('>=') -> [aeb_opcodes:mnemonic(?SLT),aeb_opcodes:mnemonic(?ISZERO
 assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)];
 assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
 %% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
+
+%% Encoders convert a value to a binary (string).
+
+assemble_encoder(word) ->
+    [aeb_opcodes:mnemonic(?MSIZE),
+     %% word ptr
+     push(32),  %% length of one word
+     dup(2),
+     %% word ptr 32 ptr
+     aeb_opcodes:mnemonic(?MSTORE),
+     %% word ptr
+     swap(1),
+     dup(2),
+     %% ptr word ptr
+     push(32),
+     aeb_opcodes:mnemonic(?ADD),
+     %% ptr word ptr+32
+     aeb_opcodes:mnemonic(?MSTORE)
+    ].
 
 %% shuffle_stack reorders the stack before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
