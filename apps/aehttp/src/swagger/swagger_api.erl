@@ -17,7 +17,7 @@
 
 request_params('CallContract') ->
     [
-        'ContractCall'
+        'Body'
     ];
 
 request_params('CompileContract') ->
@@ -256,7 +256,7 @@ request_params(_) ->
 
 
 
-request_param_info('CallContract', 'ContractCall') ->
+request_param_info('CallContract', 'Body') ->
     #{
         source =>   body,
         rules => [

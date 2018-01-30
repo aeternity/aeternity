@@ -638,7 +638,7 @@ paths:
           type : integer
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -668,7 +668,7 @@ paths:
           type : string 
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -697,7 +697,7 @@ paths:
       parameters:
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -718,7 +718,7 @@ paths:
       parameters:
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -739,7 +739,7 @@ paths:
       parameters:
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -891,7 +891,7 @@ paths:
           type: integer
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -928,7 +928,7 @@ paths:
           minimum: 0
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -967,7 +967,7 @@ paths:
           type: integer
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -997,7 +997,7 @@ paths:
           type: integer
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack
@@ -1034,7 +1034,7 @@ paths:
           minimum: 0
         - in: query
           name: tx_encoding
-          description: 'Transactions encoding: MessagePack (default) or JSON'
+          description: 'Transactions encoding'
           type: string
           enum: [message_pack, json]
           default: message_pack

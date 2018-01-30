@@ -28,6 +28,7 @@
 -export([verify/1,
          serialize/1,
          serialize_for_client/3,
+         meta_data_from_client_serialized/2,
          serialize_to_binary/1,
          deserialize/1,
          deserialize_from_binary/1]).
@@ -146,12 +147,31 @@ serialize_for_client(Encoding, Header, #signed_tx{}=S) ->
     serialize_for_client(Encoding, S, aec_headers:height(Header), Hash).
 
 serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash) ->
-    GenericData = [#{<<"block_height">> => BlockHeight},
-                   #{<<"block_hash">> => BlockHash}],
-    aec_base58c:encode(transaction, msgpack:pack(serialize(S) ++ GenericData));
+    MetaData = [#{<<"block_height">> => BlockHeight},
+                   #{<<"block_hash">> => aec_base58c:encode(block_hash, BlockHash)}],
+    aec_base58c:encode(transaction, msgpack:pack(serialize(S) ++ [MetaData]));
 serialize_for_client(json, #signed_tx{data = Tx, signatures = Sigs},
                      BlockHeight, BlockHash) ->
     #{<<"tx">> => aec_tx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
       <<"block_hash">> => aec_base58c:encode(block_hash, BlockHash),
       <<"signatures">> => lists:map(fun(Sig) -> aec_base58c:encode(signature, Sig) end, Sigs)}. 
+
+meta_data_from_client_serialized(message_pack, Bin) ->
+    {transaction, MsgPackBin} = aec_base58c:decode(Bin),
+    {ok, [_Type, _Version, _TxSer, _Sigs, GenericData]} = msgpack:unpack(MsgPackBin),
+    [#{<<"block_height">> := BlockHeight},
+     #{<<"block_hash">> := BlockHashEncoded}] = GenericData,
+    {block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
+    #{block_height => BlockHeight,
+      block_hash => BlockHash};
+meta_data_from_client_serialized(json, Serialized) ->
+    #{<<"tx">> := _EncodedTx,
+      <<"block_height">> := BlockHeight,
+      <<"block_hash">> := BlockHashEncoded, 
+      <<"signatures">> := _Sigs} = Serialized,
+    {block_hash, BlockHash} = aec_base58c:decode(BlockHashEncoded),
+    #{block_height => BlockHeight,
+      block_hash => BlockHash}.
+
+

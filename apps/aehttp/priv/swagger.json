@@ -749,7 +749,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -786,7 +786,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -823,7 +823,7 @@
         "parameters" : [ {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -848,7 +848,7 @@
         "parameters" : [ {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -873,7 +873,7 @@
         "parameters" : [ {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1031,7 +1031,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1076,7 +1076,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1125,7 +1125,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1162,7 +1162,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1207,7 +1207,7 @@
         }, {
           "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
           "default" : "message_pack",
@@ -1270,7 +1270,7 @@
     "/contract/call" : {
       "post" : {
         "tags" : [ "external" ],
-        "description" : "Call a ring function with a given name and argument in the given bytecode.",
+        "description" : "Call a ring function with a given name and argument in the given bytecode off chain.",
         "operationId" : "CallContract",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -1280,7 +1280,7 @@
           "description" : "contract call",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/ContractCall"
+            "$ref" : "#/definitions/body"
           }
         } ],
         "responses" : {
@@ -2173,25 +2173,6 @@
     "ByteCode" : {
       "type" : "object"
     },
-    "ContractCall" : {
-      "type" : "object",
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "function" : {
-          "type" : "string"
-        },
-        "arg" : {
-          "type" : "string"
-        }
-      },
-      "example" : {
-        "code" : "code",
-        "function" : "function",
-        "arg" : "arg"
-      }
-    },
     "CallResult" : {
       "type" : "object",
       "properties" : {
@@ -2212,6 +2193,20 @@
       },
       "example" : {
         "count" : 0
+      }
+    },
+    "body" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "function" : {
+          "type" : "string"
+        },
+        "arg" : {
+          "type" : "string"
+        }
       }
     },
     "RegisteredOracles_inner" : {

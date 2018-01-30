@@ -1937,7 +1937,26 @@ block_to_endpoint_map(Block) ->
 block_to_endpoint_map(Block, Options) ->
     Encoding = maps:get(tx_encoding, Options, message_pack),
     BMap = aec_blocks:serialize_client_readable(Encoding, Block),
-    aehttp_dispatch_ext:cleanup_genesis(BMap).
+    Expected = aehttp_dispatch_ext:cleanup_genesis(BMap),
+
+    %% Validate that all transactions have the correct block height and hash
+    ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
+    case ExpectedTxs =:= [] of
+        true -> 0 = aec_blocks:height(Block); % only allowed for gen block
+        false -> pass
+    end,
+    BlockHeight = aec_blocks:height(Block),
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    lists:foreach(
+        fun(EncodedTx) ->
+            #{block_hash := TxBlockHash,
+              block_height := TxBlockHeight} =
+                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx), 
+            {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
+            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash}
+        end,
+        ExpectedTxs),
+    Expected.
 
 %% misbehaving peers get blocked so we need unique ones
 %% the function bellow is not perfect: there is a slight possibility of having a

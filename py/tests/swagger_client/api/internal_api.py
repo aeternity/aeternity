@@ -131,7 +131,7 @@ class InternalApi(object):
 
         :param async bool
         :param str hash: Hash of the block to fetch (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
@@ -154,13 +154,13 @@ class InternalApi(object):
 
         :param async bool
         :param str hash: Hash of the block to fetch (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['hash', 'tx_objects']  # noqa: E501
+        all_params = ['hash', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -187,8 +187,8 @@ class InternalApi(object):
             path_params['hash'] = params['hash']  # noqa: E501
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -230,7 +230,7 @@ class InternalApi(object):
 
         :param async bool
         :param int height: Height of the block to fetch (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
@@ -253,13 +253,13 @@ class InternalApi(object):
 
         :param async bool
         :param int height: Height of the block to fetch (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['height', 'tx_objects']  # noqa: E501
+        all_params = ['height', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -286,8 +286,8 @@ class InternalApi(object):
             path_params['height'] = params['height']  # noqa: E501
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -328,7 +328,7 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
@@ -350,13 +350,13 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['tx_objects']  # noqa: E501
+        all_params = ['tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -377,8 +377,8 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -419,7 +419,7 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
@@ -441,13 +441,13 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['tx_objects']  # noqa: E501
+        all_params = ['tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -468,8 +468,8 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -597,7 +597,7 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
@@ -619,13 +619,13 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericBlock
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['tx_objects']  # noqa: E501
+        all_params = ['tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -646,8 +646,8 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -1323,7 +1323,7 @@ class InternalApi(object):
         :param async bool
         :param str hash: Hash of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1347,13 +1347,13 @@ class InternalApi(object):
         :param async bool
         :param str hash: Hash of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['hash', 'tx_index', 'tx_objects']  # noqa: E501
+        all_params = ['hash', 'tx_index', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1386,8 +1386,8 @@ class InternalApi(object):
             path_params['tx_index'] = params['tx_index']  # noqa: E501
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -1430,7 +1430,7 @@ class InternalApi(object):
         :param async bool
         :param int height: Height of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1454,13 +1454,13 @@ class InternalApi(object):
         :param async bool
         :param int height: Height of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['height', 'tx_index', 'tx_objects']  # noqa: E501
+        all_params = ['height', 'tx_index', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1493,8 +1493,8 @@ class InternalApi(object):
             path_params['tx_index'] = params['tx_index']  # noqa: E501
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -1536,7 +1536,7 @@ class InternalApi(object):
 
         :param async bool
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions as objects (default is as message pack hashes)
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1559,13 +1559,13 @@ class InternalApi(object):
 
         :param async bool
         :param int tx_index: Index of the transaction in the block (required)
-        :param bool tx_objects: Transactions as objects (default is as message pack hashes)
+        :param str tx_encoding: Transactions encoding
         :return: SingleTxHashOrObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['tx_index', 'tx_objects']  # noqa: E501
+        all_params = ['tx_index', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1592,8 +1592,8 @@ class InternalApi(object):
             path_params['tx_index'] = params['tx_index']  # noqa: E501
 
         query_params = []
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -1636,7 +1636,7 @@ class InternalApi(object):
         :param async bool
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericTxArray
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1660,13 +1660,13 @@ class InternalApi(object):
         :param async bool
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericTxArray
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_objects']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1703,8 +1703,8 @@ class InternalApi(object):
             query_params.append(('from', params['_from']))  # noqa: E501
         if 'to' in params:
             query_params.append(('to', params['to']))  # noqa: E501
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
@@ -1747,7 +1747,7 @@ class InternalApi(object):
         :param async bool
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericTxArray
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1771,13 +1771,13 @@ class InternalApi(object):
         :param async bool
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_encoding: Transactions encoding
         :return: GenericTxArray
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_objects']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1814,8 +1814,8 @@ class InternalApi(object):
             query_params.append(('from', params['_from']))  # noqa: E501
         if 'to' in params:
             query_params.append(('to', params['to']))  # noqa: E501
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
 
         header_params = {}
 
