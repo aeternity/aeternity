@@ -145,6 +145,7 @@ start_first_node(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     aecore_suite_utils:start_node(Dev1, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(Dev1)),
+    ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
 start_second_node(Config) ->
@@ -156,6 +157,7 @@ start_second_node(Config) ->
     aecore_suite_utils:await_aehttp(N2),
     ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
     B1 = rpc:call(N1, aec_conductor, top, [], 5000),
+    ok = aecore_suite_utils:check_for_logs([dev2], Config),
     true = expect_block(N2, B1).
 
 start_third_node(Config) ->
@@ -166,6 +168,7 @@ start_third_node(Config) ->
     aecore_suite_utils:connect(N3),
     aecore_suite_utils:await_aehttp(N3),
     ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
+    ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
 
 test_subscription(Config) ->

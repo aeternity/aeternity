@@ -25,7 +25,8 @@
          subscribe/2,
          unsubscribe/2,
          events_since/3,
-         all_events_since/2]).
+         all_events_since/2,
+         check_for_logs/2]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -163,6 +164,30 @@ all_events_since(N, TS) ->
 
 events_since(N, EvType, TS) ->
     call_proxy(N, {events, EvType, TS}).
+
+check_for_logs(Nodes, Config) ->
+    [] = [{N, Fs} || {N, Fs} <- [{N1, check_for_missing_logs(N1, Config)}
+                                 || N1 <- Nodes],
+                     Fs =/= []],
+    ok.
+
+check_for_missing_logs(N, Config) ->
+    LogDir = log_dir(N, Config),
+    [{missing, F}
+     || F <- expected_logs(),
+        file_missing(filename:join(LogDir, F))].
+
+file_missing(F) ->
+    case file:read_link_info(F) of
+        {ok, _} ->
+            false;
+        _ ->
+            true
+    end.
+
+expected_logs() ->
+    ["epoch.log", "epoch_mining.log",
+     "epoch_pow_cuckoo.log", "epoch_metrics.log"].
 
 %%%=============================================================================
 %%% Internal functions
@@ -372,6 +397,9 @@ priv_dir(Config) ->
 
 data_dir(N, Config) ->
     filename:join(node_shortcut(N, Config), "data").
+
+log_dir(N, Config) ->
+    filename:join(node_shortcut(N, Config), "log").
 
 keys_dir(N, Config) ->
     filename:join(data_dir(N, Config), "keys").
