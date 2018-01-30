@@ -67,4 +67,5 @@ contract Identity = {
   //let main(x) = {x:0, y:1, z:2};
   let id(x) = x;
   let double(x) = x+x;
+  let pair(x) = ((1,x),(2,3,4));
 };

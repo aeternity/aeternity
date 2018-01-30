@@ -126,7 +126,9 @@ ast_typerep({id,_,"int"}) ->
     word;
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
-    word.
+    word;
+ast_typerep({tuple_t,_,Cpts}) ->
+    #tuple{cpts = [ast_typerep(C) || C<-Cpts]}.
 
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->

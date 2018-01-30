@@ -407,20 +407,26 @@ assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)]
 %% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
 %% Encoders convert a value to a binary (string).
-
 assemble_encoder(TypeRep) ->
-    [aeb_opcodes:mnemonic(?MSIZE),
-     push(32),
+    [aeb_opcodes:mnemonic(?MSIZE), %% the address of the binary we will create
+     push(32), 
+     aeb_opcodes:mnemonic(?ADD),   %% the address of the memory area we copy into
+     %% Increment MSIZE by 2 words (length word and value word)
+     push(0), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     %% Stack: v, base (binptr)
+     push(0),
      %% stack: v, base, offset
+     %% base refers to the start of the memory area we're copying into, not the string address.
      assemble_encode_at(TypeRep),
      %% stack: base
+     %% Compute number of bytes in the data area
      dup(1),
-     push(32),
      aeb_opcodes:mnemonic(?MSIZE),
      aeb_opcodes:mnemonic(?SUB),
-     aeb_opcodes:mnemonic(?SUB),
-     %% stack: base, size-32
-     dup(2),
+     %% stack: base, size
+     %% base:=base-32, *base=size
+     push(32), dup(3), aeb_opcodes:mnemonic(?SUB),
+     swap(2), aeb_opcodes:mnemonic(?POP), dup(2),
      aeb_opcodes:mnemonic(?MSTORE)].
      
 %% Stack before: v, base, offset
@@ -432,9 +438,56 @@ assemble_encode_at(word) ->
      %% Stack: v, base, offset+base
      swap(2), swap(1), swap(2),
      %% Stack: base, v, offset+base
-     aeb_opcodes:mnemonic(?MSTORE)].
+     aeb_opcodes:mnemonic(?MSTORE)];
+assemble_encode_at({tuple,Cpts}) ->
+    [%% Stack: v, base, offset
 
-%% shuffle_stack reorders the stack before a tailcall. It is called
+     %% Allocate memory for the tuple.
+     aeb_opcodes:mnemonic(?MSIZE),   %% the address of the new tuple
+     [[%% Expand memory to include the new tuple, unless it is of size zero
+       push(0),                        %% dummy value to write
+       push(32*(length(Cpts)-1)),
+       dup(3),
+       aeb_opcodes:mnemonic(?ADD),
+       aeb_opcodes:mnemonic(?MSTORE)]
+      || length(Cpts)>0],
+     
+     %% Stack: v, base, offset, v'
+     %% Convert v' to the OFFSET of the new tuple
+     dup(3),
+     swap(1),
+     aeb_opcodes:mnemonic(?SUB),
+
+     %% Stack: v, base, offset, offset(v')
+     %% Store the offset(v') at base[offset]
+     swap(1),
+     dup(3),
+     %% Stack: v, base, offset(v'), offset, base
+     aeb_opcodes:mnemonic(?ADD),
+     dup(2),
+     swap(1),
+     aeb_opcodes:mnemonic(?MSTORE),
+     %% Stack: v, base, offset(v')
+
+     %% For each component, encode *v at offset(v'), increment v and offset(v')
+     [[%% Stack: v, base, offset(v')
+       swap(1), dup(3), aeb_opcodes:mnemonic(?MLOAD),
+       swap(1), dup(3),
+       %% Stack: v, offset(v'), v, base, offset(v')
+       assemble_encode_at(Cpt),
+       %% Stack: v, offset(v'), base
+       swap(2), push(32), aeb_opcodes:mnemonic(?ADD), swap(2),
+       swap(1), push(32), aeb_opcodes:mnemonic(?ADD)
+       %% Stack: v+32, base, offset(v')+32
+      ]
+      || Cpt <- Cpts],
+     
+     %% Stack: v+32*n, base, offset(v')+32*n
+     aeb_opcodes:mnemonic(?POP),
+     swap(1),
+       aeb_opcodes:mnemonic(?POP)].
+
+%% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
 %% should appear. The argument is a list containing
 %%   a NUMBER for each element that should be kept, the number being
