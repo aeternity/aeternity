@@ -128,7 +128,7 @@ call_contract(_Cfg) ->
 
     %% Check that it got stored and that we got the right return value
     Call = aect_state_tree:get_call(ContractKey, CallId, aect_test_utils:contracts(S4)),
-    <<Arg:256>> = aect_call:return_value(Call),
+    <<42:256>> = aect_call:return_value(Call),
 
     %% ...and that we got charged the right amount for gas and fee.
     NewCallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
