@@ -70,7 +70,7 @@ Assuming the new configuration file is in current working directory and named `m
 
 ```bash
 docker run -d -p 3013:3013 \
-    -v $(pwd)/myepoch.yaml:/home/epoch/myepoch.yaml \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
     -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
     aetrnty/epoch
 ```
