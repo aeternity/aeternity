@@ -18,30 +18,50 @@ from swagger_client.api_client import ApiClient
 
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
-        "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args",
-        "sed -ibkp 's/{aec_pow_cuckoo, {\"mean28s-generic\", \"-t 5\", 28}}/{aec_pow_cuckoo, {\"mean16s-generic\", \"-t 5\", 16}}/g' ./releases/{{ version }}/sys.config"
+        "sed -ibkp 's/-sname epoch/-sname {{ name }}/g' ./releases/{{ version }}/vm.args"
         ]
 # node's setup
 SETUP = {
         "node1": {
             "host": "localhost:9813/v2",
             "name": "epoch1",
+            "user_config": '''
+---
+peers:
+    - "http://localhost:9823/"
+    - "http://localhost:9833/"
+
+http:
+    external:
+        port: 9813
+    internal:
+        port: 9913
+
+websocket:
+    internal:
+        port: 9914
+        acceptors: 100
+
+mining:
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
+''',
             "config": '''[
 {aecore,
  [
-  {peers, ["http://localhost:9823/",
-           "http://localhost:9833/"]},
-  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
   {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9813},
   {internal, [
-      {swagger_port, 9913},
-      {websocket, [ {port, 9914},
-                    {handlers, 100},
-                    {tasks, 200}
+      {websocket, [ {tasks, 200}
                 ]}
     ]}
  ]}
@@ -51,21 +71,39 @@ SETUP = {
         "node2": {
             "host": "localhost:9823/v2",
             "name": "epoch2",
+            "user_config": '''
+---
+http:
+    external:
+        port: 9823
+    internal:
+        port: 9923
+
+websocket:
+    internal:
+        port: 9924
+        acceptors: 100
+
+mining:
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
+''',
             "config": '''[
 {aecore,
  [
-  {peers, []},
-  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
   {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9823},
   {internal, [
-      {swagger_port, 9923},
-      {websocket, [ {port, 9924},
-                    {handlers, 100},
-                    {tasks, 200}
+      {websocket, [ {tasks, 200}
                 ]}
     ]}
  ]}
@@ -75,21 +113,39 @@ SETUP = {
         "node3": {
             "host": "localhost:9833/v2",
             "name": "epoch3",
+            "user_config": '''
+---
+http:
+    external:
+        port: 9833
+    internal:
+        port: 9933
+
+websocket:
+    internal:
+        port: 9934
+        acceptors: 100
+
+mining:
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+
+chain:
+    persist: true
+    db_path: ./my_db
+''',
             "config": '''[
 {aecore,
  [
-  {peers, []},
-  {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}},
   {expected_mine_rate, 100}
  ]},
 {aehttp,
  [
-  {swagger_port_external, 9833},
   {internal, [
-      {swagger_port, 9933},
-      {websocket, [ {port, 9934},
-                    {handlers, 100},
-                    {tasks, 200}
+      {websocket, [ {tasks, 200}
                 ]}
     ]}
  ]}
@@ -157,9 +213,12 @@ def setup_node(node, path, version):
     for command in NODE_SETUP_COMMANDS: 
         os.system(pystache.render(command, {"version": version, \
                                             "name": SETUP[node]["name"]}))
-    file_obj = open(os.path.join(path, "p.config"), "w")
-    file_obj.write(SETUP[node]["config"])
-    file_obj.close()
+    ucfg = open(os.path.join(path, "epoch.yaml"), "w")
+    ucfg.write(SETUP[node]["user_config"])
+    ucfg.close()
+    cfg = open(os.path.join(path, "p.config"), "w")
+    cfg.write(SETUP[node]["config"])
+    cfg.close()
 
 def main(argv):
     logging.getLogger("urllib3").setLevel(logging.ERROR)
@@ -207,6 +266,12 @@ def main(argv):
         test_failed = True
         print("node died")
     [stop_node(d) for d in node_dirs]
+
+    print("Checking that nodes are able to start with persisted non-empty DB")
+    [start_node(d) for d in node_dirs]
+    wait_all_nodes_are_online(node_objs)
+    [stop_node(d) for d in node_dirs]
+
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):
             print(name + " logs:")
