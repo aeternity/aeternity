@@ -1,6 +1,8 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%%-------------------------------------------------------------------
+-define(TX_HASH_BYTES, 32).
+-type(tx_hash() :: <<_:(?TX_HASH_BYTES*8)>>).
 
 -record(coinbase_tx, {
           account   = <<>> :: pubkey()}).

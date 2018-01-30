@@ -19,6 +19,9 @@
 -callback origin(Tx :: term()) ->
     Origin :: pubkey() | undefined.
 
+-callback accounts(Tx :: term()) ->
+    [pubkey()].
+
 -callback signers(Tx :: term()) ->
     [pubkey()].
 

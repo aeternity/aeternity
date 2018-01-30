@@ -12,6 +12,7 @@
          recipient/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -68,9 +69,12 @@ check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
             Error
     end.
 
+-spec accounts(spend_tx()) -> [pubkey()].
+accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
+    [SenderPubKey, RecipientPubKey].
+
 -spec signers(spend_tx()) -> [pubkey()].
 signers(#spend_tx{sender = SenderPubKey}) -> [SenderPubKey].
-
 
 -spec process(spend_tx(), trees(), height()) -> {ok, trees()}.
 process(#spend_tx{sender = SenderPubkey,

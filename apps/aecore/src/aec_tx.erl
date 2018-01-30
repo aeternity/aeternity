@@ -8,7 +8,9 @@
          apply_signed/3,
          apply_signed_strict/3,
          is_coinbase/1,
-         signers/1]).
+         accounts/1,
+         signers/1,
+         hash_tx/1]).
 -export([serialize/1,
          serialize_for_client/1,
          deserialize/1,
@@ -108,6 +110,14 @@ calculate_total_fee(SignedTxs) ->
               Fee = fee(aec_tx_sign:data(SignedTx)),
               TotalFee + Fee
       end, 0, SignedTxs).
+
+-spec hash_tx(tx()) -> tx_hash().
+hash_tx(Tx) ->
+    aec_sha256:hash(serialize_to_binary(Tx)).
+
+accounts(Tx) ->
+    Mod = aec_tx_dispatcher:handler(Tx),
+    Mod:accounts(Tx).
 
 signers(Tx) ->
     Mod = aec_tx_dispatcher:handler(Tx),

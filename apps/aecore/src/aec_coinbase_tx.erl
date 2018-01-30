@@ -11,6 +11,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -64,9 +65,11 @@ process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
     {ok, Trees}.
 
+-spec accounts(coinbase_tx()) -> [pubkey()].
+accounts(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
+
 -spec signers(coinbase_tx()) -> [pubkey()].
 signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
-
 
 -define(CB_TX_TYPE, <<"coinbase">>).
 -define(CB_TX_VSN, 1).
