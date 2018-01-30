@@ -140,7 +140,7 @@ init([]) ->
     Peers = application:get_env(aecore, peers, []),
     BlockedPeers = application:get_env(aecore, blocked_peers, []),
     [aec_peers:block_peer(P) || P <- BlockedPeers],
-    aec_peers:add_and_ping_peers(Peers),
+    aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
 handle_call(_, _From, State) ->

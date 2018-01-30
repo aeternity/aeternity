@@ -19,6 +19,8 @@
     % pings
     broken_pings/1,
     blocked_ping/1,
+    not_blocked_ping/1,
+    auto_unblocked_peer/1,
     correct_ping/1,
 
     % get block-s
@@ -123,6 +125,8 @@ groups() ->
         % pings
         broken_pings,
         blocked_ping,
+        not_blocked_ping,
+        auto_unblocked_peer,
         correct_ping,
 
         % get block-s
@@ -294,6 +298,45 @@ blocked_ping(_Config) ->
         post_ping(maps:put(<<"source">>, Peer, PingObj)),
     rpc(aec_peers, remove, [Peer]),
     ok.
+
+not_blocked_ping(_Config) ->
+    %% Use one of the "trusted" peers, it shouldn't get blocked!
+    Peer = <<"http://localhost:3023">>,
+    PingObj = rpc(aec_sync, local_ping_object, []),
+    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
+                                             <<"genesis_hash">> => <<"foo">>}),
+    {ok, 409, _} = post_ping(WrongGenHashPing),
+    % node shouldn't be blocked despite sending garbage...
+    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
+        post_ping(WrongGenHashPing),
+    rpc(aec_peers, remove, [Peer]),
+    ok.
+
+auto_unblocked_peer(_Config) ->
+    rpc(application, set_env, [aecore, peer_unblock_interval, 3000]),
+    Peer = unique_peer(),
+    PingObj = rpc(aec_sync, local_ping_object, []),
+    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
+                                             <<"genesis_hash">> => <<"foo">>}),
+    %% Reset the blocking
+    rpc(aec_peers, unblock_all, []),
+    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
+        post_ping(WrongGenHashPing),
+
+    % After 1s the peer should still be blocked.
+    timer:sleep(1000),
+    {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
+        post_ping(WrongGenHashPing),
+
+    %% Nodes should be unblocked after 3s
+    timer:sleep(2000),
+    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
+        post_ping(WrongGenHashPing),
+
+    rpc(aec_peers, remove, [Peer]),
+    rpc(application, unset_env, [aecore, peer_unblock_interval]),
+    ok.
+
 
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
