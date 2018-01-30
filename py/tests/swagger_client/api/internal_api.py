@@ -689,6 +689,8 @@ class InternalApi(object):
 
         :param async bool
         :param str hash: Hash of the block to fetch (required)
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
@@ -711,12 +713,14 @@ class InternalApi(object):
 
         :param async bool
         :param str hash: Hash of the block to fetch (required)
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['hash']  # noqa: E501
+        all_params = ['hash', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -743,6 +747,10 @@ class InternalApi(object):
             path_params['hash'] = params['hash']  # noqa: E501
 
         query_params = []
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -784,6 +792,8 @@ class InternalApi(object):
 
         :param async bool
         :param int height: Height of the block to fetch (required)
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
@@ -806,12 +816,14 @@ class InternalApi(object):
 
         :param async bool
         :param int height: Height of the block to fetch (required)
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['height']  # noqa: E501
+        all_params = ['height', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -838,6 +850,10 @@ class InternalApi(object):
             path_params['height'] = params['height']  # noqa: E501
 
         query_params = []
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -878,6 +894,8 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
@@ -899,12 +917,14 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = []  # noqa: E501
+        all_params = ['tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -925,6 +945,10 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -965,6 +989,8 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
@@ -986,12 +1012,14 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = []  # noqa: E501
+        all_params = ['tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1012,6 +1040,10 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -1147,6 +1179,8 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1168,12 +1202,14 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: InlineResponse200
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = []  # noqa: E501
+        all_params = ['tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1194,6 +1230,10 @@ class InternalApi(object):
         path_params = {}
 
         query_params = []
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -1324,7 +1364,7 @@ class InternalApi(object):
         :param str hash: Hash of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1348,7 +1388,7 @@ class InternalApi(object):
         :param str hash: Hash of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1410,7 +1450,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='SingleTxHashOrObject',  # noqa: E501
+            response_type='SingleTxObject',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1431,7 +1471,7 @@ class InternalApi(object):
         :param int height: Height of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1455,7 +1495,7 @@ class InternalApi(object):
         :param int height: Height of the block to search for (required)
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1517,7 +1557,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='SingleTxHashOrObject',  # noqa: E501
+            response_type='SingleTxObject',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1537,7 +1577,7 @@ class InternalApi(object):
         :param async bool
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1560,7 +1600,7 @@ class InternalApi(object):
         :param async bool
         :param int tx_index: Index of the transaction in the block (required)
         :param str tx_encoding: Transactions encoding
-        :return: SingleTxHashOrObject
+        :return: SingleTxObject
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1616,7 +1656,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='SingleTxHashOrObject',  # noqa: E501
+            response_type='SingleTxObject',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1637,7 +1677,10 @@ class InternalApi(object):
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :return: GenericTxArray
+        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :return: TxObjects
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1661,12 +1704,15 @@ class InternalApi(object):
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :return: GenericTxArray
+        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :return: TxObjects
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_encoding']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding', 'tx_objects', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1705,6 +1751,12 @@ class InternalApi(object):
             query_params.append(('to', params['to']))  # noqa: E501
         if 'tx_encoding' in params:
             query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
+        if 'tx_objects' in params:
+            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -1727,7 +1779,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='GenericTxArray',  # noqa: E501
+            response_type='TxObjects',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1748,7 +1800,10 @@ class InternalApi(object):
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :return: GenericTxArray
+        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :return: TxObjects
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1772,12 +1827,15 @@ class InternalApi(object):
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :return: GenericTxArray
+        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :return: TxObjects
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_encoding']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding', 'tx_objects', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1816,6 +1874,12 @@ class InternalApi(object):
             query_params.append(('to', params['to']))  # noqa: E501
         if 'tx_encoding' in params:
             query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
+        if 'tx_objects' in params:
+            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
 
         header_params = {}
 
@@ -1838,7 +1902,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='GenericTxArray',  # noqa: E501
+            response_type='TxObjects',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),

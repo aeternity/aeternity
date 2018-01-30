@@ -16,7 +16,7 @@ import re  # noqa: F401
 
 import six
 
-from swagger_client.models.generic_tx_object import GenericTxObject  # noqa: F401,E501
+from swagger_client.models.json_tx import JSONTx  # noqa: F401,E501
 
 
 class NamePreclaimTxObject(object):

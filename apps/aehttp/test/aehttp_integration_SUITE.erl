@@ -938,7 +938,7 @@ internal_block_pending(_Config) ->
     timer:sleep(100),% so the miner is started
     {ok, PendingBlock} = get_pending_block(),
     ExpectedPendingTx = maps:put(<<"data_schema">>,
-                <<"BlockWithTxsHashes">>,
+                <<"BlockWithMsgPackTxs">>,
                 block_to_endpoint_map(PendingBlock)),
     ct:log("Expected pending block ~p", [ExpectedPendingTx]),
     GetPending =
@@ -970,7 +970,7 @@ internal_block_pending(_Config) ->
     ValidateKeys(ExpectedPendingTx, PendingTxHashes, <<"data_schema">>),
 
     ExpectedPendingTxsObjects = maps:put(<<"data_schema">>,
-                <<"BlockWithTxs">>,
+                <<"BlockWithJSONTxs">>,
                 block_to_endpoint_map(PendingBlock, #{tx_encoding => json})),
     ct:log("Expected pending block with tx objects~p",
            [ExpectedPendingTxsObjects]),
@@ -996,7 +996,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
                     #{<<"data_schema">> => DataSchema,
                       <<"hash">> => aec_base58c:encode(block_hash, Hash)}
                 end,
-            ExpectedBlockMap = maps:merge(Specific(<<"BlockWithTxsHashes">>),
+            ExpectedBlockMap = maps:merge(Specific(<<"BlockWithMsgPackTxs">>),
                 block_to_endpoint_map(ExpectedBlock)),
             {ok, 200, BlockMap} = CallApiFun(Height, default),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
@@ -1005,7 +1005,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             true = equal_block_maps(BlockMap, ExpectedBlockMap), 
             true = equal_block_maps(BlockMap1, ExpectedBlockMap), 
 
-            ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithTxs">>),
+            ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithJSONTxs">>),
                 block_to_endpoint_map(ExpectedBlock, #{tx_encoding => json})),
             {ok, 200, BlockMap2} = CallApiFun(Height, json),
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
@@ -1216,9 +1216,9 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
                         end,
                         lists:zip(AllTxs, TxsIdxs))
                 end,
-                [{default, <<"SingleTxHash">>},
-                 {message_pack,  <<"SingleTxHash">>},
-                 {json,  <<"SingleTxObject">>}]),
+                [{default, <<"SingleTxMsgPack">>},
+                 {message_pack,  <<"SingleTxMsgPack">>},
+                 {json,  <<"SingleTxJSON">>}]),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
             add_spend_txs()
         end,
@@ -1226,11 +1226,11 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
     ok.
 
 block_txs_list_by_height(_Config) ->
-    generic_range_test(fun get_block_txs_list_by_height/3,
+    generic_range_test(fun get_block_txs_list_by_height/4,
                         fun(H) -> H end).
 
 block_txs_list_by_hash(_Config) ->
-    generic_range_test(fun get_block_txs_list_by_hash/3,
+    generic_range_test(fun get_block_txs_list_by_hash/4,
                         fun(H) ->
                             {ok, Hash} = block_hash_by_height(H),
                             Hash
@@ -1255,42 +1255,89 @@ generic_range_test(GetTxsApi, HeightToKey) ->
     ok.
 
 single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
+    TxEncoding = [default, message_pack, json],
+    AllTestedTxTypes = [[<<"coinbase">>], [<<"coinbase">>, <<"spend">>]],
     lists:foreach(
-        fun(Opts) ->
+        fun({Encoding, TxTypes}) ->
             From = HeightToKey(HeightFrom),
             To = HeightToKey(HeightTo),
-            {ok, 200, Result} = GetTxsApi(From, To, Opts),
+
+            % all transactions
+            {ok, 200, Result} = GetTxsApi(From, To, Encoding, #{}),
             ExpectedResult =
-                expected_range_result(HeightFrom, HeightTo, Opts),
+                expected_range_result(HeightFrom, HeightTo, Encoding, all),
             ct:log("Expected Result ~p, Actual result ~p",
                     [ExpectedResult, Result]),
-            ExpectedResult = Result
-        end,
-        [default, message_pack, json]).
+            ExpectedResult = Result,
 
-expected_range_result(HeightFrom, HeightTo, TxObjects) ->
-    Txs =
+            
+            {ok, 200, Result1} = GetTxsApi(From, To, Encoding, #{include => TxTypes}),
+            ExpectedResult1 =
+                expected_range_result(HeightFrom, HeightTo, Encoding, {only, TxTypes}),
+            ct:log("Showing only ~p, Expected Result ~p,~n Actual result ~p",
+                    [TxTypes, ExpectedResult1, Result1]),
+            ExpectedResult1 = Result1,
+
+            {ok, 200, Result2} = GetTxsApi(From, To, Encoding, #{exclude => TxTypes}),
+            ExpectedResult2 =
+                expected_range_result(HeightFrom, HeightTo, Encoding, {exclude, TxTypes}),
+            ct:log("Showing excluded ~p, Expected Result ~p,~n Actual result ~p",
+                    [TxTypes, ExpectedResult2, Result2]),
+            ExpectedResult2 = Result2,
+            ok
+        end,
+        [{E, TxT} || E <- TxEncoding, TxT <- AllTestedTxTypes]).
+
+expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
+    {ok, Blocks} = rpc(aec_conductor, get_block_range_by_height, [HeightFrom,
+                                                                  HeightTo]),
+    TxEncoding =
+        case TxEncoding0 of
+            default -> message_pack;
+            Other -> Other
+        end,
+    SerializedTxs =
         lists:foldl(
-            fun(Height, Accum) ->
-                {ok, 200, BlockMap} =
-                    get_internal_block_by_height(Height, TxObjects),
-                % genesis block doesn't have transactions
-                BlockTxs = maps:get(<<"transactions">>, BlockMap, []),
-                BlockTxs ++ Accum
+            fun(Block, Accum) ->
+                AllBlockTxs = aec_blocks:txs(Block),
+                FilteredTxs =
+                    case TxTypes of
+                        all ->
+                            AllBlockTxs;
+                        {only, Includes} ->
+                            lists:filter(
+                                fun(Tx) -> lists:member(tx_type(Tx), Includes) end,
+                                AllBlockTxs);
+                        {exclude, Excludes} ->
+                            lists:filter(
+                                fun(Tx) -> not lists:member(tx_type(Tx), Excludes) end,
+                                AllBlockTxs)
+                      end,
+                H = aec_blocks:to_header(Block),
+                lists:map(
+                    fun(Tx) ->
+                        aec_tx_sign:serialize_for_client(TxEncoding, H, Tx)
+                    end,
+                    FilteredTxs) ++ Accum
             end,
             [],
-            lists:seq(HeightFrom, HeightTo)),
+            Blocks),
     DataSchema =
-        case TxObjects of
+        case TxEncoding of
             default -> 
-                <<"TxMsgPackHashes">>;
+                <<"MsgPackTxs">>;
             message_pack ->
-                <<"TxMsgPackHashes">>;
+                <<"MsgPackTxs">>;
             json ->
-                <<"TxObjects">>
+                <<"JSONTxs">>
           end,
     #{<<"data_schema">> => DataSchema,
-      <<"transactions">> => Txs}.
+      <<"transactions">> => SerializedTxs}.
+
+tx_type(SignedTx) ->
+    Tx = aec_tx_sign:data(SignedTx), 
+    Mod = aec_tx_dispatcher:handler(Tx),
+    Mod:type().
 
 block_txs_list_by_height_invalid_range(_Config) ->
     InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
@@ -1302,7 +1349,7 @@ block_txs_list_by_height_invalid_range(_Config) ->
         fun(From, To, Error) ->
             lists:foreach(
                 fun(Opts) ->
-                    Error = get_block_txs_list_by_height(From, To, Opts)
+                    Error = get_block_txs_list_by_height(From, To, Opts, #{})
                 end,
                 [default, message_pack, json])
         end,
@@ -1333,7 +1380,7 @@ block_txs_list_by_hash_invalid_range(_Config) ->
         fun(From, To, Error) ->
             lists:foreach(
                 fun(Opts) ->
-                    Error = get_block_txs_list_by_hash(From, To, Opts)
+                    Error = get_block_txs_list_by_hash(From, To, Opts, #{})
                 end,
                 [default, message_pack, json])
         end,
@@ -1824,17 +1871,34 @@ get_block_tx_by_index_latest(Index, TxObjects) ->
     Host = internal_address(),
     http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
 
-get_block_txs_list_by_height(From, To, TxObjects) ->
+get_block_txs_list_by_height(From, To, TxObjects, TxTypes) ->
     Params0 = tx_encoding_param(TxObjects),
-    Params = maps:merge(Params0, #{from => From, to => To}),
+    Filter = make_tx_types_filter(TxTypes),
+    Params = maps:merge(Params0, maps:merge(Filter, #{from => From, to => To})),
     Host = internal_address(),
     http_request(Host, get, "block/txs/list/height", Params).
 
-get_block_txs_list_by_hash(From, To, TxObjects) ->
+get_block_txs_list_by_hash(From, To, TxObjects, TxTypes) ->
     Params0 = tx_encoding_param(TxObjects),
-    Params = maps:merge(Params0, #{from => From, to => To}),
+    Filter = make_tx_types_filter(TxTypes),
+    Params = maps:merge(Params0, maps:merge(Filter, #{from => From, to => To})),
     Host = internal_address(),
     http_request(Host, get, "block/txs/list/hash", Params).
+
+make_tx_types_filter(Filter) ->
+    Includes = maps:get(include, Filter, []),
+    Excludes = maps:get(exclude, Filter, []),
+    Encode =
+        fun(_, [], Res) -> Res;
+        (Key, TypesBin, Res) ->
+            Types = lists:map(fun binary_to_list/1, TypesBin),
+            T = list_to_binary(lists:join(",", Types)),
+            maps:put(Key, T, Res)
+        end,
+    R0 = Encode(tx_types, Includes, #{}),
+    R = Encode(exclude_tx_types, Excludes, R0),
+    R.
+
 %% ============================================================
 %% private functions
 %% ============================================================

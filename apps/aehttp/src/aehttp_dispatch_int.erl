@@ -315,25 +315,27 @@ handle_request('GetBlockTxsCountByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end)
+            get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end,
+                               Req)
     end;
 
 handle_request('GetBlockTxsCountByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block_txs_count(fun() -> aec_conductor:get_block_by_height(Height) end);
+    get_block_txs_count(fun() -> aec_conductor:get_block_by_height(Height) end,
+                       Req);
 
-handle_request('GetGenesisBlockTxsCount', _Req, _Context) ->
-    get_block_txs_count(fun aec_conductor:genesis_block/0);
+handle_request('GetGenesisBlockTxsCount', Req, _Context) ->
+    get_block_txs_count(fun aec_conductor:genesis_block/0, Req);
 
-handle_request('GetLatestBlockTxsCount', _Req, _Context) ->
+handle_request('GetLatestBlockTxsCount', Req, _Context) ->
     get_block_txs_count(
         fun() ->
             TopBlock = aec_conductor:top(),
             {ok, TopBlock}
-        end);
+        end, Req);
 
-handle_request('GetPendingBlockTxsCount', _Req, _Context) ->
-    get_block_txs_count(fun aec_conductor:get_block_candidate/0);
+handle_request('GetPendingBlockTxsCount', Req, _Context) ->
+    get_block_txs_count(fun aec_conductor:get_block_candidate/0, Req);
 
 handle_request('GetTransactionFromBlockHeight', Req, _Context) ->
     Height = maps:get('height', Req),
@@ -432,9 +434,9 @@ get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
                     DataSchema =
                         case TxEncoding of
                             message_pack ->
-                                <<"BlockWithTxsHashes">>;
+                                <<"BlockWithMsgPackTxs">>;
                             json ->
-                                <<"BlockWithTxs">>
+                                <<"BlockWithJSONTxs">>
                         end,
                     Resp0 = aehttp_dispatch_ext:cleanup_genesis(
                               aec_blocks:serialize_client_readable(TxEncoding, Block)),
@@ -456,12 +458,67 @@ get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
             Err
     end.
 
-get_block_txs_count(Fun) when is_function(Fun, 0) ->
+get_block_txs_count(Fun, Req) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
-            {200, [], #{count => length(aec_blocks:txs(Block))}};
+            case filter_transaction_list(Req, aec_blocks:txs(Block)) of
+                {ok, TxsList} ->
+                    Count = length(TxsList),
+                    {200, [], #{count => Count}};
+                {error, unknown_type} ->
+                    {400, [], #{reason => <<"Unknown transaction type">>}}
+            end;
         {_Code, _, _Reason} = Err ->
             Err
+    end.
+
+filter_transaction_list(Req, TxList) ->
+    case {parse_filter_param(tx_types, Req),
+          parse_filter_param(exclude_tx_types, Req)} of
+        {{error, unknown_type} = Err, _} ->
+            Err;
+        {_, {error, unknown_type} = Err} ->
+            Err;
+        {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
+            Filtered =
+                lists:filter(
+                    fun(SignedTx) ->
+                        Tx = aec_tx_sign:data(SignedTx), 
+                        Mod = aec_tx_dispatcher:handler(Tx),
+                        TxType = Mod:type(),
+                        Drop = lists:member(TxType, DropTxTypes),
+                        Keep = KeepTxTypes =:= []
+                            orelse lists:member(TxType, KeepTxTypes),
+                        Keep andalso not Drop
+                    end,
+                    TxList),
+            {ok, Filtered}
+    end.
+
+-spec parse_filter_param(atom(), map()) -> {ok, list()} | {error, unknown_type}.
+parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
+    Vals = binary:split(
+        read_optional_param(ParamName, Req, <<>>),
+        [<<",">>],
+        [global]),
+    case Vals =:= [<<>>] of
+        false ->
+            KnownTypes =
+                lists:filter(
+                    fun(TxType) ->
+                        try aec_tx_dispatcher:handler_by_type(TxType) of
+                            _ -> true
+                        catch
+                            error:function_clause -> false
+                        end
+                    end,
+                    Vals),
+            case length(Vals) =:= length(KnownTypes) of
+                true -> {ok, KnownTypes};
+                false -> {error, unknown_type}
+            end;
+        true ->
+            {ok, []}
     end.
 
 get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
@@ -479,9 +536,9 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
                             DataSchema =
                                 case TxEncoding of
                                     json ->
-                                        <<"SingleTxObject">>;
+                                        <<"SingleTxJSON">>;
                                     message_pack ->
-                                        <<"SingleTxHash">>
+                                        <<"SingleTxMsgPack">>
                                 end,
                             H = aec_blocks:to_header(Block),
                             {200, [], #{transaction => aec_tx_sign:serialize_for_client(TxEncoding, H, Tx),
@@ -547,9 +604,9 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
             DataSchema =
                 case TxEncoding of
                     json ->
-                        <<"TxObjects">>;
+                        <<"JSONTxs">>;
                     message_pack ->
-                        <<"TxMsgPackHashes">>
+                        <<"MsgPackTxs">>
                 end,
             case GetFun() of
                 {error, invalid_range} ->
@@ -564,16 +621,31 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
                     {404, [], #{reason => <<"Block not found">>}};
                 {ok, Blocks} ->
                     Txs = lists:foldl(
-                        fun(Block, Accum) ->
-                            BlockTxs = aec_blocks:txs(Block),
-                            H = aec_blocks:to_header(Block),
-                            lists:map(
-                                fun(Tx) -> aec_tx_sign:serialize_for_client(TxEncoding, H, Tx) end,
-                                BlockTxs) ++ Accum
+                        fun(_Block, {error, _} = Err) ->
+                            Err;
+                           (Block, Accum) ->
+                            case filter_transaction_list(Req, aec_blocks:txs(Block)) of
+                                {error, unknown_type} = Err ->
+                                    Err;
+                                {ok, FilteredTxs} ->
+                                    H = aec_blocks:to_header(Block),
+                                    lists:map(
+                                        fun(Tx) ->
+                                            aec_tx_sign:serialize_for_client(TxEncoding, H, Tx)
+                                        end,
+                                        FilteredTxs) ++ Accum
+                            end
                         end,
                         [],
                         Blocks),
-                    {200, [], #{transactions => Txs, data_schema => DataSchema}}
-          end
+                    case Txs of
+                        {error, unknown_type} ->
+                            {400, [], #{reason => <<"Unknown transaction type">>}};
+                        _ ->
+                            {200, [], #{transactions => Txs,
+                                        data_schema => DataSchema}}
+                    end
+              end
+
     end.
 

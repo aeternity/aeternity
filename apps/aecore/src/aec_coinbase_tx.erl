@@ -89,7 +89,8 @@ type() ->
 
 for_client(#coinbase_tx{account = Account}) ->
     #{<<"account">> => aec_base58c:encode(account_pubkey,Account),
-      <<"type">> => <<"CoinbaseTxObject">>, % swagger schema name
+      <<"data_schema">> => <<"CoinbaseTxJSON">>, % swagger schema name
+      <<"type">> => ?CB_TX_TYPE,
       <<"vsn">> => ?CB_TX_VSN}.
 
 version() ->
