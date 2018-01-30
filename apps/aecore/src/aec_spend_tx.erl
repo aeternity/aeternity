@@ -81,12 +81,11 @@ process(#spend_tx{sender = SenderPubkey,
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
-    {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees0),
-
     {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce, Height),
-    {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount, Height),
-
     AccountsTrees1 = aec_accounts_trees:enter(SenderAccount, AccountsTrees0),
+
+    {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees1),
+    {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount, Height),
     AccountsTrees2 = aec_accounts_trees:enter(RecipientAccount, AccountsTrees1),
 
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees2),
