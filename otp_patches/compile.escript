@@ -13,16 +13,17 @@ in_dir(F, D) ->
         file:set_cwd(D),
         try F() of
             [] -> init:stop(0);
-            _Other -> init:stop(-1)
+            _Other -> init:stop(1)
         catch
-            error:_ -> init:stop(-1)
+            error:_ -> init:stop(1)
         end
     after
         file:set_cwd(Cwd)
     end.
 
 compile_patches() ->
-    Patches = filelib:wildcard("*.patch"),
+    SubDir = determine_subdir(),
+    Patches = filelib:wildcard(filename:join(SubDir, "*.patch")),
     info("Patches = ~p~n", [Patches]),
     [R || R <- [patch_and_compile(P) || P <- Patches], R =/= ok].
 
@@ -71,6 +72,45 @@ compile(F, Src) ->
             {error, {compile_error, F}}
     end.
 
+determine_subdir() ->
+    case filelib:wildcard("*/versions.eterm") of
+        [] ->
+            ".";
+        [_|_] = Vsns ->
+            match_versions(Vsns)
+    end.
+
+match_versions([H|T]) ->
+    case file:consult(H) of
+        {ok, Apps} ->
+            case lists:all(fun match_vsn/1, Apps) of
+                true ->
+                    filename:dirname(H);
+                false ->
+                    match_versions(T)
+            end;
+        {error, Reason} ->
+            fatal("Cannot read ~p: ~p~n", [H, Reason])
+    end;
+match_versions([]) ->
+    ".".
+
+
+match_vsn({App, Re}) ->
+    case code:lib_dir(App) of
+        {error, _} ->
+            false;
+        Dir ->
+            re_match(filename:basename(Dir), Re)
+    end.
+
+re_match(Str, Re) ->
+    case re:run(Str, Re) of
+        {match, _} -> true;
+        nomatch    -> false
+    end.
+
+
 cur_dir() ->
     {ok, Cwd} = file:get_cwd(),
     Cwd.
@@ -81,3 +121,7 @@ info(Fmt, Args) ->
         error:_ ->
             io:fwrite(Fmt, Args)
     end.
+
+fatal(Fmt, Args) ->
+    io:fwrite("ERROR: " ++ Fmt, Args),
+    init:stop(1).
