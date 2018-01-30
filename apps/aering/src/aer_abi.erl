@@ -12,7 +12,7 @@
 
 -export([create_calldata/3]).
 
--spec create_calldata(binary(), string(), string()) -> {ok, binary()} | {error, string()}.
+-spec create_calldata(binary(), string(), string()) -> binary() | {error, argument_syntax_error}.
 
 create_calldata(Contract, Function, Argument) ->
     %% TODO: check that function exists in cotract.

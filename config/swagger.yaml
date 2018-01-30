@@ -923,7 +923,7 @@ paths:
       tags:
         - external
       operationId: 'CompileContract'
-      description: 'Put a ring contract on the chain and return byte code'
+      description: 'Compila a ring contract from source and return byte code'
       produces:
         - application/json
       parameters:
@@ -942,7 +942,32 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
-            
+  /contract/call:
+    post:
+      tags:
+        - external
+      operationId: 'CallContract'
+      description: 'Call a ring function with a given name and argument in the given bytecode.'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: contract call
+          required: true
+          schema:
+            $ref: '#/definitions/ContractCall'
+      responses:
+        '200':
+          description: Resulting state map
+          schema:
+            $ref: '#/definitions/CallResult'
+        '403':
+          description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+
+
 definitions:
   EncodedHash:
     type: string
@@ -1399,19 +1424,31 @@ definitions:
     properties:
       reason:
         type: string
-
   Contract:
     type: object
     properties:
       code:
         type: string
-        options: string
-
+      options:
+        type: string
   ByteCode:
     type: object
     properties:
       bytecode: string
-
+  ContractCall:
+    type: object
+    properties:
+      code:
+        type: string
+      function:
+        type: string
+      arg:
+        type: string
+  CallResult:
+    type: object
+    properties:
+      out:
+        type: string
 
 
 externalDocs:

@@ -200,6 +200,7 @@ handle_request('CompileContract', Req, _Context) ->
     end;
 
 
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

@@ -10,6 +10,7 @@
 -export([ compile/2
         , create_call/3
         , execute_call/2
+        , simple_call/3
         ]).
 
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
@@ -56,6 +57,32 @@ hex_nibble(X) ->
        true   -> X+87
     end.
 
+-spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+simple_call(Code, Function, Argument) ->
+    case create_call(Code, Function, Argument) of
+        {ok,  CallData} ->
+            Spec = #{ code => Code
+                    , address => 0
+                    , caller => 0
+                    , data => CallData
+                    , gas => 1000000
+                    , gasPrice => 1
+                    , origin => 0
+                    , value => 0
+                    , currentCoinbase => 1
+                    , currentDifficulty => 1
+                    , currentGasLimit => 1000000
+                    , currentNumber => 1
+                    , currentTimestamp => 1
+                    },
+            case execute_call(Spec, false) of
+                #{ out := Out } ->
+                    {ok, hexstring_encode(Out)};
+                E -> {error, list_to_binary(io_lib:format("~p", [E]))}
+            end;
+        E -> {error, list_to_binary(io_lib:format("~p", [E]))}
+    end.
+
 -spec create_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 create_call(Contract, Function, Argument) ->
     Res = aer_abi:create_calldata(Contract,
@@ -67,7 +94,7 @@ create_call(Contract, Function, Argument) ->
         _ -> Res
     end.
 
--spec execute_call(map(), boolean()) -> {ok, {binary(), binary(), string()}} | {error, term()}.
+-spec execute_call(map(), boolean()) -> map() | {error, term()}.
 execute_call(#{ code := CodeAsHexBinString
               , address := Address
               , caller := Caller
@@ -108,16 +135,7 @@ execute_call(#{ code := CodeAsHexBinString
          },
     State = aevm_eeevm_state:init(Spec, TraceSpec),
     Result = aevm_eeevm:eval(State),
-    %% TODO: Handle Contract Out State.
-    case Result of
-        #{ out := Res
-         , trace := ExecutionTrace} ->
-            {ok, {Res, <<>>, ExecutionTrace}};
-        E ->
-            {error, E}
-    end.
-
-
+    Result.
 
 binint_to_bin(<<"0x", Bin/binary>>) ->
     << <<(hex_to_int(X)):4>> || <<X:8>> <= Bin>>;
