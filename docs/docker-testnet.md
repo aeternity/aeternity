@@ -66,7 +66,7 @@ docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.248.103:3013/ aetrnty
 
 ### Changing the configuration file
 
-Assuming the new configuration file is in current working directory and named `myepoch.yaml`:
+Assuming the new configuration file location is `~/.aeternity/myepoch.yaml`:
 
 ```bash
 docker run -d -p 3013:3013 \
