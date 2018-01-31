@@ -18,7 +18,7 @@ dummy_state(Code,Data) ->
      data       => Data
   }.
 
-test(Fun,Args) ->
+test(Fun,Args,Type) ->
   Code = aer_compiler:file(test,[pp_ast,pp_icode]),
   io:format("\nCompiled code:\n"),
   io:format("~p\n\n",[Code]),
@@ -30,7 +30,7 @@ test(Fun,Args) ->
   State = aevm_eeevm:eval(dummy_state(Code, Data)),
   io:format("\nFinal state:\n~p\n",[State]),
   io:format("\nFinal stack: ~p\n",[maps:get(stack,State)++[end_of_stack]]),
-  io:format("\nReturn value: ~p\n",[aer_data:binary_to_words(maps:get(out,State))]),
+  io:format("\nReturn value: ~p\n",[aer_data:from_binary(Type,maps:get(out,State))]),
   ok.
 
 %% Stack simulator

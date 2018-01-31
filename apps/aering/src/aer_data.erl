@@ -1,6 +1,6 @@
 -module(aer_data).
 
--export([to_binary/1,binary_to_words/1]).
+-export([to_binary/1,binary_to_words/1,from_binary/2]).
 
 to_binary(Data) ->
     to_binary(Data,0).
@@ -33,3 +33,18 @@ binary_to_words(<<N:256,Bin/binary>>) ->
 binary_to_words(Bin) ->
     binary_to_words(<<Bin/binary,0>>).
 
+%% Interpret a return value (a binary) using a type rep.
+
+from_binary(T,Heap= <<V:256,_/binary>>) ->
+    from_binary(T,Heap,V).
+
+from_binary(word,_,V) ->
+    V;
+from_binary({tuple,Cpts},Heap,V) ->
+    list_to_tuple([from_binary(T,Heap,heap_word(Heap,V+32*I))
+		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]).
+
+heap_word(Heap,Addr) ->
+    BitSize = 8*Addr,
+    <<_:BitSize,W:256,_/binary>> = Heap,
+    W.

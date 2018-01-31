@@ -8,7 +8,7 @@
 
 -module(aer_test_utils).
 
--export([read_contract/1, contract_path/0, run_contract/3]).
+-export([read_contract/1, contract_path/0, run_contract/4]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -39,7 +39,7 @@ dummy_state(Code, Data) ->
      data       => Data
   }.
 
-run_contract(Name, Fun, Args) ->
+run_contract(Name, Fun, Args, Type) ->
     Code = aer_compiler:file(Name, [pp_ast, pp_icode]),
     io:format("\nCompiled code:\n"),
     io:format("~p\n\n", [Code]),
@@ -51,5 +51,5 @@ run_contract(Name, Fun, Args) ->
     State = aevm_eeevm:eval(dummy_state(Code, Data)),
     %%io:format("\nFinal state:\n~p\n", [State]),
     io:format("\nFinal stack: ~p\n", [maps:get(stack, State)++[end_of_stack]]),
-    io:format("\nReturn value: ~p\n",[aer_data:binary_to_words(maps:get(out,State))]),
+    io:format("\nReturn value: ~p\n",[aer_data:from_binary(Type,maps:get(out,State))]),
     ok.
