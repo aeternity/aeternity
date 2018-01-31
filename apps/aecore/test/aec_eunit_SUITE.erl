@@ -114,7 +114,7 @@ aec_sync_test(Config) ->
     ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
     aec_test_utils:fake_start_aehttp(),
 
-    fail = application:start(aecore),
+    ok = application:start(aecore),
     SyncPid = whereis(aec_sync),
     ct:log("Running aec_sync ~p", [SyncPid]),
 
