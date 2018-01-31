@@ -1846,6 +1846,501 @@ class InternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def post_name_claim_tx(self, body, **kwargs):  # noqa: E501
+        """post_name_claim_tx  # noqa: E501
+
+        Create name claim transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_claim_tx(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameClaimTx body: Creates new name claim transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.post_name_claim_tx_with_http_info(body, **kwargs)  # noqa: E501
+        else:
+            (data) = self.post_name_claim_tx_with_http_info(body, **kwargs)  # noqa: E501
+            return data
+
+    def post_name_claim_tx_with_http_info(self, body, **kwargs):  # noqa: E501
+        """post_name_claim_tx  # noqa: E501
+
+        Create name claim transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_claim_tx_with_http_info(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameClaimTx body: Creates new name claim transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['body']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method post_name_claim_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'body' is set
+        if ('body' not in params or
+                params['body'] is None):
+            raise ValueError("Missing the required parameter `body` when calling `post_name_claim_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        if 'body' in params:
+            body_params = params['body']
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # HTTP header `Content-Type`
+        header_params['Content-Type'] = self.api_client.select_header_content_type(  # noqa: E501
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/name-claim-tx', 'POST',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def post_name_preclaim_tx(self, body, **kwargs):  # noqa: E501
+        """post_name_preclaim_tx  # noqa: E501
+
+        Create name preclaim transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_preclaim_tx(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NamePreclaimTx body: Creates new name preclaim transaction (required)
+        :return: NameCommitmentHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.post_name_preclaim_tx_with_http_info(body, **kwargs)  # noqa: E501
+        else:
+            (data) = self.post_name_preclaim_tx_with_http_info(body, **kwargs)  # noqa: E501
+            return data
+
+    def post_name_preclaim_tx_with_http_info(self, body, **kwargs):  # noqa: E501
+        """post_name_preclaim_tx  # noqa: E501
+
+        Create name preclaim transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_preclaim_tx_with_http_info(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NamePreclaimTx body: Creates new name preclaim transaction (required)
+        :return: NameCommitmentHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['body']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method post_name_preclaim_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'body' is set
+        if ('body' not in params or
+                params['body'] is None):
+            raise ValueError("Missing the required parameter `body` when calling `post_name_preclaim_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        if 'body' in params:
+            body_params = params['body']
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # HTTP header `Content-Type`
+        header_params['Content-Type'] = self.api_client.select_header_content_type(  # noqa: E501
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/name-preclaim-tx', 'POST',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameCommitmentHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def post_name_revoke_tx(self, body, **kwargs):  # noqa: E501
+        """post_name_revoke_tx  # noqa: E501
+
+        Create name revoke transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_revoke_tx(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameRevokeTx body: Creates new name revoke transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.post_name_revoke_tx_with_http_info(body, **kwargs)  # noqa: E501
+        else:
+            (data) = self.post_name_revoke_tx_with_http_info(body, **kwargs)  # noqa: E501
+            return data
+
+    def post_name_revoke_tx_with_http_info(self, body, **kwargs):  # noqa: E501
+        """post_name_revoke_tx  # noqa: E501
+
+        Create name revoke transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_revoke_tx_with_http_info(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameRevokeTx body: Creates new name revoke transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['body']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method post_name_revoke_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'body' is set
+        if ('body' not in params or
+                params['body'] is None):
+            raise ValueError("Missing the required parameter `body` when calling `post_name_revoke_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        if 'body' in params:
+            body_params = params['body']
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # HTTP header `Content-Type`
+        header_params['Content-Type'] = self.api_client.select_header_content_type(  # noqa: E501
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/name-revoke-tx', 'POST',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def post_name_transfer_tx(self, body, **kwargs):  # noqa: E501
+        """post_name_transfer_tx  # noqa: E501
+
+        Create name transfer transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_transfer_tx(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameTransferTx body: Creates new name transfer transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.post_name_transfer_tx_with_http_info(body, **kwargs)  # noqa: E501
+        else:
+            (data) = self.post_name_transfer_tx_with_http_info(body, **kwargs)  # noqa: E501
+            return data
+
+    def post_name_transfer_tx_with_http_info(self, body, **kwargs):  # noqa: E501
+        """post_name_transfer_tx  # noqa: E501
+
+        Create name transfer transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_transfer_tx_with_http_info(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameTransferTx body: Creates new name transfer transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['body']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method post_name_transfer_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'body' is set
+        if ('body' not in params or
+                params['body'] is None):
+            raise ValueError("Missing the required parameter `body` when calling `post_name_transfer_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        if 'body' in params:
+            body_params = params['body']
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # HTTP header `Content-Type`
+        header_params['Content-Type'] = self.api_client.select_header_content_type(  # noqa: E501
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/name-transfer-tx', 'POST',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def post_name_update_tx(self, body, **kwargs):  # noqa: E501
+        """post_name_update_tx  # noqa: E501
+
+        Create name update transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_update_tx(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameUpdateTx body: Creates new name update transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.post_name_update_tx_with_http_info(body, **kwargs)  # noqa: E501
+        else:
+            (data) = self.post_name_update_tx_with_http_info(body, **kwargs)  # noqa: E501
+            return data
+
+    def post_name_update_tx_with_http_info(self, body, **kwargs):  # noqa: E501
+        """post_name_update_tx  # noqa: E501
+
+        Create name update transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.post_name_update_tx_with_http_info(body, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param NameUpdateTx body: Creates new name update transaction (required)
+        :return: NameHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['body']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method post_name_update_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'body' is set
+        if ('body' not in params or
+                params['body'] is None):
+            raise ValueError("Missing the required parameter `body` when calling `post_name_update_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        if 'body' in params:
+            body_params = params['body']
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # HTTP header `Content-Type`
+        header_params['Content-Type'] = self.api_client.select_header_content_type(  # noqa: E501
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/name-update-tx', 'POST',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def post_oracle_query_tx(self, body, **kwargs):  # noqa: E501
         """post_oracle_query_tx  # noqa: E501
 

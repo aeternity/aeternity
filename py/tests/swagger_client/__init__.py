@@ -38,6 +38,14 @@ from swagger_client.models.generic_tx_object import GenericTxObject
 from swagger_client.models.header import Header
 from swagger_client.models.info import Info
 from swagger_client.models.inline_response_200 import InlineResponse200
+from swagger_client.models.name_claim_tx import NameClaimTx
+from swagger_client.models.name_commitment_hash import NameCommitmentHash
+from swagger_client.models.name_entry import NameEntry
+from swagger_client.models.name_hash import NameHash
+from swagger_client.models.name_preclaim_tx import NamePreclaimTx
+from swagger_client.models.name_revoke_tx import NameRevokeTx
+from swagger_client.models.name_transfer_tx import NameTransferTx
+from swagger_client.models.name_update_tx import NameUpdateTx
 from swagger_client.models.oracle_query_id import OracleQueryId
 from swagger_client.models.oracle_query_tx import OracleQueryTx
 from swagger_client.models.oracle_questions import OracleQuestions
@@ -61,6 +69,11 @@ from swagger_client.models.version import Version
 from swagger_client.models.block import Block
 from swagger_client.models.coinbase_tx_object import CoinbaseTxObject
 from swagger_client.models.generic_block import GenericBlock
+from swagger_client.models.name_claim_tx_object import NameClaimTxObject
+from swagger_client.models.name_preclaim_tx_object import NamePreclaimTxObject
+from swagger_client.models.name_revoke_tx_object import NameRevokeTxObject
+from swagger_client.models.name_transfer_tx_object import NameTransferTxObject
+from swagger_client.models.name_update_tx_object import NameUpdateTxObject
 from swagger_client.models.oracle_query_tx_object import OracleQueryTxObject
 from swagger_client.models.oracle_register_tx_object import OracleRegisterTxObject
 from swagger_client.models.oracle_response_tx_object import OracleResponseTxObject
