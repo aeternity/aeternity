@@ -40,7 +40,7 @@ code([], Icode) -> Icode.
 contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
     %% TODO: Handle types
     contract_to_icode(Rest, Icode);
-contract_to_icode([{letfun,_Attrib, Name, Args,_What, {typed,_,Body,T}}|Rest], Icode) ->
+contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
     %% TODO: push funname to env
