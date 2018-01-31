@@ -236,4 +236,5 @@ internal-clean: $$(KIND)
 	dialyzer \
 	test aevm-test-deps\
 	kill killall \
-	clean distclean
+	clean distclean \
+	swagger swagger-docs
