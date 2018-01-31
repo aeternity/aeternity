@@ -9,7 +9,7 @@ contract Identity = {
   // type xy = {x:int, y:int};
   // type xz = {x:int, z:int};
   // type yz = {y:int, z:int};
-  type point('a) = {x:'a,y:int};
+  type point = {x:int,y:int};
   //type intpoint = point(int);
   //   //if (x==42) 1 else (x*x);
   // };
@@ -76,5 +76,5 @@ contract Identity = {
   // let idString(s:string) = s;
   // let pairString(s:string) = (s,s);
   // let revStrings(ss:list(string))=rev(ss);
-  let makePoint(x,y) = ({x:x, y:y}:point(int));
+  let makePoint(x,y) = {x:x, y:y};
 };

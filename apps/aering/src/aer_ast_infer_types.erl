@@ -311,6 +311,7 @@ solve_known_record_types(Constraints) ->
 	 || {RecordType,FieldName,FieldType} <- Constraints],
     SolvedConstraints =
 	[begin
+	     RecId = {id,Attrs,RecName} = record_type_name(RecType),
 	     case ets:lookup(record_types,RecName) of
 		 [] ->
 		     io:format("Undefined record type: ~s\n",RecName),
@@ -334,8 +335,17 @@ solve_known_record_types(Constraints) ->
 		     end
 	     end			     
 	 end
-	 || {RecType={app_t,Attrs,RecId={id,_,RecName},_Args},FieldName,FieldType} <- DerefConstraints],
+	 || {RecType,FieldName,FieldType} <- DerefConstraints,
+	    case RecType of
+		{uvar,_,_} -> false;
+		_          -> true
+	    end],
     DerefConstraints--SolvedConstraints.
+
+record_type_name({app_t,_Attrs,RecId={id,_,_},_Args}) ->
+    RecId;
+record_type_name(RecId={id,_,_}) ->
+    RecId.
 
 solve_for_uvar(UVar,Fields) ->
     %% Does this set of fields uniquely identify a record type?
@@ -393,6 +403,15 @@ unfold_record_types({typed,Attr,E,Type={app_t,_,{id,_,RecName},_}}) ->
 	[{RecName,_Formals,Fields}] ->
 	    {typed,Attr,unfold_record_types(E),{record_t,Fields}}
     end;
+unfold_record_types({typed,Attr,E,Type={id,_,RecName}}) ->
+    %% Like the case above, but for record types without parameters.
+    case ets:lookup(record_types,RecName) of
+	[] ->
+	    %% Not a record type.
+	    {typed,Attr,unfold_record_types(E),Type};
+	[{RecName,_Formals,Fields}] ->
+	    {typed,Attr,unfold_record_types(E),{record_t,Fields}}
+    end;
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->
@@ -435,6 +454,13 @@ unify1({app_t,_,{id,_,F},Args1},{app_t,_,{id,_,F},Args2})
 unify1({tuple_t,_,As},{tuple_t,_,Bs}) 
   when length(As)==length(Bs) ->
     unify(As,Bs);
+%% The grammar is a bit inconsistent about whether types without
+%% arguments are represented as applications to an empty list of
+%% parameters or not. We therefore allow them to unify.
+unify1({app_t,_,T,[]},B) ->
+    unify(T,B);
+unify1(A,{app_t,_,T,[]}) ->
+    unify(A,T);
 unify1(A,B) ->
     cannot_unify(A,B),
     false.
@@ -522,5 +548,7 @@ pp({tvar,_,Name}) ->
     Name;
 pp({tuple_t,_,Cpts}) ->
     ["(",pp(Cpts),")"];
+pp({app_t,_,T,[]}) ->
+    pp(T);
 pp({app_t,_,{id,_,Name},Args}) ->
     [Name,"(",pp(Args),")"].
