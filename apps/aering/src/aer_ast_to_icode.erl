@@ -14,8 +14,9 @@
 -include("aer_icode.hrl").
 
 convert(Tree, Options) ->
-%% Add this line to turn on the type-checker:
-    code(aer_ast_infer_types:infer(Tree),
+    TypedTree = aer_ast_infer_types:infer(Tree),
+    [io:format("Typed tree:\n  ~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+    code(TypedTree,
 %%    code(Tree,
 	 #{ functions => []
 	  , env => []
