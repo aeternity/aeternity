@@ -28,7 +28,6 @@ convert(#{ contract_name := _ContractName
     %% Find the type-reps we need encoders for
     TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions]),
     Encoders = [make_encoder(T) || T <- TypeReps],
-    io:format("Encoders:\n  ~p\n",[Encoders]),
     NewFunctions = Functions ++ [DispatchFun] ++ Encoders,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
