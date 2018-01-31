@@ -17,7 +17,13 @@ to_binary(Data, Address) when is_binary(Data) ->
 to_binary(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
-    {Address,<< ElemsBin/binary, Memory/binary >>}.
+    {Address,<< ElemsBin/binary, Memory/binary >>};
+to_binary([],Address) ->
+    <<Nil:256>> = <<(-1):256>>,
+    {Nil,<<>>};
+to_binary([H|T],Address) ->
+    to_binary({H,T},Address).
+
 
 to_binaries([],_Address) ->
     {[],<<>>};
