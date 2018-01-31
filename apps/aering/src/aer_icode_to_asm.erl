@@ -28,7 +28,8 @@ convert(#{ contract_name := _ContractName
     %% Find the type-reps we need encoders for
     TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions]),
     Encoders = [make_encoder(T) || T <- TypeReps],
-    NewFunctions = Functions ++ [DispatchFun] ++ Encoders,
+    Library = [make_copymem()],
+    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
     	    || {Name, Args, _Body, _Type} <- NewFunctions],
@@ -472,6 +473,23 @@ make_encoder(TR) ->
 
 make_encoder_body(word) ->
     {var_ref,"value"};
+make_encoder_body(string) ->
+    %% matching against a singleton tuple reads an address
+    {switch,{var_ref,"value"},
+     [{{tuple,[{var_ref,"length"}]},
+       %% allocate the first word
+      {switch,{tuple,[{var_ref,"length"}]},
+       [{{var_ref,"result"},
+	 {funcall,{var_ref,"_copymem"},
+	  [%% address to copy from
+	   {binop,'+',{integer,32},{var_ref,"value"}},
+	   %% number of bytes to copy
+	   {var_ref,"length"},
+	   %% final result
+	   {binop,'-',{var_ref,"result"},{var_ref,"base"}}
+	  ]}}
+       ]}
+      }]};
 make_encoder_body({tuple,TRs}) ->
     Vars = [{var_ref,"_v"++integer_to_list(I)} || I <- lists:seq(1,length(TRs))],
     {switch,{var_ref,"value"},
@@ -492,6 +510,25 @@ make_encoder_body({list,TR}) ->
 		 [{var_ref,"base"},{var_ref,"tail"}]}]},
 	{var_ref,"base"}}}
      ]}.
+
+%% Generates a definition of a function to copy N bytes from address A
+%% to the heap pointer, and return the final argument.
+make_copymem() ->
+    {"_copymem",[{"addr","_"},{"length","_"},{"result","_"}],
+     {ifte,{binop,'>',{var_ref,"length"},{integer,0}},
+      %% read the word at addr
+      {switch,{var_ref,"addr"},
+       [{{tuple,[{var_ref,"word"}]},
+	 %% write the word at the heap pointer
+	 {switch,{tuple,[{var_ref,"word"}]},
+	  [{{var_ref,"_"},
+	    %% and loop
+	    {funcall,{var_ref,"_copymem"},
+	     [{binop,'+',{var_ref,"addr"},{integer,32}},
+	      {binop,'-',{var_ref,"length"},{integer,32}},
+	      {var_ref,"result"}]}}]}}]},
+      {var_ref,"result"}},
+    word}.
 
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack

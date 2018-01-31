@@ -124,6 +124,8 @@ ast_body({typed, _, Body, _}) ->
 
 ast_typerep({id,_,"int"}) ->
     word;
+ast_typerep({id,_,"string"}) ->
+    string;
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;

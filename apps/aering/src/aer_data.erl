@@ -46,6 +46,11 @@ from_binary(T,Heap= <<V:256,_/binary>>) ->
 
 from_binary(word,_,V) ->
     V;
+from_binary(string,Heap,V) ->
+    StringSize = heap_word(Heap,V),
+    BitAddr = 8*(V+32),
+    <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
+    Bytes;
 from_binary({tuple,Cpts},Heap,V) ->
     list_to_tuple([from_binary(T,Heap,heap_word(Heap,V+32*I))
 		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]);

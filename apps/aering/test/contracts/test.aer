@@ -32,12 +32,12 @@ contract Identity = {
       | [] => b;
       | (x::xs) => x::app(xs,b);
       };
-  // let rec revt(l,r) =
-  //   switch(l) {
-  //   | [] => r;
-  //   | x::xs => revt(xs,x::r);
-  //   };
-  // let rev(l) = revt(l,[]);
+  let rec revt(l,r) =
+    switch(l) {
+    | [] => r;
+    | x::xs => revt(xs,x::r);
+    };
+  let rev(l) = revt(l,[]);
   // let main(x:int) = {
   //   switch(rev([1,2,3])) {
   //   | h::_ => h;
@@ -72,4 +72,7 @@ contract Identity = {
   let tuples(x) = ((1,x),(2,3,4));
   let singleton(x) = [x];
   let rec seq(n) = if (n==0) [] else (app(seq(n-1),[n]));
+  let idString(s:string) = s;
+  let pairString(s:string) = (s,s);
+  let revStrings(ss:list(string))=rev(ss);
 };
