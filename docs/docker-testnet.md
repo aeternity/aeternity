@@ -64,6 +64,17 @@ Docker image has packaged the address of one of the testnet nodes in the configu
 docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.248.103:3013/ aetrnty/epoch
 ```
 
+### Changing the configuration file
+
+Assuming the new configuration file location is `~/.aeternity/myepoch.yaml`:
+
+```bash
+docker run -d -p 3013:3013 \
+    -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
+    -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
+    aetrnty/epoch
+```
+
 ## Persisting Data
 
 To persist blockchain data and node keys between container runs, use [Docker volumes](https://docs.docker.com/engine/admin/volumes/volumes/). Replace `~/.aeternity/db` with location of your choice.
