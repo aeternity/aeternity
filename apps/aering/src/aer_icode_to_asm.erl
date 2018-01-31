@@ -305,20 +305,29 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
     Fail = make_ref(),
     {NewVars,MatchingCode} =
 	assemble_pattern(Succeed,Fail,Pattern),
-    [dup(1),   %% save value for next case
+    %% In the code that follows, if this is NOT the last case, then we
+    %% save the value being switched on, and discard it on
+    %% success. The code is simpler if this IS the last case.
+    [[dup(1) || Cases/=[]],   %% save value for next case, if there is one
      MatchingCode,
      {'JUMPDEST',Succeed},
-     %% Discard saved value
-     case NewVars of
-	 [] ->
-	     pop(1);
-	 [_] ->
-	     %% Special case for peep-hole optimization
-	     pop_args(1);
-	 _ ->
-	     [swap(length(NewVars)), pop(1)]
-     end,
-     assemble_expr(Funs,reorder_vars(NewVars)++Stack,Tail,Body),
+     %% Discard saved value, if we saved one
+     [case NewVars of
+	  [] ->
+	      pop(1);
+	  [_] ->
+	      %% Special case for peep-hole optimization
+	      pop_args(1);
+	  _ ->
+	      [swap(length(NewVars)), pop(1)]
+      end
+      || Cases/=[]],
+     assemble_expr(Funs,
+		   case Cases of
+		       [] -> NewVars;
+		       _  -> reorder_vars(NewVars)
+		   end
+		   ++Stack,Tail,Body),
      %% If the Body makes a tail call, then we will not return
      %% here--but it doesn't matter, because
      %% (a) the NewVars will be popped before the tailcall
