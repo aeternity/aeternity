@@ -160,8 +160,11 @@ infer_expr(Env,{proj,Attrs,Record,FieldName}) ->
     NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
     FieldType = fresh_uvar(Attrs),
     constrain({RecordType,FieldName,FieldType}),
-    {typed,Attrs,{proj,Attrs,NewRecord,FieldName},FieldType}.
-
+    {typed,Attrs,{proj,Attrs,NewRecord,FieldName},FieldType};
+infer_expr(Env,{block,Attrs,Stmts}) ->
+    BlockType = fresh_uvar(Attrs),
+    NewStmts = infer_block(Env,Attrs,Stmts,BlockType),
+    {typed,Attrs,{block,Attrs,NewStmts},BlockType}.
 
 infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     Vars = free_vars(Pattern),
@@ -187,6 +190,23 @@ infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     unify(PatType,ExprType),
     unify(BranchType,SwitchType),
     {'case',Attrs,NewPattern,NewBranch}.
+
+%% NewStmts = infer_block(Env,Attrs,Stmts,BlockType)
+infer_block(Env,Attrs,[],BlockType) ->
+    %% DANG! A block with no value. Interpret it as unit.
+    unify({tuple_t,Attrs,[]},BlockType),
+    [];
+infer_block(Env,_,[{letval,Attrs,Pattern,Type,E}|Rest],BlockType) ->
+    NewE = {typed,_,_,PatType} = infer_expr(Env,{typed,Attrs,E,arg_type(Type)}),
+    {'case',_,NewPattern,{typed,_,{block,_,NewRest},_}} =
+	infer_case(Env,Attrs,Pattern,PatType,{block,Attrs,Rest},BlockType),
+    [{letval,Attrs,NewPattern,Type,NewE}|NewRest];
+infer_block(Env,_,[E],BlockType) ->
+    NewE = {typed,_,_,Type} = infer_expr(Env,E),
+    unify(Type,BlockType),
+    [NewE];
+infer_block(Env,Attrs,[E|Rest],BlockType) ->
+    [infer_expr(Env,E)|infer_block(Env,Attrs,Rest,BlockType)].
 
 infer_infix({IntOp,As}) 
   when IntOp=='+'; IntOp=='-'; IntOp=='*'; IntOp=='/';

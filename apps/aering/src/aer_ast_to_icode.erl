@@ -101,6 +101,16 @@ ast_body({switch,_,A,Cases}) ->
     #switch{expr=ast_body(A),
 	    cases=[{ast_body(Pat),ast_body(Body)}
 		   || {'case',_,Pat,Body} <- Cases]};
+ast_body({block,As,[{letval,_,Pat,_,E}|Rest]}) ->
+    #switch{expr=ast_body(E),
+	    cases=[{ast_body(Pat),ast_body({block,As,Rest})}]};
+ast_body({block,_,[]}) ->
+    #tuple{cpts=[]};
+ast_body({block,_,[E]}) ->
+    ast_body(E);
+ast_body({block,As,[E|Rest]}) ->
+    #switch{expr=ast_body(E),
+	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],

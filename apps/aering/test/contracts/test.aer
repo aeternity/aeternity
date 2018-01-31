@@ -79,4 +79,7 @@ contract Identity = {
   let makePoint(x,y) = {x:x, y:y};
   let getx(x) = x.x;
   let updatex(p,x) = p{x:x};
+  let quad(x) = {let y=x+x; let z=y+y; z;};
+//  let noblock(x) = {x; x};
+//  let unit(x) = ();
 };
