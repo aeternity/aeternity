@@ -19,7 +19,7 @@ dummy_state(Code,Data) ->
   }.
 
 test(Fun,Args,Type) ->
-  Code = aer_compiler:file(test,[]), %% [pp_ast,pp_icode]),
+  Code = aer_compiler:file(test,[]), %%[pp_ast,pp_typed,pp_icode]),
 %%  io:format("\nCompiled code:\n"),
 %%  io:format("~p\n\n",[Code]),
 %%  ok = aeb_disassemble:pp(Code),
