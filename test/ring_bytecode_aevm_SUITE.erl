@@ -25,15 +25,11 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     FileName = filename:join(CodeDir, "contracts/identity.aer"),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    Code = aer_compiler:from_string(Contract,
-                                    [pp_icode,
-                                     pp_assembler,
-                                     pp_bytecode]),
-    ok = aeb_disassemble:pp(Code),
+    Code = aer_compiler:from_string(Contract, []),
 
     %% Create the call data
-    CallData = aer_abi:create_calldata(Code, "main", 42),
-    io:format("CallData: ~p~n", [CallData]),
+    CallData = aer_abi:create_calldata(Code, "main", "42"),
+
     Res = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(

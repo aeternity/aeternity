@@ -1042,6 +1042,66 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /contract/compile:
+    post:
+      tags:
+        - external
+      operationId: 'CompileContract'
+      description: 'Compila a ring contract from source and return byte code'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: contract code
+          required: true
+          schema:
+            $ref: '#/definitions/Contract'
+      responses:
+        '200':
+          description: Byte code response
+          schema:
+            $ref: '#/definitions/ByteCode'
+        '403':
+          description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+  /contract/call:
+    post:
+      tags:
+        - external
+      operationId: 'CallContract'
+      description: 'Call a ring function with a given name and argument in the given bytecode off chain.'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: contract call
+          required: true
+          schema:
+            type: object
+            properties:
+              code:
+                type: string
+              function:
+                type: string
+              arg:
+                type: string
+      responses:
+        '200':
+          description: Resulting state map
+          schema:
+            $ref: '#/definitions/CallResult'
+        '403':
+          description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
+
 
 definitions:
   EncodedHash:
@@ -1672,6 +1732,23 @@ definitions:
     properties:
       reason:
         type: string
+  Contract:
+    type: object
+    properties:
+      code:
+        type: string
+      options:
+        type: string
+  ByteCode:
+    type: object
+    properties:
+      bytecode: string
+  CallResult:
+    type: object
+    properties:
+      out:
+        type: string
+
 
 externalDocs:
   description: Find out more about Aeternity
