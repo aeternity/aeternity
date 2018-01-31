@@ -160,9 +160,9 @@ SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
 swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
 	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
-	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
+	@( mkdir -p $(HTTP_APP)/priv && cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/; )
 	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
-	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
+	@( mkdir -p $(HTTP_APP)/src/swagger && cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger; )
 	@rm -fr $(SWTEMP)
 	@./rebar3 swagger_endpoints
 	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP)
