@@ -19,6 +19,10 @@ from .models.accounts_balances import AccountsBalances
 from .models.balance import Balance
 from .models.block_height import BlockHeight
 from .models.block_time_summary import BlockTimeSummary
+from .models.byte_code import ByteCode
+from .models.call_result import CallResult
+from .models.contract import Contract
+from .models.contract_call import ContractCall
 from .models.encoded_hash import EncodedHash
 from .models.error import Error
 from .models.generic_tx_array import GenericTxArray

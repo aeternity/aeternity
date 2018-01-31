@@ -924,6 +924,8 @@ paths:
         - external
       operationId: 'CompileContract'
       description: 'Compila a ring contract from source and return byte code'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -948,6 +950,8 @@ paths:
         - external
       operationId: 'CallContract'
       description: 'Call a ring function with a given name and argument in the given bytecode.'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:

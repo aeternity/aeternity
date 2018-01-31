@@ -1065,6 +1065,70 @@
         },
         "security" : [ ]
       }
+    },
+    "/contract/compile" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Compila a ring contract from source and return byte code",
+        "operationId" : "CompileContract",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "contract code",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/Contract"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Byte code response",
+            "schema" : {
+              "$ref" : "#/definitions/ByteCode"
+            }
+          },
+          "403" : {
+            "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/contract/call" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Call a ring function with a given name and argument in the given bytecode.",
+        "operationId" : "CallContract",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "contract call",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCall"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Resulting state map",
+            "schema" : {
+              "$ref" : "#/definitions/CallResult"
+            }
+          },
+          "403" : {
+            "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
     }
   },
   "definitions" : {
@@ -1619,6 +1683,42 @@
       "type" : "object",
       "properties" : {
         "reason" : {
+          "type" : "string"
+        }
+      }
+    },
+    "Contract" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "options" : {
+          "type" : "string"
+        }
+      }
+    },
+    "ByteCode" : {
+      "type" : "object"
+    },
+    "ContractCall" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "function" : {
+          "type" : "string"
+        },
+        "arg" : {
+          "type" : "string"
+        }
+      }
+    },
+    "CallResult" : {
+      "type" : "object",
+      "properties" : {
+        "out" : {
           "type" : "string"
         }
       }

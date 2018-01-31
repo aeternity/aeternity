@@ -55,6 +55,16 @@ group_paths() ->
 
 get_operations() ->
     #{ 
+        'CallContract' => #{
+            path => "/v2/contract/call",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'CompileContract' => #{
+            path => "/v2/contract/compile",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'GetAccountBalance' => #{
             path => "/v2/account/balance",
             method => <<"GET">>,

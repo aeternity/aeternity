@@ -15,6 +15,16 @@
 -spec request_params(OperationID :: operation_id()) -> [Param :: request_param()].
 
 
+request_params('CallContract') ->
+    [
+        'ContractCall'
+    ];
+
+request_params('CompileContract') ->
+    [
+        'Contract'
+    ];
+
 request_params('GetAccountBalance') ->
     [
         'pub_key'
@@ -215,6 +225,24 @@ request_params(_) ->
 }.
 
 
+
+request_param_info('CallContract', 'ContractCall') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('CompileContract', 'Contract') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
 
 request_param_info('GetAccountBalance', 'pub_key') ->
     #{
@@ -573,6 +601,16 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
     ValidatorState :: jesse_state:state()
 ) -> ok | no_return().
 
+
+validate_response('CallContract', 200, Body, ValidatorState) ->
+    validate_response_body('CallResult', 'CallResult', Body, ValidatorState);
+validate_response('CallContract', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('CompileContract', 200, Body, ValidatorState) ->
+    validate_response_body('ByteCode', 'ByteCode', Body, ValidatorState);
+validate_response('CompileContract', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
     validate_response_body('Balance', 'Balance', Body, ValidatorState);
