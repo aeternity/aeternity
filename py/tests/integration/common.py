@@ -9,15 +9,13 @@ import datetime
 import time
 import base64
 
-from py.tests import swagger_client
-from py.tests.swagger_client.rest import ApiException
-from py.tests.swagger_client.apis.external_api import ExternalApi
-from py.tests.swagger_client.apis.internal_api import InternalApi
-from py.tests.swagger_client.api_client import ApiClient
-from py.tests.swagger_client.models.block import Block
-from py.tests.swagger_client.models.signed_tx import SignedTx
-from py.tests.swagger_client.models.coinbase_tx import CoinbaseTx
-from py.tests.swagger_client.models.balance import Balance 
+from swagger_client.rest import ApiException
+from swagger_client.api.external_api import ExternalApi
+from swagger_client.api.internal_api import InternalApi
+from swagger_client.api_client import ApiClient
+from swagger_client.models.block import Block
+from swagger_client.models.balance import Balance 
+from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
 from testconfig import config
@@ -27,13 +25,15 @@ import logging
 logging.getLogger("urllib3").setLevel(logging.ERROR)
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
-    EXT_API[node] = ExternalApi(ApiClient(host=node_config['host'] + ':'
-                + str(node_config['ports']['external_api']) + '/v2'))
+    empty_config = Configuration()
+    empty_config.host = node_config['host'] + ':' + str(node_config['ports']['external_api']) + '/v2'
+    EXT_API[node] = ExternalApi(ApiClient(empty_config))
 
 INT_API = {}
 for node, node_config in config['nodes'].iteritems():
-    INT_API[node] = InternalApi(ApiClient(host=node_config['host'] + ':'
-                + str(node_config['ports']['internal_api']) + '/v2'))
+    empty_config = Configuration()
+    empty_config.host = node_config['host'] + ':' + str(node_config['ports']['internal_api']) + '/v2'
+    INT_API[node] = InternalApi(ApiClient(empty_config))
 
 def external_api(name):
     return EXT_API[name]

@@ -1461,7 +1461,7 @@ definitions:
     - data_schema
   SingleTxObject:
     allOf:
-      - $ref: '#/definitions/TxHashOrObject'
+      - $ref: '#/definitions/SingleTxHashOrObject'
       - type: object
         properties:
           transaction:
@@ -1470,7 +1470,7 @@ definitions:
         - transaction
   SingleTxHash:
     allOf:
-      - $ref: '#/definitions/TxHashOrObject'
+      - $ref: '#/definitions/SingleTxHashOrObject'
       - type: object
         properties:
           transaction:

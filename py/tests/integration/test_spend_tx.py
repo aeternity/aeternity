@@ -7,9 +7,9 @@ import time
 from nose.tools import assert_equals, assert_not_equals, with_setup
 import common
 from waiting import wait
-from py.tests.swagger_client.models.ping import Ping 
-from py.tests.swagger_client.models.spend_tx import SpendTx
-from py.tests.swagger_client.rest import ApiException
+from swagger_client.models.ping import Ping 
+from swagger_client.models.spend_tx import SpendTx
+from swagger_client.rest import ApiException
 
 settings = common.test_settings(__name__.split(".")[-1])
 

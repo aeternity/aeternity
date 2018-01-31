@@ -1,9 +1,10 @@
 # coding: utf-8
 
+# flake8: noqa
 """
     Aeternity Epoch
 
-    This is the [Aeternity](https://www.aeternity.com/) Epoch API.
+    This is the [Aeternity](https://www.aeternity.com/) Epoch API.  # noqa: E501
 
     OpenAPI spec version: 1.0.0
     Contact: apiteam@aeternity.com
@@ -14,49 +15,49 @@
 from __future__ import absolute_import
 
 # import models into model package
-from .account_balance import AccountBalance
-from .accounts_balances import AccountsBalances
-from .balance import Balance
-from .block_height import BlockHeight
-from .block_time_summary import BlockTimeSummary
-from .encoded_hash import EncodedHash
-from .error import Error
-from .generic_tx_array import GenericTxArray
-from .generic_tx_object import GenericTxObject
-from .header import Header
-from .info import Info
-from .inline_response_200 import InlineResponse200
-from .oracle_query_id import OracleQueryId
-from .oracle_query_tx import OracleQueryTx
-from .oracle_questions import OracleQuestions
-from .oracle_questions_inner import OracleQuestionsInner
-from .oracle_register_tx import OracleRegisterTx
-from .oracle_response_tx import OracleResponseTx
-from .ping import Ping
-from .pow import Pow
-from .pub_key import PubKey
-from .registered_oracles import RegisteredOracles
-from .registered_oracles_inner import RegisteredOraclesInner
-from .relative_ttl import RelativeTTL
-from .signed_tx_object import SignedTxObject
-from .single_tx_hash import SingleTxHash
-from .single_tx_hash_or_object import SingleTxHashOrObject
-from .single_tx_object import SingleTxObject
-from .spend_tx import SpendTx
-from .ttl import TTL
-from .transactions import Transactions
-from .tx import Tx
-from .uri import Uri
-from .version import Version
-from .block import Block
-from .coinbase_tx_object import CoinbaseTxObject
-from .generic_block import GenericBlock
-from .oracle_query_tx_object import OracleQueryTxObject
-from .oracle_register_tx_object import OracleRegisterTxObject
-from .oracle_response_tx_object import OracleResponseTxObject
-from .spend_tx_object import SpendTxObject
-from .top import Top
-from .tx_msg_pack_hashes import TxMsgPackHashes
-from .tx_objects import TxObjects
-from .block_with_txs import BlockWithTxs
-from .block_with_txs_hashes import BlockWithTxsHashes
+from swagger_client.models.account_balance import AccountBalance
+from swagger_client.models.accounts_balances import AccountsBalances
+from swagger_client.models.balance import Balance
+from swagger_client.models.block_height import BlockHeight
+from swagger_client.models.block_time_summary import BlockTimeSummary
+from swagger_client.models.encoded_hash import EncodedHash
+from swagger_client.models.error import Error
+from swagger_client.models.generic_tx_array import GenericTxArray
+from swagger_client.models.generic_tx_object import GenericTxObject
+from swagger_client.models.header import Header
+from swagger_client.models.info import Info
+from swagger_client.models.inline_response_200 import InlineResponse200
+from swagger_client.models.oracle_query_id import OracleQueryId
+from swagger_client.models.oracle_query_tx import OracleQueryTx
+from swagger_client.models.oracle_questions import OracleQuestions
+from swagger_client.models.oracle_questions_inner import OracleQuestionsInner
+from swagger_client.models.oracle_register_tx import OracleRegisterTx
+from swagger_client.models.oracle_response_tx import OracleResponseTx
+from swagger_client.models.ping import Ping
+from swagger_client.models.pow import Pow
+from swagger_client.models.pub_key import PubKey
+from swagger_client.models.registered_oracles import RegisteredOracles
+from swagger_client.models.registered_oracles_inner import RegisteredOraclesInner
+from swagger_client.models.relative_ttl import RelativeTTL
+from swagger_client.models.signed_tx_object import SignedTxObject
+from swagger_client.models.single_tx_hash_or_object import SingleTxHashOrObject
+from swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.ttl import TTL
+from swagger_client.models.transactions import Transactions
+from swagger_client.models.tx import Tx
+from swagger_client.models.uri import Uri
+from swagger_client.models.version import Version
+from swagger_client.models.block import Block
+from swagger_client.models.coinbase_tx_object import CoinbaseTxObject
+from swagger_client.models.generic_block import GenericBlock
+from swagger_client.models.oracle_query_tx_object import OracleQueryTxObject
+from swagger_client.models.oracle_register_tx_object import OracleRegisterTxObject
+from swagger_client.models.oracle_response_tx_object import OracleResponseTxObject
+from swagger_client.models.single_tx_hash import SingleTxHash
+from swagger_client.models.single_tx_object import SingleTxObject
+from swagger_client.models.spend_tx_object import SpendTxObject
+from swagger_client.models.top import Top
+from swagger_client.models.tx_msg_pack_hashes import TxMsgPackHashes
+from swagger_client.models.tx_objects import TxObjects
+from swagger_client.models.block_with_txs import BlockWithTxs
+from swagger_client.models.block_with_txs_hashes import BlockWithTxsHashes
