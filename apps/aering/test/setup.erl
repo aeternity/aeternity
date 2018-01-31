@@ -31,6 +31,7 @@ test(Fun,Args,Type) ->
 %%  io:format("\nFinal state:\n~p\n",[State]),
   io:format("\nFinal stack: ~p\n",[maps:get(stack,State)++[end_of_stack]]),
   io:format("\nReturn value: ~p\n",[aer_data:from_binary(Type,maps:get(out,State))]),
+%%    io:format("\nReturn value: ~p\n",[aer_data:binary_to_words(maps:get(out,State))]),
   ok.
 
 %% Stack simulator
