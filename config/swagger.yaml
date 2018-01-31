@@ -637,10 +637,11 @@ paths:
           required: true
           type : integer
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The block being found 
@@ -666,10 +667,11 @@ paths:
           required: true
           type : string 
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The block being found  
@@ -694,10 +696,11 @@ paths:
         - application/json
       parameters:
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The genesis block 
@@ -714,10 +717,11 @@ paths:
         - application/json
       parameters:
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The top block 
@@ -734,10 +738,11 @@ paths:
         - application/json
       parameters:
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The pending block with invalid nonce and pow evidence 
@@ -885,10 +890,11 @@ paths:
           required: true
           type: integer
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The transaction found 
@@ -921,10 +927,11 @@ paths:
           type : integer
           minimum: 0
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The list of transactions in block range
@@ -959,10 +966,11 @@ paths:
           required: true
           type: integer
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The transaction found 
@@ -988,10 +996,11 @@ paths:
           required: true
           type: integer
         - in: query
-          name: tx_objects
-          description: 'Transactions as objects (default is as message pack hashes)'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The transaction found 
@@ -1024,10 +1033,11 @@ paths:
           type : string
           minimum: 0
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
+          name: tx_encoding
+          description: 'Transactions encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
       responses:
         '200':
           description: The list of transactions in block range
@@ -1542,6 +1552,10 @@ definitions:
     properties:
       tx:
         $ref: '#/definitions/GenericTxObject'
+      block_height:
+        type: integer
+      block_hash:
+        $ref: '#/definitions/EncodedHash'
       signatures:
         type: array
         minItems: 1

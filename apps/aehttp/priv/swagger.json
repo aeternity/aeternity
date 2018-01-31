@@ -747,12 +747,13 @@
           "required" : true,
           "type" : "integer"
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -783,12 +784,13 @@
           "required" : true,
           "type" : "string"
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -819,12 +821,13 @@
         "operationId" : "GetBlockGenesis",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -843,12 +846,13 @@
         "operationId" : "GetBlockLatest",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -867,12 +871,13 @@
         "operationId" : "GetBlockPending",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1024,12 +1029,13 @@
           "required" : true,
           "type" : "integer"
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1068,12 +1074,13 @@
           "type" : "integer",
           "minimum" : 0
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1116,12 +1123,13 @@
           "required" : true,
           "type" : "integer"
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1152,12 +1160,13 @@
           "required" : true,
           "type" : "integer"
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions as objects (default is as message pack hashes)",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1196,12 +1205,13 @@
           "type" : "string",
           "minimum" : 0
         }, {
-          "name" : "tx_objects",
+          "name" : "tx_encoding",
           "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "description" : "Transactions encoding",
           "required" : false,
-          "type" : "boolean",
-          "default" : false
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
           "200" : {
@@ -1260,7 +1270,7 @@
     "/contract/call" : {
       "post" : {
         "tags" : [ "external" ],
-        "description" : "Call a ring function with a given name and argument in the given bytecode.",
+        "description" : "Call a ring function with a given name and argument in the given bytecode off chain.",
         "operationId" : "CallContract",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -1270,7 +1280,7 @@
           "description" : "contract call",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/ContractCall"
+            "$ref" : "#/definitions/body"
           }
         } ],
         "responses" : {
@@ -2016,6 +2026,12 @@
         "tx" : {
           "$ref" : "#/definitions/GenericTxObject"
         },
+        "block_height" : {
+          "type" : "integer"
+        },
+        "block_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "signatures" : {
           "type" : "array",
           "items" : {
@@ -2157,25 +2173,6 @@
     "ByteCode" : {
       "type" : "object"
     },
-    "ContractCall" : {
-      "type" : "object",
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "function" : {
-          "type" : "string"
-        },
-        "arg" : {
-          "type" : "string"
-        }
-      },
-      "example" : {
-        "code" : "code",
-        "function" : "function",
-        "arg" : "arg"
-      }
-    },
     "CallResult" : {
       "type" : "object",
       "properties" : {
@@ -2196,6 +2193,20 @@
       },
       "example" : {
         "count" : 0
+      }
+    },
+    "body" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "function" : {
+          "type" : "string"
+        },
+        "arg" : {
+          "type" : "string"
+        }
       }
     },
     "RegisteredOracles_inner" : {

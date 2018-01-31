@@ -382,7 +382,7 @@ block_by_height(_Config) ->
     lists:foreach(
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
-            ExpectedBlockMap = block_to_endpoint_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
             {ok, 200, BlockMap} = get_block_by_height(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -445,7 +445,7 @@ block_by_hash(_Config) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
             Hash = aec_base58c:encode(block_hash, H),
-            ExpectedBlockMap = block_to_endpoint_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
             {ok, 200, BlockMap} = get_block_by_hash(Hash),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -852,7 +852,7 @@ internal_block_not_found_by_height(_Config) ->
                     {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
                         = get_internal_block_by_height(H, Opt)
                 end,
-                [default, false, true])
+                [default, message_pack, json])
         end,
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
@@ -879,7 +879,7 @@ internal_block_not_found_by_hash(_Config) ->
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_internal_block_by_hash(Hash, Opt)
                 end,
-                [default, false, true])
+                [default, message_pack, json])
         end,
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
@@ -893,7 +893,7 @@ internal_block_not_found_by_broken_hash(_Config) ->
                     {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
                         get_internal_block_by_hash(BrokenHash, Opt)
                 end,
-                [default, false, true])
+                [default, message_pack, json])
         end,
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
@@ -930,7 +930,7 @@ internal_block_pending(_Config) ->
             {ok, 404, #{<<"reason">> := <<"Not mining, no pending block">>}} =
                     get_internal_block_preset("pending", Opt)
         end,
-        [default, true, false]),
+        [default, message_pack, json]),
     ok = rpc(application, set_env, [aecore, expected_mine_rate,
                                     60 * 60 * 1000]), % aim at one block an hour
     add_spend_txs(),
@@ -955,7 +955,7 @@ internal_block_pending(_Config) ->
                10000)
         end,
     {ok, PendingTxDefault} = GetPending(default),
-    {ok, PendingTxHashes} = GetPending(false),
+    {ok, PendingTxHashes} = GetPending(message_pack),
     ValidateKeys =
         fun(Map1, Map2, Key) ->
             true = maps:get(Key, Map1, not_found1) =:=
@@ -971,10 +971,10 @@ internal_block_pending(_Config) ->
 
     ExpectedPendingTxsObjects = maps:put(<<"data_schema">>,
                 <<"BlockWithTxs">>,
-                block_to_endpoint_map(PendingBlock, #{tx_objects => true})),
+                block_to_endpoint_map(PendingBlock, #{tx_encoding => json})),
     ct:log("Expected pending block with tx objects~p",
            [ExpectedPendingTxsObjects]),
-    {ok, PendingTxObjects} = GetPending(true),
+    {ok, PendingTxObjects} = GetPending(json),
     
     % no block should have been mined, so the same prev_hash
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"prev_hash">>),
@@ -1001,13 +1001,13 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             {ok, 200, BlockMap} = CallApiFun(Height, default),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
-            {ok, 200, BlockMap1} = CallApiFun(Height, false),
+            {ok, 200, BlockMap1} = CallApiFun(Height, message_pack),
             true = equal_block_maps(BlockMap, ExpectedBlockMap), 
             true = equal_block_maps(BlockMap1, ExpectedBlockMap), 
 
             ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithTxs">>),
-                block_to_endpoint_map(ExpectedBlock, #{tx_objects => true})),
-            {ok, 200, BlockMap2} = CallApiFun(Height, true),
+                block_to_endpoint_map(ExpectedBlock, #{tx_encoding => json})),
+            {ok, 200, BlockMap2} = CallApiFun(Height, json),
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
                    [ExpectedBlockMapTxsObjects, BlockMap2]),
             true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects), 
@@ -1155,7 +1155,7 @@ block_tx_index_not_founds(_Config) ->
                     lists:foreach(
                         fun(Opt) ->
                             {ok, Code, #{<<"reason">> := ErrMsg}} = Fun(H, I, Opt) end,
-                        [default, false, true])
+                        [default, message_pack, json])
                 end,
                 Cases)
         end,
@@ -1208,6 +1208,7 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
                         end,
                     lists:foreach(
                         fun({Tx, Index}) ->
+                            ct:log("Index: ~p, Transaction: ~p", [Index, Tx]),
                             {ok, 200, #{<<"data_schema">> := DataSchema,
                                         <<"transaction">> := Tx}} = CallApi(Height,
                                                                             Index,
@@ -1216,8 +1217,8 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
                         lists:zip(AllTxs, TxsIdxs))
                 end,
                 [{default, <<"SingleTxHash">>},
-                 {false,  <<"SingleTxHash">>},
-                 {true,  <<"SingleTxObject">>}]),
+                 {message_pack,  <<"SingleTxHash">>},
+                 {json,  <<"SingleTxObject">>}]),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
             add_spend_txs()
         end,
@@ -1265,7 +1266,7 @@ single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
                     [ExpectedResult, Result]),
             ExpectedResult = Result
         end,
-        [default, false, true]).
+        [default, message_pack, json]).
 
 expected_range_result(HeightFrom, HeightTo, TxObjects) ->
     Txs =
@@ -1283,9 +1284,9 @@ expected_range_result(HeightFrom, HeightTo, TxObjects) ->
         case TxObjects of
             default -> 
                 <<"TxMsgPackHashes">>;
-            false ->
+            message_pack ->
                 <<"TxMsgPackHashes">>;
-            true ->
+            json ->
                 <<"TxObjects">>
           end,
     #{<<"data_schema">> => DataSchema,
@@ -1303,7 +1304,7 @@ block_txs_list_by_height_invalid_range(_Config) ->
                 fun(Opts) ->
                     Error = get_block_txs_list_by_height(From, To, Opts)
                 end,
-                [default, false, true])
+                [default, message_pack, json])
         end,
     InvalidRange = {ok, 400, #{<<"reason">> => <<"From's height is bigger than To's">>}},
     lists:foreach(
@@ -1334,7 +1335,7 @@ block_txs_list_by_hash_invalid_range(_Config) ->
                 fun(Opts) ->
                     Error = get_block_txs_list_by_hash(From, To, Opts)
                 end,
-                [default, false, true])
+                [default, message_pack, json])
         end,
     {ok, GenBlockHash} = block_hash_by_height(0),
     {ok, Block1Hash} = block_hash_by_height(InitialHeight),
@@ -1474,7 +1475,7 @@ ws_get_genesis(_Config) ->
     ?WS:send(ConnPid, chain, get, #{height => 0, type => block}),
     {ok, Payload} = ?WS:wait_for_event(chain, requested_data),
     {ok, Block} = maps:find(<<"block">>, Payload),
-    {ok, 200, BlockMap} = get_internal_block_by_height(0, false),
+    {ok, 200, BlockMap} = get_internal_block_by_height(0, message_pack),
     ExpectedBlockMap = 
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
     Block = ExpectedBlockMap,
@@ -1772,23 +1773,23 @@ get_block_number() ->
     http_request(Host, get, "block/number", []).
 
 get_internal_block_by_height(Height, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
 
 get_internal_block_by_hash(Hash, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
 
 get_internal_block_preset(Segment, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/" ++ Segment, Params).
 
-tx_objects_params(default) -> #{};
-tx_objects_params(true) -> #{tx_objects => <<"true">>};
-tx_objects_params(false) -> #{tx_objects => <<"false">>}.
+tx_encoding_param(default) -> #{};
+tx_encoding_param(json) -> #{tx_encoding => <<"json">>};
+tx_encoding_param(message_pack) -> #{tx_encoding => <<"message_pack">>}.
 
 get_block_txs_count_by_height(Height) ->
     Host = internal_address(),
@@ -1805,7 +1806,7 @@ get_block_txs_count_preset(Segment) ->
     http_request(Host, get, "block/txs/count/" ++ Segment, []).
 
 get_block_tx_by_index_height(Height, Index, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/tx/height/" ++ integer_to_list(Height) ++
                                        "/" ++ integer_to_list(Index), Params).
@@ -1813,24 +1814,24 @@ get_block_tx_by_index_height(Height, Index, TxObjects) ->
 get_block_tx_by_index_hash(Hash, Index, TxObjects) when is_binary(Hash) ->
     get_block_tx_by_index_hash(binary_to_list(Hash), Index, TxObjects);
 get_block_tx_by_index_hash(Hash, Index, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/tx/hash/" ++ http_uri:encode(Hash) ++
                                        "/" ++ integer_to_list(Index), Params).
 
 get_block_tx_by_index_latest(Index, TxObjects) ->
-    Params = tx_objects_params(TxObjects),
+    Params = tx_encoding_param(TxObjects),
     Host = internal_address(),
     http_request(Host, get, "block/tx/latest/" ++ integer_to_list(Index), Params).
 
 get_block_txs_list_by_height(From, To, TxObjects) ->
-    Params0 = tx_objects_params(TxObjects),
+    Params0 = tx_encoding_param(TxObjects),
     Params = maps:merge(Params0, #{from => From, to => To}),
     Host = internal_address(),
     http_request(Host, get, "block/txs/list/height", Params).
 
 get_block_txs_list_by_hash(From, To, TxObjects) ->
-    Params0 = tx_objects_params(TxObjects),
+    Params0 = tx_encoding_param(TxObjects),
     Params = maps:merge(Params0, #{from => From, to => To}),
     Host = internal_address(),
     http_request(Host, get, "block/txs/list/hash", Params).
@@ -1926,17 +1927,36 @@ header_to_endpoint_top(Header) ->
     CleanedH = aehttp_dispatch_ext:cleanup_genesis(HMap),
     maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), CleanedH).
 
+block_to_endpoint_gossip_map(Block) ->
+    BMap = aec_blocks:serialize_to_map(Block),
+    aehttp_dispatch_ext:cleanup_genesis(BMap).
+
 block_to_endpoint_map(Block) ->
-    block_to_endpoint_map(Block, #{tx_objects => false}).
+    block_to_endpoint_map(Block, #{tx_encoding => message_pack}).
 
 block_to_endpoint_map(Block, Options) ->
-    SerializeFun =
-        case maps:get(tx_objects, Options, false) of
-            true -> fun aec_blocks:serialize_client_readable/1;
-            false -> fun aec_blocks:serialize_to_map/1
+    Encoding = maps:get(tx_encoding, Options, message_pack),
+    BMap = aec_blocks:serialize_client_readable(Encoding, Block),
+    Expected = aehttp_dispatch_ext:cleanup_genesis(BMap),
+
+    %% Validate that all transactions have the correct block height and hash
+    ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
+    case ExpectedTxs =:= [] of
+        true -> 0 = aec_blocks:height(Block); % only allowed for gen block
+        false -> pass
+    end,
+    BlockHeight = aec_blocks:height(Block),
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    lists:foreach(
+        fun(EncodedTx) ->
+            #{block_hash := TxBlockHash,
+              block_height := TxBlockHeight} =
+                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx), 
+            {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
+            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash}
         end,
-    BMap = SerializeFun(Block),
-    aehttp_dispatch_ext:cleanup_genesis(BMap).
+        ExpectedTxs),
+    Expected.
 
 %% misbehaving peers get blocked so we need unique ones
 %% the function bellow is not perfect: there is a slight possibility of having a

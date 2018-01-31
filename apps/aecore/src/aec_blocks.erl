@@ -22,7 +22,7 @@
          deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
-         serialize_client_readable/1,
+         serialize_client_readable/2,
          hash_internal_representation/1,
          root_hash/1,
          validate/1,
@@ -133,8 +133,12 @@ to_header(#block{height = Height,
             pow_evidence = Evd,
             version = Version}.
 
-serialize_client_readable(B) ->
-    serialize_to_map(B, fun aec_tx_sign:serialize_for_client/1).
+serialize_client_readable(Encoding, B) ->
+    serialize_to_map(B,
+                     fun(Tx) ->
+                         H = to_header(B),
+                         aec_tx_sign:serialize_for_client(Encoding, H, Tx)
+                      end).
 
 serialize_to_map(B = #block{}) ->
     serialize_to_map(B, fun serialize_tx/1).

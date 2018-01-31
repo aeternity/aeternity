@@ -425,32 +425,33 @@ get_block(Fun, Req) ->
 get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
-            TxObjects = read_optional_bool_param('tx_objects', Req, false),
-            %% swagger generated code expects the Resp to be proplist or map
-            %% and always runs jsx:encode/1 on it - even if it is already
-            %% encoded to a binary; that's why we use
-            %% aec_blocks:serialize_to_map/1
-            {SerializeFun, DataSchema} =
-                case TxObjects of
-                    true ->
-                        {fun aec_blocks:serialize_client_readable/1, <<"BlockWithTxs">>};
-                    false ->
-                        {fun aec_blocks:serialize_to_map/1, <<"BlockWithTxsHashes">>}
-                end,
-            Resp0 = aehttp_dispatch_ext:cleanup_genesis(SerializeFun(Block)),
-            % we add swagger's definition name to the object so the
-            % result could be validated against the schema
-            Resp1 = Resp0#{data_schema => DataSchema},
-            Resp =
-                case AddHash of
-                    true ->
-                        {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                        Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
-                    false ->
-                        Resp1
-                end,
-            lager:debug("Resp = ~p", [pp(Resp)]),
-            {200, [], Resp};
+            case read_tx_encoding_param(Req) of
+                {error, Err} ->
+                    Err;
+                {ok, TxEncoding} ->
+                    DataSchema =
+                        case TxEncoding of
+                            message_pack ->
+                                <<"BlockWithTxsHashes">>;
+                            json ->
+                                <<"BlockWithTxs">>
+                        end,
+                    Resp0 = aehttp_dispatch_ext:cleanup_genesis(
+                              aec_blocks:serialize_client_readable(TxEncoding, Block)),
+                    % we add swagger's definition name to the object so the
+                    % result could be validated against the schema
+                    Resp1 = Resp0#{data_schema => DataSchema},
+                    Resp =
+                        case AddHash of
+                            true ->
+                                {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                                Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
+                            false ->
+                                Resp1
+                        end,
+                    lager:debug("Resp = ~p", [pp(Resp)]),
+                    {200, [], Resp}
+              end;
         {_Code, _, _Reason} = Err ->
             Err
     end.
@@ -471,22 +472,21 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
                 not_found ->
                     {404, [], #{reason => <<"Transaction not found">>}};
                 {ok, Tx} ->
-                    TxObjects = read_optional_bool_param('tx_objects', Req, false),
-                    {SerializeFun, DataSchema} =
-                        case TxObjects of
-                            true ->
-                                {fun aec_tx_sign:serialize_for_client/1,
-                                 <<"SingleTxObject">>};
-                            false ->
-                                {fun(T) ->
-                                     #{tx =>
-                                       aec_base58c:encode(transaction,
-                                                          aec_tx_sign:serialize_to_binary(T))}
-                                 end,
-                                 <<"SingleTxHash">>}
-                        end,
-                    {200, [], #{transaction => SerializeFun(Tx),
-                                data_schema => DataSchema}}
+                    case read_tx_encoding_param(Req) of
+                        {error, Err} ->
+                            Err;
+                        {ok, TxEncoding} ->
+                            DataSchema =
+                                case TxEncoding of
+                                    json ->
+                                        <<"SingleTxObject">>;
+                                    message_pack ->
+                                        <<"SingleTxHash">>
+                                end,
+                            H = aec_blocks:to_header(Block),
+                            {200, [], #{transaction => aec_tx_sign:serialize_for_client(TxEncoding, H, Tx),
+                                        data_schema => DataSchema}}
+                    end
             end;
         {_Code, _, _Reason} = Err ->
             Err
@@ -508,48 +508,72 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
             {404, [], #{reason => <<"Not mining, no pending block">>}}
     end.
 
+-spec read_tx_encoding_param(map()) -> {ok, json | message_pack} |
+                                       {error, {integer(), list(), map()}}.
+read_tx_encoding_param(Req) ->
+    case read_optional_enum_param(tx_encoding, Req, message_pack,
+                                  [message_pack, json]) of
+        {error, unexpected_value} ->
+            {error, {404, [], #{reason => <<"Unsupported transaction encoding">>}}};
+        {ok, Encoding} ->
+            {ok, Encoding}
+    end.
+            
 
--spec read_optional_bool_param(atom(), map(), boolean()) -> boolean().
-read_optional_bool_param(Key, Req, Default) when Default =:= true
-                                          orelse Default =:= false ->
+-spec read_optional_enum_param(atom(), map(), term(), list()) -> {ok, term()} |
+                                                                 {error, atom()}.
+read_optional_enum_param(Key, Req, Default, Enums) ->
+    Val = read_optional_param(Key, Req, Default),
+    case lists:member(Val, Enums) of
+        true -> {ok, Val};
+        false -> {error, unexpected_value}
+    end.
+
+-spec read_optional_param(atom(), map(), term()) -> term().
+read_optional_param(Key, Req, Default) ->
     %% swagger does not take into consideration the 'default'
     %% if a query param is missing, swagger adds it to Req with a value of
     %% 'undefined'
     case maps:get(Key, Req) of
         undefined -> Default;
-        Bool when is_boolean(Bool) -> Bool
+        Val -> Val
     end.
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
-    {SerializeFun, DataSchema} =
-        case read_optional_bool_param('tx_objects', Req, false) of
-            false ->
-                {fun(Tx) ->
-                    #{<<"tx">> => aec_base58c:encode(transaction,
-                                                     aec_tx_sign:serialize_to_binary(Tx))}
-                  end, <<"TxMsgPackHashes">>};
-            true ->
-                {fun aec_tx_sign:serialize_for_client/1, <<"TxObjects">>}
-          end,
-    case GetFun() of
-        {error, invalid_range} ->
-            {400, [], #{reason => <<"From's height is bigger than To's">>}};
-        {error, range_too_big} ->
-            {400, [], #{reason => <<"Range too big">>}};
-        {error, chain_too_short} ->
-            {404, [], #{reason => <<"Chain too short">>}};
-        {error, block_not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {ok, Blocks} ->
-            Txs = lists:foldl(
-                fun(Block, Accum) ->
-                    BlockTxs = aec_blocks:txs(Block),
-                    lists:map(SerializeFun, BlockTxs) ++ Accum
+    case read_tx_encoding_param(Req) of
+        {error, Err} ->
+            Err;
+        {ok, TxEncoding} ->
+            DataSchema =
+                case TxEncoding of
+                    json ->
+                        <<"TxObjects">>;
+                    message_pack ->
+                        <<"TxMsgPackHashes">>
                 end,
-                [],
-                Blocks),
-            {200, [], #{transactions => Txs, data_schema => DataSchema}}
+            case GetFun() of
+                {error, invalid_range} ->
+                    {400, [], #{reason => <<"From's height is bigger than To's">>}};
+                {error, range_too_big} ->
+                    {400, [], #{reason => <<"Range too big">>}};
+                {error, chain_too_short} ->
+                    {404, [], #{reason => <<"Chain too short">>}};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}};
+                {error, not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}};
+                {ok, Blocks} ->
+                    Txs = lists:foldl(
+                        fun(Block, Accum) ->
+                            BlockTxs = aec_blocks:txs(Block),
+                            H = aec_blocks:to_header(Block),
+                            lists:map(
+                                fun(Tx) -> aec_tx_sign:serialize_for_client(TxEncoding, H, Tx) end,
+                                BlockTxs) ++ Accum
+                        end,
+                        [],
+                        Blocks),
+                    {200, [], #{transactions => Txs, data_schema => DataSchema}}
+          end
     end.
 

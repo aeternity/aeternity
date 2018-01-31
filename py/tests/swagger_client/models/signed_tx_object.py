@@ -16,6 +16,7 @@ import re  # noqa: F401
 
 import six
 
+from swagger_client.models.encoded_hash import EncodedHash  # noqa: F401,E501
 from swagger_client.models.generic_tx_object import GenericTxObject  # noqa: F401,E501
 
 
@@ -34,23 +35,33 @@ class SignedTxObject(object):
     """
     swagger_types = {
         'tx': 'GenericTxObject',
+        'block_height': 'int',
+        'block_hash': 'EncodedHash',
         'signatures': 'list[str]'
     }
 
     attribute_map = {
         'tx': 'tx',
+        'block_height': 'block_height',
+        'block_hash': 'block_hash',
         'signatures': 'signatures'
     }
 
-    def __init__(self, tx=None, signatures=None):  # noqa: E501
+    def __init__(self, tx=None, block_height=None, block_hash=None, signatures=None):  # noqa: E501
         """SignedTxObject - a model defined in Swagger"""  # noqa: E501
 
         self._tx = None
+        self._block_height = None
+        self._block_hash = None
         self._signatures = None
         self.discriminator = None
 
         if tx is not None:
             self.tx = tx
+        if block_height is not None:
+            self.block_height = block_height
+        if block_hash is not None:
+            self.block_hash = block_hash
         if signatures is not None:
             self.signatures = signatures
 
@@ -74,6 +85,48 @@ class SignedTxObject(object):
         """
 
         self._tx = tx
+
+    @property
+    def block_height(self):
+        """Gets the block_height of this SignedTxObject.  # noqa: E501
+
+
+        :return: The block_height of this SignedTxObject.  # noqa: E501
+        :rtype: int
+        """
+        return self._block_height
+
+    @block_height.setter
+    def block_height(self, block_height):
+        """Sets the block_height of this SignedTxObject.
+
+
+        :param block_height: The block_height of this SignedTxObject.  # noqa: E501
+        :type: int
+        """
+
+        self._block_height = block_height
+
+    @property
+    def block_hash(self):
+        """Gets the block_hash of this SignedTxObject.  # noqa: E501
+
+
+        :return: The block_hash of this SignedTxObject.  # noqa: E501
+        :rtype: EncodedHash
+        """
+        return self._block_hash
+
+    @block_hash.setter
+    def block_hash(self, block_hash):
+        """Sets the block_hash of this SignedTxObject.
+
+
+        :param block_hash: The block_hash of this SignedTxObject.  # noqa: E501
+        :type: EncodedHash
+        """
+
+        self._block_hash = block_hash
 
     @property
     def signatures(self):

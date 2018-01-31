@@ -17,7 +17,7 @@
 
 request_params('CallContract') ->
     [
-        'ContractCall'
+        'Body'
     ];
 
 request_params('CompileContract') ->
@@ -88,23 +88,23 @@ request_params('GetActiveRegisteredOracles') ->
 request_params('GetBlockByHashInternal') ->
     [
         'hash',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetBlockByHeightInternal') ->
     [
         'height',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetBlockGenesis') ->
     [
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetBlockLatest') ->
     [
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetBlockNumber') ->
@@ -113,7 +113,7 @@ request_params('GetBlockNumber') ->
 
 request_params('GetBlockPending') ->
     [
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetBlockTxsCountByHash') ->
@@ -151,34 +151,34 @@ request_params('GetTransactionFromBlockHash') ->
     [
         'hash',
         'tx_index',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetTransactionFromBlockHeight') ->
     [
         'height',
         'tx_index',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetTransactionFromBlockLatest') ->
     [
         'tx_index',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetTxsListFromBlockRangeByHash') ->
     [
         'from',
         'to',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('GetTxsListFromBlockRangeByHeight') ->
     [
         'from',
         'to',
-        'tx_objects'
+        'tx_encoding'
     ];
 
 request_params('PostNameClaimTx') ->
@@ -256,7 +256,7 @@ request_params(_) ->
 
 
 
-request_param_info('CallContract', 'ContractCall') ->
+request_param_info('CallContract', 'Body') ->
     #{
         source =>   body,
         rules => [
@@ -347,11 +347,12 @@ request_param_info('GetBlockByHashInternal', 'hash') ->
         ]
     };
 
-request_param_info('GetBlockByHashInternal', 'tx_objects') ->
+request_param_info('GetBlockByHashInternal', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -365,38 +366,42 @@ request_param_info('GetBlockByHeightInternal', 'height') ->
         ]
     };
 
-request_param_info('GetBlockByHeightInternal', 'tx_objects') ->
+request_param_info('GetBlockByHeightInternal', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
 
-request_param_info('GetBlockGenesis', 'tx_objects') ->
+request_param_info('GetBlockGenesis', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
 
-request_param_info('GetBlockLatest', 'tx_objects') ->
+request_param_info('GetBlockLatest', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
 
-request_param_info('GetBlockPending', 'tx_objects') ->
+request_param_info('GetBlockPending', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -446,11 +451,12 @@ request_param_info('GetTransactionFromBlockHash', 'tx_index') ->
         ]
     };
 
-request_param_info('GetTransactionFromBlockHash', 'tx_objects') ->
+request_param_info('GetTransactionFromBlockHash', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -473,11 +479,12 @@ request_param_info('GetTransactionFromBlockHeight', 'tx_index') ->
         ]
     };
 
-request_param_info('GetTransactionFromBlockHeight', 'tx_objects') ->
+request_param_info('GetTransactionFromBlockHeight', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -491,11 +498,12 @@ request_param_info('GetTransactionFromBlockLatest', 'tx_index') ->
         ]
     };
 
-request_param_info('GetTransactionFromBlockLatest', 'tx_objects') ->
+request_param_info('GetTransactionFromBlockLatest', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -520,11 +528,12 @@ request_param_info('GetTxsListFromBlockRangeByHash', 'to') ->
         ]
     };
 
-request_param_info('GetTxsListFromBlockRangeByHash', 'tx_objects') ->
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -549,11 +558,12 @@ request_param_info('GetTxsListFromBlockRangeByHeight', 'to') ->
         ]
     };
 
-request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_encoding') ->
     #{
         source => qs_val  ,
         rules => [
-            {type, 'boolean'},
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
