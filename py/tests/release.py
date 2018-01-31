@@ -13,8 +13,9 @@ from waiting import wait
 
 import swagger_client
 from swagger_client.rest import ApiException
-from swagger_client.apis.external_api import ExternalApi
+from swagger_client.api.external_api import ExternalApi
 from swagger_client.api_client import ApiClient
+from swagger_client.configuration import Configuration
 
 # these are executed for every node
 NODE_SETUP_COMMANDS = [
@@ -242,7 +243,11 @@ def main(argv):
     [start_node(d) for d in node_dirs]
 
 
-    node_objs = [ExternalApi(ApiClient(host=SETUP[n]["host"])) for n in node_names]
+    empty_config = Configuration()
+    node_objs = []
+    for n in node_names:
+        empty_config.host = SETUP[n]["host"]
+        node_objs.append(ExternalApi(ApiClient(configuration=empty_config)))
 
     wait_all_nodes_are_online(node_objs)
 
@@ -279,7 +284,7 @@ def main(argv):
             print("\n")
     shutil.rmtree(root_dir)
     if test_failed:
-        sys.exit("FAILED")	
+        sys.exit("FAILED")      
 
 if __name__ == "__main__":
     main(sys.argv)

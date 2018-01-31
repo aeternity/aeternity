@@ -1922,7 +1922,7 @@
     },
     "SingleTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/TxHashOrObject"
+        "$ref" : "#/definitions/SingleTxHashOrObject"
       }, {
         "type" : "object",
         "required" : [ "transaction" ],
@@ -1935,7 +1935,7 @@
     },
     "SingleTxHash" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/TxHashOrObject"
+        "$ref" : "#/definitions/SingleTxHashOrObject"
       }, {
         "type" : "object",
         "required" : [ "transaction" ],
