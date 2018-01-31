@@ -245,11 +245,6 @@ workflows:
 
       - linux_package:
           filters:
-            branches:
-              only:
-                - master
-                - env/dev1
-                - env/dev2
             tags:
               only: /^v.*$/
 
