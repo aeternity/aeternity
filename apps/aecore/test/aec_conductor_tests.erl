@@ -28,11 +28,9 @@ setup_minimal() ->
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
-    {ok, _} = aec_persistence:start_link(),
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
-    ok = aec_persistence:stop_and_clean(),
     ok = aec_tx_pool:stop(),
     ok = application:stop(gproc),
     _  = flush_gproc(),
@@ -322,7 +320,8 @@ test_chain_genesis_state() ->
     ?assertEqual({ok, GH}, ?TEST_MODULE:genesis_header()),
     ?assertEqual({ok, GB}, ?TEST_MODULE:genesis_block()),
     ?assertMatch({ok, #trees{}}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
-    ?assertEqual({ok, GBS}, ?TEST_MODULE:get_block_state_by_hash(GHH)),
+    {ok, GBS1} = ?TEST_MODULE:get_block_state_by_hash(GHH),
+    ?assertEqual(aec_trees:hash(GBS1), aec_trees:hash(GBS)),
 
     %% Check that genesis is top
     ?assertEqual(GHH, ?TEST_MODULE:top_header_hash()),

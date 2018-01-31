@@ -26,7 +26,6 @@
         , log/1
         , active/1
         , referers/1
-        , calls_hash/1
         , deposit/1
           %% Setters
         , set_pubkey/2
@@ -39,7 +38,6 @@
         , set_log/2
         , set_active/2
         , set_referers/2
-        , set_calls_hash/2
         , set_deposit/2
         ]).
 
@@ -48,8 +46,6 @@
 %%%===================================================================
 
 -type amount() :: non_neg_integer().
-
--type calls_hash() :: aeu_mtrees:hash().
 
 -record(contract, {
         %% Normal account fields
@@ -64,7 +60,6 @@
         log        :: binary(),     %% The current event log
         active     :: boolean(),    %% false when disabled, but don't remove unless referers == []
         referers   :: [pubkey()],   %% List of contracts depending on this contract
-        calls_hash :: calls_hash(), %% Hash of the call history tree
         deposit    :: amount()
     }).
 
@@ -108,7 +103,6 @@ new(ContractPubKey, RTx, BlockHeight) ->
                    log        = <<>>,
                    active     = true,
                    referers   = [],
-                   calls_hash = <<0:?HASH_SIZE/unit:8>>,
                    deposit    = aect_create_tx:deposit(RTx)
                  },
     C = assert_fields(C),
@@ -129,7 +123,6 @@ serialize(#contract{} = C) ->
                  , #{<<"log">>        => log(C)}
                  , #{<<"active">>     => active(C)}
                  , #{<<"referers">>   => referers(C)}
-                 , #{<<"calls_hash">> => calls_hash(C)}
                  , #{<<"deposit">>    => deposit(C)}
                  ]).
 
@@ -148,7 +141,6 @@ deserialize(Bin) ->
     , #{<<"log">>        := Log}
     , #{<<"active">>     := Active}
     , #{<<"referers">>   := Referers}
-    , #{<<"calls_hash">> := Calls}
     , #{<<"deposit">>    := Deposit}
     ] = List,
     #contract{ pubkey     = Pubkey
@@ -161,7 +153,6 @@ deserialize(Bin) ->
              , log        = Log
              , active     = Active
              , referers   = Referers
-             , calls_hash = Calls
              , deposit    = Deposit
              }.
 
@@ -216,10 +207,6 @@ active(C) -> C#contract.active.
 -spec referers(contract()) -> [pubkey()].
 referers(C) -> C#contract.referers.
 
-%% The hash of the call transactions history tree.
--spec calls_hash(contract()) -> [calls_hash()].
-calls_hash(C) -> C#contract.calls_hash.
-
 %% The amount deposited at contract creation.
 -spec deposit(contract()) -> amount().
 deposit(C) -> C#contract.deposit.
@@ -267,10 +254,6 @@ set_active(X, C) ->
 set_referers(X, C) ->
     C#contract{referers = assert_field(referers, X)}.
 
--spec set_calls_hash(calls_hash(), contract()) -> contract().
-set_calls_hash(X, C) ->
-    C#contract{calls_hash = assert_field(calls_hash, X)}.
-
 -spec set_deposit(amount(), contract()) -> contract().
 set_deposit(X, C) ->
     C#contract{deposit = assert_field(deposit, X)}.
@@ -290,7 +273,6 @@ assert_fields(C) ->
            , {log,        C#contract.log}
            , {active,     C#contract.active}
            , {referers,   C#contract.referers}
-           , {calls_hash, C#contract.calls_hash}
            , {deposit,    C#contract.deposit}
            ],
     List1 = [try assert_field(X, Y), [] catch _:X -> X end
@@ -313,6 +295,5 @@ assert_field(referers = Field, X) ->
     try [ assert_field(referer, Y) || Y <- X ]
     catch _:_ -> error({illegal, Field, X}) end;
 assert_field(referer, <<_:?PUB_SIZE/binary>> = X)        -> X;
-assert_field(calls_hash, <<_:?HASH_SIZE/binary>> = X)    -> X;
 assert_field(deposit, X)    when is_integer(X), X >= 0   -> X;
 assert_field(Field, X) -> error({illegal, Field, X}).

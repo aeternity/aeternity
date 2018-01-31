@@ -8,17 +8,25 @@
 -module(aeu_mp_trees).
 
 -export([ new/0
+        , new/1
         , new/2
         , commit_to_db/1
         , construct_proof/3
         , delete/2
         , get/2
         , iterator/1
+        , iterator_from/2
         , iterator_next/1
         , pp/1
         , put/3
         , root_hash/1
         , verify_proof/4
+        ]).
+
+%% For internal functional db
+-export([ dict_db_commit/2
+        , dict_db_get/2
+        , dict_db_put/3
         ]).
 
 -export_type([ tree/0
@@ -75,6 +83,10 @@
 -spec new() -> tree().
 new() ->
     #mpt{}.
+
+-spec new(db()) -> tree().
+new(DB) ->
+    #mpt{db = DB}.
 
 -spec new(hash(), db()) -> tree().
 new(RootHash, DB) ->
@@ -146,6 +158,12 @@ verify_proof(Key, Val, Hash, ProofDB) ->
 -spec iterator(tree()) -> iterator().
 iterator(#mpt{hash = Hash, db = DB}) ->
     #iter{key = <<>>, root = Hash, db = DB}.
+
+%%% @doc Iterator from a key. Key doesn't need to exist. Calling
+%%% iterator_next/1 gives the next value after Key.
+-spec iterator_from(key(), tree()) -> iterator().
+iterator_from(Key, #mpt{hash = Hash, db = DB}) ->
+    #iter{key = Key, root = Hash, db = DB}.
 
 -spec iterator_next(iterator()) ->
                            {key(), value(), iterator()} | '$end_of_table'.
@@ -714,13 +732,16 @@ new_dict_db() ->
 dict_db_spec() ->
     #{ handle => dict:new()
      , cache  => dict:new()
-     , get    => fun dict_db_get/2
-     , put    => fun dict:store/3
-     , commit => fun dict_db_commit/2
+     , get    => {?MODULE, dict_db_get}
+     , put    => {?MODULE, dict_db_put}
+     , commit => {?MODULE, dict_db_commit}
      }.
 
 dict_db_get(Key, Dict) ->
     {value, dict:fetch(Key, Dict)}.
+
+dict_db_put(Key, Val, Dict) ->
+    dict:store(Key, Val, Dict).
 
 dict_db_commit(Cache, DB) ->
     {ok, dict:new(), dict:merge(fun(_, _, Val) -> Val end, Cache, DB)}.

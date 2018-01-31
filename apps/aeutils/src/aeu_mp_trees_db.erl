@@ -28,17 +28,17 @@
 
 -record(db, { handle :: handle()
             , cache  :: cache()
-            , get    :: get_fun()
-            , put    :: put_fun()
-            , commit :: commit_fun()
+            , get    :: get_mf()
+            , put    :: put_mf()
+            , commit :: commit_mf()
             }).
 
 -opaque db() :: #db{}.
 
--type db_spec() :: #{ 'get'    := get_fun()
-                    , 'put'    := put_fun()
+-type db_spec() :: #{ 'get'    := get_mf()
+                    , 'put'    := put_mf()
                     , 'cache'  := cache()
-                    , 'commit' := commit_fun()
+                    , 'commit' := commit_mf()
                     , 'handle' := handle()
                     }.
 
@@ -47,29 +47,48 @@
 -type key()    :: aeu_mp_trees:key().
 -type value()  :: aeu_mp_trees:value().
 
--type get_fun() :: fun((key(), cache()|handle()) -> {'value', term()}
-                                                   | 'none').
--type put_fun() :: fun((key(), value(), cache()) -> cache()).
--type commit_fun() :: fun((handle(), cache()) -> {ok, handle(), cache()}
-                                               | {'error', term()}).
+%% TODO: This should be a behavior
+
+%% fun((key(), cache()|handle()) -> {'value', term()} | 'none').
+-type get_mf() :: {module(), atom()}.
+
+%% fun((key(), value(), cache()) -> cache()).
+-type put_mf() :: {module(), atom()}.
+
+%% fun((handle(), cache()) -> {ok, handle(), cache()} | {'error', term()}).
+-type commit_mf() :: {module(), atom()}.
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 -spec new(db_spec()) -> db().
-new(#{ 'get'    := GetFun
-     , 'put'    := PutFun
+new(#{ 'get'    := GetMF
+     , 'put'    := PutMF
      , 'cache'  := Cache
-     , 'commit' := CommitFun
+     , 'commit' := CommitMF
      , 'handle' := Handle
      }) ->
-    #db{ get    = GetFun
-       , put    = PutFun
+    validate_exported(put, PutMF, 3),
+    validate_exported(get, GetMF, 2),
+    validate_exported(commit, CommitMF, 2),
+    #db{ get    = GetMF
+       , put    = PutMF
        , cache  = Cache
-       , commit = CommitFun
+       , commit = CommitMF
        , handle = Handle
        }.
+
+validate_exported(Type, {M, F}, A) when is_atom(M), is_atom(F) ->
+    try lists:member({F, A}, M:module_info(exports)) of
+        true -> ok;
+        false -> error({invalid, Type, {M, F, A}})
+    catch _:_ ->
+            error({invalid, Type, {M, F, A}})
+    end;
+validate_exported(Type, Other,_A) ->
+    error({invalid, Type, Other}).
+
 
 -spec get(key(), db()) -> {'value', value()} | 'none'.
 get(Key, DB) ->
@@ -83,8 +102,8 @@ put(Key, Val, DB) ->
     cache_put(Key, Val, DB).
 
 -spec commit(db()) -> {'ok', db()} | {'error', term()}.
-commit(#db{commit = Commit, cache = Cache, handle = Handle} = DB) ->
-    case Commit(Handle, Cache) of
+commit(#db{commit = {M, F}, cache = Cache, handle = Handle} = DB) ->
+    case M:F(Handle, Cache) of
         {ok, NewHandle, NewCache} ->
             {ok, DB#db{handle = NewHandle, cache = NewCache}};
         {error, _} = Error ->
@@ -107,15 +126,15 @@ get_handle(#db{handle = Handle}) ->
 %%% Cache
 %%%===================================================================
 
-cache_get(Key, #db{cache = Cache, get = Get}) ->
-    Get(Key, Cache).
+cache_get(Key, #db{cache = Cache, get = {M, F}}) ->
+    M:F(Key, Cache).
 
-cache_put(Key, Val, #db{cache = Cache, put = Put} = DB) ->
-    DB#db{cache = Put(Key, Val, Cache)}.
+cache_put(Key, Val, #db{cache = Cache, put = {M, F}} = DB) ->
+    DB#db{cache = M:F(Key, Val, Cache)}.
 
 %%%===================================================================
 %%% DB
 %%%===================================================================
 
-db_get(Key, #db{handle = Handle, get = Get}) ->
-    Get(Key, Handle).
+db_get(Key, #db{handle = Handle, get = {M, F}}) ->
+    M:F(Key, Handle).

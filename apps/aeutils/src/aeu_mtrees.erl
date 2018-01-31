@@ -17,6 +17,8 @@
          delete/2,
          get/2,
          insert/3,
+         iterator_from/2,
+         iterator_next/1,
          lookup/2,
          enter/3,
          to_list/1]).
@@ -24,9 +26,19 @@
 %% API - Merkle tree
 -export([root_hash/1,
          lookup_with_proof/2,
-         verify_proof/4]).
+         verify_proof/4,
+         commit_to_db/1,
+         empty_with_backend/1
+        ]).
 
--export_type([mtree/0,
+%% For internal functional db
+-export([ proof_db_commit/2
+        , proof_db_get/2
+        , proof_db_put/3
+        ]).
+
+-export_type([iterator/0,
+              mtree/0,
               mtree/2,
               root_hash/0,
               proof/0]).
@@ -38,6 +50,8 @@
 -type key() :: binary().
 -type value() :: binary().
 -type mtree() :: mtree(key(), value()).
+
+-opaque iterator() :: aeu_mp_trees:iterator().
 
 %% Enable specification of types of key and value for enabling code
 %% using this module to document types for readability.
@@ -56,6 +70,10 @@
 -spec empty() -> mtree().
 empty() ->
     aeu_mp_trees:new().
+
+-spec empty_with_backend(aeu_mp_trees_db:db()) -> mtree().
+empty_with_backend(DB) ->
+    aeu_mp_trees:new(DB).
 
 delete(Key, Tree) when ?IS_KEY(Key) ->
     aeu_mp_trees:delete(Key, Tree).
@@ -82,6 +100,15 @@ insert(Key, Value, Tree) when ?IS_KEY(Key), ?IS_VALUE(Value) ->
         none -> aeu_mp_trees:put(Key, Value, Tree);
         {value, _} -> error({already_present, Key})
     end.
+
+-spec iterator_from(key(), mtree()) -> iterator().
+iterator_from(Key, Tree) ->
+    aeu_mp_trees:iterator_from(Key, Tree).
+
+-spec iterator_next(iterator()) ->
+                           {key(), value(), iterator()} | '$end_of_table'.
+iterator_next(Iter) ->
+    aeu_mp_trees:iterator_next(Iter).
 
 -spec to_list(mtree()) -> [{key(), value()}].
 to_list(Tree) ->
@@ -126,6 +153,13 @@ verify_proof(Key, Value, RootHash, Proof) ->
         Other -> {error, Other}
     end.
 
+-spec commit_to_db(mtree()) -> mtree().
+commit_to_db(Tree) ->
+    case aeu_mp_trees:commit_to_db(Tree) of
+        {ok, Tree1}   -> Tree1;
+        {error, What} -> error({failed_commit, What})
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -136,13 +170,16 @@ new_proof_db() ->
 proof_db_spec() ->
     #{ handle => dict:new()
      , cache  => dict:new()
-     , get    => fun proof_db_get/2
-     , put    => fun dict:store/3
-     , commit => fun proof_db_commit/2
+     , get    => {?MODULE, proof_db_get}
+     , put    => {?MODULE, proof_db_put}
+     , commit => {?MODULE, proof_db_commit}
      }.
 
 proof_db_get(Key, Proof) ->
     {value, dict:fetch(Key, Proof)}.
+
+proof_db_put(Key, Val, Proof) ->
+    dict:store(Key, Val, Proof).
 
 proof_db_commit(_Cache,_DB) ->
     error(no_commits_in_proof).

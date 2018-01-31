@@ -192,74 +192,6 @@ basic_access_missing_blocks() ->
     ok.
 
 %%%===================================================================
-%%% GC tests
-
-gc_test_() ->
-    {foreach,
-     fun setup_meck_and_keys/0,
-     fun teardown_meck_and_keys/1,
-     [{ gc_test_slogan(Length, Max, Interval, KeepAll)
-      , gc_test_gen(Length, Max, Interval, KeepAll)}
-      || {Length, Max, Interval, KeepAll} <- gc_test_params()
-     ]}.
-
-gc_test_gen(Length, Max, Interval, KeepAll) ->
-    fun() -> gc_test_fun(Length, Max, Interval, KeepAll)end.
-
-gc_test_slogan(Length, Max, Interval, KeepAll) ->
-    S = io_lib:format("Create chain, test that only"
-                      " the intended snapshots are kept."
-                      " Length: ~w, Max: ~w, Interval: ~w, KeepAll: ~w",
-                      [Length, Max, Interval, KeepAll]),
-    lists:flatten(S).
-
-gc_test_params() ->
-    %% {Length, Max, Interval, KeepAll}
-    [ {15, 10, 5, 2}
-    , {4, 3, 1, 1}
-    , {100, 30, 10, 5}
-    ].
-
-gc_test_fun(Length, Max, Interval, KeepAll) ->
-    %% Generate blockchain and write it to the state.
-    BC = aec_test_utils:gen_blocks_only_chain(Length),
-    State1 = new_state(gc_opts(KeepAll, Max, Interval)),
-    State2 = write_blocks_to_chain(BC, State1),
-
-    %% Get the state trees that we would have persisted.
-    Trees = aec_chain_state:get_state_trees_for_persistence(State2),
-
-    %% Check that the top block hash is among the persisted.
-    TopHash = top_block_hash(State2),
-    ?assertMatch({TopHash, _}, lists:keyfind(TopHash, 1, Trees)),
-
-    %% Compute the hashes that always should be persisted...
-    KeepAllHashes =
-        [block_hash(lists:nth(X, BC))
-         || X <- lists:seq(Length - KeepAll + 1, Length)],
-    %% ...and check that they are indeed persisted.
-    ?assertEqual(lists:duplicate(length(KeepAllHashes), true),
-                 [lists:keymember(X, 1, Trees)
-                  || X <- KeepAllHashes]),
-
-    %% Compute the hashes that should be sparsely persisted...
-    KeepSparseHashes =
-        [block_hash(lists:nth(X, BC))
-         || X <- lists:seq(Length-KeepAll, Length-Max,-Interval)],
-    %% ...and check that they are indeed persisted.
-    ?assertEqual(lists:duplicate(length(KeepSparseHashes), true),
-                 [lists:keymember(X, 1, Trees)
-                  || X <- KeepSparseHashes]),
-
-    %% Check that we have have covered all the hashes that
-    %% we will persist (and that the hashes were unique).
-    HashSet = ordsets:from_list(KeepAllHashes ++ KeepSparseHashes),
-    ?assertEqual(ordsets:size(HashSet), length(Trees)),
-    ?assertEqual(ordsets:size(HashSet),
-                 length(KeepSparseHashes) + length(KeepAllHashes)),
-    ok.
-
-%%%===================================================================
 %%% Out of order tests
 
 out_of_order_test_() ->
@@ -375,8 +307,14 @@ out_of_order_test_connected() ->
 
 broken_chain_test_() ->
     {foreach,
-     fun setup_meck_and_keys/0,
-     fun teardown_meck_and_keys/1,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
+     end,
      [{"Test that an invalid block in a different fork is validated when that "
        "fork tries to take over as main chain",
        fun broken_chain_postponed_validation/0},
@@ -467,9 +405,6 @@ broken_chain_invalid_transaction() ->
     %% Insert up to last block.
     State0 = write_blocks_to_chain([B0, B1], new_state()),
 
-    %% Check that we can insert the unmodified last block
-    ?assertMatch({ok, _}, insert_block(B2, State0)),
-
     %% Add invalid transaction with negative nonce to last block
     Txs = B2#block.txs,
     BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>, amount => 0, fee => 0, nonce => -1}),
@@ -478,6 +413,9 @@ broken_chain_invalid_transaction() ->
     ?assertNotEqual(Txs, BogusTxs),
     ?assertMatch({error, invalid_transactions_in_block},
                  insert_block(B2#block{txs = BogusTxs}, State0)),
+
+    %% Check that we can insert the unmodified last block
+    ?assertMatch({ok, _}, insert_block(B2, State0)),
     ok.
 
 %%%===================================================================
@@ -486,12 +424,14 @@ broken_chain_invalid_transaction() ->
 n_headers_from_top_test_() ->
     {foreach,
      fun() ->
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db()
      end,
      [{"Ensure the right headers are returned.",
        fun n_headers_from_top/0}]}.
@@ -523,6 +463,7 @@ n_headers_from_top() ->
 target_validation_test_() ->
     {foreach,
      fun() ->
+             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow, [passthrough]),
@@ -536,7 +477,8 @@ target_validation_test_() ->
              meck:unload(aec_governance),
              meck:unload(aec_pow),
              aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis()
+             aec_test_utils:unmock_genesis(),
+             aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
        " in first (blocks_to_check_difficulty_count + 1) headers/blocks",
@@ -655,8 +597,14 @@ test_postponed_target_verification() ->
 
 total_difficulty_test_() ->
     {foreach,
-     fun setup_meck_and_keys/0,
-     fun teardown_meck_and_keys/1,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+     end,
      [{"Get work in chain of only genesis",
        fun total_difficulty_only_genesis/0},
       {"Get work in header chain",
@@ -697,8 +645,14 @@ total_difficulty_in_chain() ->
 
 forking_test_() ->
     {foreach,
-     fun setup_meck_and_keys/0,
-     fun teardown_meck_and_keys/1,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
+     end,
      [ {"Fork on genesis", fun fork_on_genesis/0}
      , {"Fork on shorter chain because of difficulty", fun fork_on_shorter/0}
      , {"Fork on last block", fun fork_on_last_block/0}
@@ -794,8 +748,14 @@ fork_out_of_order() ->
 
 block_time_summary_test_() ->
     {foreach,
-     fun setup_meck_and_keys/0,
-     fun teardown_meck_and_keys/1,
+     fun() ->
+             aec_test_utils:start_chain_db(),
+             setup_meck_and_keys()
+     end,
+     fun(TmpDir) ->
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
+     end,
      [ {"Empty list on no genesis", fun time_summary_no_genesis/0}
      , {"Time summary on only genesis block", fun time_summary_only_genesis/0}
      , {"Time summary N blocks", fun time_summary_N_blocks/0}
@@ -857,9 +817,6 @@ time_summary_N_blocks() ->
 new_state() ->
     aec_chain_state:new().
 
-new_state(Opts) ->
-    aec_chain_state:new(Opts).
-
 setup_meck_and_keys() ->
     aec_test_utils:mock_difficulty_as_target(),
     aec_test_utils:mock_block_target_validation(),
@@ -883,12 +840,6 @@ write_headers_to_chain([H|T], State) ->
     write_headers_to_chain(T, State1);
 write_headers_to_chain([], State) ->
     State.
-
-gc_opts(KeepAll, Max, Interval) ->
-    #{ max_snapshot_height => Max
-     , sparse_snapshots_interval => Interval
-     , keep_all_snapshots_height => KeepAll
-     }.
 
 gen_blocks_only_chain(Data) ->
     blocks_only_chain(gen_block_chain_with_state(Data)).
