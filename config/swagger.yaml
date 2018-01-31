@@ -1073,7 +1073,7 @@ paths:
       tags:
         - external
       operationId: 'CallContract'
-      description: 'Call a ring function with a given name and argument in the given bytecode.'
+      description: 'Call a ring function with a given name and argument in the given bytecode off chain.'
       consumes:
         - application/json
       produces:
@@ -1084,7 +1084,14 @@ paths:
           description: contract call
           required: true
           schema:
-            $ref: '#/definitions/ContractCall'
+            type: object
+            properties:
+              code:
+                type: string
+              function:
+                type: string
+              arg:
+                type: string
       responses:
         '200':
           description: Resulting state map
@@ -1736,15 +1743,6 @@ definitions:
     type: object
     properties:
       bytecode: string
-  ContractCall:
-    type: object
-    properties:
-      code:
-        type: string
-      function:
-        type: string
-      arg:
-        type: string
   CallResult:
     type: object
     properties:

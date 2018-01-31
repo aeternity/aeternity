@@ -1,6 +1,7 @@
 # coding: utf-8
 
 # flake8: noqa
+
 """
     Aeternity Epoch
 
@@ -14,7 +15,14 @@
 
 from __future__ import absolute_import
 
-# import models into model package
+# import apis into sdk package
+from swagger_client.api.external_api import ExternalApi
+from swagger_client.api.internal_api import InternalApi
+
+# import ApiClient
+from swagger_client.api_client import ApiClient
+from swagger_client.configuration import Configuration
+# import models into sdk package
 from swagger_client.models.account_balance import AccountBalance
 from swagger_client.models.accounts_balances import AccountsBalances
 from swagger_client.models.balance import Balance
@@ -23,7 +31,6 @@ from swagger_client.models.block_time_summary import BlockTimeSummary
 from swagger_client.models.byte_code import ByteCode
 from swagger_client.models.call_result import CallResult
 from swagger_client.models.contract import Contract
-from swagger_client.models.contract_call import ContractCall
 from swagger_client.models.encoded_hash import EncodedHash
 from swagger_client.models.error import Error
 from swagger_client.models.generic_tx_array import GenericTxArray
