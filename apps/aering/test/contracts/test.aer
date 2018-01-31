@@ -77,4 +77,6 @@ contract Identity = {
   // let pairString(s:string) = (s,s);
   // let revStrings(ss:list(string))=rev(ss);
   let makePoint(x,y) = {x:x, y:y};
+  let getx(x) = x.x;
+  let updatex(p,x) = p{x:x};
 };

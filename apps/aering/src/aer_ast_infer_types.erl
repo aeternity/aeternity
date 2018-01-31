@@ -149,6 +149,13 @@ infer_expr(Env,{record,Attrs,Fields}) ->
     constrain([{RecordType,FieldName,T}
 	       || {field,_,FieldName,{typed,_,_,T}} <- NewFields]),
     {typed,Attrs,{record,Attrs,NewFields},RecordType};
+infer_expr(Env,{record,Attrs,Record,Update}) ->
+    NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
+    NewUpdate = [{field,A,FieldName,infer_expr(Env,Expr)}
+		 || {field,A,FieldName,Expr} <- Update],
+    constrain([{RecordType,FieldName,T}
+	       || {field,_,FieldName,{typed,_,_,T}} <- NewUpdate]),
+    {typed,Attrs,{record,Attrs,NewRecord,NewUpdate},RecordType};
 infer_expr(Env,{proj,Attrs,Record,FieldName}) ->
     NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
     FieldType = fresh_uvar(Attrs),

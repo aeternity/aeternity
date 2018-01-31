@@ -122,6 +122,21 @@ ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
+ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
+    UpdatedNames = [Name || {field,_,{id,_,Name},_} <- Update],
+    #switch{expr=ast_body(Record),
+	    cases=[{#var_ref{name = "_record"},
+		    ast_body({typed,Attrs,
+			      {record,Attrs,
+			       Update ++
+				   [{field,Attrs,{id,Attrs,Name},
+				     {proj,Attrs,
+				      {typed,Attrs,{id,Attrs,"_record"},RecType},
+				      {id,Attrs,Name}}}
+				    || {field_t,_,_,{id,_,Name},_} <- Fields,
+				       not lists:member(Name,UpdatedNames)]},
+			      RecType})}
+		   ]};
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).    
 
