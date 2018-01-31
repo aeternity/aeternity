@@ -247,6 +247,35 @@
         }
       }
     },
+    "/name" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get name entry from Naming System",
+        "operationId" : "GetName",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "name",
+          "in" : "query",
+          "description" : "Name to get entry from Naming System",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Name data",
+            "schema" : {
+              "$ref" : "#/definitions/NameEntry"
+            }
+          },
+          "404" : {
+            "description" : "Name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/spend-tx" : {
       "post" : {
         "tags" : [ "internal" ],
@@ -405,6 +434,196 @@
           },
           "404" : {
             "description" : "Oracle response transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/name-preclaim-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create name preclaim transaction",
+        "operationId" : "PostNamePreclaimTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new name preclaim transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NamePreclaimTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameCommitmentHash"
+            }
+          },
+          "400" : {
+            "description" : "Name preclaim transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/name-claim-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create name claim transaction",
+        "operationId" : "PostNameClaimTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new name claim transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameClaimTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameHash"
+            }
+          },
+          "400" : {
+            "description" : "Name claim transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/name-update-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create name update transaction",
+        "operationId" : "PostNameUpdateTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new name update transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameUpdateTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameHash"
+            }
+          },
+          "400" : {
+            "description" : "Name update transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/name-transfer-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create name transfer transaction",
+        "operationId" : "PostNameTransferTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new name transfer transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameTransferTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameHash"
+            }
+          },
+          "400" : {
+            "description" : "Name transfer transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/name-revoke-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create name revoke transaction",
+        "operationId" : "PostNameRevokeTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new name revoke transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameRevokeTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NameHash"
+            }
+          },
+          "400" : {
+            "description" : "Name revoke transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found error",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1408,6 +1627,156 @@
         "query_id" : "query_id"
       }
     },
+    "NameEntry" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "name_ttl" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "pointers" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "name_ttl" : 0,
+        "name" : "name",
+        "pointers" : "pointers"
+      }
+    },
+    "NamePreclaimTx" : {
+      "type" : "object",
+      "required" : [ "commitment", "fee" ],
+      "properties" : {
+        "commitment" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "fee" : 0,
+        "commitment" : "commitment"
+      }
+    },
+    "NameClaimTx" : {
+      "type" : "object",
+      "required" : [ "fee", "name", "name_salt" ],
+      "properties" : {
+        "name" : {
+          "type" : "string"
+        },
+        "name_salt" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "name_salt" : 0,
+        "fee" : 6,
+        "name" : "name"
+      }
+    },
+    "NameUpdateTx" : {
+      "type" : "object",
+      "required" : [ "fee", "name_hash", "name_ttl", "pointers", "ttl" ],
+      "properties" : {
+        "name_hash" : {
+          "type" : "string"
+        },
+        "name_ttl" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "pointers" : {
+          "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "name_ttl" : 0,
+        "name_hash" : "name_hash",
+        "fee" : 1,
+        "ttl" : 6,
+        "pointers" : "pointers"
+      }
+    },
+    "NameTransferTx" : {
+      "type" : "object",
+      "required" : [ "fee", "name_hash", "recipient_pubkey" ],
+      "properties" : {
+        "name_hash" : {
+          "type" : "string"
+        },
+        "recipient_pubkey" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "name_hash" : "name_hash",
+        "fee" : 0,
+        "recipient_pubkey" : "recipient_pubkey"
+      }
+    },
+    "NameRevokeTx" : {
+      "type" : "object",
+      "required" : [ "fee", "name_hash" ],
+      "properties" : {
+        "name_hash" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "name_hash" : "name_hash",
+        "fee" : 0
+      }
+    },
+    "NameCommitmentHash" : {
+      "type" : "object",
+      "properties" : {
+        "commitment" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "commitment" : "commitment"
+      }
+    },
+    "NameHash" : {
+      "type" : "object",
+      "properties" : {
+        "name_hash" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "name_hash" : "name_hash"
+      }
+    },
     "PubKey" : {
       "type" : "object",
       "properties" : {
@@ -1661,6 +2030,41 @@
             "$ref" : "#/definitions/TTL"
           }
         }
+      } ]
+    },
+    "NamePreclaimTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "NameClaimTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "NameUpdateTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "NameTransferTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
+      } ]
+    },
+    "NameRevokeTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/GenericTxObject"
+      }, {
+        "type" : "object"
       } ]
     },
     "Error" : {

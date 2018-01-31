@@ -35,6 +35,8 @@
         , top_header/1
         , top_header_hash/1
         , get_genesis_hash/1
+        , name_entry/2
+        , resolve_name/3
         ]).
 
 %% used by aec_db for bootstrapping from persistence/backup
@@ -308,6 +310,30 @@ get_top_N_blocks_time_summary(?assert_state() = State, N)
             get_N_nodes_time_summary(TopNode, State, N);
         error ->
             []
+    end.
+
+-spec name_entry(binary(), state()) ->
+                        {'ok', map()} |
+                        {'error', 'no_state_trees'} |
+                        {'error', 'name_not_found'}.
+name_entry(Name, ?assert_state() = State) ->
+    TopHash = get_top_header_hash(State),
+    case state_db_find(TopHash, State) of
+        {ok, Trees} ->
+            aens:get_name_entry(Name, aec_trees:ns(Trees));
+        error ->
+            {error, no_state_trees}
+    end.
+
+-spec resolve_name(atom(), binary(), state()) -> {'ok', binary()} |
+                                                 {error, atom()}.
+resolve_name(Type, Name, ?assert_state() = State) ->
+    TopHash = get_top_header_hash(State),
+    case state_db_find(TopHash, State) of
+        {ok, Trees} ->
+            aens:resolve(Type, Name, aec_trees:ns(Trees));
+        error ->
+            {error, no_state_trees}
     end.
 
 %%%===================================================================

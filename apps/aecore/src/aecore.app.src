@@ -32,8 +32,9 @@
     aecuckoo,
     aetx,
     aeoracle,
-    aecontract
-   ]},
+    aecontract,
+    aens
+  ]},
   {env, [
          {exometer_predefined,
           {script, "$PRIV_DIR/exometer_predefined.script"}},

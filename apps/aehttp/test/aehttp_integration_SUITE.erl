@@ -93,7 +93,10 @@
     block_txs_list_by_height/1,
     block_txs_list_by_hash/1,
     block_txs_list_by_height_invalid_range/1,
-    block_txs_list_by_hash_invalid_range/1
+    block_txs_list_by_hash_invalid_range/1,
+
+    naming_system_manage_name/1,
+    naming_system_broken_txs/1
    ]).
 
 %% internal endpoints
@@ -163,6 +166,7 @@ groups() ->
      {internal_endpoints, [sequence], 
       [
         broken_spend_tx,
+        naming_system_broken_txs,
         miner_pub_key,
 
         %% requested Endpoints
@@ -196,7 +200,9 @@ groups() ->
         block_txs_list_by_height,
         block_txs_list_by_hash,
         block_txs_list_by_height_invalid_range,
-        block_txs_list_by_hash_invalid_range
+        block_txs_list_by_hash_invalid_range,
+
+        naming_system_manage_name
       ]},
      {websocket, [sequence],
       [
@@ -205,7 +211,6 @@ groups() ->
        ws_refused_on_limit_reached,
        ws_oracles
       ]}
-
     ].
 
 suite() ->
@@ -1356,6 +1361,109 @@ block_txs_list_by_hash_invalid_range(_Config) ->
         ]),
     ok.
 
+naming_system_manage_name(_Config) ->
+    Name       = <<"fooo.barr.test">>,
+    NameSalt   = 12345,
+    NameTTL    = 60000,
+    Pointers   = <<"{\"account_pubkey\":\"srtrst\"}">>,
+    TTL        = 10,
+    NHash      = aens_hash:name_hash(Name),
+    CHash      = aens_hash:commitment_hash(Name, NameSalt),
+    Fee        = 2,
+    MineReward = rpc(aec_governance, block_mine_reward, []),
+
+    %% Mine 10 blocks to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+    {ok, 200, #{<<"balance">> := Balance}} = get_balance(),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Submit name preclaim tx and check it is in mempool
+    {ok, 200, _}       = post_name_preclaim_tx(CHash, Fee),
+    {ok, [PreclaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    CHash              = aens_preclaim_tx:commitment(aec_tx_sign:data(PreclaimTx)),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check fee taken from account, then mine reward and fee added to account
+    {ok, 200, #{<<"balance">> := Balance1}} = get_balance(),
+    Balance1 = Balance - Fee + MineReward + Fee,
+
+    %% Submit name claim tx and check it is in mempool
+    {ok, 200, _}    = post_name_claim_tx(Name, NameSalt, Fee),
+    {ok, [ClaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    Name            = aens_claim_tx:name(aec_tx_sign:data(ClaimTx)),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check tx fee taken from account, claim fee burned,
+    %% then mine reward and fee added to account
+    ClaimBurnedFee = rpc(aec_governance, name_claim_burned_fee, []),
+    {ok, 200, #{<<"balance">> := Balance2}} = get_balance(),
+    Balance2 = Balance1 - Fee + MineReward + Fee - ClaimBurnedFee,
+
+    %% Check that name entry is present
+    {ok, 200, #{<<"name">>     := Name,
+                <<"name_ttl">> := 0,
+                <<"pointers">> := <<"[]">>}} = get_name(Name),
+
+    %% Submit name updated tx and check it is in mempool
+    {ok, 200, _}     = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
+    {ok, [UpdateTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    NameTTL          = aens_update_tx:name_ttl(aec_tx_sign:data(UpdateTx)),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check that TTL and pointers got updated in name entry
+    TmpPointers = <<"{\"account_pubkey\":\"srtrst\"}">>,
+    {ok, 200, #{<<"name">>     := Name,
+                <<"name_ttl">> := NameTTL,
+                <<"pointers">> := TmpPointers}} = get_name(Name),
+
+    %% Submit name transfer tx and check it is in mempool
+    NameRecipient      = random_hash(),
+    {ok, 200, _}       = post_name_transfer_tx(NHash, NameRecipient, Fee),
+    {ok, [TransferTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    NameRecipient      = aens_transfer_tx:recipient_account(aec_tx_sign:data(TransferTx)),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ok.
+
+naming_system_broken_txs(_Config) ->
+    Name     = <<"fooo.test">>,
+    NameSalt = 12345,
+    NHash    = aens_hash:name_hash(Name),
+    CHash    = aens_hash:commitment_hash(Name, NameSalt),
+    Fee      = 2,
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Try to submit txs with empty account
+
+    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+        post_name_preclaim_tx(CHash, Fee),
+    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+        post_name_claim_tx(Name, NameSalt, Fee),
+    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+        post_name_update_tx(NHash, 5, <<"pointers">>, 5, Fee),
+    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+        post_name_transfer_tx(NHash, random_hash(), Fee),
+    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+        post_name_revoke_tx(NHash, Fee),
+
+    %% Check mempool still empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]).
+
 %% ============================================================
 %% Websocket tests 
 %% ============================================================
@@ -1586,6 +1694,45 @@ post_spend_tx(Recipient, Amount, Fee) ->
                                          account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee}).
+
+post_name_preclaim_tx(Commitment, Fee) ->
+    Host = internal_address(),
+    http_request(Host, post, "name-preclaim-tx",
+                 #{commitment => aec_base58c:encode(commitment, Commitment),
+                   fee        => Fee}).
+
+post_name_claim_tx(Name, NameSalt, Fee) ->
+    Host = internal_address(),
+    http_request(Host, post, "name-claim-tx",
+                 #{name      => Name,
+                   name_salt => NameSalt,
+                   fee       => Fee}).
+
+post_name_update_tx(NameHash, NameTTL, Pointers, TTL, Fee) ->
+    Host = internal_address(),
+    http_request(Host, post, "name-update-tx",
+                 #{name_hash => aec_base58c:encode(name, NameHash),
+                   name_ttl  => NameTTL,
+                   pointers  => Pointers,
+                   ttl       => TTL,
+                   fee       => Fee}).
+
+post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
+    Host = internal_address(),
+    http_request(Host, post, "name-transfer-tx",
+                 #{name_hash        => aec_base58c:encode(name, NameHash),
+                   recipient_pubkey => aec_base58c:encode(account_pubkey, RecipientPubKey),
+                   fee              => Fee}).
+
+post_name_revoke_tx(NameHash, Fee) ->
+    Host = internal_address(),
+    http_request(Host, post, "name-revoke-tx",
+                 #{name_hash => aec_base58c:encode(name, NameHash),
+                   fee       => Fee}).
+
+get_name(Name) ->
+    Host = external_address(),
+    http_request(Host, get, "name", [{name, Name}]).
 
 get_balance() ->
     Host = external_address(),

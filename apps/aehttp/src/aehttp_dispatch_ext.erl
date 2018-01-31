@@ -139,6 +139,25 @@ handle_request('GetAccountBalance', Req, _Context) ->
             end
     end;
 
+handle_request('GetName', Req, _Context) ->
+    Name = case maps:get('name', Req) of
+               undefined ->
+                   {400, [], #{reason => <<"Name not specified">>}};
+               N when is_binary(N) ->
+                   N
+           end,
+    case aec_conductor:get_name_entry(Name) of
+        {error, name_not_found} ->
+            {404, [], #{reason => <<"Name not found">>}};
+        {ok, NameEntry} ->
+            #{<<"name">>     := Name,
+              <<"name_ttl">> := NameTTL,
+              <<"pointers">> := Pointers} = NameEntry,
+            {200, [], #{name     => Name,
+                        name_ttl => NameTTL,
+                        pointers => Pointers}}
+    end;
+
 handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->

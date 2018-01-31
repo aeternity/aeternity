@@ -96,6 +96,14 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetName'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetTop'
     }
 ) ->
@@ -224,6 +232,16 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'GetInfo'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetName'
     }
 ) ->
     Headers = [],
