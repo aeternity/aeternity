@@ -50,7 +50,7 @@
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(http_uri:uri(), map()) -> response(map()).
+-spec ping(http_uri:uri(), map()) -> {ok, map(), list(http_uri:uri())} | {error, any()}.
 ping(Uri, LocalPingObj) ->
     #{<<"share">> := Share, 
       <<"genesis_hash">> := GHash,
