@@ -45,6 +45,7 @@ case "${1:?}"-"${2:?}" in
     script-static_analysis)
         ./rebar3 edoc
         make dialyzer
+        make swagger-check
         ;;
     script-package)
         make prod-package

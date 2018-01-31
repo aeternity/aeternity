@@ -140,6 +140,7 @@ jobs:
           paths:
             - _build/default/rebar3_20.2.2_plt
       - run: make dialyzer
+      - run: make swagger-check
 
   linux_package:
     <<: *container_config

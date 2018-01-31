@@ -173,6 +173,14 @@ swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
 swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
+swagger-check:
+	./swagger/check \
+		"$(CURDIR)/config/swagger.yaml" \
+		"swagger" \
+		"$(CURDIR)/apps/aehttp/priv/swagger.json" \
+		"$(CURDIR)/apps/aehttp/src/swagger" \
+		"$(CURDIR)/py/tests/swagger_client"
+
 $(SWAGGER_CODEGEN_CLI):
 	curl -fsS --create-dirs -o $@ http://central.maven.org/maven2/io/swagger/swagger-codegen-cli/$(SWAGGER_CODEGEN_CLI_V)/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 
@@ -243,4 +251,4 @@ internal-clean: $$(KIND)
 	test aevm-test-deps\
 	kill killall \
 	clean distclean \
-	swagger swagger-docs
+	swagger swagger-docs swagger-check
