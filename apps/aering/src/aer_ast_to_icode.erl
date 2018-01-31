@@ -114,6 +114,8 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 			ast_body(E)
 		end
 		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
+ast_body({typed,_,{record,Attrs,Fields},T}) ->
+    error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I 
 	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
