@@ -6,15 +6,16 @@ contract type Identity = {
 };
 
 contract Identity = {
-  type xy = {x:int, y:int};
-  type xz = {x:int, z:int};
-  type yz = {y:int, z:int};
-  type intpoint = point(int);
+  // type xy = {x:int, y:int};
+  // type xz = {x:int, z:int};
+  // type yz = {y:int, z:int};
+  type point('a) = {x:'a,y:int};
+  //type intpoint = point(int);
   //   //if (x==42) 1 else (x*x);
   // };
   //let baz() = {age:3, name:(4:int)};
   //let foo(a,b,c) = c;
-  let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1));
+  // let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1));
   //    and main(x) = x::[x+1];
   // let lentr(l) = lent(0,l);
   //let rec len(l) =
@@ -27,17 +28,17 @@ contract Identity = {
   //   | [] => n;
   //   | (x::xs) => lent(n+1,xs);
   //   };
-   let rec app(a,b) =
-      switch(a) {
-      | [] => b;
-      | (x::xs) => x::app(xs,b);
-      };
-  let rec revt(l,r) =
-    switch(l) {
-    | [] => r;
-    | x::xs => revt(xs,x::r);
-    };
-  let rev(l) = revt(l,[]);
+  //  let rec app(a,b) =
+  //     switch(a) {
+  //     | [] => b;
+  //     | (x::xs) => x::app(xs,b);
+  //     };
+  // let rec revt(l,r) =
+  //   switch(l) {
+  //   | [] => r;
+  //   | x::xs => revt(xs,x::r);
+  //   };
+  // let rev(l) = revt(l,[]);
   // let main(x:int) = {
   //   switch(rev([1,2,3])) {
   //   | h::_ => h;
@@ -65,14 +66,15 @@ contract Identity = {
   //              | {y:xx} => xx;
   //		};
   //let main(x) = {x:0, y:1, z:2};
-  let id(x) = x;
-  let double(x) = x+x;
-  let pair(x) = (1,2);
-  let unit(x) = ();
-  let tuples(x) = ((1,x),(2,3,4));
-  let singleton(x) = [x];
-  let rec seq(n) = if (n==0) [] else (app(seq(n-1),[n]));
-  let idString(s:string) = s;
-  let pairString(s:string) = (s,s);
-  let revStrings(ss:list(string))=rev(ss);
+  // let id(x) = x;
+  // let double(x) = x+x;
+  // let pair(x) = (1,2);
+  // let unit(x) = ();
+  // let tuples(x) = ((1,x),(2,3,4));
+  // let singleton(x) = [x];
+  // let rec seq(n) = if (n==0) [] else (app(seq(n-1),[n]));
+  // let idString(s:string) = s;
+  // let pairString(s:string) = (s,s);
+  // let revStrings(ss:list(string))=rev(ss);
+  let makePoint(x,y) = ({x:x, y:y}:point(int));
 };

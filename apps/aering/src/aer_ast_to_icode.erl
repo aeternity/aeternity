@@ -134,6 +134,8 @@ ast_typerep({tvar,_,_}) ->
     word;
 ast_typerep({tuple_t,_,Cpts}) ->
     #tuple{cpts = [ast_typerep(C) || C<-Cpts]};
+ast_typerep({record_t,Fields}) ->
+    #tuple{cpts = [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
     #list{elems=ast_typerep(Elem)}.
 
