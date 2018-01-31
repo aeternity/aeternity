@@ -103,7 +103,7 @@ deserialize(Bin) ->
           expires  = Expires,
           status   = binary_to_existing_atom(Status, utf8),
           ttl      = TTL,
-          pointers = jsx:decode(Pointers,[{labels, atom}])}.
+          pointers = jsx:decode(Pointers)}.
 
 %%%===================================================================
 %%% Getters

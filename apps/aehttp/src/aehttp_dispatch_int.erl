@@ -203,7 +203,7 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
                             nonce     => Nonce,
                             name_hash => DecodedNameHash,
                             name_ttl  => NameTTL,
-                            pointers  => jsx:decode(Pointers,[{labels, atom}]),
+                            pointers  => jsx:decode(Pointers),
                             ttl       => TTL,
                             fee       => Fee}),
                     sign_and_push_to_mempool(UpdateTx),

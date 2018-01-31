@@ -241,7 +241,7 @@ update(Cfg) ->
     0    = aens_names:ttl(N),
 
     %% Create Update tx and apply it on trees
-    Pointers = [{account_pubkey, <<"aecore_suite_utils">>}],
+    Pointers = [{<<"account_pubkey">>, <<"aecore_suite_utils">>}],
     NameTTL  = 90000,
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
