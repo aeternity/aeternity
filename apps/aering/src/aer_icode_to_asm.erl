@@ -193,7 +193,7 @@ assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
      swap(1), dup(2), aeb_opcodes:mnemonic(?MSTORE),
      %% Stack: value-to-encode, base address, base-32
      %% and return the address of the binary.
-     {pop_args,2}];
+     pop_args(2)];
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     Return = make_ref(),
     %% This is the obvious code:
