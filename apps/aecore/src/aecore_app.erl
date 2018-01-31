@@ -5,6 +5,7 @@
 %% Application callbacks
 -export([start/2,
          start_phase/3,
+         prep_stop/1,
          stop/1]).
 -export([check_env/0]).
 
@@ -26,6 +27,8 @@ start_phase(start_reporters, _StartType, _PhaseArgs) ->
     aec_metrics_rpt_dest:check_config(),
     aec_metrics:start_reporters().
 
+prep_stop(State) ->
+    aec_metrics:prep_stop(State).
 
 stop(_State) ->
     ok.
