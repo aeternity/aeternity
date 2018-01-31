@@ -19,16 +19,16 @@ dummy_state(Code,Data) ->
   }.
 
 test(Fun,Args,Type) ->
-  Code = aer_compiler:file(test,[pp_ast,pp_icode]),
-  io:format("\nCompiled code:\n"),
-  io:format("~p\n\n",[Code]),
-  ok = aeb_disassemble:pp(Code),
+  Code = aer_compiler:file(test,[]), %% [pp_ast,pp_icode]),
+%%  io:format("\nCompiled code:\n"),
+%%  io:format("~p\n\n",[Code]),
+%%  ok = aeb_disassemble:pp(Code),
   %% Load the call
   Call = list_to_tuple([list_to_binary(atom_to_list(Fun))|Args]),
   {0,Data} = aer_data:to_binary(Call),
   io:format("Running:\n"),
   State = aevm_eeevm:eval(dummy_state(Code, Data)),
-  io:format("\nFinal state:\n~p\n",[State]),
+%%  io:format("\nFinal state:\n~p\n",[State]),
   io:format("\nFinal stack: ~p\n",[maps:get(stack,State)++[end_of_stack]]),
   io:format("\nReturn value: ~p\n",[aer_data:from_binary(Type,maps:get(out,State))]),
   ok.

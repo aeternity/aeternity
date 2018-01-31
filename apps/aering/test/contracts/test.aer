@@ -27,7 +27,7 @@ contract Identity = {
   //   | [] => n;
   //   | (x::xs) => lent(n+1,xs);
   //   };
-   let rec app(a:int,b:int) =
+   let rec app(a,b) =
       switch(a) {
       | [] => b;
       | (x::xs) => x::app(xs,b);
