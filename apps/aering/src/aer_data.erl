@@ -42,7 +42,15 @@ from_binary(word,_,V) ->
     V;
 from_binary({tuple,Cpts},Heap,V) ->
     list_to_tuple([from_binary(T,Heap,heap_word(Heap,V+32*I))
-		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]).
+		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]);
+from_binary({list,Elem},Heap,V) ->
+    <<Nil:256>> = <<(-1):256>>,
+    if V==Nil ->
+	    [];
+       true ->
+	    {H,T} = from_binary({tuple,[Elem,{list,Elem}]},Heap,V),
+	    [H|T]
+    end.
 
 heap_word(Heap,Addr) ->
     BitSize = 8*Addr,
