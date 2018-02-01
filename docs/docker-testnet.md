@@ -87,4 +87,41 @@ docker run -d -p 3013:3013 --hostname node0 \
     aetrnty/epoch
 ```
 
+<<<<<<< HEAD
 **Note: make sure `hostname` option is set when reusing the mnesia data directory**
+=======
+
+# Localnet
+
+Small local network (not connected to testnet) can be created with `docker-compose`.
+It runs two nodes using the `mean16s-generic` miner (fastest generic miner).
+
+- `node0` exposed ports:
+    - 3013 - API port (external)
+    - 3113 - API port (internal)
+    - 3114 - WebSocket port (internal)
+
+- `node1` exposed ports:
+    - 3013 - API port (external)
+    - 3113 - API port (internal)
+    - 3114 - WebSocket port (internal)
+
+To start the network:
+
+```bash
+docker-compose up -d
+```
+
+To destroy the network:
+
+```bash
+docker-compose down
+```
+
+To cleanup the associated docker volumes, `-v` option could be used:
+
+```bash
+docker-compose down -v
+```
+
+More details can be found in [`docker-compose` documentation](https://docs.docker.com/compose/reference/).
