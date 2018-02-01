@@ -198,7 +198,8 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
                             query_ttl     = {QueryTLLType, QueryTTLValue},
                             response_ttl  = {delta=ResponseTTLType, ResponseTTLValue},
                             fee           = Fee}) ->
-    #{<<"type">> => <<"OracleQueryTxObject">>, % swagger schema name
+    #{<<"type">> => type(), 
+      <<"data_schema">> => <<"OracleQueryTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"sender">> => aec_base58c:encode(account_pubkey, SenderPubKey),
       <<"nonce">> => Nonce,

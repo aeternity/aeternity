@@ -907,6 +907,18 @@
           "description" : "Hash of the block to fetch",
           "required" : true,
           "type" : "string"
+        }, {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -942,6 +954,18 @@
           "description" : "Height of the block to fetch",
           "required" : true,
           "type" : "integer"
+        }, {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
@@ -965,7 +989,19 @@
         "description" : "Get the genesis block transactions count",
         "operationId" : "GetGenesisBlockTxsCount",
         "produces" : [ "application/json" ],
-        "parameters" : [ ],
+        "parameters" : [ {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
+        } ],
         "responses" : {
           "200" : {
             "description" : "The count of transactions in the genesis block",
@@ -982,7 +1018,19 @@
         "description" : "Get the latest block transactions count",
         "operationId" : "GetLatestBlockTxsCount",
         "produces" : [ "application/json" ],
-        "parameters" : [ ],
+        "parameters" : [ {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
+        } ],
         "responses" : {
           "200" : {
             "description" : "The count of transactions in the latest block",
@@ -999,7 +1047,19 @@
         "description" : "Get the pending block transactions count",
         "operationId" : "GetPendingBlockTxsCount",
         "produces" : [ "application/json" ],
-        "parameters" : [ ],
+        "parameters" : [ {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
+        } ],
         "responses" : {
           "200" : {
             "description" : "The count of transactions in the pending block",
@@ -1041,7 +1101,7 @@
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxHashOrObject"
+              "$ref" : "#/definitions/SingleTxObject"
             }
           },
           "404" : {
@@ -1081,12 +1141,31 @@
           "type" : "string",
           "default" : "message_pack",
           "enum" : [ "message_pack", "json" ]
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        }, {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
             "description" : "The list of transactions in block range",
             "schema" : {
-              "$ref" : "#/definitions/GenericTxArray"
+              "$ref" : "#/definitions/TxObjects"
             }
           },
           "400" : {
@@ -1135,7 +1214,7 @@
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxHashOrObject"
+              "$ref" : "#/definitions/SingleTxObject"
             }
           },
           "404" : {
@@ -1172,7 +1251,7 @@
           "200" : {
             "description" : "The transaction found",
             "schema" : {
-              "$ref" : "#/definitions/SingleTxHashOrObject"
+              "$ref" : "#/definitions/SingleTxObject"
             }
           },
           "404" : {
@@ -1212,12 +1291,31 @@
           "type" : "string",
           "default" : "message_pack",
           "enum" : [ "message_pack", "json" ]
+        }, {
+          "name" : "tx_objects",
+          "in" : "query",
+          "description" : "Transactions encoding: MessagePack (default) or JSON",
+          "required" : false,
+          "type" : "boolean",
+          "default" : false
+        }, {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
         } ],
         "responses" : {
           "200" : {
             "description" : "The list of transactions in block range",
             "schema" : {
-              "$ref" : "#/definitions/GenericTxArray"
+              "$ref" : "#/definitions/TxObjects"
             }
           },
           "400" : {
@@ -1382,7 +1480,7 @@
         }
       } ]
     },
-    "BlockWithTxs" : {
+    "BlockWithJSONTxs" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericBlock"
       }, {
@@ -1391,13 +1489,13 @@
           "transactions" : {
             "type" : "array",
             "items" : {
-              "$ref" : "#/definitions/SignedTxObject"
+              "$ref" : "#/definitions/SignedTxJSON"
             }
           }
         }
       } ]
     },
-    "BlockWithTxsHashes" : {
+    "BlockWithMsgPackTxs" : {
       "allOf" : [ {
         "$ref" : "#/definitions/GenericBlock"
       }, {
@@ -1424,7 +1522,7 @@
         }
       } ]
     },
-    "GenericTxArray" : {
+    "TxObjects" : {
       "type" : "object",
       "required" : [ "data_schema" ],
       "discriminator" : "data_schema",
@@ -1437,9 +1535,9 @@
         "data_schema" : "data_schema"
       }
     },
-    "TxMsgPackHashes" : {
+    "MsgPackTxs" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxArray"
+        "$ref" : "#/definitions/TxObjects"
       }, {
         "type" : "object",
         "properties" : {
@@ -1452,16 +1550,16 @@
         }
       } ]
     },
-    "TxObjects" : {
+    "JSONTxs" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxArray"
+        "$ref" : "#/definitions/TxObjects"
       }, {
         "type" : "object",
         "properties" : {
           "transactions" : {
             "type" : "array",
             "items" : {
-              "$ref" : "#/definitions/SignedTxObject"
+              "$ref" : "#/definitions/SignedTxJSON"
             }
           }
         }
@@ -1981,7 +2079,7 @@
         "height" : 0
       }
     },
-    "SingleTxHashOrObject" : {
+    "SingleTxObject" : {
       "type" : "object",
       "required" : [ "data_schema" ],
       "discriminator" : "data_schema",
@@ -1994,22 +2092,22 @@
         "data_schema" : "data_schema"
       }
     },
-    "SingleTxObject" : {
+    "SingleTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/SingleTxHashOrObject"
+        "$ref" : "#/definitions/SingleTxObject"
       }, {
         "type" : "object",
         "required" : [ "transaction" ],
         "properties" : {
           "transaction" : {
-            "$ref" : "#/definitions/SignedTxObject"
+            "$ref" : "#/definitions/SignedTxJSON"
           }
         }
       } ]
     },
-    "SingleTxHash" : {
+    "SingleTxMsgPack" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/SingleTxHashOrObject"
+        "$ref" : "#/definitions/SingleTxObject"
       }, {
         "type" : "object",
         "required" : [ "transaction" ],
@@ -2020,17 +2118,17 @@
         }
       } ]
     },
-    "SignedTxObject" : {
+    "SignedTxJSON" : {
       "type" : "object",
       "properties" : {
         "tx" : {
-          "$ref" : "#/definitions/GenericTxObject"
+          "$ref" : "#/definitions/JSONTx"
         },
         "block_height" : {
           "type" : "integer"
         },
         "block_hash" : {
-          "$ref" : "#/definitions/EncodedHash"
+          "$ref" : "#/definitions/JSONTx"
         },
         "signatures" : {
           "type" : "array",
@@ -2041,12 +2139,12 @@
         }
       }
     },
-    "GenericTxObject" : {
+    "JSONTx" : {
       "type" : "object",
-      "required" : [ "type" ],
-      "discriminator" : "type",
+      "required" : [ "data_schema" ],
+      "discriminator" : "data_schema",
       "properties" : {
-        "type" : {
+        "data_schema" : {
           "type" : "string"
         },
         "vsn" : {
@@ -2054,23 +2152,23 @@
         }
       }
     },
-    "CoinbaseTxObject" : {
+    "CoinbaseTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
-    "SpendTxObject" : {
+    "SpendTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
-    "OracleRegisterTxObject" : {
+    "OracleRegisterTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object",
         "required" : [ "ttl" ],
@@ -2081,9 +2179,9 @@
         }
       } ]
     },
-    "OracleQueryTxObject" : {
+    "OracleQueryTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object",
         "required" : [ "query_ttl", "response_ttl" ],
@@ -2097,9 +2195,9 @@
         }
       } ]
     },
-    "OracleResponseTxObject" : {
+    "OracleResponseTxJSON" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object",
         "properties" : {
@@ -2114,35 +2212,35 @@
     },
     "NamePreclaimTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
     "NameClaimTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
     "NameUpdateTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
     "NameTransferTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]
     },
     "NameRevokeTxObject" : {
       "allOf" : [ {
-        "$ref" : "#/definitions/GenericTxObject"
+        "$ref" : "#/definitions/JSONTx"
       }, {
         "type" : "object"
       } ]

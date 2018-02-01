@@ -767,6 +767,16 @@ paths:
           description: 'Hash of the block to fetch'
           required: true
           type : string 
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The count of transactions in the block  
@@ -799,6 +809,16 @@ paths:
           description: 'Height of the block to fetch'
           required: true
           type : integer
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The count of transactions in the block  
@@ -822,6 +842,16 @@ paths:
       produces:
         - application/json
       parameters: 
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The count of transactions in the genesis block  
@@ -841,6 +871,16 @@ paths:
       produces:
         - application/json
       parameters: 
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The count of transactions in the latest block  
@@ -860,6 +900,16 @@ paths:
       produces:
         - application/json
       parameters: 
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The count of transactions in the pending block  
@@ -899,7 +949,7 @@ paths:
         '200':
           description: The transaction found 
           schema:
-            $ref: '#/definitions/SingleTxHashOrObject'
+            $ref: '#/definitions/SingleTxObject'
         '404':
           description: Block or transaction not found
           schema:
@@ -932,11 +982,26 @@ paths:
           type: string
           enum: [message_pack, json]
           default: message_pack
+        - in: query
+          name: tx_objects
+          description: 'Transactions encoding: MessagePack (default) or JSON'
+          type: boolean
+          default: false
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The list of transactions in block range
           schema:
-            $ref: '#/definitions/GenericTxArray'
+            $ref: '#/definitions/TxObjects'
         '400':
           description: Invalid range
           schema:
@@ -975,7 +1040,7 @@ paths:
         '200':
           description: The transaction found 
           schema:
-            $ref: '#/definitions/SingleTxHashOrObject'
+            $ref: '#/definitions/SingleTxObject'
         '404':
           description: Block or transaction not found
           schema:
@@ -1005,7 +1070,7 @@ paths:
         '200':
           description: The transaction found 
           schema:
-            $ref: '#/definitions/SingleTxHashOrObject'
+            $ref: '#/definitions/SingleTxObject'
         '404':
           description: Block or transaction not found
           schema:
@@ -1038,11 +1103,26 @@ paths:
           type: string
           enum: [message_pack, json]
           default: message_pack
+        - in: query
+          name: tx_objects
+          description: 'Transactions encoding: MessagePack (default) or JSON'
+          type: boolean
+          default: false
+        - in: query
+          name: tx_types
+          description: 'Transactions types to show. Comma separated'
+          required: false
+          type : string 
+        - in: query
+          name: exclude_tx_types
+          description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
+          required: false
+          type : string 
       responses:
         '200':
           description: The list of transactions in block range
           schema:
-            $ref: '#/definitions/GenericTxArray'
+            $ref: '#/definitions/TxObjects'
         '400':
           description: Invalid range
           schema:
@@ -1172,7 +1252,7 @@ definitions:
             $ref: '#/definitions/EncodedHash'
         required:
         - data_schema
-  BlockWithTxs:
+  BlockWithJSONTxs:
     allOf:
       - $ref: '#/definitions/GenericBlock'
       - type: object
@@ -1180,8 +1260,8 @@ definitions:
           transactions:
             type: array
             items:
-              $ref: '#/definitions/SignedTxObject'
-  BlockWithTxsHashes:
+              $ref: '#/definitions/SignedTxJSON'
+  BlockWithMsgPackTxs:
     allOf:
       - $ref: '#/definitions/GenericBlock'
       - type: object
@@ -1197,7 +1277,7 @@ definitions:
         properties:
           hash:
             type: string
-  GenericTxArray:
+  TxObjects:
     type: object
     discriminator: data_schema
     properties:
@@ -1205,24 +1285,24 @@ definitions:
         type: string
     required:
     - data_schema
-  TxMsgPackHashes:
+  MsgPackTxs:
     allOf:
-      - $ref: '#/definitions/GenericTxArray'
+      - $ref: '#/definitions/TxObjects'
       - type: object
         properties:
           transactions:
             type: array
             items:
               $ref: '#/definitions/Tx'
-  TxObjects:
+  JSONTxs:
     allOf:
-      - $ref: '#/definitions/GenericTxArray'
+      - $ref: '#/definitions/TxObjects'
       - type: object
         properties:
           transactions:
             type: array
             items:
-              $ref: '#/definitions/SignedTxObject'
+              $ref: '#/definitions/SignedTxJSON'
   Ping:
     type: object
     properties:
@@ -1521,7 +1601,7 @@ definitions:
     required:
     - height
 
-  SingleTxHashOrObject:
+  SingleTxObject:
     type: object
     discriminator: data_schema 
     properties:
@@ -1529,60 +1609,60 @@ definitions:
         type: string
     required:
     - data_schema
-  SingleTxObject:
+  SingleTxJSON:
     allOf:
-      - $ref: '#/definitions/SingleTxHashOrObject'
+      - $ref: '#/definitions/SingleTxObject'
       - type: object
         properties:
           transaction:
-            $ref: '#/definitions/SignedTxObject'
+            $ref: '#/definitions/SignedTxJSON'
         required:
         - transaction
-  SingleTxHash:
+  SingleTxMsgPack:
     allOf:
-      - $ref: '#/definitions/SingleTxHashOrObject'
+      - $ref: '#/definitions/SingleTxObject'
       - type: object
         properties:
           transaction:
             $ref: '#/definitions/Tx'
         required:
         - transaction
-  SignedTxObject:
+  SignedTxJSON:
     type: object
     properties:
       tx:
-        $ref: '#/definitions/GenericTxObject'
+        $ref: '#/definitions/JSONTx'
       block_height:
         type: integer
       block_hash:
-        $ref: '#/definitions/EncodedHash'
+        $ref: '#/definitions/JSONTx'
       signatures:
         type: array
         minItems: 1
         items:
           type: string
 ## readable JSON objects for transactions:
-  GenericTxObject:
+  JSONTx:
     type: object
-    discriminator: type 
+    discriminator: data_schema 
     properties:
-      type:
+      data_schema:
         type: string
       vsn:
         type: integer
     required:
-    - type
-  CoinbaseTxObject:
+    - data_schema
+  CoinbaseTxJSON:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string
         required:
         - account
-  SpendTxObject:
+  SpendTxJSON:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           sender: string
@@ -1596,9 +1676,9 @@ definitions:
         - amount
         - fee
         - nonce
-  OracleRegisterTxObject:
+  OracleRegisterTxJSON:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           sender: string
@@ -1615,9 +1695,9 @@ definitions:
         - response_spec
         - ttl
         - fee
-  OracleQueryTxObject:
+  OracleQueryTxJSON:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           sender: string
@@ -1639,9 +1719,9 @@ definitions:
         - query_ttl
         - response_ttl
         - fee
-  OracleResponseTxObject:
+  OracleResponseTxJSON:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           sender: string
@@ -1663,7 +1743,7 @@ definitions:
         - fee
   NamePreclaimTxObject:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string
@@ -1677,7 +1757,7 @@ definitions:
         - fee
   NameClaimTxObject:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string
@@ -1693,7 +1773,7 @@ definitions:
         - fee
   NameUpdateTxObject:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string
@@ -1713,7 +1793,7 @@ definitions:
         - fee
   NameTransferTxObject:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string
@@ -1729,7 +1809,7 @@ definitions:
         - fee
   NameRevokeTxObject:
     allOf:
-      - $ref: '#/definitions/GenericTxObject'
+      - $ref: '#/definitions/JSONTx'
       - type: object
         properties:
           account: string

@@ -118,20 +118,28 @@ request_params('GetBlockPending') ->
 
 request_params('GetBlockTxsCountByHash') ->
     [
-        'hash'
+        'hash',
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetBlockTxsCountByHeight') ->
     [
-        'height'
+        'height',
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetGenesisBlockTxsCount') ->
     [
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetLatestBlockTxsCount') ->
     [
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetOracleQuestions') ->
@@ -141,6 +149,8 @@ request_params('GetOracleQuestions') ->
 
 request_params('GetPendingBlockTxsCount') ->
     [
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetPubKey') ->
@@ -171,14 +181,20 @@ request_params('GetTxsListFromBlockRangeByHash') ->
     [
         'from',
         'to',
-        'tx_encoding'
+        'tx_encoding',
+        'tx_objects',
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('GetTxsListFromBlockRangeByHeight') ->
     [
         'from',
         'to',
-        'tx_encoding'
+        'tx_encoding',
+        'tx_objects',
+        'tx_types',
+        'exclude_tx_types'
     ];
 
 request_params('PostNameClaimTx') ->
@@ -415,6 +431,24 @@ request_param_info('GetBlockTxsCountByHash', 'hash') ->
         ]
     };
 
+request_param_info('GetBlockTxsCountByHash', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHash', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
 request_param_info('GetBlockTxsCountByHeight', 'height') ->
     #{
         source =>  binding ,
@@ -424,12 +458,84 @@ request_param_info('GetBlockTxsCountByHeight', 'height') ->
         ]
     };
 
+request_param_info('GetBlockTxsCountByHeight', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHeight', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetGenesisBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetGenesisBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetLatestBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetLatestBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
 request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
     #{
         source => qs_val  ,
         rules => [
             {type, 'binary'},
             required
+        ]
+    };
+
+request_param_info('GetPendingBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetPendingBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
         ]
     };
 
@@ -538,6 +644,33 @@ request_param_info('GetTxsListFromBlockRangeByHash', 'tx_encoding') ->
         ]
     };
 
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
 request_param_info('GetTxsListFromBlockRangeByHeight', 'from') ->
     #{
         source => qs_val  ,
@@ -564,6 +697,33 @@ request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_encoding') ->
         rules => [
             {type, 'binary'},
             {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'boolean'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
             not_required
         ]
     };
@@ -828,29 +988,29 @@ validate_response('GetPubKey', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTransactionFromBlockHash', 200, Body, ValidatorState) ->
-    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
 validate_response('GetTransactionFromBlockHash', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTransactionFromBlockHeight', 200, Body, ValidatorState) ->
-    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
 validate_response('GetTransactionFromBlockHeight', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTransactionFromBlockLatest', 200, Body, ValidatorState) ->
-    validate_response_body('SingleTxHashOrObject', 'SingleTxHashOrObject', Body, ValidatorState);
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
 validate_response('GetTransactionFromBlockLatest', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTxsListFromBlockRangeByHash', 200, Body, ValidatorState) ->
-    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
 validate_response('GetTxsListFromBlockRangeByHash', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetTxsListFromBlockRangeByHash', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTxsListFromBlockRangeByHeight', 200, Body, ValidatorState) ->
-    validate_response_body('GenericTxArray', 'GenericTxArray', Body, ValidatorState);
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
 validate_response('GetTxsListFromBlockRangeByHeight', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState) ->

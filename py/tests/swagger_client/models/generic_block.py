@@ -63,8 +63,8 @@ class GenericBlock(object):
     }
 
     discriminator_value_class_map = {
-        'BlockWithTxs': 'BlockWithTxs',
-        'BlockWithTxsHashes': 'BlockWithTxsHashes'
+        'BlockWithMsgPackTxs': 'BlockWithMsgPackTxs',
+        'BlockWithJSONTxs': 'BlockWithJSONTxs'
     }
 
     def __init__(self, height=None, prev_hash=None, state_hash=None, txs_hash=None, target=None, nonce=None, time=None, version=None, pow=None, data_schema=None, hash=None):  # noqa: E501
