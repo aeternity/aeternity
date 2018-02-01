@@ -21,6 +21,11 @@ RUN useradd --shell /bin/bash epoch \
 USER epoch
 ENV SHELL /bin/bash
 
+# Create data directories in advance so that volumes can be mounted in there
+# see https://github.com/moby/moby/issues/2259 for more about this nasty hack
+RUN mkdir -p /home/epoch/node/data/mnesia \
+    && mkdir -p /home/epoch/node/keys
+
 WORKDIR /home/epoch/node
 
 # Erl handle SIGQUIT instead of the default SIGINT

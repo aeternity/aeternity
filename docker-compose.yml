@@ -1,0 +1,37 @@
+# Small local network of two nodes using the fastest mean16
+version: '3'
+services:
+  node0:
+    build: .
+    image: aetrnty/epoch
+    hostname: node0
+    ports:
+      - "3013:3013"
+      - "3113:3113"
+      - "3114:3114"
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    volumes:
+      - ${PWD}/epoch_node0_mean16.yaml:/home/epoch/epoch.yaml
+      - node0_db:/home/epoch/node/data/mnesia
+      - node0_keys:/home/epoch/node/keys
+
+  node1:
+    image: aetrnty/epoch
+    hostname: node1
+    ports:
+     - "3023:3013"
+     - "3123:3113"
+     - "3124:3114"
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    volumes:
+      - ${PWD}/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
+      - node1_db:/home/epoch/node/data/mnesia
+      - node1_keys:/home/epoch/node/keys
+
+volumes:
+  node0_db:
+  node0_keys:
+  node1_db:
+  node1_keys:

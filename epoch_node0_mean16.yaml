@@ -1,0 +1,21 @@
+---
+peers:
+    - "http://node1:3013/"
+
+http:
+    external:
+        peer_address: http://node0:3013/
+
+keys:
+    dir: ./keys
+
+chain:
+    persist: true
+
+mining:
+    autostart: true
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: ""
+            node_bits: 16
