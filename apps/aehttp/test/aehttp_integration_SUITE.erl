@@ -32,7 +32,7 @@
     block_not_found_by_broken_hash/1,
     block_not_found_by_hash/1,
 
-    % sync gossip 
+    % sync gossip
     pending_transactions/1,
     post_correct_blocks/1,
     post_broken_blocks/1,
@@ -125,7 +125,7 @@ groups() ->
                                   {group, websocket},
                                   {group, naming}
                                   ]},
-     {external_endpoints, [sequence], 
+     {external_endpoints, [sequence],
       [
         % pings
         broken_pings,
@@ -143,7 +143,7 @@ groups() ->
         block_not_found_by_broken_hash,
         block_not_found_by_hash,
 
-        % sync gossip 
+        % sync gossip
         pending_transactions,
         post_correct_blocks,
         post_broken_blocks,
@@ -163,7 +163,7 @@ groups() ->
         info_more_than_30,
         info_less_than_30
       ]},
-     {internal_endpoints, [sequence], 
+     {internal_endpoints, [sequence],
       [
         broken_spend_tx,
         naming_system_broken_txs,
@@ -301,7 +301,7 @@ blocked_ping(_Config) ->
     WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
                                              <<"genesis_hash">> => <<"foo">>}),
     {ok, 409, _} = post_ping(WrongGenHashPing),
-    % node is blocked now 
+    % node is blocked now
     {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
         post_ping(maps:put(<<"source">>, Peer, PingObj)),
     rpc(aec_peers, remove, [Peer]),
@@ -348,7 +348,7 @@ auto_unblocked_peer(_Config) ->
 
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
-    {ok, 200, HeaderMap} = get_top(), 
+    {ok, 200, HeaderMap} = get_top(),
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
     {ok, 200, GenBlockMap} = get_block_by_height(0),
     {ok, GenBlock} = aec_blocks:deserialize_from_map(
@@ -360,10 +360,10 @@ get_top_empty_chain(_Config) ->
 
 get_top_non_empty_chain(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    ExpectedH = rpc(aec_conductor, top_header, []), 
+    ExpectedH = rpc(aec_conductor, top_header, []),
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    {ok, 200, HeaderMap} = get_top(), 
+    {ok, 200, HeaderMap} = get_top(),
     HeaderMap = ExpectedMap,
     #{<<"height">> := Height} = HeaderMap,
     true = Height > 0,
@@ -375,7 +375,7 @@ block_by_height(_Config) ->
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    TopHeader = rpc(aec_conductor, top_header, []), 
+    TopHeader = rpc(aec_conductor, top_header, []),
     %% assert there are enough blocks
     case aec_headers:height(TopHeader) of
         TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
@@ -385,7 +385,7 @@ block_by_height(_Config) ->
     lists:foreach(
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
-            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
             {ok, 200, BlockMap} = get_block_by_height(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -413,7 +413,7 @@ block_not_found_by_hash(_Config) ->
     lists:foreach(
         fun(_) ->
             H = random_hash(),
-            {error, block_not_found} = rpc(aec_conductor, get_block_by_hash, [H]), 
+            {error, block_not_found} = rpc(aec_conductor, get_block_by_hash, [H]),
             Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash(Hash)
         end,
@@ -436,7 +436,7 @@ block_by_hash(_Config) ->
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    TopHeader = rpc(aec_conductor, top_header, []), 
+    TopHeader = rpc(aec_conductor, top_header, []),
     %% assert there are enough blocks
     case aec_headers:height(TopHeader) of
         TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
@@ -448,7 +448,7 @@ block_by_hash(_Config) ->
             {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
             Hash = aec_base58c:encode(block_hash, H),
-            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock), 
+            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
             {ok, 200, BlockMap} = get_block_by_hash(Hash),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
@@ -464,8 +464,8 @@ block_by_hash(_Config) ->
 %% POST internalAPI/spend-tx
 %% GET externalAPI/account/balance
 pending_transactions(_Config) ->
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty 
-    {ok, 200, []} = get_transactions(), 
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    {ok, 200, []} = get_transactions(),
     InitialBalance =
         case get_balance_at_top() of
             {ok, 404, #{<<"reason">> := <<"Account not found">>}} -> 0;
@@ -476,13 +476,13 @@ pending_transactions(_Config) ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),  
+    {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
     Bal0 = InitialBalance + BlocksToMine * MineReward,
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty 
-    {ok, 200, []} = get_transactions(), 
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
+    {ok, 200, []} = get_transactions(),
 
     %{ok, SenderPubKey} = rpc:call(?NODE, aec_keys, pubkey, [], 5000),
     ReceiverPubKey = random_hash(),
@@ -492,7 +492,7 @@ pending_transactions(_Config) ->
     {ok, 200, _} = post_spend_tx(ReceiverPubKey, AmountToSpent, Fee),
     {ok, NodeTxs} = rpc(aec_tx_pool, peek, [infinity]),
     true = length(NodeTxs) =:= 1, % not empty anymore
-    {ok, 200, ReturnedTxs} = get_transactions(), 
+    {ok, 200, ReturnedTxs} = get_transactions(),
     ExpectedTxs = [#{<<"tx">> => aec_base58c:encode(
                                    transaction,
                                    aec_tx_sign:serialize_to_binary(T))}
@@ -500,18 +500,18 @@ pending_transactions(_Config) ->
     true = length(ExpectedTxs) =:= length(ReturnedTxs),
     true = lists:all(fun(Tx) -> lists:member(Tx, ExpectedTxs) end, ReturnedTxs),
 
-    {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),  
+    {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
                   get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
 
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty again
-    {ok, 200, []} = get_transactions(), 
+    {ok, 200, []} = get_transactions(),
 
-    {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),  
+    {ok, 200, #{<<"balance">> := Bal1}} = get_balance_at_top(),
     Bal1 = Bal0 + MineReward + Fee - AmountToSpent - Fee,
-    {ok, 200, #{<<"balance">> := AmountToSpent}} = 
+    {ok, 200, #{<<"balance">> := AmountToSpent}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
 
@@ -531,12 +531,12 @@ post_correct_blocks(_Config) ->
             lists:seq(1, BlocksToPost)),
     ok = rpc(aec_conductor, reinit_chain, []),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    GH = rpc(aec_conductor, top_header, []), 
+    GH = rpc(aec_conductor, top_header, []),
     0 = aec_headers:height(GH), %chain is empty
     lists:foreach(
         fun(Block) ->
             {ok, 200, _} = post_block(Block),
-            H = rpc(aec_conductor, top_header, []), 
+            H = rpc(aec_conductor, top_header, []),
             {ok, HH} = aec_headers:hash_header(H),
             {ok, BH} = aec_blocks:hash_internal_representation(Block),
             BH = HH % block accepted
@@ -552,7 +552,7 @@ post_broken_blocks(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    GH = rpc(aec_conductor, top_header, []), 
+    GH = rpc(aec_conductor, top_header, []),
     0 = aec_headers:height(GH), %chain is empty
     CorrectBlockMap = aec_blocks:serialize_to_map(CorrectBlock),
     BrokenBlocks =
@@ -577,7 +577,7 @@ post_broken_blocks(Config) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
             {ok, Block} = aec_blocks:deserialize_from_map(BlockMap),
             {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
-            H = rpc(aec_conductor, top_header, []), 
+            H = rpc(aec_conductor, top_header, []),
             0 = aec_headers:height(H) %chain is still empty
         end,
         BrokenBlocks),
@@ -603,7 +603,7 @@ post_correct_tx(_Config) ->
 
 post_broken_tx(_Config) ->
     Amount = 1,
-    FieldsToTest = 
+    FieldsToTest =
         [<<"type">>,
          <<"vsn">>,
          <<"sender">>,
@@ -785,7 +785,7 @@ test_info(BlocksToMine) ->
 
 
 
-    
+
 
 %% possitive test of spend_tx is handled in pending_transactions test
 broken_spend_tx(_Config) ->
@@ -803,7 +803,7 @@ miner_pub_key(_Config) ->
     ok.
 
 block_number(_Config) ->
-    TopHeader = rpc(aec_conductor, top_header, []), 
+    TopHeader = rpc(aec_conductor, top_header, []),
     0 = aec_headers:height(TopHeader),
     {ok, 200, #{<<"height">> := 0}} = get_block_number(),
     lists:foreach(
@@ -852,7 +852,7 @@ internal_block_not_found_by_hash(_Config) ->
                 fun(Opt) ->
                     H = random_hash(),
                     {error, block_not_found} = rpc(aec_conductor,
-                                                   get_block_by_hash, [H]), 
+                                                   get_block_by_hash, [H]),
                     Hash = aec_base58c:encode(block_hash, H),
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_internal_block_by_hash(Hash, Opt)
@@ -953,7 +953,7 @@ internal_block_pending(_Config) ->
     ct:log("Expected pending block with tx objects~p",
            [ExpectedPendingTxsObjects]),
     {ok, PendingTxObjects} = GetPending(json),
-    
+
     % no block should have been mined, so the same prev_hash
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"prev_hash">>),
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"data_schema">>),
@@ -980,15 +980,15 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             {ok, 200, BlockMap1} = CallApiFun(Height, message_pack),
-            true = equal_block_maps(BlockMap, ExpectedBlockMap), 
-            true = equal_block_maps(BlockMap1, ExpectedBlockMap), 
+            true = equal_block_maps(BlockMap, ExpectedBlockMap),
+            true = equal_block_maps(BlockMap1, ExpectedBlockMap),
 
             ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithJSONTxs">>),
                 block_to_endpoint_map(ExpectedBlock, #{tx_encoding => json})),
             {ok, 200, BlockMap2} = CallApiFun(Height, json),
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
                    [ExpectedBlockMapTxsObjects, BlockMap2]),
-            true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects), 
+            true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects),
             % prepare the next block
             case Height of
                 0 -> pass; % no token to spend yet
@@ -1088,7 +1088,7 @@ block_txs_count_by_hash_not_found(_Config) ->
         fun(_Height) ->
             H = random_hash(),
             {error, block_not_found} = rpc(aec_conductor,
-                                            get_block_by_hash, [H]), 
+                                            get_block_by_hash, [H]),
             Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
@@ -1163,7 +1163,7 @@ block_tx_index_not_founds(_Config) ->
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
             add_spend_txs()
         end, lists:seq(0, BlocksToMine)),
-    
+
     ok.
 
 
@@ -1248,7 +1248,7 @@ single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
                     [ExpectedResult, Result]),
             ExpectedResult = Result,
 
-            
+
             {ok, 200, Result1} = GetTxsApi(From, To, Encoding, #{include => TxTypes}),
             ExpectedResult1 =
                 expected_range_result(HeightFrom, HeightTo, Encoding, {only, TxTypes}),
@@ -1302,7 +1302,7 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
             Blocks),
     DataSchema =
         case TxEncoding of
-            default -> 
+            default ->
                 <<"MsgPackTxs">>;
             message_pack ->
                 <<"MsgPackTxs">>;
@@ -1313,7 +1313,7 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
       <<"transactions">> => SerializedTxs}.
 
 tx_type(SignedTx) ->
-    Tx = aec_tx_sign:data(SignedTx), 
+    Tx = aec_tx_sign:data(SignedTx),
     Mod = aec_tx_dispatcher:handler(Tx),
     Mod:type().
 
@@ -1508,44 +1508,33 @@ naming_system_broken_txs(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]).
 
 %% ============================================================
-%% Websocket tests 
+%% Websocket tests
 %% ============================================================
 
 ws_get_genesis(_Config) ->
     {ok, ConnPid} = ws_start_link(),
-    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
-    ?WS:send(ConnPid, chain, get, #{height => 0, type => block}),
-    {ok, Payload} = ?WS:wait_for_event(chain, requested_data),
-    {ok, Block} = maps:find(<<"block">>, Payload),
+    #{ <<"block">> := Block } = ws_chain_get(ConnPid, #{height => 0, type => block}),
     {ok, 200, BlockMap} = get_internal_block_by_height(0, message_pack),
-    ExpectedBlockMap = 
+    ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
     Block = ExpectedBlockMap,
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
 ws_block_mined(_Config) ->
     {ok, ConnPid} = ws_start_link(),
-    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(miner, mined_block),
-    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
 
-    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
-    ?WS:send(ConnPid, chain, get, #{height => Height, type => block}),
-    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+    %% Register for mined_block events
+    ws_subscribe(ConnPid, #{ type => mined_block }),
 
-    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => block}),
-    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+    {Height, Hash} = ws_mine_blocks(ConnPid, ?NODE, 1),
 
-    ?WS:send(ConnPid, chain, get, #{height => Height, type => header}),
-    {ok, _} = ?WS:wait_for_event(chain, requested_data),
+    #{<<"block">> := Block} = ws_chain_get(ConnPid, #{height => Height, type => block}),
+    #{<<"block">> := Block} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
+    #{<<"header">> := Header} = ws_chain_get(ConnPid, #{height => Height, type => header}),
+    #{<<"header">> := Header} = ws_chain_get(ConnPid, #{hash => Hash, type => header}),
 
-    ?WS:send(ConnPid, chain, get, #{hash => Hash, type => header}),
-    {ok, _} = ?WS:wait_for_event(chain, requested_data),
-
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
@@ -1557,14 +1546,14 @@ ws_refused_on_limit_reached(_Config) ->
     %% maximum amount of acceptors
     MaxWsCount = rpc(aeu_env, user_config_or_env,
                           [[<<"websocket">>, <<"internal">>, <<"acceptors">>],
-                          aehttp, [internal, websocket, handlers], 10]), 
+                          aehttp, [internal, websocket, handlers], 10]),
     %% Maximum WS connections hanging in the queue
     WSQueueSize = rpc(aehttp_app, ws_handlers_queue_max_size, []),
     WSDieTimeout = 1000,
     ct:log("Websocket acceptors: ~p, websocket acceptor's queue size ~p",
            [MaxWsCount, WSQueueSize]),
     %% assert no WS running on the node
-    0 = open_websockets_count(), 
+    0 = open_websockets_count(),
     %% start as many WS as needed to consume all acceptors
     WSPids =
         lists:map(
@@ -1574,14 +1563,14 @@ ws_refused_on_limit_reached(_Config) ->
             end,
             lists:seq(1, MaxWsCount)),
     %% assert expectation for amount of connected WSs
-    MaxWsCount = open_websockets_count(), 
+    MaxWsCount = open_websockets_count(),
     WaitingPids =
         lists:map(
             fun(_) ->
                 %% try to connect a WS client; assert it does not connect and
                 %% is waiting
                 {error, still_connecting, WaitingPid} = ws_start_link(),
-                MaxWsCount = open_websockets_count(), 
+                MaxWsCount = open_websockets_count(),
                 WaitingPid
             end,
             lists:seq(1, WSQueueSize)),
@@ -1622,86 +1611,66 @@ ws_refused_on_limit_reached(_Config) ->
 ws_oracles(_Config) ->
     {ok, ConnPid} = ws_start_link(),
 
+    %% Register for events when a block is mined!
+    ws_subscribe(ConnPid, #{ type => mined_block }),
+
     %% Mine a block to make sure the Pubkey has some funds!
-    ok = ?WS:register_test_for_event(ConnPid, miner, mined_block),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, #{<<"height">> := _Height, <<"hash">> := _Hash}} = ?WS:wait_for_event(miner, mined_block),
-    ok = ?WS:unregister_test_for_event(ConnPid, miner, mined_block),
+    ws_mine_blocks(ConnPid, ?NODE, 1),
 
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
 
     %% Register an oracle
-    ok = ?WS:register_test_for_event(ConnPid, oracle, register),
-    ?WS:send(ConnPid, oracle, register,
-             #{ type => 'OracleRegisterTxObject',
-                account => PK,
-                query_format => <<"the query spec">>,
-                response_format => <<"the response spec">>,
-                query_fee => 4,
-                ttl => #{ type => delta, value => 500 },
-                fee => 5 }
-             ),
-    {ok, #{<<"result">> := <<"ok">>,
-           <<"oracle_id">> := OId }} = ?WS:wait_for_event(oracle, register),
-    ok = ?WS:unregister_test_for_event(ConnPid, oracle, register),
+    RegisterData =
+        #{ type => 'OracleRegisterTxObject',
+           account => PK,
+           query_format => <<"the query spec">>,
+           response_format => <<"the response spec">>,
+           query_fee => 4,
+           ttl => #{ type => delta, value => 500 },
+           fee => 5 },
+    #{<<"result">> := <<"ok">>,
+      <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, register, RegisterData),
 
     %% Mine a block to get the oracle onto the chain
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ws_mine_blocks(ConnPid, ?NODE, 1),
 
     %% Register for events when the freshly registered oracle is queried!
-    ok = ?WS:register_test_for_event(ConnPid, oracle, subscribe),
-    ?WS:send(ConnPid, oracle, subscribe,
-             #{ type => query,
-                oracle_id => OId }),
-    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+    ws_subscribe(ConnPid, #{ type => oracle_query, oracle_id => OId }),
+    ok = ?WS:register_test_for_event(ConnPid, chain, new_oracle_query),
 
     %% Post a query
-    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_query),
-    ok = ?WS:register_test_for_event(ConnPid, oracle, query),
-    ?WS:send(ConnPid, oracle, query,
-             #{ type => 'OracleQueryTxObject',
-                oracle_pubkey => OId,
-                query_ttl => #{ type => delta, value => 10 },
-                response_ttl => #{ type => delta, value => 10 },
-                query => <<"How are you doing?">>,
-                query_fee => 4,
-                fee => 7 }
-             ),
-    {ok, #{<<"result">> := <<"ok">>,
-           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, query),
-    ok = ?WS:unregister_test_for_event(ConnPid, oracle, query),
+    QueryData =
+        #{ type => 'OracleQueryTxObject',
+           oracle_pubkey => OId,
+           query_ttl => #{ type => delta, value => 10 },
+           response_ttl => #{ type => delta, value => 10 },
+           query => <<"How are you doing?">>,
+           query_fee => 4,
+           fee => 7 },
+    #{<<"result">> := <<"ok">>,
+      <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, query, QueryData),
 
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_query),
-    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_query),
+    ws_mine_blocks(ConnPid, ?NODE, 1),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
-    ?WS:send(ConnPid, oracle, subscribe,
-             #{ type => response,
-                query_id => QId }),
-    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(oracle, subscribe),
+    ws_subscribe(ConnPid, #{ type => oracle_response, query_id => QId }),
+    ok = ?WS:register_test_for_event(ConnPid, chain, new_oracle_response),
 
     %% Post a response to the query
-    ok = ?WS:register_test_for_event(ConnPid, node, new_oracle_response),
-    ok = ?WS:register_test_for_event(ConnPid, oracle, response),
-    ?WS:send(ConnPid, oracle, response,
-             #{ type => 'OracleResponseTxObject',
-                query_id => QId,
-                response => <<"I am fine, thank you!">>,
-                fee => 3 }
-             ),
-    {ok, #{<<"result">> := <<"ok">>,
-           <<"query_id">> := QId }} = ?WS:wait_for_event(oracle, response),
-    ok = ?WS:unregister_test_for_event(ConnPid, oracle, response),
+    ResponseData = #{ type => 'OracleResponseTxObject',
+                      query_id => QId,
+                      response => <<"I am fine, thank you!">>,
+                      fee => 3 },
+    #{<<"result">> := <<"ok">>,
+      <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
 
     %% Finally mine a block and check that an event is received
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(node, new_oracle_response),
-    ok = ?WS:unregister_test_for_event(ConnPid, node, new_oracle_response),
+    ws_mine_blocks(ConnPid, ?NODE, 1),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -1727,7 +1696,7 @@ balance(_Config) ->
             Hash = list_to_binary(HashStr),
             % same balance by hash
             {ok, 200, #{<<"balance">> := Bal}} = get_balance(EncodedPubKey,
-                                                             #{hash => Hash}),  
+                                                             #{hash => Hash}),
             % same balance by hash and height
             {ok, 200, #{<<"balance">> := Bal}} = get_balance(EncodedPubKey,
                                                              #{hash => Hash,
@@ -1736,7 +1705,7 @@ balance(_Config) ->
         end,
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     {ok, Bal} = rpc(aec_mining, get_miner_account_balance, []),
-    {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(),  
+    {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(),
     {ok, 200, #{<<"balance">> := Bal}} = get_balance_at_top(EncodedPubKey),
     ok.
 
@@ -1778,15 +1747,46 @@ balance_negative_cases(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Invalid block hash">>}} =
               get_balance(EncodedPubKey, #{hash => BrokenHash,
                                            height => Height}),
-    % blocks mismatch 
+    % blocks mismatch
     {ok, 400, #{<<"reason">> := <<"Invalid height and hash combination">>}} =
               get_balance(EncodedPubKey, #{hash => BlockHash,
                                            height => Height + 1}),
-    {ok, 200, #{<<"balance">> := _}} = 
+    {ok, 200, #{<<"balance">> := _}} =
               get_balance(EncodedPubKey, #{hash => BlockHash,
                                            height => Height}),
     ok.
 
+
+%% ============================================================
+%% WebSocket helpers
+%% ============================================================
+
+ws_do_request(ConnPid, Target, Action, Args) ->
+    ok = ?WS:register_test_for_event(ConnPid, Target, Action),
+    ?WS:send(ConnPid, Target, Action, Args),
+    {ok, Res} = ?WS:wait_for_event(Target, Action),
+    ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
+    Res.
+
+ws_subscribe(ConnPid, PayLoad) ->
+    ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
+    ?WS:send(ConnPid, chain, subscribe, PayLoad),
+    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
+
+ws_chain_get(ConnPid, PayLoad) ->
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    ?WS:send(ConnPid, chain, get, PayLoad),
+    {ok, Res} = ?WS:wait_for_event(chain, requested_data),
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    Res.
+
+ws_mine_blocks(ConnPid, Node, N) ->
+    ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), N),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(chain, mined_block),
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
+    {Height, Hash}.
 
 %% ============================================================
 %% HTTP Requests
@@ -1987,19 +1987,19 @@ rpc(Mod, Fun, Args) ->
     rpc:call(aecore_suite_utils:node_name(?NODE), Mod, Fun, Args, 5000).
 
 external_address() ->
-    Port = rpc(aeu_env, user_config_or_env, 
-              [ [<<"http">>, <<"external">>, <<"port">>], 
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"external">>, <<"port">>],
                 aehttp, [swagger_port_external], 8043]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}). % good enough for requests
 
 internal_address() ->
-    Port = rpc(aeu_env, user_config_or_env, 
-              [ [<<"http">>, <<"internal">>, <<"port">>], 
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"internal">>, <<"port">>],
                 aehttp, [internal, swagger_port], 8143]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}).
 
 ws_host_and_port() ->
-    Port = rpc(aeu_env, user_config_or_env, 
+    Port = rpc(aeu_env, user_config_or_env,
               [ [<<"websocket">>, <<"internal">>, <<"port">>],
                 aehttp, [internal, websocket, port], 8144]),
     {"127.0.0.1", Port}.
@@ -2096,7 +2096,7 @@ block_to_endpoint_map(Block, Options) ->
         fun(EncodedTx) ->
             #{block_hash := TxBlockHash,
               block_height := TxBlockHeight} =
-                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx), 
+                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
             {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash}
         end,
@@ -2107,7 +2107,7 @@ block_to_endpoint_map(Block, Options) ->
 %% the function bellow is not perfect: there is a slight possibility of having a
 %% duplicate
 %% P = NumberOfPeersRequested / AllCombinations.
-%% AllCombinations = 254 * 255 * 255 * 255 * 65535  = 276 011 744 298 750 
+%% AllCombinations = 254 * 255 * 255 * 255 * 65535  = 276 011 744 298 750
 unique_peer() ->
     IPsegments =
         lists:map(
@@ -2132,7 +2132,7 @@ random_hash() ->
 prepare_for_spending(BlocksToMine) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty 
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
     {ok, 200, _} = get_balance_at_top(), % account present
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [PubKey]),
@@ -2207,7 +2207,7 @@ equal_block_maps(MapL0, MapR0) ->
     SortedTxsR = lists:sort(TxsR),
     ct:log("Sorted txs left: ~p", [SortedTxsL]),
     ct:log("Sorted txs right: ~p", [SortedTxsR]),
-    MapL1 =:= MapR1 andalso SortedTxsL =:= SortedTxsR. 
+    MapL1 =:= MapR1 andalso SortedTxsL =:= SortedTxsR.
 
 minimal_fee_and_blocks_to_mine(Amount, ChecksCnt) ->
     Fee = rpc(aec_governance, minimum_tx_fee, []),
