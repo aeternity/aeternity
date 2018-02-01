@@ -81,8 +81,10 @@ To persist blockchain data and node keys between container runs, use [Docker vol
 
 
 ```bash
-docker run -d -p 3013:3013 \
+docker run -d -p 3013:3013 --hostname node0 \
     -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
     -v ~/.aeternity/keys:/home/epoch/node/keys \
     aetrnty/epoch
 ```
+
+**Note: make sure `hostname` option is set when reusing the mnesia data directory**
