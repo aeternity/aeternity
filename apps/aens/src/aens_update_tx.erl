@@ -143,7 +143,7 @@ deserialize([#{<<"type">>     := ?NAME_UPDATE_TX_TYPE},
                   nonce     = Nonce,
                   name_hash = NameHash,
                   name_ttl  = NameTTL,
-                  pointers  = jsx:decode(Pointers,[{labels, atom}]),
+                  pointers  = jsx:decode(Pointers),
                   ttl       = TTL,
                   fee       = Fee}.
 

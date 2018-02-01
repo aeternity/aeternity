@@ -169,7 +169,7 @@ update_tx_spec(PubKey, NameHash, Spec0, State) ->
 update_tx_default_spec(PubKey, State) ->
     #{nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end,
       name_ttl => 600000,
-      pointers => <<"pointers_to_be_changed_to_dict">>,
+      pointers => [{<<"key">>, <<"val">>}],
       ttl      => 15,
       fee      => 3}.
 

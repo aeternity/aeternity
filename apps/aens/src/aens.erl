@@ -23,7 +23,7 @@
 
 -spec resolve(atom(), binary(), aens_state_tree:tree()) -> {ok, binary()} | {error, atom()}.
 resolve(Type, Binary, NSTree) ->
-    case lists:reverse(binary:split(Binary, ?LABEL_SEPARATOR, [global, trim])) of
+    case lists:reverse(binary:split(Binary, ?LABEL_SEPARATOR, [global, trim])) of %% Use trim to allow closing dot
         [Binary] ->
             aec_base58c:safe_decode(Type, Binary);
         [RegistrarNamespace|_Namespace] ->
@@ -35,7 +35,7 @@ resolve(Type, Binary, NSTree) ->
                 _ ->
                     case get_name(Binary, NSTree) of
                         {ok, #{<<"pointers">> := Pointers}} ->
-                            case proplists:get_value(Type, Pointers) of
+                            case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
                                 undefined -> {error, type_not_found};
                                 Val -> {ok, Val}
                             end;
