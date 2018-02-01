@@ -1,4 +1,4 @@
-# Join the testnet with Docker
+# Testnet
 
 You must have [docker installed](https://docs.docker.com/engine/installation/) on a host machine.
 

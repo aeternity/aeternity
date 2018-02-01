@@ -2,7 +2,9 @@
 version: '3'
 services:
   node0:
-    build: .
+    build:
+      context: .
+      dockerfile: docker/Dockerfile-epoch
     image: aetrnty/epoch
     hostname: node0
     ports:
@@ -12,7 +14,7 @@ services:
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
     volumes:
-      - ${PWD}/epoch_node0_mean16.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/epoch_node0_mean16.yaml:/home/epoch/epoch.yaml
       - node0_db:/home/epoch/node/data/mnesia
       - node0_keys:/home/epoch/node/keys
 
@@ -26,7 +28,7 @@ services:
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
     volumes:
-      - ${PWD}/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
+      - ${PWD}/docker/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
       - node1_db:/home/epoch/node/data/mnesia
       - node1_keys:/home/epoch/node/keys
 
