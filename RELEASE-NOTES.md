@@ -1,11 +1,9 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.5.0) is focused on oracles: the [Oracle WebSocket API](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_ws_api.md) is documented and can be used to interact with Oracles on the block chain (see also [Oracles - intended usage](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/oracle_api_usage.md)).
-
-This release also:
-* Refines the HTTP API by replacing Base64 encoding with Base58Check;
-* Expands the HTTP API for enabling building apps on top of it;
-* Introduces a Docker image for the node;
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.6.0) is focused on the naming system.
+It also:
+* Refines and expands the user API;
+* Documents how to change the user configuration file in the Docker container;
 * Improves the stability of the testnet.
 
 This release introduces backward incompatible changes in the chain format.
@@ -20,7 +18,7 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.5.0) corresponding to your platform, e.g. `epoch-0.5.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.6.0) corresponding to your platform, e.g. `epoch-0.6.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -30,14 +28,14 @@ The binaries are tested on the following platforms:
 The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
 In case you have installed it in a non-default path, you could use a symlink to work around the issue.
 
-Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image, documented at [this location](https://github.com/aeternity/epoch/blob/v0.5.0/docs/docker-testnet.md).
+Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.6.0/docs/docker-testnet.md).
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
-HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.5.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`.
-WebSocket API endpoints are specified at [this location](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md).
+HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.6.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`.
+WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch_api/epoch_api.md).
 
-The intended usage of the API (HTTP and WebSocket) of the node is documented at [this location](https://github.com/aeternity/protocol/blob/epoch-v0.5.0/epoch_api/epoch_api.md).
+The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch_api/epoch_api.md).
 
 ## Join the testnet
 
@@ -65,7 +63,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.5.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.6.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -125,7 +123,7 @@ chain:
 
 (The node automatically creates the directory `db_path` for storing the blockchain.)
 
-As of release "v0.5.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.4.x".
+As of release "v0.6.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.5.x".
 
 You can validate the configuration file before starting the node:
 ```
