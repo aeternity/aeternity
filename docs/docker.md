@@ -87,9 +87,7 @@ docker run -d -p 3013:3013 --hostname node0 \
     aetrnty/epoch
 ```
 
-<<<<<<< HEAD
 **Note: make sure `hostname` option is set when reusing the mnesia data directory**
-=======
 
 # Localnet
 
@@ -125,3 +123,13 @@ docker-compose down -v
 ```
 
 More details can be found in [`docker-compose` documentation](https://docs.docker.com/compose/reference/).
+
+=======
+## Image Version
+
+Docker compose uses the `aetrnty/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aetrnty/builder/) if it's not found locally.
+To create a network with the source code in this repository, one should build a local image beforehand:
+
+```bash
+docker-compose build
+```
