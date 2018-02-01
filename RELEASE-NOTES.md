@@ -4,8 +4,8 @@
 It also:
 * Refines and expands the user API;
 * Documents how to change the user configuration file in the Docker container;
-* Enhanced the blockchain state trees by using a kind of Merkle trees independent from the order of operations - i.e. Ethereum's "modified Merkle Patricia tree" modified by using SHA-256 (rather than Keccak) as hashing function;
-* Enhanced the persistence by using a database - i.e. Mnesia;
+* Enhances the blockchain state trees by using a kind of Merkle trees independent from the order of operations - i.e. Ethereum's "modified Merkle Patricia tree" modified by using SHA-256 (rather than Keccak) as hashing function;
+* Enhances the persistence by using a database - i.e. Mnesia;
 * Improves the stability of the testnet.
 
 This release introduces backward incompatible changes in the chain format.
