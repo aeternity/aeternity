@@ -1,4 +1,4 @@
--sname epoch
+-sname epoch@localhost
 
 -setcookie epoch_cookie
 
