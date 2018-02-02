@@ -186,3 +186,4 @@ grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
             Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
             Trees
     end.
+
