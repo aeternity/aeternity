@@ -1480,11 +1480,12 @@ naming_system_manage_name(_Config) ->
 
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance(),
     Host = internal_address(),
-    http_request(Host, post, "spend-tx",
-        #{recipient_pubkey => Name,
-          amount => 77,
-          fee => 50}),
+    {ok, 200, _} = http_request(Host, post, "spend-tx",
+                                #{recipient_pubkey => Name,
+                                  amount => 77,
+                                  fee => 50}),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Nothing gets lost as recipient = sender = miner
     %% This tests 'resolve_name' because recipient is expressed by name label
