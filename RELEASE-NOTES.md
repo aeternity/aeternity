@@ -35,9 +35,9 @@ Alternatively to the release binaries, you can use the published `aetrnty/epoch`
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
 HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.6.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`.
-WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch_api/epoch_api.md).
+WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch/api/README.md).
 
-The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch_api/epoch_api.md).
+The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch/api/README.md).
 
 ## Join the testnet
 
