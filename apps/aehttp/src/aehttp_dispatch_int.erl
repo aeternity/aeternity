@@ -55,8 +55,10 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
                     query_fee     => QueryFee,
                     ttl           => {TTLType, TTLValue},
                     fee           => Fee}),
-            sign_and_push_to_mempool(OracleRegisterTx),
-            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey)}};
+            SignedTx = sign_and_push_to_mempool(OracleRegisterTx),
+            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
+                        tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->
@@ -88,9 +90,11 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                             query_ttl    => {QueryTTLType, QueryTTLValue},
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee}),
-                    sign_and_push_to_mempool(OracleQueryTx),
+                    SignedTx = sign_and_push_to_mempool(OracleQueryTx),
+                    TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
                     QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
-                    {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId)}};
+                    {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId),
+                                tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
                 {error, _} ->
                     {404, [], #{reason => <<"Invalid key">>}}
             end;
@@ -115,8 +119,10 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
                             query_id => DecodedQueryId,
                             response => Response,
                             fee      => Fee}),
-                    sign_and_push_to_mempool(OracleResponseTx),
-                    {200, [], #{query_id => EncodedQueryId}};
+                    SignedTx = sign_and_push_to_mempool(OracleResponseTx),
+                    TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+                    {200, [], #{query_id => EncodedQueryId,
+                                tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
                 {error, _} ->
                     {404, [], #{reason => <<"Invalid Query Id">>}}
             end;
@@ -475,7 +481,8 @@ sign_and_push_to_mempool(Tx) ->
     {ok, SignedTx} = aec_keys:sign(Tx),
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
-                [pp(aec_tx_pool:peek(10))]).
+                [pp(aec_tx_pool:peek(10))]),
+    SignedTx.
 
 get_block(Fun, Req) ->
     get_block(Fun, Req, true).

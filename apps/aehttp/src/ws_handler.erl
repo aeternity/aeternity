@@ -24,13 +24,12 @@ init({tcp, http}, _Req, _Opts) ->
     {upgrade, protocol, cowboy_websocket}.
 
 websocket_init(_TransportName, Req, _Opts) ->
-    {_QsVals, Req1} = cowboy_req:qs_vals(Req),
     case jobs:ask(ws_handlers_queue) of
         {ok, JobId} ->
             gproc:reg(?GPROC_KEY),
-            {ok, Req1, JobId};
+            {ok, Req, JobId};
         {error, _} ->
-            {shutdown, Req1}
+            {shutdown, Req}
     end.
 
 websocket_handle({text, MsgBin}, Req, State) ->
@@ -99,6 +98,9 @@ create_message_from_event(BlockEvent, {BlockHeight, BlockHash})
     Payload = [{height, BlockHeight},
                {hash, aec_base58c:encode(block_hash, BlockHash)}],
     {ok, create_message(chain, BlockEvent, Payload)};
+create_message_from_event(chain_tx, TxHash) ->
+    Payload = [{tx_hash, aec_base58c:encode(tx_hash, TxHash)}],
+    {ok, create_message(chain, tx_chain, Payload)};
 create_message_from_event(oracle_query_tx, OracleQueryTx) ->
     %% TODO: Add TTL of the query to payload
     Sender = aeo_query_tx:sender(OracleQueryTx),

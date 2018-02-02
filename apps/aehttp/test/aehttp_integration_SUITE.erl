@@ -108,6 +108,7 @@
    [ws_get_genesis/1,
     ws_block_mined/1,
     ws_refused_on_limit_reached/1,
+    ws_tx_on_chain/1,
     ws_oracles/1
    ]).
 
@@ -218,6 +219,7 @@ groups() ->
       [ws_get_genesis,
        ws_block_mined,
        ws_refused_on_limit_reached,
+       ws_tx_on_chain,
        ws_oracles
       ]}
     ].
@@ -1739,6 +1741,42 @@ ws_refused_on_limit_reached(_Config) ->
                                               0, WSDieTimeout),
     ok.
 
+ws_tx_on_chain(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Register for events when a block is mined!
+    ws_subscribe(ConnPid, #{ type => mined_block }),
+
+    %% Mine a block to make sure the Pubkey has some funds!
+    ws_mine_blocks(ConnPid, ?NODE, 1),
+
+    %% Fetch the pubkey via HTTP
+    {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
+
+    %% Register an oracle
+    RegisterData =
+        #{ type => 'OracleRegisterTxObject',
+           account => PK,
+           query_format => <<"the query spec">>,
+           response_format => <<"the response spec">>,
+           query_fee => 4,
+           ttl => #{ type => delta, value => 500 },
+           fee => 5 },
+    #{<<"result">> := <<"ok">>,
+      <<"tx_hash">> := TxHash } = ws_do_request(ConnPid, oracle, register, RegisterData),
+
+    %% Subscribe for an event once the Tx goes onto the chain...
+    ws_subscribe(ConnPid, #{ type => tx, tx_hash => TxHash }),
+    ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
+
+    %% Mine a block and check that an event is receieved corresponding to
+    %% the Tx.
+    ws_mine_blocks(ConnPid, ?NODE, 1),
+    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(chain, tx_chain),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
 ws_oracles(_Config) ->
     {ok, ConnPid} = ws_start_link(),
 
@@ -2248,7 +2286,7 @@ block_to_endpoint_map(Block, Options) ->
             #{block_hash := TxBlockHash,
               block_height := TxBlockHeight,
               hash := Hash} =
-                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx), 
+                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
             {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
             TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),

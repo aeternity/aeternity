@@ -111,7 +111,6 @@ calculate_total_fee(SignedTxs) ->
               TotalFee + Fee
       end, 0, SignedTxs).
 
--spec hash_tx(tx()) -> tx_hash().
 hash_tx(Tx) ->
     aec_sha256:hash(serialize_to_binary(Tx)).
 

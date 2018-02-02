@@ -362,7 +362,10 @@
         } ],
         "responses" : {
           "200" : {
-            "description" : "successful operation"
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleRegisterResponse"
+            }
           },
           "404" : {
             "description" : "Oracle register transaction validation error",
@@ -393,7 +396,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/OracleQueryId"
+              "$ref" : "#/definitions/OracleQueryResponse"
             }
           },
           "404" : {
@@ -423,7 +426,10 @@
         } ],
         "responses" : {
           "200" : {
-            "description" : "successful operation"
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleQueryResponse"
+            }
           },
           "404" : {
             "description" : "Oracle response transaction validation error",
@@ -1721,6 +1727,21 @@
         "query_format" : "query_format"
       }
     },
+    "OracleRegisterResponse" : {
+      "type" : "object",
+      "properties" : {
+        "tx_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "oracle_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "oracle_id" : null,
+        "tx_hash" : { }
+      }
+    },
     "OracleQueryTx" : {
       "type" : "object",
       "properties" : {
@@ -1780,6 +1801,21 @@
         "fee" : 0
       }
     },
+    "OracleQueryResponse" : {
+      "type" : "object",
+      "properties" : {
+        "tx_hash" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "query_id" : {
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "query_id" : null,
+        "tx_hash" : { }
+      }
+    },
     "TTL" : {
       "type" : "object",
       "properties" : {
@@ -1812,17 +1848,6 @@
       "example" : {
         "type" : "delta",
         "value" : 6
-      }
-    },
-    "OracleQueryId" : {
-      "type" : "object",
-      "properties" : {
-        "query_id" : {
-          "type" : "string"
-        }
-      },
-      "example" : {
-        "query_id" : "query_id"
       }
     },
     "NameEntry" : {

@@ -2535,7 +2535,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleQueryTx body: Creates new oracle query transaction (required)
-        :return: OracleQueryId
+        :return: OracleQueryResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2557,7 +2557,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleQueryTx body: Creates new oracle query transaction (required)
-        :return: OracleQueryId
+        :return: OracleQueryResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2615,7 +2615,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='OracleQueryId',  # noqa: E501
+            response_type='OracleQueryResponse',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2634,7 +2634,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleRegisterTx body: Creates new oracle register transaction (required)
-        :return: None
+        :return: OracleRegisterResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2656,7 +2656,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleRegisterTx body: Creates new oracle register transaction (required)
-        :return: None
+        :return: OracleRegisterResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2714,7 +2714,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type=None,  # noqa: E501
+            response_type='OracleRegisterResponse',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2733,7 +2733,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleResponseTx body: Creates new oracle response transaction (required)
-        :return: None
+        :return: OracleQueryResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2755,7 +2755,7 @@ class InternalApi(object):
 
         :param async bool
         :param OracleResponseTx body: Creates new oracle response transaction (required)
-        :return: None
+        :return: OracleQueryResponse
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2813,7 +2813,7 @@ class InternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type=None,  # noqa: E501
+            response_type='OracleQueryResponse',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
