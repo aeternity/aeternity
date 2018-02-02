@@ -182,7 +182,6 @@ request_params('GetTxsListFromBlockRangeByHash') ->
         'from',
         'to',
         'tx_encoding',
-        'tx_objects',
         'tx_types',
         'exclude_tx_types'
     ];
@@ -192,7 +191,6 @@ request_params('GetTxsListFromBlockRangeByHeight') ->
         'from',
         'to',
         'tx_encoding',
-        'tx_objects',
         'tx_types',
         'exclude_tx_types'
     ];
@@ -644,15 +642,6 @@ request_param_info('GetTxsListFromBlockRangeByHash', 'tx_encoding') ->
         ]
     };
 
-request_param_info('GetTxsListFromBlockRangeByHash', 'tx_objects') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'boolean'},
-            not_required
-        ]
-    };
-
 request_param_info('GetTxsListFromBlockRangeByHash', 'tx_types') ->
     #{
         source => qs_val  ,
@@ -697,15 +686,6 @@ request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_encoding') ->
         rules => [
             {type, 'binary'},
             {enum, ['message_pack', 'json'] },
-            not_required
-        ]
-    };
-
-request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_objects') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'boolean'},
             not_required
         ]
     };

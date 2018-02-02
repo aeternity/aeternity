@@ -1142,13 +1142,6 @@
           "default" : "message_pack",
           "enum" : [ "message_pack", "json" ]
         }, {
-          "name" : "tx_objects",
-          "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
-          "required" : false,
-          "type" : "boolean",
-          "default" : false
-        }, {
           "name" : "tx_types",
           "in" : "query",
           "description" : "Transactions types to show. Comma separated",
@@ -1291,13 +1284,6 @@
           "type" : "string",
           "default" : "message_pack",
           "enum" : [ "message_pack", "json" ]
-        }, {
-          "name" : "tx_objects",
-          "in" : "query",
-          "description" : "Transactions encoding: MessagePack (default) or JSON",
-          "required" : false,
-          "type" : "boolean",
-          "default" : false
         }, {
           "name" : "tx_types",
           "in" : "query",

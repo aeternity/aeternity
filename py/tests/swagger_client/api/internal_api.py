@@ -1677,7 +1677,6 @@ class InternalApi(object):
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
         :param str tx_types: Transactions types to show. Comma separated
         :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: TxObjects
@@ -1704,7 +1703,6 @@ class InternalApi(object):
         :param str _from: Hash of the block to start the range (required)
         :param str to: Hash of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
         :param str tx_types: Transactions types to show. Comma separated
         :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: TxObjects
@@ -1712,7 +1710,7 @@ class InternalApi(object):
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_encoding', 'tx_objects', 'tx_types', 'exclude_tx_types']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1751,8 +1749,6 @@ class InternalApi(object):
             query_params.append(('to', params['to']))  # noqa: E501
         if 'tx_encoding' in params:
             query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
         if 'tx_types' in params:
             query_params.append(('tx_types', params['tx_types']))  # noqa: E501
         if 'exclude_tx_types' in params:
@@ -1800,7 +1796,6 @@ class InternalApi(object):
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
         :param str tx_types: Transactions types to show. Comma separated
         :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: TxObjects
@@ -1827,7 +1822,6 @@ class InternalApi(object):
         :param int _from: Height of the block to start the range (required)
         :param int to: Height of the block to end the range (required)
         :param str tx_encoding: Transactions encoding
-        :param bool tx_objects: Transactions encoding: MessagePack (default) or JSON
         :param str tx_types: Transactions types to show. Comma separated
         :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
         :return: TxObjects
@@ -1835,7 +1829,7 @@ class InternalApi(object):
                  returns the request thread.
         """
 
-        all_params = ['_from', 'to', 'tx_encoding', 'tx_objects', 'tx_types', 'exclude_tx_types']  # noqa: E501
+        all_params = ['_from', 'to', 'tx_encoding', 'tx_types', 'exclude_tx_types']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1874,8 +1868,6 @@ class InternalApi(object):
             query_params.append(('to', params['to']))  # noqa: E501
         if 'tx_encoding' in params:
             query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
-        if 'tx_objects' in params:
-            query_params.append(('tx_objects', params['tx_objects']))  # noqa: E501
         if 'tx_types' in params:
             query_params.append(('tx_types', params['tx_types']))  # noqa: E501
         if 'exclude_tx_types' in params:
