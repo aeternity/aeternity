@@ -212,41 +212,6 @@
         }
       }
     },
-    "/account/balance" : {
-      "get" : {
-        "tags" : [ "external" ],
-        "description" : "Get account's balance",
-        "operationId" : "GetAccountBalance",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "pub_key",
-          "in" : "query",
-          "description" : "Public key to extract balance for",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Account's balance",
-            "schema" : {
-              "$ref" : "#/definitions/Balance"
-            }
-          },
-          "400" : {
-            "description" : "Invalid address",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Account not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/name" : {
       "get" : {
         "tags" : [ "external" ],
@@ -647,6 +612,53 @@
           },
           "404" : {
             "description" : "No key pair",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/account/balance/{account_pubkey}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get accounts's balance",
+        "operationId" : "GetAccountBalance",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "account_pubkey",
+          "in" : "path",
+          "description" : "Account pubkey to show balance for",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "height",
+          "in" : "query",
+          "description" : "Height of the block show balance at",
+          "required" : false,
+          "type" : "integer"
+        }, {
+          "name" : "hash",
+          "in" : "query",
+          "description" : "Hash of the block show balance at",
+          "required" : false,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Balance"
+            }
+          },
+          "400" : {
+            "description" : "Invalid block hash or hash and height combination",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Block or account not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }

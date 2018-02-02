@@ -25,11 +25,6 @@ request_params('CompileContract') ->
         'Contract'
     ];
 
-request_params('GetAccountBalance') ->
-    [
-        'pub_key'
-    ];
-
 request_params('GetAccountsBalances') ->
     [
     ];
@@ -80,6 +75,13 @@ request_params('PostTx') ->
         'Tx'
     ];
 
+
+request_params('GetAccountBalance') ->
+    [
+        'account_pubkey',
+        'height',
+        'hash'
+    ];
 
 request_params('GetActiveRegisteredOracles') ->
     [
@@ -290,15 +292,6 @@ request_param_info('CompileContract', 'Contract') ->
         ]
     };
 
-request_param_info('GetAccountBalance', 'pub_key') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            not_required
-        ]
-    };
-
 request_param_info('GetBlockByHash', 'hash') ->
     #{
         source => qs_val  ,
@@ -353,6 +346,33 @@ request_param_info('PostTx', 'Tx') ->
         ]
     };
 
+
+request_param_info('GetAccountBalance', 'account_pubkey') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetAccountBalance', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountBalance', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
 
 request_param_info('GetBlockByHashInternal', 'hash') ->
     #{
@@ -866,13 +886,6 @@ validate_response('CompileContract', 200, Body, ValidatorState) ->
 validate_response('CompileContract', 403, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
-validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
-    validate_response_body('Balance', 'Balance', Body, ValidatorState);
-validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
 validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
     validate_response_body('AccountsBalances', 'AccountsBalances', Body, ValidatorState);
 validate_response('GetAccountsBalances', 403, Body, ValidatorState) ->
@@ -926,6 +939,13 @@ validate_response('PostTx', 200, Body, ValidatorState) ->
 validate_response('PostTx', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+
+validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
+    validate_response_body('Balance', 'Balance', Body, ValidatorState);
+validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
     validate_response_body('RegisteredOracles', 'RegisteredOracles', Body, ValidatorState);

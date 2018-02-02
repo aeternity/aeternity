@@ -181,33 +181,6 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Transactions'
-  /account/balance:
-    get:
-      tags:
-        - external
-      operationId: GetAccountBalance
-      description: 'Get account''s balance'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: pub_key
-          description: 'Public key to extract balance for'
-          type : string
-      responses:
-        '200':
-          description: Account's balance
-          schema:
-            $ref: '#/definitions/Balance'
-        '400':
-          description: Invalid address
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Account not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /name:
     get:
       tags:
@@ -552,6 +525,43 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /account/balance/{account_pubkey}:
+    get:
+      tags:
+        - internal
+      operationId: GetAccountBalance
+      description: 'Get accounts''s balance'
+      produces:
+        - application/json
+      parameters:
+        - in: path 
+          name: account_pubkey
+          description: 'Account pubkey to show balance for'
+          required: true
+          type: string
+        - in: query 
+          name: height
+          description: 'Height of the block show balance at'
+          required: false
+          type: integer
+        - in: query 
+          name: hash
+          description: 'Hash of the block show balance at'
+          required: false
+          type: string
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Balance'
+        '400':
+          description: Invalid block hash or hash and height combination
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Block or account not found 
+          schema:
+            $ref: '#/definitions/Error'
 
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:

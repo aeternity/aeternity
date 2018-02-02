@@ -65,11 +65,6 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
-        'GetAccountBalance' => #{
-            path => "/v2/account/balance",
-            method => <<"GET">>,
-            handler => 'swagger_external_handler'
-        },
         'GetAccountsBalances' => #{
             path => "/v2/balances",
             method => <<"GET">>,
@@ -124,6 +119,11 @@ get_operations() ->
             path => "/v2/tx",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
+        },
+        'GetAccountBalance' => #{
+            path => "/v2/account/balance/:account_pubkey",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
         },
         'GetActiveRegisteredOracles' => #{
             path => "/v2/oracles",
