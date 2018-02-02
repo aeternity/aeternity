@@ -44,8 +44,8 @@ class InternalApi(object):
 
         :param async bool
         :param str account_pubkey: Account pubkey to show balance for (required)
-        :param int height: Height of the block show balance at
-        :param str hash: Hash of the block show balance at
+        :param int height: Height of the block to show balance at
+        :param str hash: Hash of the block to show balance at
         :return: Balance
                  If the method is called asynchronously,
                  returns the request thread.
@@ -68,8 +68,8 @@ class InternalApi(object):
 
         :param async bool
         :param str account_pubkey: Account pubkey to show balance for (required)
-        :param int height: Height of the block show balance at
-        :param str hash: Hash of the block show balance at
+        :param int height: Height of the block to show balance at
+        :param str hash: Hash of the block to show balance at
         :return: Balance
                  If the method is called asynchronously,
                  returns the request thread.

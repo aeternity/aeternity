@@ -1455,7 +1455,7 @@ naming_system_manage_name(_Config) ->
                 <<"name_ttl">> := NameTTL,
                 <<"pointers">> := Pointers}} = get_name(Name),
 
-    {ok, 200, #{<<"balance">> := Balance3}} = get_balance(),
+    {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
         #{recipient_pubkey => Name,
@@ -1467,7 +1467,7 @@ naming_system_manage_name(_Config) ->
     %% This tests 'resolve_name' because recipient is expressed by name label
     %% This tests passes with 1 block confirmation due to lack of miner's reward delay
     FinalBalance = Balance3+MineReward,
-    {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance(),
+    {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
 
     %% Submit name transfer tx and check it is in mempool
     NameRecipient      = random_hash(),

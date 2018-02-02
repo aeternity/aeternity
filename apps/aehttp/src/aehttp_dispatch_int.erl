@@ -203,7 +203,7 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
                             nonce     => Nonce,
                             name_hash => DecodedNameHash,
                             name_ttl  => NameTTL,
-                            pointers  => jsx:decode(Pointers,[{labels, atom}]),
+                            pointers  => jsx:decode(Pointers),
                             ttl       => TTL,
                             fee       => Fee}),
                     sign_and_push_to_mempool(UpdateTx),
@@ -390,7 +390,7 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
 handle_request('GetAccountBalance', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
-            case get_block_hash_optionaly_by_hash_or_height(Req) of
+            case get_block_hash_optionally_by_hash_or_height(Req) of
                 {error, not_found} ->
                     {404, [], #{reason => <<"Block not found">>}};
                 {error, invalid_hash} ->
@@ -682,9 +682,9 @@ get_account_balance_at_hash(AccountPubkey, Hash) ->
             {ok, aec_accounts:balance(Account)}
     end.
 
--spec get_block_hash_optionaly_by_hash_or_height(map()) ->
+-spec get_block_hash_optionally_by_hash_or_height(map()) ->
     {ok, binary()} | {error, not_found | invalid_hash | blocks_mismatch}.
-get_block_hash_optionaly_by_hash_or_height(Req) ->
+get_block_hash_optionally_by_hash_or_height(Req) ->
     GetHashByHeight =
         fun(Height) ->
             case aec_conductor:get_header_by_height(Height) of 

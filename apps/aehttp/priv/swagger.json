@@ -634,13 +634,13 @@
         }, {
           "name" : "height",
           "in" : "query",
-          "description" : "Height of the block show balance at",
+          "description" : "Height of the block to show balance at",
           "required" : false,
           "type" : "integer"
         }, {
           "name" : "hash",
           "in" : "query",
-          "description" : "Hash of the block show balance at",
+          "description" : "Hash of the block to show balance at",
           "required" : false,
           "type" : "string"
         } ],
