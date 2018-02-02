@@ -40,11 +40,11 @@ request(BaseUri, post, Endpoint, Params, Header, HTTPOptions, Options) ->
 process_http_return(R) ->
     case R of
         %% if Body == [] an error is thrown!
-        {ok, {{_,_ReturnCode, _State}, _Head, Body}} ->
+        {ok, {{_, StatusCode, _State}, _Head, Body}} ->
             try
                 Result = jsx:decode(iolist_to_binary(Body), [return_maps]),
                 lager:debug("Decoded response: ~p", [Result]),
-                {ok, Result}
+                {ok, StatusCode, Result}
             catch
                 error:E ->
                     lager:error("http response ~p", [R]),
