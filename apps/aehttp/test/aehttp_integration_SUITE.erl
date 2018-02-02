@@ -121,7 +121,8 @@ groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints},
-                                  {group, websocket}
+                                  {group, websocket},
+                                  {group, naming}
                                   ]},
      {external_endpoints, [sequence], 
       [
@@ -204,9 +205,9 @@ groups() ->
 
         naming_system_manage_name
       ]},
+     {naming, [sequence], [naming_system_manage_name]},
      {websocket, [sequence],
-      [
-       ws_get_genesis,
+      [ws_get_genesis,
        ws_block_mined,
        ws_refused_on_limit_reached,
        ws_oracles
@@ -595,7 +596,7 @@ post_correct_tx(_Config) ->
             nonce => Nonce}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx))),
-    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx 
+    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
 post_broken_tx(_Config) ->
@@ -1410,10 +1411,13 @@ block_txs_list_by_hash_invalid_range(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-    Name       = <<"fooo.barr.test">>,
+
+    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+    PubKeyEnc = aec_base58c:encode(account_pubkey, PubKey),
+    Name       = <<"fooo.bar.test">>,
     NameSalt   = 12345,
     NameTTL    = 60000,
-    Pointers   = <<"{\"account_pubkey\":\"srtrst\"}">>,
+    Pointers   = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
     TTL        = 10,
     NHash      = aens_hash:name_hash(Name),
     CHash      = aens_hash:commitment_hash(Name, NameSalt),
@@ -1470,10 +1474,23 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
-    TmpPointers = <<"{\"account_pubkey\":\"srtrst\"}">>,
     {ok, 200, #{<<"name">>     := Name,
                 <<"name_ttl">> := NameTTL,
-                <<"pointers">> := TmpPointers}} = get_name(Name),
+                <<"pointers">> := Pointers}} = get_name(Name),
+
+    {ok, 200, #{<<"balance">> := Balance3}} = get_balance(),
+    Host = internal_address(),
+    http_request(Host, post, "spend-tx",
+        #{recipient_pubkey => Name,
+          amount => 77,
+          fee => 50}),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Nothing gets lost as recipient = sender = miner
+    %% This tests 'resolve_name' because recipient is expressed by name label
+    %% This tests passes with 1 block confirmation due to lack of miner's reward delay
+    FinalBalance = Balance3+MineReward,
+    {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance(),
 
     %% Submit name transfer tx and check it is in mempool
     NameRecipient      = random_hash(),
