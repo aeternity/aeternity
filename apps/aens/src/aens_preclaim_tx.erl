@@ -20,6 +20,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -98,6 +99,10 @@ process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
     Trees2 = aec_trees:set_ns(Trees1, NSTree1),
 
     {ok, Trees2}.
+
+-spec accounts(preclaim_tx()) -> [pubkey()].
+accounts(#ns_preclaim_tx{account = AccountPubKey}) ->
+    [AccountPubKey].
 
 -spec signers(preclaim_tx()) -> [pubkey()].
 signers(#ns_preclaim_tx{account = AccountPubKey}) ->

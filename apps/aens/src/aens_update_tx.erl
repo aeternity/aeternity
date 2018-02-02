@@ -20,6 +20,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -106,6 +107,10 @@ process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
     Trees2 = aec_trees:set_ns(Trees1, NSTree1),
 
     {ok, Trees2}.
+
+-spec accounts(update_tx()) -> [pubkey()].
+accounts(#ns_update_tx{account = AccountPubKey}) ->
+    [AccountPubKey].
 
 -spec signers(update_tx()) -> [pubkey()].
 signers(#ns_update_tx{account = AccountPubKey}) ->

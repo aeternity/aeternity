@@ -53,8 +53,6 @@
 %% indexing callbacks
 -export([ix_acct2tx/3]).
 
--export([import_old_persistence_data/0]).  % likely to be removed completely
-
 -include("common.hrl").
 -include("blocks.hrl").
 
@@ -299,43 +297,6 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
 wait_for_tables(Tabs, Sofar, _, _) ->
     {timeout, Sofar, Tabs}.
 
-import_old_persistence_data() ->
-    case aec_persistence:get_chain() of
-        [] ->
-            ok;
-        Chain ->
-            Hash = aec_persistence:get_top_block(),
-            TopState = aec_persistence:get_block_state(Hash),
-            InitTrees = [{Hash, TopState}],
-            ChainState = aec_chain_state:new_from_persistence(Chain, InitTrees),
-            transaction(fun() -> persist_chain(ChainState) end),
-            aec_persistence:remove_files(),
-            ok
-    end.
-
-persist_chain(ChainState) ->
-    Trees = aec_chain_state:get_state_trees_for_persistence(ChainState),
-    aec_chain_state:fold_blocks(
-      fun(Hash, Block, _) ->
-              mnesia:write(#aec_blocks{key = Hash, value = Block}),
-              ok
-      end, ok, ChainState),
-    aec_chain_state:fold_headers(
-      fun(Hash, Hdr, _) ->
-              mnesia:write(#aec_headers{key = Hash, value = Hdr}),
-              ok
-      end, ok, ChainState),
-    lists:foreach(
-      fun({Hash, BTrees}) ->
-              mnesia:write(#aec_block_state{key = Hash, value = BTrees})
-      end, Trees),
-    TopHeaderHash = aec_chain_state:top_header_hash(ChainState),
-    TopBlockHash  = aec_chain_state:top_block_hash(ChainState),
-    mnesia:write(#aec_chain_state{key = top_header_hash,
-                                  value = TopHeaderHash}),
-    mnesia:write(#aec_chain_state{key = top_block_hash,
-                                  value = TopBlockHash}).
-
 %% Index callbacks
 
 ix_acct2tx(aec_tx, _Ix, #aec_tx{tx = SignedTx}) ->
@@ -369,7 +330,6 @@ check_db() ->
 
 initialize_db(Mode) ->
     add_plugins(),
-    io:fwrite("index plugins: = ~p~n", [mnesia_schema:index_plugins()]),
     ensure_mnesia_tables(Mode),
     ok.
 
