@@ -126,21 +126,53 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
-handle_request('GetActiveRegisteredOracles', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
+handle_request('GetActiveRegisteredOracles', Req, _Context) ->
+    try
+        From = case maps:get(from, Req) of
+                   undefined -> '$first';
+                   X1        -> {ok, OracleId} = aec_base58c:safe_decode(oracle_pubkey, X1),
+                                OracleId
+               end,
+        Max  = case maps:get(max, Req) of
+                   undefined -> 20;
+                   X2        -> X2
+               end,
+        {ok, Oracles} = aec_conductor:get_oracles(From, Max),
+        FmtO = fun(O) -> #{address => aec_base58c:encode(oracle_pubkey, aeo_oracles:id(O)),
+                           query_format => aeo_oracles:query_format(O),
+                           response_format => aeo_oracles:response_format(O),
+                           query_fee => aeo_oracles:query_fee(O),
+                           expires_at => aeo_oracles:expires(O)} end,
+        FmtOracles = [ FmtO(O) || O <- Oracles ],
+        {200, [], FmtOracles}
+    catch _:_ ->
+        {400, [], #{reason => <<"Invalid Oracle Id">>}}
+    end;
 
-handle_request('GetOracleQuestions', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
+handle_request('GetOracleQuestions', Req, _Context) ->
+    try
+        EncodedOId =  maps:get(oracle_pub_key, Req),
+        {ok, OracleId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
+        From = case maps:get(from, Req) of
+                   undefined -> '$first';
+                   X1        -> {ok, QueryId} = aec_base58c:safe_decode(oracle_query_id, X1),
+                                QueryId
+               end,
+        Max  = case maps:get(max, Req) of
+                   undefined -> 20;
+                   X2        -> X2
+               end,
+        {ok, Queries} = aec_conductor:get_open_oracle_queries(OracleId, From, Max),
+        FmtQ = fun(Q) -> #{query_id => aec_base58c:encode(oracle_query_id, aeo_query:id(Q)),
+                           query => aeo_query:query(Q),
+                           query_fee => aeo_query:fee(Q),
+                           expires_at => aeo_query:expires(Q)} end,
+        FmtQueries = [ FmtQ(Q) || Q <- Queries ],
+        {200, [], FmtQueries}
+    catch _:_ ->
+        {400, [], #{reason => <<"Invalid parameters">>}}
+    end;
 
-handle_request('PostOracleSubscribe', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
-
-handle_request('PostOracleUnsubscribe', _Req, _Context) ->
-    %% TODO: Implement me
-    {501, [], #{}};
 
 handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of
@@ -359,7 +391,7 @@ handle_request('GetTransactionFromBlockHash', Req, _Context) ->
 handle_request('GetTransactionFromBlockLatest', Req, _Context) ->
     Index = maps:get('tx_index', Req),
     get_block_tx_by_index(
-        fun() -> 
+        fun() ->
             TopBlock = aec_conductor:top(),
             {ok, TopBlock}
         end,
@@ -385,7 +417,6 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
         _ ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
-          
 
 handle_request('GetAccountBalance', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
@@ -410,7 +441,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
         _ ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
-          
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
@@ -508,7 +539,7 @@ filter_transaction_list(Req, TxList) ->
             Filtered =
                 lists:filter(
                     fun(SignedTx) ->
-                        Tx = aec_tx_sign:data(SignedTx), 
+                        Tx = aec_tx_sign:data(SignedTx),
                         Mod = aec_tx_dispatcher:handler(Tx),
                         TxType = Mod:type(),
                         Drop = lists:member(TxType, DropTxTypes),
@@ -600,7 +631,7 @@ read_tx_encoding_param(Req) ->
         {ok, Encoding} ->
             {ok, Encoding}
     end.
-            
+
 
 -spec read_optional_enum_param(atom(), map(), term(), list()) -> {ok, term()} |
                                                                  {error, atom()}.
@@ -693,11 +724,11 @@ get_account_balance_at_hash(AccountPubkey, Hash) ->
 get_block_hash_optionally_by_hash_or_height(Req) ->
     GetHashByHeight =
         fun(Height) ->
-            case aec_conductor:get_header_by_height(Height) of 
+            case aec_conductor:get_header_by_height(Height) of
                 {error, chain_too_short} ->
                     {error, not_found};
                 {ok, Header} ->
-                    {ok, _Hash} = aec_headers:hash_header(Header) 
+                    {ok, _Hash} = aec_headers:hash_header(Header)
             end
         end,
     case {maps:get('height', Req), maps:get('hash', Req)} of
@@ -708,7 +739,7 @@ get_block_hash_optionally_by_hash_or_height(Req) ->
                 {error, _} ->
                     {error, invalid_hash};
                 {ok, Hash} ->
-                    case aec_conductor:get_header_by_hash(Hash) of 
+                    case aec_conductor:get_header_by_hash(Hash) of
                         {error, header_not_found} ->
                             {error, not_found};
                         {ok, _} -> % we do have header

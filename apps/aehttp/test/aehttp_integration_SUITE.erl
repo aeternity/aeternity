@@ -97,7 +97,10 @@
     naming_system_broken_txs/1,
 
     balance/1,
-    balance_negative_cases/1
+    balance_negative_cases/1,
+
+    list_oracles/1,
+    list_oracle_queries/1
    ]).
 
 %% internal endpoints
@@ -205,7 +208,10 @@ groups() ->
         naming_system_manage_name,
 
         balance,
-        balance_negative_cases
+        balance_negative_cases,
+
+        list_oracles,
+        list_oracle_queries
       ]},
      {naming, [sequence], [naming_system_manage_name]},
      {websocket, [sequence],
@@ -1507,6 +1513,131 @@ naming_system_broken_txs(_Config) ->
     %% Check mempool still empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]).
 
+list_oracles(_Config) ->
+    %% Mine some blocks to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+
+    KeyPairs = [ crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)) || _ <- lists:seq(1, 5) ],
+
+    %% Transfer some funds to these accounts
+    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- KeyPairs ],
+
+    %% Mine a block to effect this
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Now register those accounts as oracles...
+    [ register_oracle(6, PubKey, PrivKey, 1, 4, {delta, 50})
+      || {PubKey, PrivKey} <- KeyPairs ],
+
+    %% Mine a block to effect the registrations
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Now we can test the oracle listing...
+    Oracles = get_list_oracles(5),
+    Os1 = lists:sort([aec_base58c:encode(oracle_pubkey, PubKey) ||  {PubKey, _} <- KeyPairs ]),
+    Os2 = [ maps:get(<<"address">>, O) || O <- Oracles ],
+
+    ct:log("Os1 = ~p\nOs2 = ~p", [Os1, Os2]),
+    Os1 = Os2,
+
+    %% Try pagination
+    Oracles1 = [_, O2] = get_list_oracles(2),
+    Oracles2 = get_list_oracles(maps:get(<<"address">>, O2), 3),
+    Os3 = [ maps:get(<<"address">>, O) || O <- Oracles1 ++ Oracles2 ],
+
+    ct:log("Os3 = ~p\nOs2 = ~p", [Os3, Os2]),
+    Os3 = Os2,
+
+    ok.
+
+list_oracle_queries(_Config) ->
+    %% Mine some blocks to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+
+    OKeyPairs = [ crypto:generate_key(ecdh, crypto:ec_curve(secp256k1))
+                  || _ <- lists:seq(1, 2) ],
+
+    {APubKey, APrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
+
+
+    %% Transfer some funds to these accounts
+    [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- OKeyPairs ],
+    post_spend_tx(APubKey, 79, 1),
+
+    %% Mine a block to effect this
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Now register both accounts as oracles...
+    [ register_oracle(11, PubKey, PrivKey, 1, 3, {delta, 50})
+      || {PubKey, PrivKey} <- OKeyPairs ],
+
+    %% Mine a block to effect the registrations
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Query each oracle four times
+    [{OPubKey1, _}, {OPubKey2, _}] = OKeyPairs,
+    [ query_oracle(12, APubKey, APrivKey, OPubKey1, N, <<"a query">>, {delta, 20}, 3)
+      || N <- lists:seq(1, 4) ],
+    [ query_oracle(12, APubKey, APrivKey, OPubKey2, N, <<"a query">>, {delta, 20}, 3)
+      || N <- lists:seq(5, 8) ],
+
+    QueryIds = [ aeo_query:id(APubKey, N, OPubKey1) || N <- lists:seq(1, 4) ] ++
+               [ aeo_query:id(APubKey, N, OPubKey2) || N <- lists:seq(5, 8) ],
+
+    %% Mine a block to effect the queries
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% Now we can test the oracle query listing...
+    Queriess = [ get_list_oracle_queries(OPubKey, 4) || {OPubKey, _} <- OKeyPairs ],
+
+    QS1 = lists:sort([ aec_base58c:encode(oracle_query_id, QId) || QId <- QueryIds ]),
+    QS2 = lists:sort([ maps:get(<<"query_id">>, Q) || Qs <- Queriess, Q <- Qs ]),
+
+    ct:log("Qs1 = ~p\nQs2 = ~p", [QS1, QS2]),
+    QS1 = QS2,
+
+    %% Try pagination
+    Queries1 = [_, Q2] = get_list_oracle_queries(OPubKey1, 2),
+    Queries2 = get_list_oracle_queries(OPubKey1, maps:get(<<"query_id">>, Q2), 3),
+    Queries3 = [Q4] = get_list_oracle_queries(OPubKey2, 1),
+    Queries4 = get_list_oracle_queries(OPubKey2, maps:get(<<"query_id">>, Q4), 3),
+
+    QS3 = lists:sort([ maps:get(<<"query_id">>, Q)
+                       || Q <- Queries1 ++ Queries2 ++ Queries3 ++ Queries4 ]),
+
+    ct:log("Qs3 = ~p\nQs2 = ~p", [QS3, QS2]),
+    QS3 = QS2,
+
+    ok.
+
+register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
+    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
+    {ok, RegTx} = aeo_register_tx:new(#{account       => PubKey,
+                                        nonce         => Nonce,
+                                        query_spec    => <<"TODO">>,
+                                        response_spec => <<"TODO">>,
+                                        query_fee     => QueryFee,
+                                        ttl           => TTL,
+                                        fee           => 4 + TTLFee}),
+    SignedTx = aec_tx_sign:sign(RegTx, PrivKey),
+    SendTx = aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
+    post_tx(SendTx).
+
+query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) ->
+    TTLFee = aeo_utils:ttl_fee(1, aeo_utils:ttl_delta(ChainHeight, TTL)),
+    {ok, QueryTx} = aeo_query_tx:new(#{sender        => PubKey,
+                                       nonce         => Nonce,
+                                       oracle        => Oracle,
+                                       query         => Query,
+                                       query_fee     => QueryFee,
+                                       query_ttl     => TTL,
+                                       response_ttl  => {delta, 10},
+                                       fee           => QueryFee + 2 + TTLFee }),
+    SignedTx = aec_tx_sign:sign(QueryTx, PrivKey),
+    SendTx = aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
+    {ok, 200, Res} = post_tx(SendTx),
+    Res.
+
 %% ============================================================
 %% Websocket tests
 %% ============================================================
@@ -1979,6 +2110,26 @@ make_tx_types_filter(Filter) ->
     R0 = Encode(tx_types, Includes, #{}),
     R = Encode(exclude_tx_types, Excludes, R0),
     R.
+
+get_list_oracles(Max) ->
+    get_list_oracles(undefined, Max).
+
+get_list_oracles(From, Max) ->
+    Host = internal_address(),
+    Params0 = #{ max => Max },
+    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
+    {ok, 200, Oracles} = http_request(Host, get, "oracles", Params),
+    Oracles.
+
+get_list_oracle_queries(Oracle, Max) ->
+    get_list_oracle_queries(Oracle, undefined, Max).
+
+get_list_oracle_queries(Oracle, From, Max) ->
+    Host = internal_address(),
+    Params0 = #{ max => Max, oracle_pub_key => aec_base58c:encode(oracle_pubkey, Oracle) },
+    Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
+    {ok, 200, Queries} = http_request(Host, get, "oracle-questions", Params),
+    Queries.
 
 %% ============================================================
 %% private functions

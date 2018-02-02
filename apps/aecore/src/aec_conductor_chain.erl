@@ -29,6 +29,8 @@
         , get_account/2
         , get_all_accounts_balances/2
         , get_name_entry/2
+        , get_open_oracle_queries/4
+        , get_oracles/3
         , get_top_block_hash/1
         , get_top_header/1
         , get_top_header_hash/1
@@ -124,6 +126,12 @@ get_all_accounts_balances(Hash, State) ->
 
 get_name_entry(Name, State) ->
     aec_chain_state:name_entry(Name, State#state.chain_state).
+
+get_open_oracle_queries(Oracle, From, Max, State) ->
+    aec_chain_state:get_open_oracle_queries(Oracle, From, Max, State#state.chain_state).
+
+get_oracles(From, Max, State) ->
+    aec_chain_state:get_oracles(From, Max, State#state.chain_state).
 
 get_top_block_hash(State) ->
     aec_chain_state:top_block_hash(State#state.chain_state).

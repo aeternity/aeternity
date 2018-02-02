@@ -235,7 +235,6 @@ paths:
             $ref: '#/definitions/Error'
       security:
   /oracles:
-  ## Not implemented yet, returns HTTP 501 response code
     get:
       tags:
         - internal
@@ -243,6 +242,19 @@ paths:
       description: 'Get active registered oracles'
       produces:
         - application/json
+      parameters:
+        - in: query
+          name: from
+          description: 'Last oracle in previous page'
+          required: false
+          type: string
+        - in: query
+          name: max
+          description: 'Max number of active oracles received'
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 1000
       responses:
         '200':
           description: Active registered oracles
@@ -250,7 +262,6 @@ paths:
             $ref: '#/definitions/RegisteredOracles'
       security:
   /oracle-questions:
-  ## Not implemented yet, returns HTTP 501 response code
     get:
       tags:
         - internal
@@ -264,6 +275,18 @@ paths:
           description: 'Oracle public key'
           required: true
           type : string
+        - in: query
+          name: from
+          description: 'Last query id in previous page'
+          required: false
+          type: string
+        - in: query
+          name: max
+          description: 'Max number of oracle queries received'
+          required: false
+          type: integer
+          minimum: 1
+          maximum: 1000
       responses:
         '200':
           description: Active oracle questions
@@ -1354,7 +1377,7 @@ definitions:
         response_format:
           type: string
         query_fee:
-          type: string
+          type: integer
         expires_at:
           type: integer
           format: int64
@@ -1368,7 +1391,7 @@ definitions:
         query:
           type: string
         query_fee:
-          type: string
+          type: integer
         expires_at:
           type: integer
           format: int64

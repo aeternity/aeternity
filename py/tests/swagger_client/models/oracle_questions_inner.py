@@ -33,7 +33,7 @@ class OracleQuestionsInner(object):
     swagger_types = {
         'query_id': 'str',
         'query': 'str',
-        'query_fee': 'str',
+        'query_fee': 'int',
         'expires_at': 'int'
     }
 
@@ -110,7 +110,7 @@ class OracleQuestionsInner(object):
 
 
         :return: The query_fee of this OracleQuestionsInner.  # noqa: E501
-        :rtype: str
+        :rtype: int
         """
         return self._query_fee
 
@@ -120,7 +120,7 @@ class OracleQuestionsInner(object):
 
 
         :param query_fee: The query_fee of this OracleQuestionsInner.  # noqa: E501
-        :type: str
+        :type: int
         """
 
         self._query_fee = query_fee

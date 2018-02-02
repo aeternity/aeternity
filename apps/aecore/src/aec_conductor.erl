@@ -56,6 +56,8 @@
         , get_account/1
         , get_all_accounts_balances/1
         , get_name_entry/1
+        , get_open_oracle_queries/3
+        , get_oracles/2
         , resolve_name/2
         ]).
 
@@ -175,6 +177,18 @@ get_all_accounts_balances(Hash) when is_binary(Hash) ->
                             {'error', any()}.
 get_name_entry(Name) when is_binary(Name) ->
     gen_server:call(?SERVER, {get_name_entry, Name}).
+
+-spec get_open_oracle_queries(Oracle :: pubkey(),
+                              From :: binary() | '$first',
+                              Max :: non_neg_integer()) ->
+                            {ok, list()} | {error, any()}.
+get_open_oracle_queries(Oracle, From, Max) ->
+    gen_server:call(?SERVER, {get_open_oracle_queries, Oracle, From, Max}).
+
+-spec get_oracles(From :: binary() | '$first', Max :: non_neg_integer()) ->
+                            {ok, list()} | {error, any()}.
+get_oracles(From, Max) ->
+    gen_server:call(?SERVER, {get_oracles, From, Max}).
 
 -spec resolve_name(Type :: atom(), Name :: binary()) ->
                           {'ok', binary()} |
@@ -362,7 +376,7 @@ handle_call({get_block, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_block(Hash, State), State};
 handle_call({get_block_by_height, Height},_From, State) ->
     {reply, aec_conductor_chain:get_block_by_height(Height, State), State};
-handle_call({get_block_pair, Type, H1, H2},_From, State) 
+handle_call({get_block_pair, Type, H1, H2},_From, State)
   when Type =:= height orelse Type =:= hash ->
     ExtractFun =
         case Type of
@@ -397,6 +411,10 @@ handle_call({get_all_accounts_balances, Hash},_From, State) ->
     {reply, aec_conductor_chain:get_all_accounts_balances(Hash, State), State};
 handle_call({get_name_entry, Name}, _From, State) ->
     {reply, aec_conductor_chain:get_name_entry(Name, State), State};
+handle_call({get_open_oracle_queries, Oracle, From, Max}, _From, State) ->
+    {reply, aec_conductor_chain:get_open_oracle_queries(Oracle, From, Max, State), State};
+handle_call({get_oracles, From, Max}, _From, State) ->
+    {reply, aec_conductor_chain:get_oracles(From, Max, State), State};
 handle_call(get_top_block_hash,_From, State) ->
     {reply, aec_conductor_chain:get_top_block_hash(State), State};
 handle_call(get_top_header,_From, State) ->

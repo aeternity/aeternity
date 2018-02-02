@@ -16,6 +16,8 @@
         , get_header/2
         , get_header_by_height/2
         , get_missing_block_hashes/1
+        , get_open_oracle_queries/4
+        , get_oracles/3
         , get_top_N_blocks_time_summary/2
         , get_n_headers_from_top/2
         , hash_is_connected_to_genesis/2
@@ -292,6 +294,31 @@ name_entry(Name, ?assert_state() = State) ->
     case state_db_find(TopHash) of
         {ok, Trees} ->
             aens:get_name_entry(Name, aec_trees:ns(Trees));
+        error ->
+            {error, no_state_trees}
+    end.
+
+-spec get_open_oracle_queries(pubkey(), binary() | '$first',
+                              non_neg_integer(), state()) ->
+    {'ok', list()} | {'error', 'no_state_trees'}.
+get_open_oracle_queries(Oracle, From, Max, ?assert_state() = State) ->
+    TopHash = get_top_header_hash(State),
+    case state_db_find(TopHash) of
+        {ok, Trees} ->
+            OTrees = aec_trees:oracles(Trees),
+            {ok, aeo_state_tree:get_open_oracle_queries(Oracle, From, Max, OTrees)};
+        error ->
+            {error, no_state_trees}
+    end.
+
+-spec get_oracles(binary() | '$first', non_neg_integer(), state()) ->
+                        {'ok', list()} |
+                        {'error', 'no_state_trees'}.
+get_oracles(From, Max, ?assert_state() = State) ->
+    TopHash = get_top_header_hash(State),
+    case state_db_find(TopHash) of
+        {ok, Trees} ->
+            {ok, aeo_state_tree:get_oracles(From, Max, aec_trees:oracles(Trees))};
         error ->
             {error, no_state_trees}
     end.
