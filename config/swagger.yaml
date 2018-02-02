@@ -983,11 +983,6 @@ paths:
           enum: [message_pack, json]
           default: message_pack
         - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
-        - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
@@ -1103,11 +1098,6 @@ paths:
           type: string
           enum: [message_pack, json]
           default: message_pack
-        - in: query
-          name: tx_objects
-          description: 'Transactions encoding: MessagePack (default) or JSON'
-          type: boolean
-          default: false
         - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
