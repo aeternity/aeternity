@@ -37,7 +37,7 @@ resolve(Type, Binary, NSTree) ->
                         {ok, #{<<"pointers">> := Pointers}} ->
                             case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
                                 undefined -> {error, type_not_found};
-                                Val -> {ok, aec_base58c:safe_decode(Type, Val)}
+                                Val -> aec_base58c:safe_decode(Type, Val)
                             end;
                         {error, _} = Err ->
                             Err
