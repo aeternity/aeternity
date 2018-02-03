@@ -1,6 +1,7 @@
 ---
 peers:
     - "http://node1:3013/"
+    - "http://node3:3013/"
 
 http:
     external:
