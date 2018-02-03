@@ -7,10 +7,6 @@ services:
       dockerfile: docker/Dockerfile-epoch
     image: aetrnty/epoch
     hostname: node0
-    ports:
-      - "3013:3013"
-      - "3113:3113"
-      - "3114:3114"
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
     volumes:
@@ -21,16 +17,22 @@ services:
   node1:
     image: aetrnty/epoch
     hostname: node1
-    ports:
-     - "3023:3013"
-     - "3123:3113"
-     - "3124:3114"
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
     volumes:
       - ${PWD}/docker/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
       - node1_db:/home/epoch/node/data/mnesia
       - node1_keys:/home/epoch/node/keys
+
+  proxy:
+    image: nginx:1.13.8
+    hostname: proxy
+    ports:
+     - "3001:3001"
+     - "3002:3002"
+    volumes:
+      - ${PWD}/docker/nginx-default.conf:/etc/nginx/conf.d/default.conf
+      - ${PWD}/docker/nginx-cors.conf:/etc/nginx/cors.conf
 
 volumes:
   node0_db:

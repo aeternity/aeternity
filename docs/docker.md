@@ -92,17 +92,21 @@ docker run -d -p 3013:3013 --hostname node0 \
 # Localnet
 
 Small local network (not connected to testnet) can be created with `docker-compose`.
-It runs two nodes using the `mean16s-generic` miner (fastest generic miner).
+It runs two nodes using the `mean16s-generic` miner (fastest generic miner) and a proxy server to allow CORS.
 
-- `node0` exposed ports:
-    - 3013 - API port (external)
-    - 3113 - API port (internal)
-    - 3114 - WebSocket port (internal)
+Both external and internal API are exposed to the docker host, the URL pattern is as follows:
+    - external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
+    - internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
 
-- `node1` exposed ports:
-    - 3013 - API port (external)
-    - 3113 - API port (internal)
-    - 3114 - WebSocket port (internal)
+Node ports:
+- `node0` - port 3001
+- `node1` - port 3002
+
+For example to access `node1` public key, assuming docker host address is `localhost`:
+
+```bash
+curl http://localhost:3002/internal/v2/account/pub-key
+```
 
 To start the network:
 
