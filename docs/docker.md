@@ -99,10 +99,10 @@ Both external and internal API are exposed to the docker host, the URL pattern i
     - internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
 
 Node ports:
-- `node0` - port 3001
-- `node1` - port 3002
+- `node1` - port 3001
+- `node2` - port 3002
 
-For example to access `node1` public key, assuming docker host address is `localhost`:
+For example to access `node2` public key, assuming docker host address is `localhost`:
 
 ```bash
 curl http://localhost:3002/internal/v2/account/pub-key

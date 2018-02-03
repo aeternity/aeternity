@@ -4,7 +4,7 @@ peers:
 
 http:
     external:
-        peer_address: http://node0:3013/
+        peer_address: http://node2:3013/
 
 keys:
     dir: ./keys

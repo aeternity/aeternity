@@ -1,20 +1,10 @@
 # Small local network of two nodes using the fastest mean16
 version: '3'
 services:
-  node0:
+  node1:
     build:
       context: .
       dockerfile: docker/Dockerfile-epoch
-    image: aetrnty/epoch
-    hostname: node0
-    environment:
-      EPOCH_CONFIG: /home/epoch/epoch.yaml
-    volumes:
-      - ${PWD}/docker/epoch_node0_mean16.yaml:/home/epoch/epoch.yaml
-      - node0_db:/home/epoch/node/data/mnesia
-      - node0_keys:/home/epoch/node/keys
-
-  node1:
     image: aetrnty/epoch
     hostname: node1
     environment:
@@ -23,6 +13,16 @@ services:
       - ${PWD}/docker/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
       - node1_db:/home/epoch/node/data/mnesia
       - node1_keys:/home/epoch/node/keys
+
+  node2:
+    image: aetrnty/epoch
+    hostname: node2
+    environment:
+      EPOCH_CONFIG: /home/epoch/epoch.yaml
+    volumes:
+      - ${PWD}/docker/epoch_node2_mean16.yaml:/home/epoch/epoch.yaml
+      - node2_db:/home/epoch/node/data/mnesia
+      - node2_keys:/home/epoch/node/keys
 
   proxy:
     image: nginx:1.13.8
@@ -35,7 +35,7 @@ services:
       - ${PWD}/docker/nginx-cors.conf:/etc/nginx/cors.conf
 
 volumes:
-  node0_db:
-  node0_keys:
   node1_db:
   node1_keys:
+  node2_db:
+  node2_keys:
