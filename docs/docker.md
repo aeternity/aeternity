@@ -95,8 +95,8 @@ Small local network (not connected to testnet) can be created with `docker-compo
 It runs three nodes using the `mean16s-generic` miner (fastest generic miner) and a proxy server to allow CORS.
 
 Both external and internal API are exposed to the docker host, the URL pattern is as follows:
-    - external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
-    - internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
+- external API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/
+- internal API - http://$DOCKER_HOST_ADDRESS:$NODE_PORT/internal
 
 Node ports:
 - `node1` - port 3001
