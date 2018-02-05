@@ -184,6 +184,15 @@ def start_node(temp_dir):
     os.chdir(temp_dir)
     os.system('ERL_FLAGS="-config `pwd`/p.config" bin/epoch start')
 
+def eval_on_node(temp_dir, quoted_code):
+    binary = executable(temp_dir)
+    assert os.path.isfile(binary)
+    assert os.access(binary, os.X_OK)
+    cmd = binary + " eval " + quoted_code
+    print("Evaluating " + cmd)
+    os.chdir(temp_dir)
+    return os.system(cmd)
+
 def read_argv(argv):
     parser = argparse.ArgumentParser(description='Integration test a potential release')
     parser.add_argument('--blocks', type=int, default=10,
@@ -275,6 +284,14 @@ def main(argv):
     print("Checking that nodes are able to start with persisted non-empty DB")
     [start_node(d) for d in node_dirs]
     wait_all_nodes_are_online(node_objs)
+    [stop_node(d) for d in node_dirs]
+
+    print("Checking that emergency patching of OTP modules works: `mnesia:index_read`")
+    [start_node(d) for d in node_dirs]
+    wait_all_nodes_are_online(node_objs)
+    if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>).'"):
+        test_failed = True
+        print("Check on `mnesia:index_read` failed")
     [stop_node(d) for d in node_dirs]
 
     if test_failed:
