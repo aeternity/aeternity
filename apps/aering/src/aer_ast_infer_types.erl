@@ -454,8 +454,8 @@ unfold_record_types_in_type(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
 unfold_record_types_in_type([H|T]) ->
     [unfold_record_types_in_type(H)|unfold_record_types_in_type(T)];
-unfold_record_types_in_type([]) ->
-    [].
+unfold_record_types_in_type(X) ->
+    X.
 
 
 subst_tvars(Env,Type) ->
@@ -600,4 +600,7 @@ pp({tuple_t,_,Cpts}) ->
 pp({app_t,_,T,[]}) ->
     pp(T);
 pp({app_t,_,{id,_,Name},Args}) ->
-    [Name,"(",pp(Args),")"].
+    [Name,"(",pp(Args),")"];
+pp({fun_t,_,As,B}) ->
+    ["(",pp(As),") => ",pp(B)].
+

@@ -86,5 +86,8 @@ contract Identity = {
   // let foo(x) = switch (x) {
   //     	       | y => y+1;
 // 	       };
-  let p(x) = {color:"blue", p:{x:x, y:x+1}};
+  // let p(x) = {color:"blue", p:{x:x, y:x+1}};
+  let twice(f,x) = f(f(x));
+  let double(x) = x+x;
+  let main(x) = twice(double,x);
 };
