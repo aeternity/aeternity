@@ -10,6 +10,7 @@ contract Identity = {
   // type xz = {x:int, z:int};
   // type yz = {y:int, z:int};
   type point = {x:int,y:int};
+  type cp('a) = {color: string, p:'a};
   //type intpoint = point(int);
   //   //if (x==42) 1 else (x*x);
   // };
@@ -18,11 +19,11 @@ contract Identity = {
   // let rec fac(n) = if((n:int)==0) 1 else (n*fac(n-1));
   //    and main(x) = x::[x+1];
   // let lentr(l) = lent(0,l);
-  let rec len(l) =
-     switch(l) {
-      | [] => 0;
-      | x::xs => 1+len(xs);
-      };
+  // let rec len(l) =
+  //    switch(l) {
+  //     | [] => 0;
+  //     | x::xs => 1+len(xs);
+  //     };
   // let lent(n,l) =
   //   switch (l) {
   //   | [] => n;
@@ -56,11 +57,11 @@ contract Identity = {
   //let main(x) = x;
   //let main(x) = len(1::2::[]);
   //let main(x) = ((x,x):list('a));
-  let main(x) = switch("a") {
-     	  |  "b" => 0;
-  	  |  "a" => 1;
-  	  |  "c" => 2;
-  	  };
+  // let main(x) = switch("a") {
+  //    	  |  "b" => 0;
+  // 	  |  "a" => 1;
+  // 	  |  "c" => 2;
+  // 	  };
   //let main(x) = x.color+1;
   //let main(x) = switch(({x:x, y:x+1}:cp(int))) {
   //              | {y:xx} => xx;
@@ -82,7 +83,8 @@ contract Identity = {
   // let quad(x) = {let y=x+x; let z=y+y; z;};
  //  let noblock(x) = {x; x};
  //  let unit(x) = ();
-  let foo(x) = switch (x) {
-      	       | y => y+1;
-	       };
+  // let foo(x) = switch (x) {
+  //     	       | y => y+1;
+// 	       };
+  let p(x) = {color:"blue", p:{x:x, y:x+1}};
 };

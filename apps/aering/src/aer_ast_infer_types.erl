@@ -419,26 +419,8 @@ lowest_scores([]) ->
 %% names. But, before we pass the typed program to the code generator,
 %% we replace record types annotating expressions with their
 %% definition. This enables the code generator to see the fields.
-unfold_record_types({typed,Attr,E,Type={app_t,_,{id,_,RecName},_}}) ->
-    %% We should really instantiate the entire record type
-    %% appropriately, but that is awkward--and unnecessary if the only
-    %% use we make of the type is the list of fields.
-    case ets:lookup(record_types,RecName) of
-	[] ->
-	    %% Not a record type.
-	    {typed,Attr,unfold_record_types(E),Type};
-	[{RecName,_Formals,Fields}] ->
-	    {typed,Attr,unfold_record_types(E),{record_t,Fields}}
-    end;
-unfold_record_types({typed,Attr,E,Type={id,_,RecName}}) ->
-    %% Like the case above, but for record types without parameters.
-    case ets:lookup(record_types,RecName) of
-	[] ->
-	    %% Not a record type.
-	    {typed,Attr,unfold_record_types(E),Type};
-	[{RecName,_Formals,Fields}] ->
-	    {typed,Attr,unfold_record_types(E),{record_t,Fields}}
-    end;
+unfold_record_types({typed,Attr,E,Type}) ->
+    {typed,Attr,unfold_record_types(E),unfold_record_types_in_type(Type)};
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->
@@ -446,7 +428,47 @@ unfold_record_types([H|T]) ->
 unfold_record_types(X) ->
     X.
 
+unfold_record_types_in_type(Type={app_t,_,{id,_,RecName},Args}) ->
+    case ets:lookup(record_types,RecName) of
+	[{RecName,Formals,Fields}] when length(Formals)==length(Args) ->
+	    {record_t,
+	     unfold_record_types_in_type(
+	       subst_tvars(lists:zip(Formals,Args),Fields))};
+	_ ->
+	    %% Not a record type, or ill-formed record type.
+	    Type
+    end;
+unfold_record_types_in_type(Type={id,_,RecName}) ->
+    %% Like the case above, but for record types without parameters.
+    case ets:lookup(record_types,RecName) of
+	[{RecName,[],Fields}] ->
+	    {record_t,
+	     unfold_record_types_in_type(Fields)};
+	_ ->
+	    %% Not a record type, or ill-formed record type
+	    Type
+    end;
+unfold_record_types_in_type({field_t,Attr,Mut,Name,Type}) ->
+    {field_t,Attr,Mut,Name,unfold_record_types_in_type(Type)};
+unfold_record_types_in_type(T) when is_tuple(T) ->
+    list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
+unfold_record_types_in_type([H|T]) ->
+    [unfold_record_types_in_type(H)|unfold_record_types_in_type(T)];
+unfold_record_types_in_type([]) ->
+    [].
 
+
+subst_tvars(Env,Type) ->
+    subst_tvars1([{V,T} || {{tvar,_,V},T} <- Env],Type).
+
+subst_tvars1(Env,T={tvar,_,Name}) ->
+    proplists:get_value(Name,Env,T);
+subst_tvars1(Env,[H|T]) ->
+    [subst_tvars1(Env,H)|subst_tvars1(Env,T)];
+subst_tvars1(Env,Type) when is_tuple(Type) ->
+    list_to_tuple(subst_tvars1(Env,tuple_to_list(Type)));
+subst_tvars1(Env,X) ->
+    X.
 
 %% Unification
 
