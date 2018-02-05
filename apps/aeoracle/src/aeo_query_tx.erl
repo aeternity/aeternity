@@ -18,6 +18,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -114,6 +115,11 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
+
+-spec accounts(query_tx()) -> [pubkey()].
+accounts(#oracle_query_tx{sender = SenderPubKey,
+                          oracle = OraclePubKey}) ->
+    [SenderPubKey, OraclePubKey].
 
 -spec signers(query_tx()) -> [pubkey()].
 signers(#oracle_query_tx{sender = SenderPubKey}) ->

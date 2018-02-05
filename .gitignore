@@ -42,3 +42,4 @@ apps/*/doc/*.html
 apps/*/doc/edoc-info
 apps/*/doc/erlang.png
 apps/*/doc/stylesheet.css
+otp_patches/*.erl

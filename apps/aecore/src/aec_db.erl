@@ -1,12 +1,14 @@
 -module(aec_db).
 
 -export([check_db/0,           % called from setup hook
+         initialize_db/1,      % assumes mnesia started
          load_database/0,      % called in aecore app start phase
          tables/1,             % for e.g. test database setup
          clear_db/0            % mostly for test purposes
         ]).
 
 -export([transaction/1,
+         ensure_transaction/1,
          write/2,
          delete/2,
          read/2]).
@@ -36,9 +38,20 @@
         , write_oracles_node/2
         ]).
 
-
 -export([find_block_state/1
         ]).
+
+%% API for maintaining the tx-to-block mapping
+-export([write_txs/2,
+         write_tx/3,
+         read_tx/1,
+         delete_tx/2]).
+
+%% API for finding transactions related to account key
+-export([transactions_by_account/1]).
+
+%% indexing callbacks
+-export([ix_acct2tx/3]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -54,6 +67,7 @@
 -record(aec_blocks             , {key, value}).
 -record(aec_headers            , {key, value}).
 -record(aec_contract_state     , {key, value}).
+-record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
 -record(aec_block_state        , {key, value}).
 -record(aec_oracle_state       , {key, value}).
@@ -61,6 +75,7 @@
 -record(aec_name_service_state , {key, value}).
 
 -define(TAB(Record), {Record, set(Mode, record_info(fields, Record))}).
+-define(TAB(Rec, Extra), {Rec, set(Mode, record_info(fields, Rec), Extra)}).
 
 %% start a transaction if there isn't already one
 -define(t(Expr), case get(mnesia_activity_state) of undefined ->
@@ -71,6 +86,7 @@
 tables(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers)
+   , ?TAB(aec_tx, [{index, [{acct2tx}]}])
    , ?TAB(aec_chain_state)
    , ?TAB(aec_contract_state)
    , ?TAB(aec_block_state)
@@ -85,12 +101,20 @@ clear_db() ->
 clear_table(Tab) ->
     ?t(begin
            Keys = mnesia:all_keys(Tab),
-           [mnesia:delete(Tab, K, write) || K <- Keys],
+           [delete(Tab, K) || K <- Keys],
            ok
        end).
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).
+
+ensure_transaction(Fun) when is_function(Fun, 0) ->
+    %% TODO: actually, some non-transactions also have an activity state
+    case get(mnesia_activity_state) of undefined ->
+            transaction(Fun);
+        _ -> Fun()
+    end.
+
 
 read(Tab, Key) ->
     mnesia:read(Tab, Key).
@@ -205,6 +229,38 @@ get_chain_state_value(Key) ->
                undefined
        end).
 
+write_txs(Txs, Hash) ->
+    ?t([write_tx(aec_tx:hash_tx(aec_tx_sign:data(Tx)), Hash, Tx)
+        || Tx <- Txs]),
+    ok.
+
+write_tx(Hash, mempool, Tx) ->
+    write_tx_(Hash, [], Tx);
+write_tx(Hash, Where, Tx) when is_binary(Where) ->
+    write_tx_(Hash, Where, Tx).
+
+write_tx_(Hash, Where, Tx) ->
+    ?t(write(aec_tx, #aec_tx{key = {Hash, Where}, tx = Tx})).
+
+read_tx(Hash) ->
+    ?t(mnesia:select(
+         aec_tx, [{ #aec_tx{key = {Hash,[]}, tx = '$1', _ = '_'},
+                    [], [{{mempool, '$1'}}] },
+                  { #aec_tx{key = {Hash,'$1'}, tx = '$2', _ = '_'},
+                    [{is_binary, '$1'}], [{{'$1', '$2'}}] }])).
+
+delete_tx(Hash, mempool) ->
+    delete_tx_(Hash, []);
+delete_tx(Hash, Where) when is_binary(Where) ->
+    delete_tx_(Hash, Where).
+
+delete_tx_(Hash, Where) ->
+    ?t(delete(aec_tx, {Hash, Where})).
+
+transactions_by_account(AcctPubKey) ->
+    ?t([T || #aec_tx{tx = T}
+                 <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx})]).
+
 %% start phase hook to load the database
 
 load_database() ->
@@ -241,6 +297,19 @@ wait_for_tables(Tabs, Sofar, Period, Max) when Sofar < Max ->
 wait_for_tables(Tabs, Sofar, _, _) ->
     {timeout, Sofar, Tabs}.
 
+%% Index callbacks
+
+ix_acct2tx(aec_tx, _Ix, #aec_tx{tx = SignedTx}) ->
+    try aec_tx_sign:data(SignedTx) of
+        Tx ->
+            aec_tx:accounts(Tx)
+    catch
+        error:_ ->
+            []
+    end;
+ix_acct2tx(_, _, _) ->
+    [].
+
 %% Initialization routines
 
 check_db() ->
@@ -251,14 +320,22 @@ check_db() ->
                end,
         ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
-        ensure_mnesia_tables(Mode),
-        ok
+        initialize_db(Mode)
     catch
         error:Reason ->
             lager:error("CAUGHT error:~p / ~p",
                         [Reason, erlang:get_stacktrace()]),
             error(Reason)
     end.
+
+initialize_db(Mode) ->
+    add_plugins(),
+    ensure_mnesia_tables(Mode),
+    ok.
+
+
+add_plugins() ->
+    mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx).
 
 ensure_mnesia_tables(Mode) ->
     Tabs = mnesia:system_info(tables),
@@ -269,7 +346,11 @@ ensure_mnesia_tables(Mode) ->
 
 
 set(Mode, Attrs) ->
-    [copies(Mode), {type, set}, {attributes, Attrs}].
+    set(Mode, Attrs, []).
+
+-spec set(ram | disc, [atom()], [{atom(), any()}]) -> [{atom(), any()}].
+set(Mode, Attrs, Extra) ->
+    [copies(Mode), {type, set}, {attributes, Attrs} | Extra].
 
 copies(disc) -> {disc_copies, [node()]};
 copies(ram ) -> {ram_copies , [node()]}.

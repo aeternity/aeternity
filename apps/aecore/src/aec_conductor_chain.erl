@@ -161,7 +161,8 @@ get_transactions_between(Hash, Root, Transactions, State) ->
             case get_block(Hash, State) of
                 {ok, #block{prev_hash = Parent,
                             txs = BlockTransactions}} ->
-                    NewTransactions = BlockTransactions ++ Transactions,
+                    NewTransactions =
+                        [{T,Hash} || T <- BlockTransactions] ++ Transactions,
                     get_transactions_between(Parent, Root,
                                              NewTransactions, State);
                 {error,_} -> throw({error, {block_off_chain, Hash}})
@@ -205,8 +206,14 @@ persistence_store_block(Block, State) ->
     try begin
             %% Best effort persistence.
             %% If the server is not there, ignore it.
-            aec_db:write_block(Block),
-            persist_chain(State)
+            #block{txs = Transactions} = Block,
+            aec_db:ensure_transaction(
+              fun() ->
+                      aec_db:write_txs(
+                        Transactions, block_hash(Block)),
+                      aec_db:write_block(Block),
+                      persist_chain(State)
+              end)
         end
     catch T:E ->
             lager:error("Persistence server error: ~p:~p", [T, E]),
@@ -217,8 +224,11 @@ persistence_store_header(Header, State) ->
     try begin
             %% Best effort persistence.
             %% If the server is not there, ignore it.
-            aec_db:write_header(Header),
-            persist_chain(State)
+            aec_db:ensure_transaction(
+              fun() ->
+                      aec_db:write_header(Header),
+                      persist_chain(State)
+              end)
         end
     catch T:E ->
             lager:error("Persistence server error: ~p:~p", [T, E]),
@@ -226,7 +236,7 @@ persistence_store_header(Header, State) ->
     end.
 
 persist_chain(State) ->
-    aec_db:transaction(fun() -> do_persist_chain(State) end).
+    aec_db:ensure_transaction(fun() -> do_persist_chain(State) end).
 
 do_persist_chain(State) ->
     case aec_chain_state:top_header_hash(State) of
@@ -239,3 +249,7 @@ do_persist_chain(State) ->
                     aec_db:write_top_block(TopBlockHash)
             end
     end.
+
+block_hash(Block) ->
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+    Hash.

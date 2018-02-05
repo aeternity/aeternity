@@ -19,6 +19,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -132,6 +133,10 @@ check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
+
+-spec accounts(create_tx()) -> [pubkey()].
+accounts(#contract_create_tx{owner = OwnerPubKey}) ->
+    [OwnerPubKey].
 
 -spec signers(create_tx()) -> [pubkey()].
 signers(#contract_create_tx{owner = OwnerPubKey}) ->

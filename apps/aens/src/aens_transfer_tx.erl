@@ -20,6 +20,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -99,6 +100,11 @@ process(#ns_transfer_tx{account = AccountPubKey, fee = Fee,
     Trees2 = aec_trees:set_ns(Trees1, NamesTree1),
 
     {ok, Trees2}.
+
+-spec accounts(transfer_tx()) -> [pubkey()].
+accounts(#ns_transfer_tx{account = AccountPubKey,
+                         recipient_account = RecipientPubKey}) ->
+    [AccountPubKey, RecipientPubKey].
 
 -spec signers(transfer_tx()) -> [pubkey()].
 signers(#ns_transfer_tx{account = AccountPubKey}) ->

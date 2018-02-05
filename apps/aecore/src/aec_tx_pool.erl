@@ -89,16 +89,9 @@ get_max_nonce(Sender) ->
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec fork_update(AddedToChain::[aec_tx_sign:signed_tx()], RemovedFromChain::[aec_tx_sign:signed_tx()]) -> ok.
+-spec fork_update(AddedToChain::[{aec_tx_sign:signed_tx(),any()}], RemovedFromChain::[{aec_tx_sign:signed_tx(), any()}]) -> ok.
 fork_update(AddedToChain, RemovedFromChain) ->
-    %% Add back transactions to the pool from discarded part of the chain
-    %% Mind that we don't need to add those which are incoming in the fork
-    %% TODO: check if local diff is indeed cheaper than hitting ETS table more times
-    push(RemovedFromChain -- AddedToChain),
-    %% Remove transactions added to the chain.
-    %% Mind that we don't need to remove those that were included in the old chain
-    delete(AddedToChain -- RemovedFromChain),
-    ok.
+    gen_server:call(?SERVER, {fork_update, AddedToChain, RemovedFromChain}).
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
@@ -120,6 +113,10 @@ handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
     {reply, ok, State};
 handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
     [pool_db_delete(Mempool, pool_db_key(Tx)) || Tx <- Txs],
+    {reply, ok, State};
+handle_call({fork_update, AddedFromChain, RemovedFromChain}, _From,
+            #state{db = Mempool} = State) ->
+    do_fork_update(AddedFromChain, RemovedFromChain, Mempool),
     {reply, ok, State};
 handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
@@ -196,6 +193,41 @@ ets_select(T, P, N) when is_integer(N), N >= 1 ->
 sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
+
+do_fork_update(AddedToChain, RemovedFromChain, Mempool) ->
+    %% Add back transactions to the pool from discarded part of the chain
+    %% Mind that we don't need to add those which are incoming in the fork
+    TxMap0 =
+        lists:foldl(
+          fun({Tx, BlockHash}, Acc) ->
+                  case lists:keymember(Tx, 1, AddedToChain) of
+                      false ->
+                          pool_db_put(Mempool, pool_db_key(Tx), Tx, tx_created),
+                          [{Tx, BlockHash, mempool} | Acc];
+                      true ->
+                          Acc
+                  end
+          end, [], RemovedFromChain),
+    TxMap =
+        lists:foldl(
+          fun({Tx, BlockHash}, Acc) ->
+                  case lists:keymember(Tx, 1, RemovedFromChain) of
+                      false ->
+                          pool_db_delete(Mempool, pool_db_key(Tx)),
+                          [{Tx, mempool, BlockHash} | Acc];
+                      true ->
+                          Acc
+                  end
+          end, TxMap0, AddedToChain),
+    aec_db:transaction(fun() -> move_txs(TxMap) end).
+
+move_txs([{Tx, From, To}|T]) ->
+    TxHash = aec_tx:hash_tx(aec_tx_sign:data(Tx)),
+    aec_db:delete_tx(TxHash, From),
+    aec_db:write_tx(TxHash, To, Tx),
+    move_txs(T);
+move_txs([]) ->
+    ok.
 
 -spec pool_db_put(pool_db(), pool_db_key(), aec_tx_sign:signed_tx(), event()) -> true.
 pool_db_put(_, undefined, _, _) ->

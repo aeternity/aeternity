@@ -19,6 +19,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -93,6 +94,10 @@ check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
+
+-spec accounts(call_tx()) -> [pubkey()].
+accounts(Tx) ->
+    [caller(Tx)].
 
 -spec signers(call_tx()) -> [pubkey()].
 signers(Tx) ->

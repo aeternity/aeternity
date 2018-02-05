@@ -13,6 +13,7 @@
     stdlib,
     crypto,
     setup,
+    parse_trans,
     eper,
     syntax_tools,
     compiler,

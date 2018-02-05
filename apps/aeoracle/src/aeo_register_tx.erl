@@ -18,6 +18,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -101,6 +102,10 @@ check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
     end.
+
+-spec accounts(register_tx()) -> [pubkey()].
+accounts(#oracle_register_tx{account = AccountPubKey}) ->
+    [AccountPubKey].
 
 -spec signers(register_tx()) -> [pubkey()].
 signers(#oracle_register_tx{account = AccountPubKey}) ->

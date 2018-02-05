@@ -18,6 +18,7 @@
          origin/1,
          check/3,
          process/3,
+         accounts/1,
          signers/1,
          serialize/1,
          deserialize/1,
@@ -98,6 +99,10 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
             end;
         none -> {error, no_matching_oracle_query}
     end.
+
+-spec accounts(response_tx()) -> [pubkey()].
+accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
+    [OraclePubKey].
 
 -spec signers(response_tx()) -> [pubkey()].
 signers(#oracle_response_tx{oracle = OraclePubKey}) ->
