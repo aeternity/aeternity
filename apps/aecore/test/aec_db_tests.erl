@@ -73,11 +73,11 @@ write_chain_test_() ->
                ?compareBlockResults(GB, Block),
 
                %% Genesis should be top header
-               Header = aec_db:get_top_header(),
+               Header = aec_db:get_top_header_hash(),
                ?assertEqual(Header, Hash),
 
                %% Genesis should be top block
-               TopBlockHash = aec_db:get_top_block(),
+               TopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(Header, TopBlockHash),
 
                ok
@@ -99,26 +99,26 @@ write_chain_test_() ->
                ?compareBlockResults(GB, Block),
 
                %% BH2 should be top header
-               Header = aec_db:get_top_header(),
+               Header = aec_db:get_top_header_hash(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, Header),
 
                %% Genesis should be top block
-               TopBlockHash = aec_db:get_top_block(),
+               TopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(GHash, TopBlockHash),
 
                %% Add one block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_conductor:post_block(B2)),
 
                %% GB should still be top block
-               NewTopBlockHash = aec_db:get_top_block(),
+               NewTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(GHash, NewTopBlockHash),
 
                %% Add missing block corresponding to a header already in the chain.
                ?assertEqual(ok, aec_conductor:post_block(B1)),
 
                %% Now B2 should be the top block
-               LastTopBlockHash = aec_db:get_top_block(),
+               LastTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(B2Hash, LastTopBlockHash),
 
                ok
@@ -156,7 +156,7 @@ restart_test_() ->
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                %% Now B2 should be the top block
-               TopBlockHash = aec_db:get_top_block(),
+               TopBlockHash = aec_db:get_top_block_hash(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
                ChainTop1 = aec_conductor:top(),
@@ -174,7 +174,7 @@ restart_test_() ->
                %% Kill chain server
 
                kill_and_restart_conductor(),
-               NewTopBlockHash = aec_db:get_top_block(),
+               NewTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
                ChainTop2 = aec_conductor:top(),

@@ -17,6 +17,7 @@
          set_target/2,
          new/3,
          new_with_state/3,
+         from_header_and_txs/2,
          to_header/1,
          serialize_for_store/1,
          deserialize_from_store/1,
@@ -132,6 +133,27 @@ to_header(#block{height = Height,
             time = Time,
             pow_evidence = Evd,
             version = Version}.
+
+from_header_and_txs(#header{height = Height,
+                            prev_hash = PrevHash,
+                            txs_hash = TxsHash,
+                            root_hash = RootHash,
+                            target = Target,
+                            nonce = Nonce,
+                            time = Time,
+                            pow_evidence = Evd,
+                            version = Version}, Txs) ->
+    #block{height = Height,
+           prev_hash = PrevHash,
+           txs_hash = TxsHash,
+           root_hash = RootHash,
+           target = Target,
+           nonce = Nonce,
+           time = Time,
+           version = Version,
+           pow_evidence = Evd,
+           txs = Txs
+          }.
 
 serialize_client_readable(Encoding, B) ->
     serialize_to_map(B,
