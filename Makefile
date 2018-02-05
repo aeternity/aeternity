@@ -153,15 +153,19 @@ python-single-uat:
 python-release-test:
 	( cd $(PYTHON_DIR) && TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
 
-swagger: config/swagger.yaml
-	@swagger-codegen generate -i $< -l erlang-server -o $(SWTEMP)
+SWAGGER_CODEGEN_CLI_V = 2.3.1
+SWAGGER_CODEGEN_CLI = swagger/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
+SWAGGER_CODEGEN = java -jar $(SWAGGER_CODEGEN_CLI)
+
+swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
+	@$(SWAGGER_CODEGEN) generate -i $< -l erlang-server -o $(SWTEMP)
 	@echo "Swagger tempdir: $(SWTEMP)"
-	@cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/
+	@( mkdir -p $(HTTP_APP)/priv && cp $(SWTEMP)/priv/swagger.json $(HTTP_APP)/priv/; )
 	@( cd $(HTTP_APP) && $(MAKE) updateswagger; )
-	@cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger
+	@( mkdir -p $(HTTP_APP)/src/swagger && cp $(SWTEMP)/src/*.erl $(HTTP_APP)/src/swagger; )
 	@rm -fr $(SWTEMP)
 	@./rebar3 swagger_endpoints
-	@swagger-codegen generate -i $< -l python -o $(SWTEMP)
+	@$(SWAGGER_CODEGEN) generate -i $< -l python -o $(SWTEMP)
 	@echo "Swagger python tempdir: $(SWTEMP)"
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@rm -fr $(SWTEMP)
@@ -169,6 +173,16 @@ swagger: config/swagger.yaml
 swagger-docs:
 	(cd ./apps/aehttp && $(MAKE) swagger-docs);
 
+swagger-check:
+	./swagger/check \
+		"$(CURDIR)/config/swagger.yaml" \
+		"swagger" \
+		"$(CURDIR)/apps/aehttp/priv/swagger.json" \
+		"$(CURDIR)/apps/aehttp/src/swagger" \
+		"$(CURDIR)/py/tests/swagger_client"
+
+$(SWAGGER_CODEGEN_CLI):
+	curl -fsS --create-dirs -o $@ http://central.maven.org/maven2/io/swagger/swagger-codegen-cli/$(SWAGGER_CODEGEN_CLI_V)/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 
 kill:
 	@echo "Kill all beam processes only from this directory tree"
@@ -236,4 +250,5 @@ internal-clean: $$(KIND)
 	dialyzer \
 	test aevm-test-deps\
 	kill killall \
-	clean distclean
+	clean distclean \
+	swagger swagger-docs swagger-check
