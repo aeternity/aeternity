@@ -763,6 +763,29 @@
         }
       }
     },
+    "/debug/peers" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get node Peers",
+        "operationId" : "GetPeers",
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Peers"
+            }
+          },
+          "403" : {
+            "description" : "Info not enabled",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/block/number" : {
       "get" : {
         "tags" : [ "internal" ],
@@ -2398,6 +2421,35 @@
         "calldata" : "calldata"
       }
     },
+    "Peers" : {
+      "type" : "object",
+      "properties" : {
+        "peers" : {
+          "type" : "array",
+          "description" : "All connected peers",
+          "items" : {
+            "$ref" : "#/definitions/Peers_peers"
+          }
+        },
+        "blocked" : {
+          "type" : "array",
+          "description" : "All blocked peers",
+          "items" : {
+            "type" : "string"
+          }
+        }
+      },
+      "example" : {
+        "blocked" : [ "blocked", "blocked" ],
+        "peers" : [ {
+          "last_seen" : 0,
+          "uri" : "uri"
+        }, {
+          "last_seen" : 0,
+          "uri" : "uri"
+        } ]
+      }
+    },
     "inline_response_200" : {
       "properties" : {
         "count" : {
@@ -2444,6 +2496,22 @@
           "type" : "integer",
           "format" : "int64"
         }
+      }
+    },
+    "Peers_peers" : {
+      "properties" : {
+        "uri" : {
+          "type" : "string",
+          "description" : "Peer's URI"
+        },
+        "last_seen" : {
+          "type" : "integer",
+          "description" : "Timestamp of last message. If none - 0"
+        }
+      },
+      "example" : {
+        "last_seen" : 0,
+        "uri" : "uri"
       }
     }
   },

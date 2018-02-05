@@ -106,7 +106,9 @@
     balance_negative_cases/1,
 
     list_oracles/1,
-    list_oracle_queries/1
+    list_oracle_queries/1,
+
+    peers/1
    ]).
 %%
 %% test case exports
@@ -223,7 +225,9 @@ groups() ->
         balance_negative_cases,
 
         list_oracles,
-        list_oracle_queries
+        list_oracle_queries,
+
+        peers
       ]},
      {naming, [sequence], [naming_system_manage_name]},
      {websocket, [sequence],
@@ -1943,6 +1947,76 @@ balance_negative_cases(_Config) ->
                                            height => Height}),
     ok.
 
+peers(_Config) ->
+    BeforePingTime = rpc(erlang, system_time, [millisecond]),
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
+    {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
+
+    %% ensure no peers
+    lists:foreach(
+        fun({PeerUri, _}) -> rpc(aec_peers, remove, [PeerUri]) end,
+        rpc(aec_peers, all, [])),
+
+    %% ensure no blocked
+    lists:foreach(
+        fun(BlockedUri) -> rpc(aec_peers, unblock, [BlockedUri]) end,
+        rpc(aec_peers, blocked, [])),
+
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
+    {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
+
+    %% post some pings
+    #{<<"genesis_hash">> := GHash,
+      <<"best_hash">> := TopHash
+    } = PingObj0 = rpc(aec_sync, local_ping_object, []),
+    EncGHash = aec_base58c:encode(block_hash, GHash),
+    EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    PingObj = PingObj0#{<<"genesis_hash">> => EncGHash,
+                        <<"best_hash">> => EncTopHash},
+    PostPing =
+        fun(Peer) ->
+            {ok, 200, _} =
+                post_ping(maps:put(<<"source">>, Peer, PingObj))
+          end,
+    Peers = [<<"http://someone.somewhere:1337">>,
+             <<"http://someonelse.somewhereelse:1337">>],
+    lists:foreach(PostPing, Peers),
+
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
+    {ok, 200, #{<<"blocked">> := [], <<"peers">> := ReturnedPeers}} = get_peers(),
+    ct:log("ReturnedPeers ~p", [ReturnedPeers]),
+    lists:foreach(
+        fun(#{<<"uri">> := Uri, <<"last_seen">> := LastSeen}) ->
+            true = lists:member(Uri, Peers),
+            true = LastSeen > BeforePingTime
+        end,
+        ReturnedPeers),
+
+    %% cleanup
+    lists:foreach(
+        fun(PeerUri) -> rpc(aec_peers, remove, [PeerUri]) end,
+        Peers),
+
+    %% get some blocked peers
+    BlockedPeers = [<<"http://blocked.peer:1337">>,
+                    <<"http://otherblocked.peer:1337">>],
+
+    BrokenPingObj = PingObj#{<<"genesis_hash">> => <<"not a valid hash">>},
+    lists:foreach(
+        fun(Peer) ->
+            {ok, 409, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj)),
+            %% ensure blocked
+            {ok, 403, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj))
+        end,
+        BlockedPeers),
+    %% verify them
+    {ok, 200, #{<<"blocked">> := ReturnedBlocked, <<"peers">> := []}} = get_peers(),
+    [] = BlockedPeers -- ReturnedBlocked,
+
+    %% clenaup
+    lists:foreach(fun(BlockedPeer) -> rpc(aec_peers, unblock, [BlockedPeer]) end,
+                  BlockedPeers),
+    ok.
 
 %% ============================================================
 %% WebSocket helpers
@@ -2186,6 +2260,10 @@ get_list_oracle_queries(Oracle, From, Max) ->
     Params = case From of undefined -> Params0; _ -> Params0#{ from => From } end,
     {ok, 200, Queries} = http_request(Host, get, "oracle-questions", Params),
     Queries.
+
+get_peers() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/peers", []).
 
 %% ============================================================
 %% private functions

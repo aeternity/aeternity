@@ -158,6 +158,10 @@ request_params('GetOracleQuestions') ->
         'max'
     ];
 
+request_params('GetPeers') ->
+    [
+    ];
+
 request_params('GetPendingBlockTxsCount') ->
     [
         'tx_types',
@@ -1040,6 +1044,11 @@ validate_response('GetLatestBlockTxsCount', 200, Body, ValidatorState) ->
 validate_response('GetOracleQuestions', 200, Body, ValidatorState) ->
     validate_response_body('OracleQuestions', 'OracleQuestions', Body, ValidatorState);
 validate_response('GetOracleQuestions', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetPeers', 200, Body, ValidatorState) ->
+    validate_response_body('Peers', 'Peers', Body, ValidatorState);
+validate_response('GetPeers', 403, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->

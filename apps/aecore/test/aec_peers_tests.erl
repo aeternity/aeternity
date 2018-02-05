@@ -52,7 +52,7 @@ all_test_() ->
       {"Add peer",
        fun() ->
                ok = aec_peers:add("http://localhost:800", false),
-               [<<"http://localhost:800">>] = aec_peers:all()
+               [{<<"http://localhost:800">>, _}] = aec_peers:all()
        end},
       {"Get random N",
        fun() ->
@@ -68,7 +68,7 @@ all_test_() ->
     }.
 
 do_remove_all() ->
-    [aec_peers:remove(P) || P <- aec_peers:all()],
+    [aec_peers:remove(P) || {P, _} <- aec_peers:all()],
     [] = aec_peers:all(),
     ok.
 
