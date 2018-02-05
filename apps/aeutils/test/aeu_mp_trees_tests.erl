@@ -25,6 +25,7 @@ basic_test_() ->
     , {"Collapse extension", fun test_collapse_ext/0}
     , {"Iterator test", fun test_iterator/0}
     , {"Iterator depth test", fun test_iterator_depth/0}
+    , {"Iterator from non-existing", fun test_iterator_non_existing/0}
     ].
 
 hash_test_() ->
@@ -172,6 +173,27 @@ test_iterator_depth(_Depth, [],_Tree, Iterator) ->
     ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
     ok.
 
+test_iterator_non_existing() ->
+    rand:seed(exs1024s, {1412343, 989132, 44563}),
+    Vals = gen_vals(1000),
+    Sorted = lists:sort(Vals),
+    ?assertEqual(Sorted, lists:ukeysort(1, Sorted)),
+    {Vals1, Vals2} = split_every_other(Sorted, [], []),
+    NonExistingKeys = [X || {X, _} <- Vals1],
+    Tree = insert_vals(Vals2, aeu_mp_trees:new()),
+    test_iterator_non_existing(Vals2, NonExistingKeys, Tree).
+
+split_every_other([X, Y|Left], Acc1, Acc2) ->
+    split_every_other(Left, [X|Acc1], [Y|Acc2]);
+split_every_other([], Acc1, Acc2) ->
+    {lists:reverse(Acc1), lists:reverse(Acc2)}.
+
+test_iterator_non_existing([{Key, Val}|Left1], [NonExisting|Left2], Tree) ->
+    Iterator = aeu_mp_trees:iterator_from(NonExisting, Tree),
+    ?assertMatch({Key, Val, _}, aeu_mp_trees:iterator_next(Iterator)),
+    test_iterator_non_existing(Left1, Left2, Tree);
+test_iterator_non_existing([], [],_Tree) ->
+    ok.
 
 %%%=============================================================================
 %%% Hash tests

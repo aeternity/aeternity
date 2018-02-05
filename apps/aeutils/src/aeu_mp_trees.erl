@@ -519,30 +519,35 @@ int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, Max,  DB) ->
     end;
 int_iter_next(Path, {leaf, Path, _},_Max,_DB) ->
     '$end_of_table';
-int_iter_next(<<>>, {leaf, Path, Val}, Max,_DB) ->
-    case check_iter_path_length(Path, Max) of
-        {ok, _} -> {Path, Val};
-        error   -> '$end_of_table'
-    end;
-int_iter_next(<<>>, {ext, NodePath, Hash}, Max, DB) ->
+int_iter_next(Path, {leaf, NodePath, Val}, Max,_DB) ->
     case check_iter_path_length(NodePath, Max) of
-        {ok, NewMax} ->
-            case pick_first(decode_node(Hash, DB), NewMax, DB) of
-                '$end_of_table' -> '$end_of_table';
-                {RestPath, Val} ->
-                    {<<NodePath/bits, RestPath/bits>>, Val}
+        {ok, _} ->
+            case Path < NodePath of
+                true  -> {NodePath, Val};
+                false -> '$end_of_table'
             end;
-        error ->
-            '$end_of_table'
+        error   -> '$end_of_table'
     end;
 int_iter_next(Path, {ext, NodePath, Hash}, Max, DB) ->
     case check_iter_path_length(NodePath, Max) of
         {ok, NewMax} ->
             S = bit_size(NodePath),
-            <<NodePath:S/bits, Rest/bits>> = Path,
-            case int_iter_next(Rest, decode_node(Hash, DB), NewMax, DB) of
-                '$end_of_table' -> '$end_of_table';
-                {RestPath, Val} -> {<<NodePath/bits, RestPath/bits>>, Val}
+            case Path of
+                <<NodePath:S/bits, Rest/bits>> ->
+                    Next = decode_node(Hash, DB),
+                    case int_iter_next(Rest, Next, NewMax, DB) of
+                        '$end_of_table' -> '$end_of_table';
+                        {RestPath, Val} ->
+                            {<<NodePath/bits, RestPath/bits>>, Val}
+                    end;
+                _ when Path < NodePath ->
+                    case pick_first(decode_node(Hash, DB), NewMax, DB) of
+                        '$end_of_table' -> '$end_of_table';
+                        {RestPath, Val} ->
+                            {<<NodePath/bits, RestPath/bits>>, Val}
+                    end;
+                _ when Path >= NodePath ->
+                    '$end_of_table'
             end;
         error ->
             '$end_of_table'
