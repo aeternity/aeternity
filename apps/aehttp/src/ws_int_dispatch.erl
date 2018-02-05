@@ -53,22 +53,34 @@ do_execute(chain, get, QueryPayload) ->
             Val = aehttp_dispatch_ext:cleanup_genesis(Val0),
             {ok, chain, requested_data, [{type, Type}, Query, {Type, Val}]}
     end;
-do_execute(oracle, subscribe, SubscribeData) ->
+do_execute(chain, unsubscribe_all, Data) ->
+    #{<<"ws_pid">> := WsPid} = Data,
+    aec_subscribe:unsubscribe_all(WsPid),
+    {ok, chain, unsubscribe_all, [{result, ok}]};
+do_execute(chain, SubUnSub, SubscribeData)
+        when SubUnSub == subscribe; SubUnSub == unsubscribe ->
     try
         #{<<"type">> := SubType, <<"ws_pid">> := WsPid} = SubscribeData,
         Event =
             case SubType of
-                <<"query">> ->
+                <<"oracle_query">> ->
                     #{<<"oracle_id">> := EncodedOId} = SubscribeData,
                     {ok, OId} = aec_base58c:safe_decode(oracle_pubkey, EncodedOId),
-                    {query, OId};
-                <<"response">> ->
+                    {oracle, {query, OId}};
+                <<"oracle_response">> ->
                     #{<<"query_id">> := EncodedQId} = SubscribeData,
                     {ok, QId} = aec_base58c:safe_decode(oracle_query_id, EncodedQId),
-                    {response, QId}
+                    {oracle, {response, QId}};
+                <<"mined_block">> ->
+                    {chain, mined_block};
+                <<"new_block">> ->
+                    {chain, new_block}
             end,
-        aec_subscribe:subscribe({ws, WsPid}, {aeo, Event}),
-        {ok, oracle, subscribe, [{result, ok}, {subscribed_to, maps:remove(<<"ws_pid">>, SubscribeData)}]}
+        case SubUnSub of
+            subscribe   -> aec_subscribe:subscribe({ws, WsPid}, Event);
+            unsubscribe -> aec_subscribe:unsubscribe({ws, WsPid}, Event)
+        end,
+        {ok, chain, SubUnSub, [{result, ok}, {subscribed_to, maps:remove(<<"ws_pid">>, SubscribeData)}]}
     catch _:_ ->
         {error, <<"Bad subscription request">>}
     end;
