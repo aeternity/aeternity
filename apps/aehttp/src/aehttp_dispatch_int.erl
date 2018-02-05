@@ -386,6 +386,31 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
           
+
+handle_request('GetAccountBalance', Req, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
+        {ok, AccountPubkey} ->
+            case get_block_hash_optionally_by_hash_or_height(Req) of
+                {error, not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}};
+                {error, invalid_hash} ->
+                    {400, [], #{reason => <<"Invalid block hash">>}};
+                {error, blocks_mismatch} ->
+                    {400, [], #{reason => <<"Invalid height and hash combination">>}};
+                {ok, Hash} ->
+                      case get_account_balance_at_hash(AccountPubkey, Hash) of
+                          {error, account_not_found} ->
+                              {404, [], #{reason => <<"Account not found">>}};
+                          {error, not_on_main_chain} ->
+                              {400, [], #{reason => <<"Block not on the main chain">>}};
+                          {ok, Balance} ->
+                              {200, [], #{balance => Balance}}
+                      end
+            end;
+        _ ->
+            {400, [], #{reason => <<"Invalid account hash">>}}
+    end;
+          
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
@@ -649,3 +674,61 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
 
     end.
 
+get_account_balance_at_hash(AccountPubkey, Hash) ->
+    case aec_db:find_block_state(Hash) of
+        none ->
+            {error, not_on_main_chain};
+        {value, Trees} ->
+            AccountsMPTree = aec_trees:accounts(Trees),
+            case aec_accounts_trees:lookup(AccountPubkey, AccountsMPTree) of
+                none ->
+                    {error, account_not_found};
+                {value, Account} ->
+                    {ok, aec_accounts:balance(Account)}
+            end
+    end.
+
+-spec get_block_hash_optionally_by_hash_or_height(map()) ->
+    {ok, binary()} | {error, not_found | invalid_hash | blocks_mismatch}.
+get_block_hash_optionally_by_hash_or_height(Req) ->
+    GetHashByHeight =
+        fun(Height) ->
+            case aec_conductor:get_header_by_height(Height) of 
+                {error, chain_too_short} ->
+                    {error, not_found};
+                {ok, Header} ->
+                    {ok, _Hash} = aec_headers:hash_header(Header) 
+            end
+        end,
+    case {maps:get('height', Req), maps:get('hash', Req)} of
+        {undefined, undefined} ->
+            {ok, aec_conductor:top_block_hash()};
+        {undefined, EncodedHash} ->
+            case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                {error, _} ->
+                    {error, invalid_hash};
+                {ok, Hash} ->
+                    case aec_conductor:get_header_by_hash(Hash) of 
+                        {error, header_not_found} ->
+                            {error, not_found};
+                        {ok, _} -> % we do have header
+                            {ok, Hash}
+                    end
+            end;
+        {Height, undefined} ->
+            GetHashByHeight(Height);
+        {Height, EncodedHash} ->
+            case GetHashByHeight(Height) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Hash} -> % ensure it is the same hash
+                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
+                        {error, _} ->
+                            {error, invalid_hash};
+                        {ok, Hash} -> % same hash
+                            {ok, Hash};
+                        {ok, _OtherHash} ->
+                            {error, blocks_mismatch}
+                    end
+            end
+    end.
