@@ -401,6 +401,8 @@ handle_request('GetAccountBalance', Req, _Context) ->
                       case get_account_balance_at_hash(AccountPubkey, Hash) of
                           {error, account_not_found} ->
                               {404, [], #{reason => <<"Account not found">>}};
+                          {error, not_on_main_chain} ->
+                              {400, [], #{reason => <<"Block not on the main chain">>}};
                           {ok, Balance} ->
                               {200, [], #{balance => Balance}}
                       end
@@ -673,13 +675,17 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
     end.
 
 get_account_balance_at_hash(AccountPubkey, Hash) ->
-    {value, Trees} = aec_db:find_block_state(Hash),
-    AccountsMPTree = aec_trees:accounts(Trees),
-    case aec_accounts_trees:lookup(AccountPubkey, AccountsMPTree) of
+    case aec_db:find_block_state(Hash) of
         none ->
-            {error, account_not_found};
-        {value, Account} ->
-            {ok, aec_accounts:balance(Account)}
+            {error, not_on_main_chain};
+        {value, Trees} ->
+            AccountsMPTree = aec_trees:accounts(Trees),
+            case aec_accounts_trees:lookup(AccountPubkey, AccountsMPTree) of
+                none ->
+                    {error, account_not_found};
+                {value, Account} ->
+                    {ok, aec_accounts:balance(Account)}
+            end
     end.
 
 -spec get_block_hash_optionally_by_hash_or_height(map()) ->
