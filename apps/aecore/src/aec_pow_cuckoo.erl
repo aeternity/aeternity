@@ -58,13 +58,13 @@
 %%
 %%  Very slow below 3 threads, not improving significantly above 5, let us take 5.
 %%------------------------------------------------------------------------------
--spec generate(Data :: aec_sha256:hashable(), Target :: aec_pow:sci_int(),
+-spec generate(Data :: aec_hash:hashable(), Target :: aec_pow:sci_int(),
                Nonce :: aec_pow:nonce()) -> aec_pow:pow_result().
 generate(Data, Target, Nonce) when Nonce >= 0,
                                    Nonce =< ?MAX_NONCE ->
     %% Hash Data and convert the resulting binary to a base64 string for Cuckoo
     %% Since this hash is purely internal, we don't use base58
-    Hash = aec_sha256:hash(Data),
+    Hash = aec_hash:hash(pow, Data),
     ?debug("Generating solution for data hash ~p and nonce ~p with target ~p.",
            [Hash, Nonce, Target]),
     generate_int(Hash, Nonce, Target).
@@ -72,12 +72,12 @@ generate(Data, Target, Nonce) when Nonce >= 0,
 %%------------------------------------------------------------------------------
 %% Proof of Work verification (with difficulty check)
 %%------------------------------------------------------------------------------
--spec verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
+-spec verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
              Evd :: aec_pow:pow_evidence(), Target :: aec_pow:sci_int()) ->
                     boolean().
 verify(Data, Nonce, Evd, Target) when is_list(Evd),
                                       Nonce >= 0, Nonce =< ?MAX_NONCE ->
-    Hash = aec_sha256:hash(Data),
+    Hash = aec_hash:hash(pow, Data),
     case test_target(Evd, Target) of
         true ->
             verify_proof(Hash, Nonce, Evd);
@@ -470,7 +470,7 @@ test_target(Soln, Target) ->
 
 test_target(Soln, Target, NodeSize) ->
     Bin = solution_to_binary(lists:sort(Soln), NodeSize * 8, <<>>),
-    Hash = aec_sha256:hash(Bin),
+    Hash = aec_hash:hash(pow, Bin),
     aec_pow:test_target(Hash, Target).
 
 %%------------------------------------------------------------------------------

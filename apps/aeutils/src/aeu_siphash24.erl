@@ -33,7 +33,7 @@
            aeu_siphash24:siphash_key(),
            aeu_siphash24:siphash_key()}.
 create_keys(Header) ->
-    AuxHash = <<_:32/binary>> = aeu_blake2b:blake2b(Header, <<>>, 32),
+    AuxHash = <<_:32/binary>> = aec_hash:blake2s_hash(Header),
     <<K0:64/little-unsigned,
       K1:64/little-unsigned,
       K2:64/little-unsigned,

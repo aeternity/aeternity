@@ -658,7 +658,7 @@ hexchar(X) when X > -1, X < 16 -> $A + X - 10.
 
 -spec node_hash(enc_node()) -> hash().
 node_hash(<<>>) -> error(no_hash_for_null);
-node_hash(Bin) when byte_size(Bin) < 32   -> crypto:hash(sha256, Bin);
+node_hash(Bin) when byte_size(Bin) < 32   -> aec_hash:hash(header, Bin);
 node_hash(Bin) when byte_size(Bin) =:= 32 -> Bin.
 
 -spec decode_node(enc_node(), db()) -> tree_node().
@@ -686,7 +686,7 @@ decode_node_and_check_hash(Rlp, DB) when byte_size(Rlp) < 32 ->
     {ok, decode_node(Rlp, DB)};
 decode_node_and_check_hash(Hash, DB) when byte_size(Hash) =:= 32 ->
     EncNode = db_get(Hash, DB),
-    Actual = crypto:hash(sha256, aeu_rlp:encode(EncNode)),
+    Actual = aec_hash:hash(header, aeu_rlp:encode(EncNode)),
     case Actual =:= Hash of
         true  -> {ok, decode_node(Hash, DB)};
         false -> {bad_hash, Hash}
@@ -699,7 +699,7 @@ encode_node(Node, DB) ->
     case byte_size(Rlp) < 32 of
         true  -> {Rlp, DB};
         false ->
-            Hash = crypto:hash(sha256, Rlp),
+            Hash = aec_hash:hash(header, Rlp),
             {Hash, db_put(Hash, Node, DB)}
     end.
 

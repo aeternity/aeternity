@@ -22,8 +22,12 @@ The binaries are tested on the following platforms:
 * macOS Sierra (x86-64);
 * macOS High Sierra (x86-64).
 
-The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
-In case you have installed it in a non-default path, you could use a symlink to work around the issue.
+The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib` and also a hard
+dependency on libsodium v1.0.16 installed with [Homebrew](https://brew.sh/) also in its default path `/usr/local/opt/libsodium/lib/libsodium.23.dylib`.
+In case you have installed either of them in a non-default path, you could use symlink(s) to work around the issue.
+
+To run on Ubuntu 16.04 you need to have a libsodium shared library (v1.0.16) in `/usr/local/lib/libsodium.so.23`. (`wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz`,
+unpack, then do `./configure && make && sudo make install`)
 
 Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.6.0/docs/docker.md).
 

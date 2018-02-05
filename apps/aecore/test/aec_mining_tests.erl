@@ -21,17 +21,16 @@
                     107,188,126,242,98,36,211,79,105,50,16,124,227,93,228,142,83,163,126,167,206>>).
 
 mine_block_test_() ->
-    PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
-    [{foreach,
-      fun() -> setup(PoWMod) end,
-      fun(_) -> cleanup(unused_arg, PoWMod) end,
+    {foreach,
+      fun() -> setup() end,
+      fun(_) -> cleanup(unused_arg) end,
       [
        {timeout, 60,
-        {"Find a new block (PoW module " ++ atom_to_list(PoWMod) ++ ")",
+        {"Find a new block",
          fun() ->
                  TopBlock = #block{height = 0,
                                    target = ?HIGHEST_TARGET_SCI},
-                 meck:expect(aec_pow, pick_nonce, 0, 65),
+                 meck:expect(aec_pow, pick_nonce, 0, 101),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  {ok, Block} = ?TEST_MODULE:mine(BlockCandidate, Nonce),
@@ -43,8 +42,7 @@ mine_block_test_() ->
                                     aec_blocks:to_header(Block)))
          end}},
        {timeout, 60,
-        {"Proof of work fails with no_solution (PoW module " ++
-             atom_to_list(PoWMod) ++ ")",
+        {"Proof of work fails with no_solution",
          fun() ->
                  TopBlock = #block{target = ?LOWEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
@@ -53,38 +51,30 @@ mine_block_test_() ->
                  ?assertEqual({error, no_solution},
                               ?TEST_MODULE:mine(BlockCandidate, Nonce))
          end}}
-      ]
-     } || PoWMod <- PoWModules].
+      ]}.
 
 difficulty_recalculation_test_() ->
-    PoWModules = [aec_pow_sha256, aec_pow_cuckoo],
-    [{foreach,
+    {foreach,
       fun() ->
-              setup(PoWMod),
+              setup(),
               %% This group of tests tests the difficulty
               %% recalculation inside the aec_mining module, hence the
               %% PoW module can be mocked.
-              meck:new(PoWMod),
-              meck:expect(PoWMod, generate,
+              meck:new(aec_pow_cuckoo),
+              meck:expect(aec_pow_cuckoo, generate,
                           fun(_, _, Nonce) ->
-                                   Evd = case PoWMod of
-                                             aec_pow_cuckoo ->
-                                                 lists:duplicate(42, 0);
-                                             aec_pow_sha256 ->
-                                                 no_value
-                                         end,
-                                  {ok, {Nonce, Evd}}
+                              Evd = lists:duplicate(42, 0),
+                              {ok, {Nonce, Evd}}
                           end),
               meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10)
       end,
       fun(_) ->
-              meck:unload(PoWMod),
-              cleanup(unused_arg, PoWMod)
+              meck:unload(aec_pow_cuckoo),
+              cleanup(unused_arg)
       end,
       [
        {timeout, 60,
-        {"For good mining speed mine block with the same difficulty (PoW module " ++
-             atom_to_list(PoWMod) ++ ")",
+        {"For good mining speed mine block with the same difficulty",
          fun() ->
                  Now = 1504731164584,
                  OneBlockExpectedMineTime = 300000,
@@ -111,8 +101,7 @@ difficulty_recalculation_test_() ->
                  ?assertEqual(1, meck:num_calls(aec_governance, blocks_to_check_difficulty_count, 0))
          end}},
        {timeout, 60,
-        {"Too few blocks mined in time increases new block's target threshold (PoW module " ++
-             atom_to_list(PoWMod) ++ ")",
+        {"Too few blocks mined in time increases new block's target threshold",
          fun() ->
                  Now = 1504731164584,
                  TS  = [ {X, Now - X * 300001} || X <- lists:seq(1, 10) ], %% Almost perfect timing!!
@@ -138,28 +127,20 @@ difficulty_recalculation_test_() ->
                  ?assertEqual(true, PastTarget < Block#block.target),
                  ?assertEqual(true, ?HIGHEST_TARGET_SCI >= Block#block.target)
          end}}
-      ]
-     } || PoWMod <- PoWModules].
+      ]}.
 
-setup(PoWMod) ->
-    case PoWMod of
-        aec_pow_cuckoo ->
-            ok = meck:new(aeu_env, [passthrough]),
-            aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
-            ok = application:ensure_started(erlexec);
-        aec_pow_sha256 ->
-            ok
-    end,
+setup() ->
+    ok = meck:new(aeu_env, [passthrough]),
+    aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
+    ok = application:ensure_started(erlexec),
     application:start(crypto),
     meck:new(aec_blocks, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
     meck:new(aec_headers, [passthrough]),
-    meck:new(aec_pow, [passthrough]),
     meck:new(aec_tx, [passthrough]),
     meck:new(aec_governance, [passthrough]),
     meck:new(aec_keys,[passthrough]),
     meck:new(aec_trees, [passthrough]),
-    meck:expect(aec_pow, pow_module, 0, PoWMod),
     meck:new(aeu_time, [passthrough]),
     meck:expect(aeu_time, now_in_msecs, 0, 1510253222889),
     {ok, _} = aec_tx_pool:start_link(),
@@ -181,23 +162,17 @@ setup(PoWMod) ->
                 {ok, SignedTx}).
 
 
-cleanup(_, PoWMod) ->
+cleanup(_) ->
     application:stop(crypto),
     meck:unload(aec_blocks),
     meck:unload(aec_conductor),
     meck:unload(aec_headers),
-    meck:unload(aec_pow),
     meck:unload(aec_tx),
     meck:unload(aec_governance),
     meck:unload(aec_keys),
     meck:unload(aec_trees),
     meck:unload(aeu_time),
     ok = aec_tx_pool:stop(),
-    case PoWMod of
-        aec_pow_cuckoo ->
-            ok = meck:unload(aeu_env);
-        aec_pow_sha256 ->
-            ok
-    end.
+    ok = meck:unload(aeu_env).
 
 -endif.

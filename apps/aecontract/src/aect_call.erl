@@ -83,7 +83,7 @@ id(Caller, Nonce, Contract) ->
     Bin = <<Caller:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
             Contract:?PUB_SIZE/binary>>,
-    aec_sha256:hash(Bin).
+    aec_hash:hash(pubkey, Bin).
 
 -spec serialize(call()) -> binary().
 serialize(#call{} = I) ->

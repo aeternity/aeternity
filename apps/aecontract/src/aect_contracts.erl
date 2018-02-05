@@ -159,7 +159,7 @@ deserialize(Bin) ->
 -spec compute_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
 compute_contract_pubkey(Owner, Nonce) ->
     %% TODO: do this in a less ad-hoc way?
-    Hash = aec_sha256:hash(<<Nonce:64, Owner/binary>>),
+    Hash = aec_hash:hash(pubkey, <<Nonce:64, Owner/binary>>),
     <<"0x", HexHash/binary>> = list_to_binary(aect_utils:hex_bytes(Hash)),
     <<PubKey:?PUB_SIZE/binary, _/binary>> = <<"C0DE", HexHash/binary>>,
     PubKey.
