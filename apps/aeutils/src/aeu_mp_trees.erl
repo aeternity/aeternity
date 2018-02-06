@@ -15,7 +15,9 @@
         , delete/2
         , get/2
         , iterator/1
+        , iterator/2
         , iterator_from/2
+        , iterator_from/3
         , iterator_next/1
         , pp/1
         , put/3
@@ -41,11 +43,14 @@
 
 -record(iter, { key  = <<>>          :: <<>> | key()
               , root = <<>>          :: <<>> | hash()
+              , max_length           :: pos_integer() | 'undefined'
               , db   = new_dict_db() :: aeu_mp_trees:db()
               }).
 
 -opaque tree() :: #mpt{}.
 -opaque iterator() :: #iter{}.
+
+-type iterator_opts() :: [{'max_path_length', pos_integer()}].
 
 -type tree_node() :: null() | leaf() | extension() | branch().
 
@@ -159,19 +164,27 @@ verify_proof(Key, Val, Hash, ProofDB) ->
 iterator(#mpt{hash = Hash, db = DB}) ->
     #iter{key = <<>>, root = Hash, db = DB}.
 
+-spec iterator(tree(), iterator_opts()) -> iterator().
+iterator(#mpt{hash = Hash, db = DB}, Opts) ->
+    process_iterator_opts(#iter{key = <<>>, root = Hash, db = DB}, Opts).
+
 %%% @doc Iterator from a key. Key doesn't need to exist. Calling
 %%% iterator_next/1 gives the next value after Key.
 -spec iterator_from(key(), tree()) -> iterator().
 iterator_from(Key, #mpt{hash = Hash, db = DB}) ->
     #iter{key = Key, root = Hash, db = DB}.
 
+-spec iterator_from(key(), tree(), iterator_opts()) -> iterator().
+iterator_from(Key, #mpt{hash = Hash, db = DB}, Opts) ->
+    process_iterator_opts(#iter{key = Key, root = Hash, db = DB}, Opts).
+
 -spec iterator_next(iterator()) ->
                            {key(), value(), iterator()} | '$end_of_table'.
-iterator_next(#iter{key = Key, root = Hash, db = DB} = Iter) ->
+iterator_next(#iter{key = Key, root = Hash, db = DB, max_length = M} = Iter) ->
     Res =
         case Key =:= <<>> of
-            true  -> pick_first(decode_node(Hash, DB), DB);
-            false -> int_iter_next(Key, decode_node(Hash, DB), DB)
+            true  -> pick_first(decode_node(Hash, DB), M, DB);
+            false -> int_iter_next(Key, decode_node(Hash, DB), M, DB)
         end,
     case Res of
         '$end_of_table' -> '$end_of_table';
@@ -473,52 +486,120 @@ int_verify_proof(Path, {Type, NodePath, NodeVal}, Val, ProofDB)
 %%%===================================================================
 %%% Iterator traversal
 
--spec int_iter_next(path(), tree_node(), db()) ->
+process_iterator_opts(Iter, [{max_path_length, X}]) when is_integer(X), X > 0 ->
+    Iter#iter{max_length = X};
+process_iterator_opts(Iter, []) ->
+    Iter;
+process_iterator_opts(_Iter, [X|_]) ->
+    error({illegal_iterator_option, X}).
+
+
+-spec int_iter_next(path(), tree_node(), integer() | 'undefined', db()) ->
                            '$end_of_table' | {path(), value()}.
 
-int_iter_next(_Path, <<>>,_DB) ->
+int_iter_next(_Path, <<>>,_Max,_DB) ->
     '$end_of_table';
-int_iter_next(<<>>, {branch, Branch}, DB) ->
-    pick_first_branch(Branch, 0, DB);
-int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, DB) ->
-    case int_iter_next(Rest, decode_node(branch_next(N, Branch), DB), DB) of
-        '$end_of_table' -> pick_first_branch(Branch, N + 1, DB);
-        {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+int_iter_next(<<>>, {branch, Branch}, Max, DB) ->
+    case check_iter_path_length(<<0:4>>, Max) of
+        {ok, NewMax} ->
+            pick_first_branch(Branch, 0, NewMax, DB);
+        error ->
+            '$end_of_table'
     end;
-int_iter_next(Path, {leaf, Path, _},_DB) ->
+int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, Max,  DB) ->
+    case check_iter_path_length(<<N:4>>, Max) of
+        {ok, NewMax} ->
+            Next = decode_node(branch_next(N, Branch), DB),
+            case int_iter_next(Rest, Next, NewMax, DB) of
+                '$end_of_table' -> pick_first_branch(Branch, N + 1, NewMax, DB);
+                {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+            end;
+        error ->
+            '$end_of_table'
+    end;
+int_iter_next(Path, {leaf, Path, _},_Max,_DB) ->
     '$end_of_table';
-int_iter_next(<<>>, {leaf, Path, Val},_DB) ->
-    {Path, Val};
-int_iter_next(<<>>, {ext, NodePath, Hash}, DB) ->
-    {RestPath, Val} = pick_first(decode_node(Hash, DB), DB),
-    {<<NodePath/bits, RestPath/bits>>, Val};
-int_iter_next(Path, {ext, NodePath, Hash}, DB) ->
-    S = bit_size(NodePath),
-    <<NodePath:S/bits, Rest/bits>> = Path,
-    case int_iter_next(Rest, decode_node(Hash, DB), DB) of
-        '$end_of_table' -> '$end_of_table';
-        {RestPath, Val} -> {<<NodePath/bits, RestPath/bits>>, Val}
+int_iter_next(Path, {leaf, NodePath, Val}, Max,_DB) ->
+    case check_iter_path_length(NodePath, Max) of
+        {ok, _} ->
+            case Path < NodePath of
+                true  -> {NodePath, Val};
+                false -> '$end_of_table'
+            end;
+        error   -> '$end_of_table'
+    end;
+int_iter_next(Path, {ext, NodePath, Hash}, Max, DB) ->
+    case check_iter_path_length(NodePath, Max) of
+        {ok, NewMax} ->
+            S = bit_size(NodePath),
+            case Path of
+                <<NodePath:S/bits, Rest/bits>> ->
+                    Next = decode_node(Hash, DB),
+                    case int_iter_next(Rest, Next, NewMax, DB) of
+                        '$end_of_table' -> '$end_of_table';
+                        {RestPath, Val} ->
+                            {<<NodePath/bits, RestPath/bits>>, Val}
+                    end;
+                _ when Path < NodePath ->
+                    case pick_first(decode_node(Hash, DB), NewMax, DB) of
+                        '$end_of_table' -> '$end_of_table';
+                        {RestPath, Val} ->
+                            {<<NodePath/bits, RestPath/bits>>, Val}
+                    end;
+                _ when Path >= NodePath ->
+                    '$end_of_table'
+            end;
+        error ->
+            '$end_of_table'
     end.
 
-pick_first(<<>>,_DB) ->
+pick_first(<<>>,_Max, _DB) ->
     '$end_of_table';
-pick_first({leaf, Path, Val},_DB) ->
-    {Path, Val};
-pick_first({ext, Path, Hash}, DB) ->
-    {RestPath, Val} = pick_first(decode_node(Hash, DB), DB),
-    {<<Path/bits, RestPath/bits>>, Val};
-pick_first({branch, Branch}, DB) ->
+pick_first({leaf, Path, Val}, Max, _DB) ->
+    case check_iter_path_length(Path, Max) of
+        {ok, _} -> {Path, Val};
+        error   -> '$end_of_table'
+    end;
+pick_first({ext, Path, Hash}, Max, DB) ->
+    case check_iter_path_length(Path, Max) of
+        {ok, NewMax} ->
+            case pick_first(decode_node(Hash, DB), NewMax, DB) of
+                '$end_of_table' ->
+                    '$end_of_table';
+                {RestPath, Val} ->
+                    {<<Path/bits, RestPath/bits>>, Val}
+            end;
+        error ->
+            '$end_of_table'
+    end;
+pick_first({branch, Branch}, Max, DB) ->
     case branch_value(Branch) of
-        <<>> -> pick_first_branch(Branch, 0, DB);
-        Val  -> {<<>>, Val}
+        <<>> ->
+            case check_iter_path_length(<<0:4>>, Max) of
+                {ok, NewMax} -> pick_first_branch(Branch, 0, NewMax, DB);
+                error -> '$end_of_table'
+            end;
+        Val  ->
+            case check_iter_path_length(<<>>, Max) of
+                {ok, _} -> {<<>>, Val};
+                error -> '$end_of_table'
+            end
     end.
 
-pick_first_branch(_Branch, N,_DB) when is_integer(N), N > 15 ->
+pick_first_branch(_Branch, N,_MaxPath,_DB) when is_integer(N), N > 15 ->
     '$end_of_table';
-pick_first_branch(Branch, N, DB) when is_integer(N) ->
-    case pick_first(decode_node(branch_next(N, Branch), DB), DB) of
-        '$end_of_table' -> pick_first_branch(Branch, N + 1, DB);
+pick_first_branch(Branch, N, MaxPath, DB) when is_integer(N) ->
+    case pick_first(decode_node(branch_next(N, Branch), DB), MaxPath, DB) of
+        '$end_of_table' -> pick_first_branch(Branch, N + 1, MaxPath, DB);
         {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+    end.
+
+check_iter_path_length(_Path, undefined) -> {ok, undefined};
+check_iter_path_length(Path, Remaining) ->
+    Length = bit_size(Path) div 4,
+    case Length =< Remaining of
+        true  -> {ok, Remaining - Length};
+        false -> error
     end.
 
 %%%===================================================================

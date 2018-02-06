@@ -24,6 +24,8 @@ basic_test_() ->
     , {"Put rlp values", fun test_put_rlp_vals/0}
     , {"Collapse extension", fun test_collapse_ext/0}
     , {"Iterator test", fun test_iterator/0}
+    , {"Iterator depth test", fun test_iterator_depth/0}
+    , {"Iterator from non-existing", fun test_iterator_non_existing/0}
     ].
 
 hash_test_() ->
@@ -115,15 +117,82 @@ test_iterator() ->
     {Tree, Vals} = gen_mp_tree({6234, 5234, 9273}, 1000),
     Iterator = aeu_mp_trees:iterator(Tree),
     Sorted = lists:keysort(1, Vals),
-    test_iterator(Iterator, Sorted).
+    test_iterator(Iterator, Tree, Sorted).
 
-test_iterator(Iterator, [{Key, Val}|Left]) ->
+test_iterator(Iterator, Tree, [{Key, Val}|Left]) ->
     {IKey, IVal, Iterator1} = aeu_mp_trees:iterator_next(Iterator),
     ?assertEqual(IKey, Key),
     ?assertEqual(IVal, Val),
-    test_iterator(Iterator1, Left);
-test_iterator(Iterator, []) ->
+    case Left of
+        [{NextKey, NextVal}|_] ->
+            NewIterator = aeu_mp_trees:iterator_from(Key, Tree),
+            ?assertMatch({NextKey, NextVal, _},
+                         aeu_mp_trees:iterator_next(NewIterator));
+        [] ->
+            ok
+    end,
+    test_iterator(Iterator1, Tree, Left);
+test_iterator(Iterator,_Tree, []) ->
     ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
+    ok.
+
+test_iterator_depth() ->
+    rand:seed(exs1024s, {142343, 132, 4113}),
+    Val = <<"Hello">>,
+    ShortKeys = [random_hexstring(10) || _ <- lists:seq(1,100)],
+    MiddleKeys = [random_hexstring(11) || _ <- lists:seq(1,100)],
+    LongKeys = [random_hexstring(12) || _ <- lists:seq(1,100)],
+    Vals = [{Key, Val} || Key <- ShortKeys ++ MiddleKeys ++ LongKeys],
+    Sorted = lists:sort(Vals),
+    ?assertEqual(Sorted, lists:ukeysort(1, Sorted)),
+    Tree = insert_vals(Vals, aeu_mp_trees:new()),
+    test_iterator_depth(10, Sorted, Tree),
+    test_iterator_depth(11, Sorted, Tree),
+    test_iterator_depth(12, Sorted, Tree).
+
+test_iterator_depth(Depth, Sorted, Tree) ->
+    Iterator = aeu_mp_trees:iterator(Tree, [{max_path_length, Depth}]),
+    Sorted1  = [X || {Key, _} = X <- Sorted, (bit_size(Key) div 4) =< Depth],
+    test_iterator_depth(Depth, Sorted1, Tree, Iterator).
+
+test_iterator_depth(Depth, [{Key, Val}|Left], Tree, Iterator) ->
+    {IKey, IVal, Iterator1} = aeu_mp_trees:iterator_next(Iterator),
+    ?assertEqual(IKey, Key),
+    ?assertEqual(IVal, Val),
+    case Left of
+        [{NextKey, NextVal}|_] ->
+            Opt = [{max_path_length, Depth}],
+            NewIterator = aeu_mp_trees:iterator_from(Key, Tree, Opt),
+            ?assertMatch({NextKey, NextVal, _},
+                         aeu_mp_trees:iterator_next(NewIterator));
+        [] ->
+            ok
+    end,
+    test_iterator_depth(Depth, Left, Tree, Iterator1);
+test_iterator_depth(_Depth, [],_Tree, Iterator) ->
+    ?assertEqual('$end_of_table', aeu_mp_trees:iterator_next(Iterator)),
+    ok.
+
+test_iterator_non_existing() ->
+    rand:seed(exs1024s, {1412343, 989132, 44563}),
+    Vals = gen_vals(1000),
+    Sorted = lists:sort(Vals),
+    ?assertEqual(Sorted, lists:ukeysort(1, Sorted)),
+    {Vals1, Vals2} = split_every_other(Sorted, [], []),
+    NonExistingKeys = [X || {X, _} <- Vals1],
+    Tree = insert_vals(Vals2, aeu_mp_trees:new()),
+    test_iterator_non_existing(Vals2, NonExistingKeys, Tree).
+
+split_every_other([X, Y|Left], Acc1, Acc2) ->
+    split_every_other(Left, [X|Acc1], [Y|Acc2]);
+split_every_other([], Acc1, Acc2) ->
+    {lists:reverse(Acc1), lists:reverse(Acc2)}.
+
+test_iterator_non_existing([{Key, Val}|Left1], [NonExisting|Left2], Tree) ->
+    Iterator = aeu_mp_trees:iterator_from(NonExisting, Tree),
+    ?assertMatch({Key, Val, _}, aeu_mp_trees:iterator_next(Iterator)),
+    test_iterator_non_existing(Left1, Left2, Tree);
+test_iterator_non_existing([], [],_Tree) ->
     ok.
 
 %%%=============================================================================
