@@ -13,7 +13,7 @@ in_dir(F, D) ->
         file:set_cwd(D),
         try F() of
             [] -> halt(0);
-            _Other -> halt(1)
+            Other -> fatal("~p~n", [Other])
         catch
             error:_ -> halt(1)
         end
