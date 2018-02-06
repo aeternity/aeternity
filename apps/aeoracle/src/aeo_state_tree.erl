@@ -12,6 +12,8 @@
         , get_query/3
         , get_oracle/2
         , get_oracle_query_ids/2
+        , get_open_oracle_queries/4
+        , get_oracles/3
         , empty/0
         , empty_with_backend/0
         , enter_query/2
@@ -130,6 +132,17 @@ get_oracle(Id, Tree) ->
 get_oracle_query_ids(Id, Tree) ->
     find_oracle_query_ids(Id, Tree).
 
+-spec get_open_oracle_queries(aeo_oracles:id(),
+                              binary() | '$first',
+                              non_neg_integer(),
+                              tree()) -> list(query()).
+get_open_oracle_queries(OracleId, From, Max, Tree) ->
+    find_open_oracle_queries(OracleId, From, Max, Tree).
+
+-spec get_oracles(binary() | '$first', non_neg_integer(), tree()) -> list(oracle()).
+get_oracles(From, Max, Tree) ->
+    find_oracles(From, Max, Tree).
+
 -spec lookup_oracle(binary(), tree()) -> {'value', oracle()} | 'none'.
 lookup_oracle(Id, Tree) ->
     case aeu_mtrees:lookup(Id, Tree#oracle_tree.otree) of
@@ -216,6 +229,44 @@ find_oracle_query_tree_ids(OracleId, Tree) ->
 find_oracle_query_ids(OracleId, Tree) ->
     find_oracle_query_ids(OracleId, Tree, id).
 
+find_open_oracle_queries(OracleId, FromQueryId, Max, #oracle_tree{otree = T}) ->
+    IteratorKey = case FromQueryId of
+                      '$first' -> OracleId;
+                      _        -> <<OracleId/binary, FromQueryId/binary>>
+                  end,
+    Iterator = aeu_mtrees:iterator_from(IteratorKey, T),
+    find_open_oracle_queries(Iterator, Max).
+
+find_open_oracle_queries(_Iterator, 0) -> [];
+find_open_oracle_queries(Iterator, N) ->
+    case aeu_mtrees:iterator_next(Iterator) of
+        {Key, Value, NextIterator} when byte_size(Key) > 65 ->
+            Query = aeo_query:deserialize(Value),
+            case aeo_query:is_closed(Query) of
+                false -> [Query | find_open_oracle_queries(NextIterator, N-1)];
+                true  -> find_open_oracle_queries(NextIterator, N)
+            end;
+        _Other -> [] %% Either end_of_table or next Oracle
+    end.
+
+find_oracles(FromOracleId, Max, #oracle_tree{otree = T}) ->
+    %% Only allow paths that match the size of an OracleId - Queries have
+    %% a longer path.
+    IterOpts = [{max_path_length, 65*2}],
+    Iterator =
+        case FromOracleId of
+            '$first' -> aeu_mtrees:iterator(T, IterOpts);
+            _        -> aeu_mtrees:iterator_from(FromOracleId, T, IterOpts)
+        end,
+    find_oracles(Iterator, Max).
+
+find_oracles(_Iterator, 0) -> [];
+find_oracles(Iterator, N) ->
+    case aeu_mtrees:iterator_next(Iterator) of
+        '$end_of_table' -> [];
+        {_Key, Value, NextIterator} ->
+            [aeo_oracles:deserialize(Value) | find_oracles(NextIterator, N-1)]
+    end.
 
 find_oracle_query_ids(OracleId, #oracle_tree{otree = T}, Type) ->
     Iterator = aeu_mtrees:iterator_from(OracleId, T),

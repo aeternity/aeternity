@@ -85,6 +85,8 @@ request_params('GetAccountBalance') ->
 
 request_params('GetActiveRegisteredOracles') ->
     [
+        'from',
+        'max'
     ];
 
 request_params('GetBlockByHashInternal') ->
@@ -146,7 +148,9 @@ request_params('GetLatestBlockTxsCount') ->
 
 request_params('GetOracleQuestions') ->
     [
-        'oracle_pub_key'
+        'oracle_pub_key',
+        'from',
+        'max'
     ];
 
 request_params('GetPendingBlockTxsCount') ->
@@ -372,6 +376,26 @@ request_param_info('GetAccountBalance', 'hash') ->
         ]
     };
 
+request_param_info('GetActiveRegisteredOracles', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetActiveRegisteredOracles', 'max') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 1000 }, 
+            {min, 1 },
+            not_required
+        ]
+    };
+
 request_param_info('GetBlockByHashInternal', 'hash') ->
     #{
         source =>  binding ,
@@ -536,6 +560,26 @@ request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
         rules => [
             {type, 'binary'},
             required
+        ]
+    };
+
+request_param_info('GetOracleQuestions', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetOracleQuestions', 'max') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 1000 }, 
+            {min, 1 },
+            not_required
         ]
     };
 

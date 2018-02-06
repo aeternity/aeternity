@@ -146,6 +146,8 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str _from: Last oracle in previous page
+        :param int max: Max number of active oracles received
         :return: RegisteredOracles
                  If the method is called asynchronously,
                  returns the request thread.
@@ -167,12 +169,14 @@ class InternalApi(object):
         >>> result = thread.get()
 
         :param async bool
+        :param str _from: Last oracle in previous page
+        :param int max: Max number of active oracles received
         :return: RegisteredOracles
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = []  # noqa: E501
+        all_params = ['_from', 'max']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -188,11 +192,19 @@ class InternalApi(object):
             params[key] = val
         del params['kwargs']
 
+        if 'max' in params and params['max'] > 1000:  # noqa: E501
+            raise ValueError("Invalid value for parameter `max` when calling `get_active_registered_oracles`, must be a value less than or equal to `1000`")  # noqa: E501
+        if 'max' in params and params['max'] < 1:  # noqa: E501
+            raise ValueError("Invalid value for parameter `max` when calling `get_active_registered_oracles`, must be a value greater than or equal to `1`")  # noqa: E501
         collection_formats = {}
 
         path_params = {}
 
         query_params = []
+        if '_from' in params:
+            query_params.append(('from', params['_from']))  # noqa: E501
+        if 'max' in params:
+            query_params.append(('max', params['max']))  # noqa: E501
 
         header_params = {}
 
@@ -1188,6 +1200,8 @@ class InternalApi(object):
 
         :param async bool
         :param str oracle_pub_key: Oracle public key (required)
+        :param str _from: Last query id in previous page
+        :param int max: Max number of oracle queries received
         :return: OracleQuestions
                  If the method is called asynchronously,
                  returns the request thread.
@@ -1210,12 +1224,14 @@ class InternalApi(object):
 
         :param async bool
         :param str oracle_pub_key: Oracle public key (required)
+        :param str _from: Last query id in previous page
+        :param int max: Max number of oracle queries received
         :return: OracleQuestions
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['oracle_pub_key']  # noqa: E501
+        all_params = ['oracle_pub_key', '_from', 'max']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -1235,6 +1251,10 @@ class InternalApi(object):
                 params['oracle_pub_key'] is None):
             raise ValueError("Missing the required parameter `oracle_pub_key` when calling `get_oracle_questions`")  # noqa: E501
 
+        if 'max' in params and params['max'] > 1000:  # noqa: E501
+            raise ValueError("Invalid value for parameter `max` when calling `get_oracle_questions`, must be a value less than or equal to `1000`")  # noqa: E501
+        if 'max' in params and params['max'] < 1:  # noqa: E501
+            raise ValueError("Invalid value for parameter `max` when calling `get_oracle_questions`, must be a value greater than or equal to `1`")  # noqa: E501
         collection_formats = {}
 
         path_params = {}
@@ -1242,6 +1262,10 @@ class InternalApi(object):
         query_params = []
         if 'oracle_pub_key' in params:
             query_params.append(('oracle_pub_key', params['oracle_pub_key']))  # noqa: E501
+        if '_from' in params:
+            query_params.append(('from', params['_from']))  # noqa: E501
+        if 'max' in params:
+            query_params.append(('max', params['max']))  # noqa: E501
 
         header_params = {}
 
