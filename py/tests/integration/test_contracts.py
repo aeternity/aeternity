@@ -9,6 +9,7 @@ import common
 from waiting import wait
 from swagger_client.models.ping import Ping 
 from swagger_client.models.contract import Contract
+from swagger_client.models.contract_call_input import ContractCallInput
 from swagger_client.rest import ApiException
 
 settings = common.test_settings(__name__.split(".")[-1])
@@ -36,6 +37,44 @@ def test_compile_id():
     common.stop_node(node)
     shutil.rmtree(root_dir)
 
+def test_encode_id_call():
+    # Alice should be able to encode a call to a function in
+    # a ring contract.
+    
+    test_settings = settings["test_encode_id_call"]
+    (root_dir, node, api) = setup_node(test_settings, "alice")
+
+    bytecode = '0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56'
+
+    call_input = ContractCallInput(bytecode, "main", "42")
+    result = api.encode_calldata(call_input)
+
+    calldata = '0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000046d61696e00000000000000000000000000000000000000000000000000000000'
+    assert_equals(result.calldata, calldata)
+    
+    # stop node
+    common.stop_node(node)
+    shutil.rmtree(root_dir)
+
+def test_id_call():
+    # Alice should be able to call the id function in
+    # an Id contract.
+    
+    test_settings = settings["test_id_call"]
+    (root_dir, node, api) = setup_node(test_settings, "alice")
+
+    bytecode = '0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56'
+
+    call_input = ContractCallInput(bytecode, "main", "42")
+    result = api.call_contract(call_input)
+    print(result)
+
+    retval = '0x000000000000000000000000000000000000000000000000000000000000002a'
+    assert_equals(result.out, retval)
+    # stop node
+    common.stop_node(node)
+    shutil.rmtree(root_dir)
+    
 
     
 def make_mining_config(root_dir, file_name):

@@ -92,4 +92,10 @@ tests: # test specific settings
     test_compile_id:
       nodes:
         alice: dev1
+    test_encode_id_call:
+      nodes:
+        alice: dev1
+    test_id_call:
+      nodes:
+        alice: dev1
 
