@@ -67,9 +67,13 @@ make_multi(Config) ->
     make_multi(Config, [dev1, dev2, dev3]).
 
 make_multi(Config, NodesList) ->
+    make_multi(Config, NodesList, "test").
+
+make_multi(Config, NodesList, RefRebarProfile) ->
+    ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     Top = ?config(top_dir, Config),
     ct:log("Top = ~p", [Top]),
-    Epoch = filename:join(Top, "_build/test/rel/epoch"),
+    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/epoch"),
     [setup_node(N, Top, Epoch, Config) || N <- NodesList].
 
 make_shortcut(Config) ->
@@ -241,6 +245,7 @@ setup_node(N, Top, Epoch, Config) ->
     cp_dir(filename:join(Epoch, "releases"), DDir ++ "/"),
     cp_dir(filename:join(Epoch, "bin"), DDir ++ "/"),
     symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
+    symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches")),
     %%
     CfgD = filename:join([Top, "config/", N]),
     RelD = filename:dirname(

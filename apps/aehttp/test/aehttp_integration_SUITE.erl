@@ -13,6 +13,12 @@
 -export([]).
 
 %% test case exports
+%% OTP patches
+-export(
+   [mnesia_index_read/1
+   ]).
+%%
+%% test case exports
 %% external endpoints
 -export(
    [
@@ -120,11 +126,15 @@
 
 all() ->
     [
+     {group, otp_patches},
      {group, all_endpoints}
     ].
 
 groups() ->
     [
+     {otp_patches, [sequence],
+      [mnesia_index_read %% Delete when an integration test tests the functionality fixed by this patch.
+      ]},
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints},
                                   {group, websocket},
@@ -272,6 +282,13 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
+mnesia_index_read(_Config) ->
+    case rpc(aec_db, transactions_by_account, [_Pubkey = random_hash()]) of
+        %% Assert meaningful return value.
+        Txs when is_list(Txs) ->
+            ok
+    end.
+
 correct_ping(_Config) ->
     #{<<"genesis_hash">> := GHash,
       <<"best_hash">> := TopHash
