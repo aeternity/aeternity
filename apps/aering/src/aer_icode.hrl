@@ -35,5 +35,8 @@
 -record(funcall, { function :: expr()
 		 , args     :: [expr()]}).
 
+-record(lambda,  { args :: arg_list(),
+		   body :: expr()}).
+
 -record(missing_field, { format :: string()
 		       , args   :: [term()]}).

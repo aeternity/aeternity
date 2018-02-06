@@ -170,7 +170,15 @@ infer_expr(Env,{proj,Attrs,Record,FieldName}) ->
 infer_expr(Env,{block,Attrs,Stmts}) ->
     BlockType = fresh_uvar(Attrs),
     NewStmts = infer_block(Env,Attrs,Stmts,BlockType),
-    {typed,Attrs,{block,Attrs,NewStmts},BlockType}.
+    {typed,Attrs,{block,Attrs,NewStmts},BlockType};
+infer_expr(Env,{lam,Attrs,Args,Body}) ->
+    ArgTypes = [fresh_uvar(As) || {arg,As,_,_} <- Args],
+    ArgPatterns = [{typed,As,Pat,T} || {arg,As,Pat,T} <- Args],
+    ResultType = fresh_uvar(Attrs),
+    {'case',_,{typed,_,{tuple,_,NewArgPatterns},_},NewBody} = 
+	infer_case(Env,Attrs,{tuple,Attrs,ArgPatterns},{tuple_t,Attrs,ArgTypes},Body,ResultType),
+    NewArgs = [{arg,As,NewPat,NewT} || {typed,As,NewPat,NewT} <- NewArgPatterns],
+    {typed,Attrs,{lam,Attrs,NewArgs,NewBody},{fun_t,Attrs,ArgTypes,ResultType}}.    
 
 infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     Vars = free_vars(Pattern),
@@ -245,6 +253,8 @@ free_vars({app,_,{'::',_},Args}) ->
     free_vars(Args);
 free_vars({record,_,Fields}) ->
     free_vars([E || {field,_,_,E} <- Fields]);
+free_vars({typed,_,A,_}) ->
+    free_vars(A);
 free_vars(L) when is_list(L) ->
     [V || Elem <- L,
 	  V <- free_vars(Elem)].

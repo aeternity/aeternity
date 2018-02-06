@@ -88,12 +88,24 @@ assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
 	true ->
 	    dup(lookup_var(Id,Stack));
 	false ->
-	    case lists:keyfind(Id,1,Funs) of
-		{Id,_Arity,Label} ->
-		    {push_label,Label};
-		false ->
-		    error({undefined_name,Id})
-	    end
+	    %% Build a closure
+	    %% When a top-level fun is called directly, we do not
+	    %% reach this case.
+	    Eta = make_ref(),
+	    Continue = make_ref(),
+	    [aeb_opcodes:mnemonic(?MSIZE),
+	     {push_label,Eta},
+	     dup(2),
+	     aeb_opcodes:mnemonic(?MSTORE),
+	     {push_label,Continue},
+	     'JUMP',
+	     %% the code of the closure
+	     {'JUMPDEST',Eta},
+	     %% pop the pointer to the function
+	     pop(1),
+	     {push_label,lookup_fun(Funs,Id)},
+	     'JUMP',
+	     {'JUMPDEST',Continue}]
     end;
 assemble_expr(_,_,_,{missing_field,Format,Args}) ->
     io:format(Format,Args),
@@ -162,6 +174,33 @@ assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
     [assemble_expr(Funs,Stack,nontail,B),
      assemble_expr(Funs,[dummy|Stack],nontail,A),
      assemble_infix(Op)];
+assemble_expr(Funs,Stack,_,{lambda,Args,Body}) ->
+    Function = make_ref(),
+    FunBody  = make_ref(),
+    Continue = make_ref(),
+    NoMatch  = make_ref(),
+    FreeVars = free_vars({lambda,Args,Body}),
+    {NewVars,MatchingCode} = assemble_pattern(FunBody,NoMatch,{tuple,[{var_ref,"_"}|FreeVars]}),
+    BodyCode = assemble_expr(Funs,NewVars++lists:reverse(Args),tail,Body),
+    [assemble_expr(Funs,Stack,nontail,{tuple,[{label,Function}|FreeVars]}),
+     {push_label,Continue},
+     'JUMP',  %% will be optimized away
+     {'JUMPDEST',Function},
+     %% A pointer to the closure is on the stack
+     MatchingCode,
+     {'JUMPDEST',FunBody},
+     BodyCode,
+     pop_args(length(Args)+length(NewVars)),
+     swap(1),
+     'JUMP',
+     {'JUMPDEST',NoMatch}, %% dead code--raise an exception just in case
+     push(0),
+     aeb_opcodes:mnemonic(?NOT),
+     aeb_opcodes:mnemonic(?MLOAD),
+     aeb_opcodes:mnemonic(?STOP),
+     {'JUMPDEST',Continue}];
+assemble_expr(_,_,_,{label,Label}) ->
+    {push_label,Label};
 assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
     [assemble_expr(Funs,Stack,nontail,A),
      %% Allocate memory for the encoding (a binary)
@@ -205,10 +244,15 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     %% while the arguments are computed, which is unnecessary. To
     %% avoid that, we compute the last argument FIRST, and replace it
     %% with the return address using a SWAP.
+    %% 
+    %% assemble_function leaves the code pointer of the function to
+    %% call on top of the stack, and--if the function is not a
+    %% top-level name--a pointer to its tuple of free variables. In
+    %% either case a JUMP is the right way to call it.
     case Args of
 	[] ->
 	    [{push_label,Return},
-	     assemble_expr(Funs,[return_address|Stack],nontail,Fun),
+	     assemble_function(Funs,[return_address|Stack],Fun),
 	     'JUMP',
 	     {'JUMPDEST',Return}];
 	_ ->
@@ -218,25 +262,33 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
 	     %% reorders the args correctly.
 	     {push_label,Return},
 	     swap(length(Args)),
-	     assemble_expr(Funs,[dummy || _ <- Args]++[return_address|Stack],nontail,Fun),
+	     assemble_function(Funs,[dummy || _ <- Args]++[return_address|Stack],Fun),
 	     'JUMP',
 	     {'JUMPDEST',Return}]
     end;
 assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
-    {Prefix,Suffix} = case is_top_level_fun(Funs,Stack,Fun) of
-			  true ->
-			      {assemble_exprs(Funs,Stack,Args),
-			       %% The Fun CANNOT refer to local variables
-			       [assemble_expr(Funs,[],nontail,Fun)]};
-			  false ->
-			      {assemble_exprs(Funs,Stack,Args++[Fun]),
-			       []}
-		      end,
-    %% Compute the function just before the call if it constant.
+    IsTopLevel = is_top_level_fun(Funs,Stack,Fun),
+    %% If the fun is not top-level, then it may refer to local
+    %% variables and must be computed before stack shuffling.
+    ArgsAndFun = Args++[Fun || not IsTopLevel],
+    ComputeArgsAndFun = assemble_exprs(Funs,Stack,ArgsAndFun),
     %% Copy arguments back down the stack to the start of the frame
-    ShuffleSpec = lists:seq(length(Args)+(1-length(Suffix)),1,-1)++[discard || _ <- Stack],
+    ShuffleSpec = lists:seq(length(ArgsAndFun),1,-1)++[discard || _ <- Stack],
     Shuffle = shuffle_stack(ShuffleSpec),
-    [Prefix,Shuffle,Suffix,'JUMP'];
+    X=[ComputeArgsAndFun,Shuffle,
+     if IsTopLevel ->
+	     %% still need to compute function
+	     assemble_function(Funs,[],Fun);
+	true ->
+	     %% need to unpack a closure
+	     [dup(1), aeb_opcodes:mnemonic(?MLOAD)]
+     end,
+     'JUMP'],
+    io:format("Compiling ~p\n"
+	      " in stack ~p\n"
+	      "       to ~p\n",
+	      [{funcall,Fun,Args},Stack,lists:flatten(X)]),
+    X;
 assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
     %% This compilation scheme introduces a lot of labels and
     %% jumps. Unnecessary ones are removed later in
@@ -446,6 +498,42 @@ assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)
 assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
 %% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
+%% a function may either refer to a top-level function, in which case
+%% we fetch the code label from Funs, or it may be a lambda-expression
+%% (including a top-level function passed as a parameter). In the
+%% latter case, the function value is a pointer to a tuple of the code
+%% pointer and the free variables: we keep the pointer and push the
+%% code pointer onto the stack. In either case, we are ready to enter
+%% the function with JUMP.
+assemble_function(Funs,Stack,Fun) ->
+    case is_top_level_fun(Funs,Stack,Fun) of
+	true ->
+	    {var_ref,Name} = Fun,
+	    {push_label, lookup_fun(Funs,Name)};
+	false ->
+	    [assemble_expr(Funs,Stack,nontail,Fun),
+	     dup(1),
+	     aeb_opcodes:mnemonic(?MLOAD)]
+    end.
+
+free_vars(V={var_ref,_}) ->
+    [V];
+free_vars({switch,E,Cases}) ->
+    lists:umerge(free_vars(E),
+		 lists:umerge([free_vars(Body)--free_vars(Pattern)
+			       || {Pattern,Body} <- Cases]));
+free_vars({lambda,Args,Body}) ->
+    free_vars(Body)--[{var_ref,V} || {V,_} <- Args];
+free_vars(T) when is_tuple(T) ->
+    free_vars(tuple_to_list(T));
+free_vars([H|T]) ->
+    lists:umerge(free_vars(H),free_vars(T));
+free_vars(_) ->
+    [].
+
+
+
+
 %% Type-directed encoders
 
 %% Given the type-reps appearing in the program, include children and
@@ -518,7 +606,10 @@ make_encoder_body({list,TR}) ->
 		{funcall,{var_ref,encoder_name({list,TR})},
 		 [{var_ref,"base"},{var_ref,"tail"}]}]},
 	{var_ref,"base"}}}
-     ]}.
+     ]};
+make_encoder_body(function) ->
+    {integer,33333333333333333}.
+
 
 %% Generates a definition of a function to copy N bytes from address A
 %% to the heap pointer, and return the final argument.

@@ -111,6 +111,9 @@ ast_body({block,_,[E]}) ->
 ast_body({block,As,[E|Rest]}) ->
     #switch{expr=ast_body(E),
 	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
+ast_body({lam,_,Args,Body}) ->
+    #lambda{args=[{ast_id(P),ast_type(T)} || {arg,_,P,T} <- Args],
+	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
@@ -162,7 +165,10 @@ ast_typerep({tuple_t,_,Cpts}) ->
 ast_typerep({record_t,Fields}) ->
     #tuple{cpts = [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
-    #list{elems=ast_typerep(Elem)}.
+    #list{elems=ast_typerep(Elem)};
+ast_typerep({fun_t,_,_,_}) ->
+    function.
+
 
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
