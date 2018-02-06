@@ -112,9 +112,15 @@ infer_expr(Env,{list,As,Elems}) ->
     [unify(ElemType,T) || {typed,_,_,T} <- NewElems],
     {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};    
 infer_expr(Env,{typed,As,Body,Type}) ->
+    AnnotType = case Type of
+		    {id,Attrs,"_"} ->
+			fresh_uvar(Attrs);
+		    _ ->
+			Type
+		end,
     {typed,_,NewBody,NewType} = infer_expr(Env,Body),
-    unify(NewType,Type),
-    {typed,As,NewBody,Type};
+    unify(NewType,AnnotType),
+    {typed,As,NewBody,AnnotType};
 infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
     TypedArgs = [infer_expr(Env,A) || A <- Args],
     ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
@@ -472,6 +478,10 @@ subst_tvars1(Env,X) ->
 
 %% Unification
 
+unify({id,_,"_"},_) ->
+  true;
+unify(_,{id,_,"_"}) ->
+  true;
 unify(T1,T2) ->
   unify1(dereference(T1),dereference(T2)).
 
