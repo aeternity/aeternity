@@ -12,10 +12,10 @@ in_dir(F, D) ->
     try
         file:set_cwd(D),
         try F() of
-            [] -> init:stop(0);
-            _Other -> init:stop(1)
+            [] -> halt(0);
+            _Other -> halt(1)
         catch
-            error:_ -> init:stop(1)
+            error:_ -> halt(1)
         end
     after
         file:set_cwd(Cwd)
@@ -53,8 +53,8 @@ patch_source(Patch, Src) ->
     New = filename:join(cur_dir(), filename:basename(Src)),
     _DelRes = file:delete(New),
     {ok,_} = file:copy(Src, New),
-    case os:cmd("patch <" ++ Patch) of
-        "patching file" ++ _ ->
+    case lib:nonl(os:cmd("patch <" ++ Patch ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr.
+        "0" ++ _ ->
             {ok, New};
         Res ->
             {error, {patch_error, {Res, Patch}}}
@@ -124,4 +124,4 @@ info(Fmt, Args) ->
 
 fatal(Fmt, Args) ->
     io:fwrite("ERROR: " ++ Fmt, Args),
-    init:stop(1).
+    halt(1).
