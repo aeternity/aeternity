@@ -1096,17 +1096,17 @@ validate_response('PostNameUpdateTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
-    validate_response_body('OracleQueryId', 'OracleQueryId', Body, ValidatorState);
+    validate_response_body('OracleQueryResponse', 'OracleQueryResponse', Body, ValidatorState);
 validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleRegisterTx', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
+    validate_response_body('OracleRegisterResponse', 'OracleRegisterResponse', Body, ValidatorState);
 validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
-    validate_response_body('', '', Body, ValidatorState);
+    validate_response_body('OracleQueryResponse', 'OracleQueryResponse', Body, ValidatorState);
 validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 

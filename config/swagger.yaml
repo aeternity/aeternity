@@ -42,7 +42,7 @@ paths:
           schema:
             $ref: '#/definitions/Ping'
         '403':
-          description: Not allowed (node is blocked) 
+          description: Not allowed (node is blocked)
           schema:
             $ref: '#/definitions/Error'
         '409':
@@ -73,7 +73,7 @@ paths:
       description: 'Get a block by height'
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: height
           description: 'Height of the block to fetch'
@@ -81,7 +81,7 @@ paths:
           type : integer
       responses:
         '200':
-          description: The block being found  
+          description: The block being found
           schema:
             $ref: '#/definitions/Block'
         '404':
@@ -93,11 +93,11 @@ paths:
     get:
       tags:
         - external
-      operationId: GetBlockByHash 
+      operationId: GetBlockByHash
       description: 'Get a block by hash'
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: hash
           description: 'Hash of the block to fetch'
@@ -105,11 +105,11 @@ paths:
           type : string
       responses:
         '200':
-          description: The block being found  
+          description: The block being found
           schema:
             $ref: '#/definitions/Block'
         '400':
-          description: Invalid hash 
+          description: Invalid hash
           schema:
             $ref: '#/definitions/Error'
         '404':
@@ -121,7 +121,7 @@ paths:
     post:
       tags:
         - external
-      operationId: PostBlock 
+      operationId: PostBlock
       description: 'Post a new block'
       consumes:
         - application/json
@@ -317,6 +317,8 @@ paths:
       responses:
         '200':
           description: successful operation
+          schema:
+            $ref: '#/definitions/OracleRegisterResponse'
         '404':
           description: Oracle register transaction validation error
           schema:
@@ -343,7 +345,7 @@ paths:
         '200':
           description: successful operation
           schema:
-            $ref: '#/definitions/OracleQueryId'
+            $ref: '#/definitions/OracleQueryResponse'
         '404':
           description: Oracle query transaction validation error
           schema:
@@ -369,6 +371,8 @@ paths:
       responses:
         '200':
           description: successful operation
+          schema:
+            $ref: '#/definitions/OracleQueryResponse'
         '404':
           description: Oracle response transaction validation error
           schema:
@@ -544,7 +548,7 @@ paths:
           schema:
             $ref: '#/definitions/PubKey'
         '404':
-          description: No key pair 
+          description: No key pair
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -557,17 +561,17 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: path 
+        - in: path
           name: account_pubkey
           description: 'Account pubkey to show balance for'
           required: true
           type: string
-        - in: query 
+        - in: query
           name: height
           description: 'Height of the block to show balance at'
           required: false
           type: integer
-        - in: query 
+        - in: query
           name: hash
           description: 'Hash of the block to show balance at'
           required: false
@@ -582,7 +586,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Block or account not found 
+          description: Block or account not found
           schema:
             $ref: '#/definitions/Error'
 
@@ -648,10 +652,10 @@ paths:
       description: 'Get the current block''s height'
       produces:
         - application/json
-      parameters: 
+      parameters:
       responses:
         '200':
-          description: The current block's height 
+          description: The current block's height
           schema:
             $ref: '#/definitions/BlockHeight'
       security:
@@ -663,8 +667,8 @@ paths:
       description: 'Get a block by height'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: height
           description: 'Height of the block to fetch'
           required: true
@@ -677,7 +681,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The block being found 
+          description: The block being found
           schema:
             $ref: '#/definitions/GenericBlock'
         '404':
@@ -693,12 +697,12 @@ paths:
       description: 'Get a block by hash'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: hash
           description: 'Hash of the block to fetch'
           required: true
-          type : string 
+          type : string
         - in: query
           name: tx_encoding
           description: 'Transactions encoding'
@@ -707,11 +711,11 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The block being found  
+          description: The block being found
           schema:
             $ref: '#/definitions/GenericBlock'
         '400':
-          description: Invalid hash 
+          description: Invalid hash
           schema:
             $ref: '#/definitions/Error'
         '404':
@@ -736,7 +740,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The genesis block 
+          description: The genesis block
           schema:
             $ref: '#/definitions/GenericBlock'
       security:
@@ -757,7 +761,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The top block 
+          description: The top block
           schema:
             $ref: '#/definitions/GenericBlock'
       security:
@@ -778,7 +782,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The pending block with invalid nonce and pow evidence 
+          description: The pending block with invalid nonce and pow evidence
           schema:
             $ref: '#/definitions/GenericBlock'
         '404':
@@ -794,25 +798,25 @@ paths:
       description: 'Get a block transactions count by hash'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: hash
           description: 'Hash of the block to fetch'
           required: true
-          type : string 
+          type : string
         - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
-          description: The count of transactions in the block  
+          description: The count of transactions in the block
           schema:
             type: object
             properties:
@@ -820,7 +824,7 @@ paths:
                 type: integer
                 description: Count
         '400':
-          description: Invalid hash 
+          description: Invalid hash
           schema:
             $ref: '#/definitions/Error'
         '404':
@@ -836,8 +840,8 @@ paths:
       description: 'Get a block transactions count by height'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: height
           description: 'Height of the block to fetch'
           required: true
@@ -846,15 +850,15 @@ paths:
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
-          description: The count of transactions in the block  
+          description: The count of transactions in the block
           schema:
             type: object
             properties:
@@ -874,20 +878,20 @@ paths:
       description: 'Get the genesis block transactions count'
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
-          description: The count of transactions in the genesis block  
+          description: The count of transactions in the genesis block
           schema:
             type: object
             properties:
@@ -903,20 +907,20 @@ paths:
       description: 'Get the latest block transactions count'
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
-          description: The count of transactions in the latest block  
+          description: The count of transactions in the latest block
           schema:
             type: object
             properties:
@@ -932,20 +936,20 @@ paths:
       description: 'Get the pending block transactions count'
       produces:
         - application/json
-      parameters: 
+      parameters:
         - in: query
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
-          description: The count of transactions in the pending block  
+          description: The count of transactions in the pending block
           schema:
             type: object
             properties:
@@ -961,13 +965,13 @@ paths:
       description: 'Get a transaction by index in the block by height'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: height
           description: 'Height of the block to search for'
           required: true
           type: integer
-        - in: path 
+        - in: path
           name: tx_index
           description: 'Index of the transaction in the block'
           required: true
@@ -980,7 +984,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The transaction found 
+          description: The transaction found
           schema:
             $ref: '#/definitions/SingleTxObject'
         '404':
@@ -996,14 +1000,14 @@ paths:
       description: 'Get transactions list from a block range by height'
       produces:
         - application/json
-      parameters: 
-        - in: query 
-          name: from 
+      parameters:
+        - in: query
+          name: from
           description: 'Height of the block to start the range'
           required: true
           type : integer
           minimum: 0
-        - in: query 
+        - in: query
           name: to
           description: 'Height of the block to end the range'
           required: true
@@ -1019,12 +1023,12 @@ paths:
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
           description: The list of transactions in block range
@@ -1047,13 +1051,13 @@ paths:
       description: 'Get a transaction by index in the block by hash'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: hash
           description: 'Hash of the block to search for'
           required: true
-          type: string 
-        - in: path 
+          type: string
+        - in: path
           name: tx_index
           description: 'Index of the transaction in the block'
           required: true
@@ -1066,7 +1070,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The transaction found 
+          description: The transaction found
           schema:
             $ref: '#/definitions/SingleTxObject'
         '404':
@@ -1082,8 +1086,8 @@ paths:
       description: 'Get a transaction by index in the latest block'
       produces:
         - application/json
-      parameters: 
-        - in: path 
+      parameters:
+        - in: path
           name: tx_index
           description: 'Index of the transaction in the block'
           required: true
@@ -1096,7 +1100,7 @@ paths:
           default: message_pack
       responses:
         '200':
-          description: The transaction found 
+          description: The transaction found
           schema:
             $ref: '#/definitions/SingleTxObject'
         '404':
@@ -1112,14 +1116,14 @@ paths:
       description: 'Get transactions list from a block range by hash'
       produces:
         - application/json
-      parameters: 
-        - in: query 
-          name: from 
+      parameters:
+        - in: query
+          name: from
           description: 'Hash of the block to start the range'
           required: true
           type : string
           minimum: 0
-        - in: query 
+        - in: query
           name: to
           description: 'Hash of the block to end the range'
           required: true
@@ -1135,12 +1139,12 @@ paths:
           name: tx_types
           description: 'Transactions types to show. Comma separated'
           required: false
-          type : string 
+          type : string
         - in: query
           name: exclude_tx_types
           description: 'Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.'
           required: false
-          type : string 
+          type : string
       responses:
         '200':
           description: The list of transactions in block range
@@ -1421,6 +1425,13 @@ definitions:
         format: int64
       ttl:
         $ref: '#/definitions/TTL'
+  OracleRegisterResponse:
+    type: object
+    properties:
+      tx_hash:
+        $ref: '#/definitions/EncodedHash'
+      oracle_id:
+        $ref: '#/definitions/EncodedHash'
   OracleQueryTx:
     type: object
     properties:
@@ -1448,6 +1459,13 @@ definitions:
       fee:
         type: integer
         format: int64
+  OracleQueryResponse:
+    type: object
+    properties:
+      tx_hash:
+        $ref: '#/definitions/EncodedHash'
+      query_id:
+        $ref: '#/definitions/EncodedHash'
   TTL:
     type: object
     properties:
@@ -1466,11 +1484,6 @@ definitions:
       value:
         type: integer
         format: int64
-  OracleQueryId:
-    type: object
-    properties:
-      query_id:
-        type: string
   NameEntry:
     type: object
     properties:
@@ -1626,7 +1639,7 @@ definitions:
 
   SingleTxObject:
     type: object
-    discriminator: data_schema 
+    discriminator: data_schema
     properties:
       data_schema:
         type: string
@@ -1669,7 +1682,7 @@ definitions:
 ## readable JSON objects for transactions:
   JSONTx:
     type: object
-    discriminator: data_schema 
+    discriminator: data_schema
     properties:
       data_schema:
         type: string
@@ -1692,9 +1705,9 @@ definitions:
         properties:
           sender: string
           recipient: string
-          amount: integer 
-          fee: integer 
-          nonce: integer 
+          amount: integer
+          fee: integer
+          nonce: integer
         required:
         - sender
         - recipient
@@ -1707,10 +1720,10 @@ definitions:
       - type: object
         properties:
           sender: string
-          nonce: integer 
+          nonce: integer
           que: string
           response_spec: string
-          ttl: 
+          ttl:
             $ref: '#/definitions/TTL'
           fee: integer
         required:
@@ -1726,13 +1739,13 @@ definitions:
       - type: object
         properties:
           sender: string
-          nonce: integer 
+          nonce: integer
           oracle: string
           query: string
           query_fee: integer
-          query_ttl: 
+          query_ttl:
             $ref: '#/definitions/TTL'
-          response_ttl: 
+          response_ttl:
             $ref: '#/definitions/TTL'
           fee: integer
         required:
@@ -1750,13 +1763,13 @@ definitions:
       - type: object
         properties:
           sender: string
-          nonce: integer 
+          nonce: integer
           oracle: string
           query: string
           query_fee: integer
-          query_ttl: 
+          query_ttl:
             $ref: '#/definitions/TTL'
-          response_ttl: 
+          response_ttl:
             $ref: '#/definitions/TTL'
           fee: integer
         required:

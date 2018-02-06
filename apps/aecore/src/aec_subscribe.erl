@@ -20,7 +20,8 @@
 
 -define(SERVER, ?MODULE).
 
--record(sub, { chain = [], oracle_query = [], oracle_response = [] }).
+-record(sub, { chain = [], chain_tx = [],
+               oracle_query = [], oracle_response = [] }).
 -record(state, { subscribed = #sub{} }).
 
 -type id() :: {ws, ws_handler:id()}.
@@ -89,6 +90,8 @@ code_change(_OldVsn, State, _Extra) ->
 %% -- Internal funs ----------------------------------------------------------
 add_subscribed(Id, {chain, Event}, Sub = #sub{ chain = Cs }) ->
     Sub#sub{ chain = [{Id, Event} | Cs] };
+add_subscribed(Id, {chain_tx, Event}, Sub = #sub{ chain_tx = CTs }) ->
+    Sub#sub{ chain_tx = [{Id, Event} | CTs] };
 add_subscribed(Id, Event = {oracle, {query, _}}, Sub = #sub{ oracle_query = OQs }) ->
     Sub#sub{ oracle_query = [{Id, Event} | OQs] };
 add_subscribed(Id, Event = {oracle, {response, _}}, Sub = #sub{ oracle_response = ORs }) ->
@@ -97,14 +100,18 @@ add_subscribed(Id, Event, Sub) ->
     lager:error("Unhandled subscription event kind ~p from ~p", [Event, Id]),
     Sub.
 
-del_subscribed(Id, Sub = #sub{ chain = Cs, oracle_query = OQs, oracle_response = ORs }) ->
+del_subscribed(Id, Sub = #sub{ chain = Cs, chain_tx = Ts,
+                               oracle_query = OQs, oracle_response = ORs }) ->
     NotId = fun({IdX, _}) -> IdX =/= Id end,
     Sub#sub{ chain           = lists:filter(NotId, Cs),
+             chain_tx        = lists:filter(NotId, Ts),
              oracle_query    = lists:filter(NotId, OQs),
              oracle_response = lists:filter(NotId, ORs) }.
 
 del_subscribed(Id, {chain, Event}, Sub = #sub{ chain = Cs }) ->
     Sub#sub{ chain = lists:delete({Id, Event}, Cs) };
+del_subscribed(Id, {chain_tx, Event}, Sub = #sub{ chain_tx = Ts }) ->
+    Sub#sub{ chain_tx = lists:delete({Id, Event}, Ts) };
 del_subscribed(Id, Event = {oracle, {query, _}}, Sub = #sub{ oracle_query = OQs }) ->
     Sub#sub{ oracle_query = lists:delete({Id, Event}, OQs) };
 del_subscribed(Id, Event = {oracle, {response, _}}, Sub = #sub{ oracle_response = ORs }) ->
@@ -117,6 +124,7 @@ notify_tx_subscribers([], _Sub) ->
     ok;
 notify_tx_subscribers([SignedTx | Rest], Sub) ->
     Tx = aec_tx_sign:data(SignedTx),
+    notify_tx(Tx, Sub#sub.chain_tx),
     case aec_tx_dispatcher:handler(Tx) of
         aeo_query_tx    -> aeo_subscription:notify_query_tx(Tx, Sub#sub.oracle_query);
         aeo_response_tx -> aeo_subscription:notify_response_tx(Tx, Sub#sub.oracle_response);
@@ -136,5 +144,12 @@ notify_chain_subscribers(Event, Block, #sub{ chain = Cs }) ->
     end,
     [ Ws ! {event, new_block, {BlockHeight, BlockHash}}
       || {{ws, Ws}, new_block} <- Cs ],
+    ok.
+
+notify_tx(_Tx, []) -> ok;
+notify_tx(Tx, Subs) ->
+    TxHash = aec_tx:hash_tx(Tx),
+    [ Ws ! {event, chain_tx, TxHash}
+      || {{ws, Ws}, {tx, TxHash1}} <- Subs, TxHash == TxHash1 ],
     ok.
 

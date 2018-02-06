@@ -74,7 +74,11 @@ do_execute(chain, SubUnSub, SubscribeData)
                 <<"mined_block">> ->
                     {chain, mined_block};
                 <<"new_block">> ->
-                    {chain, new_block}
+                    {chain, new_block};
+                <<"tx">> ->
+                    #{<<"tx_hash">> := EncodedTxHash} = SubscribeData,
+                    {ok, TxHash} = aec_base58c:safe_decode(tx_hash, EncodedTxHash),
+                    {chain_tx, {tx, TxHash}}
             end,
         case SubUnSub of
             subscribe   -> aec_subscribe:subscribe({ws, WsPid}, Event);
@@ -89,8 +93,8 @@ do_execute(oracle, register, RegisterData) ->
         case aehttp_dispatch_int:handle_request('PostOracleRegisterTx',
                                                 #{'OracleRegisterTx' => RegisterData},
                                                 #{}) of
-            {200, _, #{oracle_id := OId}} ->
-                {ok, oracle, register, [{result, ok}, {oracle_id, OId}]};
+            {200, _, #{oracle_id := OId, tx_hash := TxHash}} ->
+                {ok, oracle, register, [{result, ok}, {oracle_id, OId}, {tx_hash, TxHash}]};
             {_, _, #{reason := Reason}} ->
                 {error, Reason}
         end
@@ -102,8 +106,8 @@ do_execute(oracle, query, QueryData) ->
         case aehttp_dispatch_int:handle_request('PostOracleQueryTx',
                                                 #{'OracleQueryTx' => QueryData},
                                                 #{}) of
-            {200, _, #{query_id := QId}} ->
-                {ok, oracle, query, [{result, ok}, {query_id, QId}]};
+            {200, _, #{query_id := QId, tx_hash := TxHash}} ->
+                {ok, oracle, query, [{result, ok}, {query_id, QId}, {tx_hash, TxHash}]};
             {_, _, #{reason := Reason}} ->
                 {error, Reason}
         end
@@ -115,8 +119,8 @@ do_execute(oracle, response, ResponseData) ->
         case aehttp_dispatch_int:handle_request('PostOracleResponseTx',
                                                 #{'OracleResponseTx' => ResponseData},
                                                 #{}) of
-            {200, _, #{query_id := QId}} ->
-                {ok, oracle, response, [{result, ok}, {query_id, QId}]};
+            {200, _, #{query_id := QId, tx_hash := TxHash}} ->
+                {ok, oracle, response, [{result, ok}, {query_id, QId}, {tx_hash, TxHash}]};
             {_, _, #{reason := Reason}} ->
                 {error, Reason}
         end
