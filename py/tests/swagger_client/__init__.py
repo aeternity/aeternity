@@ -28,12 +28,11 @@ from swagger_client.models.accounts_balances import AccountsBalances
 from swagger_client.models.balance import Balance
 from swagger_client.models.block_height import BlockHeight
 from swagger_client.models.block_time_summary import BlockTimeSummary
-from swagger_client.models.body import Body
-from swagger_client.models.body_1 import Body1
 from swagger_client.models.byte_code import ByteCode
 from swagger_client.models.call_result import CallResult
 from swagger_client.models.calldata import Calldata
 from swagger_client.models.contract import Contract
+from swagger_client.models.contract_call_input import ContractCallInput
 from swagger_client.models.encoded_hash import EncodedHash
 from swagger_client.models.error import Error
 from swagger_client.models.header import Header
