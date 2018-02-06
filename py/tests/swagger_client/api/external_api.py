@@ -43,7 +43,7 @@ class ExternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param Body body: contract call (required)
+        :param ContractCallInput body: contract call (required)
         :return: CallResult
                  If the method is called asynchronously,
                  returns the request thread.
@@ -65,7 +65,7 @@ class ExternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param Body body: contract call (required)
+        :param ContractCallInput body: contract call (required)
         :return: CallResult
                  If the method is called asynchronously,
                  returns the request thread.
@@ -241,7 +241,7 @@ class ExternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param Body1 body: Arguments in ring (required)
+        :param ContractCallInput body: Arguments in ring (required)
         :return: Calldata
                  If the method is called asynchronously,
                  returns the request thread.
@@ -263,7 +263,7 @@ class ExternalApi(object):
         >>> result = thread.get()
 
         :param async bool
-        :param Body1 body: Arguments in ring (required)
+        :param ContractCallInput body: Arguments in ring (required)
         :return: Calldata
                  If the method is called asynchronously,
                  returns the request thread.

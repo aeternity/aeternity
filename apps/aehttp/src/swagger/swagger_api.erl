@@ -17,7 +17,7 @@
 
 request_params('CallContract') ->
     [
-        'Body'
+        'ContractCallInput'
     ];
 
 request_params('CompileContract') ->
@@ -27,7 +27,7 @@ request_params('CompileContract') ->
 
 request_params('EncodeCalldata') ->
     [
-        'Body1'
+        'ContractCallInput'
     ];
 
 request_params('GetAccountsBalances') ->
@@ -277,7 +277,7 @@ request_params(_) ->
 
 
 
-request_param_info('CallContract', 'Body') ->
+request_param_info('CallContract', 'ContractCallInput') ->
     #{
         source =>   body,
         rules => [
@@ -295,7 +295,7 @@ request_param_info('CompileContract', 'Contract') ->
         ]
     };
 
-request_param_info('EncodeCalldata', 'Body1') ->
+request_param_info('EncodeCalldata', 'ContractCallInput') ->
     #{
         source =>   body,
         rules => [

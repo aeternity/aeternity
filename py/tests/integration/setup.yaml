@@ -88,3 +88,14 @@ tests: # test specific settings
         alice_pubkey: ak$v6kQV2Z6uXv2PsUJdv955gE
         amount: 1000
         fee: 20
+  test_contracts:
+    test_compile_id:
+      nodes:
+        alice: dev1
+    test_encode_id_call:
+      nodes:
+        alice: dev1
+    test_id_call:
+      nodes:
+        alice: dev1
+

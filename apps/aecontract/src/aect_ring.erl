@@ -9,6 +9,7 @@
 
 -export([ compile/2
         , create_call/3
+        , encode_call_data/3
         , execute_call/2
         , simple_call/3
         ]).
@@ -83,7 +84,15 @@ simple_call(Code, Function, Argument) ->
             end
     end.
 
--spec create_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+-spec encode_call_data(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+encode_call_data(Contract, Function, Argument) ->
+    case create_call(Contract, Function, Argument) of
+        Data when is_binary(Data) ->
+            {ok, hexstring_encode(Data)};
+        Error -> Error
+    end.
+
+-spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.
 create_call(Contract, Function, Argument) ->
     Res = aer_abi:create_calldata(Contract,
                                   binary_to_list(Function),

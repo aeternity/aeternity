@@ -1174,14 +1174,7 @@ paths:
           description: contract call
           required: true
           schema:
-            type: object
-            properties:
-              code:
-                type: string
-              function:
-                type: string
-              arg:
-                type: string
+            $ref: '#/definitions/ContractCallInput'
       responses:
         '200':
           description: Resulting state map
@@ -1207,14 +1200,7 @@ paths:
           description: Arguments in ring
           required: true
           schema:
-            type: object
-            properties:
-              code:
-                type: string
-              function:
-                type: string
-              arg:
-                type: string
+            $ref: '#/definitions/ContractCallInput'
       responses:
         '200':
           description: Binary ecoded calldata
@@ -1870,6 +1856,15 @@ definitions:
     type: object
     properties:
       bytecode: string
+  ContractCallInput:
+    type: object
+    properties:
+      code:
+        type: string
+      function:
+        type: string
+      arg:
+       type: string
   CallResult:
     type: object
     properties:
