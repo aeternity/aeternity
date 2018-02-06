@@ -87,7 +87,21 @@ contract Identity = {
   //     	       | y => y+1;
 // 	       };
   // let p(x) = {color:"blue", p:{x:x, y:x+1}};
-  let twice(f,x) = f(f(x));
-  let double(x) = x+x;
-  let main(x) = twice(double,x);
+  //let twice(f,x) = f(f(x));
+  // let twice(f,x) = f(f(x));
+  // let double(x) = x+x;
+  // let main(x) = twice((y=>y+y),x);
+  // let rec map(f,xs) = switch(xs) {
+  // | [] => [];
+  // | (x::ys) => f(x)::map(f,ys);
+  // };
+  // let id(x) = x;
+  // let main(xs) = map(double,xs);
+  let z(f,x) = x;
+  let s(n) = (f,x)=>f(n(f,x));
+  let add(m,n) = (f,x)=>m(f,n(f,x));
+  let main(_) = {let three=s(s(s(z)));
+      	      	     add(three,three);
+		}
+		(i=>i+1,0);
 };
