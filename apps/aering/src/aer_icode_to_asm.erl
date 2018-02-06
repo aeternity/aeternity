@@ -36,7 +36,7 @@ convert(#{ contract_name := _ContractName
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
-    MainFunction = lookup_fun(Funs,"_main",1),
+    MainFunction = lookup_fun(Funs,"_main"),
     DispatchCode = [%% read all call data into memory at address zero
 		    aeb_opcodes:mnemonic(?CALLDATASIZE),
 		    push(0),
@@ -76,7 +76,7 @@ fun_hash(Name) ->
     {tuple,[{integer,X} || X <- [length(Name)|aer_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
-    [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name,length(Args))},
+    [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name)},
      assemble_expr(Funs, lists:reverse(Args), tail, Body),
      %% swap return value and first argument
      pop_args(length(Args)),
@@ -565,13 +565,13 @@ shuffle_stack([N|Stack]) ->
 
 
 
-lookup_fun(Funs,Name,Arity) ->
-    case [Ref || {Name1,Arity1,Ref} <- Funs,
-		 {Name,Arity} == {Name1,Arity1}] of
+lookup_fun(Funs,Name) ->
+    case [Ref || {Name1,_,Ref} <- Funs,
+		 Name == Name1] of
 	[Ref] ->
 	    Ref;
 	[] ->
-	    error({undefined_function,Name,Arity})
+	    error({undefined_function,Name})
     end.
 
 is_top_level_fun(_Funs,Stack,{var_ref,Id}) ->
