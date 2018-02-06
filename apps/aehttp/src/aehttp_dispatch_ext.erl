@@ -221,10 +221,10 @@ handle_request('CompileContract', Req, _Context) ->
 
 handle_request('CallContract', Req, _Context) ->
     case Req of
-        #{ <<"code">> := Code
-         , <<"function">> := Function
-         , <<"arg">> := Argument }
-        ->
+        #{'ContractCallInput' :=
+              #{ <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }}  ->
             %% TODO: Handle other languages
             case aect_ring:simple_call(Code, Function, Argument) of
                 {ok, Result} ->
@@ -237,11 +237,12 @@ handle_request('CallContract', Req, _Context) ->
 
 handle_request('EncodeCalldata', Req, _Context) ->
     case Req of
-        #{ code := Code
-         , function := Function
-         , arg := Argument } ->
+        #{'ContractCallInput' :=
+              #{ <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }} ->
             %% TODO: Handle other languages
-            case aect_ring:create_call(Code, Function, Argument) of
+            case aect_ring:encode_call_data(Code, Function, Argument) of
                 {ok, Result} ->
                     {200, [], #{ calldata => Result}};
                 {error, ErrorMsg} ->
