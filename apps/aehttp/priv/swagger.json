@@ -1376,7 +1376,7 @@
           "description" : "contract call",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/body"
+            "$ref" : "#/definitions/ContractCallInput"
           }
         } ],
         "responses" : {
@@ -1408,7 +1408,7 @@
           "description" : "Arguments in ring",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/body_1"
+            "$ref" : "#/definitions/ContractCallInput"
           }
         } ],
         "responses" : {
@@ -2301,6 +2301,25 @@
     "ByteCode" : {
       "type" : "object"
     },
+    "ContractCallInput" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "function" : {
+          "type" : "string"
+        },
+        "arg" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "code" : "code",
+        "function" : "function",
+        "arg" : "arg"
+      }
+    },
     "CallResult" : {
       "type" : "object",
       "properties" : {
@@ -2332,34 +2351,6 @@
       },
       "example" : {
         "count" : 0
-      }
-    },
-    "body" : {
-      "type" : "object",
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "function" : {
-          "type" : "string"
-        },
-        "arg" : {
-          "type" : "string"
-        }
-      }
-    },
-    "body_1" : {
-      "type" : "object",
-      "properties" : {
-        "code" : {
-          "type" : "string"
-        },
-        "function" : {
-          "type" : "string"
-        },
-        "arg" : {
-          "type" : "string"
-        }
       }
     },
     "RegisteredOracles_inner" : {
