@@ -212,6 +212,35 @@
         }
       }
     },
+    "/commitment-hash" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Compute commitment hash for a given salt and name",
+        "operationId" : "GetCommitmentHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "name",
+          "in" : "query",
+          "description" : "Name to put into the hash",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "salt",
+          "in" : "query",
+          "description" : "Salt to put into the hash",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Calculated commitment hash",
+            "schema" : {
+              "$ref" : "#/definitions/NameCommitmentHash"
+            }
+          }
+        }
+      }
+    },
     "/name" : {
       "get" : {
         "tags" : [ "external" ],
@@ -222,7 +251,7 @@
           "name" : "name",
           "in" : "query",
           "description" : "Name to get entry from Naming System",
-          "required" : false,
+          "required" : true,
           "type" : "string"
         } ],
         "responses" : {
@@ -1856,6 +1885,9 @@
         "name" : {
           "type" : "string"
         },
+        "name_hash" : {
+          "type" : "string"
+        },
         "name_ttl" : {
           "type" : "integer",
           "format" : "int64"
@@ -1866,6 +1898,7 @@
       },
       "example" : {
         "name_ttl" : 0,
+        "name_hash" : "name_hash",
         "name" : "name",
         "pointers" : "pointers"
       }

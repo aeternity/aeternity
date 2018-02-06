@@ -508,6 +508,109 @@ class ExternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def get_commitment_hash(self, name, salt, **kwargs):  # noqa: E501
+        """get_commitment_hash  # noqa: E501
+
+        Compute commitment hash for a given salt and name  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_commitment_hash(name, salt, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str name: Name to put into the hash (required)
+        :param int salt: Salt to put into the hash (required)
+        :return: NameCommitmentHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_commitment_hash_with_http_info(name, salt, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_commitment_hash_with_http_info(name, salt, **kwargs)  # noqa: E501
+            return data
+
+    def get_commitment_hash_with_http_info(self, name, salt, **kwargs):  # noqa: E501
+        """get_commitment_hash  # noqa: E501
+
+        Compute commitment hash for a given salt and name  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_commitment_hash_with_http_info(name, salt, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str name: Name to put into the hash (required)
+        :param int salt: Salt to put into the hash (required)
+        :return: NameCommitmentHash
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['name', 'salt']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_commitment_hash" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'name' is set
+        if ('name' not in params or
+                params['name'] is None):
+            raise ValueError("Missing the required parameter `name` when calling `get_commitment_hash`")  # noqa: E501
+        # verify the required parameter 'salt' is set
+        if ('salt' not in params or
+                params['salt'] is None):
+            raise ValueError("Missing the required parameter `salt` when calling `get_commitment_hash`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+        if 'name' in params:
+            query_params.append(('name', params['name']))  # noqa: E501
+        if 'salt' in params:
+            query_params.append(('salt', params['salt']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/commitment-hash', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='NameCommitmentHash',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def get_info(self, **kwargs):  # noqa: E501
         """get_info  # noqa: E501
 
@@ -595,39 +698,39 @@ class ExternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
-    def get_name(self, **kwargs):  # noqa: E501
+    def get_name(self, name, **kwargs):  # noqa: E501
         """get_name  # noqa: E501
 
         Get name entry from Naming System  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
-        >>> thread = api.get_name(async=True)
+        >>> thread = api.get_name(name, async=True)
         >>> result = thread.get()
 
         :param async bool
-        :param str name: Name to get entry from Naming System
+        :param str name: Name to get entry from Naming System (required)
         :return: NameEntry
                  If the method is called asynchronously,
                  returns the request thread.
         """
         kwargs['_return_http_data_only'] = True
         if kwargs.get('async'):
-            return self.get_name_with_http_info(**kwargs)  # noqa: E501
+            return self.get_name_with_http_info(name, **kwargs)  # noqa: E501
         else:
-            (data) = self.get_name_with_http_info(**kwargs)  # noqa: E501
+            (data) = self.get_name_with_http_info(name, **kwargs)  # noqa: E501
             return data
 
-    def get_name_with_http_info(self, **kwargs):  # noqa: E501
+    def get_name_with_http_info(self, name, **kwargs):  # noqa: E501
         """get_name  # noqa: E501
 
         Get name entry from Naming System  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
-        >>> thread = api.get_name_with_http_info(async=True)
+        >>> thread = api.get_name_with_http_info(name, async=True)
         >>> result = thread.get()
 
         :param async bool
-        :param str name: Name to get entry from Naming System
+        :param str name: Name to get entry from Naming System (required)
         :return: NameEntry
                  If the method is called asynchronously,
                  returns the request thread.
@@ -648,6 +751,10 @@ class ExternalApi(object):
                 )
             params[key] = val
         del params['kwargs']
+        # verify the required parameter 'name' is set
+        if ('name' not in params or
+                params['name'] is None):
+            raise ValueError("Missing the required parameter `name` when calling `get_name`")  # noqa: E501
 
         collection_formats = {}
 

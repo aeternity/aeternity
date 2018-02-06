@@ -32,26 +32,31 @@ class NameEntry(object):
     """
     swagger_types = {
         'name': 'str',
+        'name_hash': 'str',
         'name_ttl': 'int',
         'pointers': 'str'
     }
 
     attribute_map = {
         'name': 'name',
+        'name_hash': 'name_hash',
         'name_ttl': 'name_ttl',
         'pointers': 'pointers'
     }
 
-    def __init__(self, name=None, name_ttl=None, pointers=None):  # noqa: E501
+    def __init__(self, name=None, name_hash=None, name_ttl=None, pointers=None):  # noqa: E501
         """NameEntry - a model defined in Swagger"""  # noqa: E501
 
         self._name = None
+        self._name_hash = None
         self._name_ttl = None
         self._pointers = None
         self.discriminator = None
 
         if name is not None:
             self.name = name
+        if name_hash is not None:
+            self.name_hash = name_hash
         if name_ttl is not None:
             self.name_ttl = name_ttl
         if pointers is not None:
@@ -77,6 +82,27 @@ class NameEntry(object):
         """
 
         self._name = name
+
+    @property
+    def name_hash(self):
+        """Gets the name_hash of this NameEntry.  # noqa: E501
+
+
+        :return: The name_hash of this NameEntry.  # noqa: E501
+        :rtype: str
+        """
+        return self._name_hash
+
+    @name_hash.setter
+    def name_hash(self, name_hash):
+        """Sets the name_hash of this NameEntry.
+
+
+        :param name_hash: The name_hash of this NameEntry.  # noqa: E501
+        :type: str
+        """
+
+        self._name_hash = name_hash
 
     @property
     def name_ttl(self):

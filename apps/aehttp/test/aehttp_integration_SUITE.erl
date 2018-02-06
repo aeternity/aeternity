@@ -206,15 +206,15 @@ groups() ->
         block_txs_list_by_height_invalid_range,
         block_txs_list_by_hash_invalid_range,
 
-        naming_system_manage_name,
-
         balance,
         balance_negative_cases,
 
         list_oracles,
         list_oracle_queries
       ]},
-     {naming, [sequence], [naming_system_manage_name]},
+     {naming, [sequence],
+      [naming_system_manage_name
+      ]},
      {websocket, [sequence],
       [ws_get_genesis,
        ws_block_mined,
@@ -1405,7 +1405,6 @@ naming_system_manage_name(_Config) ->
     Pointers   = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
     TTL        = 10,
     NHash      = aens_hash:name_hash(Name),
-    CHash      = aens_hash:commitment_hash(Name, NameSalt),
     Fee        = 2,
     MineReward = rpc(aec_governance, block_mine_reward, []),
 
@@ -1415,6 +1414,10 @@ naming_system_manage_name(_Config) ->
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Get commitment hash to preclaim a name
+    {ok, 200, #{<<"commitment">> := EncodedCHash}} = get_commitment_hash(Name, NameSalt),
+    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
     {ok, 200, _}       = post_name_preclaim_tx(CHash, Fee),
@@ -1445,9 +1448,11 @@ naming_system_manage_name(_Config) ->
     Balance2 = Balance1 - Fee + MineReward + Fee - ClaimBurnedFee,
 
     %% Check that name entry is present
-    {ok, 200, #{<<"name">>     := Name,
-                <<"name_ttl">> := 0,
-                <<"pointers">> := <<"[]">>}} = get_name(Name),
+    EncodedNHash = aec_base58c:encode(name, NHash),
+    {ok, 200, #{<<"name">>      := Name,
+                <<"name_hash">> := EncodedNHash,
+                <<"name_ttl">>  := 0,
+                <<"pointers">>  := <<"[]">>}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
     {ok, 200, _}     = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
@@ -2023,6 +2028,10 @@ post_name_revoke_tx(NameHash, Fee) ->
     http_request(Host, post, "name-revoke-tx",
                  #{name_hash => aec_base58c:encode(name, NameHash),
                    fee       => Fee}).
+
+get_commitment_hash(Name, Salt) ->
+    Host = external_address(),
+    http_request(Host, get, "commitment-hash", [{name, Name}, {salt, Salt}]).
 
 get_name(Name) ->
     Host = external_address(),
