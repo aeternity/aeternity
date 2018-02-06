@@ -1394,6 +1394,38 @@
           }
         }
       }
+    },
+    "/contract/encode-calldata" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Encode ring data and function name according to ring ABI.",
+        "operationId" : "EncodeCalldata",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Arguments in ring",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/body_1"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Binary ecoded calldata",
+            "schema" : {
+              "$ref" : "#/definitions/Calldata"
+            }
+          },
+          "403" : {
+            "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
     }
   },
   "definitions" : {
@@ -2280,6 +2312,17 @@
         "out" : "out"
       }
     },
+    "Calldata" : {
+      "type" : "object",
+      "properties" : {
+        "calldata" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "calldata" : "calldata"
+      }
+    },
     "inline_response_200" : {
       "properties" : {
         "count" : {
@@ -2292,6 +2335,20 @@
       }
     },
     "body" : {
+      "type" : "object",
+      "properties" : {
+        "code" : {
+          "type" : "string"
+        },
+        "function" : {
+          "type" : "string"
+        },
+        "arg" : {
+          "type" : "string"
+        }
+      }
+    },
+    "body_1" : {
       "type" : "object",
       "properties" : {
         "code" : {

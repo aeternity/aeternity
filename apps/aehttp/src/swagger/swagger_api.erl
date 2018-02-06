@@ -25,6 +25,11 @@ request_params('CompileContract') ->
         'Contract'
     ];
 
+request_params('EncodeCalldata') ->
+    [
+        'Body1'
+    ];
+
 request_params('GetAccountsBalances') ->
     [
     ];
@@ -282,6 +287,15 @@ request_param_info('CallContract', 'Body') ->
     };
 
 request_param_info('CompileContract', 'Contract') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('EncodeCalldata', 'Body1') ->
     #{
         source =>   body,
         rules => [
@@ -864,6 +878,11 @@ validate_response('CallContract', 403, Body, ValidatorState) ->
 validate_response('CompileContract', 200, Body, ValidatorState) ->
     validate_response_body('ByteCode', 'ByteCode', Body, ValidatorState);
 validate_response('CompileContract', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('EncodeCalldata', 200, Body, ValidatorState) ->
+    validate_response_body('Calldata', 'Calldata', Body, ValidatorState);
+validate_response('EncodeCalldata', 403, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->

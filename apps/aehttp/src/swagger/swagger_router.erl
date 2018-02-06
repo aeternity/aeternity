@@ -65,6 +65,11 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'EncodeCalldata' => #{
+            path => "/v2/contract/encode-calldata",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'GetAccountsBalances' => #{
             path => "/v2/balances",
             method => <<"GET">>,
