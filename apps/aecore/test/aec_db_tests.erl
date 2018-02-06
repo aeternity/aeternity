@@ -1,4 +1,4 @@
--module(aec_persistence_tests).
+-module(aec_db_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
