@@ -2093,14 +2093,17 @@ block_to_endpoint_map(Block, Options) ->
     BlockHeight = aec_blocks:height(Block),
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     lists:foreach(
-        fun(EncodedTx) ->
+        fun({EncodedTx, SignedTx}) ->
             #{block_hash := TxBlockHash,
-              block_height := TxBlockHeight} =
-                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
+              block_height := TxBlockHeight,
+              hash := Hash} =
+                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx), 
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
-            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash}
+            {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
+            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            {Hash, TxHash} = {TxHash, Hash}
         end,
-        ExpectedTxs),
+        lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
     Expected.
 
 %% misbehaving peers get blocked so we need unique ones

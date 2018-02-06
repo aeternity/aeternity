@@ -16,6 +16,7 @@ import re  # noqa: F401
 
 import six
 
+from swagger_client.models.encoded_hash import EncodedHash  # noqa: F401,E501
 from swagger_client.models.json_tx import JSONTx  # noqa: F401,E501
 
 
@@ -35,7 +36,8 @@ class SignedTxJSON(object):
     swagger_types = {
         'tx': 'JSONTx',
         'block_height': 'int',
-        'block_hash': 'JSONTx',
+        'block_hash': 'EncodedHash',
+        'hash': 'EncodedHash',
         'signatures': 'list[str]'
     }
 
@@ -43,15 +45,17 @@ class SignedTxJSON(object):
         'tx': 'tx',
         'block_height': 'block_height',
         'block_hash': 'block_hash',
+        'hash': 'hash',
         'signatures': 'signatures'
     }
 
-    def __init__(self, tx=None, block_height=None, block_hash=None, signatures=None):  # noqa: E501
+    def __init__(self, tx=None, block_height=None, block_hash=None, hash=None, signatures=None):  # noqa: E501
         """SignedTxJSON - a model defined in Swagger"""  # noqa: E501
 
         self._tx = None
         self._block_height = None
         self._block_hash = None
+        self._hash = None
         self._signatures = None
         self.discriminator = None
 
@@ -61,6 +65,8 @@ class SignedTxJSON(object):
             self.block_height = block_height
         if block_hash is not None:
             self.block_hash = block_hash
+        if hash is not None:
+            self.hash = hash
         if signatures is not None:
             self.signatures = signatures
 
@@ -112,7 +118,7 @@ class SignedTxJSON(object):
 
 
         :return: The block_hash of this SignedTxJSON.  # noqa: E501
-        :rtype: JSONTx
+        :rtype: EncodedHash
         """
         return self._block_hash
 
@@ -122,10 +128,31 @@ class SignedTxJSON(object):
 
 
         :param block_hash: The block_hash of this SignedTxJSON.  # noqa: E501
-        :type: JSONTx
+        :type: EncodedHash
         """
 
         self._block_hash = block_hash
+
+    @property
+    def hash(self):
+        """Gets the hash of this SignedTxJSON.  # noqa: E501
+
+
+        :return: The hash of this SignedTxJSON.  # noqa: E501
+        :rtype: EncodedHash
+        """
+        return self._hash
+
+    @hash.setter
+    def hash(self, hash):
+        """Sets the hash of this SignedTxJSON.
+
+
+        :param hash: The hash of this SignedTxJSON.  # noqa: E501
+        :type: EncodedHash
+        """
+
+        self._hash = hash
 
     @property
     def signatures(self):

@@ -1635,7 +1635,9 @@ definitions:
       block_height:
         type: integer
       block_hash:
-        $ref: '#/definitions/JSONTx'
+        $ref: '#/definitions/EncodedHash'
+      hash:
+        $ref: '#/definitions/EncodedHash'
       signatures:
         type: array
         minItems: 1
