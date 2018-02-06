@@ -129,7 +129,6 @@ docker-compose down -v
 
 More details can be found in [`docker-compose` documentation](https://docs.docker.com/compose/reference/).
 
-=======
 ## Image Version
 
 Docker compose uses the `aetrnty/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aetrnty/builder/) if it's not found locally.

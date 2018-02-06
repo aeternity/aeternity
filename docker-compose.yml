@@ -1,4 +1,4 @@
-# Small local network of two nodes using the fastest mean16
+# Small local network of three nodes using the fastest mean16
 version: '3'
 services:
   node1:

@@ -1,12 +1,7 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.6.0) is focused on the naming system.
-It also:
-* Refines and expands the user API;
-* Documents how to change the user configuration file in the Docker container;
-* Enhances the blockchain state trees by using a kind of Merkle trees independent from the order of operations - i.e. Ethereum's "modified Merkle Patricia tree" modified by using SHA-256 (rather than Keccak) as hashing function;
-* Enhances the persistence by using a database - i.e. Mnesia;
-* Improves the stability of the testnet.
+Changes:
+* Add [small localnet](docs/docker.md#localnet) docker-compose configuration for testing and development purposes
 
 This release introduces backward incompatible changes in the chain format.
 After upgrading your node, you will not have your previous balance (even if you keep your key pair).
@@ -30,7 +25,7 @@ The binaries are tested on the following platforms:
 The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib`.
 In case you have installed it in a non-default path, you could use a symlink to work around the issue.
 
-Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.6.0/docs/docker-testnet.md).
+Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.6.0/docs/docker.md).
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
