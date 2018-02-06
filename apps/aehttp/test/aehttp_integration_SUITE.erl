@@ -102,8 +102,9 @@
     list_oracles/1,
     list_oracle_queries/1
    ]).
-
-%% internal endpoints
+%%
+%% test case exports
+%% websocket endpoints
 -export(
    [ws_get_genesis/1,
     ws_block_mined/1,
