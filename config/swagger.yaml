@@ -1191,6 +1191,39 @@ paths:
           description: Invalid contract
           schema:
             $ref: '#/definitions/Error'
+  /contract/encode-calldata:
+    post:
+      tags:
+        - external
+      operationId: 'EncodeCalldata'
+      description: 'Encode ring data and function name according to ring ABI.'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Arguments in ring
+          required: true
+          schema:
+            type: object
+            properties:
+              code:
+                type: string
+              function:
+                type: string
+              arg:
+                type: string
+      responses:
+        '200':
+          description: Binary ecoded calldata
+          schema:
+            $ref: '#/definitions/Calldata'
+        '403':
+          description: Invalid contract
+          schema:
+            $ref: '#/definitions/Error'
 
 
 definitions:
@@ -1841,6 +1874,11 @@ definitions:
     type: object
     properties:
       out:
+        type: string
+  Calldata:
+    type: object
+    properties:
+      calldata:
         type: string
 
 

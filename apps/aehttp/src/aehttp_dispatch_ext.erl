@@ -218,6 +218,35 @@ handle_request('CompileContract', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
+handle_request('CallContract', Req, _Context) ->
+    case Req of
+        #{ code := Code
+         , function := Function
+         , arg := Argument } ->
+            %% TODO: Handle other languages
+            case aec_ring:simple_call(Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ out => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request('EncodeCalldata', Req, _Context) ->
+    case Req of
+        #{ code := Code
+         , function := Function
+         , arg := Argument } ->
+            %% TODO: Handle other languages
+            case aec_ring:create_call(Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ calldata => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
 
 
 handle_request(OperationID, Req, Context) ->
