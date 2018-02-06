@@ -43,7 +43,7 @@
         db_path: "./db25"
       keypair:
         dir: "keys"
-        password: "{{ keys_password|default('secret') }}"
+        password: "{{ vault_keys_password|default('secret') }}"
     api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
   tasks:
@@ -175,8 +175,8 @@
             Revision: [{{ revision_output.stdout }}](https://github.com/aeternity/epoch/commit/{{ revision_output.stdout }})
             Package: {{ package }}
             %%%
-          api_key: "{{ datadog_api_key }}"
-          app_key: "{{ datadog_app_key }}"
+          api_key: "{{ vault_datadog_api_key }}"
+          app_key: "{{ vault_datadog_app_key }}"
           tags:
             - "env:{{ env }}"
             - "version:{{ version_output.stdout }}"
@@ -189,8 +189,8 @@
             alert_type: error
             title: Deploy
             text: "Package: {{ package }}"
-            api_key: "{{ datadog_api_key }}"
-            app_key: "{{ datadog_app_key }}"
+            api_key: "{{ vault_datadog_api_key }}"
+            app_key: "{{ vault_datadog_app_key }}"
             tags:
               - "env:{{ env }}"
           connection: local
