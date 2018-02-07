@@ -156,6 +156,14 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+  deploy_api_docs:
+    <<: *container_config
+    steps:
+      - checkout
+      - run:
+          command: |
+            make swagger-docs
+            bash deployment/deploy_api_docs.sh
 
   osx_package:
     macos:
@@ -212,6 +220,16 @@ workflows:
                 - env/dev2
             tags:
               only: /^v.*$/
+      - deploy_api_docs:
+          requires: ~
+          requires:
+            - build
+          filters:
+            branches:
+              only: master
+            tags:
+              only: /^v.*$/
+
 
       - test:
           requires:
