@@ -2,16 +2,6 @@ diff --git a/lib/mnesia/src/mnesia.erl b/lib/mnesia/src/mnesia.erl
 index b68b2de..aefa2d7 100644
 --- a/lib/mnesia/src/mnesia.erl
 +++ b/lib/mnesia/src/mnesia.erl
-@@ -151,7 +151,8 @@
-         {'snmp', SnmpStruct::term()} |
-         {'storage_properties', [{Backend::module(), [BackendProp::_]}]} |
-         {'type', 'set' | 'ordered_set' | 'bag'} |
--        {'local_content', boolean()}.
-+        {'local_content', boolean()} |
-+        {'user_properties', proplists:proplist()}.
- 
- -type t_result(Res) :: {'atomic', Res} | {'aborted', Reason::term()}.
- -type activity() :: 'ets' | 'async_dirty' | 'sync_dirty' | 'transaction' | 'sync_transaction' |
 @@ -159,7 +160,7 @@
                      {'sync_transaction', Retries::non_neg_integer()}.
  -type table() :: atom().
