@@ -329,12 +329,18 @@ check_db() ->
     end.
 
 initialize_db(Mode) ->
-    add_plugins(),
+    add_backend_plugins(Mode),
+    add_index_plugins(),
     ensure_mnesia_tables(Mode),
     ok.
 
 
-add_plugins() ->
+add_backend_plugins(disc) ->
+    mnesia_rocksdb:register();
+add_backend_plugins(_) ->
+    ok.
+
+add_index_plugins() ->
     mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx).
 
 ensure_mnesia_tables(Mode) ->
@@ -352,7 +358,7 @@ set(Mode, Attrs) ->
 set(Mode, Attrs, Extra) ->
     [copies(Mode), {type, set}, {attributes, Attrs} | Extra].
 
-copies(disc) -> {disc_copies, [node()]};
+copies(disc) -> {rocksdb_copies, [node()]};
 copies(ram ) -> {ram_copies , [node()]}.
 
 ensure_schema_storage_mode(ram) ->
