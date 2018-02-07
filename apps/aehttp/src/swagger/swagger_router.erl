@@ -135,6 +135,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
+        'GetAccountTranactions' => #{
+            path => "/v2/account/txs/:account_pubkey",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'GetActiveRegisteredOracles' => #{
             path => "/v2/oracles",
             method => <<"GET">>,

@@ -465,6 +465,31 @@ handle_request('GetPeers', _Req, _Context) ->
             {403, [], #{reason => <<"Call not enabled">>}}
     end;
 
+handle_request('GetAccountTranactions', Req, _Context) ->
+    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
+        {ok, AccountPubkey} ->
+            TopBlockHash = aec_conductor:top_block_hash(),
+            case get_account_balance_at_hash(AccountPubkey, TopBlockHash) of
+                {error, account_not_found} ->
+                    {404, [], #{reason => <<"Account not found">>}};
+                {ok, _} ->
+                    case get_account_transactions(AccountPubkey, Req) of
+                        {error, unknown_type} ->
+                            {400, [], #{reason => <<"Unknown transaction type">>}};
+                        {ok, HeaderTxs} ->
+                            case encode_txs(HeaderTxs, Req) of
+                                {error, Err} -> 
+                                    Err;
+                                {ok, EncodedTxs, DataSchema} ->
+                                    {200, [], #{transactions => EncodedTxs,
+                                                data_schema => DataSchema}}
+                            end
+                    end;
+                _ ->
+                    {400, [], #{reason => <<"Invalid account hash">>}}
+            end
+    end;
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
@@ -787,3 +812,106 @@ get_block_hash_optionally_by_hash_or_height(Req) ->
                     end
             end
     end.
+
+encode_txs(HeaderTxs, Req) ->
+    case read_tx_encoding_param(Req) of
+        {error, _} = Err ->
+            Err;
+        {ok, TxEncoding} ->
+            DataSchema =
+                case TxEncoding of
+                    json ->
+                        <<"JSONTxs">>;
+                    message_pack ->
+                        <<"MsgPackTxs">>
+                end,
+            EncodedTxs =
+                lists:map(
+                    fun({BlockHeader, Tx}) ->
+                        aec_tx_sign:serialize_for_client(TxEncoding,
+                                                         BlockHeader, Tx)
+                    end,
+                    HeaderTxs),
+            {ok, EncodedTxs, DataSchema}
+    end.
+
+get_account_transactions(Account, Req) ->
+    case {parse_filter_param(tx_types, Req),
+          parse_filter_param(exclude_tx_types, Req)} of
+        {{error, unknown_type} = Err, _} ->
+            Err;
+        {_, {error, unknown_type} = Err} ->
+            Err;
+        {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
+            %% the logic below is a subject to some refactoring as soon as 
+            %% coinbase_tx become distinguishable and having disting tx hashes
+            %% current solution is a workaround
+            NonCoinbases = get_non_coinbase_txs_and_headers(KeepTxTypes,
+                                                            DropTxTypes,
+                                                            Account),
+            CoinbaseType = aec_coinbase_tx:type(),
+            CoinbaseRequested = lists:member(CoinbaseType, KeepTxTypes)
+                  orelse KeepTxTypes =:= [],
+            Coinbases =
+                case CoinbaseRequested andalso
+                    not lists:member(CoinbaseType, DropTxTypes) of
+                    true -> get_coinbase_txs_and_headers(Account);
+                    false -> []
+                end,
+            Res =
+              lists:sort(
+                  fun({HeaderA, _}, {HeaderB, _}) ->
+                      aec_headers:height(HeaderA) > aec_headers:height(HeaderB)
+                  end,
+                  NonCoinbases ++ Coinbases),
+            {ok, offset_and_limit(Req, Res)}
+      end.
+
+%% WORKAROUND
+%% Currently all coinbase txs are the same and thus having the same tx hash
+%% There is no point in fetching them via aec_db:dirty_transactions_by_account/2
+%% TODO: remove this workaround
+get_coinbase_txs_and_headers(Account) ->
+    {ok, SampleCoinbaseTx} = aec_coinbase_tx:new(#{account => Account}),
+    CoinbaseHash = aec_tx:hash_tx(SampleCoinbaseTx),
+    %% all coinbases share the same transaction hash and we can fetch them
+    lists:map(
+        fun({BlockHash, SignedCoinbaseTx}) ->
+            {ok, Header} = aec_conductor:get_header_by_hash(BlockHash),
+            {Header, SignedCoinbaseTx}
+        end,
+        aec_db:read_tx(CoinbaseHash)).
+
+%% WORKAROUND
+%% Currently all coinbase txs are the same and thus having the same tx hash
+%% The following function is the correct behavior with removing the commented
+%% line that filters out coinbase types
+%% TODO: remove this workaround
+get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
+    CoinbaseType = aec_coinbase_tx:type(),
+    Filter =
+        fun(SignedTx) ->
+              Tx = aec_tx_sign:data(SignedTx),
+              Mod = aec_tx_dispatcher:handler(Tx),
+              TxType = Mod:type(),
+              Drop = lists:member(TxType, DropTxTypes)
+                  orelse TxType =:= CoinbaseType, %% later remove this
+              Keep = KeepTxTypes =:= []
+                  orelse lists:member(TxType, KeepTxTypes),
+              Keep andalso not Drop
+        end,
+    Txs = aec_db:dirty_transactions_by_account(Account, Filter),
+    lists:map(
+        fun(SignedTx) ->
+            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            [{BlockHash, _}] = aec_db:read_tx(TxHash),
+            {ok, Header} = aec_conductor:get_header_by_hash(BlockHash),
+            {Header, SignedTx}
+        end,
+        Txs).
+
+
+offset_and_limit(Req, ResultList) ->
+    Limit = read_optional_param(limit, Req, 20),
+    Offset = read_optional_param(offset, Req, 0) + 1, % lists are 1-indexed
+    lists:sublist(ResultList, Offset, Limit).

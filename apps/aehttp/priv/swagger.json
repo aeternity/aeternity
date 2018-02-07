@@ -729,6 +729,78 @@
         }
       }
     },
+    "/account/txs/{account_pubkey}" : {
+      "get" : {
+        "tags" : [ "internal" ],
+        "description" : "Get accounts's transactions included in blocks in the longest chain",
+        "operationId" : "GetAccountTranactions",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "account_pubkey",
+          "in" : "path",
+          "description" : "Account pubkey to show transactions for",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "description" : "Maximum transactions count to show",
+          "required" : false,
+          "type" : "integer",
+          "default" : 20,
+          "maximum" : 100,
+          "minimum" : 1
+        }, {
+          "name" : "offset",
+          "in" : "query",
+          "description" : "Offset to start transaction list from",
+          "required" : false,
+          "type" : "integer",
+          "default" : 0,
+          "minimum" : 0
+        }, {
+          "name" : "tx_types",
+          "in" : "query",
+          "description" : "Transactions types to show. Comma separated",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "exclude_tx_types",
+          "in" : "query",
+          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "name" : "tx_encoding",
+          "in" : "query",
+          "description" : "Transactions encoding",
+          "required" : false,
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/TxObjects"
+            }
+          },
+          "400" : {
+            "description" : "Invalid account hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/balances" : {
       "get" : {
         "tags" : [ "external" ],

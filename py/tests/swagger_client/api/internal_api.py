@@ -136,6 +136,127 @@ class InternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def get_account_tranactions(self, account_pubkey, **kwargs):  # noqa: E501
+        """get_account_tranactions  # noqa: E501
+
+        Get accounts's transactions included in blocks in the longest chain  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_account_tranactions(account_pubkey, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str account_pubkey: Account pubkey to show transactions for (required)
+        :param int limit: Maximum transactions count to show
+        :param int offset: Offset to start transaction list from
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :param str tx_encoding: Transactions encoding
+        :return: TxObjects
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_account_tranactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_account_tranactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
+            return data
+
+    def get_account_tranactions_with_http_info(self, account_pubkey, **kwargs):  # noqa: E501
+        """get_account_tranactions  # noqa: E501
+
+        Get accounts's transactions included in blocks in the longest chain  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_account_tranactions_with_http_info(account_pubkey, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str account_pubkey: Account pubkey to show transactions for (required)
+        :param int limit: Maximum transactions count to show
+        :param int offset: Offset to start transaction list from
+        :param str tx_types: Transactions types to show. Comma separated
+        :param str exclude_tx_types: Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.
+        :param str tx_encoding: Transactions encoding
+        :return: TxObjects
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['account_pubkey', 'limit', 'offset', 'tx_types', 'exclude_tx_types', 'tx_encoding']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_account_tranactions" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'account_pubkey' is set
+        if ('account_pubkey' not in params or
+                params['account_pubkey'] is None):
+            raise ValueError("Missing the required parameter `account_pubkey` when calling `get_account_tranactions`")  # noqa: E501
+
+        if 'limit' in params and params['limit'] > 100:  # noqa: E501
+            raise ValueError("Invalid value for parameter `limit` when calling `get_account_tranactions`, must be a value less than or equal to `100`")  # noqa: E501
+        if 'limit' in params and params['limit'] < 1:  # noqa: E501
+            raise ValueError("Invalid value for parameter `limit` when calling `get_account_tranactions`, must be a value greater than or equal to `1`")  # noqa: E501
+        if 'offset' in params and params['offset'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `offset` when calling `get_account_tranactions`, must be a value greater than or equal to `0`")  # noqa: E501
+        collection_formats = {}
+
+        path_params = {}
+        if 'account_pubkey' in params:
+            path_params['account_pubkey'] = params['account_pubkey']  # noqa: E501
+
+        query_params = []
+        if 'limit' in params:
+            query_params.append(('limit', params['limit']))  # noqa: E501
+        if 'offset' in params:
+            query_params.append(('offset', params['offset']))  # noqa: E501
+        if 'tx_types' in params:
+            query_params.append(('tx_types', params['tx_types']))  # noqa: E501
+        if 'exclude_tx_types' in params:
+            query_params.append(('exclude_tx_types', params['exclude_tx_types']))  # noqa: E501
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/account/txs/{account_pubkey}', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='TxObjects',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def get_active_registered_oracles(self, **kwargs):  # noqa: E501
         """get_active_registered_oracles  # noqa: E501
 
