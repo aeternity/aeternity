@@ -53,8 +53,7 @@ patch_and_compile(P) ->
 patch_source(Patch, Src) ->
     New = filename:join(cur_dir(), filename:basename(Src)),
     _DelRes = file:delete(New),
-    {ok,_} = file:copy(Src, New),
-    case lib:nonl(os:cmd("patch <" ++ Patch ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr.
+    case lib:nonl(os:cmd("patch -i " ++ Patch ++ " -o " ++ New ++ " " ++ Src ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr. Make command robust to spaces in file names.
         "0" ->
             {ok, New};
         Res ->
