@@ -181,6 +181,31 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Transactions'
+  /commitment-hash:
+    get:
+      tags:
+        - external
+      operationId: GetCommitmentHash
+      description: 'Compute commitment hash for a given salt and name'
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: name
+          description: 'Name to put into the hash'
+          required: true
+          type: string
+        - in: query
+          name: salt
+          description: 'Salt to put into the hash'
+          required: true
+          type: integer
+      responses:
+        '200':
+          description: Calculated commitment hash
+          schema:
+            $ref: '#/definitions/NameCommitmentHash'
+      security:
   /name:
     get:
       tags:
@@ -193,6 +218,7 @@ paths:
         - in: query
           name: name
           description: 'Name to get entry from Naming System'
+          required: true
           type : string
       responses:
         '200':
@@ -1527,6 +1553,8 @@ definitions:
     type: object
     properties:
       name:
+        type: string
+      name_hash:
         type: string
       name_ttl:
         type: integer

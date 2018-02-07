@@ -139,23 +139,27 @@ handle_request('GetAccountBalance', Req, _Context) ->
             end
     end;
 
+handle_request('GetCommitmentHash', Req, _Context) ->
+    Name         = maps:get('name', Req),
+    Salt         = maps:get('salt', Req),
+    CHash        = aens:get_commitment_hash(Name, Salt),
+    EncodedCHash = aec_base58c:encode(commitment, CHash),
+    {200, [], #{commitment => EncodedCHash}};
+
 handle_request('GetName', Req, _Context) ->
-    Name = case maps:get('name', Req) of
-               undefined ->
-                   {400, [], #{reason => <<"Name not specified">>}};
-               N when is_binary(N) ->
-                   N
-           end,
+    Name = maps:get('name', Req),
     case aec_conductor:get_name_entry(Name) of
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};
         {ok, NameEntry} ->
             #{<<"name">>     := Name,
+              <<"hash">>     := Hash,
               <<"name_ttl">> := NameTTL,
               <<"pointers">> := Pointers} = NameEntry,
-            {200, [], #{name     => Name,
-                        name_ttl => NameTTL,
-                        pointers => Pointers}}
+            {200, [], #{name      => Name,
+                        name_hash => aec_base58c:encode(name, Hash),
+                        name_ttl  => NameTTL,
+                        pointers  => Pointers}}
     end;
 
 handle_request('GetAccountsBalances', _Req, _Context) ->

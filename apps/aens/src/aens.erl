@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%%    Resolve registered names
+%%%    Naming System API
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -9,6 +9,7 @@
 
 %% API
 -export([resolve/3,
+         get_commitment_hash/2,
          get_name_entry/2]).
 
 %%%===================================================================
@@ -45,13 +46,19 @@ resolve(Type, Binary, NSTree) ->
             end
     end.
 
+-spec get_commitment_hash(binary(), integer()) -> aens_hash:commitment_hash().
+get_commitment_hash(Name, Salt) ->
+    aens_hash:commitment_hash(Name, Salt).
+
 -spec get_name_entry(binary(), aens_state_tree:tree()) -> {ok, map()} | {error, name_not_found}.
 get_name_entry(Name, NSTree) ->
     case get_name(Name, NSTree) of
         {ok, #{<<"name">>     := Name,
+               <<"hash">>     := Hash,
                <<"name_ttl">> := TTL,
                <<"pointers">> := Pointers}} ->
             {ok, #{<<"name">>     => Name,
+                   <<"hash">>     => Hash,
                    <<"name_ttl">> => TTL,
                    <<"pointers">> => jsx:encode(Pointers)}};
         {error, name_not_found} = Error ->
@@ -67,6 +74,7 @@ get_name(Name, NSTree) ->
     case aens_state_tree:lookup_name(NameHash, NSTree) of
         {value, N} ->
             {ok, #{<<"name">>     => Name,
+                   <<"hash">>     => NameHash,
                    <<"name_ttl">> => aens_names:ttl(N),
                    <<"pointers">> => aens_names:pointers(N)}};
         none ->

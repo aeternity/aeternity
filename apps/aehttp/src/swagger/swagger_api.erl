@@ -44,6 +44,12 @@ request_params('GetBlockByHeight') ->
         'height'
     ];
 
+request_params('GetCommitmentHash') ->
+    [
+        'name',
+        'salt'
+    ];
+
 request_params('GetInfo') ->
     [
     ];
@@ -330,12 +336,30 @@ request_param_info('GetBlockByHeight', 'height') ->
         ]
     };
 
+request_param_info('GetCommitmentHash', 'name') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetCommitmentHash', 'salt') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
 request_param_info('GetName', 'name') ->
     #{
         source => qs_val  ,
         rules => [
             {type, 'binary'},
-            not_required
+            required
         ]
     };
 
@@ -949,6 +973,9 @@ validate_response('GetBlockByHeight', 200, Body, ValidatorState) ->
     validate_response_body('Block', 'Block', Body, ValidatorState);
 validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetCommitmentHash', 200, Body, ValidatorState) ->
+    validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
 
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
