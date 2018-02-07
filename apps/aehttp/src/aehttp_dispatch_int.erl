@@ -447,6 +447,23 @@ handle_request('GetAccountBalance', Req, _Context) ->
         _ ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
+          
+handle_request('GetPeers', _Req, _Context) ->
+    case application:get_env(aehttp, enable_debug_endpoints, false) of
+        true ->
+            Peers =
+                lists:map(
+                    fun({URI, LastSeen}) ->
+                        #{uri => URI,
+                          last_seen => LastSeen}
+                    end,
+                    aec_peers:all()),
+            Blocked = aec_peers:blocked(),
+            {200, [], #{peers => Peers,
+                        blocked => Blocked}};
+        false ->
+            {403, [], #{reason => <<"Call not enabled">>}}
+    end;
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(

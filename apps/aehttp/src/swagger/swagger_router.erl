@@ -190,6 +190,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_internal_handler'
         },
+        'GetPeers' => #{
+            path => "/v2/debug/peers",
+            method => <<"GET">>,
+            handler => 'swagger_internal_handler'
+        },
         'GetPendingBlockTxsCount' => #{
             path => "/v2/block/txs/count/pending",
             method => <<"GET">>,

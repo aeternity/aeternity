@@ -29,6 +29,7 @@
          is_blocked/1,
          remove/1,
          all/0,
+         blocked/0,
          get_random/1,
          get_random/2,
          set_local_peer_uri/1,
@@ -162,6 +163,10 @@ remove(Uri) ->
 -spec all() -> list(http_uri:uri()).
 all() ->
     gen_server:call(?MODULE, all).
+
+-spec blocked() -> list(http_uri:uri()).
+blocked() ->
+    gen_server:call(?MODULE, blocked).
 
 %%------------------------------------------------------------------------------
 %% Get up to N random peers.
@@ -314,7 +319,11 @@ handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
 handle_call(unblock_all, _From, State) ->
     {reply, ok, State#state{blocked = gb_sets:new(), next_unblock = next_unblock()}};
 handle_call(all, _From, State) ->
-    Uris = [ uri_of_peer(Peer) || Peer <- gb_trees:values(State#state.peers) ],
+    Uris = [ {uri_of_peer(Peer), LastSeen} || #peer{last_seen=LastSeen} = Peer
+                                  <- gb_trees:values(State#state.peers) ],
+    {reply, Uris, State};
+handle_call(blocked, _From, State) ->
+    Uris = [ Uri || Uri <- gb_sets:to_list(State#state.blocked) ],
     {reply, Uris, State};
 handle_call({get_random, N0, Exclude}, _From, #state{peers = Tree0,
                                                      errored = Errored} = State) ->

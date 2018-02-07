@@ -644,6 +644,26 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /debug/peers:
+    get:
+      tags:
+        - internal
+      operationId: GetPeers
+      description: 'Get node Peers'
+      produces:
+        - application/json
+      parameters:
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/Peers'
+        '403':
+          description: Info not enabled
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+
   /block/number:
     get:
       tags:
@@ -1913,7 +1933,26 @@ definitions:
     properties:
       calldata:
         type: string
-
+  Peers:
+    type: object
+    properties:
+      peers:
+        type: array
+        description: All connected peers
+        items:
+          type: object
+          properties:
+            uri:
+              type: string
+              description: 'Peer''s URI'
+            last_seen:
+              type: integer 
+              description: 'Timestamp of last message. If none - 0'
+      blocked:
+        type: array
+        description: All blocked peers
+        items:
+          type: string 
 
 externalDocs:
   description: Find out more about Aeternity

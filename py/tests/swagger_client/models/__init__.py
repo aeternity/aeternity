@@ -46,6 +46,8 @@ from swagger_client.models.oracle_questions_inner import OracleQuestionsInner
 from swagger_client.models.oracle_register_response import OracleRegisterResponse
 from swagger_client.models.oracle_register_tx import OracleRegisterTx
 from swagger_client.models.oracle_response_tx import OracleResponseTx
+from swagger_client.models.peers import Peers
+from swagger_client.models.peers_peers import PeersPeers
 from swagger_client.models.ping import Ping
 from swagger_client.models.pow import Pow
 from swagger_client.models.pub_key import PubKey
