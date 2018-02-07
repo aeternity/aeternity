@@ -54,7 +54,7 @@ patch_source(Patch, Src) ->
     _DelRes = file:delete(New),
     {ok,_} = file:copy(Src, New),
     case lib:nonl(os:cmd("patch <" ++ Patch ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr.
-        "0" ++ _ ->
+        "0" ->
             {ok, New};
         Res ->
             {error, {patch_error, {Res, Patch}}}
