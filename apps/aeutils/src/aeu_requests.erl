@@ -6,19 +6,17 @@
 %%%     as arguments
 %%%     1) the host (e.g. http://localhost:3013) in binary format
 %%%        to allow utf8 characters,
-%%%     2) the query parameters.
+%%%     2) the parameters.
 %%%
-%%%     This module is transforming the query parameters into a map 
-%%%     that fits the specified endpoint. That is, it checks types and 
-%%%     business logic of the input and creates a map that can automatically
-%%%     be transformed into a JSON object that validates with the JSON 
-%%%     schema(s) for those query parameters.
+%%%     This module is preparing for an HTTP request according to the
+%%%     specification in swagger.yaml. That is, it checks types and 
+%%%     business logic of the input and of the response.
 %%%
-%%%     After a HTTP request via  aeu_http_client:request the response
-%%%     is verified against its JSON schema and transformed back to 
-%%      Erlang maps or other types used internally. 
-%%%     Some business logic may be verified already here. 
-%%      For example,
+%%%     The actual HTTP request is performed via aeu_http_client:request.
+%%%     The latter is also validating request input and response according
+%%%     to the swagger schema definitions, but is unaware of the actual 
+%%%     business logic.
+%%%     For example,
 %%%     the ping request provides a "share" parameter stating how many
 %%%     peers it maximally want to receive in the response.
 %%%     It is hard to express this relation in the JSON schema(s), but 
@@ -26,7 +24,7 @@
 %%%     not exceeding Share. 
 %%%     
 %%%     Note that we perform both the JSON encoding and the actual 
-%%%     request in the separate aeu_http_request module. This allows
+%%%     request in the separate aeu_http_client module. This allows
 %%%     mocking on the request layer during testing.
 %%% @end
 %%% Created: 2017
@@ -50,7 +48,7 @@
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(http_uri:uri(), map()) -> response(map()).
+-spec ping(http_uri:uri(), map()) -> {ok, map(), list(http_uri:uri())} | {error, any()}.
 ping(Uri, LocalPingObj) ->
     #{<<"share">> := Share, 
       <<"genesis_hash">> := GHash,
@@ -84,8 +82,15 @@ ping(Uri, LocalPingObj) ->
                   RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                    <<"best_hash">>  => RemoteTopHash},
                   RemotePeers = maps:get(<<"peers">>, Map, []),
-                  lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
-                  {ok, RemoteObj, RemotePeers};
+                  case maps:get(<<"peers">>, Map, []) of
+                      RemotePeers when is_list(RemotePeers), length(RemotePeers) =< Share ->
+                          lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
+                          {ok, RemoteObj, RemotePeers};
+                      _ ->
+                          lager:debug("ping response with too many peers ~p", [Uri]),
+                          %% Do not print the object, that in itself opens a DoS attack
+                          {error, protocol_violation}
+                 end;
               _ ->
                 %% Something is wrong, block the peer later on
                 lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
