@@ -1410,7 +1410,7 @@
           "description" : "contract call",
           "required" : true,
           "schema" : {
-            "$ref" : "#/definitions/body"
+            "$ref" : "#/definitions/ContractCallInput"
           }
         } ],
         "responses" : {
@@ -1418,6 +1418,38 @@
             "description" : "Resulting state map",
             "schema" : {
               "$ref" : "#/definitions/CallResult"
+            }
+          },
+          "403" : {
+            "description" : "Invalid contract",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/contract/encode-calldata" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Encode ring data and function name according to ring ABI.",
+        "operationId" : "EncodeCalldata",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Arguments in ring",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCallInput"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Binary ecoded calldata",
+            "schema" : {
+              "$ref" : "#/definitions/Calldata"
             }
           },
           "403" : {
@@ -2325,29 +2357,7 @@
     "ByteCode" : {
       "type" : "object"
     },
-    "CallResult" : {
-      "type" : "object",
-      "properties" : {
-        "out" : {
-          "type" : "string"
-        }
-      },
-      "example" : {
-        "out" : "out"
-      }
-    },
-    "inline_response_200" : {
-      "properties" : {
-        "count" : {
-          "type" : "integer",
-          "description" : "Count"
-        }
-      },
-      "example" : {
-        "count" : 0
-      }
-    },
-    "body" : {
+    "ContractCallInput" : {
       "type" : "object",
       "properties" : {
         "code" : {
@@ -2359,6 +2369,44 @@
         "arg" : {
           "type" : "string"
         }
+      },
+      "example" : {
+        "code" : "code",
+        "function" : "function",
+        "arg" : "arg"
+      }
+    },
+    "CallResult" : {
+      "type" : "object",
+      "properties" : {
+        "out" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "out" : "out"
+      }
+    },
+    "Calldata" : {
+      "type" : "object",
+      "properties" : {
+        "calldata" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "calldata" : "calldata"
+      }
+    },
+    "inline_response_200" : {
+      "properties" : {
+        "count" : {
+          "type" : "integer",
+          "description" : "Count"
+        }
+      },
+      "example" : {
+        "count" : 0
       }
     },
     "RegisteredOracles_inner" : {

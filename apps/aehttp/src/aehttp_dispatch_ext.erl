@@ -206,18 +206,50 @@ handle_request('GetInfo', _Req, _Context) ->
 
 handle_request('CompileContract', Req, _Context) ->
     case Req of
-        #{ code := Code
-         , options := Options } ->
+        #{'Contract' := 
+              #{ <<"code">> := Code
+               , <<"options">> := Options }} ->
             %% TODO: Handle other languages
-            case aec_ring:compile(Code, Options) of
-                {ok, ByteCode} ->
-                    {200, [], #{ bytecode => ByteCode}};
+            case aect_ring:compile(Code, Options) of
+                 {ok, ByteCode} ->
+                     {200, [], #{ bytecode => ByteCode}};
+                 {error, ErrorMsg} ->
+                     {403, [], #{reason => ErrorMsg}}
+             end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
+
+handle_request('CallContract', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }}  ->
+            %% TODO: Handle other languages
+            case aect_ring:simple_call(Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ out => Result}};
                 {error, ErrorMsg} ->
                     {403, [], #{reason => ErrorMsg}}
             end;
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
+handle_request('EncodeCalldata', Req, _Context) ->
+    case Req of
+        #{'ContractCallInput' :=
+              #{ <<"code">> := Code
+               , <<"function">> := Function
+               , <<"arg">> := Argument }} ->
+            %% TODO: Handle other languages
+            case aect_ring:encode_call_data(Code, Function, Argument) of
+                {ok, Result} ->
+                    {200, [], #{ calldata => Result}};
+                {error, ErrorMsg} ->
+                    {403, [], #{reason => ErrorMsg}}
+            end;
+        _ -> {403, [], #{reason => <<"Bad request">>}}
+    end;
 
 
 handle_request(OperationID, Req, Context) ->
