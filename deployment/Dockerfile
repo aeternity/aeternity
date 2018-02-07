@@ -4,6 +4,7 @@ RUN apt-get -qq update \
     && apt-get -qq -y install git curl \
         autoconf build-essential ncurses-dev libssl-dev \
         python-pip python-dev software-properties-common \
+        default-jre-headless libsodium-dev \
     && apt-add-repository ppa:ansible/ansible \
     && apt-get -qq update \
     && apt-get -qq -y install ansible \
