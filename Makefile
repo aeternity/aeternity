@@ -194,7 +194,6 @@ killall:
 
 clean:
 	@./rebar3 clean
-	( cd apps/aecuckoo && $(MAKE) clean; )
 	( cd apps/aering/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@rm -rf _build/
