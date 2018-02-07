@@ -26,15 +26,16 @@ def test_successful():
     test_settings = settings["test_successful"]
     coinbase_reward = common.coinbase_reward() 
     (root_dir, alice_node, alice_api, alice_top) = setup_node_with_tokens(test_settings, "alice") 
+    alice_internal_api = common.internal_api(alice_node)
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    alice_balance = common.get_account_balance(alice_api)
+    alice_balance = common.get_account_balance(alice_internal_api)
     alice_has_enough_tokens = alice_balance.balance >= spend_tx_amt + spend_tx_fee
     assert_equals(alice_has_enough_tokens, True)
     print("Alice initial balance is " + str(alice_balance.balance))
 
-    bob_balance0 = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
+    bob_balance0 = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
     # Alice sends some tokens to Bob 
     alice_internal_api = common.internal_api(alice_node)
     spend_tx_obj = SpendTx(
@@ -46,11 +47,11 @@ def test_successful():
     print("Transaction sent")
 
     # ensure Alice balance had not changed
-    alice_balance1 = common.get_account_balance(alice_api)
+    alice_balance1 = common.get_account_balance(alice_internal_api)
     assert_equals(alice_balance.balance, alice_balance1.balance)
 
     # ensure Bob balance had not changed
-    bob_balance1 = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
+    bob_balance1 = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
     assert_equals(bob_balance1.balance, bob_balance0.balance)
 
     # wait for a block to be mined
@@ -58,7 +59,7 @@ def test_successful():
     common.wait_until_height(alice_api, alice_top.height + 1)
 
     alice_new_top = alice_api.get_top()
-    alice_new_balance = common.get_account_balance(alice_api)
+    alice_new_balance = common.get_account_balance(alice_internal_api)
     
     blocks_mined = alice_new_top.height - alice_top.height
 
@@ -69,7 +70,7 @@ def test_successful():
     expected_balance = alice_balance.balance - spend_tx_amt  + coinbase_reward * blocks_mined
     assert_equals(alice_new_balance.balance, expected_balance)
 
-    bob_balance = common.get_account_balance(alice_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
+    bob_balance = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
     print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
             str(blocks_mined) + " blocks")
     print("Alice's balance (with a coinbase reward) is now " + str(alice_new_balance.balance))
@@ -91,19 +92,19 @@ def test_not_enough_tokens():
     test_settings = settings["test_not_enough_tokens"]
     coinbase_reward = common.coinbase_reward() 
     (root_dir, bob_node, bob_api, bob_top) = setup_node_with_tokens(test_settings, "bob") 
+    bob_internal_api = common.internal_api(bob_node)
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
-    bob_balance = common.get_account_balance(bob_api)
+    bob_balance = common.get_account_balance(bob_internal_api)
     bob_has_not_enough_tokens = bob_balance.balance < spend_tx_amt + spend_tx_fee
     assert_equals(bob_has_not_enough_tokens, True)
     print("Bob initial balance is " + str(bob_balance.balance) +
             " and he will try to spend " + str(spend_tx_amt + spend_tx_fee))
 
-    alice_balance0 = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+    alice_balance0 = common.get_account_balance(bob_internal_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
 
     # Bob tries to send some tokens to Alice
-    bob_internal_api = common.internal_api(bob_node)
     spend_tx_obj = SpendTx(
         recipient_pubkey=test_settings["spend_tx"]["alice_pubkey"],
         amount=spend_tx_amt,
@@ -113,17 +114,17 @@ def test_not_enough_tokens():
     print("Transaction sent")
 
     # ensure Bob balance had not changed
-    bob_balance1 = common.get_account_balance(bob_api)
+    bob_balance1 = common.get_account_balance(bob_internal_api)
     assert_equals(bob_balance.balance, bob_balance1.balance)
 
     # ensure Alice balance had not changed
-    alice_balance1 = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+    alice_balance1 = common.get_account_balance(bob_internal_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
     # wait for a block to be mined
     print("Waiting for a next block to be mined")
     common.wait_until_height(bob_api, bob_top.height + 1)
 
     bob_new_top = bob_api.get_top()
-    bob_new_balance = common.get_account_balance(bob_api)
+    bob_new_balance = common.get_account_balance(bob_internal_api)
     
     blocks_mined = bob_new_top.height - bob_top.height
 
@@ -132,7 +133,7 @@ def test_not_enough_tokens():
     assert_equals(bob_new_balance.balance, expected_balance)
 
     # ensure Alice balance had not changed
-    alice_balance = common.get_account_balance(bob_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
+    alice_balance = common.get_account_balance(bob_internal_api, pub_key=test_settings["spend_tx"]["alice_pubkey"])
     print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
             str(blocks_mined) + " blocks")
     print("Bob's balance (with a coinbase reward) is now " + str(bob_new_balance.balance))

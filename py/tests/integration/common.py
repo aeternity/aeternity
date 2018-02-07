@@ -15,6 +15,7 @@ from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.block import Block
 from swagger_client.models.balance import Balance 
+from swagger_client.models.pub_key import PubKey
 from swagger_client.configuration import Configuration
 
 from nose.tools import assert_equals
@@ -100,13 +101,14 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_top().height >= height, timeout_seconds=30, sleep_seconds=0.25)
 
-def get_account_balance(api, pub_key=None):
+def get_account_balance(int_api, pub_key=None):
     balance = Balance(balance=0)
     try:
         if pub_key == None:
-            balance = api.get_account_balance()
+            pub_key_obj = int_api.get_pub_key()
+            balance = int_api.get_account_balance(pub_key_obj.pub_key)
         else:
-            balance = api.get_account_balance(pub_key=pub_key)
+            balance = int_api.get_account_balance(pub_key)
     except ApiException as e:
         assert_equals(e.status, 404) # Alice has no account yet
     return balance
