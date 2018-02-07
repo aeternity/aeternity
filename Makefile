@@ -200,6 +200,7 @@ clean:
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
+	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
 
 multi-build: dev1-build
