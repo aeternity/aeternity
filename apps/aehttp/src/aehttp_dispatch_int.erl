@@ -860,12 +860,27 @@ get_account_transactions(Account, Req) ->
                 end,
             Res =
               lists:sort(
-                  fun({HeaderA, _}, {HeaderB, _}) ->
-                      aec_headers:height(HeaderA) > aec_headers:height(HeaderB)
+                  fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
+                      HeightA = aec_headers:height(HeaderA),
+                      HeightB = aec_headers:height(HeaderB),
+                      case HeightA =:= HeightB of
+                          false ->
+                              HeightA > HeightB;
+                          true ->
+                              TxA = aec_tx_sign:data(SignedTxA),
+                              TxB = aec_tx_sign:data(SignedTxB),
+                              case aec_tx:origin(TxA) =:= aec_tx:origin(TxB) of
+                                  true ->
+                                      aec_tx:nonce(TxA) > aec_tx:nonce(TxB);
+                                  false ->
+                                      aec_tx:origin(TxA) > aec_tx:origin(TxB)
+                              end
+                      end
                   end,
                   NonCoinbases ++ Coinbases),
             {ok, offset_and_limit(Req, Res)}
       end.
+
 
 %% WORKAROUND
 %% Currently all coinbase txs are the same and thus having the same tx hash
