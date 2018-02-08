@@ -194,13 +194,13 @@ killall:
 
 clean:
 	@./rebar3 clean
-	( cd apps/aecuckoo && $(MAKE) clean; )
 	( cd apps/aering/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@rm -rf _build/
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
+	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
 
 multi-build: dev1-build

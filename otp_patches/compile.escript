@@ -27,6 +27,7 @@ compile_patches() ->
     info("Patches = ~p~n", [Patches]),
     [R || R <- [patch_and_compile(P) || P <- Patches], R =/= ok].
 
+-spec patch_and_compile(any()) -> ok | {error, any()}.
 patch_and_compile(P) ->
     Base = filename:basename(P, ".patch"),
     Mod = filename:basename(Base, ".erl"),
@@ -41,10 +42,10 @@ patch_and_compile(P) ->
                     case patch_source(P, SrcFile) of
                         {ok, NewF} ->
                             compile(NewF, SrcFile);
-                        Error1 ->
+                        {error, _} = Error1 ->
                             Error1
                     end;
-                Error ->
+                {error, _} = Error ->
                     Error
             end
     end.
@@ -52,9 +53,8 @@ patch_and_compile(P) ->
 patch_source(Patch, Src) ->
     New = filename:join(cur_dir(), filename:basename(Src)),
     _DelRes = file:delete(New),
-    {ok,_} = file:copy(Src, New),
-    case lib:nonl(os:cmd("patch <" ++ Patch ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr.
-        "0" ++ _ ->
+    case lib:nonl(os:cmd("patch -i " ++ Patch ++ " -o " ++ New ++ " " ++ Src ++ " 1>/dev/null 2>/dev/null; echo $?")) of %% TODO Log `patch` stderr. Make command robust to spaces in file names.
+        "0" ->
             {ok, New};
         Res ->
             {error, {patch_error, {Res, Patch}}}
