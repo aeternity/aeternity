@@ -863,19 +863,10 @@ get_account_transactions(Account, Req) ->
                   fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
                       HeightA = aec_headers:height(HeaderA),
                       HeightB = aec_headers:height(HeaderB),
-                      case HeightA =:= HeightB of
-                          false ->
-                              HeightA > HeightB;
-                          true ->
-                              TxA = aec_tx_sign:data(SignedTxA),
-                              TxB = aec_tx_sign:data(SignedTxB),
-                              case aec_tx:origin(TxA) =:= aec_tx:origin(TxB) of
-                                  true ->
-                                      aec_tx:nonce(TxA) > aec_tx:nonce(TxB);
-                                  false ->
-                                      aec_tx:origin(TxA) > aec_tx:origin(TxB)
-                              end
-                      end
+                      TxA = aec_tx_sign:data(SignedTxA),
+                      TxB = aec_tx_sign:data(SignedTxB),
+                      {HeightA, aec_tx:origin(TxA), aec_tx:nonce(TxA)} >
+                      {HeightB, aec_tx:origin(TxB), aec_tx:nonce(TxB)}
                   end,
                   NonCoinbases ++ Coinbases),
             {ok, offset_and_limit(Req, Res)}
