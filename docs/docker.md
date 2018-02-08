@@ -131,7 +131,7 @@ More details can be found in [`docker-compose` documentation](https://docs.docke
 
 ## Image Version
 
-Docker compose uses the `aetrnty/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aetrnty/builder/) if it's not found locally.
+Docker compose uses the `aetrnty/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aetrnty/epoch/) if it's not found locally.
 To create a network with the source code in this repository, one should build a local image beforehand:
 
 ```bash
