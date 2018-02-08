@@ -484,10 +484,10 @@ handle_request('GetAccountTranactions', Req, _Context) ->
                                     {200, [], #{transactions => EncodedTxs,
                                                 data_schema => DataSchema}}
                             end
-                    end;
-                _ ->
-                    {400, [], #{reason => <<"Invalid account hash">>}}
-            end
+                    end
+            end;
+        _ ->
+            {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->
@@ -884,7 +884,7 @@ get_account_transactions(Account, Req) ->
 
 %% WORKAROUND
 %% Currently all coinbase txs are the same and thus having the same tx hash
-%% There is no point in fetching them via aec_db:dirty_transactions_by_account/2
+%% There is no point in fetching them via aec_db:transactions_by_account/2
 %% TODO: remove this workaround
 get_coinbase_txs_and_headers(Account) ->
     {ok, SampleCoinbaseTx} = aec_coinbase_tx:new(#{account => Account}),
@@ -915,7 +915,7 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
                   orelse lists:member(TxType, KeepTxTypes),
               Keep andalso not Drop
         end,
-    Txs = aec_db:dirty_transactions_by_account(Account, Filter),
+    Txs = aec_db:transactions_by_account(Account, Filter),
     lists:map(
         fun(SignedTx) ->
             TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
@@ -929,4 +929,13 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
 offset_and_limit(Req, ResultList) ->
     Limit = read_optional_param(limit, Req, 20),
     Offset = read_optional_param(offset, Req, 0) + 1, % lists are 1-indexed
-    lists:sublist(ResultList, Offset, Limit).
+    Sublist =
+        fun Sub([], _, _, _, Accum) -> Accum;
+            Sub(_, _, _, LeftToTake, Accum) when LeftToTake =< 0 -> Accum;
+            Sub([H | T], Idx, StartIdx, LeftToTake, Accum) ->
+                case Idx >= StartIdx of
+                    true -> Sub(T, Idx + 1, StartIdx, LeftToTake - 1, [H | Accum]);
+                    false -> Sub(T, Idx + 1, StartIdx, LeftToTake, Accum)
+                end
+        end,
+    lists:reverse(Sublist(ResultList, 1, Offset, Limit, [])).
