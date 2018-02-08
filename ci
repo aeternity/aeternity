@@ -54,7 +54,7 @@ case "${1:?}"-"${2:?}" in
         # Configure a simpler PoW than the default one, in order to
         # speed up mining during the tests.
         make python-env
-        make python-release-test TARBALL="${FinalPackagePath:?}"
+        make python-release-test WORKDIR="$(mktemp -d)" TARBALL="${FinalPackagePath:?}"
         ;;
     after_failure-*)
         LogsDir="${BuildDir}/_build/test/logs"
