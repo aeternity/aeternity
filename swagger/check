@@ -4,7 +4,7 @@
 ##
 ## Moves Swagger-generated files under version control to temporary
 ## directory, then attempts to re-generate them, finally checks that
-## they are the same.
+## they are the same.  The code is allowed to differ in blank lines.
 ##
 ## On failure, it leaves the working directory without the generated
 ## files - as previously moved to a temporary directory.
@@ -42,8 +42,8 @@ make "${MT:?}"
 ## Check that re-generating JSON from YAML lead to same generated JSON.
 diff "${SJ:?}" "${TmpSJ:?}"
 ## Check that re-generating code from YAML lead to same generated code.
-diff -r -N "${ES:?}" "${TmpES:?}"
-diff -r -N "${PC:?}" "${TmpPC:?}"
+diff -r -NB "${ES:?}" "${TmpES:?}"
+diff -r -NB "${PC:?}" "${TmpPC:?}"
 
 ## On success, as re-generated files are the same of the old generated
 ## files, delete the temporary directory containing the olf generated
