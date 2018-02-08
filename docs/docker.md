@@ -24,6 +24,13 @@ Verify the node is running:
 curl localhost:3013/v2/top
 ```
 
+### Node arguments
+
+Arguments can also be passed to epoch node, for example to enable API debug endpoints:
+```bash
+docker run -d --name epoch_node0 -p 3013:3013 aetrnty/epoch -aehttp enable_debug_endpoints true
+```
+
 ## Stop a Node
 
 To stop a docker node run:
@@ -136,4 +143,14 @@ To create a network with the source code in this repository, one should build a 
 
 ```bash
 docker-compose build
+```
+
+## Mining Rate
+
+By default the localnet has set default mine rate of 1 block per second.
+It can be changed by setting `EPOCH_MINE_RATE` environment variable.
+The variable is in milliseconds, so to set 1 block per 10 seconds use:
+
+```bash
+EPOCH_MINE_RATE=10000 docker-compose up
 ```

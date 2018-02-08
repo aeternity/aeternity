@@ -9,6 +9,7 @@ services:
     hostname: node1
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: -aecore expected_mine_rate ${EPOCH_MINE_RATE:-1000}
     volumes:
       - ${PWD}/docker/epoch_node1_mean16.yaml:/home/epoch/epoch.yaml
       - node1_db:/home/epoch/node/data/mnesia
@@ -19,6 +20,7 @@ services:
     hostname: node2
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: -aecore expected_mine_rate ${EPOCH_MINE_RATE:-1000}
     volumes:
       - ${PWD}/docker/epoch_node2_mean16.yaml:/home/epoch/epoch.yaml
       - node2_db:/home/epoch/node/data/mnesia
@@ -29,6 +31,7 @@ services:
     hostname: node3
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
+    command: -aecore expected_mine_rate ${EPOCH_MINE_RATE:-1000}
     volumes:
       - ${PWD}/docker/epoch_node3_mean16.yaml:/home/epoch/epoch.yaml
       - node3_db:/home/epoch/node/data/mnesia
