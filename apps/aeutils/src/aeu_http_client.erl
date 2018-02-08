@@ -3,7 +3,7 @@
 %% API
 -export([request/3]).
 
--spec request(iodata(), atom(), list({string(), iodata()}) | map()) -> {ok, any()} | {error, any()}. 
+-spec request(iodata(), atom(), list({string(), iodata()}) | map()) -> {ok, integer(), any()} | {error, any()}. 
 request(BaseUri, OperationId, Params) ->
     Timeout = aeu_env:user_config_or_env(
                 [<<"http">>, <<"external">>,<<"request_timeout">>],
