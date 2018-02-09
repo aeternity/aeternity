@@ -77,7 +77,6 @@ references:
           cd deployment/ansible
           ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
             --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?} \
-              tester_keys_password='${tester_keys_password:?}' datadog_api_key=${datadog_api_key:?} datadog_app_key=${datadog_app_key:?}" \
             deploy.yml
 
 jobs:
