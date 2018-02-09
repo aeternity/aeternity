@@ -27,5 +27,5 @@ single-uat:
 
 .PHONY: release-test
 release-test:
-	@$(PYTHON) $(PYTHON_TESTS)/release.py --tarball=$(TARBALL) --blocks=100 --version=$(VER)
+	@$(PYTHON) $(PYTHON_TESTS)/release.py --workdir="$(WORKDIR)" --tarball=$(TARBALL) --blocks=100 --version=$(VER)
 

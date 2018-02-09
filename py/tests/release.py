@@ -1,7 +1,6 @@
 import os
 import getopt
 import sys
-import tempfile
 import time
 import unittest
 import argparse
@@ -193,8 +192,27 @@ def eval_on_node(temp_dir, quoted_code):
     os.chdir(temp_dir)
     return os.system(cmd)
 
+def existing_empty_dir(s):
+    if s == "":
+        msg = "{} is not a non-empty directory path".format(s)
+        raise argparse.ArgumentTypeError(msg)
+    v = os.path.abspath(s)
+    if not os.path.isdir(v):
+        msg = ("Path {} is not an existing directory "
+               "(path absolutized from {})").format(v, s)
+        raise argparse.ArgumentTypeError(msg)
+    ls = os.listdir(v)
+    if ls:
+        msg = ("Path {} is not an empty directory "
+               "because it contains {} entries i.e. {}"
+               "(path absolutized from {})").format(v, len(ls), str(ls), s)
+        raise argparse.ArgumentTypeError(msg)
+    return v
+
 def read_argv(argv):
     parser = argparse.ArgumentParser(description='Integration test a potential release')
+    parser.add_argument('--workdir', type=existing_empty_dir, required=True,
+                        help='Working directory for testing. It must exist and be empty.')
     parser.add_argument('--blocks', type=int, default=10,
                         help='Number of blocks to mine')
     parser.add_argument('--tarball', required=True, 
@@ -206,7 +224,7 @@ def read_argv(argv):
     args = parser.parse_args()
     tar_file_name = args.tarball
     blocks = args.blocks
-    return (tar_file_name, blocks, args.version)
+    return (args.workdir, tar_file_name, blocks, args.version)
 
 def tail_logs(temp_dir, log_name):
     n = 200 # last 200 lines
@@ -232,8 +250,7 @@ def setup_node(node, path, version):
 
 def main(argv):
     logging.getLogger("urllib3").setLevel(logging.ERROR)
-    tar_file_name, blocks_to_mine, version = read_argv(argv)
-    root_dir = tempfile.mkdtemp()
+    root_dir, tar_file_name, blocks_to_mine, version = read_argv(argv)
     temp_dir_dev1 = os.path.join(root_dir, "node1") 
     os.makedirs(temp_dir_dev1)
 
@@ -299,7 +316,6 @@ def main(argv):
             print(name + " logs:")
             print(tail_logs(node_dir, "epoch.log"))
             print("\n")
-    shutil.rmtree(root_dir)
     if test_failed:
         sys.exit("FAILED")      
 
