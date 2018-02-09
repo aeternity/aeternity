@@ -48,7 +48,8 @@
          delete_tx/2]).
 
 %% API for finding transactions related to account key
--export([transactions_by_account/1]).
+-export([transactions_by_account/1,
+         transactions_by_account/2]).
 
 %% indexing callbacks
 -export([ix_acct2tx/3]).
@@ -260,6 +261,10 @@ delete_tx_(Hash, Where) ->
 transactions_by_account(AcctPubKey) ->
     ?t([T || #aec_tx{tx = T}
                  <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx})]).
+
+transactions_by_account(AcctPubKey, Filter) ->
+    ?t([T || #aec_tx{tx = T}
+        <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx}), Filter(T)]).
 
 %% start phase hook to load the database
 

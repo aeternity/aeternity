@@ -13,12 +13,6 @@
 -export([]).
 
 %% test case exports
-%% OTP patches
--export(
-   [mnesia_index_read/1
-   ]).
-%%
-%% test case exports
 %% external endpoints
 -export(
    [
@@ -65,6 +59,7 @@
    [
     broken_spend_tx/1,
     miner_pub_key/1,
+    account_transactions/1,
 
     %% requested Endpoints
     block_number/1,
@@ -128,15 +123,11 @@
 
 all() ->
     [
-     {group, otp_patches},
      {group, all_endpoints}
     ].
 
 groups() ->
     [
-     {otp_patches, [sequence],
-      [mnesia_index_read %% Delete when an integration test tests the functionality fixed by this patch.
-      ]},
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints},
                                   {group, websocket},
@@ -185,6 +176,7 @@ groups() ->
         broken_spend_tx,
         naming_system_broken_txs,
         miner_pub_key,
+        account_transactions,
 
         %% requested Endpoints
         block_number,
@@ -286,13 +278,6 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-mnesia_index_read(_Config) ->
-    case rpc(aec_db, transactions_by_account, [_Pubkey = random_hash()]) of
-        %% Assert meaningful return value.
-        Txs when is_list(Txs) ->
-            ok
-    end.
-
 correct_ping(_Config) ->
     #{<<"genesis_hash">> := GHash,
       <<"best_hash">> := TopHash
@@ -832,7 +817,96 @@ miner_pub_key(_Config) ->
     {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
     ok.
 
+account_transactions(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
+    %% no transactions but no account either
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
+        get_account_transactions(EncodedPubKey, []),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    %% miner has 1 transaction - coinbase
+    acc_txs_test(EncodedPubKey, 0, 1),
+    acc_txs_test(EncodedPubKey, 0, 20),
+
+    %% prepare some coinbases and spends
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    add_spend_txs(), % in mempool
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% some tests with various offests and lengths
+    acc_txs_test(EncodedPubKey, 0, 2),
+    acc_txs_test(EncodedPubKey, 0, 10),
+    acc_txs_test(EncodedPubKey, 5, 7),
+
+    %% some offset, more than there are transactions, returns an empty list
+    {ok, 200, #{<<"transactions">> := []}} = 
+        get_account_transactions(EncodedPubKey, #{offset => 2000000000}),
+
+    %% limit too big 
+    {ok, 400, #{}} = 
+        get_account_transactions(EncodedPubKey, #{limit => 101}),
+    %% limit too small 
+    {ok, 400, #{}} = 
+        get_account_transactions(EncodedPubKey, #{limit => 0}),
+
+    <<_, BrokenAddress/binary>> = EncodedPubKey,
+    {ok, 400, #{<<"reason">> := <<"Invalid account hash">>}} = 
+        get_account_transactions(BrokenAddress, #{}),
+
+    %% this test assumes we don't have hejsan or svejsan transaction types
+    {ok, 400, #{<<"reason">> := <<"Unknown transaction type">>}} = 
+        get_account_transactions(EncodedPubKey, #{tx_types => [<<"hejsan">>,
+                                                               <<"svejsan">>]}),
+    ok.
+
+acc_txs_test(Pubkey, Offset, Limit) ->
+    {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
+    TxEncodings = [default, message_pack, json],
+    AllTestedTxTypes = [[<<"coinbase">>], [<<"coinbase">>, <<"spend">>]],
+    {ok, 200, #{<<"height">> := ToHeight}} = get_block_number(),
+    ct:log("Offset: ~p, Limit: ~p", [Offset, Limit]),
+    lists:foreach(
+        fun({TxEncoding, TxTypes}) ->
+            lists:foreach(
+                fun({Filter, TT}) ->
+                    PubkeyInTx =
+                        fun(SignedTx) ->
+                            Tx = aec_tx_sign:data(SignedTx), 
+                            lists:member(PKDecoded, aec_tx:accounts(Tx))
+                        end,
+                    #{<<"data_schema">> := ExpectedDS,
+                      <<"transactions">> := AllTxs} =
+                        expected_range_result(0, ToHeight, TxEncoding, TT,
+                                              PubkeyInTx, true),
+                    Params = maps:merge(
+                               maps:merge(tx_encoding_param(TxEncoding),
+                                          make_tx_types_filter(Filter)),
+                               #{offset => Offset, limit => Limit}),
+                    {ok, 200, #{<<"data_schema">> := DS,
+                                <<"transactions">> := Txs}} = 
+                        get_account_transactions(Pubkey, Params),
+                    ct:log("Encoding: Expected ~p,~nActual: ~p", [ExpectedDS, DS]),
+                    ExpectedDS = DS,
+                    Sublist =
+                        fun(List, Start, Len) ->
+                            case length(List) < Start of
+                                true -> [];
+                                false -> lists:sublist(List, Start, Len)
+                            end
+                        end,
+                    ExpectedTxs = Sublist(AllTxs, Offset + 1, Limit),
+                    ct:log("Transactions:~nExpected ~p,~nActual: ~p",
+                           [ExpectedTxs, Txs]),
+                    ExpectedTxs = Txs
+                end,
+                [{#{}, all},
+                  {#{include => TxTypes}, {only, TxTypes}},
+                  {#{exclude => TxTypes}, {exclude, TxTypes}}])
+        end,
+        [{E, T} || E <- TxEncodings, T <- AllTestedTxTypes]).
+
 block_number(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     TopHeader = rpc(aec_conductor, top_header, []),
     0 = aec_headers:height(TopHeader),
     {ok, 200, #{<<"height">> := 0}} = get_block_number(),
@@ -1297,6 +1371,11 @@ single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
         [{E, TxT} || E <- TxEncoding, TxT <- AllTestedTxTypes]).
 
 expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
+    expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes,
+                          fun(_Tx) -> true end, false).
+
+expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
+                      Reverse) ->
     {ok, Blocks} = rpc(aec_conductor, get_block_range_by_height, [HeightFrom,
                                                                   HeightTo]),
     TxEncoding =
@@ -1307,19 +1386,24 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
     SerializedTxs =
         lists:foldl(
             fun(Block, Accum) ->
-                AllBlockTxs = aec_blocks:txs(Block),
+                AllBlockTxs =
+                    case Reverse of
+                        false -> aec_blocks:txs(Block);
+                        true -> lists:reverse(aec_blocks:txs(Block))
+                    end,
+                CustomFiltered = lists:filter(Filter, AllBlockTxs),
                 FilteredTxs =
                     case TxTypes of
                         all ->
-                            AllBlockTxs;
+                            CustomFiltered;
                         {only, Includes} ->
                             lists:filter(
                                 fun(Tx) -> lists:member(tx_type(Tx), Includes) end,
-                                AllBlockTxs);
+                                CustomFiltered);
                         {exclude, Excludes} ->
                             lists:filter(
                                 fun(Tx) -> not lists:member(tx_type(Tx), Excludes) end,
-                                AllBlockTxs)
+                                CustomFiltered)
                       end,
                 H = aec_blocks:to_header(Block),
                 lists:map(
@@ -2139,6 +2223,11 @@ get_balance_at_top(EncodedPubKey) ->
 get_balance(EncodedPubKey, Params) ->
     Host = internal_address(),
     http_request(Host, get, "account/balance/" ++ binary_to_list(EncodedPubKey),
+                 Params).
+
+get_account_transactions(EncodedPubKey, Params) ->
+    Host = internal_address(),
+    http_request(Host, get, "account/txs/" ++ binary_to_list(EncodedPubKey),
                  Params).
 
 post_block(Block) ->

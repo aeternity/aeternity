@@ -94,6 +94,16 @@ request_params('GetAccountBalance') ->
         'hash'
     ];
 
+request_params('GetAccountTransactions') ->
+    [
+        'account_pubkey',
+        'limit',
+        'offset',
+        'tx_types',
+        'exclude_tx_types',
+        'tx_encoding'
+    ];
+
 request_params('GetActiveRegisteredOracles') ->
     [
         'from',
@@ -414,6 +424,64 @@ request_param_info('GetAccountBalance', 'hash') ->
         source => qs_val  ,
         rules => [
             {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'account_pubkey') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'limit') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 100 }, 
+            {min, 1 },
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'offset') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
             not_required
         ]
     };
@@ -1019,6 +1087,13 @@ validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
 validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetAccountTransactions', 200, Body, ValidatorState) ->
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
+validate_response('GetAccountTransactions', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetAccountTransactions', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
