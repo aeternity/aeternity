@@ -1151,9 +1151,20 @@ loop(StateIn) ->
 		16#fa -> throw({illegal_instruction, OP, State0});
 		16#fb -> throw({illegal_instruction, OP, State0});
 		16#fc -> throw({illegal_instruction, OP, State0});
-		16#fd -> throw({illegal_instruction, OP, State0});
-		?INVALID ->
-		    %% 0xfe INVALID δ=∅ α=∅
+		?REVERT -> 
+		    %% 0xfe REVERT δ=2 α=0
+		    %% Halt execution returning output data.
+		    %% HREVERT(µ) ≡ µm[µs[0] . . .(µs[0] + µs[1] − 1)]
+		    %% This has the effect of halting the execution
+		    %% at this point with output defined.
+		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: Return error code
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
+		    State4 = aevm_eeevm_state:set_out(Out, State3),
+                    spend_mem_gas(State, State4);
+		?INVALID -> 
+		    %% 0xfe INVALID δ=∅ α=∅ 
 		    %% Designated invalid instruction.
 		    throw({the_invalid_instruction, OP, State0});
 		?SUICIDE ->

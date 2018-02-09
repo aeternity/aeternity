@@ -506,8 +506,8 @@ contract_transactions(_Config) ->
                       call_data => CallData},
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner => MinerPubkey,
-                                code => aect_ring:hexstring_decode(Code),
-                                call_data => aect_ring:hexstring_decode(CallData)}),
+                                code => aeu_hex:hexstring_decode(Code),
+                                call_data => aeu_hex:hexstring_decode(CallData)}),
 
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
                                fun aect_create_tx:new/1, MinerPubkey),
@@ -543,7 +543,7 @@ contract_transactions(_Config) ->
     ContractCallDecoded = maps:merge(ContractCallEncoded,
                               #{caller => MinerPubkey,
                                 contract => ContractPubKey,
-                                call_data => aect_ring:hexstring_decode(CallData)}),
+                                call_data => aeu_hex:hexstring_decode(CallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
                                fun get_contract_call/1,

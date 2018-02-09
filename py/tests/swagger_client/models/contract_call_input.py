@@ -31,31 +31,57 @@ class ContractCallInput(object):
                             and the value is json key in definition.
     """
     swagger_types = {
+        'abi': 'str',
         'code': 'str',
         'function': 'str',
         'arg': 'str'
     }
 
     attribute_map = {
+        'abi': 'abi',
         'code': 'code',
         'function': 'function',
         'arg': 'arg'
     }
 
-    def __init__(self, code=None, function=None, arg=None):  # noqa: E501
+    def __init__(self, abi=None, code=None, function=None, arg=None):  # noqa: E501
         """ContractCallInput - a model defined in Swagger"""  # noqa: E501
 
+        self._abi = None
         self._code = None
         self._function = None
         self._arg = None
         self.discriminator = None
 
+        if abi is not None:
+            self.abi = abi
         if code is not None:
             self.code = code
         if function is not None:
             self.function = function
         if arg is not None:
             self.arg = arg
+
+    @property
+    def abi(self):
+        """Gets the abi of this ContractCallInput.  # noqa: E501
+
+
+        :return: The abi of this ContractCallInput.  # noqa: E501
+        :rtype: str
+        """
+        return self._abi
+
+    @abi.setter
+    def abi(self, abi):
+        """Sets the abi of this ContractCallInput.
+
+
+        :param abi: The abi of this ContractCallInput.  # noqa: E501
+        :type: str
+        """
+
+        self._abi = abi
 
     @property
     def code(self):
