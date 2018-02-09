@@ -1,13 +1,28 @@
-#!/bin/sh
+#!/bin/bash
 
 ## Check Swagger-generated files under version control are up-to-date.
 ##
 ## Moves Swagger-generated files under version control to temporary
-## directory, then attempts to re-generate them, finally checks that
-## they are the same.  The code is allowed to differ in blank lines.
+## directory, then attempts to re-generate them, checks that they are
+## the same (apart from the code, that is allowed to differ in blank
+## lines), finally restores the files under version control and
+## deletes the temporary directory.
 ##
-## On failure, it leaves the working directory without the generated
-## files - as previously moved to a temporary directory.
+## As no multiple traps for the same signals can be set in `bash`,
+## there is on failure a corner case that the (potentially non-empty)
+## temporary directory is not deleted.
+
+on_exit() {
+    restore_vsnd_files
+    rm -r "${TmpDir:?}"
+}
+
+restore_vsnd_files() {
+    rm -rf "${SJ:?}" "${ES:?}" "${PC:?}"
+    cp -p  "${TmpSJ:?}" "${SJ:?}"
+    cp -pR "${TmpES:?}" "${ES:?}"
+    cp -pR "${TmpPC:?}" "${PC:?}"
+}
 
 set -e
 set -x
@@ -26,26 +41,28 @@ SJ="${3:?}" ## Swagger schema JSON file - generated
 ES="${4:?}" ## Erlang server code directory - generated
 PC="${5:?}" ## Python client code directory - generated
 
-## Move old generated files under version control to temporary
-## directory.
+## Create temporary directory.
 TmpDir="$(mktemp -d)"
+
+## Move old generated files under version control to temporary
+## directory.  Ensure that on exit the files under version control are
+## restored.
 TmpSJ="${TmpDir:?}"/sj.backup
 TmpES="${TmpDir:?}"/es.backup
 TmpPC="${TmpDir:?}"/pc.backup
-mv "${SJ:?}" "${TmpSJ:?}"
-mv "${ES:?}" "${TmpES:?}"
-mv "${PC:?}" "${TmpPC:?}"
+cp -p  "${SJ:?}" "${TmpSJ:?}"
+cp -pR "${ES:?}" "${TmpES:?}"
+cp -pR "${PC:?}" "${TmpPC:?}"
+trap on_exit EXIT
+rm    "${SJ:?}"
+rm -r "${ES:?}"
+rm -r "${PC:?}"
 
 ## Re-generate files.
 make "${MT:?}"
 
 ## Check that re-generating JSON from YAML lead to same generated JSON.
-diff "${SJ:?}" "${TmpSJ:?}"
+diff -u "${SJ:?}" "${TmpSJ:?}"
 ## Check that re-generating code from YAML lead to same generated code.
-diff -r -NB "${ES:?}" "${TmpES:?}"
-diff -r -NB "${PC:?}" "${TmpPC:?}"
-
-## On success, as re-generated files are the same of the old generated
-## files, delete the temporary directory containing the olf generated
-## files.
-rm -r "${TmpDir:?}"
+diff -ru -NB "${ES:?}" "${TmpES:?}"
+diff -ru -NB "${PC:?}" "${TmpPC:?}"
