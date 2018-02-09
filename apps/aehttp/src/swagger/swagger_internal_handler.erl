@@ -64,7 +64,7 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
-        operation_id = 'GetAccountTranactions'
+        operation_id = 'GetAccountTransactions'
     }
 ) ->
     {[<<"GET">>], Req, State};
@@ -373,7 +373,7 @@ valid_content_headers(
 valid_content_headers(
     Req0,
     State = #state{
-        operation_id = 'GetAccountTranactions'
+        operation_id = 'GetAccountTransactions'
     }
 ) ->
     Headers = [],

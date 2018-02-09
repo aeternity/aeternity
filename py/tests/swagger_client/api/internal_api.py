@@ -136,13 +136,13 @@ class InternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
-    def get_account_tranactions(self, account_pubkey, **kwargs):  # noqa: E501
-        """get_account_tranactions  # noqa: E501
+    def get_account_transactions(self, account_pubkey, **kwargs):  # noqa: E501
+        """get_account_transactions  # noqa: E501
 
         Get accounts's transactions included in blocks in the longest chain  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
-        >>> thread = api.get_account_tranactions(account_pubkey, async=True)
+        >>> thread = api.get_account_transactions(account_pubkey, async=True)
         >>> result = thread.get()
 
         :param async bool
@@ -158,18 +158,18 @@ class InternalApi(object):
         """
         kwargs['_return_http_data_only'] = True
         if kwargs.get('async'):
-            return self.get_account_tranactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
+            return self.get_account_transactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
         else:
-            (data) = self.get_account_tranactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
+            (data) = self.get_account_transactions_with_http_info(account_pubkey, **kwargs)  # noqa: E501
             return data
 
-    def get_account_tranactions_with_http_info(self, account_pubkey, **kwargs):  # noqa: E501
-        """get_account_tranactions  # noqa: E501
+    def get_account_transactions_with_http_info(self, account_pubkey, **kwargs):  # noqa: E501
+        """get_account_transactions  # noqa: E501
 
         Get accounts's transactions included in blocks in the longest chain  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
-        >>> thread = api.get_account_tranactions_with_http_info(account_pubkey, async=True)
+        >>> thread = api.get_account_transactions_with_http_info(account_pubkey, async=True)
         >>> result = thread.get()
 
         :param async bool
@@ -195,21 +195,21 @@ class InternalApi(object):
             if key not in all_params:
                 raise TypeError(
                     "Got an unexpected keyword argument '%s'"
-                    " to method get_account_tranactions" % key
+                    " to method get_account_transactions" % key
                 )
             params[key] = val
         del params['kwargs']
         # verify the required parameter 'account_pubkey' is set
         if ('account_pubkey' not in params or
                 params['account_pubkey'] is None):
-            raise ValueError("Missing the required parameter `account_pubkey` when calling `get_account_tranactions`")  # noqa: E501
+            raise ValueError("Missing the required parameter `account_pubkey` when calling `get_account_transactions`")  # noqa: E501
 
         if 'limit' in params and params['limit'] > 100:  # noqa: E501
-            raise ValueError("Invalid value for parameter `limit` when calling `get_account_tranactions`, must be a value less than or equal to `100`")  # noqa: E501
+            raise ValueError("Invalid value for parameter `limit` when calling `get_account_transactions`, must be a value less than or equal to `100`")  # noqa: E501
         if 'limit' in params and params['limit'] < 1:  # noqa: E501
-            raise ValueError("Invalid value for parameter `limit` when calling `get_account_tranactions`, must be a value greater than or equal to `1`")  # noqa: E501
+            raise ValueError("Invalid value for parameter `limit` when calling `get_account_transactions`, must be a value greater than or equal to `1`")  # noqa: E501
         if 'offset' in params and params['offset'] < 0:  # noqa: E501
-            raise ValueError("Invalid value for parameter `offset` when calling `get_account_tranactions`, must be a value greater than or equal to `0`")  # noqa: E501
+            raise ValueError("Invalid value for parameter `offset` when calling `get_account_transactions`, must be a value greater than or equal to `0`")  # noqa: E501
         collection_formats = {}
 
         path_params = {}

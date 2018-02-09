@@ -465,7 +465,7 @@ handle_request('GetPeers', _Req, _Context) ->
             {403, [], #{reason => <<"Call not enabled">>}}
     end;
 
-handle_request('GetAccountTranactions', Req, _Context) ->
+handle_request('GetAccountTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
             TopBlockHash = aec_conductor:top_block_hash(),

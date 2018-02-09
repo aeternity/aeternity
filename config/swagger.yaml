@@ -619,7 +619,7 @@ paths:
     get:
       tags:
         - internal
-      operationId: GetAccountTranactions
+      operationId: GetAccountTransactions
       description: 'Get accounts''s transactions included in blocks in the longest chain'
       produces:
         - application/json
