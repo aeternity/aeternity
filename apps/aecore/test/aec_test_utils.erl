@@ -25,6 +25,8 @@
         , extend_block_chain_with_state/3
         , aec_keys_setup/0
         , aec_keys_cleanup/1
+        , aec_keys_bare_setup/0
+        , aec_keys_bare_cleanup/1
         , gen_block_chain_with_state/1
         , gen_blocks_only_chain/1
         , gen_block_chain_with_state/2
@@ -280,15 +282,21 @@ copy_genesis_dir(SourceRelDir, DestRelDir) ->
 %%%=============================================================================
 
 aec_keys_setup() ->
-    TmpKeysDir = create_temp_key_dir(),
     ok = application:ensure_started(crypto),
+    aec_keys_bare_setup().
+
+aec_keys_cleanup(TmpKeysDir) ->
+    aec_keys_bare_cleanup(TmpKeysDir),
+    ok = application:stop(crypto).
+
+aec_keys_bare_setup() ->
+    TmpKeysDir = create_temp_key_dir(),
     {ok, _} = aec_keys:start_link([<<"mypassword">>, TmpKeysDir]),
     wait_for_it(fun() -> whereis(aec_keys) =/= undefined end, true),
     TmpKeysDir.
 
-aec_keys_cleanup(TmpKeysDir) ->
+aec_keys_bare_cleanup(TmpKeysDir) ->
     ok = aec_keys:stop(),
-    ok = application:stop(crypto),
     remove_temp_key_dir(TmpKeysDir).
 
 remove_temp_key_dir(TmpKeysDir) ->
