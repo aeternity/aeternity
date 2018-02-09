@@ -16,7 +16,7 @@
 
 -define(TEST_BIN, <<"wsffgujnjkqhduihsahswgdf">>).
 
--define(TEST_HIGH_NONCE, 82). %% Nonce with solution with high target.
+-define(TEST_HIGH_NONCE, 74). %% Nonce with solution with high target.
 
 pow_test_() ->
     {setup,

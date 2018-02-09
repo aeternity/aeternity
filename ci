@@ -22,9 +22,13 @@ case "${1:?}"-"${2:?}" in
         if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
             brew update
+            brew install libsodium
             brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
         elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
             sudo -H pip install -r deployment/ansible/pip-requirements.txt
+            wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
+            tar zxvf libsodium-1.0.16.tar.gz
+            (cd libsodium-1.0.16; ./configure; make; sudo make install; sudo ldconfig)
             ansible --version
         fi
         erl -version

@@ -1,5 +1,13 @@
 FROM erlang:20.2 as builder
 
+ENV LIBSODIUM_VERSION=1.0.16
+RUN LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
+    && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
+    && mkdir libsodium-src \
+    && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
+    && cd libsodium-src \
+    && ./configure && make -j$(nproc) && make install && ldconfig
+
 ADD . /app
 RUN cd /app && make prod-build
 

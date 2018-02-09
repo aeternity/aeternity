@@ -50,7 +50,7 @@
 	]).
 
 -include("aevm_eeevm.hrl").
- 
+
 init(Spec) -> init(Spec, #{}).
 
 init(#{ env  := Env
@@ -116,7 +116,7 @@ get_balances(#{} = Pre) ->
 get_blockhash_fun(Opts, Env, H) ->
     case maps:get(blockhash, Opts, default) of
 	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
-	sha3 -> fun(N,_A) -> 
+	sha3 -> fun(N,_A) ->
 			%% Because the data of the blockchain is not
 			%% given, the opcode BLOCKHASH could not
 			%% return the hashes of the corresponding
@@ -127,13 +127,13 @@ get_blockhash_fun(Opts, Env, H) ->
 			   CurrentNumber - 256 > N -> 0;
 			   true ->
 				BinN = integer_to_binary(N),
-				Hash = sha3:hash(256, BinN),
+				Hash = aec_hash:hash(evm, BinN),
 				<<Val:256/integer-unsigned>> = Hash,
 				Val
 			end
 		end
     end.
-    
+
 
 
 init_trace_fun(Opts) ->
@@ -157,7 +157,7 @@ extcode(Account, Start, Length, State) ->
     CodeBlock = maps:get(Account band ?MASK160,
 			 maps:get(ext_code_blocks, State), <<>>),
     aevm_eeevm_utils:bin_copy(Start, Length, CodeBlock).
-    
+
 jumpdests(State) -> maps:get(jumpdests, State).
 stack(State)     -> maps:get(stack, State).
 mem(State)       -> maps:get(memory, State).

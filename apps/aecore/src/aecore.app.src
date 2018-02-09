@@ -31,6 +31,8 @@
     aeutils,
     msgpack,
     base58,
+    sha3,
+    enacl,
     erlexec,
     aecuckoo,
     aetx,

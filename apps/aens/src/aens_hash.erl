@@ -54,7 +54,7 @@ empty_hash() ->
     <<0:?NAME_HASH_BYTES/unit:8>>.
 
 hash(Bin) ->
-    crypto:hash(sha256, Bin).
+    aec_hash:hash(aens, Bin).
 
 int_to_bin(Int) ->
     <<Int:?COMMITMENT_HASH_BYTES/integer-unit:8>>.

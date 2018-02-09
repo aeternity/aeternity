@@ -8,8 +8,7 @@
     stdlib,
     lager,
     jsx,
-    aebytecode,
-    sha3
+    aebytecode
    ]},
   {env,[]},
   {modules, []},

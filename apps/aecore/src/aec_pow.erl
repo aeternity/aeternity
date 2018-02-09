@@ -14,17 +14,11 @@
          scientific_to_integer/1,
          integer_to_scientific/1]).
 
-%% For testing only
--export([pow_module/0]).
-
-
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
 
 -include("pow.hrl").
--include("sha256.hrl").
-
 
 %% 10^24, approx. 2^80
 -define(NONCE_RANGE, 1000000000000000000000000).
@@ -89,11 +83,11 @@
 %%% Behaviour
 %%%=============================================================================
 
--callback generate(Data :: aec_sha256:hashable(), Difficulty :: aec_pow:sci_int(),
+-callback generate(Data :: aec_hash:hashable(), Difficulty :: aec_pow:sci_int(),
                    Nonce :: aec_pow:nonce()) ->
     aec_pow:pow_result().
 
--callback verify(Data :: aec_sha256:hashable(), Nonce :: aec_pow:nonce(),
+-callback verify(Data :: aec_hash:hashable(), Nonce :: aec_pow:nonce(),
                  Evd :: aec_pow:pow_evidence(), Difficulty :: aec_pow:sci_int()) ->
     boolean().
 
@@ -185,10 +179,6 @@ compare_bin_to_significand(Bin, Significand, Zeros, NumBits) ->
             %% Fewer zeros than expected
             false
     end.
-
--spec pow_module() -> 'aec_pow_cuckoo' | 'aec_pow_sha256'.
-pow_module() ->
-    ?POW_MODULE.
 
 
 %%%=============================================================================

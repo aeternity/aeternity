@@ -63,8 +63,8 @@ split(Bin) ->
     binary:split(Bin, [<<"$">>], []).
 
 check_str(Bin) ->
-    <<C:32/bitstring,_/binary>> = crypto:hash(sha256,
-                                              crypto:hash(sha256, Bin)),
+    <<C:32/bitstring,_/binary>> =
+        aec_hash:sha256_hash(aec_hash:sha256_hash(Bin)),
     C.
 
 
