@@ -710,6 +710,350 @@ class ExternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def get_contract_call(self, caller, contract, vm_version, fee, amount, gas, gas_price, call_data, **kwargs):  # noqa: E501
+        """get_contract_call  # noqa: E501
+
+        Get a contract_call transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_contract_call(caller, contract, vm_version, fee, amount, gas, gas_price, call_data, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str caller: Contract caller pub_key (required)
+        :param str contract: Contract's pub_key (required)
+        :param int vm_version: Virtual machine's version (required)
+        :param int fee: Transaction fee (required)
+        :param int amount: Amount (required)
+        :param int gas: Contract gas (required)
+        :param int gas_price: Gas price (required)
+        :param str call_data: Contract call data (required)
+        :param int nonce: Caller's nonce
+        :return: Tx
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_contract_call_with_http_info(caller, contract, vm_version, fee, amount, gas, gas_price, call_data, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_contract_call_with_http_info(caller, contract, vm_version, fee, amount, gas, gas_price, call_data, **kwargs)  # noqa: E501
+            return data
+
+    def get_contract_call_with_http_info(self, caller, contract, vm_version, fee, amount, gas, gas_price, call_data, **kwargs):  # noqa: E501
+        """get_contract_call  # noqa: E501
+
+        Get a contract_call transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_contract_call_with_http_info(caller, contract, vm_version, fee, amount, gas, gas_price, call_data, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str caller: Contract caller pub_key (required)
+        :param str contract: Contract's pub_key (required)
+        :param int vm_version: Virtual machine's version (required)
+        :param int fee: Transaction fee (required)
+        :param int amount: Amount (required)
+        :param int gas: Contract gas (required)
+        :param int gas_price: Gas price (required)
+        :param str call_data: Contract call data (required)
+        :param int nonce: Caller's nonce
+        :return: Tx
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['caller', 'contract', 'vm_version', 'fee', 'amount', 'gas', 'gas_price', 'call_data', 'nonce']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_contract_call" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'caller' is set
+        if ('caller' not in params or
+                params['caller'] is None):
+            raise ValueError("Missing the required parameter `caller` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'contract' is set
+        if ('contract' not in params or
+                params['contract'] is None):
+            raise ValueError("Missing the required parameter `contract` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'vm_version' is set
+        if ('vm_version' not in params or
+                params['vm_version'] is None):
+            raise ValueError("Missing the required parameter `vm_version` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'fee' is set
+        if ('fee' not in params or
+                params['fee'] is None):
+            raise ValueError("Missing the required parameter `fee` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'amount' is set
+        if ('amount' not in params or
+                params['amount'] is None):
+            raise ValueError("Missing the required parameter `amount` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'gas' is set
+        if ('gas' not in params or
+                params['gas'] is None):
+            raise ValueError("Missing the required parameter `gas` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'gas_price' is set
+        if ('gas_price' not in params or
+                params['gas_price'] is None):
+            raise ValueError("Missing the required parameter `gas_price` when calling `get_contract_call`")  # noqa: E501
+        # verify the required parameter 'call_data' is set
+        if ('call_data' not in params or
+                params['call_data'] is None):
+            raise ValueError("Missing the required parameter `call_data` when calling `get_contract_call`")  # noqa: E501
+
+        if 'vm_version' in params and params['vm_version'] > 255:  # noqa: E501
+            raise ValueError("Invalid value for parameter `vm_version` when calling `get_contract_call`, must be a value less than or equal to `255`")  # noqa: E501
+        if 'vm_version' in params and params['vm_version'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `vm_version` when calling `get_contract_call`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'fee' in params and params['fee'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `fee` when calling `get_contract_call`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'amount' in params and params['amount'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `amount` when calling `get_contract_call`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'gas' in params and params['gas'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `gas` when calling `get_contract_call`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'gas_price' in params and params['gas_price'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `gas_price` when calling `get_contract_call`, must be a value greater than or equal to `0`")  # noqa: E501
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+        if 'caller' in params:
+            query_params.append(('caller', params['caller']))  # noqa: E501
+        if 'nonce' in params:
+            query_params.append(('nonce', params['nonce']))  # noqa: E501
+        if 'contract' in params:
+            query_params.append(('contract', params['contract']))  # noqa: E501
+        if 'vm_version' in params:
+            query_params.append(('vm_version', params['vm_version']))  # noqa: E501
+        if 'fee' in params:
+            query_params.append(('fee', params['fee']))  # noqa: E501
+        if 'amount' in params:
+            query_params.append(('amount', params['amount']))  # noqa: E501
+        if 'gas' in params:
+            query_params.append(('gas', params['gas']))  # noqa: E501
+        if 'gas_price' in params:
+            query_params.append(('gas_price', params['gas_price']))  # noqa: E501
+        if 'call_data' in params:
+            query_params.append(('call_data', params['call_data']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/tx/contract/call', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='Tx',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def get_contract_create(self, owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, **kwargs):  # noqa: E501
+        """get_contract_create  # noqa: E501
+
+        Get a contract_create transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_contract_create(owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str owner: Contract owner pub_key (required)
+        :param str code: Contract's code (required)
+        :param int vm_version: Virtual machine's version (required)
+        :param int deposit: Deposit (required)
+        :param int amount: Amount (required)
+        :param int gas: Contract gas (required)
+        :param int gas_price: Gas price (required)
+        :param int fee: Transaction fee (required)
+        :param str call_data: Contract call data (required)
+        :param int nonce: Owner's nonce
+        :return: Tx
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_contract_create_with_http_info(owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_contract_create_with_http_info(owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, **kwargs)  # noqa: E501
+            return data
+
+    def get_contract_create_with_http_info(self, owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, **kwargs):  # noqa: E501
+        """get_contract_create  # noqa: E501
+
+        Get a contract_create transaction  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_contract_create_with_http_info(owner, code, vm_version, deposit, amount, gas, gas_price, fee, call_data, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str owner: Contract owner pub_key (required)
+        :param str code: Contract's code (required)
+        :param int vm_version: Virtual machine's version (required)
+        :param int deposit: Deposit (required)
+        :param int amount: Amount (required)
+        :param int gas: Contract gas (required)
+        :param int gas_price: Gas price (required)
+        :param int fee: Transaction fee (required)
+        :param str call_data: Contract call data (required)
+        :param int nonce: Owner's nonce
+        :return: Tx
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['owner', 'code', 'vm_version', 'deposit', 'amount', 'gas', 'gas_price', 'fee', 'call_data', 'nonce']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_contract_create" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'owner' is set
+        if ('owner' not in params or
+                params['owner'] is None):
+            raise ValueError("Missing the required parameter `owner` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'code' is set
+        if ('code' not in params or
+                params['code'] is None):
+            raise ValueError("Missing the required parameter `code` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'vm_version' is set
+        if ('vm_version' not in params or
+                params['vm_version'] is None):
+            raise ValueError("Missing the required parameter `vm_version` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'deposit' is set
+        if ('deposit' not in params or
+                params['deposit'] is None):
+            raise ValueError("Missing the required parameter `deposit` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'amount' is set
+        if ('amount' not in params or
+                params['amount'] is None):
+            raise ValueError("Missing the required parameter `amount` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'gas' is set
+        if ('gas' not in params or
+                params['gas'] is None):
+            raise ValueError("Missing the required parameter `gas` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'gas_price' is set
+        if ('gas_price' not in params or
+                params['gas_price'] is None):
+            raise ValueError("Missing the required parameter `gas_price` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'fee' is set
+        if ('fee' not in params or
+                params['fee'] is None):
+            raise ValueError("Missing the required parameter `fee` when calling `get_contract_create`")  # noqa: E501
+        # verify the required parameter 'call_data' is set
+        if ('call_data' not in params or
+                params['call_data'] is None):
+            raise ValueError("Missing the required parameter `call_data` when calling `get_contract_create`")  # noqa: E501
+
+        if 'vm_version' in params and params['vm_version'] > 255:  # noqa: E501
+            raise ValueError("Invalid value for parameter `vm_version` when calling `get_contract_create`, must be a value less than or equal to `255`")  # noqa: E501
+        if 'vm_version' in params and params['vm_version'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `vm_version` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'deposit' in params and params['deposit'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `deposit` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'amount' in params and params['amount'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `amount` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'gas' in params and params['gas'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `gas` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'gas_price' in params and params['gas_price'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `gas_price` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        if 'fee' in params and params['fee'] < 0:  # noqa: E501
+            raise ValueError("Invalid value for parameter `fee` when calling `get_contract_create`, must be a value greater than or equal to `0`")  # noqa: E501
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+        if 'owner' in params:
+            query_params.append(('owner', params['owner']))  # noqa: E501
+        if 'nonce' in params:
+            query_params.append(('nonce', params['nonce']))  # noqa: E501
+        if 'code' in params:
+            query_params.append(('code', params['code']))  # noqa: E501
+        if 'vm_version' in params:
+            query_params.append(('vm_version', params['vm_version']))  # noqa: E501
+        if 'deposit' in params:
+            query_params.append(('deposit', params['deposit']))  # noqa: E501
+        if 'amount' in params:
+            query_params.append(('amount', params['amount']))  # noqa: E501
+        if 'gas' in params:
+            query_params.append(('gas', params['gas']))  # noqa: E501
+        if 'gas_price' in params:
+            query_params.append(('gas_price', params['gas_price']))  # noqa: E501
+        if 'fee' in params:
+            query_params.append(('fee', params['fee']))  # noqa: E501
+        if 'call_data' in params:
+            query_params.append(('call_data', params['call_data']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/tx/contract/create', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='Tx',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def get_info(self, **kwargs):  # noqa: E501
         """get_info  # noqa: E501
 

@@ -167,6 +167,159 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /tx/contract/create:
+    get:
+      tags:
+        - external
+      operationId: GetContractCreate
+      description: 'Get a contract_create transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: owner
+          description: Contract owner pub_key
+          required: true
+          type: string
+        - in: query
+          name: nonce
+          description: Owner's nonce
+          required: false
+          type: integer
+        - in: query
+          name: code
+          description: 'Contract''s code' 
+          required: true
+          type: string
+        - in: query
+          name: vm_version
+          description: 'Virtual machine''s version' 
+          required: true
+          type: integer
+          minimum: 0
+          maximum: 255
+        - in: query
+          name: deposit
+          description: Deposit 
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: amount
+          description: Amount
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: gas
+          description: Contract gas
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: gas_price
+          description: Gas price
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: fee
+          description: Transaction fee
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: call_data
+          description: Contract call data
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Owner account not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/contract/call:
+    get:
+      tags:
+        - external
+      operationId: GetContractCall
+      description: 'Get a contract_call transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: caller
+          description: Contract caller pub_key
+          required: true
+          type: string
+        - in: query
+          name: nonce
+          description: Caller's nonce
+          required: false
+          type: integer
+        - in: query
+          name: contract
+          description: 'Contract''s pub_key' 
+          required: true
+          type: string
+        - in: query
+          name: vm_version
+          description: 'Virtual machine''s version' 
+          required: true
+          type: integer
+          minimum: 0
+          maximum: 255
+        - in: query
+          name: fee
+          description: Transaction fee
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: amount
+          description: Amount
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: gas
+          description: Contract gas
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: gas_price
+          description: Gas price
+          required: true
+          type: integer
+          minimum: 0
+        - in: query
+          name: call_data
+          description: Contract call data
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Caller account or contract not found 
+          schema:
+            $ref: '#/definitions/Error'
+
   /transactions:
     get:
       tags:

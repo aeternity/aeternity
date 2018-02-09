@@ -112,6 +112,22 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'GetContractCall'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
+        operation_id = 'GetContractCreate'
+    }
+) ->
+    {[<<"GET">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'GetInfo'
     }
 ) ->
@@ -182,6 +198,8 @@ allowed_methods(Req, State) ->
         Req :: cowboy_req:req(),
         State :: state()
     }.
+
+
 
 
 
@@ -280,6 +298,26 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'GetCommitmentHash'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetContractCall'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'GetContractCreate'
     }
 ) ->
     Headers = [],

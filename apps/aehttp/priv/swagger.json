@@ -195,6 +195,191 @@
         }
       }
     },
+    "/tx/contract/create" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get a contract_create transaction",
+        "operationId" : "GetContractCreate",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "owner",
+          "in" : "query",
+          "description" : "Contract owner pub_key",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "nonce",
+          "in" : "query",
+          "description" : "Owner's nonce",
+          "required" : false,
+          "type" : "integer"
+        }, {
+          "name" : "code",
+          "in" : "query",
+          "description" : "Contract's code",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "vm_version",
+          "in" : "query",
+          "description" : "Virtual machine's version",
+          "required" : true,
+          "type" : "integer",
+          "maximum" : 255,
+          "minimum" : 0
+        }, {
+          "name" : "deposit",
+          "in" : "query",
+          "description" : "Deposit",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "amount",
+          "in" : "query",
+          "description" : "Amount",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "gas",
+          "in" : "query",
+          "description" : "Contract gas",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "gas_price",
+          "in" : "query",
+          "description" : "Gas price",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "fee",
+          "in" : "query",
+          "description" : "Transaction fee",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "call_data",
+          "in" : "query",
+          "description" : "Contract call data",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Owner account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/contract/call" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get a contract_call transaction",
+        "operationId" : "GetContractCall",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "caller",
+          "in" : "query",
+          "description" : "Contract caller pub_key",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "nonce",
+          "in" : "query",
+          "description" : "Caller's nonce",
+          "required" : false,
+          "type" : "integer"
+        }, {
+          "name" : "contract",
+          "in" : "query",
+          "description" : "Contract's pub_key",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "vm_version",
+          "in" : "query",
+          "description" : "Virtual machine's version",
+          "required" : true,
+          "type" : "integer",
+          "maximum" : 255,
+          "minimum" : 0
+        }, {
+          "name" : "fee",
+          "in" : "query",
+          "description" : "Transaction fee",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "amount",
+          "in" : "query",
+          "description" : "Amount",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "gas",
+          "in" : "query",
+          "description" : "Contract gas",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "gas_price",
+          "in" : "query",
+          "description" : "Gas price",
+          "required" : true,
+          "type" : "integer",
+          "minimum" : 0
+        }, {
+          "name" : "call_data",
+          "in" : "query",
+          "description" : "Contract call data",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Caller account or contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external" ],

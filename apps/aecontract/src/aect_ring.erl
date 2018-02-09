@@ -14,6 +14,9 @@
         , simple_call/3
         ]).
 
+-export([ hexstring_decode/1
+        ]).
+
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
 
 compile(ContractAsBinString, OptionsAsBinString) ->
@@ -53,6 +56,15 @@ hexstring_encode(Code) ->
            || <<X:4, Y:4>> <= Code >>,
     <<"0x", CodeAsHexString/binary >>.
     
+hexstring_decode(Code) ->
+    <<"0x", CodeAsHexString/binary >> = Code,
+    0 = bit_size(CodeAsHexString) rem 8,
+    NibblesCnt = bit_size(CodeAsHexString) div 8,
+    0 = NibblesCnt rem 2,
+    true = NibblesCnt > 0,
+    << << (hex_to_int(X)):4, (hex_to_int(Y)):4 >>
+           || <<X:8, Y:8>> <= CodeAsHexString >>.
+
 hex_nibble(X) ->
     if X < 10 -> X+$0;
        true   -> X+87

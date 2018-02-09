@@ -45,7 +45,7 @@
 
 -export_type([call_tx/0]).
 
--spec new(map()) -> {ok, call_tx()}.
+-spec new(map()) -> {ok, #contract_call_tx{}}.
 new(#{caller     := CallerPubKey,
       nonce      := Nonce,
       contract   := Contract,

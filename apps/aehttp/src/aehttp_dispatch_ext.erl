@@ -5,6 +5,14 @@
          add_missing_to_genesis_block/1]).
 
 -import(aeu_debug, [pp/1]).
+-import(aehttp_helpers, [ parse_request/2
+                        , read_required_params/1
+                        , base58_decode/1
+                        , hexstrings_decode/1
+                        , get_nonce/1
+                        , print_state/0
+                        , verify_contract_existance/1
+                        ]).
 
 -compile({parse_transform, lager_transform}).
 -include_lib("aecore/include/common.hrl").
@@ -116,6 +124,40 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
                     lager:debug("PushRes = ~p", [pp(PushRes)]),
                     {200, [], #{}}
             end
+    end;
+
+handle_request('GetContractCreate', Req, _Context) ->
+    ParseFuns = [read_required_params([owner, code, vm_version, deposit,
+                                       amount, gas, gas_price, fee,
+                                       call_data]),
+                base58_decode([{owner, owner, account_pubkey}]),
+                get_nonce(owner),
+                hexstrings_decode([code, call_data])
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aect_create_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('GetContractCall', Req, _Context) ->
+    ParseFuns = [read_required_params([caller, contract, vm_version,
+                                       amount, gas, gas_price, fee,
+                                       call_data]),
+                base58_decode([{caller, caller, account_pubkey},
+                               {contract, contract, account_pubkey}]),
+                get_nonce(caller),
+                verify_contract_existance(contract),
+                hexstrings_decode([call_data])
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aect_call_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('GetAccountBalance', Req, _Context) ->
@@ -371,3 +413,4 @@ abort_sync(Uri, Code, Reason) ->
       {sync_aborted, #{uri => Uri,
                        reason => Reason}}),
       {Code, [], #{reason => Reason}}.
+

@@ -92,7 +92,7 @@ call_data(#contract_create_tx{call_data = X}) ->
 fee(#contract_create_tx{fee = Fee}) ->
     Fee.
 
--spec new(map()) -> {ok, create_tx()}.
+-spec new(map()) -> {ok, #contract_create_tx{}}.
 new(#{owner      := OwnerPubKey,
       nonce      := Nonce,
       code       := Code,
