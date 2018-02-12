@@ -70,6 +70,7 @@ matrix:
   fast_finish: true
 
 env:
+  - JOB=dummy ## Workaround for Travis CI - that otherwise with only jobs `package`-linux and and `package`-osx runs only `package`-osx.
   - JOB=package
 cache:
   directories:

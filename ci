@@ -18,6 +18,9 @@ FinalPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${O
 cd $BuildDir
 
 case "${1:?}"-"${2:?}" in
+    before_install-dummy)
+        true
+        ;;
     before_install-*)
         if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
@@ -35,6 +38,9 @@ case "${1:?}"-"${2:?}" in
         epmd -daemon
         ;;
     install-*)
+        true
+        ;;
+    script-dummy)
         true
         ;;
     script-package)
