@@ -98,7 +98,7 @@ def genesis_hash(api):
     return block.prev_hash
 
 def wait_until_height(api, height):
-    wait(lambda: api.get_top().height >= height, timeout_seconds=30, sleep_seconds=0.25)
+    wait(lambda: api.get_top().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(int_api, pub_key=None):
     balance = Balance(balance=0)
