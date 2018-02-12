@@ -2,6 +2,8 @@ version: 2
 
 references:
   container_config: &container_config
+    setup_remote_docker:
+      docker_layer_caching: true
     docker:
       - image: aetrnty/builder
         user: builder
