@@ -46,7 +46,7 @@
 
 -type amount() :: aect_contracts:amount().
 
--opaque create_tx() :: #contract_create_tx{}.
+-type create_tx() :: #contract_create_tx{}.
 
 -export_type([create_tx/0]).
 

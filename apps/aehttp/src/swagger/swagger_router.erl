@@ -125,6 +125,16 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'PostContractCall' => #{
+            path => "/v2/tx/contract/call",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostContractCreate' => #{
+            path => "/v2/tx/contract/create",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'PostTx' => #{
             path => "/v2/tx",
             method => <<"POST">>,

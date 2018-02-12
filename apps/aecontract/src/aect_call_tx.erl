@@ -41,7 +41,7 @@
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_FEE, 2).
 
--opaque call_tx() :: #contract_call_tx{}.
+-type call_tx() :: #contract_call_tx{}.
 
 -export_type([call_tx/0]).
 

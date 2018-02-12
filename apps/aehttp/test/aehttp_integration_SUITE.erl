@@ -32,6 +32,9 @@
     block_not_found_by_broken_hash/1,
     block_not_found_by_hash/1,
 
+    % non signed txs
+    contract_transactions/1,
+
     % sync gossip
     pending_transactions/1,
     post_correct_blocks/1,
@@ -150,6 +153,9 @@ groups() ->
         block_by_hash,
         block_not_found_by_broken_hash,
         block_not_found_by_hash,
+
+        % non signed txs
+        contract_transactions,
 
         % sync gossip
         pending_transactions,
@@ -473,8 +479,147 @@ block_by_hash(_Config) ->
         lists:seq(0, BlocksToCheck)), % from genesis
     ok.
 
+%% tests the following
+%% GET contract_create_tx unsigned transaction 
+%% GET contract_call_tx unsigned transaction 
+%% due to complexity of contract_call_tx (needs a contract in the state tree)
+%% both positive and negative cases are tested in this test
+contract_transactions(_Config) ->
+    % miner has an account
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+
+    % contract_create_tx positive test
+    Code = <<"0x1234">>,
+    CallData = <<"0x1234">>,
+    ValidEncoded = #{ owner => MinerAddress,
+                      code => Code,
+                      vm_version => 1,
+                      deposit => 5,
+                      amount => 10,
+                      gas => 1000,
+                      gas_price => 3,
+                      fee => 1,
+                      call_data => CallData},
+    ValidDecoded = maps:merge(ValidEncoded,
+                              #{owner => MinerPubkey,
+                                code => aect_ring:hexstring_decode(Code),
+                                call_data => aect_ring:hexstring_decode(CallData)}),
+
+    unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
+                               fun aect_create_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for contract_call_tx, we first need an
+    % actual contract on the chain
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+    % contract pub key will be:
+    ContractPubKey = aect_contracts:compute_contract_pubkey(MinerPubkey, Nonce),
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
+    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
+    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
+    % create_contract_tx is in mempool
+    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
+
+    % mine a block
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+
+    % ensure Contract is part of the contract's tree
+    TopBlockHash = rpc(aec_conductor, top_block_hash, []),
+    {value, Trees} = rpc(aec_db, find_block_state, [TopBlockHash]),
+    ContractsTree = rpc(aec_trees, contracts, [Trees]),
+    {value, _ } = rpc(aect_state_tree, lookup_contract, [ContractPubKey,
+                                                         ContractsTree]),
+    ContractCallEncoded = #{ caller => MinerAddress,
+                             contract => aec_base58c:encode(account_pubkey, ContractPubKey),
+                             vm_version => 1,
+                             amount => 10,
+                             gas => 1000,
+                             gas_price => 2,
+                             fee => 1,
+                             call_data => CallData},
+
+    ContractCallDecoded = maps:merge(ContractCallEncoded,
+                              #{caller => MinerPubkey,
+                                contract => ContractPubKey,
+                                call_data => aect_ring:hexstring_decode(CallData)}),
+
+    unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
+                               fun get_contract_call/1,
+                               fun aect_call_tx:new/1, MinerPubkey),
+
+    %% negative tests
+    %% Invalid hashes
+    % invalid owner hash
+    <<_, InvalidHash/binary>> = MinerAddress,
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: owner">>}} =
+        get_contract_create(maps:put(owner, InvalidHash, ValidEncoded)), 
+    % invalid caller hash
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
+        get_contract_call(maps:put(caller, InvalidHash, ContractCallEncoded)), 
+    % invalid contract hash
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
+        get_contract_call(maps:put(contract, InvalidHash, ContractCallEncoded)), 
+    % invalid contract and caller hash
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract,caller">>}} =
+        get_contract_call(maps:merge(ContractCallEncoded, #{contract => InvalidHash,
+                                                            caller => InvalidHash})), 
+    %% account not found 
+    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    %% owner not found
+    {ok, 404, #{<<"reason">> := <<"Account of owner not found">>}} =
+        get_contract_create(maps:put(owner, RandAddress, ValidEncoded)), 
+    %% caller not found
+    {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
+        get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)), 
+    %% contract not found
+    {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
+        get_contract_call(maps:put(contract, RandAddress, ContractCallEncoded)), 
+
+    %% Invalid hexstrings
+    InvalidHex1 = <<"1234">>,
+    InvalidHex2 = <<"0xXYZ">>,
+
+    % invalid code
+    {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
+        get_contract_create(maps:put(code, InvalidHex1, ValidEncoded)), 
+    {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
+        get_contract_create(maps:put(code, InvalidHex2, ValidEncoded)), 
+    % invalid call data
+    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+        get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded)), 
+    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+        get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded)), 
+    % invalid call data
+    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+        get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)), 
+    {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
+        get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)), 
+    ok.
+
+unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
+    {ok, NextNonce} = rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+    Test =
+        fun(Nonce, P) ->
+            {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
+            {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
+            {ok, SerializedTx} = aec_base58c:safe_decode(transaction, ActualTx),
+            Tx = aec_tx:deserialize_from_binary(SerializedTx),
+            ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
+            ExpectedTx = Tx
+        end,
+    Test(NextNonce, Params),
+    RandomNonce = rand:uniform(999) + 1,
+    Test(RandomNonce, maps:put(nonce, RandomNonce, Params)).
+    
+
 %% Maybe this test should be broken into a couple of smaller tests
-%% it currently tests the possitive cases for
+%% it currently tests the positive cases for
 %% GET externalAPI/transactions
 %% POST internalAPI/spend-tx
 %% GET externalAPI/account/balance
@@ -802,7 +947,7 @@ test_info(BlocksToMine) ->
 
 
 
-%% possitive test of spend_tx is handled in pending_transactions test
+%% positive test of spend_tx is handled in pending_transactions test
 broken_spend_tx(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
     ReceiverPubKey = random_hash(),
@@ -2145,6 +2290,14 @@ ws_mine_blocks(ConnPid, Node, N) ->
 get_top() ->
     Host = external_address(),
     http_request(Host, get, "top", []).
+
+get_contract_create(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/contract/create", Data).
+
+get_contract_call(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/contract/call", Data).
 
 post_ping(Body) ->
     Host = external_address(),

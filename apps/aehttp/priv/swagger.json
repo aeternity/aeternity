@@ -195,6 +195,78 @@
         }
       }
     },
+    "/tx/contract/create" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a contract_create transaction",
+        "operationId" : "PostContractCreate",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCreateData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Owner account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/contract/call" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a contract_call transaction",
+        "operationId" : "PostContractCall",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCallData"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Caller account or contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external" ],
@@ -2553,6 +2625,130 @@
           "last_seen" : 0,
           "uri" : "uri"
         } ]
+      }
+    },
+    "ContractCreateData" : {
+      "type" : "object",
+      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "properties" : {
+        "owner" : {
+          "type" : "string",
+          "description" : "Contract owner pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Owner's nonce"
+        },
+        "code" : {
+          "type" : "string",
+          "description" : "Contract's code"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "deposit" : {
+          "type" : "integer",
+          "description" : "Deposit",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "call_data" : {
+          "type" : "string",
+          "description" : "Contract call data"
+        }
+      },
+      "example" : {
+        "owner" : "owner",
+        "gas_price" : 0,
+        "vm_version" : 153,
+        "amount" : 0,
+        "code" : "code",
+        "call_data" : "call_data",
+        "fee" : 0,
+        "gas" : 0,
+        "deposit" : 0,
+        "nonce" : 0
+      }
+    },
+    "ContractCallData" : {
+      "type" : "object",
+      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
+      "properties" : {
+        "caller" : {
+          "type" : "string",
+          "description" : "Contract caller pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Caller's nonce"
+        },
+        "contract" : {
+          "type" : "string",
+          "description" : "Contract's pub_key"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "call_data" : {
+          "type" : "string",
+          "description" : "Contract call data"
+        }
+      },
+      "example" : {
+        "gas_price" : 0,
+        "caller" : "caller",
+        "vm_version" : 153,
+        "amount" : 0,
+        "call_data" : "call_data",
+        "contract" : "contract",
+        "fee" : 0,
+        "gas" : 0,
+        "nonce" : 0
       }
     },
     "inline_response_200" : {

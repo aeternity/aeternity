@@ -81,6 +81,16 @@ request_params('PostBlock') ->
         'Block'
     ];
 
+request_params('PostContractCall') ->
+    [
+        'ContractCallData'
+    ];
+
+request_params('PostContractCreate') ->
+    [
+        'ContractCreateData'
+    ];
+
 request_params('PostTx') ->
     [
         'Tx'
@@ -383,6 +393,24 @@ request_param_info('Ping', 'Ping') ->
     };
 
 request_param_info('PostBlock', 'Block') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCall', 'ContractCallData') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCreate', 'ContractCreateData') ->
     #{
         source =>   body,
         rules => [
@@ -1074,6 +1102,20 @@ validate_response('Ping', 409, Body, ValidatorState) ->
 validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostBlock', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCall', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostContractCall', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCall', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCreate', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostContractCreate', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCreate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostTx', 200, Body, ValidatorState) ->
