@@ -70,9 +70,6 @@ matrix:
   fast_finish: true
 
 env:
-  - JOB=test
-  - JOB=eunit
-  - JOB=static_analysis
   - JOB=package
 cache:
   directories:
