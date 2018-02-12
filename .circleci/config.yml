@@ -192,14 +192,20 @@ jobs:
             epmd -daemon
             make python-env && make swagger && make multi-build
             make python-uats
+      - run:
+          name: Prepare JUnit Report
+          command: mv py/nosetests.xml py/junit.xml
       - store_test_results:
-          path: py/nosetests.xml
+          path: py
       - store_artifacts:
           path: _build/dev1/rel/epoch/log
+          destination: node1/
       - store_artifacts:
           path: _build/dev2/rel/epoch/log
+          destination: node2/
       - store_artifacts:
           path: _build/dev3/rel/epoch/log
+          destination: node3/
 
   deploy_integration:
     <<: *container_config
