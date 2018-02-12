@@ -12,6 +12,7 @@
 -compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
          exec_app, exec, %% by erlexec
@@ -102,7 +103,7 @@ application_test(Config) ->
     ok = application:stop(aecore),
     meck:unload(aec_genesis_block_settings),
 
-    app_stop(StartedApps, TempDir).
+    app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
 aec_sync_test(Config) ->
     application:set_env(jobs, queues,
@@ -134,7 +135,7 @@ aec_sync_test(Config) ->
     1 = length(Peers),
 
     ok = application:stop(aecore),
-    app_stop(StartedApps, TempDir).
+    app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
 
 prepare_app_start(App, Config) ->
@@ -157,10 +158,8 @@ prepare_app_start_(App, Config) ->
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
 
 app_stop(Apps, TempDir) ->
-    timer:sleep(500),  %% time to terminate erlexec child
     aec_test_utils:remove_temp_key_dir(TempDir),
     [ application:stop(App) || App <- Apps ],
-    timer:sleep(200),
     ok.
 
 maybe_add_mnesia(App, Deps) ->
