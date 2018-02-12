@@ -75,8 +75,7 @@ miner_test_() ->
              teardown_common(TmpKeysDir)
      end,
      [{"Stop and restart miner", fun test_stop_restart/0},
-      {"Test consequtive start/stop ", fun test_stop_restart_seq/0},
-      {"Run miner for a while", fun test_run_miner/0}
+      {"Test consecutive start/stop ", fun test_stop_restart_seq/0}
      ]}.
 
 test_stop_restart() ->
@@ -101,17 +100,6 @@ test_stop_restart_seq() ->
     wait_for_running(),
     ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
     wait_for_stopped(),
-    ok.
-
-test_run_miner() ->
-    ?assertEqual(0, get_top_height()),
-    ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
-    wait_for_stopped(),
-    true = aec_events:subscribe(block_created),
-    ?assertEqual(ok, ?TEST_MODULE:start_mining()),
-    wait_for_block_created(),
-    ?assert(0 < get_top_height()),
-    ?assertEqual(ok, ?TEST_MODULE:stop_mining()),
     ok.
 
 miner_timeout_test_() ->
@@ -468,10 +456,6 @@ block_hash(Block) ->
 header_hash(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     Hash.
-
-get_top_height() ->
-    TopBlock = aec_conductor:top(),
-    aec_blocks:height(TopBlock).
 
 wait_for_stopped() ->
     aec_test_utils:wait_for_it(fun ?TEST_MODULE:get_mining_state/0, stopped).
