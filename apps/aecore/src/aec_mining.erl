@@ -41,8 +41,7 @@ need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
 mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
     BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
-    Mod = aec_pow:pow_module(),
-    case Mod:generate(BlockBin, Target, Nonce) of
+    case aec_pow_cuckoo:generate(BlockBin, Target, Nonce) of
         {ok, {Nonce, Evd}} ->
             {ok, aec_blocks:set_pow(Block, Nonce, Evd)};
         {error, no_solution} = Error ->

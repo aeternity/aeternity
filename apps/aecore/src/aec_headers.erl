@@ -170,7 +170,7 @@ serialize_for_hash(H) ->
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
     BinaryH = serialize_for_hash(H),
-    {ok, aec_sha256:hash(BinaryH)}.
+    {ok, aec_hash:hash(header, BinaryH)}.
 
 serialize_pow_evidence_for_hash(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
@@ -217,12 +217,11 @@ validate_pow(#header{nonce = Nonce,
                      pow_evidence = Evd,
                      target = Target} = Header) when Nonce >= 0,
                                                      Nonce =< ?MAX_NONCE ->
-    Mod = aec_pow:pow_module(),
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
     HeaderBinary = serialize_for_hash(Header1),
-    case Mod:verify(HeaderBinary, Nonce, Evd, Target) of
+    case aec_pow_cuckoo:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
         false ->

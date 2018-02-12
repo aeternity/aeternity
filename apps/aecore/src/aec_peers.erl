@@ -55,6 +55,8 @@
 -define(MAX_PING_INTERVAL, 120000).
 
 -define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000).
+-define(PEER_ERROR_EXPIRY, 60 * 60 * 1000).
+
 
 %% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
@@ -64,6 +66,7 @@
           port              :: http_uri:port(),
           path              :: http_uri:path(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
+          expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
           ping_tref         :: reference() | undefined,
           trusted = false   :: boolean() % Is it a pre-configured peer
@@ -555,10 +558,18 @@ log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
         {value, _Hash, Peer} ->
             update_ping_metrics(Res),
             Peer1 = save_ping_event(Res, Time, Peer),
-            Peer2 = start_ping_timer(CalcF, Peer1),
-            Peers = enter_peer(Peer2, State#state.peers),
-            Errored = update_errored(Res, uri_of_peer(Peer), State#state.errored),
-            State#state{peers = Peers, errored = Errored}
+            %% drop an errored peer if it has expired
+            case Time > Peer1#peer.expire andalso not Peer#peer.trusted of
+                 true ->
+                     State#state{peers = remove_peer(Peer, State#state.peers), 
+                                 errored = gb_sets:delete_any(
+                                            uri_of_peer(Peer), State#state.errored)};
+                 false ->
+                     Peer2 = start_ping_timer(CalcF, Peer1),
+                     Peers = enter_peer(Peer2, State#state.peers),
+                     Errored = update_errored(Res, uri_of_peer(Peer), State#state.errored),
+                     State#state{peers = Peers, errored = Errored}
+            end
     end.
 
 update_ping_metrics(Res) ->
@@ -587,11 +598,15 @@ save_ping_event(Res, T, Peer) ->
                     [A]     -> [T,A];
                     [A,B|_] -> [T,A,B]
                 end,
-    LastSeen = case Res of
-                   ok    -> T;
-                   error -> Peer#peer.last_seen
-               end,
-    Peer#peer{last_seen = LastSeen, last_pings = LastPings}.
+    {LastSeen, Expire} = 
+        case Res of
+            ok    -> {T, T + application:get_env(aecore, peer_error_expiry, ?PEER_ERROR_EXPIRY)};
+            error -> {Peer#peer.last_seen, 
+                      if Peer#peer.expire == undefined -> T;
+                         true -> Peer#peer.expire
+                      end}
+        end,
+    Peer#peer{last_seen = LastSeen, last_pings = LastPings, expire = Expire}.
 
 save_ping_timer(TRef, #peer{ping_tref = Prev} = Peer) ->
     case Prev of

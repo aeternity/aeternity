@@ -36,13 +36,13 @@ valid_jumpdests(State) ->
     JumpDests = jumpdests(0,Code, #{}),
     aevm_eeevm_state:set_jumpdests(JumpDests, State).
 
-%% Jump Destination Validity. 
+%% Jump Destination Validity.
 %% DJ (c, i) ≡ {} if i > |c|
 %%             {i} ∪ DJ (c, N(i, c[i])) if c[i] = JUMPDEST
 %%             DJ (c, N(i, c[i])) otherwise
 %% where N is the next valid instruction position in the
 %% code, skipping the data of a PUSH instruction, if any:
-%% 
+%%
 %% N(i, w) ≡ i + w − PUSH1 + 2 if w ∈ [PUSH1, PUSH32]
 %%           i + 1 otherwise
 jumpdests(N, Code, ValidDests) when N >= byte_size(Code) ->
@@ -338,7 +338,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    {Us1, State2} = pop(State1),
 		    {Arg, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
-		    Hash = sha3:hash(256, Arg),
+		    Hash = aec_hash:hash(evm, Arg),
 		    <<Val:256/integer-unsigned>> = Hash,
 		    State4 = push(Val, State3),
 		    next_instruction(OP, State, State4);
@@ -465,7 +465,7 @@ loop(StateIn) ->
 		    %% Get price of gas in current environment.
 		    %% µ's[0] ≡ Ip
 		    %%  This is gas price specified by the
-		    %% originating transaction.   
+		    %% originating transaction.
 		    Arg = aevm_eeevm_state:gasprice(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State, State1);
@@ -629,7 +629,7 @@ loop(StateIn) ->
 		    %%                   Gsset if µs[1] =/= 0
 		    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
 		    %%                   Gsreset otherwise
-		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
+		    %% A'r ≡ Ar + Rsclear if µs[1] = 0
 		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
 		    %%       0 otherwise
 		    {Address, State1} = pop(State0),
@@ -644,7 +644,7 @@ loop(StateIn) ->
 		    {Us0, State1} = pop(State0),
 		    JumpDests =  aevm_eeevm_state:jumpdests(State1),
 		    case maps:get(Us0, JumpDests, false) of
-			true -> 
+			true ->
 			    State2 = set_cp(Us0-1, State1),
 			    next_instruction(OP, State, State2);
 			false -> throw({{invalid_jumpdest, Us0}, State1})
@@ -661,9 +661,9 @@ loop(StateIn) ->
 			if Us1 =/= 0 ->
 				JumpDests =  aevm_eeevm_state:jumpdests(State1),
 				case maps:get(Us0, JumpDests, false) of
-				    true -> 
+				    true ->
 					set_cp(Us0-1, State2);
-				    false -> 
+				    false ->
 					throw({{invalid_jumpdest, Us0}, State1})
 				end;
 			   true      -> State2
@@ -936,7 +936,7 @@ loop(StateIn) ->
 		    State4 = log({Us2}, Us0, Us1, State3),
 		    next_instruction(OP, State, State4);
 		?LOG2 ->
-		    %% 0xa2 LOG2 δ=4 α=0 
+		    %% 0xa2 LOG2 δ=4 α=0
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2],(µs[3])
 		    {Us0, State1} = pop(State0),
@@ -946,7 +946,7 @@ loop(StateIn) ->
 		    State5 = log({Us2, Us3}, Us0, Us1, State4),
 		    next_instruction(OP, State, State5);
 		?LOG3 ->
-		    %% 0xa3 LOG3 δ=4 α=0 
+		    %% 0xa3 LOG3 δ=4 α=0
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2], µs[3], µs[4])
 		    {Us0, State1} = pop(State0),
@@ -957,7 +957,7 @@ loop(StateIn) ->
 		    State6 = log({Us2, Us3, Us4}, Us0, Us1, State5),
 		    next_instruction(OP, State, State6);
 		?LOG4 ->
-		    %% 0xa4 LOG4 δ=6 α=0 
+		    %% 0xa4 LOG4 δ=6 α=0
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2], µs[3], µs[4], µs[5])
 		    {Us0, State1} = pop(State0),
@@ -973,16 +973,16 @@ loop(StateIn) ->
 		    throw({illegal_instruction, OP, State0});
 		%% F0s: System operations
 		?CREATE->
-		    %% 0xf0 CREATE δ=3 α=1 
+		    %% 0xf0 CREATE δ=3 α=1
 		    %% Create a new account with associated code.
 		    %% i ≡ µm[µs[1] . . .(µs[1] + µs[2] − 1)]
 		    %% (σ', µ'g, A+) ≡ (Λ(σ∗, Ia, Io, L(µg), Ip, µs[0], i, Ie + 1)
 		    %%                             if µs[0] =< σ[Ia]b ∧ Ie < 1024
-		    %%                 (σ, µg, ∅) 
+		    %%                 (σ, µg, ∅)
 		    %%                             otherwise
 		    %% σ∗ ≡ σ except σ∗[Ia]n = σ[Ia]n + 1
-		    %% A' ≡ A U A+ which implies:   A's ≡ As ∪ A+s 
-		    %%                            ∧ A'l ≡ Al · A+l 
+		    %% A' ≡ A U A+ which implies:   A's ≡ As ∪ A+s
+		    %%                            ∧ A'l ≡ Al · A+l
 		    %%                            ∧ A'r ≡ Ar + A+r
 		    %% µ's[0] ≡ x
 		    %% where x = 0 if the code execution for this operation
@@ -991,7 +991,7 @@ loop(StateIn) ->
 		    %%                  (the maximum call depth limit is reached)
 		    %%                or µs[0] > σ[Ia]b (balance of the caller is too
 		    %%                                   low to fulfil the value transfer);
-		    %%        x = A(Ia, σ[Ia]n), the address of the newly created account, 
+		    %%        x = A(Ia, σ[Ia]n), the address of the newly created account,
 		    %%             otherwise.
 		    %% µ'i ≡ M(µi, µs[1], µs[2])
 		    %% Thus the operand order is: value, input offset, input size.
@@ -1010,7 +1010,7 @@ loop(StateIn) ->
 		    %% (σ', g', A+, o) ≡    CCALLGAS(µ), Ip, µs[2], µs[2],
 		    %%                      i, Ie + 1)
 		    %%                      if µs[2] =< σ[Ia]b ∧ Ie < 1024
-		    %%                    (σ, g, ∅,()) otherwise  
+		    %%                    (σ, g, ∅,()) otherwise
 		    %% n ≡ min({µs[6], |o|})
 		    %% µ'm[µs[5] . . .(µs[5] + n − 1)] = o[0 . . .(n − 1)]
 		    %% µ'g ≡ µg + g'
@@ -1021,11 +1021,11 @@ loop(StateIn) ->
 		    %%  x = 0
 		    %%   if the code execution for this
 		    %%      operation failed due to an exceptional halting
-		    %%      Z(σ, µ, I) = T 
+		    %%      Z(σ, µ, I) = T
 		    %%   or
 		    %%   if µs[2] > σ[Ia]b (not enough funds)
 		    %%   or
-		    %%   Ie = 1024 (call depth limit reached); 
+		    %%   Ie = 1024 (call depth limit reached);
 		    %%  x = 1
 		    %%   otherwise.
 		    %% µ'i ≡ M(M(µi, µs[3], µs[4]), µs[5], µs[6])
@@ -1071,7 +1071,7 @@ loop(StateIn) ->
 		    %%                    Θ(σ∗, Ia, Io, Ia, t, CCALLGAS(µ),
 		    %%                    Ip, µs[2], µs[2], i, Ie + 1)
 		    %% (σ', g0, A+, o) ≡     if µs[2] =< σ[Ia]b ∧ Ie < 1024
-		    %%                    (σ, g, ∅,()) 
+		    %%                    (σ, g, ∅,())
 		    %%                       otherwise
 		    %% Note the change in the fourth parameter to the call
 		    %% Θ from the 2nd stack value µs[1] (as in CALL) to the
@@ -1121,7 +1121,7 @@ loop(StateIn) ->
 		    %%                    Θ(σ∗,Is,Io,Ia,t,µs[0],Ip,0,Iv,i,Ie + 1)
 		    %%                      if Iv 6 σ[Ia]b ∧ Ie < 1024
 		    %% (σ', g0, A+, o) ≡ 
-		    %%                    (σ, g, ∅,()) 
+		    %%                    (σ, g, ∅,())
 		    %%                      otherwise
 		    %% Note the changes (in addition to that of the fourth parameter)
 		    %% to the second and ninth parameters to the call Θ.
@@ -1152,8 +1152,8 @@ loop(StateIn) ->
 		16#fb -> throw({illegal_instruction, OP, State0});
 		16#fc -> throw({illegal_instruction, OP, State0});
 		16#fd -> throw({illegal_instruction, OP, State0});
-		?INVALID -> 
-		    %% 0xfe INVALID δ=∅ α=∅ 
+		?INVALID ->
+		    %% 0xfe INVALID δ=∅ α=∅
 		    %% Designated invalid instruction.
 		    throw({the_invalid_instruction, OP, State0});
 		?SUICIDE ->
@@ -1237,7 +1237,7 @@ pow(N, X, Y) ->
 
 signextend(Us0, Us1) ->
     ExtendTo =  (256 - 8*((Us0+1) band 255)) band 255,
-    <<_:ExtendTo,SignBit:1, TruncVal/bits>> = 
+    <<_:ExtendTo,SignBit:1, TruncVal/bits>> =
 	<<Us1:256/integer-unsigned>>,
     Pad = << <<SignBit:1>> || _ <- lists:seq(1,ExtendTo)>>,
     <<Val:256/integer-unsigned>> =
@@ -1293,7 +1293,7 @@ data_get_bytes(Address, Size, State) ->
     catch error:system_limit ->
 	    throw({out_of_memory, State})
     end.
-				     
+
 
 %% ------------------------------------------------------------------------
 %% CODE
@@ -1351,7 +1351,7 @@ spend_gas_common(Cost, State) ->
 %%
 %% TODO: Should account address be 160 or 256 bits?
 %% TODO: Implement log bloom filter/.. q
-%% 
+%%
 %% The transaction receipt is a tuple of four items comprising
 %% the post-transaction state, Rσ, the cumulative gas
 %% used in the block containing the transaction receipt as of

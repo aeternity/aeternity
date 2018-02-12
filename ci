@@ -22,9 +22,13 @@ case "${1:?}"-"${2:?}" in
         if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
             brew update
+            brew install libsodium
             brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
         elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
             sudo -H pip install -r deployment/ansible/pip-requirements.txt
+            wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
+            tar zxvf libsodium-1.0.16.tar.gz
+            (cd libsodium-1.0.16; ./configure; make; sudo make install; sudo ldconfig)
             ansible --version
         fi
         erl -version
@@ -54,7 +58,7 @@ case "${1:?}"-"${2:?}" in
         # Configure a simpler PoW than the default one, in order to
         # speed up mining during the tests.
         make python-env
-        make python-release-test TARBALL="${FinalPackagePath:?}"
+        make python-release-test WORKDIR="$(mktemp -d)" TARBALL="${FinalPackagePath:?}"
         ;;
     after_failure-*)
         LogsDir="${BuildDir}/_build/test/logs"
@@ -82,7 +86,7 @@ case "${1:?}"-"${2:?}" in
 
         cd deployment/ansible
         ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DeployEnv:?}" \
-            --extra-vars "package=${FinalPackagePath:?} env=${DeployEnv:?} tester_keys_password='${tester_keys_password:?}' datadog_api_key=${datadog_api_key:?} datadog_app_key=${datadog_app_key:?}" \
+            --extra-vars "package=${FinalPackagePath:?} env=${DeployEnv:?}" \
             deploy.yml
         ;;
     deploy-*)

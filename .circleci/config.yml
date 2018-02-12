@@ -33,11 +33,13 @@ references:
         mkdir ${PACKAGES_DIR:?}
         mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
 
+  package_tests_workspace: &package_tests_workspace /tmp/package_tests
   test_package: &test_package
     run:
       name: Test Package Tarball
       environment:
         PACKAGES_DIR: *packages_workspace
+        PACKAGE_TESTS_DIR: *package_tests_workspace
       command: |
         if [ "$(uname -s)" == "Darwin" ]; then
             PKG_SUFFIX="osx-$(sw_vers -productVersion)"
@@ -46,7 +48,12 @@ references:
         fi
         epmd -daemon
         make python-env
-        make python-release-test TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+        mkdir ${PACKAGE_TESTS_DIR:?}
+        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+
+  store_test_package_artifacts: &store_test_package_artifacts
+    store_artifacts:
+      path: *package_tests_workspace
 
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
@@ -70,7 +77,6 @@ references:
           cd deployment/ansible
           ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
             --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?} \
-              tester_keys_password='${tester_keys_password:?}' datadog_api_key=${datadog_api_key:?} datadog_app_key=${datadog_app_key:?}" \
             deploy.yml
 
 jobs:
@@ -151,6 +157,7 @@ jobs:
       - run: id
       - *build_package
       - *test_package
+      - *store_test_package_artifacts
       - *store_package_artifacts
       - persist_to_workspace:
           root: *packages_workspace
@@ -170,6 +177,7 @@ jobs:
             brew install erlang
       - *build_package
       - *test_package
+      - *store_test_package_artifacts
       - *store_package_artifacts
 
   deploy_integration:

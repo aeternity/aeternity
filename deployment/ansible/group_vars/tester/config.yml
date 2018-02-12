@@ -1,4 +1,3 @@
 keypair:
   - files/tester/key
   - files/tester/key.pub
-keys_password: "{{ tester_keys_password }}"

@@ -97,7 +97,7 @@ id(SenderAddress, Nonce, OracleAddress) ->
     Bin = <<SenderAddress:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
             OracleAddress:?PUB_SIZE/binary>>,
-    aec_sha256:hash(Bin).
+    aec_hash:hash(pubkey, Bin).
 
 -spec is_closed(query()) -> boolean().
 %% @doc An query is closed if it is already answered.

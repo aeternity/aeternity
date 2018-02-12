@@ -15,7 +15,7 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
--type key() :: aec_sha256:hash(value()).
+-type key() :: aec_hash:hash(signed_tx, value()).
 -type value() :: aec_tx_sign:binary_signed_tx(). %% Deterministic.
 -opaque txs_tree() :: aeu_mtrees:mtree(key(), value()).
 
@@ -46,5 +46,5 @@ enter(K, V, T) ->
 
 enter_signed_tx(SignedTx, TxsTree) ->
     V = aec_tx_sign:serialize_to_binary(SignedTx),
-    K = aec_sha256:hash(V),
+    K = aec_hash:hash(signed_tx, V),
     enter(K, V, TxsTree).
