@@ -350,5 +350,7 @@ workflows:
             branches:
               only:
                 - master
+                # TODO: remove after the test, but it probably needs to reside in master?
+                - PT_154922104_nightly_uat_tests
     jobs:
       - uat_tests
