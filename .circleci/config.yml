@@ -180,6 +180,27 @@ jobs:
       - *store_test_package_artifacts
       - *store_package_artifacts
 
+  uat_tests:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: UAT Tests
+          command: |
+            epmd -daemon
+            make python-env && make swagger && make multi-build
+            make python-uats
+      - store_test_results:
+          path: py/nosetests.xml
+      - store_artifacts:
+          path: _build/dev1/rel/epoch/log
+      - store_artifacts:
+          path: _build/dev2/rel/epoch/log
+      - store_artifacts:
+          path: _build/dev3/rel/epoch/log
+
   deploy_integration:
     <<: *container_config
     environment:
@@ -270,6 +291,10 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - uat_tests:
+          requires:
+            - build
+
       # - deploy_integration:
       #     requires:
       #       - test
@@ -311,3 +336,13 @@ workflows:
       #         ignore: /.*/
       #       tags:
       #         only: /^v.*$/
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - uat_tests
