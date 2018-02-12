@@ -196,78 +196,18 @@
       }
     },
     "/tx/contract/create" : {
-      "get" : {
+      "post" : {
         "tags" : [ "external" ],
         "description" : "Get a contract_create transaction",
-        "operationId" : "GetContractCreate",
+        "operationId" : "PostContractCreate",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "owner",
-          "in" : "query",
-          "description" : "Contract owner pub_key",
+          "in" : "body",
+          "name" : "body",
           "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "nonce",
-          "in" : "query",
-          "description" : "Owner's nonce",
-          "required" : false,
-          "type" : "integer"
-        }, {
-          "name" : "code",
-          "in" : "query",
-          "description" : "Contract's code",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "vm_version",
-          "in" : "query",
-          "description" : "Virtual machine's version",
-          "required" : true,
-          "type" : "integer",
-          "maximum" : 255,
-          "minimum" : 0
-        }, {
-          "name" : "deposit",
-          "in" : "query",
-          "description" : "Deposit",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "amount",
-          "in" : "query",
-          "description" : "Amount",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "gas",
-          "in" : "query",
-          "description" : "Contract gas",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "gas_price",
-          "in" : "query",
-          "description" : "Gas price",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "fee",
-          "in" : "query",
-          "description" : "Transaction fee",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "call_data",
-          "in" : "query",
-          "description" : "Contract call data",
-          "required" : true,
-          "type" : "string"
+          "schema" : {
+            "$ref" : "#/definitions/ContractCreateData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -292,71 +232,18 @@
       }
     },
     "/tx/contract/call" : {
-      "get" : {
+      "post" : {
         "tags" : [ "external" ],
         "description" : "Get a contract_call transaction",
-        "operationId" : "GetContractCall",
+        "operationId" : "PostContractCall",
         "produces" : [ "application/json" ],
         "parameters" : [ {
-          "name" : "caller",
-          "in" : "query",
-          "description" : "Contract caller pub_key",
+          "in" : "body",
+          "name" : "body",
           "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "nonce",
-          "in" : "query",
-          "description" : "Caller's nonce",
-          "required" : false,
-          "type" : "integer"
-        }, {
-          "name" : "contract",
-          "in" : "query",
-          "description" : "Contract's pub_key",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "vm_version",
-          "in" : "query",
-          "description" : "Virtual machine's version",
-          "required" : true,
-          "type" : "integer",
-          "maximum" : 255,
-          "minimum" : 0
-        }, {
-          "name" : "fee",
-          "in" : "query",
-          "description" : "Transaction fee",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "amount",
-          "in" : "query",
-          "description" : "Amount",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "gas",
-          "in" : "query",
-          "description" : "Contract gas",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "gas_price",
-          "in" : "query",
-          "description" : "Gas price",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "call_data",
-          "in" : "query",
-          "description" : "Contract call data",
-          "required" : true,
-          "type" : "string"
+          "schema" : {
+            "$ref" : "#/definitions/ContractCallData"
+          }
         } ],
         "responses" : {
           "200" : {
@@ -2738,6 +2625,130 @@
           "last_seen" : 0,
           "uri" : "uri"
         } ]
+      }
+    },
+    "ContractCreateData" : {
+      "type" : "object",
+      "required" : [ "amount", "call_data", "code", "deposit", "fee", "gas", "gas_price", "owner", "vm_version" ],
+      "properties" : {
+        "owner" : {
+          "type" : "string",
+          "description" : "Contract owner pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Owner's nonce"
+        },
+        "code" : {
+          "type" : "string",
+          "description" : "Contract's code"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "deposit" : {
+          "type" : "integer",
+          "description" : "Deposit",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "call_data" : {
+          "type" : "string",
+          "description" : "Contract call data"
+        }
+      },
+      "example" : {
+        "owner" : "owner",
+        "gas_price" : 0,
+        "vm_version" : 153,
+        "amount" : 0,
+        "code" : "code",
+        "call_data" : "call_data",
+        "fee" : 0,
+        "gas" : 0,
+        "deposit" : 0,
+        "nonce" : 0
+      }
+    },
+    "ContractCallData" : {
+      "type" : "object",
+      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
+      "properties" : {
+        "caller" : {
+          "type" : "string",
+          "description" : "Contract caller pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Caller's nonce"
+        },
+        "contract" : {
+          "type" : "string",
+          "description" : "Contract's pub_key"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "call_data" : {
+          "type" : "string",
+          "description" : "Contract call data"
+        }
+      },
+      "example" : {
+        "gas_price" : 0,
+        "caller" : "caller",
+        "vm_version" : 153,
+        "amount" : 0,
+        "call_data" : "call_data",
+        "contract" : "contract",
+        "fee" : 0,
+        "gas" : 0,
+        "nonce" : 0
       }
     },
     "inline_response_200" : {

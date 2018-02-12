@@ -46,7 +46,7 @@
 
 -type amount() :: aect_contracts:amount().
 
--opaque create_tx() :: #contract_create_tx{}.
+-type create_tx() :: #contract_create_tx{}.
 
 -export_type([create_tx/0]).
 
@@ -92,7 +92,7 @@ call_data(#contract_create_tx{call_data = X}) ->
 fee(#contract_create_tx{fee = Fee}) ->
     Fee.
 
--spec new(map()) -> {ok, #contract_create_tx{}}.
+-spec new(map()) -> {ok, create_tx()}.
 new(#{owner      := OwnerPubKey,
       nonce      := Nonce,
       code       := Code,

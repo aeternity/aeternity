@@ -1,6 +1,7 @@
 -module(aehttp_helpers).
 
 -export([ parse_request/2
+        , parse_map_to_atom_keys/0
         , read_required_params/1
         , base58_decode/1
         , hexstrings_decode/1
@@ -20,6 +21,8 @@ parse_request([Fun | T], Req, Result0) ->
             parse_request(T, Req, Result0);
         {ok, Result} ->
             parse_request(T, Req, Result);
+        {ok, Req1, Result} ->
+            parse_request(T, Req1, Result);
         {error, _ErrMsg} = Err ->
             Err
     end.
@@ -92,7 +95,7 @@ params_read_fun(ParamNames, ReadFun, ErrMsg) ->
 
 get_nonce(AccountKey) ->
     fun(Req, State) ->
-        case maps:get(nonce, Req) of
+        case maps:get(nonce, Req, undefined) of
             undefined ->
                 Pubkey = maps:get(AccountKey, State),
                 case aec_next_nonce:pick_for_account(Pubkey) of
@@ -127,3 +130,12 @@ verify_contract_existance(ContractKey) ->
                 ok
         end
     end.
+
+parse_map_to_atom_keys() ->
+    fun(Req, State) ->
+        Req1 = maps:from_list(
+            [{binary_to_existing_atom(K, utf8), V} ||
+              {K, V} <- maps:to_list(Req)]),
+        {ok, Req1, State}
+    end.
+

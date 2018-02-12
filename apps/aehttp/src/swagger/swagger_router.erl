@@ -90,16 +90,6 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
-        'GetContractCall' => #{
-            path => "/v2/tx/contract/call",
-            method => <<"GET">>,
-            handler => 'swagger_external_handler'
-        },
-        'GetContractCreate' => #{
-            path => "/v2/tx/contract/create",
-            method => <<"GET">>,
-            handler => 'swagger_external_handler'
-        },
         'GetInfo' => #{
             path => "/v2/info",
             method => <<"GET">>,
@@ -132,6 +122,16 @@ get_operations() ->
         },
         'PostBlock' => #{
             path => "/v2/block",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostContractCall' => #{
+            path => "/v2/tx/contract/call",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostContractCreate' => #{
+            path => "/v2/tx/contract/create",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },

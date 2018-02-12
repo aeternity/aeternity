@@ -2293,11 +2293,11 @@ get_top() ->
 
 get_contract_create(Data) ->
     Host = external_address(),
-    http_request(Host, get, "tx/contract/create", Data).
+    http_request(Host, post, "tx/contract/create", Data).
 
 get_contract_call(Data) ->
     Host = external_address(),
-    http_request(Host, get, "tx/contract/call", Data).
+    http_request(Host, post, "tx/contract/call", Data).
 
 post_ping(Body) ->
     Host = external_address(),

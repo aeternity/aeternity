@@ -7,6 +7,7 @@
 -import(aeu_debug, [pp/1]).
 -import(aehttp_helpers, [ parse_request/2
                         , read_required_params/1
+                        , parse_map_to_atom_keys/0
                         , base58_decode/1
                         , hexstrings_decode/1
                         , get_nonce/1
@@ -126,8 +127,9 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             end
     end;
 
-handle_request('GetContractCreate', Req, _Context) ->
-    ParseFuns = [read_required_params([owner, code, vm_version, deposit,
+handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([owner, code, vm_version, deposit,
                                        amount, gas, gas_price, fee,
                                        call_data]),
                 base58_decode([{owner, owner, account_pubkey}]),
@@ -142,8 +144,9 @@ handle_request('GetContractCreate', Req, _Context) ->
                                                  aec_tx:serialize_to_binary(Tx))}}
     end;
 
-handle_request('GetContractCall', Req, _Context) ->
-    ParseFuns = [read_required_params([caller, contract, vm_version,
+handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee,
                                        call_data]),
                 base58_decode([{caller, caller, account_pubkey},

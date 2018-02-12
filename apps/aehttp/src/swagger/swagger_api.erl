@@ -50,33 +50,6 @@ request_params('GetCommitmentHash') ->
         'salt'
     ];
 
-request_params('GetContractCall') ->
-    [
-        'caller',
-        'contract',
-        'vm_version',
-        'fee',
-        'amount',
-        'gas',
-        'gas_price',
-        'call_data',
-        'nonce'
-    ];
-
-request_params('GetContractCreate') ->
-    [
-        'owner',
-        'code',
-        'vm_version',
-        'deposit',
-        'amount',
-        'gas',
-        'gas_price',
-        'fee',
-        'call_data',
-        'nonce'
-    ];
-
 request_params('GetInfo') ->
     [
     ];
@@ -106,6 +79,16 @@ request_params('Ping') ->
 request_params('PostBlock') ->
     [
         'Block'
+    ];
+
+request_params('PostContractCall') ->
+    [
+        'ContractCallData'
+    ];
+
+request_params('PostContractCreate') ->
+    [
+        'ContractCreateData'
     ];
 
 request_params('PostTx') ->
@@ -391,190 +374,6 @@ request_param_info('GetCommitmentHash', 'salt') ->
         ]
     };
 
-request_param_info('GetContractCall', 'caller') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'contract') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'vm_version') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {max, 255 }, 
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'fee') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'amount') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'gas') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'gas_price') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'call_data') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCall', 'nonce') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            not_required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'owner') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'code') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'vm_version') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {max, 255 }, 
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'deposit') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'amount') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'gas') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'gas_price') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'fee') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            {min, 0 },
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'call_data') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'binary'},
-            required
-        ]
-    };
-
-request_param_info('GetContractCreate', 'nonce') ->
-    #{
-        source => qs_val  ,
-        rules => [
-            {type, 'integer'},
-            not_required
-        ]
-    };
-
 request_param_info('GetName', 'name') ->
     #{
         source => qs_val  ,
@@ -594,6 +393,24 @@ request_param_info('Ping', 'Ping') ->
     };
 
 request_param_info('PostBlock', 'Block') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCall', 'ContractCallData') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCreate', 'ContractCreateData') ->
     #{
         source =>   body,
         rules => [
@@ -1256,20 +1073,6 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 validate_response('GetCommitmentHash', 200, Body, ValidatorState) ->
     validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
 
-validate_response('GetContractCall', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
-validate_response('GetContractCall', 400, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-validate_response('GetContractCall', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
-validate_response('GetContractCreate', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
-validate_response('GetContractCreate', 400, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-validate_response('GetContractCreate', 404, Body, ValidatorState) ->
-    validate_response_body('Error', 'Error', Body, ValidatorState);
-
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
 validate_response('GetInfo', 403, Body, ValidatorState) ->
@@ -1299,6 +1102,20 @@ validate_response('Ping', 409, Body, ValidatorState) ->
 validate_response('PostBlock', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostBlock', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCall', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostContractCall', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCall', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCreate', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostContractCreate', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCreate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostTx', 200, Body, ValidatorState) ->

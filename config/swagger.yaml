@@ -168,71 +168,19 @@ paths:
             $ref: '#/definitions/Error'
       security:
   /tx/contract/create:
-    get:
+    post:
       tags:
         - external
-      operationId: GetContractCreate
+      operationId: PostContractCreate
       description: 'Get a contract_create transaction'
       produces:
         - application/json
       parameters:
-        - in: query
-          name: owner
-          description: Contract owner pub_key
+        - in: body
+          name: body
           required: true
-          type: string
-        - in: query
-          name: nonce
-          description: Owner's nonce
-          required: false
-          type: integer
-        - in: query
-          name: code
-          description: 'Contract''s code' 
-          required: true
-          type: string
-        - in: query
-          name: vm_version
-          description: 'Virtual machine''s version' 
-          required: true
-          type: integer
-          minimum: 0
-          maximum: 255
-        - in: query
-          name: deposit
-          description: Deposit 
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: amount
-          description: Amount
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: gas
-          description: Contract gas
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: gas_price
-          description: Gas price
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: fee
-          description: Transaction fee
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: call_data
-          description: Contract call data
-          required: true
-          type: string
+          schema:
+            $ref: '#/definitions/ContractCreateData'
       responses:
         '200':
           description: Successful operation
@@ -247,65 +195,19 @@ paths:
           schema:
             $ref: '#/definitions/Error'
   /tx/contract/call:
-    get:
+    post:
       tags:
         - external
-      operationId: GetContractCall
+      operationId: PostContractCall
       description: 'Get a contract_call transaction'
       produces:
         - application/json
       parameters:
-        - in: query
-          name: caller
-          description: Contract caller pub_key
+        - in: body
+          name: body
           required: true
-          type: string
-        - in: query
-          name: nonce
-          description: Caller's nonce
-          required: false
-          type: integer
-        - in: query
-          name: contract
-          description: 'Contract''s pub_key' 
-          required: true
-          type: string
-        - in: query
-          name: vm_version
-          description: 'Virtual machine''s version' 
-          required: true
-          type: integer
-          minimum: 0
-          maximum: 255
-        - in: query
-          name: fee
-          description: Transaction fee
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: amount
-          description: Amount
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: gas
-          description: Contract gas
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: gas_price
-          description: Gas price
-          required: true
-          type: integer
-          minimum: 0
-        - in: query
-          name: call_data
-          description: Contract call data
-          required: true
-          type: string
+          schema:
+            $ref: '#/definitions/ContractCallData'
       responses:
         '200':
           description: Successful operation
@@ -2192,6 +2094,101 @@ definitions:
         description: All blocked peers
         items:
           type: string 
+  ContractCreateData:
+    type: object
+    properties:
+      owner:
+        type: string
+        description: Contract owner pub_key
+      nonce:
+        description: Owner's nonce
+        type: integer
+      code:
+        description: 'Contract''s code' 
+        type: string
+      vm_version:
+        description: 'Virtual machine''s version' 
+        type: integer
+        minimum: 0
+        maximum: 255
+      deposit:
+        description: Deposit 
+        type: integer
+        minimum: 0
+      amount:
+        description: Amount
+        type: integer
+        minimum: 0
+      gas:
+        description: Contract gas
+        type: integer
+        minimum: 0
+      gas_price:
+        description: Gas price
+        type: integer
+        minimum: 0
+      fee:
+        description: Transaction fee
+        type: integer
+        minimum: 0
+      call_data:
+        description: Contract call data
+        type: string
+    required:
+    - owner
+    - code
+    - vm_version
+    - deposit
+    - amount
+    - gas
+    - gas_price
+    - fee
+    - call_data
+  ContractCallData:
+    type: object
+    properties:
+      caller:
+        description: Contract caller pub_key
+        type: string
+      nonce:
+        description: Caller's nonce
+        type: integer
+      contract:
+        description: 'Contract''s pub_key' 
+        type: string
+      vm_version:
+        description: 'Virtual machine''s version' 
+        type: integer
+        minimum: 0
+        maximum: 255
+      fee:
+        description: Transaction fee
+        type: integer
+        minimum: 0
+      amount:
+        description: Amount
+        type: integer
+        minimum: 0
+      gas:
+        description: Contract gas
+        type: integer
+        minimum: 0
+      gas_price:
+        description: Gas price
+        type: integer
+        minimum: 0
+      call_data:
+        description: Contract call data
+        type: string
+    required:
+    - caller
+    - contract
+    - vm_version
+    - fee
+    - amount
+    - gas
+    - gas_price
+    - call_data
 
 externalDocs:
   description: Find out more about Aeternity
