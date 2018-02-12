@@ -57,22 +57,17 @@ hexstring_encode(Code) ->
     <<"0x", CodeAsHexString/binary >>.
     
 hexstring_decode(Code) ->
-    <<"0x", CodeAsHexString/binary >> = Code,
-    case bit_size(CodeAsHexString) rem 8 of
-        0 -> pass; 
+    case Code of
+        <<"0x", CodeAsHexString/binary >> ->
+            CharacterCnt = byte_size(CodeAsHexString),
+            case CharacterCnt rem 2 of
+                0 when CharacterCnt > 0 -> pass;
+                _ -> throw(invalid_hex_string)
+            end,
+            << << (hex_to_int(X)):4, (hex_to_int(Y)):4 >>
+                  || <<X:8, Y:8>> <= CodeAsHexString >>;
         _ -> throw(invalid_hex_string)
-    end,
-    NibblesCnt = bit_size(CodeAsHexString) div 8,
-    case NibblesCnt rem 2 of
-        0 -> pass;
-        _ -> throw(invalid_hex_string)
-    end,
-    case NibblesCnt > 0 of
-        true -> pass;
-        _ -> throw(invalid_hex_string)
-    end,
-    << << (hex_to_int(X)):4, (hex_to_int(Y)):4 >>
-           || <<X:8, Y:8>> <= CodeAsHexString >>.
+    end.
 
 hex_nibble(X) ->
     if X < 10 -> X+$0;
