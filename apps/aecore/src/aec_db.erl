@@ -18,12 +18,18 @@
          write_block/1,
          write_header/1,
          write_block_state/2,
-         write_top_block/1,
-         write_top_header/1,
+         write_genesis_hash/1,
+         write_top_block_hash/1,
+         write_top_header_hash/1,
+         find_block/1,
+         find_header/1,
+         find_chain_node/1,
+         find_chain_node_successors/1,
          get_block/1,
          get_header/1,
-         get_top_block/0,
-         get_top_header/0,
+         get_genesis_hash/0,
+         get_top_block_hash/0,
+         get_top_header_hash/0,
          get_block_state/1
         ]).
 
@@ -65,8 +71,8 @@
 %% - name_service_state
 %% - one per state tree
 
--record(aec_blocks             , {key, value}).
--record(aec_headers            , {key, value}).
+-record(aec_blocks             , {key, txs}).
+-record(aec_headers            , {key, value, has_block = false, prev_hash}).
 -record(aec_contract_state     , {key, value}).
 -record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
@@ -86,7 +92,7 @@
 
 tables(Mode) ->
     [?TAB(aec_blocks)
-   , ?TAB(aec_headers)
+   , ?TAB(aec_headers, [{index, [prev_hash]}])
    , ?TAB(aec_tx, [{index, [{acct2tx}]}])
    , ?TAB(aec_chain_state)
    , ?TAB(aec_contract_state)
@@ -129,26 +135,44 @@ delete(Tab, Key) ->
 %% old-style chain_state initialization API
 
 get_chain() ->
-    ?t(mnesia:select(
-         aec_headers, [{ #aec_headers{value = '$1', _ = '_'},
-                         [], ['$1'] }], read)
-       ++ mnesia:select(
-            aec_blocks, [{ #aec_blocks{value = '$1', _ = '_'},
-                           [], ['$1'] }], read)).
+    ?t([element(2, find_chain_node(Hash))
+        || Hash <- mnesia:select(
+                     aec_headers, [{ #aec_headers{key = '$1', _ = '_'},
+                                     [], ['$1'] }], read)
+       ]).
 
 write_block(Block) ->
-    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-    ?t(mnesia:write(#aec_blocks{key = Hash, value = Block})).
+    Header = aec_blocks:to_header(Block),
+    Txs    = aec_blocks:txs(Block),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    ?t(begin
+           mnesia:write(#aec_blocks{key = Hash, txs = Txs}),
+           write_header(Header, true)
+       end).
 
 write_header(Header) ->
+    write_header(Header, false).
+
+write_header(Header, HasBlock) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    ?t(mnesia:write(#aec_headers{key = Hash, value = Header})).
+    PrevHash = aec_headers:prev_hash(Header),
+    ?t(case mnesia:read(aec_headers, Hash) of
+           [#aec_headers{value = Header, has_block = OldHasBlock} = H] ->
+               NewHasBlock = (HasBlock or OldHasBlock),
+               mnesia:write(H#aec_headers{has_block = NewHasBlock});
+           [#aec_headers{value = Old}] -> error({header_exist, Header, Old});
+           [] -> mnesia:write(#aec_headers{key = Hash, value = Header,
+                                           prev_hash = PrevHash,
+                                           has_block = HasBlock})
+       end).
 
 get_block(Hash) ->
     ?t(begin
-           [#aec_blocks{value = Block}] =
+           [#aec_blocks{txs = Txs}] =
                mnesia:read(aec_blocks, Hash),
-           Block
+           [#aec_headers{value = Header}] =
+               mnesia:read(aec_headers, Hash),
+           aec_blocks:from_header_and_txs(Header, Txs)
        end).
 
 get_header(Hash) ->
@@ -157,6 +181,33 @@ get_header(Hash) ->
                mnesia:read(aec_headers, Hash),
            Header
        end).
+
+find_block(Hash) ->
+    ?t(case mnesia:read(aec_blocks, Hash) of
+           [#aec_blocks{txs = Txs}] ->
+               [#aec_headers{value = Header}] = mnesia:read(aec_headers, Hash),
+               {value, aec_blocks:from_header_and_txs(Header, Txs)};
+           [] -> none
+       end).
+
+find_header(Hash) ->
+    case ?t(mnesia:read(aec_headers, Hash)) of
+        [#aec_headers{value = Header}] -> {value, Header};
+        [] -> none
+    end.
+
+find_chain_node(Hash) ->
+    case ?t(mnesia:read(aec_headers, Hash)) of
+        [H] -> header_to_node(H);
+        [] -> none
+    end.
+
+find_chain_node_successors(Hash) ->
+    Objects = ?t(mnesia:index_read(aec_headers, Hash, prev_hash)),
+    lists:map(fun header_to_node/1, Objects).
+
+header_to_node(#aec_headers{has_block = false, value = H}) -> {header, H};
+header_to_node(#aec_headers{has_block = true, value = H}) -> {block, H}.
 
 write_block_state(Hash, Trees) ->
     ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees})).
@@ -173,16 +224,22 @@ write_ns_node(Hash, Node) ->
 write_oracles_node(Hash, Node) ->
     ?t(mnesia:write(#aec_oracle_state{key = Hash, value = Node})).
 
-write_top_block(Hash) ->
+write_genesis_hash(Hash) when is_binary(Hash) ->
+    ?t(mnesia:write(#aec_chain_state{key = genesis_hash, value = Hash})).
+
+write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash})).
 
-write_top_header(Hash) ->
+write_top_header_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_header_hash, value = Hash})).
 
-get_top_block() ->
+get_genesis_hash() ->
+    get_chain_state_value(genesis_hash).
+
+get_top_block_hash() ->
     get_chain_state_value(top_block_hash).
 
-get_top_header() ->
+get_top_header_hash() ->
     get_chain_state_value(top_header_hash).
 
 get_block_state(Hash) ->

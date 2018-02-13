@@ -59,14 +59,14 @@ reinit(State) ->
                        end).
 
 init_state(State) ->
-    case aec_db:get_chain() of
-        [] ->
+    case aec_db:get_genesis_hash() of
+        undefined ->
             {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
             State1 = State#state{chain_state = aec_chain_state:new()},
             {ok, State2} = insert_block(GB, State1),
             State2;
-        Chain ->
-            ChainState = aec_chain_state:new_from_persistence(Chain),
+        Hash when is_binary(Hash) ->
+            ChainState = aec_chain_state:new_from_persistence(),
             State#state{chain_state = ChainState}
     end.
 
@@ -199,7 +199,10 @@ insert_header(Header, State) ->
     ChainState1 = State#state.chain_state,
     case aec_chain_state:insert_header(Header, ChainState1) of
         {ok, ChainState2} ->
-            persistence_store_header(Header, ChainState2),
+            aec_db:ensure_transaction(
+              fun() ->
+                      persist_chain(ChainState2)
+              end),
             {ok, State#state{chain_state = ChainState2}};
         {error,_Reason} = E -> E
     end.
@@ -211,50 +214,27 @@ resolve_name(Type, Name, State) ->
 %%% Handle persistence
 
 persistence_store_block(Block, State) ->
-    try begin
-            %% Best effort persistence.
-            %% If the server is not there, ignore it.
-            #block{txs = Transactions} = Block,
-            aec_db:ensure_transaction(
-              fun() ->
-                      aec_db:write_txs(
-                        Transactions, block_hash(Block)),
-                      aec_db:write_block(Block),
-                      persist_chain(State)
-              end)
-        end
-    catch T:E ->
-            lager:error("Persistence server error: ~p:~p", [T, E]),
-            ok
-    end.
-
-persistence_store_header(Header, State) ->
-    try begin
-            %% Best effort persistence.
-            %% If the server is not there, ignore it.
-            aec_db:ensure_transaction(
-              fun() ->
-                      aec_db:write_header(Header),
-                      persist_chain(State)
-              end)
-        end
-    catch T:E ->
-            lager:error("Persistence server error: ~p:~p", [T, E]),
-            ok
-    end.
+    #block{txs = Transactions} = Block,
+    aec_db:ensure_transaction(
+      fun() ->
+              aec_db:write_txs(Transactions, block_hash(Block)),
+              persist_chain(State)
+      end).
 
 persist_chain(State) ->
-    aec_db:ensure_transaction(fun() -> do_persist_chain(State) end).
-
-do_persist_chain(State) ->
-    case aec_chain_state:top_header_hash(State) of
+    case aec_chain_state:get_genesis_hash(State) of
         undefined -> ok;
-        TopHeaderHash ->
-            aec_db:write_top_header(TopHeaderHash),
-            case aec_chain_state:top_block_hash(State) of
+        GenesisHash ->
+            aec_db:write_genesis_hash(GenesisHash),
+            case aec_chain_state:top_header_hash(State) of
                 undefined -> ok;
-                TopBlockHash ->
-                    aec_db:write_top_block(TopBlockHash)
+                TopHeaderHash ->
+                    aec_db:write_top_header_hash(TopHeaderHash),
+                    case aec_chain_state:top_block_hash(State) of
+                        undefined -> ok;
+                        TopBlockHash ->
+                            aec_db:write_top_block_hash(TopBlockHash)
+                    end
             end
     end.
 
