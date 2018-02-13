@@ -4,8 +4,6 @@
 %%% @doc
 %%%     Key manager for AE node
 %%%     * it will open keys that it finds using sys.config
-%%%     * if the password is not correct, use open/1
-%%%     * generating new/1 or setting set/3 keys will fail when another keys are present
 %%%     * delete/0 removes files from the filesystem and from the state (DANGER!)
 %%% @end
 %%% Created : 28 Aug 2017
@@ -25,7 +23,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([new/1, open/1, set/3, sign/1, pubkey/0, delete/0,
+-export([sign/1, pubkey/0, delete/0,
          wait_for_pubkey/0]).
 -export([verify/2]).
 -export([check_key_pair/0]).
@@ -110,18 +108,6 @@ wait_for_pubkey(Sleep) ->
 -spec check_key_pair() -> boolean().
 check_key_pair() ->
     gen_server:call(?MODULE, check_key_pair).
-
--spec open(password()) -> {ok, password()} | {error, keys_not_loaded}.
-open(Password) ->
-    gen_server:call(?MODULE, {open, Password}).
-
--spec new(password()) -> {Priv :: binary(), Pub :: binary()} | error.
-new(Password) ->
-    gen_server:call(?MODULE, {new, Password}).
-
--spec set(password(), binary(), binary()) -> ok | error.
-set(Password, Priv, Pub) ->
-    gen_server:call(?MODULE, {set, Password, Priv, Pub}).
 
 -spec delete() -> ok | error.
 delete() ->
@@ -238,50 +224,6 @@ handle_call(delete, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State)
         Err:R ->
             lager:error("New keys not deleted ~p ~p", [Err, R]),
             {reply, error, State}
-    end;
-
-handle_call({new, Password}, _From, #state{crypto = C, keys_dir=KeysDir} = State) when is_binary(Password) ->
-    try
-        {NewPubFile, NewPrivFile} = p_gen_filename(KeysDir),
-        {NewPubKey, NewPrivKey} = p_gen_new(Password, C, NewPubFile, NewPrivFile),
-        {reply, {ok, NewPubKey}, State#state{priv=NewPrivKey, pub=NewPubKey, pass=Password,
-                                             pub_file=NewPubFile, priv_file=NewPrivFile}}
-    catch
-        Err:R ->
-            lager:error("New keys not generated or saved ~p ~p", [Err, R]),
-            {reply, error, State}
-    end;
-
-handle_call({open, Password}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) when is_binary(Password) ->
-    try
-        {ok, Pub} = from_local_dir(PubFile),
-        {ok, Priv} = from_local_dir(PrivFile),
-        Pub0 = decrypt_pubkey(Password, Pub),
-        Priv0 = decrypt_privkey(Password, Priv),
-        #state{crypto = C} = State,
-        case check_keys_pair(Pub0, Priv0, C) of
-            true ->
-                {reply, ok, State#state{priv=Priv0, pub=Pub0, pass=Password}};
-            false ->
-                {reply, {error, wrong_password}, State}
-        end
-    catch
-        Err:R ->
-            lager:error("Can't open keys files ~p ~p", [Err, R]),
-            {reply, {error, keys_not_loaded}, State}
-    end;
-
-handle_call({set, Password, Priv, Pub}, _From, #state{pub_file=PubFile, priv_file=PrivFile} = State) when is_binary(Password) ->
-    try
-        EncPub = encrypt_pubkey(Password, Pub),
-        EncPriv = encrypt_privkey(Password, Priv),
-        ok = to_local_dir(PubFile, EncPub),
-        ok = to_local_dir(PrivFile, EncPriv),
-        {reply, ok, State#state{priv = Priv, pub = Pub}}
-    catch
-        Err:R ->
-            lager:error("Can't set keys ~p ~p", [Err, R]),
-            {reply, {error, keys_not_loaded}, State}
     end.
 
 handle_cast(_Msg, State) ->
