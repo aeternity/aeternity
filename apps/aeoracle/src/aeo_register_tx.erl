@@ -37,7 +37,7 @@
 -define(ORACLE_REGISTER_TX_VSN, 1).
 -define(ORACLE_REGISTER_TX_FEE, 4).
 
--opaque register_tx() :: #oracle_register_tx{}.
+-type register_tx() :: #oracle_register_tx{}.
 
 -export_type([register_tx/0]).
 

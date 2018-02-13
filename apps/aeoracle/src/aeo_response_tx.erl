@@ -36,7 +36,7 @@
 -define(ORACLE_RESPONSE_TX_VSN, 1).
 -define(ORACLE_RESPONSE_TX_FEE, 2).
 
--opaque response_tx() :: #oracle_response_tx{}.
+-type response_tx() :: #oracle_response_tx{}.
 
 -export_type([response_tx/0]).
 
