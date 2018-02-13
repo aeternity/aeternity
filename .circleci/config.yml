@@ -54,10 +54,6 @@ references:
         mkdir ${PACKAGE_TESTS_DIR:?}
         make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
 
-  store_test_package_artifacts: &store_test_package_artifacts
-    store_artifacts:
-      path: *package_tests_workspace
-
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
       path: *packages_workspace
@@ -160,7 +156,12 @@ jobs:
       - run: id
       - *build_package
       - *test_package
-      - *store_test_package_artifacts
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
       - *store_package_artifacts
       - persist_to_workspace:
           root: *packages_workspace
@@ -181,7 +182,12 @@ jobs:
             brew install erlang
       - *build_package
       - *test_package
-      - *store_test_package_artifacts
+      - store_artifacts:
+          path: /tmp/package_tests/node1/log
+      - store_artifacts:
+          path: /tmp/package_tests/node2/log
+      - store_artifacts:
+          path: /tmp/package_tests/node3/log
       - *store_package_artifacts
 
   uat_tests:
