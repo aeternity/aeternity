@@ -34,7 +34,7 @@
 -define(NAME_REVOKE_TX_TYPE, <<"name_revoke">>).
 -define(NAME_REVOKE_TX_VSN, 1).
 
--opaque revoke_tx() :: #ns_revoke_tx{}.
+-type revoke_tx() :: #ns_revoke_tx{}.
 
 -export_type([revoke_tx/0]).
 

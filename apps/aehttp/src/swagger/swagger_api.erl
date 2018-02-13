@@ -91,6 +91,31 @@ request_params('PostContractCreate') ->
         'ContractCreateData'
     ];
 
+request_params('PostNameClaim') ->
+    [
+        'NameClaimTx'
+    ];
+
+request_params('PostNamePreclaim') ->
+    [
+        'NamePreclaimTx'
+    ];
+
+request_params('PostNameRevoke') ->
+    [
+        'NameRevokeTx'
+    ];
+
+request_params('PostNameTransfer') ->
+    [
+        'NameTransferTx'
+    ];
+
+request_params('PostNameUpdate') ->
+    [
+        'NameUpdateTx'
+    ];
+
 request_params('PostOracleQuery') ->
     [
         'OracleQueryTx'
@@ -426,6 +451,51 @@ request_param_info('PostContractCall', 'ContractCallData') ->
     };
 
 request_param_info('PostContractCreate', 'ContractCreateData') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameClaim', 'NameClaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNamePreclaim', 'NamePreclaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameRevoke', 'NameRevokeTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameTransfer', 'NameTransferTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameUpdate', 'NameUpdateTx') ->
     #{
         source =>   body,
         rules => [
@@ -1162,6 +1232,41 @@ validate_response('PostContractCreate', 200, Body, ValidatorState) ->
 validate_response('PostContractCreate', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostContractCreate', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameClaim', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostNameClaim', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameClaim', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNamePreclaim', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostNamePreclaim', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNamePreclaim', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameRevoke', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostNameRevoke', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameRevoke', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameTransfer', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostNameTransfer', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameTransfer', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameUpdate', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostNameUpdate', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameUpdate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQuery', 200, Body, ValidatorState) ->

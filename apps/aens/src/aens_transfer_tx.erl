@@ -38,7 +38,7 @@
 -define(NAME_TRANSFER_TX_TYPE, <<"name_transfer">>).
 -define(NAME_TRANSFER_TX_VSN, 1).
 
--opaque transfer_tx() :: #ns_transfer_tx{}.
+-type transfer_tx() :: #ns_transfer_tx{}.
 
 -export_type([transfer_tx/0]).
 

@@ -40,7 +40,7 @@
 -define(NAME_UPDATE_TX_TYPE, <<"name_update">>).
 -define(NAME_UPDATE_TX_VSN, 1).
 
--opaque update_tx() :: #ns_update_tx{}.
+-type update_tx() :: #ns_update_tx{}.
 
 -export_type([update_tx/0]).
 

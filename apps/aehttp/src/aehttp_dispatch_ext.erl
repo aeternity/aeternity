@@ -10,6 +10,7 @@
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
                         , hexstrings_decode/1
+                        , nameservice_pointers_decode/1
                         , get_nonce/1
                         , print_state/0
                         , verify_contract_existence/1
@@ -128,9 +129,9 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                  read_required_params([owner, code, vm_version, deposit,
                                        amount, gas, gas_price, fee,
                                        call_data]),
-                base58_decode([{owner, owner, account_pubkey}]),
-                get_nonce(owner),
-                hexstrings_decode([code, call_data])
+                 base58_decode([{owner, owner, account_pubkey}]),
+                 get_nonce(owner),
+                 hexstrings_decode([code, call_data])
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;
@@ -145,11 +146,11 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                  read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee,
                                        call_data]),
-                base58_decode([{caller, caller, account_pubkey},
+                 base58_decode([{caller, caller, account_pubkey},
                                {contract, contract, account_pubkey}]),
-                get_nonce(caller),
-                verify_contract_existence(contract),
-                hexstrings_decode([call_data])
+                 get_nonce(caller),
+                 verify_contract_existence(contract),
+                 hexstrings_decode([call_data])
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;
@@ -208,6 +209,85 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
         {error, ErrResponse} -> ErrResponse;
         {ok, Data} ->
             {ok, Tx} = aeo_response_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account, commitment, fee]),
+                 base58_decode([{account, account, account_pubkey},
+                                {commitment, commitment, commitment}]),
+                 get_nonce(account)
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aens_preclaim_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account, name, name_salt, fee]),
+                 base58_decode([{account, account, account_pubkey},
+                                {name, name, name}]),
+                 get_nonce(account)
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aens_claim_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account, name_hash, name_ttl,
+                                       pointers, ttl, fee]),
+                 base58_decode([{account, account, account_pubkey},
+                                {name_hash, name_hash, name}]),
+                 nameservice_pointers_decode(pointers),
+                 get_nonce(account)
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aens_update_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account, name_hash, recipient_pubkey,
+                                       fee]),
+                 base58_decode([{account, account, account_pubkey},
+                                {recipient_pubkey, recipient_account, account_pubkey},
+                                {name_hash, name_hash, name}]),
+                 get_nonce(account)
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aens_transfer_tx:new(Data),
+            {200, [], #{tx => aec_base58c:encode(transaction,
+                                                 aec_tx:serialize_to_binary(Tx))}}
+    end;
+
+handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([account, name_hash, fee]),
+                 base58_decode([{account, account, account_pubkey},
+                                {name_hash, name_hash, name}]),
+                 get_nonce(account)
+                ],
+    case parse_request(ParseFuns, Req) of
+        {error, ErrResponse} -> ErrResponse;
+        {ok, Data} ->
+            {ok, Tx} = aens_revoke_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
                                                  aec_tx:serialize_to_binary(Tx))}}
     end;

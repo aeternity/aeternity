@@ -7,6 +7,7 @@
         , hexstrings_decode/1
         , ttl_decode/1
         , relative_ttl_decode/1
+        , nameservice_pointers_decode/1
         , get_nonce/1
         , print_state/0
         , verify_contract_existence/1
@@ -154,6 +155,15 @@ verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
             {value, _} ->
                 ok
+        end
+    end.
+
+nameservice_pointers_decode(PointersKey) ->
+    fun(_Req, State) ->
+        Pointers = maps:get(PointersKey, State),
+        try {ok, maps:put(PointersKey, jsx:decode(Pointers), State)}
+        catch _:_ ->
+            {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
         end
     end.
 

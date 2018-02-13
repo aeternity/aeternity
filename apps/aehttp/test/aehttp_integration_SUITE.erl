@@ -35,6 +35,7 @@
     % non signed txs
     contract_transactions/1,
     oracle_transactions/1,
+    nameservice_transactions/1,
 
     % sync gossip
     pending_transactions/1,
@@ -158,6 +159,7 @@ groups() ->
         % non signed txs
         contract_transactions,
         oracle_transactions,
+        nameservice_transactions,
 
         % sync gossip
         pending_transactions,
@@ -520,9 +522,15 @@ contract_transactions(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
-    sign_and_post_tx(EncodedUnsignedTx),
+    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
+    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
+    % create_contract_tx is in mempool
+    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
 
-    % mine blocks to include it
+    % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
 
     % ensure Contract is part of the contract's tree
@@ -728,6 +736,128 @@ oracle_transactions(_Config) ->
     {ok, 400, _} =
         get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
                                                   value => 2}, QueryEncoded)), 
+    ok.
+
+%% tests the following
+%% GET preclaim_tx unsigned transaction 
+%% GET claim_tx unsigned transaction 
+%% GET update_tx unsigned transaction 
+%% GET transfer_tx unsigned transaction 
+%% GET revoke_tx unsigned transaction 
+nameservice_transactions(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    nameservice_transaction_preclaim(MinerAddress, MinerPubkey),
+    nameservice_transaction_claim(MinerAddress, MinerPubkey),
+    nameservice_transaction_update(MinerAddress, MinerPubkey),
+    nameservice_transaction_transfer(MinerAddress, MinerPubkey),
+    nameservice_transaction_revoke(MinerAddress, MinerPubkey),
+    ok.
+
+nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
+    Commitment = <<"abcd">>,
+    Encoded = #{account => MinerAddress,
+                commitment => aec_base58c:encode(commitment, Commitment),
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          commitment => Commitment}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_name_preclaim/1,
+                               fun aens_preclaim_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_preclaim/1),
+    test_invalid_hash(MinerPubkey, commitment, Encoded, fun get_name_preclaim/1),
+    test_missing_address(account, Encoded, fun get_name_preclaim/1),
+    ok.
+
+test_invalid_hash(CorrectAddress, Key, Encoded, APIFun) ->
+    <<_, InvalidHash/binary>> = CorrectAddress,
+    Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Key)),
+    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(Key, InvalidHash, Encoded)), 
+    ok.
+
+test_missing_address(Key, Encoded, APIFun) ->
+    Msg = list_to_binary("Account of " ++ atom_to_list(Key) ++ " not found"),
+    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    {ok, 404, #{<<"reason">> := Msg}} =
+        APIFun(maps:put(Key, RandAddress, Encoded)), 
+    ok.
+
+nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
+    Name = <<"name">>,
+    Salt = 1234,
+    Encoded = #{account => MinerAddress,
+                name => aec_base58c:encode(name, Name),
+                name_salt => Salt,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          name => Name}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_name_claim/1,
+                               fun aens_claim_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_claim/1),
+    test_invalid_hash(MinerPubkey, name, Encoded, fun get_name_claim/1),
+    test_missing_address(account, Encoded, fun get_name_claim/1),
+    ok.
+
+nameservice_transaction_update(MinerAddress, MinerPubkey) ->
+    NameHash = <<"name">>,
+    Pointers = [{}],
+    Encoded = #{account => MinerAddress,
+                name_hash => aec_base58c:encode(name, NameHash),
+                name_ttl => 3,
+                ttl => 2,
+                pointers => jsx:encode(Pointers),
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          pointers => Pointers,
+                          name_hash => NameHash}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_name_update/1,
+                               fun aens_update_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_update/1),
+    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_update/1),
+    test_missing_address(account, Encoded, fun get_name_update/1),
+    ok.
+
+nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
+    RandAddress = random_hash(),
+    NameHash = <<"name">>,
+    Encoded = #{account => MinerAddress,
+                name_hash => aec_base58c:encode(name, NameHash),
+                recipient_pubkey => aec_base58c:encode(account_pubkey,
+                                                       RandAddress),
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          recipient_account => RandAddress,
+                          name_hash => NameHash}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_name_transfer/1,
+                               fun aens_transfer_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_transfer/1),
+    test_invalid_hash(MinerPubkey, recipient_pubkey, Encoded, fun get_name_transfer/1),
+    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_transfer/1),
+    test_missing_address(account, Encoded, fun get_name_transfer/1),
+    ok.
+
+nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
+    NameHash = <<"name">>,
+    Encoded = #{account => MinerAddress,
+                name_hash => aec_base58c:encode(name, NameHash),
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          name_hash => NameHash}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_name_revoke/1,
+                               fun aens_revoke_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_revoke/1),
+    test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_revoke/1),
+    test_missing_address(account, Encoded, fun get_name_revoke/1),
     ok.
 
 unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
@@ -2445,6 +2575,27 @@ get_oracle_query(Data) ->
 get_oracle_response(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/oracle/response", Data).
+
+
+get_name_preclaim(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/name/preclaim", Data).
+
+get_name_claim(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/name/claim", Data).
+
+get_name_update(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/name/update", Data).
+
+get_name_transfer(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/name/transfer", Data).
+
+get_name_revoke(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/name/revoke", Data).
 
 post_ping(Body) ->
     Host = external_address(),

@@ -39,7 +39,7 @@
 -define(NAME_CLAIM_TX_TYPE, <<"name_claim">>).
 -define(NAME_CLAIM_TX_VSN, 1).
 
--opaque claim_tx() :: #ns_claim_tx{}.
+-type claim_tx() :: #ns_claim_tx{}.
 
 -export_type([claim_tx/0]).
 

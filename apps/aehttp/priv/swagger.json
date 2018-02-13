@@ -380,6 +380,186 @@
         }
       }
     },
+    "/tx/name/preclaim" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a name_preclaim transaction",
+        "operationId" : "PostNamePreclaim",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NamePreclaimTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/name/claim" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a name_claim transaction",
+        "operationId" : "PostNameClaim",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameClaimTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/name/update" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a name_update transaction",
+        "operationId" : "PostNameUpdate",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameUpdateTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/name/transfer" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a name_transfer transaction",
+        "operationId" : "PostNameTransfer",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameTransferTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/name/revoke" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a name_revoke transaction",
+        "operationId" : "PostNameRevoke",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NameRevokeTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external" ],
@@ -2271,11 +2451,20 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "fee" : 0,
-        "commitment" : "commitment"
+        "commitment" : "commitment",
+        "nonce" : 6,
+        "account" : { }
       }
     },
     "NameClaimTx" : {
@@ -2292,12 +2481,21 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "name_salt" : 0,
         "fee" : 6,
-        "name" : "name"
+        "name" : "name",
+        "nonce" : 1,
+        "account" : { }
       }
     },
     "NameUpdateTx" : {
@@ -2321,6 +2519,13 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
@@ -2328,7 +2533,9 @@
         "name_hash" : "name_hash",
         "fee" : 1,
         "ttl" : 6,
-        "pointers" : "pointers"
+        "nonce" : 5,
+        "pointers" : "pointers",
+        "account" : { }
       }
     },
     "NameTransferTx" : {
@@ -2344,12 +2551,21 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "name_hash" : "name_hash",
         "fee" : 0,
-        "recipient_pubkey" : "recipient_pubkey"
+        "recipient_pubkey" : "recipient_pubkey",
+        "nonce" : 6,
+        "account" : { }
       }
     },
     "NameRevokeTx" : {
@@ -2362,11 +2578,20 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "name_hash" : "name_hash",
-        "fee" : 0
+        "fee" : 0,
+        "nonce" : 6,
+        "account" : { }
       }
     },
     "NameCommitmentHash" : {
