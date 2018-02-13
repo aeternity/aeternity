@@ -34,6 +34,7 @@
 
     % non signed txs
     contract_transactions/1,
+    oracle_transactions/1,
 
     % sync gossip
     pending_transactions/1,
@@ -156,6 +157,7 @@ groups() ->
 
         % non signed txs
         contract_transactions,
+        oracle_transactions,
 
         % sync gossip
         pending_transactions,
@@ -518,15 +520,9 @@ contract_transactions(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
-    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
-    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
-    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
-    % create_contract_tx is in mempool
-    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
+    sign_and_post_tx(EncodedUnsignedTx),
 
-    % mine a block
+    % mine blocks to include it
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
 
     % ensure Contract is part of the contract's tree
@@ -600,6 +596,138 @@ contract_transactions(_Config) ->
         get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)), 
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)), 
+    ok.
+
+oracle_transactions(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+
+    % contract_create_tx positive test
+    RegEncoded = #{account => MinerAddress,
+                   query_format => <<"something">>,
+                   response_format => <<"something else">>,
+                   query_fee => 1,
+                   fee => 6,
+                   ttl => #{type => <<"block">>, value => 2000}},
+    RegDecoded = maps:merge(RegEncoded,
+                            #{account => MinerPubkey,
+                              query_spec => <<"something">>,
+                              response_spec => <<"something else">>,
+                              ttl => {block, 2000}}),
+    unsigned_tx_positive_test(RegDecoded, RegEncoded,
+                               fun get_oracle_register/1,
+                               fun aeo_register_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for oracle_query_tx we first need an
+    % actual Oracle on the chain
+
+    {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
+    sign_and_post_tx(RegisterTx),
+
+    % mine blocks to include it
+    ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    % oracle_query_tx positive test
+    QueryEncoded = #{sender => MinerAddress,
+                     oracle_pubkey => MinerAddress, % same
+                     query => <<"Hejsan Svejsan">>,
+                     query_fee => 2,
+                     fee => 30,
+                     query_ttl => #{type => <<"block">>, value => 20},
+                     response_ttl => #{type => <<"delta">>, value => 20}},
+    QueryDecoded = maps:merge(QueryEncoded,
+                              #{sender => MinerPubkey,
+                                oracle => MinerPubkey,
+                                query_ttl => {block, 20},
+                                response_ttl => {delta, 20}}),
+    unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
+                               fun get_oracle_query/1,
+                               fun aeo_query_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for oracle_response_tx we first need an
+    % actual Oracle query on the chain
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, QueryNonce} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+    ct:log("Nonce is ~p", [QueryNonce]),
+    QueryId = aeo_query:id(MinerPubkey, QueryNonce, MinerPubkey),
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
+    sign_and_post_tx(QueryTx),
+
+    % mine blocks to include it
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    ResponseEncoded = #{oracle => MinerAddress,
+                        query_id => aec_base58c:encode(oracle_query_id,
+                                                       QueryId),
+                        response => <<"Hejsan">>,
+                        fee => 1},
+    ResponseDecoded = maps:merge(ResponseEncoded,
+                              #{oracle => MinerPubkey,
+                                query_id => QueryId}),
+    unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
+                               fun get_oracle_response/1,
+                               fun aeo_response_tx:new/1, MinerPubkey),
+
+    %% negative tests
+
+    % broken hash
+    <<_, InvalidHash/binary>> = MinerAddress,
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: account">>}} =
+        get_oracle_register(maps:put(account, InvalidHash, RegEncoded)), 
+
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: sender">>}} =
+        get_oracle_query(maps:put(sender, InvalidHash, QueryEncoded)), 
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_pubkey">>}} =
+        get_oracle_query(maps:put(oracle_pubkey, InvalidHash, QueryEncoded)), 
+
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle">>}} =
+        get_oracle_response(maps:put(oracle, InvalidHash, ResponseEncoded)), 
+
+    %% account not found 
+    RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
+    {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
+        get_oracle_register(maps:put(account, RandAddress, RegEncoded)), 
+
+    {ok, 404, #{<<"reason">> := <<"Account of sender not found">>}} =
+        get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)), 
+
+    {ok, 404, #{<<"reason">> := <<"Account of oracle not found">>}} =
+        get_oracle_response(maps:put(oracle, RandAddress, ResponseEncoded)), 
+
+    {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
+        get_oracle_query(maps:put(oracle_pubkey, RandAddress, QueryEncoded)), 
+
+    {ok, 404, #{<<"reason">> := <<"Oracle query for key query_id not found">>}} =
+        get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)), 
+
+    %% broken ttl
+    BrokenTTL1 = #{<<"invalid">> => <<"structure">>},
+    BrokenTTL2 = #{<<"type">> => <<"hejsan">>, <<"value">> => 20},
+
+    {ok, 400, _} =
+        get_oracle_register(maps:put(ttl, BrokenTTL1, RegEncoded)), 
+    {ok, 400, _} =
+        get_oracle_register(maps:put(ttl, BrokenTTL2, RegEncoded)), 
+
+    {ok, 400, _} =
+        get_oracle_query(maps:put(query_ttl, BrokenTTL1, QueryEncoded)), 
+    {ok, 400, _} =
+        get_oracle_query(maps:put(query_ttl, BrokenTTL2, QueryEncoded)), 
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, BrokenTTL1, QueryEncoded)), 
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, BrokenTTL2, QueryEncoded)), 
+    % test non-relative ttl 
+    {ok, 400, _} =
+        get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
+                                                  value => 2}, QueryEncoded)), 
     ok.
 
 unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
@@ -2299,6 +2427,18 @@ get_contract_call(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/call", Data).
 
+get_oracle_register(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/oracle/register", Data).
+
+get_oracle_query(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/oracle/query", Data).
+
+get_oracle_response(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/oracle/response", Data).
+
 post_ping(Body) ->
     Host = external_address(),
     http_request(Host, post, "ping", Body).
@@ -2765,3 +2905,14 @@ open_websockets_count() ->
     true = undefined =/= rpc(jobs, queue_info, [QueueName]),
     length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
                  QName =:= QueueName]).
+
+sign_and_post_tx(EncodedUnsignedTx) ->
+    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
+    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
+    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
+    % create_contract_tx is in mempool
+    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
+    ok.
+

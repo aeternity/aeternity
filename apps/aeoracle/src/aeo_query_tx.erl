@@ -39,7 +39,7 @@
 -define(ORACLE_QUERY_TX_VSN, 1).
 -define(ORACLE_QUERY_TX_FEE, 2).
 
--opaque query_tx() :: #oracle_query_tx{}.
+-type query_tx() :: #oracle_query_tx{}.
 
 -export_type([query_tx/0]).
 

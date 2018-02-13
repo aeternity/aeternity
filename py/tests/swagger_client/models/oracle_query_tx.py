@@ -16,6 +16,7 @@ import re  # noqa: F401
 
 import six
 
+from swagger_client.models.encoded_hash import EncodedHash  # noqa: F401,E501
 from swagger_client.models.relative_ttl import RelativeTTL  # noqa: F401,E501
 from swagger_client.models.ttl import TTL  # noqa: F401,E501
 
@@ -39,7 +40,9 @@ class OracleQueryTx(object):
         'query_fee': 'int',
         'query_ttl': 'TTL',
         'response_ttl': 'RelativeTTL',
-        'fee': 'int'
+        'fee': 'int',
+        'sender': 'EncodedHash',
+        'nonce': 'int'
     }
 
     attribute_map = {
@@ -48,10 +51,12 @@ class OracleQueryTx(object):
         'query_fee': 'query_fee',
         'query_ttl': 'query_ttl',
         'response_ttl': 'response_ttl',
-        'fee': 'fee'
+        'fee': 'fee',
+        'sender': 'sender',
+        'nonce': 'nonce'
     }
 
-    def __init__(self, oracle_pubkey=None, query=None, query_fee=None, query_ttl=None, response_ttl=None, fee=None):  # noqa: E501
+    def __init__(self, oracle_pubkey=None, query=None, query_fee=None, query_ttl=None, response_ttl=None, fee=None, sender=None, nonce=None):  # noqa: E501
         """OracleQueryTx - a model defined in Swagger"""  # noqa: E501
 
         self._oracle_pubkey = None
@@ -60,20 +65,20 @@ class OracleQueryTx(object):
         self._query_ttl = None
         self._response_ttl = None
         self._fee = None
+        self._sender = None
+        self._nonce = None
         self.discriminator = None
 
-        if oracle_pubkey is not None:
-            self.oracle_pubkey = oracle_pubkey
-        if query is not None:
-            self.query = query
-        if query_fee is not None:
-            self.query_fee = query_fee
-        if query_ttl is not None:
-            self.query_ttl = query_ttl
-        if response_ttl is not None:
-            self.response_ttl = response_ttl
-        if fee is not None:
-            self.fee = fee
+        self.oracle_pubkey = oracle_pubkey
+        self.query = query
+        self.query_fee = query_fee
+        self.query_ttl = query_ttl
+        self.response_ttl = response_ttl
+        self.fee = fee
+        if sender is not None:
+            self.sender = sender
+        if nonce is not None:
+            self.nonce = nonce
 
     @property
     def oracle_pubkey(self):
@@ -93,6 +98,8 @@ class OracleQueryTx(object):
         :param oracle_pubkey: The oracle_pubkey of this OracleQueryTx.  # noqa: E501
         :type: str
         """
+        if oracle_pubkey is None:
+            raise ValueError("Invalid value for `oracle_pubkey`, must not be `None`")  # noqa: E501
 
         self._oracle_pubkey = oracle_pubkey
 
@@ -114,6 +121,8 @@ class OracleQueryTx(object):
         :param query: The query of this OracleQueryTx.  # noqa: E501
         :type: str
         """
+        if query is None:
+            raise ValueError("Invalid value for `query`, must not be `None`")  # noqa: E501
 
         self._query = query
 
@@ -135,6 +144,8 @@ class OracleQueryTx(object):
         :param query_fee: The query_fee of this OracleQueryTx.  # noqa: E501
         :type: int
         """
+        if query_fee is None:
+            raise ValueError("Invalid value for `query_fee`, must not be `None`")  # noqa: E501
 
         self._query_fee = query_fee
 
@@ -156,6 +167,8 @@ class OracleQueryTx(object):
         :param query_ttl: The query_ttl of this OracleQueryTx.  # noqa: E501
         :type: TTL
         """
+        if query_ttl is None:
+            raise ValueError("Invalid value for `query_ttl`, must not be `None`")  # noqa: E501
 
         self._query_ttl = query_ttl
 
@@ -177,6 +190,8 @@ class OracleQueryTx(object):
         :param response_ttl: The response_ttl of this OracleQueryTx.  # noqa: E501
         :type: RelativeTTL
         """
+        if response_ttl is None:
+            raise ValueError("Invalid value for `response_ttl`, must not be `None`")  # noqa: E501
 
         self._response_ttl = response_ttl
 
@@ -198,8 +213,54 @@ class OracleQueryTx(object):
         :param fee: The fee of this OracleQueryTx.  # noqa: E501
         :type: int
         """
+        if fee is None:
+            raise ValueError("Invalid value for `fee`, must not be `None`")  # noqa: E501
 
         self._fee = fee
+
+    @property
+    def sender(self):
+        """Gets the sender of this OracleQueryTx.  # noqa: E501
+
+
+        :return: The sender of this OracleQueryTx.  # noqa: E501
+        :rtype: EncodedHash
+        """
+        return self._sender
+
+    @sender.setter
+    def sender(self, sender):
+        """Sets the sender of this OracleQueryTx.
+
+
+        :param sender: The sender of this OracleQueryTx.  # noqa: E501
+        :type: EncodedHash
+        """
+
+        self._sender = sender
+
+    @property
+    def nonce(self):
+        """Gets the nonce of this OracleQueryTx.  # noqa: E501
+
+        Sender nonce  # noqa: E501
+
+        :return: The nonce of this OracleQueryTx.  # noqa: E501
+        :rtype: int
+        """
+        return self._nonce
+
+    @nonce.setter
+    def nonce(self, nonce):
+        """Sets the nonce of this OracleQueryTx.
+
+        Sender nonce  # noqa: E501
+
+        :param nonce: The nonce of this OracleQueryTx.  # noqa: E501
+        :type: int
+        """
+
+        self._nonce = nonce
 
     def to_dict(self):
         """Returns the model properties as a dict"""
