@@ -9,9 +9,9 @@
         , relative_ttl_decode/1
         , get_nonce/1
         , print_state/0
-        , verify_contract_existance/1
-        , verify_oracle_existance/1
-        , verify_oracle_query_existance/2
+        , verify_contract_existence/1
+        , verify_oracle_existence/1
+        , verify_oracle_query_existence/2
         ]).
 
 parse_request(FunsList, Req) ->
@@ -120,17 +120,17 @@ print_state() ->
         lager:info("State: ~p", [State])
     end.
 
-verify_contract_existance(ContractKey) ->
+verify_contract_existence(ContractKey) ->
     verify_key_in_state_tree(ContractKey, fun aec_trees:contracts/1,
                              fun aect_state_tree:lookup_contract/2,
                              "Contract address"). 
 
-verify_oracle_existance(OracleKey) ->
+verify_oracle_existence(OracleKey) ->
     verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
                              fun aeo_state_tree:lookup_oracle/2,
                              "Oracle address"). 
 
-verify_oracle_query_existance(OracleKey, QueryKey) ->
+verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
         OraclePubKey = maps:get(OracleKey, State),
         Lookup =

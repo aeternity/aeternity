@@ -12,9 +12,9 @@
                         , hexstrings_decode/1
                         , get_nonce/1
                         , print_state/0
-                        , verify_contract_existance/1
-                        , verify_oracle_existance/1
-                        , verify_oracle_query_existance/2
+                        , verify_contract_existence/1
+                        , verify_oracle_existence/1
+                        , verify_oracle_query_existence/2
                         , ttl_decode/1
                         , relative_ttl_decode/1
                         ]).
@@ -156,7 +156,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                 base58_decode([{caller, caller, account_pubkey},
                                {contract, contract, account_pubkey}]),
                 get_nonce(caller),
-                verify_contract_existance(contract),
+                verify_contract_existence(contract),
                 hexstrings_decode([call_data])
                 ],
     case parse_request(ParseFuns, Req) of
@@ -172,9 +172,9 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  read_required_params([account, {query_format, query_spec},
                                        {response_format, response_spec},
                                        query_fee, fee, ttl]),
-                base58_decode([{account, account, account_pubkey}]),
-                get_nonce(account),
-                ttl_decode(ttl)
+                 base58_decode([{account, account, account_pubkey}]),
+                 get_nonce(account),
+                 ttl_decode(ttl)
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;
@@ -188,12 +188,12 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender, oracle_pubkey, query,
                                        query_fee, fee, query_ttl, response_ttl]),
-                base58_decode([{sender, sender, account_pubkey},
+                 base58_decode([{sender, sender, account_pubkey},
                                {oracle_pubkey, oracle, account_pubkey}]),
-                get_nonce(sender),
-                ttl_decode(query_ttl),
-                relative_ttl_decode(response_ttl),
-                verify_oracle_existance(oracle)
+                 get_nonce(sender),
+                 ttl_decode(query_ttl),
+                 relative_ttl_decode(response_ttl),
+                 verify_oracle_existence(oracle)
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;
@@ -207,10 +207,10 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle, query_id,
                                        response, fee]),
-                base58_decode([{oracle, oracle, account_pubkey},
+                 base58_decode([{oracle, oracle, account_pubkey},
                                {query_id, query_id, oracle_query_id}]),
-                get_nonce(oracle),
-                verify_oracle_query_existance(oracle, query_id)
+                 get_nonce(oracle),
+                 verify_oracle_query_existence(oracle, query_id)
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;
