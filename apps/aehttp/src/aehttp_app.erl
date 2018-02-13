@@ -9,11 +9,11 @@
 
 
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
--define(DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS, <<"0.0.0.0">>).
+-define(DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS, {0, 0, 0, 0}).
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
--define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"0.0.0.0">>).
+-define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, {0, 0, 0, 0}).
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
+-define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, {127, 0, 0, 1}).
 -define(INT_ACCEPTORS_POOLSIZE, 10).
 
 %% Application callbacks
@@ -85,31 +85,34 @@ start_websocket_internal() ->
                                  [{env, [{dispatch, Dispatch}]}]),
     ok.
 
+get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
+    Config = aeu_env:user_config_or_env(CfgKey, App, EnvKey, Default),
+    case is_binary(Config) of
+        true ->
+          {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
+          IpAddress;
+        false -> Config
+    end.
+
 get_external_port() ->
     aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
                                aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT).
 
 get_external_listen_address() ->
-    BinaryListenAddress = aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"listen_address">>],
-                                                     aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS),
-    {ok, ListenAddress} = inet:parse_address(binary_to_list(BinaryListenAddress)),
-    ListenAddress.
+    get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"external">>, <<"listen_address">>],
+                                                aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS).
 
 get_internal_port() ->
     aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"port">>],
                                aehttp, [internal, swagger_port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
 
 get_internal_listen_address() ->
-    BinaryListenAddress = aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"listen_address">>],
-                                                     aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS),
-    {ok, ListenAddress} = inet:parse_address(binary_to_list(BinaryListenAddress)),
-    ListenAddress.
+    get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"internal">>, <<"listen_address">>],
+                                                aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS).
 
 get_internal_websockets_listen_address() ->
-    BinaryListenAddress = aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"listen_address">>],
-                                                     aehttp, [internal, websocket, listen_address], ?DEFAULT_WEBSOCKET_LISTEN_ADDRESS),
-    {ok, ListenAddress} = inet:parse_address(binary_to_list(BinaryListenAddress)),
-    ListenAddress.
+    get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"internal">>, <<"listen_address">>],
+                                                aehttp, [internal, websocket, listen_address], ?DEFAULT_WEBSOCKET_LISTEN_ADDRESS).
 
 get_internal_websockets_port() ->
     aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"port">>],
