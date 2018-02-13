@@ -90,8 +90,9 @@ get_internal_port() ->
                                aehttp, [internal, swagger_port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
 
 get_internal_websockets_listen_address() ->
-    {ok, ListenAddress} = inet:parse_address(aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"listen_address">>],
-                                                                        aehttp, [internal, websocket, listen_address], ?DEFAULT_WEBSOCKET_LISTEN_ADDRESS)),
+    BinaryListenAddress = aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"listen_address">>],
+                                                     aehttp, [internal, websocket, listen_address], ?DEFAULT_WEBSOCKET_LISTEN_ADDRESS),
+    {ok, ListenAddress} = inet:parse_address(binary_to_list(BinaryListenAddress)),
     ListenAddress.
 
 get_internal_websockets_port() ->
