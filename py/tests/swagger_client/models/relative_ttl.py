@@ -97,6 +97,8 @@ class RelativeTTL(object):
         :param value: The value of this RelativeTTL.  # noqa: E501
         :type: int
         """
+        if value is not None and value < 1:  # noqa: E501
+            raise ValueError("Invalid value for `value`, must be a value greater than or equal to `1`")  # noqa: E501
 
         self._value = value
 

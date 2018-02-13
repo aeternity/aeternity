@@ -200,6 +200,7 @@
         "tags" : [ "external" ],
         "description" : "Get a contract_create transaction",
         "operationId" : "PostContractCreate",
+        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "in" : "body",
@@ -236,6 +237,7 @@
         "tags" : [ "external" ],
         "description" : "Get a contract_call transaction",
         "operationId" : "PostContractCall",
+        "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "in" : "body",
@@ -260,6 +262,117 @@
           },
           "404" : {
             "description" : "Caller account or contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/oracle/register" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a oracle_register transaction",
+        "operationId" : "PostOracleRegister",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleRegisterTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/oracle/query" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a oracle_query transaction",
+        "operationId" : "PostOracleQuery",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleQueryTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account or oracle not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/oracle/response" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a oracle_response transaction",
+        "operationId" : "PostOracleResponse",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleResponseTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Oracle or query not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -1925,6 +2038,7 @@
     },
     "OracleRegisterTx" : {
       "type" : "object",
+      "required" : [ "fee", "query_fee", "query_format", "response_format", "ttl" ],
       "properties" : {
         "query_format" : {
           "type" : "string"
@@ -1942,6 +2056,13 @@
         },
         "ttl" : {
           "$ref" : "#/definitions/TTL"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
@@ -1952,7 +2073,9 @@
           "type" : "delta",
           "value" : 1
         },
-        "query_format" : "query_format"
+        "nonce" : 5,
+        "query_format" : "query_format",
+        "account" : { }
       }
     },
     "OracleRegisterResponse" : {
@@ -1972,6 +2095,7 @@
     },
     "OracleQueryTx" : {
       "type" : "object",
+      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
       "properties" : {
         "oracle_pubkey" : {
           "type" : "string"
@@ -1992,13 +2116,22 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "sender" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Sender nonce"
         }
       },
       "example" : {
         "response_ttl" : {
           "type" : "delta",
-          "value" : 6
+          "value" : 1
         },
+        "sender" : { },
         "query" : "query",
         "query_ttl" : {
           "type" : "delta",
@@ -2006,14 +2139,16 @@
         },
         "fee" : 1,
         "query_fee" : 0,
+        "nonce" : 5,
         "oracle_pubkey" : "oracle_pubkey"
       }
     },
     "OracleResponseTx" : {
       "type" : "object",
+      "required" : [ "fee", "query_id", "response" ],
       "properties" : {
         "query_id" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "response" : {
           "type" : "string"
@@ -2021,12 +2156,22 @@
         "fee" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "oracle" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "description" : "Oracle nonce"
         }
       },
       "example" : {
-        "query_id" : "query_id",
+        "oracle" : null,
+        "query_id" : { },
         "response" : "response",
-        "fee" : 0
+        "fee" : 0,
+        "nonce" : 6
       }
     },
     "OracleQueryResponse" : {
@@ -2053,7 +2198,8 @@
         },
         "value" : {
           "type" : "integer",
-          "format" : "int64"
+          "format" : "int64",
+          "minimum" : 1
         }
       },
       "example" : {
@@ -2070,12 +2216,13 @@
         },
         "value" : {
           "type" : "integer",
-          "format" : "int64"
+          "format" : "int64",
+          "minimum" : 1
         }
       },
       "example" : {
         "type" : "delta",
-        "value" : 6
+        "value" : 1
       }
     },
     "NameEntry" : {

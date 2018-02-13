@@ -173,6 +173,8 @@ paths:
         - external
       operationId: PostContractCreate
       description: 'Get a contract_create transaction'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -200,6 +202,8 @@ paths:
         - external
       operationId: PostContractCall
       description: 'Get a contract_call transaction'
+      consumes:
+        - application/json
       produces:
         - application/json
       parameters:
@@ -219,6 +223,93 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Caller account or contract not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/oracle/register:
+    post:
+      tags:
+        - external
+      operationId: PostOracleRegister
+      description: 'Get a oracle_register transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/OracleRegisterTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/oracle/query:
+    post:
+      tags:
+        - external
+      operationId: PostOracleQuery
+      description: 'Get a oracle_query transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/OracleQueryTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/oracle/response:
+    post:
+      tags:
+        - external
+      operationId: PostOracleResponse
+      description: 'Get a oracle_response transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/OracleResponseTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
 
@@ -1603,6 +1694,17 @@ definitions:
         format: int64
       ttl:
         $ref: '#/definitions/TTL'
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
+    required:
+    - query_format
+    - response_format
+    - query_fee
+    - fee
+    - ttl
   OracleRegisterResponse:
     type: object
     properties:
@@ -1627,16 +1729,39 @@ definitions:
       fee:
         type: integer
         format: int64
+      sender:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
+        description: Sender nonce
+    required:
+    - oracle_pubkey
+    - query
+    - query_fee
+    - query_ttl
+    - response_ttl
+    - fee
   OracleResponseTx:
     type: object
     properties:
       query_id:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       response:
         type: string
       fee:
         type: integer
         format: int64
+      oracle:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
+        description: Oracle nonce
+    required:
+    - query_id
+    - response
+    - fee
   OracleQueryResponse:
     type: object
     properties:
@@ -1653,6 +1778,7 @@ definitions:
       value:
         type: integer
         format: int64
+        minimum: 1
   RelativeTTL:
     type: object
     properties:
@@ -1662,6 +1788,7 @@ definitions:
       value:
         type: integer
         format: int64
+        minimum: 1
   NameEntry:
     type: object
     properties:

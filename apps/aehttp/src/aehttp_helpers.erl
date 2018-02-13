@@ -5,9 +5,13 @@
         , read_required_params/1
         , base58_decode/1
         , hexstrings_decode/1
+        , ttl_decode/1
+        , relative_ttl_decode/1
         , get_nonce/1
         , print_state/0
         , verify_contract_existance/1
+        , verify_oracle_existance/1
+        , verify_oracle_query_existance/2
         ]).
 
 parse_request(FunsList, Req) ->
@@ -117,14 +121,36 @@ print_state() ->
     end.
 
 verify_contract_existance(ContractKey) ->
+    verify_key_in_state_tree(ContractKey, fun aec_trees:contracts/1,
+                             fun aect_state_tree:lookup_contract/2,
+                             "Contract address"). 
+
+verify_oracle_existance(OracleKey) ->
+    verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
+                             fun aeo_state_tree:lookup_oracle/2,
+                             "Oracle address"). 
+
+verify_oracle_query_existance(OracleKey, QueryKey) ->
+    fun(Req, State) ->
+        OraclePubKey = maps:get(OracleKey, State),
+        Lookup =
+            fun(QId, Tree) ->
+                aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
+            end,
+        Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
+                                        Lookup, "Oracle query"),
+        Fun(Req, State)
+    end.
+
+verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
     fun(_Req, State) ->
-        ContractAddress = maps:get(ContractKey, State),
+        ReceivedAddress = maps:get(Key, State),
         TopBlockHash = aec_conductor:top_block_hash(),
         {value, Trees} = aec_db:find_block_state(TopBlockHash),
-        ContractsTree = aec_trees:contracts(Trees),
-        case aect_state_tree:lookup_contract(ContractAddress, ContractsTree) of
+        Tree = StateTreeFun(Trees),
+        case Lookup(ReceivedAddress, Tree) of
             none ->
-                Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
+                Msg = Entity ++ " for key " ++ atom_to_list(Key) ++ " not found",
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
             {value, _} ->
                 ok
@@ -133,9 +159,53 @@ verify_contract_existance(ContractKey) ->
 
 parse_map_to_atom_keys() ->
     fun(Req, State) ->
-        Req1 = maps:from_list(
-            [{binary_to_existing_atom(K, utf8), V} ||
-              {K, V} <- maps:to_list(Req)]),
+        Parse =
+            fun P(Map) ->
+                maps:from_list(
+                    lists:map(
+                        fun({K0, V0}) ->
+                            K = binary_to_existing_atom(K0, utf8),
+                            V = case is_map(V0) of
+                                  true -> P(V0);
+                                  false -> V0
+                                end,
+                            {K, V}
+                        end,
+                        maps:to_list(Map)))
+            end,
+        Req1 = Parse(Req), 
         {ok, Req1, State}
     end.
 
+ttl_decode(TTLKey) ->
+    ttl_decode(TTLKey, [<<"delta">>, <<"block">>]).
+
+relative_ttl_decode(TTLKey) ->
+    ttl_decode(TTLKey, [<<"delta">>]).
+
+ttl_decode(TTLKey, AllowedTypes) ->
+    fun(Req, State) ->
+        TTLObj = maps:get(TTLKey, Req),
+        TTLKeyBin = atom_to_binary(TTLKey, utf8),
+        ErrorBrokenTTL = {error, {400, [],
+                          #{<<"reason">> => <<"Broken TTL for key ",TTLKeyBin/binary>>}}},
+        case {maps:get(type, TTLObj, undefined), maps:get(value, TTLObj,
+                                                          undefined)} of
+            {undefined, _} -> ErrorBrokenTTL;
+            {_, undefined} -> ErrorBrokenTTL;
+            {Type, Value} ->
+                case lists:member(Type, AllowedTypes) of
+                    true ->
+                        TTL = {binary_to_existing_atom(Type, utf8), Value},
+                        {ok, maps:put(TTLKey, TTL, State)};
+                    false ->
+                        TypesBin = list_to_binary(string:join(
+                            [binary_to_list(T) || T <- AllowedTypes],
+                            ",")),
+                        ErrMsg = <<"Invalid TTL type for key ",
+                                  TTLKeyBin/binary, "; Allowed: ",
+                                  TypesBin/binary>>,
+                        {error, {400, [], #{<<"reason">> => ErrMsg}}}
+                end
+        end
+    end.

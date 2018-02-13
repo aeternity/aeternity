@@ -135,6 +135,21 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'PostOracleQuery' => #{
+            path => "/v2/tx/oracle/query",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostOracleRegister' => #{
+            path => "/v2/tx/oracle/register",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostOracleResponse' => #{
+            path => "/v2/tx/oracle/response",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'PostTx' => #{
             path => "/v2/tx",
             method => <<"POST">>,
