@@ -311,19 +311,19 @@ workflows:
       #       branches:
       #         only: master
 
-      # - deploy_dev1:
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: env/dev1
+      - deploy_dev1:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev1
 
-      # - deploy_dev2:
-      #     requires:
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: env/dev2
+      - deploy_dev2:
+          requires:
+            - linux_package
+          filters:
+            branches:
+              only: env/dev2
 
       # - hodl:
       #     type: approval
