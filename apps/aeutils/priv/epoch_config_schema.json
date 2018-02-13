@@ -99,6 +99,11 @@
                             "Listen port for websocket interface.",
                             "type" : "integer"
                         },
+                        "listen_address": {
+                          "description": "Listen address for websocket interface.",
+                          "type": "string",
+                          "example": "192.168.168.25"
+                        },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
                             "type" : "integer"
