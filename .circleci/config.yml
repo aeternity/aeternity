@@ -297,10 +297,6 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - uat_tests:
-          requires:
-            - build
-
       # - deploy_integration:
       #     requires:
       #       - test
@@ -350,7 +346,5 @@ workflows:
             branches:
               only:
                 - master
-                # TODO: remove after the test, but it probably needs to reside in master?
-                - PT_154922104_nightly_uat_tests
     jobs:
       - uat_tests
