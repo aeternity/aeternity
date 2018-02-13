@@ -24,7 +24,8 @@
 -record(metric, {key,
                  destinations = []}).
 
--record(st, {tab}).
+-record(st, {rules = [],
+             tab}).
 
 -define(IS_DEST(D), D==log; D==send).
 -define(TAB, ?MODULE).
@@ -32,6 +33,15 @@
 
 get_destinations(Name, DP) ->
     %% TODO: come up with a more efficient handling of default datapoints
+    case get_destinations_(Name, DP) of
+        undefined ->
+            gen_server:call(?SERVER, {check_destination, Name}),
+            get_destinations_(Name, DP);
+        Dests ->
+            Dests
+    end.
+
+get_destinations_(Name, DP) ->
     case ets:lookup(?TAB, {Name, DP}) of
         [#metric{destinations = Ds}] ->
             Ds;
@@ -73,7 +83,7 @@ start_link() ->
     end.
 
 init(Tab) ->
-    {ok, #st{tab = Tab}}.
+    {ok, update_rules(#st{tab = Tab})}.
 
 handle_call({add_destination, Name, DP, Dest}, _From, #st{tab = T} = St) ->
     case ets:lookup(T, {Name, DP}) of
@@ -83,11 +93,11 @@ handle_call({add_destination, Name, DP, Dest}, _From, #st{tab = T} = St) ->
                     {reply, ok, St};
                 false ->
                     M1 = M#metric{destinations = [Dest|Ds]},
-                    ets:insert(T, M1),
+                    ets_insert(T, M1),
                     {reply, ok, St}
             end;
         [] ->
-            ets:insert(T, #metric{key = {Name, DP},
+            ets_insert(T, #metric{key = {Name, DP},
                                   destinations = [Dest]}),
             {reply, ok, St}
     end;
@@ -96,7 +106,7 @@ handle_call({del_destination, Name, DP, Dest}, _From, #st{tab = T} = St) ->
               [#metric{destinations = Ds} = M] ->
                   case lists:member(Dest, Ds) of
                       true ->
-                          ets:insert(T, M#metric{destinations = Ds -- [Dest]}),
+                          ets_insert(T, M#metric{destinations = Ds -- [Dest]}),
                           true;
                 false ->
                     false
@@ -105,10 +115,21 @@ handle_call({del_destination, Name, DP, Dest}, _From, #st{tab = T} = St) ->
                   false
           end,
     {reply, Res, St};
-handle_call(check_config, _From, #st{tab = T} = St) ->
-    populate_tab(T),
-    lager:debug("Dest tab = ~p", [ets:tab2list(T)]),
-    {reply, ok, St};
+handle_call({check_destination, Name}, _From, #st{} = St) ->
+    case exometer:info(Name, entry) of
+        undefined ->
+            {reply, ok, St};
+        E ->
+            Type = exometer:info(E, type),
+            Status = exometer:info(E, status),
+            St1 = check_and_cache_destination([{Name, Type, Status}], St),
+            {reply, ok, St1}
+    end;
+handle_call(check_config, _From, #st{} = St) ->
+    St1 = update_rules(St),
+    St2 = populate_tab(St1),
+    lager:debug("Dest tab = ~p", [ets:tab2list(St2#st.tab)]),
+    {reply, ok, St2};
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
@@ -140,40 +161,75 @@ ensure_tab() ->
             ?TAB
     end.
 
-populate_tab(Tab) ->
+update_rules(#st{} = St) ->
     case aeu_env:user_map([<<"metrics">>,<<"rules">>]) of
         {ok, Rules} ->
-            lists:foreach(
-              fun(#{} = R) ->
-                      Name = maps:get(<<"name">>, R, <<"*">>),
-                      Type = maps:get(<<"type">>, R, <<"*">>),
-                      DPs  = maps:get(<<"datapoints">>, R, <<"default">>),
-                      Actions = maps:get(<<"actions">>, R, <<"log,send">>),
-                      Cmd = <<"type=",Type/binary,"/",
-                              Name/binary,"/",
-                              DPs/binary>>,
-                      try
-                          Found = aec_metrics_lib:find_entries_cmd([Cmd]),
-                          make_destinations(Found, Actions, Tab)
-                      catch
-                          error:E ->
-                              lager:error("CRASH: ~p; ~p",
-                                          [E, erlang:get_stacktrace()])
-                      end
-              end, Rules);
+            St#st{rules = Rules};
         _ ->
-            lager:debug("no metrics rules defined", [])
-    end,
-    ok.
+            lager:debug("no metrics rules defined", []),
+            St#st{rules = []}
+    end.
+
+check_and_cache_destination(Entries, St) ->
+    populate_tab(fun(Cmds) ->
+                         aec_metrics_lib:filter_entries(
+                           Entries, Cmds)
+                 end, St).
+
+populate_tab(#st{} = St) ->
+    populate_tab(fun(Cmds) ->
+                         aec_metrics_lib:find_entries_cmd(Cmds)
+                 end, St).
+
+populate_tab(Select, #st{rules = Rules, tab = Tab} = St) ->
+    lists:foreach(
+      fun(#{} = R) ->
+              Name = maps:get(<<"name">>, R, <<"*">>),
+              Type = maps:get(<<"type">>, R, <<"*">>),
+              DPs  = maps:get(<<"datapoints">>, R, <<"default">>),
+              Actions = maps:get(<<"actions">>, R, <<"log,send">>),
+              Cmd = <<"type=",Type/binary,"/",
+                      Name/binary,"/",
+                      DPs/binary>>,
+              try
+                  Found = Select([Cmd]),
+                  make_destinations(Found, Actions, Tab)
+              catch
+                  error:E ->
+                      lager:error("CRASH: ~p; ~p",
+                                  [E, erlang:get_stacktrace()]),
+                      []
+              end
+      end, Rules),
+    St.
 
 make_destinations(Found, Actions0, Tab) ->
     Dests = mk_dests_(Actions0),
     lists:foreach(
       fun({Metrics, DPs}) ->
-              [ets:insert(Tab, #metric{key = {N,D}, destinations = Dests})
+              [insert_new(Tab, #metric{key = {N,D}, destinations = Dests})
                || {N, _, _} <- Metrics,
                   D <- DPs]
       end, Found).
+
+insert_new(Tab, #metric{} = M) ->
+    case ets_insert_new(Tab, M) of
+        false ->
+            [Obj] = ets_lookup(Tab, M#metric.key),
+            Obj;
+        true ->
+            M
+    end.
+
+%% wrapper functions around ets ops to facilitate tracing
+ets_insert(Tab, Obj) ->
+    ets:insert(Tab, Obj).
+
+ets_insert_new(Tab, Obj) ->
+    ets:insert_new(Tab, Obj).
+
+ets_lookup(Tab, Key) ->
+    ets:lookup(Tab, Key).
 
 mk_dests_(Txt) ->
     case ordsets:from_list([binary_to_existing_atom(B, latin1)
