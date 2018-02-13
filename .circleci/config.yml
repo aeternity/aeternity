@@ -79,7 +79,7 @@ references:
           export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu.tar.gz
           cd deployment/ansible
           ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
-            --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?} \
+            --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?}" \
             deploy.yml
 
 jobs:
