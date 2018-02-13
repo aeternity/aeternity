@@ -18,6 +18,9 @@ FinalPackagePath="${BuildDir:?}"/_build/prod/rel/epoch/epoch-"${Version:?}"-"${O
 cd $BuildDir
 
 case "${1:?}"-"${2:?}" in
+    before_install-dummy)
+        true
+        ;;
     before_install-*)
         if [ "${TRAVIS_OS_NAME:?}" = "osx" ]; then
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
@@ -34,22 +37,11 @@ case "${1:?}"-"${2:?}" in
         erl -version
         epmd -daemon
         ;;
-    install-static_analysis)
-        make dialyzer-install
-        ;;
     install-*)
         true
         ;;
-    script-test)
-        make test
-        ;;
-    script-eunit)
-        make eunit
-        ;;
-    script-static_analysis)
-        ./rebar3 edoc
-        make dialyzer
-        make swagger-check
+    script-dummy)
+        true
         ;;
     script-package)
         make prod-package
