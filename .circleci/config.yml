@@ -226,7 +226,7 @@ workflows:
             - build
           filters:
             branches:
-              only: master
+              ignore /.*/
             tags:
               only: /^v.*$/
 
