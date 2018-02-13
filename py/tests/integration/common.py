@@ -8,6 +8,7 @@ import unittest
 import datetime
 import time
 import base64
+import logging
 
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
@@ -22,8 +23,6 @@ from nose.tools import assert_equals
 from testconfig import config
 from waiting import wait
 
-import logging
-logging.getLogger("urllib3").setLevel(logging.ERROR)
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
     empty_config = Configuration()
@@ -99,7 +98,7 @@ def genesis_hash(api):
     return block.prev_hash
 
 def wait_until_height(api, height):
-    wait(lambda: api.get_top().height >= height, timeout_seconds=30, sleep_seconds=0.25)
+    wait(lambda: api.get_top().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
 def get_account_balance(int_api, pub_key=None):
     balance = Balance(balance=0)
@@ -112,3 +111,5 @@ def get_account_balance(int_api, pub_key=None):
     except ApiException as e:
         assert_equals(e.status, 404) # Alice has no account yet
     return balance
+
+logging.getLogger("urllib3").setLevel(logging.ERROR)
