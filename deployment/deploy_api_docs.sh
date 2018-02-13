@@ -13,13 +13,9 @@ STATUS=`git status --porcelain`
 if [ -z "$STATUS" ]; then
     echo "Nothing to commit, docs did not change";
 else
-    git commit -a -m 'Update epoch docs CircleCI';
-
-    if [ "$CIRCLE_BRANCH" == "master" ]; then
+    if [ -n "$CIRCLE_TAG" ]; then
+        git commit -a -m 'Update epoch docs CircleCI';
         git push origin master
-    elif [ -n "$CIRCLE_TAG" ]; then
-        git tag $CIRCLE_TAG
-        git push origin $CIRCLE_TAG
     else
         echo "no master, no tag, not commit!"
     fi
