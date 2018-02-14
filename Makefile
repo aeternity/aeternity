@@ -248,7 +248,7 @@ internal-clean: $$(KIND)
 	dev2-start, dev2-stop, dev2-attach, dev2-clean \
 	dev3-start, dev3-stop, dev3-attach, dev3-clean \
 	dialyzer \
-	test aevm-test-deps\
+	test eunit all-tests aevm-test-deps\
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check
