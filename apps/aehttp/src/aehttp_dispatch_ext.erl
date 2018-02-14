@@ -236,15 +236,18 @@ handle_request('GetAccountBalance', Req, _Context) ->
 handle_request('GetCommitmentHash', Req, _Context) ->
     Name         = maps:get('name', Req),
     Salt         = maps:get('salt', Req),
-    CHash        = aens:get_commitment_hash(Name, Salt),
-    EncodedCHash = aec_base58c:encode(commitment, CHash),
-    {200, [], #{commitment => EncodedCHash}};
+    case aens:get_commitment_hash(Name, Salt) of
+        {ok, CHash} ->
+            EncodedCHash = aec_base58c:encode(commitment, CHash),
+            {200, [], #{commitment => EncodedCHash}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+    end;
 
 handle_request('GetName', Req, _Context) ->
     Name = maps:get('name', Req),
     case aec_chain:name_entry(Name) of
-        {error, name_not_found} ->
-            {404, [], #{reason => <<"Name not found">>}};
         {ok, NameEntry} ->
             #{<<"name">>     := Name,
               <<"hash">>     := Hash,
@@ -253,7 +256,12 @@ handle_request('GetName', Req, _Context) ->
             {200, [], #{name      => Name,
                         name_hash => aec_base58c:encode(name, Hash),
                         name_ttl  => NameTTL,
-                        pointers  => Pointers}}
+                        pointers  => Pointers}};
+        {error, name_not_found} ->
+            {404, [], #{reason => <<"Name not found">>}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
 
 handle_request('GetAccountsBalances', _Req, _Context) ->

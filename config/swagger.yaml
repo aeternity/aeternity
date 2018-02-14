@@ -351,6 +351,10 @@ paths:
           description: Calculated commitment hash
           schema:
             $ref: '#/definitions/NameCommitmentHash'
+        '400':
+          description: Name validation failed
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /name:
     get:
@@ -371,6 +375,10 @@ paths:
           description: Name data
           schema:
             $ref: '#/definitions/NameEntry'
+        '400':
+          description: Name validation failed
+          schema:
+            $ref: '#/definitions/Error'
         '404':
           description: Name not found
           schema:

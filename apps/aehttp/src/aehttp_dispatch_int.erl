@@ -210,15 +210,21 @@ handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) 
             #{<<"name">>      := Name,
               <<"name_salt">> := NameSalt,
               <<"fee">>       := Fee} = NameClaimTxObj,
-            {ok, ClaimTx} =
-                aens_claim_tx:new(
-                  #{account   => PubKey,
-                    nonce     => Nonce,
-                    name      => Name,
-                    name_salt => NameSalt,
-                    fee       => Fee}),
-            sign_and_push_to_mempool(ClaimTx),
-            {200, [], #{name_hash => aec_base58c:encode(name, aens_hash:name_hash(Name))}};
+            case aens:get_name_hash(Name) of
+                {ok, NameHash} ->
+                    {ok, ClaimTx} =
+                        aens_claim_tx:new(
+                          #{account   => PubKey,
+                            nonce     => Nonce,
+                            name      => Name,
+                            name_salt => NameSalt,
+                            fee       => Fee}),
+                    sign_and_push_to_mempool(ClaimTx),
+                    {200, [], #{name_hash => aec_base58c:encode(name, NameHash)}};
+                {error, Reason} ->
+                    ReasonBin = atom_to_binary(Reason, utf8),
+                    {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+            end;
         {error, account_not_found} ->
             {404, [], #{reason => <<"No funds in an account">>}};
         {error, key_not_found} ->

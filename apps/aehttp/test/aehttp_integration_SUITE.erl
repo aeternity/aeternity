@@ -1779,17 +1779,16 @@ block_txs_list_by_hash_invalid_range(_Config) ->
     ok.
 
 naming_system_manage_name(_Config) ->
-
     {ok, PubKey} = rpc(aec_keys, pubkey, []),
-    PubKeyEnc = aec_base58c:encode(account_pubkey, PubKey),
-    Name       = <<"fooo.bar.test">>,
-    NameSalt   = 12345,
-    NameTTL    = 60000,
-    Pointers   = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
-    TTL        = 10,
-    NHash      = aens_hash:name_hash(Name),
-    Fee        = 2,
-    MineReward = rpc(aec_governance, block_mine_reward, []),
+    PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
+    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+    NameSalt    = 12345,
+    NameTTL     = 60000,
+    Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
+    TTL         = 10,
+    {ok, NHash} = aens:get_name_hash(Name),
+    Fee         = 2,
+    MineReward  = rpc(aec_governance, block_mine_reward, []),
 
     %% Mine 10 blocks to get some funds
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
@@ -1878,17 +1877,21 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name     = <<"fooo.test">>,
-    NameSalt = 12345,
-    NHash    = aens_hash:name_hash(Name),
-    CHash    = aens_hash:commitment_hash(Name, NameSalt),
-    Fee      = 2,
+    Name        = <<"fooo.test">>,
+    NameSalt    = 12345,
+    {ok, NHash} = aens:get_name_hash(Name),
+    CHash       = aens_hash:commitment_hash(Name, NameSalt),
+    Fee         = 2,
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Try to submit txs with empty account
 
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_commitment_hash(<<"abcd.badregistrar">>, 123),
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_name(<<"abcd.badregistrar">>),
     {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
         post_name_preclaim_tx(CHash, Fee),
     {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =

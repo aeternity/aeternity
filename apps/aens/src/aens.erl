@@ -10,7 +10,8 @@
 %% API
 -export([resolve/3,
          get_commitment_hash/2,
-         get_name_entry/2]).
+         get_name_entry/2,
+         get_name_hash/1]).
 
 %%%===================================================================
 %%% Types
@@ -24,33 +25,30 @@
 
 -spec resolve(atom(), binary(), aens_state_tree:tree()) -> {ok, binary()} | {error, atom()}.
 resolve(Type, Binary, NSTree) ->
-    case lists:reverse(binary:split(Binary, ?LABEL_SEPARATOR, [global, trim])) of %% Use trim to allow closing dot
-        [Binary] ->
+    case is_name(Binary) of
+        false ->
             aec_base58c:safe_decode(Type, Binary);
-        [RegistrarNamespace|_Namespace] ->
-            %% When we have more registrars, pick faster and still gov friendly structure
-            %% If we allow to purchase registrars, this will live in regular tree
-            case [RN || RN <- aec_governance:name_registrars(), RN =:= RegistrarNamespace] of
-                [] ->
-                    {error, registrar_unknown};
-                _ ->
-                    case get_name(Binary, NSTree) of
-                        {ok, #{<<"pointers">> := Pointers}} ->
-                            case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
-                                undefined -> {error, type_not_found};
-                                Val -> aec_base58c:safe_decode(Type, Val)
-                            end;
-                        {error, _} = Err ->
-                            Err
-                    end
+        true ->
+            case get_name(Binary, NSTree) of
+                {ok, #{<<"pointers">> := Pointers}} ->
+                    case proplists:get_value(atom_to_binary(Type, utf8), Pointers) of
+                        undefined -> {error, type_not_found};
+                        Val       -> aec_base58c:safe_decode(Type, Val)
+                    end;
+                {error, _Reason} = Error ->
+                    Error
             end
     end.
 
--spec get_commitment_hash(binary(), integer()) -> aens_hash:commitment_hash().
-get_commitment_hash(Name, Salt) ->
-    aens_hash:commitment_hash(Name, Salt).
+-spec get_commitment_hash(binary(), integer()) -> {ok, aens_hash:commitment_hash()} |
+                                                  {error, atom()}.
+get_commitment_hash(Name, Salt) when is_binary(Name) andalso is_integer(Salt) ->
+    case aens_utils:to_ascii(Name) of
+        {ok, NameAscii} -> {ok, aens_hash:commitment_hash(NameAscii, Salt)};
+        {error, _} = E  -> E
+    end.
 
--spec get_name_entry(binary(), aens_state_tree:tree()) -> {ok, map()} | {error, name_not_found}.
+-spec get_name_entry(binary(), aens_state_tree:tree()) -> {ok, map()} | {error, atom()}.
 get_name_entry(Name, NSTree) ->
     case get_name(Name, NSTree) of
         {ok, #{<<"name">>     := Name,
@@ -61,22 +59,37 @@ get_name_entry(Name, NSTree) ->
                    <<"hash">>     => Hash,
                    <<"name_ttl">> => TTL,
                    <<"pointers">> => jsx:encode(Pointers)}};
-        {error, name_not_found} = Error ->
-            Error
+        {error, _} = E ->
+            E
+    end.
+
+-spec get_name_hash(binary()) -> {ok, binary()} |
+                                 {error, term()}.
+get_name_hash(Name) when is_binary(Name) ->
+    case aens_utils:to_ascii(Name) of
+        {ok, NameAscii} -> {ok, aens_hash:name_hash(NameAscii)};
+        {error, _} = E  -> E
     end.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+is_name(Binary) ->
+    length(binary:split(Binary, ?LABEL_SEPARATOR)) > 1.
+
 get_name(Name, NSTree) ->
-    NameHash = aens_hash:name_hash(Name),
-    case aens_state_tree:lookup_name(NameHash, NSTree) of
-        {value, N} ->
-            {ok, #{<<"name">>     => Name,
-                   <<"hash">>     => NameHash,
-                   <<"name_ttl">> => aens_names:ttl(N),
-                   <<"pointers">> => aens_names:pointers(N)}};
-        none ->
-            {error, name_not_found}
+    case get_name_hash(Name) of
+        {ok, NameHash} ->
+            case aens_state_tree:lookup_name(NameHash, NSTree) of
+                {value, N} ->
+                    {ok, #{<<"name">>     => Name,
+                           <<"hash">>     => NameHash,
+                           <<"name_ttl">> => aens_names:ttl(N),
+                           <<"pointers">> => aens_names:pointers(N)}};
+                none ->
+                    {error, name_not_found}
+            end;
+        {error, _} = E ->
+            E
     end.

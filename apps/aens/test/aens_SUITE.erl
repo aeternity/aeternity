@@ -59,7 +59,7 @@ groups() ->
        revoke_negative]}
     ].
 
--define(NAME, <<"foo.bar.test">>).
+-define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
 %%%===================================================================
@@ -77,7 +77,8 @@ preclaim(Cfg) ->
     Height = ?PRE_CLAIM_HEIGHT,
     Name = ?NAME,
     NameSalt = rand:uniform(10000),
-    CHash = aens_hash:commitment_hash(Name, NameSalt),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
 
     %% Create Preclaim tx and apply it on trees
     TxSpec = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
@@ -98,7 +99,8 @@ preclaim_negative(Cfg) ->
     {PubKey, S1} = aens_test_utils:setup_new_account(aens_test_utils:new_state()),
     Trees = aens_test_utils:trees(S1),
     Height = 1,
-    CHash = aens_hash:commitment_hash(<<"abcd.efghi.test">>, 123),
+    {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
+    CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
     BadPubKey = <<42:65/unit:8>>,
@@ -123,7 +125,8 @@ preclaim_negative(Cfg) ->
 
     %% Test commitment already present
     {PubKey2, Name, NameSalt, S3} = preclaim(Cfg),
-    CHash2 = aens_hash:commitment_hash(Name, NameSalt),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash2 = aens_hash:commitment_hash(NameAscii, NameSalt),
     Trees3 = aens_test_utils:trees(S3),
     TxSpec4 = aens_test_utils:preclaim_tx_spec(PubKey2, CHash2, S3),
     {ok, Tx4} = aens_preclaim_tx:new(TxSpec4),
@@ -140,8 +143,9 @@ claim(Cfg) ->
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
-    CHash = aens_hash:commitment_hash(Name, NameSalt),
-    NHash = aens_hash:name_hash(Name),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
+    NHash = aens_hash:name_hash(NameAscii),
 
     %% Check commitment present
     {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees)),
@@ -170,6 +174,7 @@ claim_negative(Cfg) ->
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
 
+    %% Test commitment delta too small
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx0} = aens_claim_tx:new(TxSpec),
     {error, commitment_delta_too_small} =
@@ -209,6 +214,12 @@ claim_negative(Cfg) ->
     {ok, Tx5} = aens_claim_tx:new(TxSpec5),
     {error, commitment_not_owned} =
         aens_claim_tx:check(Tx5, Trees3, Height),
+
+    %% Test bad name
+    TxSpec6 = aens_test_utils:claim_tx_spec(PubKey, <<"abcdefghi">>, NameSalt, S1),
+    {ok, Tx6} = aens_claim_tx:new(TxSpec6),
+    {error, no_registrar} =
+        aens_claim_tx:check(Tx6, Trees, Height),
     ok.
 
 claim_race_negative(_Cfg) ->
@@ -290,7 +301,8 @@ update_negative(Cfg) ->
         aens_update_tx:check(Tx4, Trees, Height),
 
     %% Test name not present
-    TxSpec5 = aens_test_utils:update_tx_spec(PubKey, aens_hash:name_hash(<<"other.name.test">>), S1),
+    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    TxSpec5 = aens_test_utils:update_tx_spec(PubKey, NHash2, S1),
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} =
         aens_update_tx:check(Tx5, Trees, Height),
@@ -369,7 +381,8 @@ transfer_negative(Cfg) ->
         aens_transfer_tx:check(Tx3, Trees, Height),
 
     %% Test name not present
-    TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, aens_hash:name_hash(<<"other.name.test">>), PubKey, S1),
+    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, NHash2, PubKey, S1),
     {ok, Tx4} = aens_transfer_tx:new(TxSpec4),
     {error, name_does_not_exist} =
         aens_transfer_tx:check(Tx4, Trees, Height),
@@ -445,7 +458,8 @@ revoke_negative(Cfg) ->
         aens_revoke_tx:check(Tx3, Trees, Height),
 
     %% Test name not present
-    TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, aens_hash:name_hash(<<"other.name.test">>), S1),
+    {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
+    TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, NHash2, S1),
     {ok, Tx4} = aens_revoke_tx:new(TxSpec4),
     {error, name_does_not_exist} =
         aens_revoke_tx:check(Tx4, Trees, Height),
@@ -474,7 +488,8 @@ revoke_negative(Cfg) ->
 
 prune_preclaim(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
-    CHash = aens_hash:commitment_hash(Name, NameSalt),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     Trees2 = aens_test_utils:trees(S1),
     {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees2)),
     CHash      = aens_commitments:id(C),
