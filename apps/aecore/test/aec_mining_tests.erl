@@ -135,7 +135,6 @@ setup() ->
     ok = application:ensure_started(erlexec),
     application:start(crypto),
     meck:new(aec_blocks, [passthrough]),
-    meck:new(aec_conductor, [passthrough]),
     meck:new(aec_headers, [passthrough]),
     meck:new(aec_tx, [passthrough]),
     meck:new(aec_governance, [passthrough]),
@@ -165,7 +164,6 @@ setup() ->
 cleanup(_) ->
     application:stop(crypto),
     meck:unload(aec_blocks),
-    meck:unload(aec_conductor),
     meck:unload(aec_headers),
     meck:unload(aec_tx),
     meck:unload(aec_governance),

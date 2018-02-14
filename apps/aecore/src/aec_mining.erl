@@ -54,7 +54,7 @@ mine(Block, Nonce) ->
                                      {error, account_not_found}.
 get_miner_account_balance() ->
     {ok, Pubkey} = aec_keys:pubkey(),
-    case aec_conductor:get_account(Pubkey) of
+    case aec_chain:get_account(Pubkey) of
         {value, A} ->
             {ok, aec_accounts:balance(A)};
         none ->
@@ -130,5 +130,5 @@ adjust_target(Block, AdjHeaders) ->
             Block1 = aec_blocks:set_target(Block, CalculatedTarget),
             {ok, Block1};
         false -> %% Wrong number of headers in AdjHeaders...
-            {error, wrong_headers_for_target_adjustment}
+            {error, {wrong_headers_for_target_adjustment, DeltaHeight, length(AdjHeaders)}}
     end.

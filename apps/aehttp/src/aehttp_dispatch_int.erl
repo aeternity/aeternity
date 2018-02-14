@@ -16,7 +16,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
             #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
               <<"amount">>           := Amount,
               <<"fee">>              := Fee} = SpendTxObj,
-            case aec_conductor:resolve_name(account_pubkey, EncodedRecipientPubkey) of
+            case aec_chain:resolve_name(account_pubkey, EncodedRecipientPubkey) of
                 {ok, DecodedRecipientPubkey} ->
                     {ok, SpendTx} =
                         aec_spend_tx:new(
@@ -78,7 +78,7 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
               <<"fee">>           := Fee} = OracleQueryTxObj,
             QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
             QueryTTLValue= maps:get(<<"value">>, QueryTTL),
-            case aec_conductor:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
+            case aec_chain:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
                 {ok, DecodedOraclePubkey} ->
                     {ok, OracleQueryTx} =
                         aeo_query_tx:new(
@@ -143,7 +143,7 @@ handle_request('GetActiveRegisteredOracles', Req, _Context) ->
                    undefined -> 20;
                    X2        -> X2
                end,
-        {ok, Oracles} = aec_conductor:get_oracles(From, Max),
+        {ok, Oracles} = aec_chain:get_oracles(From, Max),
         FmtO = fun(O) -> #{address => aec_base58c:encode(oracle_pubkey, aeo_oracles:id(O)),
                            query_format => aeo_oracles:query_format(O),
                            response_format => aeo_oracles:response_format(O),
@@ -168,7 +168,7 @@ handle_request('GetOracleQuestions', Req, _Context) ->
                    undefined -> 20;
                    X2        -> X2
                end,
-        {ok, Queries} = aec_conductor:get_open_oracle_queries(OracleId, From, Max),
+        {ok, Queries} = aec_chain:get_open_oracle_queries(OracleId, From, Max),
         FmtQ = fun(Q) -> #{query_id => aec_base58c:encode(oracle_query_id, aeo_query:id(Q)),
                            query => aeo_query:query(Q),
                            query_fee => aeo_query:fee(Q),
@@ -319,29 +319,33 @@ handle_request('GetPubKey', _, _Context) ->
     end;
 
 handle_request('GetBlockNumber', _Req, _Context) ->
-    TopHeader = aec_conductor:top_header(),
+    TopHeader = aec_chain:top_header(),
     Height = aec_headers:height(TopHeader),
     {200, [], #{height => Height}};
 
 handle_request('GetBlockByHeightInternal', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block(fun() -> aec_conductor:get_block_by_height(Height) end, Req);
+    get_block(fun() -> aec_chain:get_block_by_height(Height) end, Req);
 
 handle_request('GetBlockByHashInternal', Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block(fun() -> aec_conductor:get_block_by_hash(Hash) end, Req)
+            get_block(fun() -> aec_chain:get_block(Hash) end, Req)
     end;
 
 handle_request('GetBlockGenesis', Req, _Context) ->
-    get_block(fun aec_conductor:genesis_block/0, Req);
+    get_block(
+        fun() ->
+            TopBlock = aec_chain:genesis_block(),
+            {ok, TopBlock}
+        end, Req);
 
 handle_request('GetBlockLatest', Req, _Context) ->
     get_block(
         fun() ->
-            TopBlock = aec_conductor:top(),
+            TopBlock = aec_chain:top_block(),
             {ok, TopBlock}
         end, Req);
 
@@ -353,22 +357,26 @@ handle_request('GetBlockTxsCountByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            get_block_txs_count(fun() -> aec_conductor:get_block_by_hash(Hash) end,
+            get_block_txs_count(fun() -> aec_chain:get_block(Hash) end,
                                Req)
     end;
 
 handle_request('GetBlockTxsCountByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    get_block_txs_count(fun() -> aec_conductor:get_block_by_height(Height) end,
+    get_block_txs_count(fun() -> aec_chain:get_block_by_height(Height) end,
                        Req);
 
 handle_request('GetGenesisBlockTxsCount', Req, _Context) ->
-    get_block_txs_count(fun aec_conductor:genesis_block/0, Req);
+    get_block_txs_count(
+        fun() ->
+            TopBlock = aec_chain:genesis_block(),
+            {ok, TopBlock}
+        end, Req);
 
 handle_request('GetLatestBlockTxsCount', Req, _Context) ->
     get_block_txs_count(
         fun() ->
-            TopBlock = aec_conductor:top(),
+            TopBlock = aec_chain:top_block(),
             {ok, TopBlock}
         end, Req);
 
@@ -378,7 +386,7 @@ handle_request('GetPendingBlockTxsCount', Req, _Context) ->
 handle_request('GetTransactionFromBlockHeight', Req, _Context) ->
     Height = maps:get('height', Req),
     Index = maps:get('tx_index', Req),
-    get_block_tx_by_index(fun() -> aec_conductor:get_block_by_height(Height) end,
+    get_block_tx_by_index(fun() -> aec_chain:get_block_by_height(Height) end,
                           Index,
                           Req);
 
@@ -389,7 +397,7 @@ handle_request('GetTransactionFromBlockHash', Req, _Context) ->
         {ok, Hash} ->
             Index = maps:get('tx_index', Req),
             get_block_tx_by_index(
-                fun() -> aec_conductor:get_block_by_hash(Hash) end,
+                fun() -> aec_chain:get_block(Hash) end,
                 Index,
                 Req)
     end;
@@ -398,7 +406,7 @@ handle_request('GetTransactionFromBlockLatest', Req, _Context) ->
     Index = maps:get('tx_index', Req),
     get_block_tx_by_index(
         fun() ->
-            TopBlock = aec_conductor:top(),
+            TopBlock = aec_chain:top_block(),
             {ok, TopBlock}
         end,
         Index,
@@ -409,7 +417,7 @@ handle_request('GetTxsListFromBlockRangeByHeight', Req, _Context) ->
     HeightTo = maps:get('to', Req),
     get_block_range(
         fun() ->
-            aec_conductor:get_block_range_by_height(HeightFrom, HeightTo)
+            aec_chain:get_block_range_by_height(HeightFrom, HeightTo)
         end, Req);
 
 handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
@@ -418,7 +426,7 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
         {{ok, HashFrom}, {ok, HashTo}} ->
             get_block_range(
                 fun() ->
-                    aec_conductor:get_block_range_by_hash(HashFrom, HashTo)
+                    aec_chain:get_block_range_by_hash(HashFrom, HashTo)
                 end, Req);
         _ ->
             {400, [], #{reason => <<"Invalid hash">>}}
@@ -468,7 +476,7 @@ handle_request('GetPeers', _Req, _Context) ->
 handle_request('GetAccountTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
-            TopBlockHash = aec_conductor:top_block_hash(),
+            TopBlockHash = aec_chain:top_block_hash(),
             case get_account_balance_at_hash(AccountPubkey, TopBlockHash) of
                 {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}};
@@ -658,6 +666,8 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
     case Fun() of
         {ok, _Block} = OK->
             OK;
+        error ->
+            {404, [], #{reason => <<"Block not found">>}};
         {error, no_top_header} ->
             {404, [], #{reason => <<"No top header">>}};
         {error, block_not_found} ->
@@ -773,7 +783,7 @@ get_account_balance_at_hash(AccountPubkey, Hash) ->
 get_block_hash_optionally_by_hash_or_height(Req) ->
     GetHashByHeight =
         fun(Height) ->
-            case aec_conductor:get_header_by_height(Height) of
+            case aec_chain:get_header_by_height(Height) of
                 {error, chain_too_short} ->
                     {error, not_found};
                 {ok, Header} ->
@@ -782,16 +792,16 @@ get_block_hash_optionally_by_hash_or_height(Req) ->
         end,
     case {maps:get('height', Req), maps:get('hash', Req)} of
         {undefined, undefined} ->
-            {ok, aec_conductor:top_block_hash()};
+            {ok, aec_chain:top_block_hash()};
         {undefined, EncodedHash} ->
             case aec_base58c:safe_decode(block_hash, EncodedHash) of
                 {error, _} ->
                     {error, invalid_hash};
                 {ok, Hash} ->
-                    case aec_conductor:get_header_by_hash(Hash) of
-                        {error, header_not_found} ->
+                    case aec_chain:has_header(Hash) of
+                        false ->
                             {error, not_found};
-                        {ok, _} -> % we do have header
+                        true ->
                             {ok, Hash}
                     end
             end;
@@ -883,7 +893,7 @@ get_coinbase_txs_and_headers(Account) ->
     %% all coinbases share the same transaction hash and we can fetch them
     lists:map(
         fun({BlockHash, SignedCoinbaseTx}) ->
-            {ok, Header} = aec_conductor:get_header_by_hash(BlockHash),
+            {ok, Header} = aec_chain:get_header(BlockHash),
             {Header, SignedCoinbaseTx}
         end,
         aec_db:read_tx(CoinbaseHash)).
@@ -911,7 +921,7 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
         fun(SignedTx) ->
             TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
             [{BlockHash, _}] = aec_db:read_tx(TxHash),
-            {ok, Header} = aec_conductor:get_header_by_hash(BlockHash),
+            {ok, Header} = aec_chain:get_header(BlockHash),
             {Header, SignedTx}
         end,
         Txs).

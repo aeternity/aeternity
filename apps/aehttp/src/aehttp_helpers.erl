@@ -145,8 +145,8 @@ verify_oracle_query_existence(OracleKey, QueryKey) ->
 verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
     fun(_Req, State) ->
         ReceivedAddress = maps:get(Key, State),
-        TopBlockHash = aec_conductor:top_block_hash(),
-        {value, Trees} = aec_db:find_block_state(TopBlockHash),
+        TopBlockHash = aec_chain:top_block_hash(),
+        {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = StateTreeFun(Trees),
         case Lookup(ReceivedAddress, Tree) of
             none ->

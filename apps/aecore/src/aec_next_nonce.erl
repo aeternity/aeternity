@@ -29,7 +29,7 @@ pick_for_account(Pubkey) ->
 -spec get_state_tree_nonce(pubkey()) -> {ok, non_neg_integer()} |
                                         {error, account_not_found}.
 get_state_tree_nonce(AccountPubkey) ->
-    case aec_conductor:get_account(AccountPubkey) of
+    case aec_chain:get_account(AccountPubkey) of
         {value, Account} ->
             {ok, aec_accounts:nonce(Account)};
         none ->

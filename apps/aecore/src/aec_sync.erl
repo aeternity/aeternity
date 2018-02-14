@@ -60,10 +60,10 @@ connect_peer(Uri) ->
 -type ping_object() :: map().
 -spec local_ping_object() -> ping_object().
 local_ping_object() ->
-    GHash = aec_conductor:genesis_hash(),
-    TopHash = aec_conductor:top_header_hash(),
+    GHash = aec_chain:genesis_hash(),
+    TopHash = aec_chain:top_header_hash(),
     Source = aec_peers:get_local_peer_uri(),
-    {ok, Difficulty} = aec_conductor:get_total_difficulty(),
+    {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
     #{<<"genesis_hash">> => GHash,
       <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
@@ -278,7 +278,7 @@ do_forward_tx(Tx, Uri) ->
 
 do_start_sync(Uri) ->
     aec_events:publish(chain_sync, {client_start, Uri}),
-    fetch_chain(Uri, aec_conductor:genesis_hash()).
+    fetch_chain(Uri, aec_chain:genesis_hash()).
 
 do_server_get_missing(Uri) ->
     aec_events:publish(chain_sync, {server_start, Uri}),
@@ -323,7 +323,7 @@ fetch_chain(Hash, Uri, GHash, MaybeConnected, Acc) ->
 
 is_connected_to_genesis(Hash) ->
     lager:debug("Checking if ~p is connected to genesis", [pp(Hash)]),
-    aec_conductor:hash_is_connected_to_genesis(Hash).
+    aec_chain:hash_is_connected_to_genesis(Hash).
 
 chain_fetched(Uri, Acc) ->
     try_write_blocks(Acc),
@@ -342,11 +342,11 @@ fetch_block(Hash, Uri) ->
     end.
 
 do_fetch_block(Hash, Uri) ->
-    case aec_conductor:get_block_by_hash(Hash) of
+    case aec_chain:get_block(Hash) of
         {ok, Block} ->
             lager:debug("block ~p already fetched, using local copy", [pp(Hash)]),
             {ok, false, Block};
-        {error, _} ->
+        error ->
             do_fetch_block_ext(Hash, Uri)
     end.
 
@@ -369,7 +369,7 @@ do_fetch_block_ext(Hash, Uri) ->
     end.
 
 do_get_missing_blocks(Uri) ->
-    Missing = aec_conductor:get_missing_block_hashes(),
+    Missing = aec_chain:get_missing_block_hashes(),
     lager:debug("Missing block hashes: ~p", [pp(Missing)]),
     fetch_missing_blocks(Missing, Uri).
 

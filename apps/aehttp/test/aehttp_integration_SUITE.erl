@@ -383,7 +383,7 @@ get_top_empty_chain(_Config) ->
 
 get_top_non_empty_chain(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    ExpectedH = rpc(aec_conductor, top_header, []),
+    ExpectedH = rpc(aec_chain, top_header, []),
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     {ok, 200, HeaderMap} = get_top(),
@@ -394,11 +394,11 @@ get_top_non_empty_chain(_Config) ->
 
 block_by_height(_Config) ->
     BlocksToCheck = 4,
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    TopHeader = rpc(aec_conductor, top_header, []),
+    TopHeader = rpc(aec_chain, top_header, []),
     %% assert there are enough blocks
     case aec_headers:height(TopHeader) of
         TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
@@ -407,7 +407,7 @@ block_by_height(_Config) ->
     % fetch and validate blocks
     lists:foreach(
         fun(Height) ->
-            {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
+            {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
             ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
             {ok, 200, BlockMap} = get_block_by_height(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
@@ -419,7 +419,7 @@ block_by_height(_Config) ->
     ok.
 
 block_not_found_by_height(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     % ensure no mining (and thus - no new blocks)
     {error, not_mining}  = rpc(aec_conductor, get_block_candidate, []),
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
@@ -436,7 +436,7 @@ block_not_found_by_hash(_Config) ->
     lists:foreach(
         fun(_) ->
             H = random_hash(),
-            {error, block_not_found} = rpc(aec_conductor, get_block_by_hash, [H]),
+            error = rpc(aec_chain, get_block, [H]),
             Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash(Hash)
         end,
@@ -455,11 +455,11 @@ block_not_found_by_broken_hash(_Config) ->
 
 block_by_hash(_Config) ->
     BlocksToCheck = 4,
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
-    TopHeader = rpc(aec_conductor, top_header, []),
+    TopHeader = rpc(aec_chain, top_header, []),
     %% assert there are enough blocks
     case aec_headers:height(TopHeader) of
         TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
@@ -468,7 +468,7 @@ block_by_hash(_Config) ->
     % fetch and validate blocks
     lists:foreach(
         fun(Height) ->
-            {ok, ExpectedBlock} = rpc(aec_conductor, get_block_by_height, [Height]),
+            {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
             Hash = aec_base58c:encode(block_hash, H),
             ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
@@ -526,7 +526,7 @@ contract_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
 
     % ensure Contract is part of the contract's tree
-    TopBlockHash = rpc(aec_conductor, top_block_hash, []),
+    TopBlockHash = rpc(aec_chain, top_block_hash, []),
     {value, Trees} = rpc(aec_db, find_block_state, [TopBlockHash]),
     ContractsTree = rpc(aec_trees, contracts, [Trees]),
     {value, _ } = rpc(aect_state_tree, lookup_contract, [ContractPubKey,
@@ -813,18 +813,18 @@ post_correct_blocks(_Config) ->
     Blocks =
         lists:map(
             fun(Height) ->
-                {ok, B} = rpc(aec_conductor, get_block_by_height, [Height]),
+                {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
                 B
             end,
             lists:seq(1, BlocksToPost)),
     ok = rpc(aec_conductor, reinit_chain, []),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    GH = rpc(aec_conductor, top_header, []),
+    GH = rpc(aec_chain, top_header, []),
     0 = aec_headers:height(GH), %chain is empty
     lists:foreach(
         fun(Block) ->
             {ok, 200, _} = post_block(Block),
-            H = rpc(aec_conductor, top_header, []),
+            H = rpc(aec_chain, top_header, []),
             {ok, HH} = aec_headers:hash_header(H),
             {ok, BH} = aec_blocks:hash_internal_representation(Block),
             BH = HH % block accepted
@@ -835,12 +835,12 @@ post_correct_blocks(_Config) ->
 post_broken_blocks(Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    1),
-    {ok, CorrectBlock} = rpc(aec_conductor, get_block_by_height, [1]),
+    {ok, CorrectBlock} = rpc(aec_chain, get_block_by_height, [1]),
     % consider a rpc call for cleaning the aec_chain_state's state
     aecore_suite_utils:stop_node(?NODE, Config),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    GH = rpc(aec_conductor, top_header, []),
+    GH = rpc(aec_chain, top_header, []),
     0 = aec_headers:height(GH), %chain is empty
     CorrectBlockMap = aec_blocks:serialize_to_map(CorrectBlock),
     BrokenBlocks =
@@ -865,7 +865,7 @@ post_broken_blocks(Config) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
             {ok, Block} = aec_blocks:deserialize_from_map(BlockMap),
             {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
-            H = rpc(aec_conductor, top_header, []),
+            H = rpc(aec_chain, top_header, []),
             0 = aec_headers:height(H) %chain is still empty
         end,
         BrokenBlocks),
@@ -1012,7 +1012,7 @@ version(_Config) ->
                 <<"genesis_hash">> := EncodedGH}} = get_version(),
     V0 = rpc(aeu_info, get_version, []),
     Rev0 = rpc(aeu_info, get_revision, []),
-    GenHash0 = rpc(aec_conductor, genesis_hash, []),
+    GenHash0 = rpc(aec_chain, genesis_hash, []),
     % asserts
     V = V0,
     Rev = Rev0,
@@ -1042,9 +1042,9 @@ info_less_than_30(_Config) ->
 test_info(BlocksToMine) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    ok = rpc(application, set_env, [aecore, expected_mine_rate, 100]),
+    ExpectedMineRate = 100,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
+                                   BlocksToMine, ExpectedMineRate),
     {ok, 200, #{<<"last_30_blocks_time">> := Summary}} = get_info(),
     ExpectedCnt = min(BlocksToMine + 1, 30),
     ExpectedCnt = length(Summary),
@@ -1180,7 +1180,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
 
 block_number(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
-    TopHeader = rpc(aec_conductor, top_header, []),
+    TopHeader = rpc(aec_chain, top_header, []),
     0 = aec_headers:height(TopHeader),
     {ok, 200, #{<<"height">> := 0}} = get_block_number(),
     lists:foreach(
@@ -1194,7 +1194,7 @@ block_number(_Config) ->
 
 internal_block_by_height(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_conductor, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
     CallApiFun = fun get_internal_block_by_height/2,
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
 
@@ -1214,7 +1214,7 @@ internal_block_not_found_by_height(_Config) ->
 
 internal_block_by_hash(_Config) ->
     GetExpectedBlockFun =
-        fun(H) -> rpc(aec_conductor, get_block_by_height, [H]) end,
+        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
     CallApiFun =
         fun(H, Opts) ->
             {ok, Hash} = block_hash_by_height(H),
@@ -1228,8 +1228,7 @@ internal_block_not_found_by_hash(_Config) ->
             lists:foreach(
                 fun(Opt) ->
                     H = random_hash(),
-                    {error, block_not_found} = rpc(aec_conductor,
-                                                   get_block_by_hash, [H]),
+                    error = rpc(aec_chain, get_block, [H]),
                     Hash = aec_base58c:encode(block_hash, H),
                     {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                         = get_internal_block_by_hash(Hash, Opt)
@@ -1255,7 +1254,10 @@ internal_block_not_found_by_broken_hash(_Config) ->
 
 internal_block_genesis(_Config) ->
     GetExpectedBlockFun =
-        fun(_H) -> rpc(aec_conductor, genesis_block, []) end,
+        fun(_H) ->
+            GenesisBlock = rpc(aec_chain, genesis_block, []),
+            {ok, GenesisBlock}
+        end,
     CallApiFun =
         fun(_H, Opts) ->
             get_internal_block_preset("genesis", Opts)
@@ -1265,7 +1267,7 @@ internal_block_genesis(_Config) ->
 internal_block_latest(_Config) ->
     GetExpectedBlockFun =
         fun(_H) ->
-            TopBlock = rpc(aec_conductor, top, []),
+            TopBlock = rpc(aec_chain, top_block, []),
             {ok, TopBlock}
         end,
     CallApiFun =
@@ -1377,7 +1379,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
     ok.
 
 block_txs_count_by_height(_Config) ->
-    generic_counts_test(fun(H) -> rpc(aec_conductor, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
                                      [H]) end,
                         fun get_block_txs_count_by_height/1).
 
@@ -1387,19 +1389,19 @@ block_txs_count_by_hash(_Config) ->
             {ok, Hash} = block_hash_by_height(H),
             get_block_txs_count_by_hash(Hash)
         end,
-    generic_counts_test(fun(H) -> rpc(aec_conductor, get_block_by_height,
+    generic_counts_test(fun(H) -> rpc(aec_chain, get_block_by_height,
                                      [H]) end,
                         CallApiFun).
 
 block_txs_count_genesis(_Config) ->
     generic_counts_test(
-        fun(_H) -> rpc(aec_conductor, genesis_block, []) end,
+        fun(_H) -> {ok, rpc(aec_chain, genesis_block, [])} end,
         fun(_) -> get_block_txs_count_preset("genesis") end).
 
 block_txs_count_latest(_Config) ->
     generic_counts_test(
         fun(_H) ->
-            TopBlock = rpc(aec_conductor, top, []),
+            TopBlock = rpc(aec_chain, top_block, []),
             {ok, TopBlock}
         end,
         fun(_) -> get_block_txs_count_preset("latest") end).
@@ -1451,7 +1453,7 @@ generic_counts_test(GetBlock, CallApi) ->
     ok.
 
 block_txs_count_by_height_not_found(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     lists:foreach(
         fun(H) ->
             {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
@@ -1464,8 +1466,7 @@ block_txs_count_by_hash_not_found(_Config) ->
     lists:foreach(
         fun(_Height) ->
             H = random_hash(),
-            {error, block_not_found} = rpc(aec_conductor,
-                                            get_block_by_hash, [H]),
+            error = rpc(aec_chain, get_block, [H]),
             Hash = aec_base58c:encode(block_hash, H),
             {ok, 404, #{<<"reason">> := <<"Block not found">>}}
                 = get_block_txs_count_by_hash(Hash)
@@ -1501,7 +1502,7 @@ block_tx_index_latest(_Config) ->
         end).
 
 block_tx_index_not_founds(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     RandomHeight = InitialHeight + rand:uniform(999) + 1, % CurrentTop + 1..1000
     Test =
         fun(Code, ErrMsg, Fun, Cases) ->
@@ -1592,8 +1593,8 @@ block_txs_list_by_hash(_Config) ->
                         end).
 
 generic_range_test(GetTxsApi, HeightToKey) ->
-    MaximumRange = rpc(aec_conductor, max_block_range, []),
-    CurrentHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    MaximumRange = rpc(aec_chain, max_block_range, []),
+    CurrentHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     BlocksToMine = max(2 * MaximumRange - CurrentHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
@@ -1649,8 +1650,8 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
 
 expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
                       Reverse) ->
-    {ok, Blocks} = rpc(aec_conductor, get_block_range_by_height, [HeightFrom,
-                                                                  HeightTo]),
+    {ok, Blocks} = rpc(aec_chain, get_block_range_by_height, [HeightFrom,
+                                                              HeightTo]),
     TxEncoding =
         case TxEncoding0 of
             default -> message_pack;
@@ -1705,8 +1706,8 @@ tx_type(SignedTx) ->
     Mod:type().
 
 block_txs_list_by_height_invalid_range(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
-    MaximumRange = rpc(aec_conductor, max_block_range, []),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
+    MaximumRange = rpc(aec_chain, max_block_range, []),
     BlocksToMine = max(2 * MaximumRange - InitialHeight, 0),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
@@ -1727,7 +1728,7 @@ block_txs_list_by_height_invalid_range(_Config) ->
         fun({From, To}) -> ValidateError(From, To, RangeTooBig) end,
         [{0, MaximumRange +1}, {1, MaximumRange + 2}]),
     ChainTooShort = {ok, 404, #{<<"reason">> => <<"Chain too short">>}},
-    CurrentHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    CurrentHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     lists:foreach(
         fun({From, To}) -> ValidateError(From, To, ChainTooShort) end,
         [{CurrentHeight - 1, CurrentHeight + 1},
@@ -1736,8 +1737,8 @@ block_txs_list_by_height_invalid_range(_Config) ->
     ok.
 
 block_txs_list_by_hash_invalid_range(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
-    MaximumRange = rpc(aec_conductor, max_block_range, []),
+    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
+    MaximumRange = rpc(aec_chain, max_block_range, []),
     BlocksToMine = 2 * MaximumRange,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
@@ -1745,7 +1746,10 @@ block_txs_list_by_hash_invalid_range(_Config) ->
         fun(From, To, Error) ->
             lists:foreach(
                 fun(Opts) ->
-                    Error = get_block_txs_list_by_hash(From, To, Opts, #{})
+                    case get_block_txs_list_by_hash(From, To, Opts, #{}) of
+                      Error -> Error;
+                      Other -> error({expected, Error, got, Other})
+                    end
                 end,
                 [default, message_pack, json])
         end,
@@ -2263,7 +2267,7 @@ balance(_Config) ->
     ok.
 
 balance_negative_cases(_Config) ->
-    MaxHeight = aec_blocks:height(rpc(aec_conductor, top, [])),
+    MaxHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     true = MaxHeight > 2,
     % get a random height, where 0 < Height < MaxHeight
     Height = rand:uniform(MaxHeight - 2) + 1,
@@ -2819,7 +2823,7 @@ prepare_for_spending(BlocksToMine) ->
 
 -spec block_hash_by_height(integer()) -> string().
 block_hash_by_height(Height) ->
-    {ok, B} = rpc(aec_conductor, get_block_by_height, [Height]),
+    {ok, B} = rpc(aec_chain, get_block_by_height, [Height]),
     {ok, HBin} = aec_blocks:hash_internal_representation(B),
     Hash = binary_to_list(aec_base58c:encode(block_hash, HBin)),
     {ok, Hash}.

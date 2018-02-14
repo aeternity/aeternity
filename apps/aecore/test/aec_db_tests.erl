@@ -21,7 +21,7 @@ kill_and_restart_conductor() ->
     ok = aec_conductor:stop(),
     %% check that it is dead.
     dead =
-        try aec_conductor:top()
+        try sys:get_status(aec_conductor)
         catch exit:{noproc, _} -> dead
         end,
     %% Restart server
@@ -30,7 +30,7 @@ kill_and_restart_conductor() ->
     ok.
 
 wait_for_conductor() ->
-    try aec_conductor:top(),
+    try sys:get_status(aec_conductor),
         server_up
     catch exit:{noproc, _} ->
         timer:sleep(10),
@@ -152,22 +152,21 @@ restart_test_() ->
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
                BH2 = aec_blocks:to_header(B2),
-               ?assertEqual({ok, GB}, aec_conductor:get_block_by_height(0)),
+               ?assertEqual({ok, GB}, aec_chain:get_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                %% Now B2 should be the top block
                TopBlockHash = aec_db:get_top_block_hash(),
                B2Hash = header_hash(BH2),
                ?assertEqual(B2Hash, TopBlockHash),
-               ChainTop1 = aec_conductor:top(),
-               ?assertEqual(ChainTop1, aec_conductor:top()),
+               ChainTop1 = aec_chain:top_block(),
                ?compareBlockResults(B2, ChainTop1),
 
                %% Check the state trees from persistence
                {ok, ChainTop1Hash} =
                    aec_blocks:hash_internal_representation(ChainTop1),
                {ok, ChainTop1State} =
-                   aec_conductor:get_block_state_by_hash(ChainTop1Hash),
+                   aec_chain:get_block_state(ChainTop1Hash),
                ?assertEqual(ChainTop1State,
                             aec_db:get_block_state(TopBlockHash)),
 
@@ -177,8 +176,7 @@ restart_test_() ->
                NewTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(B2Hash, NewTopBlockHash),
 
-               ChainTop2 = aec_conductor:top(),
-               ?assertEqual(ChainTop2, aec_conductor:top()),
+               ChainTop2 = aec_chain:top_block(),
                ?compareBlockResults(B2, ChainTop2),
 
                %% Compare the trees after restart
@@ -186,7 +184,7 @@ restart_test_() ->
                {ok, ChainTop2Hash} =
                    aec_blocks:hash_internal_representation(ChainTop2),
                {ok, ChainTop2State} =
-                   aec_conductor:get_block_state_by_hash(ChainTop2Hash),
+                   aec_chain:get_block_state(ChainTop2Hash),
                ?assertEqual(ChainTop1State,
                             ChainTop2State),
 
