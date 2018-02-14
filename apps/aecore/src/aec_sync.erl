@@ -1,7 +1,7 @@
 %%%=============================================================================
 %%% @copyright 2017, Aeternity Anstalt
 %%% @doc
-%%%    Module storing peers list and providing funtionc for peers interaction
+%%%    Module storing peers list and providing funtions for peer interaction
 %%% @end
 %%%=============================================================================
 -module(aec_sync).
@@ -239,7 +239,7 @@ ping_peer(Uri) ->
         {ok, RemotePingObj, RemotePeers} ->
             case compare_ping_objects(Uri, LocalPingObj, RemotePingObj) of
                 ok ->
-                    %% log_ping adds peer as side-effect 
+                    %% log_ping adds peer as side-effect
                     %% (in case aec_peers has restarted inbetween)
                     %% If it has been user removed before it was scheduled
                     %% it is also added again.
@@ -251,7 +251,7 @@ ping_peer(Uri) ->
         {error, protocol_violation} ->
             aec_peers:block_peer(Uri);
         {error, _} ->
-            %% If we ping a peer with wrong API version, time out in aue_request 
+            %% If we ping a peer with wrong API version, time out in aue_request
             %% and Peer is errored until it upgrades/downgrades to the same version.
             aec_peers:log_ping(Uri, error)
   end.
@@ -278,67 +278,78 @@ do_forward_tx(Tx, Uri) ->
 
 do_start_sync(Uri) ->
     aec_events:publish(chain_sync, {client_start, Uri}),
-    fetch_headers(Uri, genesis_hash()).
+    fetch_chain(Uri, aec_conductor:genesis_hash()).
 
 do_server_get_missing(Uri) ->
     aec_events:publish(chain_sync, {server_start, Uri}),
     do_get_missing_blocks(Uri),
     aec_events:publish(chain_sync, {server_done, Uri}).
 
-genesis_hash() ->
-    aec_conductor:genesis_hash().
-
-
-fetch_headers(Uri, GHash) ->
+fetch_chain(Uri, GHash) ->
     case aeu_requests:top(Uri) of
         {ok, Hdr} ->
             lager:debug("Top hdr (~p): ~p", [Uri, pp(Hdr)]),
-            {ok, HdrHash} = aec_headers:hash_header(Hdr),
-            case HdrHash of
-                GHash ->
-                    %% already the genesis hash
-                    ok;
-                _ ->
-                    fetch_headers_1(HdrHash, Hdr, Uri, GHash, [])
-            end;
+            {ok, Hash} = aec_headers:hash_header(Hdr),
+            fetch_chain(Hash, Uri, GHash, []);
         {error, Reason} ->
             lager:debug("fetching top block (~p) failed: ~p", [Uri, Reason])
     end.
 
-fetch_headers_1(HdrHash, Hdr, Uri, GHash, Acc) ->
-    {ResTag, _} = aec_conductor:get_header_by_hash(HdrHash),
-    case ((ResTag =:= ok)
-          andalso aec_conductor:hash_is_connected_to_genesis(HdrHash)) of
-        true ->
-            %% we have a continuous header chain
-            headers_fetched(Uri, Acc);
-        false ->
-            lager:debug("we don't have the top block header,"
-                        " fetching block (~p)", [pp(HdrHash)]),
-            Acc1 = fetch_block(HdrHash, Uri, Acc),
-            fetch_next_hdr(aec_headers:prev_hash(Hdr), Uri, GHash, Acc1)
+fetch_chain(GHash, Uri, GHash, Acc) ->
+    chain_fetched(Uri, Acc);
+fetch_chain(Hash, Uri, GHash, Acc) ->
+    case do_fetch_block(Hash, Uri) of
+        {ok, false, Block} -> %% We already have this block
+            case aec_conductor:hash_is_connected_to_genesis(Hash) of
+                true ->
+                    %% We are done
+                    chain_fetched(Uri, Acc);
+                false ->
+                    Hdr = aec_blocks:to_header(Block),
+                    fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, Acc)
+            end;
+        {ok, true, Block} -> %% We fetched this block
+            Hdr = aec_blocks:to_header(Block),
+            fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, [{Hash, Block}|Acc]);
+        {error, _} ->
+            %% Post the bit we have
+            chain_fetched(Uri, Acc)
     end.
 
-fetch_block(Hash, Uri, Acc) ->
-    case do_fetch_block(Hash, Uri) of
-        {ok, Block} ->
-            lager:debug("Block (~p|~p) fetched", [Uri, pp(Hash)]),
-            [{Hash, Block}|Acc];
-        {error,_} = Err ->
-            %% What is the right course of action here? Continue? Abort?
-            lager:error("Error fetching block (~p|~p): ~p",
-                        [Uri, Hash, Err]),
-            Acc
+chain_fetched(Uri, Acc) ->
+    try_write_blocks(Acc),
+    do_get_missing_blocks(Uri),
+    aec_events:publish(chain_sync, {client_done, Uri}).
+
+fetch_block(Hash, Uri) ->
+    case do_fetch_block_ext(Hash, Uri) of
+        {ok, _, Block} ->
+            lager:debug("Block (~p) fetched from ~p", [pp(Hash), Uri]),
+            [{Hash, Block}];
+        {error, _} = Err ->
+            lager:error("Error fetching block (~p) from ~p: ~p",
+                        [pp(Hash), Uri, Err]),
+            []
     end.
 
 do_fetch_block(Hash, Uri) ->
+    case aec_conductor:get_block_by_hash(Hash) of
+        {ok, Block} ->
+            lager:debug("block ~p already fetched, using local copy", [pp(Hash)]),
+            {ok, false, Block};
+        {error, _} ->
+            do_fetch_block_ext(Hash, Uri)
+    end.
+
+do_fetch_block_ext(Hash, Uri) ->
+    lager:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
     case aeu_requests:get_block(Uri, Hash) of
         {ok, Block} ->
             case header_hash(Block) =:= Hash of
                 true ->
                     lager:debug("block fetched from ~p (~p); ~p",
                                 [Uri, pp(Hash), pp(Block)]),
-                    {ok, Block};
+                    {ok, true, Block};
                 false ->
                     {error, hash_mismatch}
             end;
@@ -347,42 +358,6 @@ do_fetch_block(Hash, Uri) ->
                         [Uri, pp(Hash), Error]),
             Error
     end.
-
-fetch_next_hdr(GHash, Uri, GHash, Acc) ->
-    %% No need to fetch the genesis block
-    headers_fetched(Uri, Acc);
-fetch_next_hdr(Hash, Uri, GHash, Acc) ->
-    case do_fetch_block(Hash, Uri) of
-        {ok, Block} ->
-            fetch_hdrs_block_recvd(
-              Hash, Block, Uri, GHash, Acc);
-        {error, _} ->
-            %% Unexpected. Try to write the blocks we have
-            headers_fetched(Uri, Acc)
-    end.
-
-fetch_hdrs_block_recvd(HdrHash, Block, Uri, GHash, Acc) ->
-    {ResTag, _} = aec_conductor:get_block_by_hash(HdrHash),
-    case ((ResTag =:= ok)
-          andalso aec_conductor:hash_is_connected_to_genesis(HdrHash)) of
-        true ->
-            lager:debug(
-              "we have this block, go to next phase (~p)",
-              [pp(HdrHash)]),
-            %% we're done
-            headers_fetched(Uri, Acc);
-        false ->
-            lager:debug("new block, continue (~p)", [pp(HdrHash)]),
-            Hdr = aec_blocks:to_header(Block),
-            fetch_next_hdr(
-              aec_headers:prev_hash(Hdr), Uri, GHash,
-              [{HdrHash, Block}|Acc])
-    end.
-
-headers_fetched(Uri, Acc) ->
-    try_write_blocks(Acc),
-    do_get_missing_blocks(Uri),
-    aec_events:publish(chain_sync, {client_done, Uri}).
 
 do_get_missing_blocks(Uri) ->
     Missing = aec_conductor:get_missing_block_hashes(),
@@ -401,7 +376,7 @@ fetch_missing_blocks(Hashes, Uri) ->
     Blocks =
         lists:foldl(
           fun(Hash, Acc) ->
-                  fetch_block(Hash, Uri, Acc)
+                  fetch_block(Hash, Uri) ++ Acc
           end, [], Hashes),
     try_write_blocks(Blocks).
 
