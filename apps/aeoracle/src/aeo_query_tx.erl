@@ -22,7 +22,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -35,39 +34,38 @@
          sender/1]).
 
 
--define(ORACLE_QUERY_TX_TYPE, <<"oracle_query">>).
 -define(ORACLE_QUERY_TX_VSN, 1).
 -define(ORACLE_QUERY_TX_FEE, 2).
 
--type query_tx() :: #oracle_query_tx{}.
+-opaque tx() :: #oracle_query_tx{}.
 
--export_type([query_tx/0]).
+-export_type([tx/0]).
 
--spec sender(query_tx()) -> pubkey().
+-spec sender(tx()) -> pubkey().
 sender(#oracle_query_tx{sender = SenderPubKey}) ->
     SenderPubKey.
 
--spec oracle(query_tx()) -> pubkey().
+-spec oracle(tx()) -> pubkey().
 oracle(#oracle_query_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
--spec query(query_tx()) -> aeo_oracles:query().
+-spec query(tx()) -> aeo_oracles:query().
 query(#oracle_query_tx{query = Query}) ->
     Query.
 
--spec query_fee(query_tx()) -> integer().
+-spec query_fee(tx()) -> integer().
 query_fee(#oracle_query_tx{query_fee = QueryFee}) ->
     QueryFee.
 
--spec query_ttl(query_tx()) -> aeo_oracles:ttl().
+-spec query_ttl(tx()) -> aeo_oracles:ttl().
 query_ttl(#oracle_query_tx{query_ttl = QueryTTL}) ->
     QueryTTL.
 
--spec response_ttl(query_tx()) -> aeo_oracles:relative_ttl().
+-spec response_ttl(tx()) -> aeo_oracles:relative_ttl().
 response_ttl(#oracle_query_tx{response_ttl = ResponseTTL}) ->
     ResponseTTL.
 
--spec new(map()) -> {ok, query_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{sender        := SenderPubKey,
       nonce         := Nonce,
       oracle        := Oracle,
@@ -76,31 +74,32 @@ new(#{sender        := SenderPubKey,
       query_ttl     := QueryTTL,
       response_ttl  := ResponseTTL,
       fee           := Fee}) ->
-    {ok, #oracle_query_tx{sender        = SenderPubKey,
+    Tx = #oracle_query_tx{sender        = SenderPubKey,
                           nonce         = Nonce,
                           oracle        = Oracle,
                           query         = Query,
                           query_fee     = QueryFee,
                           query_ttl     = QueryTTL,
                           response_ttl  = ResponseTTL,
-                          fee           = Fee}}.
+                          fee           = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(query_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#oracle_query_tx{fee = F}) ->
     F.
 
--spec nonce(query_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_query_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(query_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#oracle_query_tx{sender = SenderPubKey}) ->
     SenderPubKey.
 
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(query_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
                        query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, Trees, Height) ->
@@ -116,16 +115,16 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(query_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#oracle_query_tx{sender = SenderPubKey,
                           oracle = OraclePubKey}) ->
     [SenderPubKey, OraclePubKey].
 
--spec signers(query_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#oracle_query_tx{sender = SenderPubKey}) ->
     [SenderPubKey].
 
--spec process(query_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
                          query_fee = QueryFee} = QueryTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -151,8 +150,7 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
                            query_ttl     = {QueryTTLType, QueryTTLValue},
                            response_ttl  = {delta, ResponseTTLValue},
                            fee           = Fee}) ->
-    [#{<<"type">>         => type()},
-     #{<<"vsn">>          => version()},
+    [#{<<"vsn">>          => version()},
      #{<<"sender">>       => SenderPubKey},
      #{<<"nonce">>        => Nonce},
      #{<<"oracle">>       => OraclePubKey},
@@ -166,8 +164,7 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
              <<"value">>  => ResponseTTLValue}},
      #{<<"fee">>          => Fee}].
 
-deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
-             #{<<"vsn">>          := ?ORACLE_QUERY_TX_VSN},
+deserialize([#{<<"vsn">>          := ?ORACLE_QUERY_TX_VSN},
              #{<<"sender">>       := SenderPubKey},
              #{<<"nonce">>        := Nonce},
              #{<<"oracle">>       := OraclePubKey},
@@ -188,10 +185,6 @@ deserialize([#{<<"type">>         := ?ORACLE_QUERY_TX_TYPE},
                      response_ttl  = {delta, ResponseTTLValue},
                      fee           = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?ORACLE_QUERY_TX_TYPE.
-
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_QUERY_TX_VSN.
@@ -204,8 +197,7 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
                             query_ttl     = {QueryTLLType, QueryTTLValue},
                             response_ttl  = {delta=ResponseTTLType, ResponseTTLValue},
                             fee           = Fee}) ->
-    #{<<"type">> => type(), 
-      <<"data_schema">> => <<"OracleQueryTxJSON">>, % swagger schema name
+    #{<<"data_schema">> => <<"OracleQueryTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"sender">> => aec_base58c:encode(account_pubkey, SenderPubKey),
       <<"nonce">> => Nonce,

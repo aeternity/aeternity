@@ -58,6 +58,9 @@
 
 -type password() :: binary().
 
+-type tx() :: aetx:tx().
+-type signed_tx() :: aetx_sign:signed_tx().
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -81,13 +84,13 @@ start_link(Args) ->
 stop() ->
     gen_server:stop(?SERVER).
 
--spec sign(term()) -> {ok, term()} | {error, term()}.
-sign(Term) ->
-    gen_server:call(?MODULE, {sign, Term}).
+-spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
+sign(Tx) ->
+    gen_server:call(?MODULE, {sign, Tx}).
 
--spec verify([binary()], term()) -> boolean().
-verify(Signatures, Term) ->
-    gen_server:call(?MODULE, {verify, Signatures, Term}).
+-spec verify([binary()], tx()) -> boolean().
+verify(Signatures, Tx) ->
+    gen_server:call(?MODULE, {verify, Signatures, Tx}).
 
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
@@ -186,23 +189,23 @@ init([Password, KeysDir]) when is_binary(Password) ->
 %%--------------------------------------------------------------------
 handle_call({sign, _}, _From, #state{priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
-handle_call({sign, Term}, _From,
+handle_call({sign, Tx}, _From,
             #state{pub = PubKey, priv=PrivKey,
                    crypto = #crypto{algo=Algo,
                                     digest=Digest,
                                     curve=Curve}} = State) ->
-    Signers = aec_tx:signers(Term),
+    Signers = aetx:signers(Tx),
     case lists:member(PubKey, Signers) of
         false ->
             {reply, {error, not_a_signer}, State};
         true ->
             CryptoMap = #{algo => Algo, digest => Digest, curve => Curve},
-            SignedTx = aec_tx_sign:sign(Term, PrivKey, CryptoMap),
+            SignedTx = aetx_sign:sign(Tx, PrivKey, CryptoMap),
             {reply, {ok, SignedTx}, State}
     end;
-handle_call({verify, Sigs, Term}, _From, #state{crypto = C} = State) ->
-    Signers = aec_tx:signers(Term),
-    Bin = aec_tx:serialize_to_binary(Term),
+handle_call({verify, Sigs, Tx}, _From, #state{crypto = C} = State) ->
+    Signers = aetx:signers(Tx),
+    Bin = aetx:serialize_to_binary(Tx),
     Res = lists:any(fun(Sig) ->
                             try_verify(Bin, Sig, Signers, C)
                     end, Sigs),

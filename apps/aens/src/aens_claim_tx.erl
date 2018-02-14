@@ -24,7 +24,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -36,42 +35,42 @@
 %%% Types
 %%%===================================================================
 
--define(NAME_CLAIM_TX_TYPE, <<"name_claim">>).
 -define(NAME_CLAIM_TX_VSN, 1).
 
--type claim_tx() :: #ns_claim_tx{}.
+-opaque tx() :: #ns_claim_tx{}.
 
--export_type([claim_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, claim_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account   := AccountPubKey,
       nonce     := Nonce,
       name      := Name,
       name_salt := NameSalt,
       fee       := Fee}) ->
-    {ok, #ns_claim_tx{account   = AccountPubKey,
+    Tx = #ns_claim_tx{account   = AccountPubKey,
                       nonce     = Nonce,
                       name      = Name,
                       name_salt = NameSalt,
-                      fee       = Fee}}.
+                      fee       = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(claim_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#ns_claim_tx{fee = Fee}) ->
     Fee.
 
--spec nonce(claim_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_claim_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(claim_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(claim_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
                    fee = Fee, name = Name, name_salt = NameSalt}, Trees, Height) ->
     case aens_utils:to_ascii(Name) of
@@ -94,7 +93,7 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             {error, Reason}
     end.
 
--spec process(claim_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                      name = PlainName, name_salt = NameSalt} = ClaimTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -118,31 +117,29 @@ process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(claim_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#ns_claim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(claim_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#ns_claim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(claim_tx()) -> list(map()).
+-spec serialize(tx()) -> list(map()).
 serialize(#ns_claim_tx{account   = AccountPubKey,
                        nonce     = None,
                        name      = Name,
                        name_salt = NameSalt,
                        fee       = Fee}) ->
-    [#{<<"type">>      => type()},
-     #{<<"vsn">>       => version()},
+    [#{<<"vsn">>       => version()},
      #{<<"account">>   => AccountPubKey},
      #{<<"nonce">>     => None},
      #{<<"name">>      => Name},
      #{<<"name_salt">> => NameSalt},
      #{<<"fee">>       => Fee}].
 
--spec deserialize(list(map())) -> claim_tx().
-deserialize([#{<<"type">>      := ?NAME_CLAIM_TX_TYPE},
-             #{<<"vsn">>       := ?NAME_CLAIM_TX_VSN},
+-spec deserialize(list(map())) -> tx().
+deserialize([#{<<"vsn">>       := ?NAME_CLAIM_TX_VSN},
              #{<<"account">>   := AccountPubKey},
              #{<<"nonce">>     := Nonce},
              #{<<"name">>      := Name},
@@ -154,18 +151,13 @@ deserialize([#{<<"type">>      := ?NAME_CLAIM_TX_TYPE},
                  name_salt = NameSalt,
                  fee       = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?NAME_CLAIM_TX_TYPE.
-
--spec for_client(claim_tx()) -> map().
+-spec for_client(tx()) -> map().
 for_client(#ns_claim_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name      = Name,
                         name_salt = NameSalt,
                         fee       = Fee}) ->
-    #{<<"type">>      => <<"NameClaimTxObject">>, % swagger schema name
-      <<"vsn">>       => version(),
+    #{<<"vsn">>       => version(),
       <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>     => Nonce,
       <<"name">>      => Name,
@@ -176,11 +168,11 @@ for_client(#ns_claim_tx{account   = AccountPubKey,
 %%% Getters
 %%%===================================================================
 
--spec account(claim_tx()) -> pubkey().
+-spec account(tx()) -> pubkey().
 account(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec name(claim_tx()) -> binary().
+-spec name(tx()) -> binary().
 name(#ns_claim_tx{name = Name}) ->
     Name.
 

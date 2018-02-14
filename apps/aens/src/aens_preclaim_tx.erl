@@ -24,7 +24,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -36,40 +35,40 @@
 %%% Types
 %%%===================================================================
 
--define(NAME_PRECLAIM_TX_TYPE, <<"name_preclaim">>).
 -define(NAME_PRECLAIM_TX_VSN, 1).
 
--type preclaim_tx() :: #ns_preclaim_tx{}.
+-opaque tx() :: #ns_preclaim_tx{}.
 
--export_type([preclaim_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, preclaim_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account    := AccountPubKey,
       nonce      := Nonce,
       commitment := Commitment,
       fee        := Fee}) ->
-    {ok, #ns_preclaim_tx{account    = AccountPubKey,
+    Tx = #ns_preclaim_tx{account    = AccountPubKey,
                          nonce      = Nonce,
                          commitment = Commitment,
-                         fee        = Fee}}.
+                         fee        = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(preclaim_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#ns_preclaim_tx{fee = Fee}) ->
     Fee.
 
--spec nonce(preclaim_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_preclaim_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(preclaim_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#ns_preclaim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(preclaim_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
                       fee = Fee, commitment = Commitment}, Trees, Height) ->
     Checks =
@@ -81,7 +80,7 @@ check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(preclaim_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
                         nonce = Nonce} = PreclaimTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -100,29 +99,27 @@ process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(preclaim_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#ns_preclaim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(preclaim_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#ns_preclaim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(preclaim_tx()) -> list(map()).
+-spec serialize(tx()) -> list(map()).
 serialize(#ns_preclaim_tx{account    = AccountPubKey,
                           nonce      = Nonce,
                           commitment = Commitment,
                           fee        = Fee}) ->
-    [#{<<"type">>       => type()},
-     #{<<"vsn">>        => version()},
+    [#{<<"vsn">>        => version()},
      #{<<"account">>    => AccountPubKey},
      #{<<"nonce">>      => Nonce},
      #{<<"commitment">> => Commitment},
      #{<<"fee">>        => Fee}].
 
--spec deserialize(list(map())) -> preclaim_tx().
-deserialize([#{<<"type">>       := ?NAME_PRECLAIM_TX_TYPE},
-             #{<<"vsn">>        := ?NAME_PRECLAIM_TX_VSN},
+-spec deserialize(list(map())) -> tx().
+deserialize([#{<<"vsn">>        := ?NAME_PRECLAIM_TX_VSN},
              #{<<"account">>    := AccountPubKey},
              #{<<"nonce">>      := Nonce},
              #{<<"commitment">> := Commitment},
@@ -132,17 +129,12 @@ deserialize([#{<<"type">>       := ?NAME_PRECLAIM_TX_TYPE},
                     commitment = Commitment,
                     fee        = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?NAME_PRECLAIM_TX_TYPE.
-
--spec for_client(preclaim_tx()) -> map().
+-spec for_client(tx()) -> map().
 for_client(#ns_preclaim_tx{account    = AccountPubKey,
                            nonce      = Nonce,
                            commitment = Commitment,
                            fee        = Fee}) ->
-    #{<<"type">>       => <<"NamePreclaimTxObject">>, % swagger schema name
-      <<"vsn">>        => version(),
+    #{<<"vsn">>        => version(),
       <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>      => Nonce,
       <<"commitment">> => aec_base58c:encode(commitment, Commitment),
@@ -152,11 +144,11 @@ for_client(#ns_preclaim_tx{account    = AccountPubKey,
 %%% Getters
 %%%===================================================================
 
--spec account(preclaim_tx()) -> pubkey().
+-spec account(tx()) -> pubkey().
 account(#ns_preclaim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec commitment(preclaim_tx()) -> binary().
+-spec commitment(tx()) -> binary().
 commitment(#ns_preclaim_tx{commitment = Commitment}) ->
     Commitment.
 

@@ -22,7 +22,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -32,53 +31,53 @@
          response/1]).
 
 
--define(ORACLE_RESPONSE_TX_TYPE, <<"oracle_response">>).
 -define(ORACLE_RESPONSE_TX_VSN, 1).
 -define(ORACLE_RESPONSE_TX_FEE, 2).
 
--type response_tx() :: #oracle_response_tx{}.
+-opaque tx() :: #oracle_response_tx{}.
 
--export_type([response_tx/0]).
+-export_type([tx/0]).
 
--spec oracle(response_tx()) -> pubkey().
+-spec oracle(tx()) -> pubkey().
 oracle(#oracle_response_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
--spec query_id(response_tx()) -> aeo_query:oracle_tx_id().
+-spec query_id(tx()) -> aeo_query:oracle_tx_id().
 query_id(#oracle_response_tx{query_id = QId}) ->
     QId.
 
--spec response(response_tx()) -> aeo_query:oracle_response().
+-spec response(tx()) -> aeo_query:oracle_response().
 response(#oracle_response_tx{response = Response}) ->
     Response.
 
--spec new(map()) -> {ok, response_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{oracle   := Oracle,
       nonce    := Nonce,
       query_id := QId,
       response := Response,
       fee      := Fee}) ->
-    {ok, #oracle_response_tx{oracle   = Oracle,
+    Tx = #oracle_response_tx{oracle   = Oracle,
                              nonce    = Nonce,
                              query_id = QId,
                              response = Response,
-                             fee      = Fee}}.
+                             fee      = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(response_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#oracle_response_tx{fee = F}) ->
     F.
 
--spec nonce(response_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_response_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(response_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#oracle_response_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(response_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           query_id = QId, fee = Fee}, Trees, Height) ->
     case fetch_query(OraclePubKey, QId, Trees) of
@@ -100,15 +99,15 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
         none -> {error, no_matching_oracle_query}
     end.
 
--spec accounts(response_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
     [OraclePubKey].
 
--spec signers(response_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#oracle_response_tx{oracle = OraclePubKey}) ->
     [OraclePubKey].
 
--spec process(response_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                             query_id = QId, response = Response,
                             fee = Fee}, Trees0, Height) ->
@@ -135,16 +134,14 @@ serialize(#oracle_response_tx{oracle   = OraclePubKey,
                               query_id = QId,
                               response = Response,
                               fee      = Fee}) ->
-    [#{<<"type">>     => type()},
-     #{<<"vsn">>      => version()},
+    [#{<<"vsn">>      => version()},
      #{<<"oracle">>   => OraclePubKey},
      #{<<"nonce">>    => Nonce},
      #{<<"query_id">> => QId},
      #{<<"response">> => Response},
      #{<<"fee">>      => Fee}].
 
-deserialize([#{<<"type">>     := ?ORACLE_RESPONSE_TX_TYPE},
-             #{<<"vsn">>      := ?ORACLE_RESPONSE_TX_VSN},
+deserialize([#{<<"vsn">>      := ?ORACLE_RESPONSE_TX_VSN},
              #{<<"oracle">>   := OraclePubKey},
              #{<<"nonce">>    := Nonce},
              #{<<"query_id">> := QId},
@@ -156,10 +153,6 @@ deserialize([#{<<"type">>     := ?ORACLE_RESPONSE_TX_TYPE},
                         response = Response,
                         fee      = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?ORACLE_RESPONSE_TX_TYPE.
-
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_RESPONSE_TX_VSN.
@@ -169,8 +162,7 @@ for_client(#oracle_response_tx{ oracle   = OraclePubKey,
                                 query_id = QId,
                                 response = Response,
                                 fee      = Fee}) ->
-    #{<<"type">> => type(),
-      <<"data_schema">> => <<"OracleResponseTxJSON">>, % swagger schema name
+    #{<<"data_schema">> => <<"OracleResponseTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"oracle">> => aec_base58c:encode(oracle_pubkey, OraclePubKey),
       <<"nonce">> => Nonce,

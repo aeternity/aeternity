@@ -72,18 +72,18 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:query_tx(), height()) -> query().
+-spec new(aeo_query_tx:tx(), height()) -> query().
 new(QTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
     I = #query{ sender_address = aeo_query_tx:sender(QTx)
-                    , sender_nonce   = aeo_query_tx:nonce(QTx)
-                    , oracle_address = aeo_query_tx:oracle(QTx)
-                    , query          = aeo_query_tx:query(QTx)
-                    , response       = undefined
-                    , expires        = Expires
-                    , response_ttl   = aeo_query_tx:response_ttl(QTx)
-                    , fee            = aeo_query_tx:query_fee(QTx)
-                    },
+              , sender_nonce   = aeo_query_tx:nonce(QTx)
+              , oracle_address = aeo_query_tx:oracle(QTx)
+              , query          = aeo_query_tx:query(QTx)
+              , response       = undefined
+              , expires        = Expires
+              , response_ttl   = aeo_query_tx:response_ttl(QTx)
+              , fee            = aeo_query_tx:query_fee(QTx)
+              },
     assert_fields(I).
 
 -spec id(query()) -> id().

@@ -23,7 +23,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -31,41 +30,41 @@
 %%% Types
 %%%===================================================================
 
--define(NAME_REVOKE_TX_TYPE, <<"name_revoke">>).
 -define(NAME_REVOKE_TX_VSN, 1).
 
--type revoke_tx() :: #ns_revoke_tx{}.
+-opaque tx() :: #ns_revoke_tx{}.
 
--export_type([revoke_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, revoke_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account   := AccountPubKey,
       nonce     := Nonce,
       name_hash := NameHash,
       fee       := Fee}) ->
-    {ok, #ns_revoke_tx{account   = AccountPubKey,
+    Tx = #ns_revoke_tx{account   = AccountPubKey,
                        nonce     = Nonce,
                        name_hash = NameHash,
-                       fee       = Fee}}.
+                       fee       = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
 
--spec fee(revoke_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#ns_revoke_tx{fee = Fee}) ->
     Fee.
 
--spec nonce(revoke_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_revoke_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(revoke_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#ns_revoke_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(revoke_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_revoke_tx{account = AccountPubKey, nonce = Nonce,
                     fee = Fee, name_hash = NameHash}, Trees, Height) ->
     Checks =
@@ -77,7 +76,7 @@ check(#ns_revoke_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(revoke_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#ns_revoke_tx{account = AccountPubKey, fee = Fee,
                       name_hash = NameHash, nonce = Nonce}, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -97,29 +96,27 @@ process(#ns_revoke_tx{account = AccountPubKey, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(revoke_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#ns_revoke_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(revoke_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#ns_revoke_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(revoke_tx()) -> list(map()).
+-spec serialize(tx()) -> list(map()).
 serialize(#ns_revoke_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name_hash = NameHash,
                         fee       = Fee}) ->
-    [#{<<"type">>    => type()},
-     #{<<"vsn">>     => version()},
+    [#{<<"vsn">>     => version()},
      #{<<"account">> => AccountPubKey},
      #{<<"nonce">>   => Nonce},
      #{<<"hash">>    => NameHash},
      #{<<"fee">>     => Fee}].
 
--spec deserialize(list(map())) -> revoke_tx().
-deserialize([#{<<"type">>    := ?NAME_REVOKE_TX_TYPE},
-             #{<<"vsn">>     := ?NAME_REVOKE_TX_VSN},
+-spec deserialize(list(map())) -> tx().
+deserialize([#{<<"vsn">>     := ?NAME_REVOKE_TX_VSN},
              #{<<"account">> := AccountPubKey},
              #{<<"nonce">>   := Nonce},
              #{<<"hash">>    := NameHash},
@@ -129,17 +126,12 @@ deserialize([#{<<"type">>    := ?NAME_REVOKE_TX_TYPE},
                   name_hash = NameHash,
                   fee       = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?NAME_REVOKE_TX_TYPE.
-
--spec for_client(revoke_tx()) -> map().
+-spec for_client(tx()) -> map().
 for_client(#ns_revoke_tx{account   = AccountPubKey,
                          nonce     = Nonce,
                          name_hash = NameHash,
                          fee       = Fee}) ->
-    #{<<"type">>      => <<"NameRevokeTxObject">>, % swagger schema name
-      <<"vsn">>       => version(),
+    #{<<"vsn">>       => version(),
       <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>     => Nonce,
       <<"name_hash">> => aec_base58c:encode(name, NameHash),

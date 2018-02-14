@@ -15,33 +15,36 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1]).
 
 -behavior(aetx).
 
 -include("common.hrl").
 -include("trees.hrl").
--include("core_txs.hrl").
 
+-record(coinbase_tx, {account   = <<>> :: pubkey()}).
 
--spec new(map()) -> {ok, coinbase_tx()}.
+-opaque tx() :: #coinbase_tx{}.
+
+-export_type([tx/0]).
+
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account := AccountPubkey}) ->
-    {ok, #coinbase_tx{account = AccountPubkey}}.
+    {ok, aetx:new(?MODULE, #coinbase_tx{account = AccountPubkey})}.
 
--spec fee(coinbase_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#coinbase_tx{}) ->
     0.
 
--spec nonce(coinbase_tx()) -> undefined.
+-spec nonce(tx()) -> undefined.
 nonce(#coinbase_tx{}) ->
     undefined.
 
--spec origin(coinbase_tx()) -> undefined.
+-spec origin(tx()) -> undefined.
 origin(#coinbase_tx{}) ->
     undefined.
 
--spec check(coinbase_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     case aec_tx_common:ensure_account_at_height(AccountPubkey, Trees0, Height) of
         {ok, Trees} ->
@@ -52,8 +55,8 @@ check(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
 
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block
-%% is added to miner's account in aec_tx:apply_signed/3.
--spec process(coinbase_tx(), trees(), height()) -> {ok, trees()}.
+%% is added to miner's account in aec_trees:apply_signed/3.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),
@@ -65,35 +68,27 @@ process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
     {ok, Trees}.
 
--spec accounts(coinbase_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 
--spec signers(coinbase_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 
--define(CB_TX_TYPE, <<"coinbase">>).
 -define(CB_TX_VSN, 1).
 
--spec serialize(coinbase_tx()) -> [map()].
+-spec serialize(tx()) -> [map()].
 serialize(#coinbase_tx{account = Account}) ->
-    [#{<<"type">> => type()},
-     #{<<"vsn">> => version()},
+    [#{<<"vsn">> => version()},
      #{<<"acct">> => Account}].
 
--spec deserialize([map()]) -> coinbase_tx().
-deserialize([#{<<"type">> := ?CB_TX_TYPE},
-             #{<<"vsn">>  := ?CB_TX_VSN},
+-spec deserialize([map()]) -> tx().
+deserialize([#{<<"vsn">>  := ?CB_TX_VSN},
              #{<<"acct">> := Account}]) ->
     #coinbase_tx{account = Account}.
-
--spec type() -> binary().
-type() ->
-    ?CB_TX_TYPE.
 
 for_client(#coinbase_tx{account = Account}) ->
     #{<<"account">> => aec_base58c:encode(account_pubkey,Account),
       <<"data_schema">> => <<"CoinbaseTxJSON">>, % swagger schema name
-      <<"type">> => ?CB_TX_TYPE,
       <<"vsn">> => ?CB_TX_VSN}.
 
 version() ->

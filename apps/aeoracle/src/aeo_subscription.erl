@@ -15,17 +15,19 @@
 %%% API
 %%%===================================================================
 
--spec notify_query_tx(any(), %% Dialyzer can't handle aeo_query_tx:query_tx(),
+-spec notify_query_tx(aetx:tx(),
                       list({aec_subscribe:id(), aec_subscribe:event()})) -> ok.
 notify_query_tx(Tx, Subs) ->
-    [ WS ! {event, oracle_query_tx, Tx} || {{ws, WS}, {oracle, {query, OId}}} <- Subs,
-                                           OId == aeo_query_tx:oracle(Tx) ],
+    {aeo_query_tx, QTx} = aetx:specialize_type(Tx),
+    [ WS ! {event, oracle_query_tx, QTx} || {{ws, WS}, {oracle, {query, OId}}} <- Subs,
+                                            OId == aeo_query_tx:oracle(QTx) ],
     ok.
 
--spec notify_response_tx(any(), %% Dialyzer can't handle aeo_response_tx:response_tx(),
+-spec notify_response_tx(aetx:tx(),
                          list({aec_subscribe:id(), aec_subscribe:event()})) -> ok.
 notify_response_tx(Tx, Subs) ->
-    [ WS ! {event, oracle_response_tx, Tx} || {{ws, WS}, {oracle, {response, QId}}} <- Subs,
-                                              QId == aeo_response_tx:query_id(Tx) ],
+    {aeo_response_tx, RTx} = aetx:specialize_type(Tx),
+    [ WS ! {event, oracle_response_tx, RTx} || {{ws, WS}, {oracle, {response, QId}}} <- Subs,
+                                               QId == aeo_response_tx:query_id(RTx) ],
     ok.
 

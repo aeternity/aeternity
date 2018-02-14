@@ -85,7 +85,7 @@ handle_request('GetTxs', _Req, _Context) ->
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
     Txs = [#{<<"tx">> => aec_base58c:encode(
                            transaction,
-                           aec_tx_sign:serialize_to_binary(T))}
+                           aetx_sign:serialize_to_binary(T))}
            || T <- Txs0],
     {200, [], Txs};
 
@@ -111,7 +111,7 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}};
         {ok, DecodedTx} ->
             DeserializedTx =
-                try {ok, aec_tx_sign:deserialize_from_binary(DecodedTx)}
+                try {ok, aetx_sign:deserialize_from_binary(DecodedTx)}
                 catch _:_ -> {error, broken_tx}
                 end,
             case DeserializedTx of
@@ -139,7 +139,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
         {ok, Data} ->
             {ok, Tx} = aect_create_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
@@ -158,7 +158,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aect_call_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
@@ -202,7 +202,7 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_register_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
@@ -221,7 +221,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_query_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
@@ -238,7 +238,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_response_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
@@ -441,7 +441,7 @@ handle_request('GetInfo', _Req, _Context) ->
 
 handle_request('CompileContract', Req, _Context) ->
     case Req of
-        #{'Contract' := 
+        #{'Contract' :=
               #{ <<"code">> := Code
                , <<"options">> := Options }} ->
             %% TODO: Handle other languages
