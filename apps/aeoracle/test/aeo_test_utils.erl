@@ -65,12 +65,13 @@ register_tx(PubKey, State) ->
 
 register_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(register_tx_default_spec(PubKey, State), Spec0),
-    #oracle_register_tx{ account   = PubKey
-                       , nonce     = maps:get(nonce, Spec)
-                       , ttl       = maps:get(ttl, Spec)
-                       , fee       = maps:get(fee, Spec)
-                       , query_fee = maps:get(query_fee, Spec)
-                       }.
+    aetx:new(aeo_register_tx,
+             #oracle_register_tx{ account   = PubKey
+                                , nonce     = maps:get(nonce, Spec)
+                                , ttl       = maps:get(ttl, Spec)
+                                , fee       = maps:get(fee, Spec)
+                                , query_fee = maps:get(query_fee, Spec)
+                                }).
 
 register_tx_default_spec(PubKey, State) ->
     #{ ttl       => {delta, 10}
@@ -88,15 +89,16 @@ query_tx(PubKey, OracleKey, State) ->
 
 query_tx(PubKey, OracleKey, Spec0, State) ->
     Spec = maps:merge(query_tx_default_spec(PubKey, State), Spec0),
-    #oracle_query_tx{ sender = PubKey
-                    , nonce  = maps:get(nonce, Spec)
-                    , oracle = OracleKey
-                    , query  = maps:get(query, Spec)
-                    , query_fee = maps:get(query_fee, Spec)
-                    , query_ttl = maps:get(query_ttl, Spec)
-                    , response_ttl = maps:get(response_ttl, Spec)
-                    , fee = maps:get(fee, Spec)
-                    }.
+    aetx:new(aeo_query_tx,
+             #oracle_query_tx{ sender = PubKey
+                             , nonce  = maps:get(nonce, Spec)
+                             , oracle = OracleKey
+                             , query  = maps:get(query, Spec)
+                             , query_fee = maps:get(query_fee, Spec)
+                             , query_ttl = maps:get(query_ttl, Spec)
+                             , response_ttl = maps:get(response_ttl, Spec)
+                             , fee = maps:get(fee, Spec)
+                             }).
 
 query_tx_default_spec(PubKey, State) ->
     #{ query        => <<"Hello world">>
@@ -116,12 +118,13 @@ response_tx(PubKey, ID, Response, State) ->
 
 response_tx(PubKey, ID, Response, Spec0, State) ->
     Spec = maps:merge(response_tx_default_spec(PubKey, State), Spec0),
-    #oracle_response_tx{ oracle   = PubKey
-                       , nonce    = maps:get(nonce, Spec)
-                       , query_id = ID
-                       , response = Response
-                       , fee      = maps:get(fee, Spec)
-                       }.
+    aetx:new(aeo_response_tx,
+             #oracle_response_tx{ oracle   = PubKey
+                                , nonce    = maps:get(nonce, Spec)
+                                , query_id = ID
+                                , response = Response
+                                , fee      = maps:get(fee, Spec)
+                                }).
 
 response_tx_default_spec(PubKey, State) ->
     #{ nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end

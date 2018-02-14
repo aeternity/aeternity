@@ -62,5 +62,6 @@ create_tx(Override) ->
            , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
            },
     Map1 = maps:merge(Map, Override),
-    {ok, R} = aect_create_tx:new(Map1),
-    R.
+    {ok, Tx} = aect_create_tx:new(Map1),
+    {aect_create_tx, CTx} = aetx:specialize_type(Tx),
+    CTx.

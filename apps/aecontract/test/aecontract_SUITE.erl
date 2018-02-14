@@ -57,21 +57,19 @@ create_contract_negative(_Cfg) ->
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
     {_, [], S1}  = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
-    {error, account_not_found} = aect_create_tx:check(RTx1, Trees, CurrHeight),
+    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
     {_, [], S2}  = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    {error, insufficient_funds} =
-        aect_create_tx:check(RTx2, Trees2, CurrHeight),
+    {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
     {_, [], S1}  = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} =
-        aect_create_tx:check(RTx3, Trees, CurrHeight),
+    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight),
 
     ok.
 
@@ -85,10 +83,10 @@ create_contract(_Cfg) ->
     {PubKey, S2}.
 
 sign_and_apply_transaction(Tx, PrivKey, S1) ->
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_tx:apply_signed([SignedTx], Trees, Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed([SignedTx], Trees, Height),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
@@ -114,7 +112,7 @@ call_contract(_Cfg) ->
 
     %% Test that the create transaction is accepted
     {SignedTx, [SignedTx], S3} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S2),
-    ContractKey = aect_contracts:compute_contract_pubkey(Owner, aect_create_tx:nonce(CreateTx)),
+    ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
     %% Now call check that we can call it.
     Fee           = 107,
@@ -124,7 +122,7 @@ call_contract(_Cfg) ->
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData, gas_price => GasPrice, fee => Fee}, S3),
     {SignedTx1, [SignedTx1], S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),
-    CallId = aect_call:id(Caller, aect_call_tx:nonce(CallTx), ContractKey),
+    CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
     Call = aect_state_tree:get_call(ContractKey, CallId, aect_test_utils:contracts(S4)),
@@ -143,11 +141,13 @@ call_contract(_Cfg) ->
 make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     Tx = aect_test_utils:create_tx(PubKey, #{ code => Code }, S),
     ContractKey = <<"CODE", Rest/binary>>,
-    aect_contracts:new(ContractKey, Tx, 1).
+    {aect_create_tx, CTx} = aetx:specialize_type(Tx),
+    aect_contracts:new(ContractKey, CTx, 1).
 
 make_call(PubKey, ContractKey, Call, S) ->
     Tx = aect_test_utils:call_tx(PubKey, ContractKey, #{ call => Call }, S),
-    aect_call:new(Tx, 1).
+    {aect_call_tx, CTx} = aetx:specialize_type(Tx),
+    aect_call:new(CTx, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).

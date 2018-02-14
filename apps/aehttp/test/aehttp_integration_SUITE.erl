@@ -489,8 +489,8 @@ block_by_hash(_Config) ->
     ok.
 
 %% tests the following
-%% GET contract_create_tx unsigned transaction 
-%% GET contract_call_tx unsigned transaction 
+%% GET contract_create_tx unsigned transaction
+%% GET contract_call_tx unsigned transaction
 %% due to complexity of contract_call_tx (needs a contract in the state tree)
 %% both positive and negative cases are tested in this test
 contract_transactions(_Config) ->
@@ -528,10 +528,10 @@ contract_transactions(_Config) ->
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aec_tx:deserialize_from_binary(SerializedUnsignedTx), 
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
-    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
+    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     % create_contract_tx is in mempool
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
 
@@ -575,7 +575,7 @@ contract_transactions(_Config) ->
                              arguments => Argument},
 
     {ok, EncodedCallData} = aect_ring:encode_call_data(Code, Function,
-                                                       Argument), 
+                                                       Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller => MinerPubkey,
                                 contract => ContractPubKey,
@@ -590,45 +590,45 @@ contract_transactions(_Config) ->
     % invalid owner hash
     <<_, InvalidHash/binary>> = MinerAddress,
     {ok, 400, #{<<"reason">> := <<"Invalid hash: owner">>}} =
-        get_contract_create(maps:put(owner, InvalidHash, ValidEncoded)), 
+        get_contract_create(maps:put(owner, InvalidHash, ValidEncoded)),
     % invalid caller hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
-        get_contract_call(maps:put(caller, InvalidHash, ContractCallEncoded)), 
+        get_contract_call(maps:put(caller, InvalidHash, ContractCallEncoded)),
     % invalid contract hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
-        get_contract_call(maps:put(contract, InvalidHash, ContractCallEncoded)), 
+        get_contract_call(maps:put(contract, InvalidHash, ContractCallEncoded)),
     % invalid contract and caller hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: contract,caller">>}} =
         get_contract_call(maps:merge(ContractCallEncoded, #{contract => InvalidHash,
-                                                            caller => InvalidHash})), 
+                                                            caller => InvalidHash})),
     % invalid caller hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
         get_contract_call_compute(maps:put(caller, InvalidHash,
-                                           ComputeCCallEncoded)), 
+                                           ComputeCCallEncoded)),
     % invalid contract hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
         get_contract_call_compute(maps:put(contract, InvalidHash,
-                                           ComputeCCallEncoded)), 
+                                           ComputeCCallEncoded)),
 
-    %% account not found 
+    %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     %% owner not found
     {ok, 404, #{<<"reason">> := <<"Account of owner not found">>}} =
-        get_contract_create(maps:put(owner, RandAddress, ValidEncoded)), 
+        get_contract_create(maps:put(owner, RandAddress, ValidEncoded)),
     %% caller not found
     {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
-        get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)), 
+        get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call(maps:put(contract, RandAddress, ContractCallEncoded)), 
+        get_contract_call(maps:put(contract, RandAddress, ContractCallEncoded)),
     %% caller not found
     {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
         get_contract_call_compute(maps:put(caller, RandAddress,
-                                           ComputeCCallEncoded)), 
+                                           ComputeCCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
         get_contract_call_compute(maps:put(contract, RandAddress,
-                                           ComputeCCallEncoded)), 
+                                           ComputeCCallEncoded)),
 
     %% Invalid hexstrings
     InvalidHex1 = <<"1234">>,
@@ -636,23 +636,23 @@ contract_transactions(_Config) ->
 
     % invalid code
     {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
-        get_contract_create(maps:put(code, InvalidHex1, ValidEncoded)), 
+        get_contract_create(maps:put(code, InvalidHex1, ValidEncoded)),
     {ok, 400, #{<<"reason">> := <<"Not hex string: code">>}} =
-        get_contract_create(maps:put(code, InvalidHex2, ValidEncoded)), 
+        get_contract_create(maps:put(code, InvalidHex2, ValidEncoded)),
     % invalid call data
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
-        get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded)), 
+        get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded)),
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
-        get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded)), 
+        get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded)),
     % invalid call data
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
-        get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)), 
+        get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)),
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
-        get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)), 
+        get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)),
 
     {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
         get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
-                                           ComputeCCallEncoded)), 
+                                           ComputeCCallEncoded)),
     ok.
 
 oracle_transactions(_Config) ->
@@ -736,63 +736,63 @@ oracle_transactions(_Config) ->
     % broken hash
     <<_, InvalidHash/binary>> = MinerAddress,
     {ok, 400, #{<<"reason">> := <<"Invalid hash: account">>}} =
-        get_oracle_register(maps:put(account, InvalidHash, RegEncoded)), 
+        get_oracle_register(maps:put(account, InvalidHash, RegEncoded)),
 
     {ok, 400, #{<<"reason">> := <<"Invalid hash: sender">>}} =
-        get_oracle_query(maps:put(sender, InvalidHash, QueryEncoded)), 
+        get_oracle_query(maps:put(sender, InvalidHash, QueryEncoded)),
     {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle_pubkey">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, InvalidHash, QueryEncoded)), 
+        get_oracle_query(maps:put(oracle_pubkey, InvalidHash, QueryEncoded)),
 
     {ok, 400, #{<<"reason">> := <<"Invalid hash: oracle">>}} =
-        get_oracle_response(maps:put(oracle, InvalidHash, ResponseEncoded)), 
+        get_oracle_response(maps:put(oracle, InvalidHash, ResponseEncoded)),
 
-    %% account not found 
+    %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
     {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
-        get_oracle_register(maps:put(account, RandAddress, RegEncoded)), 
+        get_oracle_register(maps:put(account, RandAddress, RegEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Account of sender not found">>}} =
-        get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)), 
+        get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Account of oracle not found">>}} =
-        get_oracle_response(maps:put(oracle, RandAddress, ResponseEncoded)), 
+        get_oracle_response(maps:put(oracle, RandAddress, ResponseEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, RandAddress, QueryEncoded)), 
+        get_oracle_query(maps:put(oracle_pubkey, RandAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle query for key query_id not found">>}} =
-        get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)), 
+        get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)),
 
     %% broken ttl
     BrokenTTL1 = #{<<"invalid">> => <<"structure">>},
     BrokenTTL2 = #{<<"type">> => <<"hejsan">>, <<"value">> => 20},
 
     {ok, 400, _} =
-        get_oracle_register(maps:put(ttl, BrokenTTL1, RegEncoded)), 
+        get_oracle_register(maps:put(ttl, BrokenTTL1, RegEncoded)),
     {ok, 400, _} =
-        get_oracle_register(maps:put(ttl, BrokenTTL2, RegEncoded)), 
+        get_oracle_register(maps:put(ttl, BrokenTTL2, RegEncoded)),
 
     {ok, 400, _} =
-        get_oracle_query(maps:put(query_ttl, BrokenTTL1, QueryEncoded)), 
+        get_oracle_query(maps:put(query_ttl, BrokenTTL1, QueryEncoded)),
     {ok, 400, _} =
-        get_oracle_query(maps:put(query_ttl, BrokenTTL2, QueryEncoded)), 
+        get_oracle_query(maps:put(query_ttl, BrokenTTL2, QueryEncoded)),
     {ok, 400, _} =
-        get_oracle_query(maps:put(response_ttl, BrokenTTL1, QueryEncoded)), 
+        get_oracle_query(maps:put(response_ttl, BrokenTTL1, QueryEncoded)),
     {ok, 400, _} =
-        get_oracle_query(maps:put(response_ttl, BrokenTTL2, QueryEncoded)), 
-    % test non-relative ttl 
+        get_oracle_query(maps:put(response_ttl, BrokenTTL2, QueryEncoded)),
+    % test non-relative ttl
     {ok, 400, _} =
         get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
-                                                  value => 2}, QueryEncoded)), 
+                                                  value => 2}, QueryEncoded)),
     ok.
 
 %% tests the following
-%% GET preclaim_tx unsigned transaction 
-%% GET claim_tx unsigned transaction 
-%% GET update_tx unsigned transaction 
-%% GET transfer_tx unsigned transaction 
-%% GET revoke_tx unsigned transaction 
+%% GET preclaim_tx unsigned transaction
+%% GET claim_tx unsigned transaction
+%% GET update_tx unsigned transaction
+%% GET transfer_tx unsigned transaction
+%% GET revoke_tx unsigned transaction
 nameservice_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
@@ -828,14 +828,14 @@ test_invalid_hash(CorrectAddress, Key0, Encoded, APIFun) ->
         end,
     <<_, InvalidHash/binary>> = CorrectAddress,
     Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Name)),
-    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(Key, InvalidHash, Encoded)), 
+    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(Key, InvalidHash, Encoded)),
     ok.
 
 test_missing_address(Key, Encoded, APIFun) ->
     Msg = list_to_binary("Account of " ++ atom_to_list(Key) ++ " not found"),
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     {ok, 404, #{<<"reason">> := Msg}} =
-        APIFun(maps:put(Key, RandAddress, Encoded)), 
+        APIFun(maps:put(Key, RandAddress, Encoded)),
     ok.
 
 nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
@@ -936,7 +936,7 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
 
 
 %% tests the following
-%% GET spend_tx unsigned transaction 
+%% GET spend_tx unsigned transaction
 spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
@@ -965,14 +965,14 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
             {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
             {ok, SerializedTx} = aec_base58c:safe_decode(transaction, ActualTx),
-            Tx = aec_tx:deserialize_from_binary(SerializedTx),
+            Tx = aetx:deserialize_from_binary(SerializedTx),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx
         end,
     Test(NextNonce, Params),
     RandomNonce = rand:uniform(999) + 1,
     Test(RandomNonce, maps:put(nonce, RandomNonce, Params)).
-    
+
 
 %% Maybe this test should be broken into a couple of smaller tests
 %% it currently tests the positive cases for
@@ -1011,7 +1011,7 @@ pending_transactions(_Config) ->
     {ok, 200, ReturnedTxs} = get_transactions(),
     ExpectedTxs = [#{<<"tx">> => aec_base58c:encode(
                                    transaction,
-                                   aec_tx_sign:serialize_to_binary(T))}
+                                   aetx_sign:serialize_to_binary(T))}
            || T <- NodeTxs],
     true = length(ExpectedTxs) =:= length(ReturnedTxs),
     true = lists:all(fun(Tx) -> lists:member(Tx, ExpectedTxs) end, ReturnedTxs),
@@ -1115,7 +1115,7 @@ post_correct_tx(_Config) ->
             fee => Fee,
             nonce => Nonce}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx))),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
@@ -1139,7 +1139,7 @@ post_broken_tx(_Config) ->
             fee => Fee,
             nonce => Nonce}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-    [T, V, SerializedTx, Sigs] = aec_tx_sign:serialize(SignedTx),
+    [T, V, SerializedTx, Sigs] = aetx_sign:serialize(SignedTx),
     lists:foreach(
         fun(Key) ->
             BrokenTx = lists:filter(
@@ -1172,7 +1172,7 @@ post_broken_base58_tx(_Config) ->
             {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
-                                   aec_tx_sign:serialize_to_binary(SignedTx)),
+                                   aetx_sign:serialize_to_binary(SignedTx)),
             {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
@@ -1342,22 +1342,22 @@ account_transactions(_Config) ->
     acc_txs_test(EncodedPubKey, 5, 7),
 
     %% some offset, more than there are transactions, returns an empty list
-    {ok, 200, #{<<"transactions">> := []}} = 
+    {ok, 200, #{<<"transactions">> := []}} =
         get_account_transactions(EncodedPubKey, #{offset => 2000000000}),
 
-    %% limit too big 
-    {ok, 400, #{}} = 
+    %% limit too big
+    {ok, 400, #{}} =
         get_account_transactions(EncodedPubKey, #{limit => 101}),
-    %% limit too small 
-    {ok, 400, #{}} = 
+    %% limit too small
+    {ok, 400, #{}} =
         get_account_transactions(EncodedPubKey, #{limit => 0}),
 
     <<_, BrokenAddress/binary>> = EncodedPubKey,
-    {ok, 400, #{<<"reason">> := <<"Invalid account hash">>}} = 
+    {ok, 400, #{<<"reason">> := <<"Invalid account hash">>}} =
         get_account_transactions(BrokenAddress, #{}),
 
     %% this test assumes we don't have hejsan or svejsan transaction types
-    {ok, 400, #{<<"reason">> := <<"Unknown transaction type">>}} = 
+    {ok, 400, #{<<"reason">> := <<"Unknown transaction type">>}} =
         get_account_transactions(EncodedPubKey, #{tx_types => [<<"hejsan">>,
                                                                <<"svejsan">>]}),
     ok.
@@ -1365,7 +1365,7 @@ account_transactions(_Config) ->
 acc_txs_test(Pubkey, Offset, Limit) ->
     {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
     TxEncodings = [default, message_pack, json],
-    AllTestedTxTypes = [[<<"coinbase">>], [<<"coinbase">>, <<"spend">>]],
+    AllTestedTxTypes = [[<<"aec_coinbase_tx">>], [<<"aec_coinbase_tx">>, <<"aec_spend_tx">>]],
     {ok, 200, #{<<"height">> := ToHeight}} = get_block_number(),
     ct:log("Offset: ~p, Limit: ~p", [Offset, Limit]),
     lists:foreach(
@@ -1374,8 +1374,8 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                 fun({Filter, TT}) ->
                     PubkeyInTx =
                         fun(SignedTx) ->
-                            Tx = aec_tx_sign:data(SignedTx), 
-                            lists:member(PKDecoded, aec_tx:accounts(Tx))
+                            Tx = aetx_sign:data(SignedTx),
+                            lists:member(PKDecoded, aetx:accounts(Tx))
                         end,
                     #{<<"data_schema">> := ExpectedDS,
                       <<"transactions">> := AllTxs} =
@@ -1386,7 +1386,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                                           make_tx_types_filter(Filter)),
                                #{offset => Offset, limit => Limit}),
                     {ok, 200, #{<<"data_schema">> := DS,
-                                <<"transactions">> := Txs}} = 
+                                <<"transactions">> := Txs}} =
                         get_account_transactions(Pubkey, Params),
                     ct:log("Encoding: Expected ~p,~nActual: ~p", [ExpectedDS, DS]),
                     ExpectedDS = DS,
@@ -1842,7 +1842,7 @@ generic_range_test(GetTxsApi, HeightToKey) ->
 
 single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
     TxEncoding = [default, message_pack, json],
-    AllTestedTxTypes = [[<<"coinbase">>], [<<"coinbase">>, <<"spend">>]],
+    AllTestedTxTypes = [[<<"aec_coinbase_tx">>], [<<"aec_coinbase_tx">>, <<"aec_spend_tx">>]],
     lists:foreach(
         fun({Encoding, TxTypes}) ->
             From = HeightToKey(HeightFrom),
@@ -1912,7 +1912,7 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
                 H = aec_blocks:to_header(Block),
                 lists:map(
                     fun(Tx) ->
-                        aec_tx_sign:serialize_for_client(TxEncoding, H, Tx)
+                        aetx_sign:serialize_for_client(TxEncoding, H, Tx)
                     end,
                     FilteredTxs) ++ Accum
             end,
@@ -1931,9 +1931,8 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
       <<"transactions">> => SerializedTxs}.
 
 tx_type(SignedTx) ->
-    Tx = aec_tx_sign:data(SignedTx),
-    Mod = aec_tx_dispatcher:handler(Tx),
-    Mod:type().
+    Tx = aetx_sign:data(SignedTx),
+    aetx:tx_type(Tx).
 
 block_txs_list_by_height_invalid_range(_Config) ->
     InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
@@ -2032,9 +2031,10 @@ naming_system_manage_name(_Config) ->
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, _}       = post_name_preclaim_tx(CHash, Fee),
-    {ok, [PreclaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
-    CHash              = aens_preclaim_tx:commitment(aec_tx_sign:data(PreclaimTx)),
+    {ok, 200, _}                   = post_name_preclaim_tx(CHash, Fee),
+    {ok, [PreclaimTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
+    {aens_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:data(PreclaimTx0)),
+    CHash                          = aens_preclaim_tx:commitment(PreclaimTx),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -2045,9 +2045,10 @@ naming_system_manage_name(_Config) ->
     Balance1 = Balance - Fee + MineReward + Fee,
 
     %% Submit name claim tx and check it is in mempool
-    {ok, 200, _}    = post_name_claim_tx(Name, NameSalt, Fee),
-    {ok, [ClaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
-    Name            = aens_claim_tx:name(aec_tx_sign:data(ClaimTx)),
+    {ok, 200, _}             = post_name_claim_tx(Name, NameSalt, Fee),
+    {ok, [ClaimTx0]}         = rpc(aec_tx_pool, peek, [infinity]),
+    {aens_claim_tx, ClaimTx} = aetx:specialize_type(aetx_sign:data(ClaimTx0)),
+    Name                     = aens_claim_tx:name(ClaimTx),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -2067,9 +2068,10 @@ naming_system_manage_name(_Config) ->
                 <<"pointers">>  := <<"[]">>}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
-    {ok, 200, _}     = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
-    {ok, [UpdateTx]} = rpc(aec_tx_pool, peek, [infinity]),
-    NameTTL          = aens_update_tx:name_ttl(aec_tx_sign:data(UpdateTx)),
+    {ok, 200, _}               = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
+    {ok, [UpdateTx0]}          = rpc(aec_tx_pool, peek, [infinity]),
+    {aens_update_tx, UpdateTx} = aetx:specialize_type(aetx_sign:data(UpdateTx0)),
+    NameTTL                    = aens_update_tx:name_ttl(UpdateTx),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -2096,10 +2098,11 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
 
     %% Submit name transfer tx and check it is in mempool
-    {ok, DecodedPubkey} = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
-    {ok, 200, _}        = post_name_transfer_tx(NHash, DecodedPubkey, Fee),
-    {ok, [TransferTx]}  = rpc(aec_tx_pool, peek, [infinity]),
-    DecodedPubkey       = aens_transfer_tx:recipient_account(aec_tx_sign:data(TransferTx)),
+    {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
+    {ok, 200, _}                   = post_name_transfer_tx(NHash, DecodedPubkey, Fee),
+    {ok, [TransferTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
+    {aens_transfer_tx, TransferTx} = aetx:specialize_type(aetx_sign:data(TransferTx0)),
+    DecodedPubkey                  = aens_transfer_tx:recipient_account(TransferTx),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -2253,8 +2256,8 @@ register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
                                         query_fee     => QueryFee,
                                         ttl           => TTL,
                                         fee           => 4 + TTLFee}),
-    SignedTx = aec_tx_sign:sign(RegTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
+    SignedTx = aetx_sign:sign(RegTx, PrivKey),
+    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     post_tx(SendTx).
 
 query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) ->
@@ -2267,8 +2270,8 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
                                        query_ttl     => TTL,
                                        response_ttl  => {delta, 10},
                                        fee           => QueryFee + 2 + TTLFee }),
-    SignedTx = aec_tx_sign:sign(QueryTx, PrivKey),
-    SendTx = aec_base58c:encode(transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
+    SignedTx = aetx_sign:sign(QueryTx, PrivKey),
+    SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
     {ok, 200, Res} = post_tx(SendTx),
     Res.
 
@@ -3053,10 +3056,10 @@ block_to_endpoint_map(Block, Options) ->
             #{block_hash := TxBlockHash,
               block_height := TxBlockHeight,
               hash := Hash} =
-                  aec_tx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
+                  aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
             {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            TxHash = aetx:hash(aetx_sign:data(SignedTx)),
             {Hash, TxHash} = {TxHash, Hash}
         end,
         lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
@@ -3188,10 +3191,10 @@ open_websockets_count() ->
 
 sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aec_tx:deserialize_from_binary(SerializedUnsignedTx), 
+    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
-    SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
+    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     % create_contract_tx is in mempool
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.

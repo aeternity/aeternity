@@ -106,10 +106,9 @@ tx_pool_test_() ->
                  [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
                  {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
                  %% extract transactions without verification
-                 CurrentMempool = [ aec_tx_sign:data(STx) || STx <- CurrentMempoolSigned ],
+                 CurrentMempool = [ aetx_sign:data(STx) || STx <- CurrentMempoolSigned ],
 
-                 MempoolOrder = [{Sender, Nonce} || #spend_tx{sender=Sender, nonce=Nonce}
-                                                    <- CurrentMempool],
+                 MempoolOrder = [{aetx:origin(Tx), aetx:nonce(Tx)} || Tx <- CurrentMempool],
                  %% this is not-optimal order: transactions for PK1 are invalid in that order
                  CorrectOrder = [{PK2,1},{PK2,2},{PK1,3},{PK1,2},{PK1,1}],
 
@@ -179,9 +178,10 @@ no_tx_pool_size_test() ->
     ?assertEqual(undefined, aec_tx_pool:size()).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
-    Tx = #spend_tx{sender = acct(Sender),
-                   recipient = acct(Recipient),
-                   nonce = Nonce, fee = Fee},
+    Tx = aetx:new(aec_spend_tx,
+                  #spend_tx{sender = acct(Sender),
+                            recipient = acct(Recipient),
+                            nonce = Nonce, fee = Fee}),
     {ok, STx} = sign(Sender, Tx),
     STx.
 
@@ -190,9 +190,9 @@ sign(me, Tx) ->
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),
-        Signers = aec_tx:signers(Tx),
+        Signers = aetx:signers(Tx),
         true = lists:member(PubKey, Signers),
-        {ok, aec_tx_sign:sign(Tx, PrivKey)}
+        {ok, aetx_sign:sign(Tx, PrivKey)}
     catch
         error:Err ->
             erlang:error({Err, erlang:stacktrace()})
