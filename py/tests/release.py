@@ -298,18 +298,20 @@ def main(argv):
         print("node died")
     [stop_node(d) for d in node_dirs]
 
-    print("Checking that nodes are able to start with persisted non-empty DB")
-    [start_node(d) for d in node_dirs]
-    wait_all_nodes_are_online(node_objs)
-    [stop_node(d) for d in node_dirs]
+    if not test_failed:
+        print("Checking that nodes are able to start with persisted non-empty DB")
+        [start_node(d) for d in node_dirs]
+        wait_all_nodes_are_online(node_objs)
+        [stop_node(d) for d in node_dirs]
 
-    print("Checking that emergency patching of OTP modules works: `mnesia:index_read`")
-    [start_node(d) for d in node_dirs]
-    wait_all_nodes_are_online(node_objs)
-    if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>).'"):
-        test_failed = True
-        print("Check on `mnesia:index_read` failed")
-    [stop_node(d) for d in node_dirs]
+    if not test_failed:
+        print("Checking that emergency patching of OTP modules works: `mnesia:index_read`")
+        [start_node(d) for d in node_dirs]
+        wait_all_nodes_are_online(node_objs)
+        if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>).'"):
+            test_failed = True
+            print("Check on `mnesia:index_read` failed")
+            [stop_node(d) for d in node_dirs]
 
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):
