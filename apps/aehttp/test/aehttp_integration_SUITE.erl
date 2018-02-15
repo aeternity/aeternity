@@ -522,8 +522,8 @@ contract_transactions(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
-    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
+    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aec_tx:deserialize_from_binary(SerializedUnsignedTx), 
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
     SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
@@ -3065,8 +3065,8 @@ open_websockets_count() ->
                  QName =:= QueueName]).
 
 sign_and_post_tx(EncodedUnsignedTx) ->
-    {ok, SerisalizedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aec_tx:deserialize_from_binary(SerisalizedUnsignedTx), 
+    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
+    UnsignedTx = aec_tx:deserialize_from_binary(SerializedUnsignedTx), 
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
     SerializedTx = aec_tx_sign:serialize_to_binary(SignedTx),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)), 
