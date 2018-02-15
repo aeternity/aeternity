@@ -785,8 +785,20 @@ test_missing_address(Key, Encoded, APIFun) ->
     ok.
 
 nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = <<"name">>,
+    Name = <<"name.test">>,
     Salt = 1234,
+
+    {ok, 200, #{<<"commitment">> := EncodedCHash}} = get_commitment_hash(Name, Salt),
+    {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
+
+    %% Submit name preclaim tx and check it is in mempool
+    {ok, 200, _}       = post_name_preclaim_tx(CHash, 1),
+    {ok, [PreclaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
+    CHash              = aens_preclaim_tx:commitment(aec_tx_sign:data(PreclaimTx)),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
     Encoded = #{account => MinerAddress,
                 name => aec_base58c:encode(name, Name),
                 name_salt => Salt,
@@ -800,6 +812,14 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_claim/1),
     test_invalid_hash(MinerPubkey, name, Encoded, fun get_name_claim/1),
     test_missing_address(account, Encoded, fun get_name_claim/1),
+
+    %% missing registar
+    Missing = aec_base58c:encode(name, <<"missing">>),
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: no_registrar">>}} =
+        get_name_claim(maps:put(name, Missing, Encoded)),
+    MissingReg = aec_base58c:encode(name, <<"missing.reg">>),
+    {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
+        get_name_claim(maps:put(name, MissingReg, Encoded)),
     ok.
 
 nameservice_transaction_update(MinerAddress, MinerPubkey) ->

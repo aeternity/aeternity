@@ -16,6 +16,7 @@
                         , verify_contract_existence/1
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
+                        , verify_name/1
                         , ttl_decode/1
                         , relative_ttl_decode/1
                         ]).
@@ -233,7 +234,8 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
                  read_required_params([account, name, name_salt, fee]),
                  base58_decode([{account, account, account_pubkey},
                                 {name, name, name}]),
-                 get_nonce(account)
+                 get_nonce(account),
+                 verify_name(name)
                 ],
     case parse_request(ParseFuns, Req) of
         {error, ErrResponse} -> ErrResponse;

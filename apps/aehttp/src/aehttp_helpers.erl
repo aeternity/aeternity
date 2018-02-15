@@ -13,6 +13,7 @@
         , verify_contract_existence/1
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
+        , verify_name/1
         ]).
 
 parse_request(FunsList, Req) ->
@@ -156,6 +157,20 @@ verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
             {value, _} ->
                 ok
         end
+    end.
+
+verify_name(NameKey) ->
+    fun(_Req, State) ->
+        Name = maps:get(NameKey, State),
+        case aens:get_name_hash(Name) of
+            {ok, _} -> ok;
+            {error, Reason} ->
+                ReasonBin = atom_to_binary(Reason, utf8),
+                {error, {400, [],
+                        #{reason => <<"Name validation failed with a reason: ",
+                                                ReasonBin/binary>>}}}
+        end
+
     end.
 
 nameservice_pointers_decode(PointersKey) ->
