@@ -9,11 +9,11 @@
 
 
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
--define(DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS, {0, 0, 0, 0}).
+-define(DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS, <<"0.0.0.0">>).
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
--define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, {127, 0, 0, 1}).
+-define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, {127, 0, 0, 1}).
+-define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(INT_ACCEPTORS_POOLSIZE, 10).
 
 %% Application callbacks
@@ -87,12 +87,8 @@ start_websocket_internal() ->
 
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
     Config = aeu_env:user_config_or_env(CfgKey, App, EnvKey, Default),
-    case is_binary(Config) of
-        true ->
-          {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
-          IpAddress;
-        false -> Config
-    end.
+    {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
+    IpAddress.
 
 get_external_port() ->
     aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
