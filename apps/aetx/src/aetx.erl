@@ -169,11 +169,9 @@ deserialize_from_binary(Bin) ->
     {ok, Unpacked} = msgpack:unpack(Bin),
     deserialize(Unpacked).
 
--spec is_coinbase(Tx :: tx() | aetx_sign:signed_tx()) -> boolean().
+-spec is_coinbase(Tx :: tx()) -> boolean().
 is_coinbase(#aetx{ type = Type }) ->
-    Type == aec_coinbase_tx;
-is_coinbase(SignedTx) ->
-    is_coinbase(aetx_sign:data(SignedTx)).
+    Type == aec_coinbase_tx.
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.

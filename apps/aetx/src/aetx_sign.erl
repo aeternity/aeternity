@@ -23,6 +23,7 @@
          data/1,
          signatures/1,
          verify/2,
+         is_coinbase/1,
          filter_invalid_signatures/1]).
 
 %% API that should be avoided to be used
@@ -192,5 +193,7 @@ meta_data_from_client_serialized(json, Serialized) ->
       block_hash => BlockHash,
       hash => TxHash}.
 
-
+-spec is_coinbase(Tx :: signed_tx()) -> boolean().
+is_coinbase(#signed_tx{ data = Tx }) ->
+    aetx:is_coinbase(Tx).
 

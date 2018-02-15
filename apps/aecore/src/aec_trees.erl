@@ -168,7 +168,7 @@ grant_fee_to_miner([], Trees, 0, _Height) ->
     lager:info("Empty block -- no fee"),
     Trees;
 grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
-    CoinbaseTxs = lists:filter(fun aetx:is_coinbase/1, SignedTxs),
+    CoinbaseTxs = lists:filter(fun aetx_sign:is_coinbase/1, SignedTxs),
     case CoinbaseTxs of
         [] ->
             lager:info("Invalid coinbase_tx transaction in block -- no fee"),

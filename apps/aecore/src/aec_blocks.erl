@@ -286,7 +286,7 @@ validate_coinbase_txs_count(#block{txs = Txs}) ->
     CoinbaseTxsCount =
         lists:foldl(
           fun(SignedTx, Count) ->
-                  case aetx:is_coinbase(SignedTx) of
+                  case aetx_sign:is_coinbase(SignedTx) of
                       true ->
                           Count + 1;
                       false ->
@@ -323,4 +323,4 @@ validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
 cointains_coinbase_tx(#block{txs = []}) ->
     false;
 cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
-    aetx:is_coinbase(CoinbaseTx).
+    aetx_sign:is_coinbase(CoinbaseTx).
