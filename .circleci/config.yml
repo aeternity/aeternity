@@ -222,7 +222,7 @@ workflows:
               only: /^v.*$/
       - deploy_api_docs:
           requires:
-            - build
+            - static_analysis
           filters:
             branches:
               ignore /.*/
