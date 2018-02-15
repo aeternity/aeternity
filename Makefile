@@ -170,6 +170,9 @@ swagger: config/swagger.yaml $(SWAGGER_CODEGEN_CLI)
 	@cp -r $(SWTEMP)/swagger_client $(PYTHON_TESTS)
 	@rm -fr $(SWTEMP)
 
+swagger-docs:
+	(cd ./apps/aehttp && $(MAKE) swagger-docs);
+
 swagger-check:
 	./swagger/check \
 		"$(CURDIR)/config/swagger.yaml" \
