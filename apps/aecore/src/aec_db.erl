@@ -302,7 +302,7 @@ get_chain_state_value(Key) ->
        end).
 
 write_txs(Txs, Hash) ->
-    ?t([write_tx(aetx:hash(aetx_sign:data(Tx)), Hash, Tx)
+    ?t([write_tx(aetx:hash(aetx_sign:tx(Tx)), Hash, Tx)
         || Tx <- Txs]),
     ok.
 
@@ -376,7 +376,7 @@ wait_for_tables(Tabs, Sofar, _, _) ->
 %% Index callbacks
 
 ix_acct2tx(aec_tx, _Ix, #aec_tx{tx = SignedTx}) ->
-    try aetx_sign:data(SignedTx) of
+    try aetx_sign:tx(SignedTx) of
         Tx ->
             aetx:accounts(Tx)
     catch

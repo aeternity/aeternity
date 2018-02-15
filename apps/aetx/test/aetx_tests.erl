@@ -14,7 +14,7 @@
 -define(RECIPIENT_PUBKEY, <<"recipient_pubkey">>).
 
 %% Probably to be moved to common tests
-apply_signed_test_() ->
+apply_signed_txs_test_() ->
     {setup,
      fun() ->
              aec_test_utils:aec_keys_setup()
@@ -56,7 +56,7 @@ apply_signed_test_() ->
                {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
                SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
 
-               {ok, ValidSignedTxs, StateTree} = aec_trees:apply_signed(SignedTxs, StateTree0, 30),
+               {ok, ValidSignedTxs, StateTree} = aec_trees:apply_signed_txs(SignedTxs, StateTree0, 30),
                ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),

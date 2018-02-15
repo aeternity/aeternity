@@ -159,7 +159,7 @@ int_get_max_nonce(Mempool, Sender) ->
 
 
 pool_db_key(SignedTx) ->
-    Tx = aetx_sign:data(SignedTx),
+    Tx = aetx_sign:tx(SignedTx),
     %% INFO: Sort by fee
     %%       TODO: sort by fee, then by origin, then by nonce
 
@@ -222,7 +222,7 @@ do_fork_update(AddedToChain, RemovedFromChain, Mempool) ->
     aec_db:transaction(fun() -> move_txs(TxMap) end).
 
 move_txs([{Tx, From, To}|T]) ->
-    TxHash = aetx:hash(aetx_sign:data(Tx)),
+    TxHash = aetx:hash(aetx_sign:tx(Tx)),
     aec_db:delete_tx(TxHash, From),
     aec_db:write_tx(TxHash, To, Tx),
     move_txs(T);

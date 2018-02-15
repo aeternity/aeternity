@@ -154,7 +154,7 @@ setup() ->
     Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
     meck:expect(aec_trees, hash, 1, <<>>),
     meck:expect(aetx_sign, filter_invalid_signatures, fun(X) -> X end),
-    meck:expect(aec_trees, apply_signed, 3, {ok, [SignedTx], Trees}),
+    meck:expect(aec_trees, apply_signed_txs, 3, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     %% We hardcode the signed_tx because crypto adds salt and gives
     %% non-deterministic result.

@@ -846,9 +846,10 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     {ok, CHash} = aec_base58c:safe_decode(commitment, EncodedCHash),
 
     %% Submit name preclaim tx and check it is in mempool
-    {ok, 200, _}       = post_name_preclaim_tx(CHash, 1),
-    {ok, [PreclaimTx]} = rpc(aec_tx_pool, peek, [infinity]),
-    CHash              = aens_preclaim_tx:commitment(aec_tx_sign:data(PreclaimTx)),
+    {ok, 200, _}                   = post_name_preclaim_tx(CHash, 1),
+    {ok, [PreclaimTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
+    {aens_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:tx(PreclaimTx0)),
+    CHash                          = aens_preclaim_tx:commitment(PreclaimTx),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -1374,7 +1375,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                 fun({Filter, TT}) ->
                     PubkeyInTx =
                         fun(SignedTx) ->
-                            Tx = aetx_sign:data(SignedTx),
+                            Tx = aetx_sign:tx(SignedTx),
                             lists:member(PKDecoded, aetx:accounts(Tx))
                         end,
                     #{<<"data_schema">> := ExpectedDS,
@@ -1931,7 +1932,7 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
       <<"transactions">> => SerializedTxs}.
 
 tx_type(SignedTx) ->
-    Tx = aetx_sign:data(SignedTx),
+    Tx = aetx_sign:tx(SignedTx),
     aetx:tx_type(Tx).
 
 block_txs_list_by_height_invalid_range(_Config) ->
@@ -2033,7 +2034,7 @@ naming_system_manage_name(_Config) ->
     %% Submit name preclaim tx and check it is in mempool
     {ok, 200, _}                   = post_name_preclaim_tx(CHash, Fee),
     {ok, [PreclaimTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
-    {aens_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:data(PreclaimTx0)),
+    {aens_preclaim_tx, PreclaimTx} = aetx:specialize_type(aetx_sign:tx(PreclaimTx0)),
     CHash                          = aens_preclaim_tx:commitment(PreclaimTx),
 
     %% Mine a block and check mempool empty again
@@ -2047,7 +2048,7 @@ naming_system_manage_name(_Config) ->
     %% Submit name claim tx and check it is in mempool
     {ok, 200, _}             = post_name_claim_tx(Name, NameSalt, Fee),
     {ok, [ClaimTx0]}         = rpc(aec_tx_pool, peek, [infinity]),
-    {aens_claim_tx, ClaimTx} = aetx:specialize_type(aetx_sign:data(ClaimTx0)),
+    {aens_claim_tx, ClaimTx} = aetx:specialize_type(aetx_sign:tx(ClaimTx0)),
     Name                     = aens_claim_tx:name(ClaimTx),
 
     %% Mine a block and check mempool empty again
@@ -2070,7 +2071,7 @@ naming_system_manage_name(_Config) ->
     %% Submit name updated tx and check it is in mempool
     {ok, 200, _}               = post_name_update_tx(NHash, NameTTL, Pointers, TTL, Fee),
     {ok, [UpdateTx0]}          = rpc(aec_tx_pool, peek, [infinity]),
-    {aens_update_tx, UpdateTx} = aetx:specialize_type(aetx_sign:data(UpdateTx0)),
+    {aens_update_tx, UpdateTx} = aetx:specialize_type(aetx_sign:tx(UpdateTx0)),
     NameTTL                    = aens_update_tx:name_ttl(UpdateTx),
 
     %% Mine a block and check mempool empty again
@@ -2101,7 +2102,7 @@ naming_system_manage_name(_Config) ->
     {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
     {ok, 200, _}                   = post_name_transfer_tx(NHash, DecodedPubkey, Fee),
     {ok, [TransferTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
-    {aens_transfer_tx, TransferTx} = aetx:specialize_type(aetx_sign:data(TransferTx0)),
+    {aens_transfer_tx, TransferTx} = aetx:specialize_type(aetx_sign:tx(TransferTx0)),
     DecodedPubkey                  = aens_transfer_tx:recipient_account(TransferTx),
 
     %% Mine a block and check mempool empty again
@@ -3059,7 +3060,7 @@ block_to_endpoint_map(Block, Options) ->
                   aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
             {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-            TxHash = aetx:hash(aetx_sign:data(SignedTx)),
+            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
             {Hash, TxHash} = {TxHash, Hash}
         end,
         lists:zip(ExpectedTxs, aec_blocks:txs(Block))),

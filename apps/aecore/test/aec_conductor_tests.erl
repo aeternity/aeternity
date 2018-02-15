@@ -368,7 +368,7 @@ test_get_block_candidate() ->
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
-                Tx = aetx_sign:data(SignedTx),
+                Tx = aetx_sign:tx(SignedTx),
                 case aetx:tx_type(Tx) of
                     <<"aec_coinbase_tx">> -> true;
                     _ ->

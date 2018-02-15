@@ -2,14 +2,14 @@
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%%-------------------------------------------------------------------
 
--module(aec_tx_common_tests).
+-module(aec_trees_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
 -include("common.hrl").
 -include("trees.hrl").
 
--define(TEST_MODULE, aec_tx_common).
+-define(TEST_MODULE, aec_trees).
 
 ensure_account_at_height_test_() ->
     [{"Not existing account is created with 0 balance",

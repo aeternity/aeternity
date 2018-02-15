@@ -68,7 +68,7 @@ check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
               fun check_sender_account/3],
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
         ok ->
-            case aec_tx_common:ensure_account_at_height(RecipientPubkey, Trees0, Height) of
+            case aec_trees:ensure_account_at_height(RecipientPubkey, Trees0, Height) of
                 {ok, Trees} ->
                     {ok, Trees};
                 {error, account_height_too_big} ->

@@ -601,7 +601,7 @@ filter_transaction_list(Req, TxList) ->
             Filtered =
                 lists:filter(
                     fun(SignedTx) ->
-                        Tx = aetx_sign:data(SignedTx),
+                        Tx = aetx_sign:tx(SignedTx),
                         TxType = aetx:tx_type(Tx),
                         Drop = lists:member(TxType, DropTxTypes),
                         Keep = KeepTxTypes =:= []
@@ -868,8 +868,8 @@ get_account_transactions(Account, Req) ->
                   fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
                       HeightA = aec_headers:height(HeaderA),
                       HeightB = aec_headers:height(HeaderB),
-                      TxA = aetx_sign:data(SignedTxA),
-                      TxB = aetx_sign:data(SignedTxB),
+                      TxA = aetx_sign:tx(SignedTxA),
+                      TxB = aetx_sign:tx(SignedTxB),
                       {HeightA, aetx:origin(TxA), aetx:nonce(TxA)} >
                       {HeightB, aetx:origin(TxB), aetx:nonce(TxB)}
                   end,
@@ -902,7 +902,7 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
     CoinbaseType = aetx:tx_type(aec_coinbase_tx),
     Filter =
         fun(SignedTx) ->
-              Tx = aetx_sign:data(SignedTx),
+              Tx = aetx_sign:tx(SignedTx),
               TxType = aetx:tx_type(Tx),
               Drop = lists:member(TxType, DropTxTypes)
                   orelse TxType =:= CoinbaseType, %% later remove this
@@ -913,7 +913,7 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
     Txs = aec_db:transactions_by_account(Account, Filter),
     lists:map(
         fun(SignedTx) ->
-            TxHash = aetx:hash(aetx_sign:data(SignedTx)),
+            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
             [{BlockHash, _}] = aec_db:read_tx(TxHash),
             {ok, Header} = aec_chain:get_header(BlockHash),
             {Header, SignedTx}

@@ -106,7 +106,7 @@ tx_pool_test_() ->
                  [?assertEqual(ok, aec_tx_pool:push(Tx)) || Tx <- [STx1, STx2, STx3, STx4, STx5]],
                  {ok, CurrentMempoolSigned} = aec_tx_pool:peek(10),
                  %% extract transactions without verification
-                 CurrentMempool = [ aetx_sign:data(STx) || STx <- CurrentMempoolSigned ],
+                 CurrentMempool = [ aetx_sign:tx(STx) || STx <- CurrentMempoolSigned ],
 
                  MempoolOrder = [{aetx:origin(Tx), aetx:nonce(Tx)} || Tx <- CurrentMempool],
                  %% this is not-optimal order: transactions for PK1 are invalid in that order

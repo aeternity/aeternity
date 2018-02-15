@@ -86,7 +86,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed([SignedTx], Trees, Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 

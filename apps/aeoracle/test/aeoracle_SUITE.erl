@@ -91,7 +91,7 @@ register_oracle(_Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
     Height   = 1,
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed([SignedTx], Trees, Height),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
 
@@ -149,7 +149,7 @@ query_oracle(Cfg) ->
     %% Test that QueryTX is accepted
     SignedTx = aetx_sign:sign(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed([SignedTx], Trees, CurrHeight),
+        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {aeo_query_tx, QTx} = aetx:specialize_type(Q1),
     ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
@@ -196,7 +196,7 @@ query_response(Cfg) ->
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
     SignedTx = aetx_sign:sign(RTx, <<"pkey1">>),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed([SignedTx], Trees, CurrHeight),
+        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 
     %% Test that the query is now closed.

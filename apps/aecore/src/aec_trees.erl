@@ -24,8 +24,9 @@
          set_ns/2
         ]).
 
--export([apply_signed/3,
-         apply_signed_strict/3]).
+-export([apply_signed_txs/3,
+         apply_signed_txs_strict/3,
+         ensure_account_at_height/3]).
 
 %%%%=============================================================================
 %% API
@@ -84,16 +85,16 @@ contracts(Trees) ->
 set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
 
--spec apply_signed_strict(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
+-spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
                                  {ok, list(aetx_sign:signed_tx()), trees()}
                                | {'error', atom()}.
-apply_signed_strict(SignedTxs, Trees, Height) ->
-    apply_signed_common(SignedTxs, Trees, Height, true).
+apply_signed_txs_strict(SignedTxs, Trees, Height) ->
+    apply_signed_txs_common(SignedTxs, Trees, Height, true).
 
--spec apply_signed(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
+-spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
                           {ok, list(aetx_sign:signed_tx()), trees()}.
-apply_signed(SignedTxs, Trees, Height) ->
-    {ok, _, _} = apply_signed_common(SignedTxs, Trees, Height, false).
+apply_signed_txs(SignedTxs, Trees, Height) ->
+    {ok, _, _} = apply_signed_txs_common(SignedTxs, Trees, Height, false).
 
 %%%=============================================================================
 %%% Internal functions
@@ -126,9 +127,9 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
-apply_signed_common(SignedTxs, Trees0, Height, Strict) ->
+apply_signed_txs_common(SignedTxs, Trees0, Height, Strict) ->
     Trees1 = aec_trees:perform_pre_transformations(Trees0, Height),
-    case apply_on_state_trees(SignedTxs, Trees1, Height, Strict) of
+    case apply_txs_on_state_trees(SignedTxs, Trees1, Height, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
             Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee, Height),
@@ -136,29 +137,29 @@ apply_signed_common(SignedTxs, Trees0, Height, Strict) ->
         {error, _} = E -> E
     end.
 
-apply_on_state_trees(SignedTxs, Trees, Height, Strict) ->
-    apply_on_state_trees(SignedTxs, [], Trees, Height, Strict).
+apply_txs_on_state_trees(SignedTxs, Trees, Height, Strict) ->
+    apply_txs_on_state_trees(SignedTxs, [], Trees, Height, Strict).
 
-apply_on_state_trees([], FilteredSignedTxs, Trees, _Height,_Strict) ->
+apply_txs_on_state_trees([], FilteredSignedTxs, Trees, _Height,_Strict) ->
     {ok, lists:reverse(FilteredSignedTxs), Trees};
-apply_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, Strict) ->
-    Tx = aetx_sign:data(SignedTx),
+apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, Strict) ->
+    Tx = aetx_sign:tx(SignedTx),
     case aetx:check(Tx, Trees0, Height) of
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process(Tx, Trees1, Height),
-            apply_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
+            apply_txs_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
         {error, Reason} when Strict ->
             lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
             {error, Reason};
         {error, Reason} when not Strict ->
             lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-            apply_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
+            apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
     end.
 
 calculate_total_fee(SignedTxs) ->
     lists:foldl(
       fun(SignedTx, TotalFee) ->
-              Fee = aetx:fee(aetx_sign:data(SignedTx)),
+              Fee = aetx:fee(aetx_sign:tx(SignedTx)),
               TotalFee + Fee
       end, 0, SignedTxs).
 
@@ -174,7 +175,7 @@ grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
             lager:info("Invalid coinbase_tx transaction in block -- no fee"),
             Trees0;
         [SignedCoinbaseTx] ->
-            CoinbaseTx = aetx_sign:data(SignedCoinbaseTx),
+            CoinbaseTx = aetx_sign:tx(SignedCoinbaseTx),
             [MinerPubkey] = aetx:accounts(CoinbaseTx),
             AccountsTrees0 = accounts(Trees0),
 
@@ -185,3 +186,23 @@ grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
             set_accounts(Trees0, AccountsTrees)
     end.
 
+-spec ensure_account_at_height(pubkey(), trees(), height()) ->
+                                   {ok, trees()} | {error, account_height_too_big}.
+ensure_account_at_height(AccountPubkey, Trees0, Height) ->
+    AccountsTrees0 = aec_trees:accounts(Trees0),
+    case aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0) of
+        {value, Account} ->
+            AccountCurrentHeight = aec_accounts:height(Account),
+            case AccountCurrentHeight =< Height of
+                true ->
+                    {ok, Trees0};
+                false ->
+                    {error, account_height_too_big}
+            end;
+        none ->
+            %% Add newly referenced account (w/0 amount) to the state
+            Account = aec_accounts:new(AccountPubkey, 0, Height),
+            AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
+            Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
+            {ok, Trees}
+    end.

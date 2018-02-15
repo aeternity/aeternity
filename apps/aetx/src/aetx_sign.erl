@@ -20,7 +20,7 @@
 %% API
 -export([sign/2,
          sign/3,
-         data/1,
+         tx/1,
          signatures/1,
          verify/2,
          is_coinbase/1,
@@ -42,7 +42,7 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -record(signed_tx, {
-          data                       :: aetx:tx(),
+          tx                         :: aetx:tx(),
           signatures = ordsets:new() :: ordsets:ordset(binary())}).
 
 -opaque signed_tx() :: #signed_tx{}.
@@ -70,17 +70,17 @@ sign(Tx, PrivKeys, CryptoMap) when is_list(PrivKeys) ->
     Signatures =
        [ crypto:sign(Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]) ||
          PrivKey <- PrivKeys ],
-    #signed_tx{data = Tx,
+    #signed_tx{tx = Tx,
                signatures = Signatures}.
 
 
--spec data(signed_tx()) -> tx().
+-spec tx(signed_tx()) -> tx().
 %% @doc Get the original transaction from a signed transaction.
-%% Note that no implicit verification is performed, it just returns the data.
+%% Note that no verification is performed, it just returns the transaction.
 %% We have no type yest for any transaction, and coinbase_tx() | spend_tx()
 %% seems restricted as type.
-data(#signed_tx{data = Data}) ->
-    Data.
+tx(#signed_tx{tx = Tx}) ->
+    Tx.
 
 %% @doc Get the signatures of a signed transaction.
 -spec signatures(signed_tx()) -> list(binary()).
@@ -90,7 +90,7 @@ signatures(#signed_tx{signatures = Sigs}) ->
 %% @doc Verify a signed transaction by checking that the provided keys indeed all
 %% have signed this transaction.
 -spec verify(signed_tx(), list(binary())) -> ok | {error, signature_check_failed}.
-verify(#signed_tx{data = Tx, signatures = Sigs}, Signers) ->
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Signers) ->
     %% This works even for Signers being one public key!
     #signed_tx{signatures = NewSigs} = sign(Tx, Signers),
     case {NewSigs -- Sigs, Sigs -- NewSigs} of
@@ -108,8 +108,8 @@ verify(#signed_tx{data = Tx, signatures = Sigs}, Signers) ->
 %% This should not call aec_keys verify, but aec_keys should call this module!
 %% with the keys of the signers.
 -spec verify(signed_tx()) -> ok | {error, signature_check_failed}.
-verify(#signed_tx{data = Data, signatures = Sigs}) ->
-    case aec_keys:verify(Sigs, Data) of
+verify(#signed_tx{tx = Tx, signatures = Sigs}) ->
+    case aec_keys:verify(Sigs, Tx) of
         true -> ok;
         false ->
             lager:debug("No matching sigs (~p)", [Sigs]),
@@ -127,14 +127,14 @@ version() -> ?SIG_TX_VSN.
 type()    -> ?SIG_TX_TYPE.
 
 -spec serialize(signed_tx()) -> list().
-serialize(#signed_tx{data = Tx, signatures = Sigs}) ->
+serialize(#signed_tx{tx = Tx, signatures = Sigs}) ->
     TxSer = aetx:serialize(Tx),
     [type(), version(), TxSer, Sigs].
 
 -spec deserialize(list()) -> signed_tx().
 deserialize([?SIG_TX_TYPE, ?SIG_TX_VSN, TxSer, Sigs]) ->
     Tx = aetx:deserialize(TxSer),
-    #signed_tx{data = Tx, signatures = Sigs}.
+    #signed_tx{tx = Tx, signatures = Sigs}.
 
 %% deterministic canonical serialization.
 -spec serialize_to_binary(signed_tx()) -> binary_signed_tx().
@@ -149,7 +149,7 @@ deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
 
 -spec serialize_for_client(json|message_pack, #header{}, aetx_sign:signed_tx()) ->
                               binary() | map().
-serialize_for_client(Encoding, Header, #signed_tx{data=Tx}=S) ->
+serialize_for_client(Encoding, Header, #signed_tx{tx = Tx}=S) ->
     {ok, BlockHash} = aec_headers:hash_header(Header),
     TxHash = aetx:hash(Tx),
     serialize_for_client(Encoding, S, aec_headers:height(Header), BlockHash,
@@ -162,7 +162,7 @@ serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash,
                 #{<<"hash">> => aec_base58c:encode(tx_hash, TxHash)}
                ],
     aec_base58c:encode(transaction, msgpack:pack(serialize(S) ++ [MetaData]));
-serialize_for_client(json, #signed_tx{data = Tx, signatures = Sigs},
+serialize_for_client(json, #signed_tx{tx = Tx, signatures = Sigs},
                      BlockHeight, BlockHash, TxHash) ->
     #{<<"tx">> => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
@@ -194,6 +194,6 @@ meta_data_from_client_serialized(json, Serialized) ->
       hash => TxHash}.
 
 -spec is_coinbase(Tx :: signed_tx()) -> boolean().
-is_coinbase(#signed_tx{ data = Tx }) ->
+is_coinbase(#signed_tx{tx = Tx}) ->
     aetx:is_coinbase(Tx).
 

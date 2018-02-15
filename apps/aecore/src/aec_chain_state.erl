@@ -473,7 +473,7 @@ assert_state_hash_valid(Trees, Node) ->
 apply_node_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
-    case aec_trees:apply_signed_strict(Txs, Trees, Height) of
+    case aec_trees:apply_signed_txs_strict(Txs, Trees, Height) of
         {ok, _, NewTrees} -> NewTrees;
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
