@@ -2,7 +2,7 @@ sudo: required
 dist: trusty
 language: erlang
 otp_release:
-  - 20.2.2
+  - 20.2.3
 before_install:
   - ./ci before_install "${JOB:?}" "${TRAVIS_BUILD_DIR:?}"
 install:
