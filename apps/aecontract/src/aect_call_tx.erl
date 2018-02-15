@@ -261,16 +261,15 @@ run_contract(#contract_call_tx
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     Code          = aect_contracts:code(Contract),
-    InitState     =
-        aevm_eeevm_state:init(
-            #{ exec => #{ code     => Code,
-                          address  => 0,        %% We start executing at address 0
-                          caller   => Caller,
-                          data     => CallData,
-                          gas      => Gas,
-                          gasPrice => GasPrice,
-                          origin   => Caller,
-                          value    => Value },
+    try aevm_eeevm_state:init(
+	  #{ exec => #{ code     => Code,
+			address  => 0,        %% We start executing at address 0
+			caller   => Caller,
+			data     => CallData,
+			gas      => Gas,
+			gasPrice => GasPrice,
+			origin   => Caller,
+			value    => Value },
              %% TODO: set up the env properly
              env => #{currentCoinbase   => 0,
                       currentDifficulty => 0,
@@ -278,8 +277,18 @@ run_contract(#contract_call_tx
                       currentNumber     => Height,
                       currentTimestamp  => 0},
              pre => #{}},
-          #{trace => false}),
-    #{ gas := GasLeft, out := ReturnValue } = aevm_eeevm:eval(InitState),
-    aect_call:set_gas_used(Gas - GasLeft,
-        aect_call:set_return_value(ReturnValue, Call)).
+          #{trace => false}) 
+    of
+	InitState ->
+	    try aevm_eeevm:eval(InitState) of
+		#{ gas := GasLeft, out := ReturnValue } ->
+		    aect_call:set_gas_used(Gas - GasLeft,
+					   aect_call:set_return_value(ReturnValue, Call))
+		    %% TODO: Nicer error handling - do more in check.
+		    %% Update gas_used depending on exit type.x
+	    catch _:_ -> Call
+	    end
+    catch _:_ ->
+	    Call
+    end.
 

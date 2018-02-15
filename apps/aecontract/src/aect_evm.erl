@@ -38,11 +38,9 @@ call(Code, CallData) ->
             , currentTimestamp => 1
             },
     try execute_call(Spec, true) of
-        R = #{ out := Out } ->
-            {ok, aeu_hex:hexstring_encode(Out)};
-        E ->
-	{error, list_to_binary(io_lib:format("~p", [E]))}
-    catch T:E ->
+        #{ out := Out } -> {ok, aeu_hex:hexstring_encode(Out)};
+        E -> {error, list_to_binary(io_lib:format("~p", [E]))}
+    catch _T:E ->
 	{error, list_to_binary(io_lib:format("~p", [E]))}
     end.
 

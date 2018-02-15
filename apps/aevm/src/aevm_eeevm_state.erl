@@ -200,11 +200,10 @@ trace_format(String, Argument, State) ->
 	    Code = aevm_eeevm_state:code(State),
 	    OP   = aevm_eeevm:code_get_op(CP, Code),
 	    F = trace_fun(State),
-	    Trace =
-		F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
-		F(" ~w", [stack(State)]),
-		F(" ~p", [mem(State)]),
-		F(String, Argument),
+	    F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
+	    F(" ~w", [stack(State)]),
+	    F(" ~p", [mem(State)]),
+	    F(String, Argument),
 	    add_trace({CP, OP}, State);
 	false ->
 	    State
