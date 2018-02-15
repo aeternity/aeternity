@@ -7,206 +7,57 @@
 
 -module(aec_chain_state).
 
--export([ difficulty_at_hash/2
-        , difficulty_at_top_header/1
-        , difficulty_at_top_block/1
-        , find_common_ancestor/3
-        , get_block/2
-        , get_block_by_height/2
-        , get_header/2
-        , get_header_by_height/2
-        , get_missing_block_hashes/1
-        , get_open_oracle_queries/4
-        , get_oracles/3
-        , get_top_N_blocks_time_summary/2
-        , get_n_headers_from_top/2
-        , hash_is_connected_to_genesis/2
-        , has_block/2
-        , has_header/2
-        , insert_block/2
-        , insert_header/2
-        , new/0
-        , new_from_persistence/0
-        , top_block/1
-        , get_block_state/2
-        , account/2
-        , all_accounts_balances/2
-        , top_block_hash/1
-        , top_header/1
-        , top_header_hash/1
-        , get_genesis_hash/1
-        , name_entry/2
-        , resolve_name/3
+-export([ find_common_ancestor/2
+        , get_hash_at_height/1
+        , get_missing_block_hashes/0
+        , hash_is_connected_to_genesis/1
+        , insert_block/1
+        , insert_header/1
         ]).
+
+%% For tests
+-export([ get_top_block_hash/1
+        , get_top_header_hash/1
+        , get_hash_at_height/2
+        ]).
+
 
 -include("common.hrl"). %% Just for types
 -include("blocks.hrl"). %% Just for types
 
--opaque(state() :: #{ 'type' => aec_chain_state
-                    , 'top_header_hash' => binary() | 'undefined'
-                    , 'top_block_hash' => binary() | 'undefined'
-                    , 'genesis_block_hash' => 'undefined' | binary()
-                    }).
-
--export_type([ state/0
-             ]).
-
--define(match_state(___S___), #{type := aec_chain_state, ___S___}).
--define(assert_state(), #{type := aec_chain_state}).
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec new() -> state().
-new() ->
-    #{ type               => ?MODULE
-     , top_header_hash    => undefined
-     , top_block_hash     => undefined
-     , genesis_block_hash => undefined
-     }.
-
--spec new_from_persistence() -> state().
-new_from_persistence() ->
-    #{ type               => ?MODULE
-     , top_header_hash    => aec_db:get_top_header_hash()
-     , top_block_hash     => aec_db:get_top_block_hash()
-     , genesis_block_hash => aec_db:get_genesis_hash()
-     }.
+-spec get_hash_at_height(height()) -> {'ok', binary()} | 'error'.
+get_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
+    get_hash_at_height(Height, new_state_from_persistence()).
 
 
--spec top_header(state()) -> 'undefined' | #header{}.
-top_header(?match_state(top_header_hash := undefined)) -> undefined;
-top_header(?match_state(top_header_hash := X)) ->
-    export_header(db_get_node(X)).
-
-
--spec top_header_hash(state()) -> 'undefined' | binary().
-top_header_hash(?match_state(top_header_hash := X)) ->
-    X.
-
--spec top_block_hash(state()) -> 'undefined' | binary().
-top_block_hash(?match_state(top_block_hash := X)) ->
-    X.
-
--spec top_block(state()) -> 'undefined' | #block{}.
-top_block(?match_state(top_block_hash := undefined)) -> undefined;
-top_block(?match_state(top_block_hash := X)) ->
-    export_block(db_get_node(X)).
-
--spec get_block_state(binary(), state()) -> {'ok', trees()} | {'error', 'no_state_trees'}.
-%% TODO: This can be rerouted at some point
-get_block_state(Hash, ?assert_state()) ->
-    case db_find_state(Hash) of
-        {ok, Trees} -> {ok, Trees};
-        error -> {error, no_state_trees}
-    end.
-
--spec account(pubkey(), state()) -> 'no_top_block_hash' | 'no_state_trees' |
-                                    'none' | {value, account()}.
-%% TODO: This can be rerouted at some point
-account(_, ?match_state(top_block_hash := undefined)) -> no_top_block_hash; %% TODO Can this ever happen?
-account(Pubkey, ?match_state(top_block_hash := X) =_State) ->
-    case db_find_state(X) of
-        {ok, Trees} ->
-            aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees));
-        error -> no_state_trees
-    end.
-
--spec all_accounts_balances(binary(), state()) -> {'ok', [{pubkey(), non_neg_integer()}]} |
-                                                  {'error', 'no_state_trees'}.
-%% TODO: This can be rerouted at some point
-all_accounts_balances(BlockHeaderHash, ?assert_state() =_State) ->
-    case db_find_state(BlockHeaderHash) of
-        {ok, Trees} ->
-            {ok, aec_accounts_trees:get_all_accounts_balances(
-                   aec_trees:accounts(Trees))};
-        error -> {error, no_state_trees}
-    end.
-
--spec get_n_headers_from_top(non_neg_integer(), state()) ->
-                          {'ok', list(#header{})} | {error, atom()}.
-get_n_headers_from_top(_N, ?match_state(top_header_hash := undefined)) ->
-    {error, chain_too_short};
-get_n_headers_from_top(N, ?match_state(top_header_hash := X)) ->
-    get_n_headers_from(db_get_node(X), N).
-
--spec insert_block(#block{}, state()) -> {'ok', state()} | {'error', any()}.
-insert_block(Block, ?assert_state() = State0) ->
+-spec insert_block(#block{}) -> 'ok' | {'error', any()}.
+insert_block(Block) ->
     Node = wrap_block(Block),
-    try internal_insert(Node, Block, State0) of
-        State1 -> {ok, State1}
+    try internal_insert(Node, Block, new_state_from_persistence()) of
+        State1 -> persist_chain_state(State1)
     catch throw:?internal_error(What) -> {error, What}
     end.
 
--spec insert_header(#header{}, state()) -> {'ok', state()} | {'error', any()}.
-insert_header(Header, ?assert_state() = State) ->
+-spec insert_header(#header{}) -> 'ok' | {'error', any()}.
+insert_header(Header) ->
     Node = wrap_header(Header),
-    try internal_insert(Node, Header, State) of
-        State1 -> {ok, State1}
+    try internal_insert(Node, Header, new_state_from_persistence()) of
+        State1 -> persist_chain_state(State1)
     catch throw:?internal_error(What) -> {error, What}
     end.
 
--spec get_block(binary(), state()) -> {'ok', #block{}} | 'error'.
-get_block(Hash, ?assert_state()) ->
-    case db_find_node(Hash) of
-        {ok, Node} ->
-            case node_is_block(Node) of
-                true  -> {ok, export_block(Node)};
-                false -> error
-            end;
-        error -> error
-    end.
-
--spec has_block(binary(), state()) -> boolean().
-has_block(Hash, ?assert_state()) ->
-    case db_find_node(Hash) of
-        {ok, Node} -> node_is_block(Node);
-        error      -> false
-    end.
-
--spec has_header(binary(), state()) -> boolean().
-has_header(Hash, ?assert_state()) ->
-    case db_find_node(Hash) of
-        {ok,_Node} -> true;
-        error      -> false
-    end.
-
--spec get_header(binary(), state()) -> {'ok', #header{}} | 'error'.
-get_header(Hash, ?assert_state()) ->
-    case db_find_node(Hash) of
-        {ok, Internal} -> {ok, export_header(Internal)};
-        error -> error
-    end.
-
--spec get_header_by_height(non_neg_integer(), state()) ->
-                                  {'ok', #header{}} | {'error', atom()}.
-get_header_by_height(Height, ?assert_state() = State) when is_integer(Height),
-                                                           Height >= 0 ->
-    case get_node_by_height(Height, State) of
-        {ok, Node} -> {ok, export_header(Node)};
-        Error -> Error
-    end.
-
--spec get_block_by_height(non_neg_integer(), state()) ->
-                                  {'ok', #block{}} | {'error', atom()}.
-get_block_by_height(Height, ?assert_state() = State) when is_integer(Height),
-                                                           Height >= 0 ->
-    case get_node_by_height(Height, State) of
-        {ok, Node} ->
-            case node_is_block(Node) of
-                true  -> {ok, export_block(Node)};
-                false -> {error, block_not_found}
-            end;
-        Error -> Error
-    end.
-
--spec hash_is_connected_to_genesis(binary(), state()) -> boolean().
-hash_is_connected_to_genesis(Hash, ?assert_state() = State) when is_binary(Hash) ->
+-spec hash_is_connected_to_genesis(binary()) -> boolean().
+hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
     case db_find_node(Hash) of
         error -> false;
         {ok, Node} ->
+            State = new_state_from_persistence(),
             try determine_chain_relation(Node, State) of
                 off_chain -> false;
                 _         -> true
@@ -214,27 +65,9 @@ hash_is_connected_to_genesis(Hash, ?assert_state() = State) when is_binary(Hash)
             end
     end.
 
--spec difficulty_at_top_block(state()) -> {'ok', float()} | {'error', atom()}.
-difficulty_at_top_block(?assert_state() = State) ->
-    case get_top_block_hash(State) of
-        undefined -> {error, no_top};
-        Hash -> total_difficulty_at_hash(Hash, State)
-    end.
-
--spec difficulty_at_top_header(state()) -> {'ok', float()} | {'error', atom()}.
-difficulty_at_top_header(?assert_state() = State) ->
-    case get_top_header_hash(State) of
-        undefined -> {error, no_top};
-        Hash -> total_difficulty_at_hash(Hash, State)
-    end.
-
--spec difficulty_at_hash(binary(), state()) -> {'ok', float()} | {'error', atom()}.
-difficulty_at_hash(Hash, ?assert_state() = State) ->
-    total_difficulty_at_hash(Hash, State).
-
--spec find_common_ancestor(binary(), binary(), state()) ->
+-spec find_common_ancestor(binary(), binary()) ->
                                   {'ok', binary()} | {error, atom()}.
-find_common_ancestor(Hash1, Hash2, ?assert_state()) ->
+find_common_ancestor(Hash1, Hash2) ->
     case {db_find_node(Hash1), db_find_node(Hash2)} of
         {{ok, Node1}, {ok, Node2}} ->
             case find_fork_point(Node1, Node2) of
@@ -244,87 +77,38 @@ find_common_ancestor(Hash1, Hash2, ?assert_state()) ->
         _ -> {error, unknown_hash}
     end.
 
--spec get_genesis_hash(state()) -> undefined | binary().
-get_genesis_hash(?match_state(genesis_block_hash := GH)) ->
-    GH.
-
--spec get_missing_block_hashes(state()) -> [binary()].
+-spec get_missing_block_hashes() -> [binary()].
 %% @doc Get hashes for missing blocks on the main chain, i.e.,
 %%      hashes that we know about since they are in the header chain,
 %%      but we still don't have the blocks for them.
 %%      Useful for the sync protocol.
-get_missing_block_hashes(?assert_state() = State) ->
+get_missing_block_hashes() ->
+    State = new_state_from_persistence(),
     TopHeaderHash = get_top_header_hash(State),
     TopBlockHash  = get_top_block_hash(State),
     GenesisHash   = get_genesis_hash(State),
     get_missing_block_hashes(TopHeaderHash, TopBlockHash, GenesisHash).
 
-get_top_N_blocks_time_summary(?assert_state() = State, N)
-  when is_integer(N) andalso N > 0->
-    case db_find_node(top_block_hash(State)) of
-        {ok, TopNode} ->
-            get_N_nodes_time_summary(TopNode, State, N);
-        error ->
-            []
-    end.
-
--spec name_entry(binary(), state()) ->
-                        {'ok', map()} |
-                        {'error', 'no_state_trees'} |
-                        {'error', 'name_not_found'}.
-name_entry(Name, ?assert_state() = State) ->
-    TopHash = get_top_header_hash(State),
-    case db_find_state(TopHash) of
-        {ok, Trees} ->
-            aens:get_name_entry(Name, aec_trees:ns(Trees));
-        error ->
-            {error, no_state_trees}
-    end.
-
--spec get_open_oracle_queries(pubkey(), binary() | '$first',
-                              non_neg_integer(), state()) ->
-    {'ok', list()} | {'error', 'no_state_trees'}.
-get_open_oracle_queries(Oracle, From, Max, ?assert_state() = State) ->
-    TopHash = get_top_header_hash(State),
-    case db_find_state(TopHash) of
-        {ok, Trees} ->
-            OTrees = aec_trees:oracles(Trees),
-            {ok, aeo_state_tree:get_open_oracle_queries(Oracle, From, Max, OTrees)};
-        error ->
-            {error, no_state_trees}
-    end.
-
--spec get_oracles(binary() | '$first', non_neg_integer(), state()) ->
-                        {'ok', list()} |
-                        {'error', 'no_state_trees'}.
-get_oracles(From, Max, ?assert_state() = State) ->
-    TopHash = get_top_header_hash(State),
-    case db_find_state(TopHash) of
-        {ok, Trees} ->
-            {ok, aeo_state_tree:get_oracles(From, Max, aec_trees:oracles(Trees))};
-        error ->
-            {error, no_state_trees}
-    end.
-
--spec resolve_name(atom(), binary(), state()) -> {'ok', binary()} |
-                                                 {error, atom()}.
-resolve_name(Type, Name, ?assert_state() = State) ->
-    TopHash = get_top_header_hash(State),
-    case db_find_state(TopHash) of
-        {ok, Trees} ->
-            aens:resolve(Type, Name, aec_trees:ns(Trees));
-        error ->
-            {error, no_state_trees}
-    end.
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+new_state_from_persistence() ->
+    Fun = fun() ->
+                  #{ type               => ?MODULE
+                   , top_header_hash    => aec_db:get_top_header_hash()
+                   , top_block_hash     => aec_db:get_top_block_hash()
+                   , genesis_block_hash => aec_db:get_genesis_hash()
+                   }
+          end,
+    aec_db:ensure_transaction(Fun).
 
 -spec internal_error(_) -> no_return().
 
 internal_error(What) ->
     throw(?internal_error(What)).
+
+get_genesis_hash(#{genesis_block_hash := GH}) -> GH.
 
 get_top_header_hash(#{top_header_hash := H}) -> H.
 set_top_header_hash(H, State) when is_binary(H) -> State#{top_header_hash => H}.
@@ -349,11 +133,7 @@ node_height(#node{header = H}) -> aec_headers:height(H).
 
 node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
 
-node_is_block(#node{type = Type}) -> Type =:= block.
-
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
-
-node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
 
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
@@ -372,7 +152,7 @@ assert_not_new_genesis(Node, #{genesis_block_hash := GHash}) ->
     end.
 
 %% this is when we insert the genesis block the first time
-node_is_genesis(Node, ?match_state(genesis_block_hash := undefined)) ->
+node_is_genesis(Node, #{genesis_block_hash := undefined}) ->
     node_height(Node) =:= aec_block_genesis:height();
 node_is_genesis(Node, State) ->
     hash(Node) =:= get_genesis_hash(State).
@@ -402,19 +182,6 @@ wrap_header(Header) ->
 export_header(#node{header = Header}) ->
     Header.
 
-export_block(#node{type = block} = Node) ->
-    aec_db:get_block(hash(Node)).
-
-get_node_by_height(Height, State)  ->
-    case get_top_header_hash(State) =:= undefined of
-        true -> {error, no_top_header};
-        false ->
-            case get_hash_at_height(Height, State) of
-                error -> {error, chain_too_short};
-                {ok, Hash} -> {ok, db_get_node(Hash)}
-            end
-    end.
-
 get_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
     case get_top_header_hash(State) of
         undefined -> error;
@@ -431,20 +198,6 @@ get_hash_at_height(Height, Current, Hash) ->
         false ->
             Prev = db_get_prev_hash(Hash),
             get_hash_at_height(Height, Current - 1, Prev)
-    end.
-
-
-get_n_headers_from(Node, N) ->
-    get_n_headers_from(Node, N-1, []).
-
-get_n_headers_from(Node, 0, Acc) ->
-    {ok, lists:reverse([export_header(Node) | Acc])};
-get_n_headers_from(Node, N, Acc) ->
-    case db_find_node(prev_hash(Node)) of
-        {ok, PrevNode} ->
-            get_n_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
-        error ->
-            {error, chain_too_short}
     end.
 
 %%%-------------------------------------------------------------------
@@ -476,26 +229,6 @@ get_missing_block_hashes_1(Current, Stop, Acc) ->
     end.
 
 %%%-------------------------------------------------------------------
-%%% Handling difficulty
-%%%-------------------------------------------------------------------
-
-total_difficulty_at_hash(Hash, State) ->
-    total_difficulty_at_hash(Hash, 0, State).
-
-total_difficulty_at_hash(Hash, Acc, State) ->
-    case db_find_node(Hash) of
-        {ok, Node} ->
-            NewAcc = Acc + node_difficulty(Node),
-            PrevHash = prev_hash(Node),
-            case node_is_genesis(Node, State) of
-                true -> {ok, NewAcc};
-                false -> total_difficulty_at_hash(PrevHash, NewAcc, State)
-            end;
-        error ->
-            {error, not_rooted}
-    end.
-
-%%%-------------------------------------------------------------------
 %%% Chain operations
 %%%-------------------------------------------------------------------
 
@@ -512,12 +245,12 @@ internal_insert_1(Node, Original, State) ->
     case db_find_node(Node) of
         error ->
             assert_calculated_target(Node),
-            ok = db_put_node(Original),
+            ok = db_put_node(Original, hash(Node)),
             check_update_after_insert(Node, State);
         {ok, Node} -> State;
         {ok, Old} when Node#node.type =:= block, Old#node.type =:= header ->
             assert_calculated_target(Node),
-            ok = db_put_node(Original),
+            ok = db_put_node(Original, hash(Node)),
             check_update_after_insert(Node, State);
         {ok, Old} when Node#node.type =:= Old#node.type ->
             internal_error({same_key_different_content, Node, Old});
@@ -637,6 +370,19 @@ assert_calculated_target(Node, PrevNode, Delta, Height) when Delta < Height ->
             end
     end.
 
+get_n_headers_from(Node, N) ->
+    get_n_headers_from(Node, N-1, []).
+
+get_n_headers_from(Node, 0, Acc) ->
+    {ok, lists:reverse([export_header(Node) | Acc])};
+get_n_headers_from(Node, N, Acc) ->
+    case db_find_node(prev_hash(Node)) of
+        {ok, PrevNode} ->
+            get_n_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
+        error ->
+            {error, chain_too_short}
+    end.
+
 %% Transitively compute the new state trees in the main chain
 %% starting from the node (which must be in the main chain).
 
@@ -738,45 +484,6 @@ is_node_in_main_chain(Node, State) ->
         {ok, Hash} -> hash(Node) =:= Hash
     end.
 
-get_N_nodes_time_summary(TopNode, State, N) ->
-    Time = node_time(TopNode),
-    Difficulty = node_difficulty(TopNode),
-    case node_is_genesis(TopNode, State) of
-        true ->
-            [{node_height(TopNode), Time, Difficulty}];
-        false ->
-            PrevHash = prev_hash(TopNode),
-            case db_find_node(PrevHash) of
-                error ->
-                    [];
-                {ok, PrevNode} ->
-                    Summary = get_N_nodes_time_summary(PrevNode, Time,
-                                                       Difficulty, State, [], N),
-                    lists:reverse(Summary)
-            end
-
-    end.
-
-get_N_nodes_time_summary(_Node, _ParentTime, _ParentDifficulty,  _State, Acc, 0) ->
-    Acc;
-get_N_nodes_time_summary(Node, ParentTime, ParentDifficulty, State, Acc0, N) ->
-    Height = node_height(Node),
-    Time = node_time(Node),
-    Difficulty = node_difficulty(Node),
-    Acc = [{Height + 1, ParentTime, ParentTime - Time, ParentDifficulty} | Acc0],
-    case node_is_genesis(Node, State) of
-        true ->
-            [{Height, Time, Difficulty} | Acc];
-        false ->
-            PrevHash = prev_hash(Node),
-            case db_find_node(PrevHash) of
-                error ->
-                    Acc;
-                {ok, PrevNode} ->
-                    get_N_nodes_time_summary(PrevNode, Time, Difficulty, State, Acc, N - 1)
-            end
-    end.
-
 find_fork_point(Node1, Node2) ->
     Height1  = node_height(Node1),
     Height2  = node_height(Node2),
@@ -812,12 +519,42 @@ find_fork(Hash1, Height1, Hash2, Height2) when Height1 < Height2 ->
     end.
 
 %%%-------------------------------------------------------------------
+%%% Persist results
+%%%-------------------------------------------------------------------
+
+persist_chain_state(State) ->
+    aec_db:ensure_transaction(fun() -> persist_state(State)end),
+    ok.
+
+persist_state(State) ->
+    case get_genesis_hash(State) of
+        undefined -> ok;
+        GenesisHash ->
+            aec_db:write_genesis_hash(GenesisHash),
+            case get_top_header_hash(State) of
+                undefined -> ok;
+                TopHeaderHash ->
+                    aec_db:write_top_header_hash(TopHeaderHash),
+                    case get_top_block_hash(State) of
+                        undefined -> ok;
+                        TopBlockHash ->
+                            aec_db:write_top_block_hash(TopBlockHash)
+                    end
+            end
+    end.
+
+%%%-------------------------------------------------------------------
 %%% Internal interface for the db
 %%%-------------------------------------------------------------------
 
-db_put_node(#block{} = Block) ->
-    ok = aec_db:write_block(Block);
-db_put_node(#header{} = Header) ->
+db_put_node(#block{} = Block, Hash) ->
+    aec_db:ensure_transaction(
+      fun() ->
+              ok = aec_db:write_block(Block),
+              #block{txs = Transactions} = Block,
+              aec_db:write_txs(Transactions, Hash)
+      end);
+db_put_node(#header{} = Header,_Hash) ->
     ok = aec_db:write_header(Header).
 
 db_find_node(Hash) ->

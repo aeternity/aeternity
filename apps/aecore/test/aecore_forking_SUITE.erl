@@ -88,7 +88,7 @@ create_dev1_chain(Config) ->
     aecore_suite_utils:connect(N1),
     {ok, Blocks} = aecore_suite_utils:mine_blocks(N1, 8), 
     true = (length(lists:usort(Blocks)) >= 4),
-    N1Top = rpc:call(N1, aec_conductor, top, [], 5000),
+    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev1: ~p (mined ~p)", [ N1Top, hd(Blocks)]),
     N1Top = hd(Blocks),
     aecore_suite_utils:stop_node(dev1, Config),   %% make sure we do not sync with dev2.
@@ -100,7 +100,7 @@ create_dev2_chain(Config) ->
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
     aecore_suite_utils:mine_blocks(N2, 1),
-    ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
+    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of fork dev2: ~p", [ ForkTop ]),
     aecore_suite_utils:stop_node(dev2, Config),
     ok = aecore_suite_utils:check_for_logs([dev2], Config),
@@ -110,14 +110,14 @@ sync_fork_in_wrong_order(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     N1 = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:connect(N1),
-    N1Top = rpc:call(N1, aec_conductor, top, [], 5000),
+    N1Top = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev1: ~p", [ N1Top ]),
     aecore_suite_utils:stop_node(dev1, Config),
    
     aecore_suite_utils:start_node(dev2, Config),
     N2 = aecore_suite_utils:node_name(dev2),
     aecore_suite_utils:connect(N2),
-    ForkTop = rpc:call(N2, aec_conductor, top, [], 5000),
+    ForkTop = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev2: ~p", [ ForkTop ]),
     
     false = (ForkTop == N1Top),
@@ -130,7 +130,7 @@ sync_fork_in_wrong_order(Config) ->
     aecore_suite_utils:connect(N1),
     await_sync_complete(T0, [N1, N2]),
 
-    N2Top = rpc:call(N2, aec_conductor, top, [], 5000),
+    N2Top = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev2: ~p", [ N2Top ]),
     {N1Top, N2Top} = {N2Top, N1Top},
     ok.

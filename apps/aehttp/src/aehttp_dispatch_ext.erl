@@ -33,7 +33,7 @@ handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
     handle_ping(PingObj);
 
 handle_request('GetTop', _, _Context) ->
-    Header = aec_conductor:top_header(),
+    Header = aec_chain:top_header(),
     {ok, HH} = aec_headers:hash_header(Header),
     {ok, Top} = aec_headers:serialize_to_map(Header),
     Resp = cleanup_genesis(Top),
@@ -41,7 +41,7 @@ handle_request('GetTop', _, _Context) ->
 
 handle_request('GetBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aec_conductor:get_block_by_height(Height) of
+    case aec_chain:get_block_by_height(Height) of
         {ok, Block} ->
             %% swagger generated code expects the Resp to be proplist or map
             %% and always runs jsx:encode/1 on it - even if it is already
@@ -50,8 +50,6 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
             lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
-        {error, no_top_header} ->
-            {404, [], #{reason => <<"No top header">>}};
         {error, block_not_found} ->
             {404, [], #{reason => <<"Block not found">>}};
         {error, chain_too_short} ->
@@ -64,25 +62,19 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aec_conductor:get_header_by_hash(Hash) of
-                {error, header_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {ok, Header} ->
-                    {ok, HH} = aec_headers:hash_header(Header),
-                    case aec_conductor:get_block_by_hash(HH) of
-                        {ok, Block} ->
-                            %% swagger generated code expects the Resp to be proplist
-                            %% or map and always runs jsx:encode/1 on it - even if it
-                            %% is already encoded to a binary; that's why we use
-                            %% aec_blocks:serialize_to_map/1
-                            lager:debug("Block = ~p", [pp(Block)]),
-                            Resp =
-                              cleanup_genesis(aec_blocks:serialize_to_map(Block)),
-                            lager:debug("Resp = ~p", [pp(Resp)]),
-                            {200, [], Resp};
-                        {error, block_not_found} ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
+            case aec_chain:get_block(Hash) of
+                {ok, Block} ->
+                    %% swagger generated code expects the Resp to be proplist
+                    %% or map and always runs jsx:encode/1 on it - even if it
+                    %% is already encoded to a binary; that's why we use
+                    %% aec_blocks:serialize_to_map/1
+                    lager:debug("Block = ~p", [pp(Block)]),
+                    Resp =
+                        cleanup_genesis(aec_blocks:serialize_to_map(Block)),
+                    lager:debug("Resp = ~p", [pp(Resp)]),
+                    {200, [], Resp};
+                error ->
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end;
 
@@ -233,7 +225,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid address">>}};
         {ok, Pubkey} when is_binary(Pubkey) ->
-            case aec_conductor:get_account(Pubkey) of
+            case aec_chain:get_account(Pubkey) of
                 {value, A} ->
                     {200, [], #{balance => aec_accounts:balance(A)}};
                 none ->
@@ -250,7 +242,7 @@ handle_request('GetCommitmentHash', Req, _Context) ->
 
 handle_request('GetName', Req, _Context) ->
     Name = maps:get('name', Req),
-    case aec_conductor:get_name_entry(Name) of
+    case aec_chain:name_entry(Name) of
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};
         {ok, NameEntry} ->
@@ -268,8 +260,8 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
             {ok, AccountsBalances} =
-                aec_conductor:get_all_accounts_balances(
-                  aec_conductor:top_block_hash()),
+                aec_chain:all_accounts_balances_at_hash(
+                  aec_chain:top_block_hash()),
             FormattedAccountsBalances =
                 lists:foldl(
                   fun({Pubkey, Balance}, Acc) ->
@@ -287,12 +279,12 @@ handle_request('GetVersion', _Req, _Context) ->
                 revision => aeu_info:get_revision(),
                 genesis_hash => aec_base58c:encode(
                                   block_hash,
-                                  aec_conductor:genesis_hash())}};
+                                  aec_chain:genesis_hash())}};
 
 handle_request('GetInfo', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
-            TimeSummary0 = aec_conductor:get_top_30_blocks_time_summary(),
+            TimeSummary0 = aec_chain:get_top_N_blocks_time_summary(30),
             TimeSummary =
                 lists:foldl(
                   fun({Height, Ts, Delta, Difficulty}, Acc) ->

@@ -24,7 +24,6 @@
 
 -record(state, {block_candidate                   :: #candidate{} | 'undefined',
                 blocked_tags            = []      :: ordsets:ordsets(atom()),
-                chain_state                       :: aec_chain_state:state(),
                 fetch_new_txs_from_pool = true    :: boolean(),
                 keys_ready              = false   :: boolean(),
                 mining_state            = running :: mining_state(),

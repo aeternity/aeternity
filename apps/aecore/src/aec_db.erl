@@ -15,6 +15,8 @@
 
 %% Mimicking the aec_persistence API used by aec_conductor_chain
 -export([get_chain/0,
+         has_block/1,
+         has_header/1,
          write_block/1,
          write_header/1,
          write_block_state/2,
@@ -181,6 +183,18 @@ get_header(Hash) ->
                mnesia:read(aec_headers, Hash),
            Header
        end).
+
+has_block(Hash) ->
+    case ?t(mnesia:read(aec_headers, Hash)) of
+        [] -> false;
+        [#aec_headers{has_block = Bool}] -> Bool
+    end.
+
+has_header(Hash) ->
+    case ?t(mnesia:read(aec_headers, Hash)) of
+        [] -> false;
+        [#aec_headers{}] -> true
+    end.
 
 find_block(Hash) ->
     ?t(case mnesia:read(aec_blocks, Hash) of

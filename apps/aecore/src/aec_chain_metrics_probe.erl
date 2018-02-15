@@ -132,7 +132,7 @@ sample_(_, Acc) ->
     Acc.
 
 total_difficulty() ->
-    try aec_conductor:get_total_difficulty() of
+    try aec_chain:difficulty_at_top_block() of
         {ok, V} -> V
     catch
         error:_ -> 0

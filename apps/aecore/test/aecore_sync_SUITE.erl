@@ -156,7 +156,7 @@ start_second_node(Config) ->
     aecore_suite_utils:connect(N2),
     aecore_suite_utils:await_aehttp(N2),
     ct:log("Peers on dev2: ~p", [rpc:call(N2, aec_peers, all, [], 5000)]),
-    B1 = rpc:call(N1, aec_conductor, top, [], 5000),
+    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ok = aecore_suite_utils:check_for_logs([dev2], Config),
     true = expect_block(N2, B1).
 
@@ -312,9 +312,9 @@ mine_on_third(Config) ->
 
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
-    PrevTop = rpc:call(N1, aec_conductor, top, [], 5000),
+    PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     aecore_suite_utils:mine_blocks(N1, 1),
-    NewTop = rpc:call(N1, aec_conductor, top, [], 5000),
+    NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
@@ -394,7 +394,7 @@ check_sync_abort_event(#{sender := From, info := Info}, Nodes) ->
 expect_same_top(Nodes, Tries) when Tries > 0 ->
     Blocks = lists:map(
                fun(N) ->
-                       B = rpc:call(N, aec_conductor, top, [], 5000),
+                       B = rpc:call(N, aec_chain, top_block, [], 5000),
                        {N, B}
                end, Nodes),
     case lists:ukeysort(2, Blocks) of
@@ -440,7 +440,7 @@ expect_block(N, B) ->
           {?LINE, expect_block, N, B}).
 
 expect_block_(N, B) ->
-    Bn = rpc:call(N, aec_conductor, top, [], 5000),
+    Bn = rpc:call(N, aec_chain, top_block, [], 5000),
     case B =:= Bn of
         true ->
             Bal = get_balance(N),
