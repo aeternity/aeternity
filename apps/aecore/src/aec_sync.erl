@@ -290,31 +290,40 @@ fetch_chain(Uri, GHash) ->
         {ok, Hdr} ->
             lager:debug("Top hdr (~p): ~p", [Uri, pp(Hdr)]),
             {ok, Hash} = aec_headers:hash_header(Hdr),
-            fetch_chain(Hash, Uri, GHash, []);
+            fetch_chain(Hash, Uri, GHash, true, []);
         {error, Reason} ->
             lager:debug("fetching top block (~p) failed: ~p", [Uri, Reason])
     end.
 
-fetch_chain(GHash, Uri, GHash, Acc) ->
+%% Fetch the chain, keep track of if we can be connected to genesis.
+%% Initially we can be connected, later we can only be connected
+%% after we have actually fetched a block from another peer, and then
+%% found a block locally (in the extreme case that local block will
+%% be the genesis).
+fetch_chain(GHash, Uri, GHash, _MaybeConnected, Acc) ->
     chain_fetched(Uri, Acc);
-fetch_chain(Hash, Uri, GHash, Acc) ->
+fetch_chain(Hash, Uri, GHash, MaybeConnected, Acc) ->
     case do_fetch_block(Hash, Uri) of
         {ok, false, Block} -> %% We already have this block
-            case aec_conductor:hash_is_connected_to_genesis(Hash) of
+            case MaybeConnected andalso is_connected_to_genesis(Hash) of
                 true ->
                     %% We are done
                     chain_fetched(Uri, Acc);
                 false ->
                     Hdr = aec_blocks:to_header(Block),
-                    fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, Acc)
+                    fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, false, Acc)
             end;
         {ok, true, Block} -> %% We fetched this block
             Hdr = aec_blocks:to_header(Block),
-            fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, [{Hash, Block}|Acc]);
+            fetch_chain(aec_headers:prev_hash(Hdr), Uri, GHash, true, [{Hash, Block}|Acc]);
         {error, _} ->
             %% Post the bit we have
             chain_fetched(Uri, Acc)
     end.
+
+is_connected_to_genesis(Hash) ->
+    lager:debug("Checking if ~p is connected to genesis", [pp(Hash)]),
+    aec_conductor:hash_is_connected_to_genesis(Hash).
 
 chain_fetched(Uri, Acc) ->
     try_write_blocks(Acc),
