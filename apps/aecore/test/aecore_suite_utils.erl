@@ -60,7 +60,9 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     EpochCfgPath = epoch_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(EpochCfgPath),
     MergedCfg = maps:merge(default_config(Node, CTConfig), CustomConfig),
-    write_config(EpochCfgPath, config_apply_options(Node, MergedCfg, Options)).
+    MergedCfg1 = aec_metrics_test_utils:set_statsd_port_config(
+                   Node, MergedCfg, CTConfig),
+    write_config(EpochCfgPath, config_apply_options(Node, MergedCfg1, Options)).
 
 
 make_multi(Config) ->

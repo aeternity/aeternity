@@ -28,7 +28,8 @@
     tx_first_pays_second_more_it_can_afford/1,
     ensure_tx_pools_empty/1,
     ensure_tx_pools_one_tx/1,
-    no_system_metrics_logged/1
+    report_metrics/1,
+    check_metrics_logged/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -54,7 +55,8 @@ groups() ->
        tx_first_pays_second,
        restart_second,
        restart_first,
-       no_system_metrics_logged]},
+       report_metrics,
+       check_metrics_logged]},
      {three_nodes, [sequence],
       [start_first_node,
        test_subscription,
@@ -65,7 +67,8 @@ groups() ->
        mine_on_second,
        mine_on_third,
        restart_third,
-       no_system_metrics_logged]},
+       report_metrics,
+       check_metrics_logged]},
      {semantically_invalid_tx, [sequence],
       [start_first_node,
        start_second_node,
@@ -93,15 +96,16 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    %% sync suite should not log any system metrics
-    %% (not automatically verified yet)
     DefCfg = #{<<"metrics">> =>
                    #{<<"rules">> =>
                          [#{<<"name">> => <<"ae.epoch.system.**">>,
-                            <<"actions">> => <<"none">>}]}},
-    aecore_suite_utils:create_configs(Config1, DefCfg, [{add_peers, true}]),
-    aecore_suite_utils:make_multi(Config1),
-    Config1.
+                            <<"actions">> => <<"log">>},
+                          #{<<"name">> => <<"ae.epoch.aecore.**">>,
+                            <<"actions">> => <<"log,send">>}]}},
+    Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
+    aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
+    aecore_suite_utils:make_multi(Config2),
+    Config2.
 
 end_per_suite(Config) ->
     stop_devs(Config).
@@ -120,6 +124,8 @@ init_per_group(_Group, Config) ->
     Config.
 
 end_per_group(_, Config) ->
+    ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
+    aec_metrics_test_utils:stop_statsd_loggers(Config),
     stop_devs(Config).
 
 stop_devs(Config) ->
@@ -269,18 +275,32 @@ ensure_tx_pools_n_txs_(Config, TxsCount) ->
               end
       end, {?LINE, ensure_tx_pools_n_txs_, TxsCount, Ns}).
 
-no_system_metrics_logged(Config) ->
+report_metrics(Config) ->
+    Ns = [N || {_, N} <- ?config(nodes, Config)],
+    [rpc:call(N, exometer_report, trigger_interval,
+              [aec_metrics_main, default]) || N <- Ns],
+    timer:sleep(1000).
+
+check_metrics_logged(Config) ->
+    %% No system metrics should have been sent to the 'statsd' ports.
+    check_no_system_metrics_sent(),
     %% a user config filter is applied in init_per_suite, which turns off
     %% metrics logging for "ae.epoch.system.**".
     Dir = aecore_suite_utils:shortcut_dir(Config),
     Cmd1 = ["grep peers ", Dir, "/dev?/log/epoch_metrics.log"],
-    Cmd2 = ["grep system ", Dir, "/dev?/log/epoch_metrics.log"],
+    Cmd2 = ["grep aecore ", Dir, "/dev?/log/epoch_metrics.log"],
     Res1 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd1)),
     Res2 = aecore_suite_utils:cmd_res(aecore_suite_utils:cmd(Cmd2)),
     {[_|_], [], _} = Res1,
-    {[]   , [], _} = Res2,
+    {[_|_]   , [], _} = Res2,
     ok.
 
+check_no_system_metrics_sent() ->
+    lists:foreach(
+      fun({_Id, Data}) ->
+              [] = [Line || {_,L} = Line <- Data,
+                            nomatch =/= re:run(L, "^ae\\.epoch\\.system", [])]
+      end, aec_metrics_test_utils:fetch_data()).
 
 mine_again_on_first(Config) ->
     mine_and_compare(aecore_suite_utils:node_name(dev1), Config).
@@ -528,5 +548,7 @@ preblock_second(Config) ->
                                             ]).
 
 config({devs, Devs}, Config) ->
-    [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev) || Dev <- Devs]} 
-     | Config].
+    aec_metrics_test_utils:start_statsd_loggers(
+      [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev)
+                              || Dev <- Devs]}
+       | Config]).

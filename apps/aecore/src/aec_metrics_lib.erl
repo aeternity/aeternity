@@ -1,16 +1,35 @@
 -module(aec_metrics_lib).
 
 -export([find_entries_cmd/1,
+         find_entries_cmd/2,
+         filter_entries/2,
          get_values_cmd/1]).
 
 find_entries_cmd(Arg) ->
-    find_entries_cmd(Arg, enabled).
+    find_entries_(Arg, enabled, fun exometer:select/1).
 
 find_entries_cmd(Arg, Status) ->
+    find_entries_(Arg, Status, fun exometer:select/1).
+
+filter_entries(Entries, Arg) ->
+    %% Entries shall have the same format as the product of
+    %% exometer:select/1, i.e. [{Name, Type, Status}].
+    %% Metrics that don't exist are filtered out
+    Filtered = lists:filter(
+                 fun({N, _Type, Status}) ->
+                         Status =:= enabled andalso metric_exists(N)
+                 end, Entries),
+    Select = fun(Patterns) ->
+                     CSpec = ets:match_spec_compile(Patterns),
+                     ets:match_spec_run(Filtered, CSpec)
+             end,
+    find_entries_(Arg, enabled, Select).
+
+find_entries_(Arg, Status, Select) when is_function(Select, 1) ->
     lists:map(
       fun(A) ->
               #{dps := DPs} = Map = type_status_and_dps(A, Status),
-              {find_entries_1(Map), DPs}
+              {find_entries_1(Map, Select), DPs}
       end, Arg).
 
 get_values_cmd(Arg) ->
@@ -61,11 +80,18 @@ parse_part(status, <<"status=", St/binary>>, Acc) ->
                 end,
     Acc#{status => NewStatus};
 parse_part(dps, DPsBin, #{dps := DPs} = Acc) ->
-    NewDPs = merge([binary_to_existing_atom(D,latin1)
+    NewDPs = merge([to_atom_or_int(D)
                     || D <- re:split(DPsBin, ",")], DPs),
     Acc#{dps => NewDPs};
 parse_part(name, S, Acc) ->
     Acc#{name => S}.
+
+to_atom_or_int(D) ->
+    try binary_to_existing_atom(D, utf8)
+    catch
+        error:_ ->
+            binary_to_integer(D)
+    end.
 
 merge([_|_] = DPs, default) ->
     DPs;
@@ -77,16 +103,16 @@ merge([H|T], DPs) ->
 merge([], DPs) ->
     DPs.
 
-find_entries_1(#{name := S, type := Type, status := Status}) ->
+find_entries_1(#{name := S, type := Type, status := Status}, Select) ->
     Patterns = lists:flatten([parse_stat_entry(S, Type, Status)]),
-    exometer:select(Patterns).
+    Select(Patterns).
 
 prefix() ->
     [ae,epoch].
 
 parse_stat_entry(E, Type, Status) when E==<<>>; E==[];
                                        E==<<"*">>; E==<<"**">> ->
-    {{prefix() ++ '_', Type, '_'}, [{'=:=','$status',Status}], ['$_']};
+    {{prefix() ++ '_', Type, Status}, [], ['$_']};
 parse_stat_entry("[" ++ _ = Expr, _Type, _Status) ->
     case erl_scan:string(ensure_trailing_dot(Expr)) of
         {ok, Toks, _} ->
@@ -196,4 +222,12 @@ replace_part(H) ->
                 error:_ -> list_to_atom(H)
             end;
         _ -> list_to_atom(H)
+    end.
+
+metric_exists(N) ->
+    case exometer:info(N, name) of
+        undefined ->
+            false;
+        _ ->
+            true
     end.
