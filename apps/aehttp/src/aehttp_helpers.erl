@@ -58,7 +58,7 @@ hexstrings_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
             Hex = maps:get(Name, State),
-            try {ok, aect_ring:hexstring_decode(Hex)}
+            try {ok, aeu_hex:hexstring_decode(Hex)}
             catch _:_ -> error
             end
         end,

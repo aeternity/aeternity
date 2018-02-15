@@ -194,16 +194,17 @@ add_trace(T, State) ->
     maps:put(trace, Trace ++ [T], State).
 
 trace_format(String, Argument, State) ->
-    CP   = aevm_eeevm_state:cp(State),
-    Code = aevm_eeevm_state:code(State),
-    OP   = aevm_eeevm:code_get_op(CP, Code),
     case do_trace(State) of
 	true ->
+	    CP   = aevm_eeevm_state:cp(State),
+	    Code = aevm_eeevm_state:code(State),
+	    OP   = aevm_eeevm:code_get_op(CP, Code),
 	    F = trace_fun(State),
-	    F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
-	    F(" ~w", [stack(State)]),
-	    F(" ~p", [mem(State)]),
-	    F(String, Argument),
+	    Trace =
+		F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
+		F(" ~w", [stack(State)]),
+		F(" ~p", [mem(State)]),
+		F(String, Argument),
 	    add_trace({CP, OP}, State);
 	false ->
 	    State

@@ -2707,6 +2707,9 @@
     "ContractCallInput" : {
       "type" : "object",
       "properties" : {
+        "abi" : {
+          "type" : "string"
+        },
         "code" : {
           "type" : "string"
         },
@@ -2720,7 +2723,8 @@
       "example" : {
         "code" : "code",
         "function" : "function",
-        "arg" : "arg"
+        "arg" : "arg",
+        "abi" : "abi"
       }
     },
     "CallResult" : {

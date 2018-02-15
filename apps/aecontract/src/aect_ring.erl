@@ -10,11 +10,7 @@
 -export([ compile/2
         , create_call/3
         , encode_call_data/3
-        , execute_call/2
         , simple_call/3
-        ]).
-
--export([ hexstring_decode/1
         ]).
 
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
@@ -24,7 +20,7 @@ compile(ContractAsBinString, OptionsAsBinString) ->
     Options = parse_options(OptionsAsBinString),
     try aer_compiler:from_string(ContractText, Options) of
         %% TODO: Handle contract meta data.
-        Code -> {ok, hexstring_encode(Code)}
+        Code -> {ok, aeu_hex:hexstring_encode(Code)}
     catch error:Error ->
             {error, list_to_binary(io_lib:format("~p", [Error]))}
     end.
@@ -50,29 +46,6 @@ parse_options(<<_:8, Rest/binary>>, Acc) ->
 parse_options(<<>>, Acc) -> Acc.
 
 
-hexstring_encode(Code) ->
-    CodeAsHexString = 
-        << << (hex_nibble(X)):8, (hex_nibble(Y)):8 >>
-           || <<X:4, Y:4>> <= Code >>,
-    <<"0x", CodeAsHexString/binary >>.
-    
-hexstring_decode(Code) ->
-    case Code of
-        <<"0x", CodeAsHexString/binary >> ->
-            CharacterCnt = byte_size(CodeAsHexString),
-            case CharacterCnt rem 2 of
-                0 when CharacterCnt > 0 -> pass;
-                _ -> throw(invalid_hex_string)
-            end,
-            << << (hex_to_int(X)):4, (hex_to_int(Y)):4 >>
-                  || <<X:8, Y:8>> <= CodeAsHexString >>;
-        _ -> throw(invalid_hex_string)
-    end.
-
-hex_nibble(X) ->
-    if X < 10 -> X+$0;
-       true   -> X+87
-    end.
 
 -spec simple_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 simple_call(Code, Function, Argument) ->
@@ -93,9 +66,9 @@ simple_call(Code, Function, Argument) ->
                     , currentNumber => 1
                     , currentTimestamp => 1
                     },
-            case execute_call(Spec, false) of
+            case aect_evm:execute_call(Spec, false) of
                 #{ out := Out } ->
-                    {ok, hexstring_encode(Out)};
+                    {ok, aeu_hex:hexstring_encode(Out)};
                 E -> {error, list_to_binary(io_lib:format("~p", [E]))}
             end
     end.
@@ -104,7 +77,7 @@ simple_call(Code, Function, Argument) ->
 encode_call_data(Contract, Function, Argument) ->
     case create_call(Contract, Function, Argument) of
         Data when is_binary(Data) ->
-            {ok, hexstring_encode(Data)};
+            {ok, aeu_hex:hexstring_encode(Data)};
         Error -> Error
     end.
 
@@ -119,59 +92,3 @@ create_call(Contract, Function, Argument) ->
         _ -> Res
     end.
 
--spec execute_call(map(), boolean()) -> map() | {error, term()}.
-execute_call(#{ code := CodeAsHexBinString
-              , address := Address
-              , caller := Caller
-              , data := CallData
-              , gas := Gas
-              , gasPrice := GasPrice
-              , origin := Origin
-              , value := Value
-              , currentCoinbase := CoinBase
-              , currentDifficulty := Diffculty
-              , currentGasLimit := GasLimit
-              , currentNumber := Number
-              , currentTimestamp := TS
-              }, Trace) ->
-    %% TODO: Handle Contract In State.
-    Code = binint_to_bin(CodeAsHexBinString),
-    Spec =
-        #{ exec => #{ code => Code
-                    , address => Address
-                    , caller => Caller
-                    , data => CallData
-                    , gas => Gas
-                    , gasPrice => GasPrice
-                    , origin => Origin
-                    , value => Value
-                    },
-           env => #{ currentCoinbase => CoinBase
-                   , currentDifficulty => Diffculty
-                   , currentGasLimit => GasLimit
-                   , currentNumber => Number
-                   , currentTimestamp => TS
-                   },
-           pre => #{}},
-    TraceSpec =
-        #{ trace_fun =>
-               fun(S,A) -> io_lib:format(S,A) end
-         , trace => Trace
-         },
-    State = aevm_eeevm_state:init(Spec, TraceSpec),
-    Result = aevm_eeevm:eval(State),
-    Result.
-
-binint_to_bin(<<"0x", Bin/binary>>) ->
-    << <<(hex_to_int(X)):4>> || <<X:8>> <= Bin>>;
-binint_to_bin(<<"0", _/binary>> = Bin) ->
-    %% Don't know what to do.
-    %% Is this an attempt to pad?
-    error({unexpected, Bin});
-binint_to_bin(Bin) when is_binary(Bin) ->
-    Int = binary_to_integer(Bin),
-    binary:encode_unsigned(Int).
-
-hex_to_int(X) when $A =< X, X =< $F -> 10 + X - $A;
-hex_to_int(X) when $a =< X, X =< $f -> 10 + X - $a;
-hex_to_int(X) when $0 =< X, X =< $9 -> X - $0.
