@@ -58,6 +58,11 @@
                             "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
                             "example" : "http://somehost.somedomain:123/"
                         },
+                        "listen_address": {
+                          "description": "Listen address for external interface. This should be publicly accessible",
+                          "type": "string",
+                          "example": "0.0.0.0"
+                        },
                         "port" : {
                             "description" :
                             "Listen port for external HTTP interface.",
@@ -77,6 +82,11 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
+                        "listen_address": {
+                          "description": "Listen address for internal interface. This should not be publicly accessible",
+                          "type": "string",
+                          "example": "127.0.0.1"
+                        },
                         "port" : {
                             "description" :
                             "Listen port for internal HTTP interface.",
@@ -98,6 +108,11 @@
                             "description" :
                             "Listen port for websocket interface.",
                             "type" : "integer"
+                        },
+                        "listen_address": {
+                          "description": "Listen address for websocket interface.",
+                          "type": "string",
+                          "example": "192.168.168.25"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",

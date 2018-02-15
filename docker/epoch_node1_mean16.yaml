@@ -6,6 +6,12 @@ peers:
 http:
     external:
         peer_address: http://node1:3013/
+    internal:
+        listen_address: 0.0.0.0
+
+websocket:
+    internal:
+        listen_address: 0.0.0.0
 
 keys:
     dir: ./keys

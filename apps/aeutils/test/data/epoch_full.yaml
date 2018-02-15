@@ -19,15 +19,21 @@ http:
         # Make sure to change this address to your public facing IP to be able participate
         peer_address: http://127.0.0.1:3013/
         port: 3013
+        # The external listen address should be publicly accessible
+        listen_address: 0.0.0.0
         # Timeouts in milliseconds
         request_timeout: 1000
         # Less than request_timeout
         connect_timeout: 100
     internal:
+        # The internal listen address should be not publicly accessible
+        listen_address: 127.0.0.1
         port: 3113
 
 websocket:
     internal:
+        # The WebSocket listen address should be not publicly accessible
+        listen_address: 127.0.0.1
         port: 3114
         # Number of acceptors in WebSocket HTTP server pool
         acceptors: 10
