@@ -221,7 +221,6 @@ workflows:
             tags:
               only: /^v.*$/
       - deploy_api_docs:
-          requires: ~
           requires:
             - build
           filters:
