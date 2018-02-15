@@ -1114,6 +1114,8 @@ validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
 
 validate_response('GetCommitmentHash', 200, Body, ValidatorState) ->
     validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
+validate_response('GetCommitmentHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
@@ -1122,6 +1124,8 @@ validate_response('GetInfo', 403, Body, ValidatorState) ->
 
 validate_response('GetName', 200, Body, ValidatorState) ->
     validate_response_body('NameEntry', 'NameEntry', Body, ValidatorState);
+validate_response('GetName', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetName', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 

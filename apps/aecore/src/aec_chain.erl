@@ -125,8 +125,7 @@ get_oracles(From, Max) ->
 
 -spec name_entry(binary()) ->
                         {'ok', map()} |
-                        {'error', 'no_state_trees'} |
-                        {'error', 'name_not_found'}.
+                        {'error', atom()}.
 name_entry(Name) ->
     case get_top_state() of
         {ok, Trees} -> aens:get_name_entry(Name, aec_trees:ns(Trees));

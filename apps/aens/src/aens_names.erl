@@ -51,8 +51,9 @@ id(N) ->
 
 -spec new(aens_claim_tx:claim_tx(), non_neg_integer(), height()) -> name().
 new(ClaimTx, Expiration, BlockHeight) ->
-    Expires = BlockHeight + Expiration,
-    Hash = aens_hash:name_hash(aens_claim_tx:name(ClaimTx)),
+    Expires    = BlockHeight + Expiration,
+    Name       = aens_claim_tx:name(ClaimTx),
+    {ok, Hash} = aens:get_name_hash(Name),
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
     #name{hash    = Hash,
           owner   = aens_claim_tx:account(ClaimTx),

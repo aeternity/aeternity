@@ -29,14 +29,14 @@
 %%%===================================================================
 
 -spec commitment_hash(binary(), integer()) -> commitment_hash().
-commitment_hash(Name, Salt) ->
-    NameHash = hash(Name),
+commitment_hash(NameAscii, Salt) ->
+    NameHash = hash(NameAscii),
     SaltBin = int_to_bin(Salt),
     hash(<<NameHash/binary, SaltBin/binary>>).
 
 -spec name_hash(binary()) -> name_hash().
-name_hash(Name) ->
-    Labels = binary:split(Name, <<".">>, [global]),
+name_hash(NameAscii) ->
+    Labels = binary:split(NameAscii, <<".">>, [global]),
     hash_labels(lists:reverse(Labels)).
 
 %%%===================================================================

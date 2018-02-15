@@ -422,6 +422,12 @@
             "schema" : {
               "$ref" : "#/definitions/NameCommitmentHash"
             }
+          },
+          "400" : {
+            "description" : "Name validation failed",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }
@@ -444,6 +450,12 @@
             "description" : "Name data",
             "schema" : {
               "$ref" : "#/definitions/NameEntry"
+            }
+          },
+          "400" : {
+            "description" : "Name validation failed",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
             }
           },
           "404" : {

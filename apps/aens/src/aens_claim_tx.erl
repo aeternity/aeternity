@@ -74,19 +74,24 @@ origin(#ns_claim_tx{account = AccountPubKey}) ->
 -spec check(claim_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
                    fee = Fee, name = Name, name_salt = NameSalt}, Trees, Height) ->
-    %% TODO: Maybe include burned fee in tx fee. To do so, mechanism determining
-    %% which part of fee goes to miner and what gets burned is needed.
-    %% One option is to change tx:fee/1 callback to tx:fee_for_miner/1.
-    BurnedFee = aec_governance:name_claim_burned_fee(),
+    case aens_utils:to_ascii(Name) of
+        {ok, NameAscii} ->
+            %% TODO: Maybe include burned fee in tx fee. To do so, mechanism determining
+            %% which part of fee goes to miner and what gets burned is needed.
+            %% One option is to change tx:fee/1 callback to tx:fee_for_miner/1.
+            BurnedFee = aec_governance:name_claim_burned_fee(),
 
-    Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee + BurnedFee) end,
-         fun() -> check_commitment(Name, NameSalt, AccountPubKey, Trees, Height) end,
-         fun() -> check_name(Name, Trees) end],
+            Checks =
+                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee + BurnedFee) end,
+                 fun() -> check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) end,
+                 fun() -> check_name(NameAscii, Trees) end],
 
-    case aeu_validation:run(Checks) of
-        ok              -> {ok, Trees};
-        {error, Reason} -> {error, Reason}
+            case aeu_validation:run(Checks) of
+                ok              -> {ok, Trees};
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 -spec process(claim_tx(), trees(), height()) -> {ok, trees()}.
@@ -100,7 +105,8 @@ process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
     {ok, Account1} = aec_accounts:spend(Account0, TotalFee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
-    CommitmentHash = aens_hash:commitment_hash(PlainName, NameSalt),
+    {ok, PlainNameAscii} = aens_utils:to_ascii(PlainName),
+    CommitmentHash = aens_hash:commitment_hash(PlainNameAscii, NameSalt),
     NSTree1 = aens_state_tree:delete_commitment(CommitmentHash, NSTree0),
 
     TTL = aec_governance:name_claim_max_expiration(),
@@ -182,9 +188,9 @@ name(#ns_claim_tx{name = Name}) ->
 %%% Internal functions
 %%%===================================================================
 
-check_commitment(Name, NameSalt, AccountPubKey, Trees, Height) ->
+check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) ->
     NSTree = aec_trees:ns(Trees),
-    CH = aens_hash:commitment_hash(Name, NameSalt),
+    CH = aens_hash:commitment_hash(NameAscii, NameSalt),
     case aens_state_tree:lookup_commitment(CH, NSTree) of
         {value, C} ->
             case aens_commitments:owner(C) =:= AccountPubKey of
@@ -200,9 +206,9 @@ check_commitment(Name, NameSalt, AccountPubKey, Trees, Height) ->
             {error, name_not_preclaimed}
     end.
 
-check_name(Name, Trees) ->
+check_name(NameAscii, Trees) ->
     NSTree = aec_trees:ns(Trees),
-    NHash = aens_hash:name_hash(Name),
+    NHash = aens_hash:name_hash(NameAscii),
     case aens_state_tree:lookup_name(NHash, NSTree) of
         {value, _} ->
             {error, name_already_taken};
