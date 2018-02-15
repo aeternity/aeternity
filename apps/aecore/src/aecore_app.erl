@@ -74,12 +74,10 @@ set_hwm(HWM) when is_integer(HWM) ->
     if_running(lager, fun() -> live_set_hwm(HWM) end).
 
 live_set_hwm(Hwm) ->
-    lists:map(
-      fun(Sink) ->
-              [lager:set_loghwm(Sink, lager_console_backend, Hwm)
-               || {lager_console_backend,_}
-                      <- gen_event:which_handlers(Sink)]
-      end, lager:list_all_sinks()).
+    error_logger_lager_h:set_high_water(Hwm),
+    [lager:set_loghwm(lager_event, H, Hwm)
+     || H <- gen_event:which_handlers(lager_event),
+        element(1, H) =:= lager_file_backend].
 
 if_running(App, F) ->
     case lists:keymember(App, 1, application:which_applications()) of
