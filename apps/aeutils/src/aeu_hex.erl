@@ -5,10 +5,12 @@
 %%% The hex nibbles can be prefixed with "0x" and binary called hexstring
 %%% or lists of bytes not prefixed and just called hex.
 %%% Some examples
+%%% ```
 %%%  Binary      | Hex      | HexString
 %%%  <<>>        | ""       | <<"0x">>
 %%%  << 0 >>     | "00"     | <<"0x00">>
 %%%  << 0, 255>> | "00ff"   | <<"0x00ff">>
+%%% '''
 %%%
 %%% The original implementation of bin_to_hex and hex_to_bin comes from
 %%% http://necrobious.blogspot.com/2008/03/binary-to-hex-string-back-to-binary-in.html
