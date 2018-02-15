@@ -302,8 +302,6 @@ workflows:
             - eunit
             - static_analysis
           filters:
-            branches:
-              only: master
             tags:
               only: /^v.*$/
 
