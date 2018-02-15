@@ -179,7 +179,7 @@ jobs:
           command: |
             brew update
             brew install libsodium
-            brew install file://`pwd`/deployment/erlang.rb
+            brew install file://`pwd`/deployment/homebrew/erlang.rb
       - *build_package
       - *test_package
       - store_artifacts:
