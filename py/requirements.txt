@@ -1,6 +1,8 @@
+base58==0.2.5
 certifi==2017.7.27.1
 chardet==3.0.4
 idna==2.5
+msgpack==0.5.4
 nose==1.3.7
 nose-testconfig==0.10
 nose-xunitmp==0.4.0

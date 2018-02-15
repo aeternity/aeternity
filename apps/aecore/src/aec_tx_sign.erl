@@ -109,7 +109,7 @@ verify(#signed_tx{data = Data, signatures = Sigs}) ->
     case aec_keys:verify(Sigs, Data) of
         true -> ok;
         false ->
-            lager:debug("No matching sigs (~p - ~p)", [Sigs]),
+            lager:debug("No matching sigs (~p)", [Sigs]),
             {error, signature_check_failed}
     end.
 
