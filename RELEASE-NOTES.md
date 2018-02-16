@@ -3,7 +3,7 @@
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.7.0) is focused on smart contracts: it provides HTTP API for compiling and running smart contract and creating contract transactions.
 It also:
 * Refines the naming system by validating names and labels;
-* Reviews hashing in the blockchain, preferring BLAKE2b;
+* Reviews hashing in the blockchain, preferring BLAKE2b. This introduces a dependency on libsodium;
 * Expands the user API;
 * Adds a [small localnet](docs/docker.md#localnet) docker-compose configuration for testing and development purposes;
 * Refines the usage of the persisted database for the blockchain, optimizing memory usage;
