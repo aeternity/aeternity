@@ -2,7 +2,7 @@
 # Pre-configured addresses of epoch nodes to contact
 peers:
     # TestNet Addresses
-    - "http://31.13.248.102:3013/"
+    - "http://31.13.249.1:3013/"
 
 # Pre-configured addresses of epoch nodes NOT to contact
 blocked_peers:

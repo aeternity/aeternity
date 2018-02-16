@@ -47,9 +47,9 @@ This section describes how to run a node as part of the testnet - the public tes
 The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
-* http://31.13.248.103:3013/v2/top
-* http://31.13.248.102:3013/v2/top
-* http://31.13.248.105:3013/v2/top
+* http://31.13.249.0:3013/v2/top
+* http://31.13.249.1:3013/v2/top
+* http://31.13.249.120:3013/v2/top
 
 ### Setup your node
 
@@ -97,7 +97,7 @@ Create the file `/tmp/node/epoch.yaml` with the following content (amend the `ht
 ```yaml
 ---
 peers:
-    - "http://31.13.248.102:3013/"
+    - "http://31.13.249.1:3013/"
 
 keys:
     dir: keys
@@ -189,7 +189,7 @@ Verify that your node sees the same longest blockchain as the testnet.
 
 Inspect the current top of the blockchain as seen by the testnet:
 ```
-curl http://31.13.248.102:3013/v2/top
+curl http://31.13.249.1:3013/v2/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
@@ -204,7 +204,7 @@ Verify that the height is the same; it may take a few minutes for your node to c
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/top` of the remote nodes:
 ```
-curl http://31.13.248.102:3013/v2/top
+curl http://31.13.249.1:3013/v2/top
 {"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
 ```
 
