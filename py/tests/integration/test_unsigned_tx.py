@@ -13,6 +13,7 @@ from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.models.contract_create_data import ContractCreateData
 from swagger_client.models.contract_call_data import ContractCallData
+from swagger_client.models.contract_call_input import ContractCallInput
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -87,9 +88,13 @@ def test_contract_call():
     alice_balance = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
 
     # assert contract created:
+    call_contract = test_settings["contract_call"]
     assert_equals(alice_balance0, alice_balance + create_settings["create_contract"]["fee"])
 
-    call_contract = test_settings["contract_call"]
+    call_input = ContractCallInput("ring", create_settings["create_contract"]["code"],\
+                                           call_contract["data"]["function"],\
+                                           call_contract["data"]["argument"])
+    result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller=test_settings["alice"]["pubkey"],
         contract=call_contract["contract"],
@@ -98,7 +103,7 @@ def test_contract_call():
         amount=call_contract["amount"],
         gas=call_contract["gas"],
         gas_price=call_contract["gas_price"],
-        call_data=call_contract["call_data"])
+        call_data=result.out)
 
 
     call_tx_obj = external_api.post_contract_call(contract_call_obj)
