@@ -9,7 +9,7 @@ It also:
 * Refines the usage of the persisted database for the blockchain, optimizing memory usage;
 * Improves the stability of the testnet.
 
-This release introduces backward incompatible changes in the chain format.
+This release introduces backward incompatible changes in the chain format: this is due to switching to BLAKE2b as hashing function and to stricter validation in naming system.
 After upgrading your node, you will not have your previous balance (even if you keep your key pair).
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
