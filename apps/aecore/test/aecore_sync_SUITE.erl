@@ -102,7 +102,8 @@ init_per_suite(Config) ->
                          [#{<<"name">> => <<"ae.epoch.system.**">>,
                             <<"actions">> => <<"log">>},
                           #{<<"name">> => <<"ae.epoch.aecore.**">>,
-                            <<"actions">> => <<"log,send">>}]}},
+                            <<"actions">> => <<"log,send">>}]},
+              <<"chain">> => #{<<"persist">> => true}},
     Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
     aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
     aecore_suite_utils:make_multi(Config2),
@@ -131,7 +132,13 @@ end_per_group(_, Config) ->
 
 stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
-    [ aecore_suite_utils:stop_node(Node, Config) || Node <- Devs ],
+    lists:foreach(
+        fun(Node) ->
+            {ok, DbCfg} = node_db_cfg(Node), 
+            aecore_suite_utils:stop_node(Node, Config),
+            aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
+        end,
+        Devs),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -320,7 +327,9 @@ restart_third(Config) ->
 
 restart_node(Nr, Config) ->
     Dev = lists:nth(Nr, proplists:get_value(devs, Config)),
+    {ok, DbCfg} = node_db_cfg(Dev), 
     aecore_suite_utils:stop_node(Dev, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev, Config),
     N = aecore_suite_utils:node_name(Dev),
@@ -553,3 +562,11 @@ config({devs, Devs}, Config) ->
       [{devs, Devs}, {nodes, [aecore_suite_utils:node_tuple(Dev)
                               || Dev <- Devs]}
        | Config]).
+
+node_db_cfg(Node) ->
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(
+                    fun(M, F, A)->
+                        rpc:call(aecore_suite_utils:node_name(Node),
+                                  M, F, A, 5000)
+                    end),
+    {ok, DbCfg}.
