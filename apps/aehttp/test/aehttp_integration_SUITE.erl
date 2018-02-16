@@ -275,7 +275,10 @@ init_per_group(_Group, Config) ->
 end_per_group(all_endpoints, _Config) ->
     ok;
 end_per_group(_Group, Config) ->
+    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
     aecore_suite_utils:stop_node(?NODE, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -1061,24 +1064,10 @@ post_broken_blocks(Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    1),
     {ok, CorrectBlock} = rpc(aec_chain, get_block_by_height, [1]),
-    % consider a rpc call for cleaning the aec_chain_state's state
-    IsDbPersisted = rpc(?NODE, application, get_env, [aecore, persist, false]),
-    MaybeMnesiaDir =
-        case rpc(?NODE, application, get_env, [mnesia, dir]) of
-            undefined -> undefined;
-            {ok, MnesiaDir0} ->
-                {ok, rpc(?NODE, filename, absname, [MnesiaDir0])}
-        end,
-    ct:log("Is DB persisted? ~p. What is Mnesia dir if any? ~p", [IsDbPersisted, MaybeMnesiaDir]),
+    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
     aecore_suite_utils:stop_node(?NODE, Config),
-    case {IsDbPersisted, MaybeMnesiaDir} of
-        {false, undefined} -> ok;
-        {true, {ok, MnesiaDir}} ->
-            ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
-            RmMnesiaDir = "rm -r '" ++ MnesiaDir ++ "'",
-            ct:log("Running command ~p", [RmMnesiaDir]),
-            os:cmd(RmMnesiaDir)
-    end,
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
     GH = rpc(aec_chain, top_header, []),
