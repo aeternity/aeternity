@@ -39,11 +39,15 @@
 -export([ find_accounts_node/1
         , find_contracts_node/1
         , find_ns_node/1
+        , find_ns_cache_node/1
         , find_oracles_node/1
+        , find_oracles_cache_node/1
         , write_accounts_node/2
         , write_contracts_node/2
         , write_ns_node/2
+        , write_ns_cache_node/2
         , write_oracles_node/2
+        , write_oracles_cache_node/2
         ]).
 
 -export([find_block_state/1
@@ -69,8 +73,10 @@
 %% - headers
 %% - block  [transaction_ids]
 %% - oracle_state
+%% - oracle_cache
 %% - account_state
 %% - name_service_state
+%% - name_service_cache
 %% - one per state tree
 
 -record(aec_blocks             , {key, txs}).
@@ -79,8 +85,10 @@
 -record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
 -record(aec_block_state        , {key, value}).
+-record(aec_oracle_cache       , {key, value}).
 -record(aec_oracle_state       , {key, value}).
 -record(aec_account_state      , {key, value}).
+-record(aec_name_service_cache , {key, value}).
 -record(aec_name_service_state , {key, value}).
 
 -define(TAB(Record), {Record, set(Mode, record_info(fields, Record))}).
@@ -99,8 +107,10 @@ tables(Mode) ->
    , ?TAB(aec_chain_state)
    , ?TAB(aec_contract_state)
    , ?TAB(aec_block_state)
+   , ?TAB(aec_oracle_cache)
    , ?TAB(aec_oracle_state)
    , ?TAB(aec_account_state)
+   , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
     ].
 
@@ -235,8 +245,14 @@ write_contracts_node(Hash, Node) ->
 write_ns_node(Hash, Node) ->
     ?t(mnesia:write(#aec_name_service_state{key = Hash, value = Node})).
 
+write_ns_cache_node(Hash, Node) ->
+    ?t(mnesia:write(#aec_name_service_cache{key = Hash, value = Node})).
+
 write_oracles_node(Hash, Node) ->
     ?t(mnesia:write(#aec_oracle_state{key = Hash, value = Node})).
+
+write_oracles_cache_node(Hash, Node) ->
+    ?t(mnesia:write(#aec_oracle_cache{key = Hash, value = Node})).
 
 write_genesis_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = genesis_hash, value = Hash})).
@@ -275,6 +291,13 @@ find_oracles_node(Hash) ->
         [] -> none
     end.
 
+find_oracles_cache_node(Hash) ->
+    case ?t(mnesia:read(aec_oracle_cache, Hash)) of
+        [#aec_oracle_cache{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+
 find_contracts_node(Hash) ->
     case ?t(mnesia:read(aec_contract_state, Hash)) of
         [#aec_contract_state{value = Node}] -> {value, Node};
@@ -284,6 +307,12 @@ find_contracts_node(Hash) ->
 find_ns_node(Hash) ->
     case ?t(mnesia:read(aec_name_service_state, Hash)) of
         [#aec_name_service_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+find_ns_cache_node(Hash) ->
+    case ?t(mnesia:read(aec_name_service_cache, Hash)) of
+        [#aec_name_service_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
 

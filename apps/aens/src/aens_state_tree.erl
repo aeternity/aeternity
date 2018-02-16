@@ -40,11 +40,13 @@
 -type nstree() :: aeu_mtrees:tree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
 -type name() :: aens_names:name().
--type cache() :: gb_sets:set({integer(), binary()}).
+-type cache() :: aeu_mtrees:tree(cache_key(), cache_value()).
+-type cache_key() :: binary(). %% Sext encoded
+-type cache_value() :: binary(). %% ?DUMMY_VAL
 -type block_height() :: non_neg_integer().
 
 -record(ns_tree, { mtree = aeu_mtrees:empty() :: nstree()
-                 , cache = cache_new() :: cache()
+                 , cache = aeu_mtrees:empty() :: cache()
                  }).
 
 -opaque tree() :: #ns_tree{}.
@@ -67,13 +69,13 @@ delete_name(Id, Tree) ->
 
 -spec empty() -> tree().
 empty() ->
-    MTree = aeu_mtrees:empty(),
-    #ns_tree{mtree = MTree}.
+    #ns_tree{}.
 
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
     MTree = aeu_mtrees:empty_with_backend(aec_db_backends:ns_backend()),
-    #ns_tree{mtree = MTree}.
+    Cache = aeu_mtrees:empty_with_backend(aec_db_backends:ns_cache_backend()),
+    #ns_tree{mtree = MTree, cache = Cache}.
 
 -spec prune(block_height(), tree()) -> tree().
 prune(NextBlockHeight, #ns_tree{} = Tree) ->
@@ -129,8 +131,10 @@ root_hash(#ns_tree{mtree = MTree}) ->
     aeu_mtrees:root_hash(MTree).
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#ns_tree{mtree = MTree} = Tree) ->
-    Tree#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree)}.
+commit_to_db(#ns_tree{mtree = MTree, cache = Cache} = Tree) ->
+    Tree#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree),
+                 cache = aeu_mtrees:commit_to_db(Cache)
+                }.
 
 -ifdef(TEST).
 -spec commitment_list(tree()) -> list(commitment()).
@@ -215,18 +219,21 @@ do_run_elapsed(#commitment{hash = Hash}, NamesTree0, _Height) ->
 %%%===================================================================
 %%% TTL Cache
 %%%===================================================================
-
-cache_new() ->
-    gb_sets:empty().
+-define(DUMMY_VAL, <<0>>).
 
 cache_push(Expires, Id, Mod, C) ->
-    gb_sets:add({Expires, Id, Mod}, C).
+    SExt = sext:encode({Expires, Id, Mod}),
+    aeu_mtrees:enter(SExt, ?DUMMY_VAL, C).
 
 cache_safe_peek(C) ->
-    case gb_sets:is_empty(C) of
-        true  -> none;
-        false -> gb_sets:smallest(C)
+    case aeu_mtrees:iterator_next(aeu_mtrees:iterator(C)) of
+        '$end_of_table' -> none;
+        {Next, ?DUMMY_VAL, _Iter} -> sext:decode(Next)
     end.
 
 cache_pop(C) ->
-    gb_sets:take_smallest(C).
+    case aeu_mtrees:iterator_next(aeu_mtrees:iterator(C)) of
+        '$end_of_table' -> none;
+        {Next,?DUMMY_VAL,_Iter} ->
+            {sext:decode(Next), aeu_mtrees:delete(Next, C)}
+    end.
