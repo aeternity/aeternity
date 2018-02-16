@@ -312,6 +312,141 @@ paths:
           description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
+  /tx/name/preclaim:
+    post:
+      tags:
+        - external
+      operationId: PostNamePreclaim
+      description: 'Get a name_preclaim transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/NamePreclaimTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/name/claim:
+    post:
+      tags:
+        - external
+      operationId: PostNameClaim
+      description: 'Get a name_claim transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/NameClaimTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or name not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/name/update:
+    post:
+      tags:
+        - external
+      operationId: PostNameUpdate
+      description: 'Get a name_update transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/NameUpdateTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or oracle not found
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/name/transfer:
+    post:
+      tags:
+        - external
+      operationId: PostNameTransfer
+      description: 'Get a name_transfer transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/NameTransferTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or name not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/name/revoke:
+    post:
+      tags:
+        - external
+      operationId: PostNameRevoke
+      description: 'Get a name_revoke transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/NameRevokeTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account or name not found 
+          schema:
+            $ref: '#/definitions/Error'
 
   /transactions:
     get:
@@ -1817,6 +1952,11 @@ definitions:
       fee:
         type: integer
         format: int64
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
     required:
     - commitment
     - fee
@@ -1829,6 +1969,11 @@ definitions:
         type: integer
         format: int64
       fee:
+        type: integer
+        format: int64
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
         type: integer
         format: int64
     required:
@@ -1851,6 +1996,11 @@ definitions:
       fee:
         type: integer
         format: int64
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
     required:
     - name_hash
     - name_ttl
@@ -1867,6 +2017,11 @@ definitions:
       fee:
         type: integer
         format: int64
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
     required:
     - name_hash
     - recipient_pubkey
@@ -1877,6 +2032,11 @@ definitions:
       name_hash:
         type: string
       fee:
+        type: integer
+        format: int64
+      account:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
         type: integer
         format: int64
     required:

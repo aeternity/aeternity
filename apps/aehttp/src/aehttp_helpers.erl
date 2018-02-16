@@ -7,11 +7,13 @@
         , hexstrings_decode/1
         , ttl_decode/1
         , relative_ttl_decode/1
+        , nameservice_pointers_decode/1
         , get_nonce/1
         , print_state/0
         , verify_contract_existence/1
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
+        , verify_name/1
         ]).
 
 parse_request(FunsList, Req) ->
@@ -154,6 +156,28 @@ verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
                 {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
             {value, _} ->
                 ok
+        end
+    end.
+
+verify_name(NameKey) ->
+    fun(_Req, State) ->
+        Name = maps:get(NameKey, State),
+        case aens:get_name_hash(Name) of
+            {ok, _} -> ok;
+            {error, Reason} ->
+                ReasonBin = atom_to_binary(Reason, utf8),
+                {error, {400, [],
+                        #{reason => <<"Name validation failed with a reason: ",
+                                                ReasonBin/binary>>}}}
+        end
+    end.
+
+nameservice_pointers_decode(PointersKey) ->
+    fun(_Req, State) ->
+        Pointers = maps:get(PointersKey, State),
+        try {ok, maps:put(PointersKey, jsx:decode(Pointers), State)}
+        catch _:_ ->
+            {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
         end
     end.
 

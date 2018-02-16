@@ -39,7 +39,7 @@
 -define(NAME_PRECLAIM_TX_TYPE, <<"name_preclaim">>).
 -define(NAME_PRECLAIM_TX_VSN, 1).
 
--opaque preclaim_tx() :: #ns_preclaim_tx{}.
+-type preclaim_tx() :: #ns_preclaim_tx{}.
 
 -export_type([preclaim_tx/0]).
 
