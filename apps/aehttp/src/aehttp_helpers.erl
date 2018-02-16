@@ -170,7 +170,6 @@ verify_name(NameKey) ->
                         #{reason => <<"Name validation failed with a reason: ",
                                                 ReasonBin/binary>>}}}
         end
-
     end.
 
 nameservice_pointers_decode(PointersKey) ->

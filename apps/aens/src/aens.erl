@@ -64,7 +64,7 @@ get_name_entry(Name, NSTree) ->
     end.
 
 -spec get_name_hash(binary()) -> {ok, binary()} |
-                                 {error, term()}.
+                                 {error, atom()}.
 get_name_hash(Name) when is_binary(Name) ->
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} -> {ok, aens_hash:name_hash(NameAscii)};
