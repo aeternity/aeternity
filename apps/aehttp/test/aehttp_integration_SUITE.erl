@@ -1062,7 +1062,23 @@ post_broken_blocks(Config) ->
                                    1),
     {ok, CorrectBlock} = rpc(aec_chain, get_block_by_height, [1]),
     % consider a rpc call for cleaning the aec_chain_state's state
+    IsDbPersisted = rpc(?NODE, application, get_env, [aecore, persist, false]),
+    MaybeMnesiaDir =
+        case rpc(?NODE, application, get_env, [mnesia, dir]) of
+            undefined -> undefined;
+            {ok, MnesiaDir0} ->
+                {ok, rpc(?NODE, filename, absname, [MnesiaDir0])}
+        end,
+    ct:log("Is DB persisted? ~p. What is Mnesia dir if any? ~p", [IsDbPersisted, MaybeMnesiaDir]),
     aecore_suite_utils:stop_node(?NODE, Config),
+    case {IsDbPersisted, MaybeMnesiaDir} of
+        {false, undefined} -> ok;
+        {true, {ok, MnesiaDir}} ->
+            ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
+            RmMnesiaDir = "rm -r '" ++ MnesiaDir ++ "'",
+            ct:log("Running command ~p", [RmMnesiaDir]),
+            os:cmd(RmMnesiaDir)
+    end,
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
     GH = rpc(aec_chain, top_header, []),
@@ -2921,7 +2937,10 @@ get_peers() ->
 %% private functions
 %% ============================================================
 rpc(Mod, Fun, Args) ->
-    rpc:call(aecore_suite_utils:node_name(?NODE), Mod, Fun, Args, 5000).
+    rpc(?NODE, Mod, Fun, Args).
+
+rpc(Node, Mod, Fun, Args) ->
+    rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000).
 
 external_address() ->
     Port = rpc(aeu_env, user_config_or_env,
