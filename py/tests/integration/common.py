@@ -23,6 +23,9 @@ from nose.tools import assert_equals
 from testconfig import config
 from waiting import wait
 
+import msgpack
+import base58
+
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
     empty_config = Configuration()
@@ -111,5 +114,23 @@ def get_account_balance(int_api, pub_key=None):
     except ApiException as e:
         assert_equals(e.status, 404) # Alice has no account yet
     return balance
+
+def base58_decode(encoded):
+    if encoded[2] != '$':
+        raise ValueError('Invalid hash')
+    return base58.b58decode_check(encoded[3:])
+
+def encode_signed_tx(encoded_tx, signatures):
+    str = base58.b58encode_check(msgpack.packb(["sig_tx", 1, encoded_tx, signatures], use_bin_type=True))
+    return "tx$" + str
+
+def unpack_tx(tx):
+    return msgpack.unpackb(tx)
+
+def parse_tx(unpacked_tx):
+    tx = {}
+    for elem in unpacked_tx:
+        tx.update(elem)
+    return tx
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
