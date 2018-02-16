@@ -32,6 +32,7 @@ from swagger_client.models.byte_code import ByteCode
 from swagger_client.models.call_result import CallResult
 from swagger_client.models.calldata import Calldata
 from swagger_client.models.contract import Contract
+from swagger_client.models.contract_call_compute import ContractCallCompute
 from swagger_client.models.contract_call_data import ContractCallData
 from swagger_client.models.contract_call_input import ContractCallInput
 from swagger_client.models.contract_create_data import ContractCreateData

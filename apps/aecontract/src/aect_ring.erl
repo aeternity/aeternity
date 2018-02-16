@@ -75,10 +75,11 @@ simple_call(Code, Function, Argument) ->
 
 -spec encode_call_data(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 encode_call_data(Contract, Function, Argument) ->
-    case create_call(Contract, Function, Argument) of
+    try create_call(Contract, Function, Argument) of
         Data when is_binary(Data) ->
             {ok, aeu_hex:hexstring_encode(Data)};
         Error -> Error
+    catch _:_ -> {error, <<"bad argument">>}
     end.
 
 -spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.

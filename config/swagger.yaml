@@ -225,6 +225,35 @@ paths:
           description: Caller account or contract not found 
           schema:
             $ref: '#/definitions/Error'
+  /tx/contract/call/compute:
+    post:
+      tags:
+        - external
+      operationId: PostContractCallCompute
+      description: 'Compute the call_data for RING and get contract_call transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/ContractCallCompute'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Caller account or contract not found 
+          schema:
+            $ref: '#/definitions/Error'
   /tx/oracle/register:
     post:
       tags:
@@ -445,6 +474,35 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Account or name not found 
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/spend:
+    post:
+      tags:
+        - external
+      operationId: PostSpend
+      description: 'Get a spend transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/SpendTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/Tx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Sender account not found
           schema:
             $ref: '#/definitions/Error'
 
@@ -1815,13 +1873,23 @@ definitions:
     type: object
     properties:
       recipient_pubkey:
-        type: string
+        $ref: '#/definitions/EncodedHash'
       amount:
         type: integer
         format: int64
+        minimum: 0
       fee:
         type: integer
         format: int64
+      sender:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
+    required:
+    - recipient_pubkey
+    - amount
+    - fee
   OracleRegisterTx:
     type: object
     properties:
@@ -2486,6 +2554,55 @@ definitions:
     - gas
     - gas_price
     - call_data
+  ContractCallCompute:
+    type: object
+    properties:
+      caller:
+        description: Contract caller pub_key
+        type: string
+      nonce:
+        description: Caller's nonce
+        type: integer
+      contract:
+        description: 'Contract''s pub_key' 
+        type: string
+      vm_version:
+        description: 'Virtual machine''s version' 
+        type: integer
+        minimum: 0
+        maximum: 255
+      fee:
+        description: Transaction fee
+        type: integer
+        minimum: 0
+      amount:
+        description: Amount
+        type: integer
+        minimum: 0
+      gas:
+        description: Contract gas
+        type: integer
+        minimum: 0
+      gas_price:
+        description: Gas price
+        type: integer
+        minimum: 0
+      function:
+        description: Contract call data function
+        type: string
+      arguments:
+        description: Contract call data function arguments
+        type: string
+    required:
+    - caller
+    - contract
+    - vm_version
+    - fee
+    - amount
+    - gas
+    - gas_price
+    - function
+    - arguments
 
 externalDocs:
   description: Find out more about Aeternity

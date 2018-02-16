@@ -130,6 +130,11 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'PostContractCallCompute' => #{
+            path => "/v2/tx/contract/call/compute",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'PostContractCreate' => #{
             path => "/v2/tx/contract/create",
             method => <<"POST">>,
@@ -172,6 +177,11 @@ get_operations() ->
         },
         'PostOracleResponse' => #{
             path => "/v2/tx/oracle/response",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
+        'PostSpend' => #{
+            path => "/v2/tx/spend",
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },

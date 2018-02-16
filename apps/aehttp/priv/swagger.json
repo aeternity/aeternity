@@ -269,6 +269,43 @@
         }
       }
     },
+    "/tx/contract/call/compute" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Compute the call_data for RING and get contract_call transaction",
+        "operationId" : "PostContractCallCompute",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ContractCallCompute"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Caller account or contract not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/oracle/register" : {
       "post" : {
         "tags" : [ "external" ],
@@ -553,6 +590,43 @@
           },
           "404" : {
             "description" : "Account or name not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/spend" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get a spend transaction",
+        "operationId" : "PostSpend",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SpendTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Tx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Sender account not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -2209,23 +2283,34 @@
     },
     "SpendTx" : {
       "type" : "object",
+      "required" : [ "amount", "fee", "recipient_pubkey" ],
       "properties" : {
         "recipient_pubkey" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
           "type" : "integer",
-          "format" : "int64"
+          "format" : "int64",
+          "minimum" : 0
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "sender" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
           "type" : "integer",
           "format" : "int64"
         }
       },
       "example" : {
         "amount" : 0,
+        "sender" : null,
         "fee" : 6,
-        "recipient_pubkey" : "recipient_pubkey"
+        "recipient_pubkey" : { },
+        "nonce" : 1
       }
     },
     "OracleRegisterTx" : {
@@ -3136,6 +3221,70 @@
         "contract" : "contract",
         "fee" : 0,
         "gas" : 0,
+        "nonce" : 0
+      }
+    },
+    "ContractCallCompute" : {
+      "type" : "object",
+      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "vm_version" ],
+      "properties" : {
+        "caller" : {
+          "type" : "string",
+          "description" : "Contract caller pub_key"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "description" : "Caller's nonce"
+        },
+        "contract" : {
+          "type" : "string",
+          "description" : "Contract's pub_key"
+        },
+        "vm_version" : {
+          "type" : "integer",
+          "description" : "Virtual machine's version",
+          "minimum" : 0,
+          "maximum" : 255
+        },
+        "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "amount" : {
+          "type" : "integer",
+          "description" : "Amount",
+          "minimum" : 0
+        },
+        "gas" : {
+          "type" : "integer",
+          "description" : "Contract gas",
+          "minimum" : 0
+        },
+        "gas_price" : {
+          "type" : "integer",
+          "description" : "Gas price",
+          "minimum" : 0
+        },
+        "function" : {
+          "type" : "string",
+          "description" : "Contract call data function"
+        },
+        "arguments" : {
+          "type" : "string",
+          "description" : "Contract call data function arguments"
+        }
+      },
+      "example" : {
+        "gas_price" : 0,
+        "caller" : "caller",
+        "vm_version" : 153,
+        "amount" : 0,
+        "contract" : "contract",
+        "fee" : 0,
+        "function" : "function",
+        "gas" : 0,
+        "arguments" : "arguments",
         "nonce" : 0
       }
     },
