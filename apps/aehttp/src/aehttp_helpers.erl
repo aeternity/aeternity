@@ -10,7 +10,7 @@
         , nameservice_pointers_decode/1
         , get_nonce/1
         , print_state/0
-        , verify_contract_existence/1
+        , get_contract_code/2 
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
@@ -122,10 +122,20 @@ print_state() ->
         lager:info("State: ~p", [State])
     end.
 
-verify_contract_existence(ContractKey) ->
-    verify_key_in_state_tree(ContractKey, fun aec_trees:contracts/1,
-                             fun aect_state_tree:lookup_contract/2,
-                             "Contract address"). 
+get_contract_code(ContractKey, CodeKey) ->
+    fun(_Req, State) ->
+        ContractPubKey = maps:get(ContractKey, State),
+        TopBlockHash = aec_chain:top_block_hash(),
+        {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
+        Tree = aec_trees:contracts(Trees),
+        case aect_state_tree:lookup_contract(ContractPubKey, Tree) of
+            none ->
+                Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
+                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
+            {value, Contract} ->
+                {ok, maps:put(CodeKey, aect_contracts:code(Contract), State)}
+        end
+    end.
 
 verify_oracle_existence(OracleKey) ->
     verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,

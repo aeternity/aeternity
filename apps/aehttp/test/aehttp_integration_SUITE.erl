@@ -36,6 +36,7 @@
     contract_transactions/1,
     oracle_transactions/1,
     nameservice_transactions/1,
+    spend_transaction/1,
 
     % sync gossip
     pending_transactions/1,
@@ -160,6 +161,7 @@ groups() ->
         contract_transactions,
         oracle_transactions,
         nameservice_transactions,
+        spend_transaction,
 
         % sync gossip
         pending_transactions,
@@ -495,8 +497,8 @@ contract_transactions(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    Code = <<"0x1234">>,
-    CallData = <<"0x1234">>,
+    Code = <<"0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56">>,
+    CallData = <<"0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56">>,
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
@@ -557,6 +559,29 @@ contract_transactions(_Config) ->
                                fun get_contract_call/1,
                                fun aect_call_tx:new/1, MinerPubkey),
 
+    Function = <<"main">>,
+    Argument = <<"42">>,
+    ComputeCCallEncoded = #{ caller => MinerAddress,
+                             contract => aec_base58c:encode(account_pubkey, ContractPubKey),
+                             vm_version => 1,
+                             amount => 10,
+                             gas => 1000,
+                             gas_price => 2,
+                             fee => 1,
+                             function => Function,
+                             arguments => Argument},
+
+    {ok, EncodedCallData} = aect_ring:encode_call_data(Code, Function,
+                                                       Argument), 
+    ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
+                              #{caller => MinerPubkey,
+                                contract => ContractPubKey,
+                                call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
+
+    unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
+                               fun get_contract_call_compute/1,
+                               fun aect_call_tx:new/1, MinerPubkey),
+
     %% negative tests
     %% Invalid hashes
     % invalid owner hash
@@ -573,6 +598,15 @@ contract_transactions(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Invalid hash: contract,caller">>}} =
         get_contract_call(maps:merge(ContractCallEncoded, #{contract => InvalidHash,
                                                             caller => InvalidHash})), 
+    % invalid caller hash
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
+        get_contract_call_compute(maps:put(caller, InvalidHash,
+                                           ComputeCCallEncoded)), 
+    % invalid contract hash
+    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
+        get_contract_call_compute(maps:put(contract, InvalidHash,
+                                           ComputeCCallEncoded)), 
+
     %% account not found 
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     %% owner not found
@@ -584,6 +618,14 @@ contract_transactions(_Config) ->
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
         get_contract_call(maps:put(contract, RandAddress, ContractCallEncoded)), 
+    %% caller not found
+    {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
+        get_contract_call_compute(maps:put(caller, RandAddress,
+                                           ComputeCCallEncoded)), 
+    %% contract not found
+    {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
+        get_contract_call_compute(maps:put(contract, RandAddress,
+                                           ComputeCCallEncoded)), 
 
     %% Invalid hexstrings
     InvalidHex1 = <<"1234">>,
@@ -604,6 +646,10 @@ contract_transactions(_Config) ->
         get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)), 
     {ok, 400, #{<<"reason">> := <<"Not hex string: call_data">>}} =
         get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)), 
+
+    {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
+        get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
+                                           ComputeCCallEncoded)), 
     ok.
 
 oracle_transactions(_Config) ->
@@ -771,9 +817,14 @@ nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     test_missing_address(account, Encoded, fun get_name_preclaim/1),
     ok.
 
-test_invalid_hash(CorrectAddress, Key, Encoded, APIFun) ->
+test_invalid_hash(CorrectAddress, Key0, Encoded, APIFun) ->
+    {Key, Name} =
+        case Key0 of
+            {_, _} = Pair -> Pair;
+            K -> {K, K}
+        end,
     <<_, InvalidHash/binary>> = CorrectAddress,
-    Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Key)),
+    Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Name)),
     {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(Key, InvalidHash, Encoded)), 
     ok.
 
@@ -878,6 +929,30 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     test_invalid_hash(MinerPubkey, account, Encoded, fun get_name_revoke/1),
     test_invalid_hash(MinerPubkey, name_hash, Encoded, fun get_name_revoke/1),
     test_missing_address(account, Encoded, fun get_name_revoke/1),
+    ok.
+
+
+%% tests the following
+%% GET spend_tx unsigned transaction 
+spend_transaction(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    RandAddress = random_hash(),
+    Encoded = #{sender => MinerAddress,
+                recipient_pubkey => aec_base58c:encode(account_pubkey,
+                                                       RandAddress),
+                amount => 2,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{sender => MinerPubkey,
+                          recipient => RandAddress}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_spend/1,
+                               fun aec_spend_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, sender, Encoded, fun get_spend/1),
+    test_invalid_hash(MinerPubkey, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
+    test_missing_address(sender, Encoded, fun get_spend/1),
     ok.
 
 unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
@@ -2583,6 +2658,14 @@ get_contract_create(Data) ->
 get_contract_call(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/call", Data).
+
+get_contract_call_compute(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/contract/call/compute", Data).
+
+get_spend(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/spend", Data).
 
 get_oracle_register(Data) ->
     Host = external_address(),

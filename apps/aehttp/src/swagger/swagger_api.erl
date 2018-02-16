@@ -86,6 +86,11 @@ request_params('PostContractCall') ->
         'ContractCallData'
     ];
 
+request_params('PostContractCallCompute') ->
+    [
+        'ContractCallCompute'
+    ];
+
 request_params('PostContractCreate') ->
     [
         'ContractCreateData'
@@ -129,6 +134,11 @@ request_params('PostOracleRegister') ->
 request_params('PostOracleResponse') ->
     [
         'OracleResponseTx'
+    ];
+
+request_params('PostSpend') ->
+    [
+        'SpendTx'
     ];
 
 request_params('PostTx') ->
@@ -450,6 +460,15 @@ request_param_info('PostContractCall', 'ContractCallData') ->
         ]
     };
 
+request_param_info('PostContractCallCompute', 'ContractCallCompute') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
 request_param_info('PostContractCreate', 'ContractCreateData') ->
     #{
         source =>   body,
@@ -523,6 +542,15 @@ request_param_info('PostOracleRegister', 'OracleRegisterTx') ->
     };
 
 request_param_info('PostOracleResponse', 'OracleResponseTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostSpend', 'SpendTx') ->
     #{
         source =>   body,
         rules => [
@@ -1227,6 +1255,13 @@ validate_response('PostContractCall', 400, Body, ValidatorState) ->
 validate_response('PostContractCall', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('PostContractCallCompute', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostContractCallCompute', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCallCompute', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('PostContractCreate', 200, Body, ValidatorState) ->
     validate_response_body('Tx', 'Tx', Body, ValidatorState);
 validate_response('PostContractCreate', 400, Body, ValidatorState) ->
@@ -1288,6 +1323,13 @@ validate_response('PostOracleResponse', 200, Body, ValidatorState) ->
 validate_response('PostOracleResponse', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostOracleResponse', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostSpend', 200, Body, ValidatorState) ->
+    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+validate_response('PostSpend', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostSpend', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostTx', 200, Body, ValidatorState) ->
