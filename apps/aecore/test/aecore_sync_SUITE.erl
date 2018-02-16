@@ -71,6 +71,7 @@ groups() ->
        check_metrics_logged]},
      {semantically_invalid_tx, [sequence],
       [start_first_node,
+       mine_on_first,
        start_second_node,
        ensure_tx_pools_empty,
        tx_first_pays_second_more_it_can_afford,
