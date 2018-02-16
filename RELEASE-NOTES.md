@@ -1,6 +1,6 @@
 # About this release
 
-[This release](https://github.com/aeternity/epoch/releases/tag/v0.7.0) is focused on smart contracts.
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.7.0) is focused on smart contracts: it provides HTTP API for compiling and running smart contract and creating contract transactions.
 It also:
 * Refines the naming system by validating names and labels;
 * Reviews hashing in the blockchain, preferring BLAKE2b;
