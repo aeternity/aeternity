@@ -16,6 +16,8 @@
 
 -export([start_node/2,
          stop_node/2,
+         get_node_db_config/1,
+         delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3]).
 
@@ -103,6 +105,30 @@ start_node(N, Config) ->
 stop_node(N, Config) ->
     cmd(["(cd ", node_shortcut(N, Config),
          " && ./bin/epoch stop)"]).
+
+get_node_db_config(Rpc) when is_function(Rpc, 3) ->
+    IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
+    MaybeMnesiaDir =
+        case Rpc(application, get_env, [mnesia, dir]) of
+            undefined -> undefined;
+            {ok, MnesiaDir0} ->
+                {ok, Rpc(filename, absname, [MnesiaDir0])}
+        end,
+    ct:log("Is DB persisted? ~p. What is Mnesia dir if any? ~p",
+           [IsDbPersisted, MaybeMnesiaDir]),
+    {ok, {IsDbPersisted, MaybeMnesiaDir}}.
+
+delete_node_db_if_persisted({false, undefined}) ->
+    ok;
+delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
+    ct:log("Deleting Mnesia Dir ~p", [MnesiaDir]),
+    {true, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
+    {true, _} = {filelib:is_dir(MnesiaDir), MnesiaDir},
+    RmMnesiaDir = "rm -r '" ++ MnesiaDir ++ "'",
+    ct:log("Running command ~p", [RmMnesiaDir]),
+    os:cmd(RmMnesiaDir),
+    {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
+    ok.
 
 mine_blocks(Node, NumBlocksToMine) ->
     mine_blocks(Node, NumBlocksToMine, 10).
