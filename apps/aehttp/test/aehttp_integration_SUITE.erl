@@ -258,7 +258,7 @@ init_per_suite(Config) ->
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
-                                                 #{<<"persist">> => false}}),
+                                                 #{<<"persist">> => true}}),
     aecore_suite_utils:make_multi(Config1, [?NODE]),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config1].
 
