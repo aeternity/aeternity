@@ -224,7 +224,7 @@ workflows:
             - static_analysis
           filters:
             branches:
-              ignore /.*/
+              ignore: /.*/
             tags:
               only: /^v.*$/
 
