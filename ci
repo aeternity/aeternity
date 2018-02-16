@@ -26,7 +26,8 @@ case "${1:?}"-"${2:?}" in
             export HOMEBREW_CACHE="$HOME/Library/Caches/Homebrew"
             brew update
             brew install libsodium
-            brew install erlang && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
+            # Install really pinned version of OTP Erlang (See #154994576)
+            brew install file://`pwd`/deployment/homebrew/erlang.rb && export PATH="$(brew --prefix erlang)"/bin:"$PATH"
         elif [ "${TRAVIS_OS_NAME:?}" = "linux" ]; then
             sudo -H pip install -r deployment/ansible/pip-requirements.txt
             wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
