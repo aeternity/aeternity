@@ -1,7 +1,13 @@
 # About this release
 
-Changes:
-* Add [small localnet](docs/docker.md#localnet) docker-compose configuration for testing and development purposes
+[This release](https://github.com/aeternity/epoch/releases/tag/v0.7.0) is focused on smart contracts.
+It also:
+* Refines the naming system by validating names and labels;
+* Reviews hashing in the blockchain, preferring BLAKE2b;
+* Expands the user API;
+* Adds a [small localnet](docs/docker.md#localnet) docker-compose configuration for testing and development purposes;
+* Refines the usage of the persisted database for the blockchain, optimizing memory usage;
+* Improves the stability of the testnet.
 
 This release introduces backward incompatible changes in the chain format.
 After upgrading your node, you will not have your previous balance (even if you keep your key pair).
@@ -15,7 +21,7 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.6.0) corresponding to your platform, e.g. `epoch-0.6.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.7.0) corresponding to your platform, e.g. `epoch-0.7.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -29,14 +35,14 @@ In case you have installed either of them in a non-default path, you could use s
 To run on Ubuntu 16.04 you need to have a libsodium shared library (v1.0.16) in `/usr/local/lib/libsodium.so.23`. (`wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz`,
 unpack, then do `./configure && make && sudo make install && sudo ldconfig`)
 
-Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.6.0/docs/docker.md).
+Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.7.0/docs/docker.md).
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
-HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.6.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`, and its interactive visualization is available [online](https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.6.0/apps/aehttp/priv/swagger.json).
-WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch/api/README.md).
+HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.7.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`, and its interactive visualization is available [online](https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.7.0/apps/aehttp/priv/swagger.json).
+WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.7.0/epoch/api/README.md).
 
-The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.6.0/epoch/api/README.md).
+The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.7.0/epoch/api/README.md).
 
 ## Join the testnet
 
@@ -64,7 +70,7 @@ Create a directory and unpack the downloaded package:
 ```
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.6.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.7.0-osx-10.12.6.tar.gz
 ```
 
 #### Configure node
@@ -124,7 +130,7 @@ chain:
 
 (The node automatically creates the directory `db_path` for storing the blockchain.)
 
-As of release "v0.6.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.5.x".
+As of release "v0.7.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.6.x".
 
 You can validate the configuration file before starting the node:
 ```
