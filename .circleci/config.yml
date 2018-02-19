@@ -167,6 +167,13 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+  deploy_api_docs:
+    <<: *container_config
+    steps:
+      - checkout
+      - run:
+          command: |
+            bash deployment/deploy_api_docs.sh
 
   osx_package:
     macos:
@@ -257,6 +264,15 @@ workflows:
                 - env/dev2
             tags:
               only: /^v.*$/
+      - deploy_api_docs:
+          requires:
+            - static_analysis
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
 
       - test:
           requires:
