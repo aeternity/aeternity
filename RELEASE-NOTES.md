@@ -132,7 +132,7 @@ chain:
 
 (The node automatically creates the directory `db_path` for storing the blockchain.)
 
-As of release "v0.7.x", as the chain format changed from the previous release "v0.6.x", please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.6.x".
+As of release "v0.7.1", as in release "v0.7.0" the chain format changed from the previous ones "v0.6.x", please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.6.x".
 
 You can validate the configuration file before starting the node:
 ```
