@@ -162,7 +162,7 @@ collect_sync_events(Nodes) ->
 
 check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
     case Info of
-        {E, _} when E =:= server_done; E =:= client_done ->
+        {E, _} when E =:= client_done ->
             ct:log("got sync_event ~p", [Msg]),
             lists:delete(node(From), Nodes);
         _ ->
