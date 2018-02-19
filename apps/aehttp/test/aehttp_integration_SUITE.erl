@@ -188,7 +188,7 @@ groups() ->
         broken_spend_tx,
         naming_system_broken_txs,
         miner_pub_key,
-        %% TODO Fix account_transactions,
+        account_transactions,
 
         %% requested Endpoints
         block_number,

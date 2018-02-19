@@ -64,7 +64,7 @@
   2},
  {<<"mnesia_rocksdb">>,
   {git,"https://github.com/aeternity/mnesia_rocksdb.git",
-       {ref,"ff823c4ee1719e17ef4f9fbf7cb9942bbe587b2b"}},
+       {ref,"43b861215ada40cbdaf8144a7fc8ffab78cb9684"}},
   0},
  {<<"msgpack">>,{pkg,<<"msgpack">>,<<"0.7.0">>},0},
  {<<"parse_trans">>,{pkg,<<"parse_trans">>,<<"3.1.0">>},0},
