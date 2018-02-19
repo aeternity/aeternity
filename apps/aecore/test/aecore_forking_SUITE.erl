@@ -128,7 +128,7 @@ sync_fork_in_wrong_order(Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
-    await_sync_complete(T0, [N1, N2]),
+    await_sync_complete(T0, [N2]),
 
     N2Top = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top of chain dev2: ~p", [ N2Top ]),
@@ -162,7 +162,7 @@ collect_sync_events(Nodes) ->
 
 check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
     case Info of
-        {E, _} when E =:= server_done; E =:= client_done ->
+        {E, _} when E =:= client_done ->
             ct:log("got sync_event ~p", [Msg]),
             lists:delete(node(From), Nodes);
         _ ->
