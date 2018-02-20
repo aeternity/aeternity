@@ -43,7 +43,7 @@
   1},
  {<<"idna">>,
   {git,"https://github.com/aeternity/erlang-idna",
-       {ref,"b452d8fe4c15be8146f5ca15d4f0c08720a98be4"}},
+       {ref,"24bf647c9b63f4521351896398edecf56f4843a8"}},
   0},
  {<<"jesse">>,
   {git,"https://github.com/for-GET/jesse.git",
