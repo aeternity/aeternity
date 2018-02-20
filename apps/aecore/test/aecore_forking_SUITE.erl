@@ -123,7 +123,7 @@ sync_fork_in_wrong_order(Config) ->
     false = (ForkTop == N1Top),
     timer:sleep(100),
     %% unexepctedly last block of dev1 arrives before rest of the chain
-    rpc:call(N2, aec_conductor, post_block, [N1Top], 5000), 
+    ok = rpc:call(N2, aec_conductor, post_block, [N1Top], 5000),
 
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
