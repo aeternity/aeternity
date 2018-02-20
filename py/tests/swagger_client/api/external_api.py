@@ -1358,7 +1358,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCallData body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1380,7 +1380,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCallData body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1438,7 +1438,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1457,7 +1457,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCallCompute body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1479,7 +1479,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCallCompute body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1537,7 +1537,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1556,7 +1556,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCreateData body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1578,7 +1578,7 @@ class ExternalApi(object):
 
         :param async bool
         :param ContractCreateData body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1636,7 +1636,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1655,7 +1655,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameClaimTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1677,7 +1677,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameClaimTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1731,7 +1731,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1750,7 +1750,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NamePreclaimTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1772,7 +1772,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NamePreclaimTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1826,7 +1826,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1845,7 +1845,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameRevokeTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1867,7 +1867,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameRevokeTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1921,7 +1921,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -1940,7 +1940,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameTransferTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -1962,7 +1962,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameTransferTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2016,7 +2016,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2035,7 +2035,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameUpdateTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2057,7 +2057,7 @@ class ExternalApi(object):
 
         :param async bool
         :param NameUpdateTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2111,7 +2111,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2130,7 +2130,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleQueryTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2152,7 +2152,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleQueryTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2210,7 +2210,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2229,7 +2229,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleRegisterTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2251,7 +2251,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleRegisterTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2309,7 +2309,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2328,7 +2328,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleResponseTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2350,7 +2350,7 @@ class ExternalApi(object):
 
         :param async bool
         :param OracleResponseTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2408,7 +2408,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),
@@ -2427,7 +2427,7 @@ class ExternalApi(object):
 
         :param async bool
         :param SpendTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2449,7 +2449,7 @@ class ExternalApi(object):
 
         :param async bool
         :param SpendTx body: (required)
-        :return: Tx
+        :return: UnsignedTx
                  If the method is called asynchronously,
                  returns the request thread.
         """
@@ -2507,7 +2507,7 @@ class ExternalApi(object):
             body=body_params,
             post_params=form_params,
             files=local_var_files,
-            response_type='Tx',  # noqa: E501
+            response_type='UnsignedTx',  # noqa: E501
             auth_settings=auth_settings,
             async=params.get('async'),
             _return_http_data_only=params.get('_return_http_data_only'),

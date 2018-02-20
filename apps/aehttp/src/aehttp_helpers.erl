@@ -14,13 +14,20 @@
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
+        , compute_contract_call_data/0
         ]).
+
+-export([ ok_response/1
+        , unsigned_tx_response/1]).
 
 parse_request(FunsList, Req) ->
     parse_request(FunsList, Req, #{}).
 
+parse_request([], _Req, {ok, {Code, _, _Response} = Result})
+    when is_integer(Code) ->
+    Result;
 parse_request([], _Req, Result) ->
-    {ok, Result};
+    Result;
 parse_request([Fun | T], Req, Result0) ->
     case Fun(Req, Result0) of
         ok ->
@@ -29,8 +36,8 @@ parse_request([Fun | T], Req, Result0) ->
             parse_request(T, Req, Result);
         {ok, Req1, Result} ->
             parse_request(T, Req1, Result);
-        {error, _ErrMsg} = Err ->
-            Err
+        {error, ErrMsg}->
+            ErrMsg
     end.
 
 read_required_params(ParamNames) ->
@@ -187,7 +194,7 @@ nameservice_pointers_decode(PointersKey) ->
         Pointers = maps:get(PointersKey, State),
         try {ok, maps:put(PointersKey, jsx:decode(Pointers), State)}
         catch _:_ ->
-            {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
+            {error, {400, [], #{<<"reason">> => <<"Invayylid pointers">>}}}
         end
     end.
 
@@ -241,5 +248,45 @@ ttl_decode(TTLKey, AllowedTypes) ->
                                   TypesBin/binary>>,
                         {error, {400, [], #{<<"reason">> => ErrMsg}}}
                 end
+        end
+    end.
+
+ok_response(Fun) ->
+    fun(Req, State) ->
+        Res =
+            case Fun of
+                _ when is_function(Fun, 1) ->
+                    Fun(State);
+                _ when is_function(Fun, 2) ->
+                    Fun(Req, State)
+            end,
+        {ok, {200, [], Res}}
+    end.
+
+unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
+    RespFun =
+        fun(State) ->
+            {ok, Tx} = NewTxFun(State),
+            #{tx => aec_base58c:encode(transaction,
+                                       aetx:serialize_to_binary(Tx)),
+              tx_hash => aec_base58c:encode(tx_hash, aetx:hash(Tx))
+            }
+        end,
+    ok_response(RespFun).
+
+compute_contract_call_data() ->
+    fun(_Req, State) ->
+        #{contract_code := Code,
+            function := Function,
+            arguments := Argument} = State,
+        case aect_dispatch:encode_call_data(<<"ring">>,
+                      Code, Function, Argument) of
+          {ok, HexCallData} ->
+              CallData = aeu_hex:hexstring_decode(HexCallData),
+              {ok, maps:put(call_data, CallData, State)};
+          {error, ErrorMsg} when is_binary(ErrorMsg) ->
+                Reason = <<"Failed to compute call_data, reason: ",
+                                        ErrorMsg/binary>>,
+                {error, {400, [], #{<<"reason">> => Reason}}}
         end
     end.

@@ -964,11 +964,16 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
     Test =
         fun(Nonce, P) ->
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
-            {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
+            {ok, 200, #{<<"tx">> := ActualTx,
+                        <<"tx_hash">> := ActualHash}} = HTTPCallFun(P),
             {ok, SerializedTx} = aec_base58c:safe_decode(transaction, ActualTx),
             Tx = aetx:deserialize_from_binary(SerializedTx),
+            TxHash = aec_base58c:encode(tx_hash, aetx:hash(Tx)),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
-            ExpectedTx = Tx
+            ExpectedTx = Tx,
+            ct:log("Hashes: Expected ~p~nActual ~p", [TxHash, ActualHash]),
+            ActualHash = TxHash
+
         end,
     Test(NextNonce, Params),
     RandomNonce = rand:uniform(999) + 1,
