@@ -2084,8 +2084,8 @@ naming_system_manage_name(_Config) ->
     Host = internal_address(),
     {ok, 200, _} = http_request(Host, post, "spend-tx",
                                 #{recipient_pubkey => Name,
-                                  amount => 77,
-                                  fee => 50}),
+                                  amount           => 77,
+                                  fee              => 50}),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -2096,14 +2096,25 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
 
     %% Submit name transfer tx and check it is in mempool
-    NameRecipient      = random_hash(),
-    {ok, 200, _}       = post_name_transfer_tx(NHash, NameRecipient, Fee),
-    {ok, [TransferTx]} = rpc(aec_tx_pool, peek, [infinity]),
-    NameRecipient      = aens_transfer_tx:recipient_account(aec_tx_sign:data(TransferTx)),
+    {ok, DecodedPubkey} = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
+    {ok, 200, _}        = post_name_transfer_tx(NHash, DecodedPubkey, Fee),
+    {ok, [TransferTx]}  = rpc(aec_tx_pool, peek, [infinity]),
+    DecodedPubkey       = aens_transfer_tx:recipient_account(aec_tx_sign:data(TransferTx)),
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Submit name revoke tx and check it is in mempool
+    {ok, 200, _}      = post_name_revoke_tx(NHash, Fee),
+    {ok, [_RevokeTx]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check the name got expired
+    {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_name(Name),
     ok.
 
 naming_system_broken_txs(_Config) ->

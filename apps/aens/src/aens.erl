@@ -83,10 +83,15 @@ get_name(Name, NSTree) ->
         {ok, NameHash} ->
             case aens_state_tree:lookup_name(NameHash, NSTree) of
                 {value, N} ->
-                    {ok, #{<<"name">>     => Name,
-                           <<"hash">>     => NameHash,
-                           <<"name_ttl">> => aens_names:ttl(N),
-                           <<"pointers">> => aens_names:pointers(N)}};
+                    case aens_utils:is_revoked(N) of
+                        true ->
+                            {error, name_revoked};
+                        false ->
+                            {ok, #{<<"name">>     => Name,
+                                   <<"hash">>     => NameHash,
+                                   <<"name_ttl">> => aens_names:ttl(N),
+                                   <<"pointers">> => aens_names:pointers(N)}}
+                    end;
                 none ->
                     {error, name_not_found}
             end;

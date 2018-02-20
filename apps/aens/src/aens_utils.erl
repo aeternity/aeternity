@@ -12,6 +12,7 @@
 
 %% API
 -export([check_name_claimed_and_owned/3,
+         is_revoked/1,
          to_ascii/1,
          from_ascii/1]).
 
@@ -36,6 +37,13 @@ check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) ->
             aeu_validation:run(Checks);
         none ->
             {error, name_does_not_exist}
+    end.
+
+-spec is_revoked(aens_names:name()) -> boolean().
+is_revoked(Name) ->
+    case aens_names:status(Name) of
+        revoked -> true;
+        claimed -> false
     end.
 
 -spec to_ascii(binary()) -> {ok, binary()} | {error, term()}.
@@ -71,9 +79,9 @@ check_name_owner(Name, AccountPubKey) ->
     end.
 
 check_claimed_status(Name) ->
-    case aens_names:status(Name) of
-        claimed -> ok;
-        revoked -> {error, name_revoked}
+    case is_revoked(Name) of
+        true  -> {error, name_revoked};
+        false -> ok
     end.
 
 validate_name(Name) ->

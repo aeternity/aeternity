@@ -386,6 +386,8 @@ handle_request('GetName', Req, _Context) ->
                         pointers  => Pointers}};
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};
+        {error, name_revoked} ->
+            {404, [], #{reason => <<"Name revoked">>}};
         {error, Reason} ->
             ReasonBin = atom_to_binary(Reason, utf8),
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
