@@ -70,17 +70,18 @@ create_tx(PubKey, State) ->
 
 create_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(PubKey, State), Spec0),
-    #contract_create_tx{ owner      = PubKey
-                       , nonce      = maps:get(nonce, Spec)
-                       , fee        = maps:get(fee, Spec)
-                       , code       = maps:get(code, Spec)
-                       , vm_version = maps:get(vm_version, Spec)
-                       , deposit    = maps:get(deposit, Spec)
-                       , amount     = maps:get(amount, Spec)
-                       , gas        = maps:get(gas, Spec)
-                       , gas_price  = maps:get(gas_price, Spec)
-                       , call_data  = maps:get(call_data, Spec)
-                       }.
+    aetx:new(aect_create_tx,
+             #contract_create_tx{ owner      = PubKey
+                                , nonce      = maps:get(nonce, Spec)
+                                , fee        = maps:get(fee, Spec)
+                                , code       = maps:get(code, Spec)
+                                , vm_version = maps:get(vm_version, Spec)
+                                , deposit    = maps:get(deposit, Spec)
+                                , amount     = maps:get(amount, Spec)
+                                , gas        = maps:get(gas, Spec)
+                                , gas_price  = maps:get(gas_price, Spec)
+                                , call_data  = maps:get(call_data, Spec)
+                                }).
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
@@ -103,16 +104,17 @@ call_tx(PubKey, ContractKey, State) ->
 
 call_tx(PubKey, ContractKey, Spec0, State) ->
     Spec = maps:merge(call_tx_default_spec(PubKey, State), Spec0),
-    #contract_call_tx{ caller     = PubKey
-                     , nonce      = maps:get(nonce, Spec)
-                     , contract   = ContractKey
-                     , vm_version = maps:get(vm_version, Spec)
-                     , fee        = maps:get(fee, Spec)
-                     , amount     = maps:get(amount, Spec)
-                     , gas        = maps:get(gas, Spec)
-                     , gas_price  = maps:get(gas_price, Spec)
-                     , call_data  = maps:get(call_data, Spec)
-                     }.
+    aetx:new(aect_call_tx,
+             #contract_call_tx{ caller     = PubKey
+                              , nonce      = maps:get(nonce, Spec)
+                              , contract   = ContractKey
+                              , vm_version = maps:get(vm_version, Spec)
+                              , fee        = maps:get(fee, Spec)
+                              , amount     = maps:get(amount, Spec)
+                              , gas        = maps:get(gas, Spec)
+                              , gas_price  = maps:get(gas_price, Spec)
+                              , call_data  = maps:get(call_data, Spec)
+                              }).
 
 call_tx_default_spec(PubKey, State) ->
     #{ fee         => 5

@@ -41,7 +41,7 @@
 
 -type pool_db_key() ::
         {negated_fee(), pubkey(), non_neg_integer()} | undefined.
--type pool_db_value() :: aec_tx_sign:signed_tx().
+-type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
 -type event() :: tx_created | tx_received.
@@ -61,18 +61,18 @@ stop() ->
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
--spec push(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx())) -> ok.
+-spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx()), event()) -> ok.
+-spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx()), event()) -> ok.
 push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
     gen_server:call(?SERVER, {push, Txs, Event});
 push([], _) -> ok;
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
     gen_server:call(?SERVER, {push, [Tx], Event}).
 
--spec delete(aec_tx_sign:signed_tx()|list(aec_tx_sign:signed_tx())) -> ok.
+-spec delete(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
 delete(Txs) when is_list(Txs) ->
     gen_server:call(?SERVER, {delete, Txs});
 delete(Tx) ->
@@ -85,11 +85,11 @@ get_max_nonce(Sender) ->
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
--spec peek(pos_integer() | infinity) -> {ok, [aec_tx_sign:signed_tx()]}.
+-spec peek(pos_integer() | infinity) -> {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec fork_update(AddedToChain::[{aec_tx_sign:signed_tx(),any()}], RemovedFromChain::[{aec_tx_sign:signed_tx(), any()}]) -> ok.
+-spec fork_update(AddedToChain::[{aetx_sign:signed_tx(),any()}], RemovedFromChain::[{aetx_sign:signed_tx(), any()}]) -> ok.
 fork_update(AddedToChain, RemovedFromChain) ->
     gen_server:call(?SERVER, {fork_update, AddedToChain, RemovedFromChain}).
 
@@ -159,7 +159,7 @@ int_get_max_nonce(Mempool, Sender) ->
 
 
 pool_db_key(SignedTx) ->
-    Tx = aec_tx_sign:data(SignedTx),
+    Tx = aetx_sign:tx(SignedTx),
     %% INFO: Sort by fee
     %%       TODO: sort by fee, then by origin, then by nonce
 
@@ -167,7 +167,7 @@ pool_db_key(SignedTx) ->
     %%         the following key is unique for a transaction
     %%       * negative fee places high profit transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    exclude_coinbase({-aec_tx:fee(Tx), aec_tx:origin(Tx), aec_tx:nonce(Tx)}).
+    exclude_coinbase({-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx)}).
 
 exclude_coinbase({_, undefined, undefined}) ->
     undefined; %% Identify coinbase
@@ -222,20 +222,20 @@ do_fork_update(AddedToChain, RemovedFromChain, Mempool) ->
     aec_db:transaction(fun() -> move_txs(TxMap) end).
 
 move_txs([{Tx, From, To}|T]) ->
-    TxHash = aec_tx:hash_tx(aec_tx_sign:data(Tx)),
+    TxHash = aetx:hash(aetx_sign:tx(Tx)),
     aec_db:delete_tx(TxHash, From),
     aec_db:write_tx(TxHash, To, Tx),
     move_txs(T);
 move_txs([]) ->
     ok.
 
--spec pool_db_put(pool_db(), pool_db_key(), aec_tx_sign:signed_tx(), event()) -> true.
+-spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) -> true.
 pool_db_put(_, undefined, _, _) ->
     false; %% Ignore coinbase
 pool_db_put(Mempool, Key, Tx, Event) ->
     case ets:member(Mempool, Key) of
         false ->
-            case aec_tx_sign:verify(Tx) of
+            case aetx_sign:verify(Tx) of
                 ok ->
                     ets:insert(Mempool, {Key, Tx}),
                     aec_events:publish(Event, Tx),

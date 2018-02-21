@@ -63,13 +63,13 @@ get_miner_account_balance() ->
 
 %% Internal functions
 
--spec get_txs_to_mine_in_pool() -> list(aec_tx_sign:signed_tx()).
+-spec get_txs_to_mine_in_pool() -> list(aetx_sign:signed_tx()).
 get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
 -spec create_block_candidate(
-        list(aec_tx_sign:signed_tx()),
+        list(aetx_sign:signed_tx()),
         block(), trees(),
         list(header())) -> {ok, block(), aec_pow:nonce()} |
                            {error, term()}.
@@ -93,7 +93,7 @@ create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
             end
     end.
 
--spec create_signed_coinbase_tx() -> {ok, aec_tx_sign:signed_tx()} | {error, term()}.
+-spec create_signed_coinbase_tx() -> {ok, aetx_sign:signed_tx()} | {error, term()}.
 create_signed_coinbase_tx() ->
     case create_coinbase_tx() of
         {ok, CoinbaseTx} ->
@@ -107,7 +107,7 @@ create_signed_coinbase_tx() ->
             Error
     end.
 
--spec create_coinbase_tx() -> {ok, coinbase_tx()} | {error, term()}.
+-spec create_coinbase_tx() -> {ok, aetx:tx()} | {error, term()}.
 create_coinbase_tx() ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->

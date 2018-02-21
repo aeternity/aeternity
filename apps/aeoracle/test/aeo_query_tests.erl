@@ -84,5 +84,6 @@ query_tx(Override) ->
            , fee           => 100
            },
     Map1 = maps:merge(Map, Override),
-    {ok, Q} = aeo_query_tx:new(Map1),
-    Q.
+    {ok, Tx} = aeo_query_tx:new(Map1),
+    {aeo_query_tx, QTx} = aetx:specialize_type(Tx),
+    QTx.

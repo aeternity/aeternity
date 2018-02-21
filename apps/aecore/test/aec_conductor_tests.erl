@@ -347,9 +347,10 @@ test_get_block_candidate() ->
     {ok, MyAccount} = aec_keys:pubkey(),
     lists:foreach(
         fun(_) ->
-            Tx = #spend_tx{sender = MyAccount,
-                          recipient = MyAccount,
-                          nonce = 0, fee = 0},
+            Tx = aetx:new(aec_spend_tx,
+                          #spend_tx{sender = MyAccount,
+                                    recipient = MyAccount,
+                                    nonce = 0, fee = 0}),
             {ok, STx} = aec_keys:sign(Tx),
             ok = aec_tx_pool:push(STx, tx_received)
         end,
@@ -367,9 +368,9 @@ test_get_block_candidate() ->
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
-                Tx = aec_tx_sign:data(SignedTx),
-                case aec_tx_dispatcher:handler(Tx) of
-                    aec_coinbase_tx -> true;
+                Tx = aetx_sign:tx(SignedTx),
+                case aetx:tx_type(Tx) of
+                    <<"aec_coinbase_tx">> -> true;
                     _ ->
                         lists:member(Tx, AllTxsInPool)
                 end

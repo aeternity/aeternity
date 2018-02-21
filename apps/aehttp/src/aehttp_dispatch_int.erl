@@ -55,8 +55,8 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
                     query_fee     => QueryFee,
                     ttl           => {TTLType, TTLValue},
                     fee           => Fee}),
-            SignedTx = sign_and_push_to_mempool(OracleRegisterTx),
-            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            sign_and_push_to_mempool(OracleRegisterTx),
+            TxHash = aetx:hash(OracleRegisterTx),
             {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
                         tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
         {error, account_not_found} ->
@@ -90,8 +90,8 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                             query_ttl    => {QueryTTLType, QueryTTLValue},
                             response_ttl => {delta, ResponseTTLValue},
                             fee          => Fee}),
-                    SignedTx = sign_and_push_to_mempool(OracleQueryTx),
-                    TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+                    sign_and_push_to_mempool(OracleQueryTx),
+                    TxHash = aetx:hash(OracleQueryTx),
                     QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
                     {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId),
                                 tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
@@ -119,8 +119,8 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
                             query_id => DecodedQueryId,
                             response => Response,
                             fee      => Fee}),
-                    SignedTx = sign_and_push_to_mempool(OracleResponseTx),
-                    TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+                    sign_and_push_to_mempool(OracleResponseTx),
+                    TxHash = aetx:hash(OracleResponseTx),
                     {200, [], #{query_id => EncodedQueryId,
                                 tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
                 {error, _} ->
@@ -461,7 +461,7 @@ handle_request('GetAccountBalance', Req, _Context) ->
         _ ->
             {400, [], #{reason => <<"Invalid account hash">>}}
     end;
-          
+
 handle_request('GetPeers', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
@@ -492,7 +492,7 @@ handle_request('GetAccountTransactions', Req, _Context) ->
                             {400, [], #{reason => <<"Unknown transaction type">>}};
                         {ok, HeaderTxs} ->
                             case encode_txs(HeaderTxs, Req) of
-                                {error, Err} -> 
+                                {error, Err} ->
                                     Err;
                                 {ok, EncodedTxs, DataSchema} ->
                                     {200, [], #{transactions => EncodedTxs,
@@ -537,8 +537,7 @@ sign_and_push_to_mempool(Tx) ->
     {ok, SignedTx} = aec_keys:sign(Tx),
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
-                [pp(aec_tx_pool:peek(10))]),
-    SignedTx.
+                [pp(aec_tx_pool:peek(10))]).
 
 get_block(Fun, Req) ->
     get_block(Fun, Req, true).
@@ -602,9 +601,8 @@ filter_transaction_list(Req, TxList) ->
             Filtered =
                 lists:filter(
                     fun(SignedTx) ->
-                        Tx = aec_tx_sign:data(SignedTx),
-                        Mod = aec_tx_dispatcher:handler(Tx),
-                        TxType = Mod:type(),
+                        Tx = aetx_sign:tx(SignedTx),
+                        TxType = aetx:tx_type(Tx),
                         Drop = lists:member(TxType, DropTxTypes),
                         Keep = KeepTxTypes =:= []
                             orelse lists:member(TxType, KeepTxTypes),
@@ -622,16 +620,7 @@ parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
         [global]),
     case Vals =:= [<<>>] of
         false ->
-            KnownTypes =
-                lists:filter(
-                    fun(TxType) ->
-                        try aec_tx_dispatcher:handler_by_type(TxType) of
-                            _ -> true
-                        catch
-                            error:function_clause -> false
-                        end
-                    end,
-                    Vals),
+            KnownTypes = lists:filter(fun aetx:is_tx_type/1, Vals),
             case length(Vals) =:= length(KnownTypes) of
                 true -> {ok, KnownTypes};
                 false -> {error, unknown_type}
@@ -660,7 +649,7 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
                                         <<"SingleTxMsgPack">>
                                 end,
                             H = aec_blocks:to_header(Block),
-                            {200, [], #{transaction => aec_tx_sign:serialize_for_client(TxEncoding, H, Tx),
+                            {200, [], #{transaction => aetx_sign:serialize_for_client(TxEncoding, H, Tx),
                                         data_schema => DataSchema}}
                     end
             end;
@@ -752,7 +741,7 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
                                     H = aec_blocks:to_header(Block),
                                     lists:map(
                                         fun(Tx) ->
-                                            aec_tx_sign:serialize_for_client(TxEncoding, H, Tx)
+                                            aetx_sign:serialize_for_client(TxEncoding, H, Tx)
                                         end,
                                         FilteredTxs) ++ Accum
                             end
@@ -844,8 +833,8 @@ encode_txs(HeaderTxs, Req) ->
             EncodedTxs =
                 lists:map(
                     fun({BlockHeader, Tx}) ->
-                        aec_tx_sign:serialize_for_client(TxEncoding,
-                                                         BlockHeader, Tx)
+                        aetx_sign:serialize_for_client(TxEncoding,
+                                                       BlockHeader, Tx)
                     end,
                     HeaderTxs),
             {ok, EncodedTxs, DataSchema}
@@ -859,13 +848,13 @@ get_account_transactions(Account, Req) ->
         {_, {error, unknown_type} = Err} ->
             Err;
         {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
-            %% the logic below is a subject to some refactoring as soon as 
+            %% the logic below is a subject to some refactoring as soon as
             %% coinbase_tx become distinguishable and having disting tx hashes
             %% current solution is a workaround
             NonCoinbases = get_non_coinbase_txs_and_headers(KeepTxTypes,
                                                             DropTxTypes,
                                                             Account),
-            CoinbaseType = aec_coinbase_tx:type(),
+            CoinbaseType = aetx:tx_type(aec_coinbase_tx),
             CoinbaseRequested = lists:member(CoinbaseType, KeepTxTypes)
                   orelse KeepTxTypes =:= [],
             Coinbases =
@@ -879,10 +868,10 @@ get_account_transactions(Account, Req) ->
                   fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
                       HeightA = aec_headers:height(HeaderA),
                       HeightB = aec_headers:height(HeaderB),
-                      TxA = aec_tx_sign:data(SignedTxA),
-                      TxB = aec_tx_sign:data(SignedTxB),
-                      {HeightA, aec_tx:origin(TxA), aec_tx:nonce(TxA)} >
-                      {HeightB, aec_tx:origin(TxB), aec_tx:nonce(TxB)}
+                      TxA = aetx_sign:tx(SignedTxA),
+                      TxB = aetx_sign:tx(SignedTxB),
+                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA)} >
+                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB)}
                   end,
                   NonCoinbases ++ Coinbases),
             {ok, offset_and_limit(Req, Res)}
@@ -895,7 +884,7 @@ get_account_transactions(Account, Req) ->
 %% TODO: remove this workaround
 get_coinbase_txs_and_headers(Account) ->
     {ok, SampleCoinbaseTx} = aec_coinbase_tx:new(#{account => Account}),
-    CoinbaseHash = aec_tx:hash_tx(SampleCoinbaseTx),
+    CoinbaseHash = aetx:hash(SampleCoinbaseTx),
     %% all coinbases share the same transaction hash and we can fetch them
     lists:map(
         fun({BlockHash, SignedCoinbaseTx}) ->
@@ -910,12 +899,11 @@ get_coinbase_txs_and_headers(Account) ->
 %% line that filters out coinbase types
 %% TODO: remove this workaround
 get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
-    CoinbaseType = aec_coinbase_tx:type(),
+    CoinbaseType = aetx:tx_type(aec_coinbase_tx),
     Filter =
         fun(SignedTx) ->
-              Tx = aec_tx_sign:data(SignedTx),
-              Mod = aec_tx_dispatcher:handler(Tx),
-              TxType = Mod:type(),
+              Tx = aetx_sign:tx(SignedTx),
+              TxType = aetx:tx_type(Tx),
               Drop = lists:member(TxType, DropTxTypes)
                   orelse TxType =:= CoinbaseType, %% later remove this
               Keep = KeepTxTypes =:= []
@@ -925,7 +913,7 @@ get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
     Txs = aec_db:transactions_by_account(Account, Filter),
     lists:map(
         fun(SignedTx) ->
-            TxHash = aec_tx:hash_tx(aec_tx_sign:data(SignedTx)),
+            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
             [{BlockHash, _}] = aec_db:read_tx(TxHash),
             {ok, Header} = aec_chain:get_header(BlockHash),
             {Header, SignedTx}

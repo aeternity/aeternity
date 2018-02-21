@@ -23,7 +23,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -37,15 +36,14 @@
          call_data/1]).
 
 
--define(CONTRACT_CALL_TX_TYPE, <<"contract_call">>).
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_FEE, 2).
 
--type call_tx() :: #contract_call_tx{}.
+-opaque tx() :: #contract_call_tx{}.
 
--export_type([call_tx/0]).
+-export_type([tx/0]).
 
--spec new(map()) -> {ok, call_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{caller     := CallerPubKey,
       nonce      := Nonce,
       contract   := Contract,
@@ -55,7 +53,7 @@ new(#{caller     := CallerPubKey,
       gas        := Gas,
       gas_price  := GasPrice,
       call_data  := CallData}) ->
-    {ok, #contract_call_tx{caller     = CallerPubKey,
+    Tx = #contract_call_tx{caller     = CallerPubKey,
                            nonce      = Nonce,
                            contract   = Contract,
                            vm_version = VmVersion,
@@ -63,23 +61,24 @@ new(#{caller     := CallerPubKey,
                            amount     = Amount,
                            gas        = Gas,
                            gas_price  = GasPrice,
-                           call_data  = CallData}}.
+                           call_data  = CallData},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(call_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#contract_call_tx{fee = F}) ->
     F.
 
--spec nonce(call_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#contract_call_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(call_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#contract_call_tx{caller = CallerPubKey}) ->
     CallerPubKey.
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(call_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee,
                         gas = GasLimit, gas_price = GasPrice
@@ -95,15 +94,15 @@ check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(call_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(Tx) ->
     [caller(Tx)].
 
--spec signers(call_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(Tx) ->
     [caller(Tx)].
 
--spec process(call_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
                           gas_price = GasPrice
                          } = CallTx, Trees0, Height) ->
@@ -144,8 +143,7 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
                             gas        = Gas,
                             gas_price  = GasPrice,
                             call_data  = CallData}) ->
-    [#{<<"type">>       => type()},
-     #{<<"vsn">>        => version()},
+    [#{<<"vsn">>        => version()},
      #{<<"caller">>     => CallerPubKey},
      #{<<"nonce">>      => Nonce},
      #{<<"contract">>   => ContractPubKey},
@@ -156,8 +154,7 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
      #{<<"gas_price">>  => GasPrice},
      #{<<"call_data">>  => CallData}].
 
-deserialize([#{<<"type">>       := ?CONTRACT_CALL_TX_TYPE},
-             #{<<"vsn">>        := ?CONTRACT_CALL_TX_VSN},
+deserialize([#{<<"vsn">>        := ?CONTRACT_CALL_TX_VSN},
              #{<<"caller">>     := CallerPubKey},
              #{<<"nonce">>      := Nonce},
              #{<<"contract">>   := ContractPubKey},
@@ -177,10 +174,6 @@ deserialize([#{<<"type">>       := ?CONTRACT_CALL_TX_TYPE},
                       gas_price  = GasPrice,
                       call_data  = CallData}.
 
--spec type() -> binary().
-type() ->
-    ?CONTRACT_CALL_TX_TYPE.
-
 -spec version() -> non_neg_integer().
 version() ->
     ?CONTRACT_CALL_TX_VSN.
@@ -194,39 +187,39 @@ for_client(#contract_call_tx{caller     = CallerPubKey,
                              gas        = Gas,
                              gas_price  = GasPrice,
                              call_data  = CallData}) ->
-    #{<<"type">>       => <<"ContractQueryTxObject">>, % swagger schema name
-      <<"vsn">>        => version(),
-      <<"caller">>     => aec_base58c:encode(account_pubkey, CallerPubKey),
-      <<"nonce">>      => Nonce,
-      <<"contract">>   => aec_base58c:encode(account_pubkey, ContractPubKey), %% TODO: different tag?
-      <<"vm_version">> => aect_utils:hex_byte(VmVersion),
-      <<"fee">>        => Fee,
-      <<"amount">>     => Amount,
-      <<"gas">>        => Gas,
-      <<"gas_price">>  => GasPrice,
-      <<"call_data">>  => aect_utils:hex_bytes(CallData)}.
+    #{<<"data_schema">> => <<"ContractQueryTxObject">>, % swagger schema name
+      <<"vsn">>         => version(),
+      <<"caller">>      => aec_base58c:encode(account_pubkey, CallerPubKey),
+      <<"nonce">>       => Nonce,
+      <<"contract">>    => aec_base58c:encode(account_pubkey, ContractPubKey), %% TODO: different tag?
+      <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
+      <<"fee">>         => Fee,
+      <<"amount">>      => Amount,
+      <<"gas">>         => Gas,
+      <<"gas_price">>   => GasPrice,
+      <<"call_data">>   => aect_utils:hex_bytes(CallData)}.
 
 %% -- Getters ----------------------------------------------------------------
 
--spec caller(call_tx()) -> pubkey().
+-spec caller(tx()) -> pubkey().
 caller(C) -> C#contract_call_tx.caller.
 
--spec contract(call_tx()) -> pubkey().
+-spec contract(tx()) -> pubkey().
 contract(C) -> C#contract_call_tx.contract.
 
--spec vm_version(call_tx()) -> aect_contracts:vm_version().
+-spec vm_version(tx()) -> aect_contracts:vm_version().
 vm_version(C) -> C#contract_call_tx.vm_version.
 
--spec amount(call_tx()) -> aect_contracts:amount().
+-spec amount(tx()) -> aect_contracts:amount().
 amount(C) -> C#contract_call_tx.amount.
 
--spec gas(call_tx()) -> aect_contracts:amount().
+-spec gas(tx()) -> aect_contracts:amount().
 gas(C) -> C#contract_call_tx.gas.
 
--spec gas_price(call_tx()) -> aect_contracts:amount().
+-spec gas_price(tx()) -> aect_contracts:amount().
 gas_price(C) -> C#contract_call_tx.gas_price.
 
--spec call_data(call_tx()) -> binary().
+-spec call_data(tx()) -> binary().
 call_data(C) -> C#contract_call_tx.call_data.
 
 %% -- Local functions  -------------------------------------------------------
@@ -249,7 +242,7 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 
 %% Call the contract and update the call object with the return value and gas
 %% used.
--spec run_contract(call_tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
+-spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
 run_contract(#contract_call_tx
              { caller    = Caller
              , contract  = ContractPubKey

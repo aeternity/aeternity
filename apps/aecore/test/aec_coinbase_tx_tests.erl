@@ -35,10 +35,10 @@ coinbase_tx_existing_account_test_() ->
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
                        %% Dispatcher sanity check:
-                       ?assertEqual(undefined, aec_tx:origin(CoinbaseTx)),
-                       ?assertEqual(undefined, aec_tx:nonce(CoinbaseTx)),
-                       ?assertEqual(0, aec_tx:fee(CoinbaseTx)),
-                       ?assertEqual({ok, Trees0}, aec_coinbase_tx:check(CoinbaseTx, Trees0, 9))
+                       ?assertEqual(undefined, aetx:origin(CoinbaseTx)),
+                       ?assertEqual(undefined, aetx:nonce(CoinbaseTx)),
+                       ?assertEqual(0, aetx:fee(CoinbaseTx)),
+                       ?assertEqual({ok, Trees0}, aetx:check(CoinbaseTx, Trees0, 9))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -46,14 +46,14 @@ coinbase_tx_existing_account_test_() ->
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
                        ?assertEqual({error, account_height_too_big},
-                                    aec_coinbase_tx:check(CoinbaseTx, Trees0, 3))
+                                    aetx:check(CoinbaseTx, Trees0, 3))
                end}
       end,
       fun({PubKey, Trees0}) ->
               {"Process coinbase trx with existing account",
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey}),
-                       {ok, Trees} = aec_coinbase_tx:process(CoinbaseTx, Trees0, 9),
+                       {ok, Trees} = aetx:process(CoinbaseTx, Trees0, 9),
 
                        AccountsTree = aec_trees:accounts(Trees),
                        {value, Account} = aec_accounts_trees:lookup(PubKey, AccountsTree),

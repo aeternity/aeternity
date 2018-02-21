@@ -24,7 +24,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -35,42 +34,42 @@
 %%% Types
 %%%===================================================================
 
--define(NAME_TRANSFER_TX_TYPE, <<"name_transfer">>).
 -define(NAME_TRANSFER_TX_VSN, 1).
 
--type transfer_tx() :: #ns_transfer_tx{}.
+-opaque tx() :: #ns_transfer_tx{}.
 
--export_type([transfer_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, transfer_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account           := AccountPubKey,
       nonce             := Nonce,
       name_hash         := NameHash,
       recipient_account := RecipientAccountPubKey,
       fee               := Fee}) ->
-    {ok, #ns_transfer_tx{account           = AccountPubKey,
+    Tx = #ns_transfer_tx{account           = AccountPubKey,
                          nonce             = Nonce,
                          name_hash         = NameHash,
                          recipient_account = RecipientAccountPubKey,
-                         fee               = Fee}}.
+                         fee               = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(transfer_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#ns_transfer_tx{fee = Fee}) ->
     Fee.
 
--spec nonce(transfer_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_transfer_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(transfer_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#ns_transfer_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(transfer_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_transfer_tx{account = AccountPubKey, nonce = Nonce,
                       fee = Fee, name_hash = NameHash}, Trees, Height) ->
     Checks =
@@ -82,7 +81,7 @@ check(#ns_transfer_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(transfer_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#ns_transfer_tx{account = AccountPubKey, fee = Fee,
                         name_hash = NameHash, nonce = Nonce} = TransferTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -101,32 +100,30 @@ process(#ns_transfer_tx{account = AccountPubKey, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(transfer_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#ns_transfer_tx{account = AccountPubKey,
                          recipient_account = RecipientPubKey}) ->
     [AccountPubKey, RecipientPubKey].
 
--spec signers(transfer_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#ns_transfer_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(transfer_tx()) -> list(map()).
+-spec serialize(tx()) -> list(map()).
 serialize(#ns_transfer_tx{account           = AccountPubKey,
                           nonce             = Nonce,
                           name_hash         = NameHash,
                           recipient_account = RecipientAccountPubKey,
                           fee               = Fee}) ->
-    [#{<<"type">>      => type()},
-     #{<<"vsn">>       => version()},
+    [#{<<"vsn">>       => version()},
      #{<<"account">>   => AccountPubKey},
      #{<<"nonce">>     => Nonce},
      #{<<"hash">>      => NameHash},
      #{<<"recipient">> => RecipientAccountPubKey},
      #{<<"fee">>       => Fee}].
 
--spec deserialize(list(map())) -> transfer_tx().
-deserialize([#{<<"type">>      := ?NAME_TRANSFER_TX_TYPE},
-             #{<<"vsn">>       := ?NAME_TRANSFER_TX_VSN},
+-spec deserialize(list(map())) -> tx().
+deserialize([#{<<"vsn">>       := ?NAME_TRANSFER_TX_VSN},
              #{<<"account">>   := AccountPubKey},
              #{<<"nonce">>     := Nonce},
              #{<<"hash">>      := NameHash},
@@ -138,18 +135,13 @@ deserialize([#{<<"type">>      := ?NAME_TRANSFER_TX_TYPE},
                     recipient_account = RecipientAccountPubKey,
                     fee               = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?NAME_TRANSFER_TX_TYPE.
-
--spec for_client(transfer_tx()) -> map().
+-spec for_client(tx()) -> map().
 for_client(#ns_transfer_tx{account           = AccountPubKey,
                            nonce             = Nonce,
                            name_hash         = NameHash,
                            recipient_account = RecipientPubKey,
                            fee               = Fee}) ->
-    #{<<"type">>             => <<"NameTransferTxObject">>, % swagger schema name
-      <<"vsn">>              => version(),
+    #{<<"vsn">>              => version(),
       <<"account">>          => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>            => Nonce,
       <<"name_hash">>        => aec_base58c:encode(name, NameHash),
@@ -160,7 +152,7 @@ for_client(#ns_transfer_tx{account           = AccountPubKey,
 %%% Getters
 %%%===================================================================
 
--spec recipient_account(transfer_tx()) -> pubkey().
+-spec recipient_account(tx()) -> pubkey().
 recipient_account(#ns_transfer_tx{recipient_account = AccountPubKey}) ->
     AccountPubKey.
 

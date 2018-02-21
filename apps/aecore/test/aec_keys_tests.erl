@@ -28,7 +28,7 @@ all_test_() ->
                         {ok, Tx} =
                             aec_coinbase_tx:new(#{account => PubKey}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
-                        ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
+                        ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},
                {"Sign spend transaction",
                 fun() ->
@@ -41,7 +41,7 @@ all_test_() ->
                                                fee => 2,
                                                nonce => 3}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
-                        ?assertEqual(Tx, aec_tx_sign:data(SignedTx))
+                        ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},
                {"Keys validation (positive case)",
                 fun() ->

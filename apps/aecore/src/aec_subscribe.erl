@@ -123,12 +123,12 @@ del_subscribed(Id, Event, Sub) ->
 notify_tx_subscribers([], _Sub) ->
     ok;
 notify_tx_subscribers([SignedTx | Rest], Sub) ->
-    Tx = aec_tx_sign:data(SignedTx),
+    Tx = aetx_sign:tx(SignedTx),
     notify_tx(Tx, Sub#sub.chain_tx),
-    case aec_tx_dispatcher:handler(Tx) of
-        aeo_query_tx    -> aeo_subscription:notify_query_tx(Tx, Sub#sub.oracle_query);
-        aeo_response_tx -> aeo_subscription:notify_response_tx(Tx, Sub#sub.oracle_response);
-        _Other          -> ok
+    case aetx:tx_type(Tx) of
+        <<"aeo_query_tx">>    -> aeo_subscription:notify_query_tx(Tx, Sub#sub.oracle_query);
+        <<"aeo_response_tx">> -> aeo_subscription:notify_response_tx(Tx, Sub#sub.oracle_response);
+        _Other                -> ok
     end,
     notify_tx_subscribers(Rest, Sub).
 
@@ -148,7 +148,7 @@ notify_chain_subscribers(Event, Block, #sub{ chain = Cs }) ->
 
 notify_tx(_Tx, []) -> ok;
 notify_tx(Tx, Subs) ->
-    TxHash = aec_tx:hash_tx(Tx),
+    TxHash = aetx:hash(Tx),
     [ Ws ! {event, chain_tx, TxHash}
       || {{ws, Ws}, {tx, TxHash1}} <- Subs, TxHash == TxHash1 ],
     ok.

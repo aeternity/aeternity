@@ -24,7 +24,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -37,18 +36,17 @@
 %%% Types
 %%%===================================================================
 
--define(NAME_UPDATE_TX_TYPE, <<"name_update">>).
 -define(NAME_UPDATE_TX_VSN, 1).
 
--type update_tx() :: #ns_update_tx{}.
+-opaque tx() :: #ns_update_tx{}.
 
--export_type([update_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, update_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{account   := AccountPubKey,
       nonce     := Nonce,
       name_hash := NameHash,
@@ -56,27 +54,28 @@ new(#{account   := AccountPubKey,
       pointers  := Pointers,
       ttl       := TTL,
       fee       := Fee}) ->
-    {ok, #ns_update_tx{account   = AccountPubKey,
+    Tx = #ns_update_tx{account   = AccountPubKey,
                        nonce     = Nonce,
                        name_hash = NameHash,
                        name_ttl  = NameTTL,
                        pointers  = Pointers,
                        ttl       = TTL,
-                       fee       = Fee}}.
+                       fee       = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec fee(update_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#ns_update_tx{fee = Fee}) ->
     Fee.
 
--spec nonce(update_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_update_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(update_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#ns_update_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(update_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
                     fee = Fee, name_hash = NameHash, ttl = TTL}, Trees, Height) ->
     Checks =
@@ -89,7 +88,7 @@ check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(update_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                       name_hash = NameHash} = UpdateTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -108,15 +107,15 @@ process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(update_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#ns_update_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(update_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#ns_update_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(update_tx()) -> list(map()).
+-spec serialize(tx()) -> list(map()).
 serialize(#ns_update_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name_hash = NameHash,
@@ -124,8 +123,7 @@ serialize(#ns_update_tx{account   = AccountPubKey,
                         pointers  = Pointers,
                         ttl       = TTL,
                         fee       = Fee}) ->
-    [#{<<"type">>     => type()},
-     #{<<"vsn">>      => version()},
+    [#{<<"vsn">>      => version()},
      #{<<"account">>  => AccountPubKey},
      #{<<"nonce">>    => Nonce},
      #{<<"hash">>     => NameHash},
@@ -134,9 +132,8 @@ serialize(#ns_update_tx{account   = AccountPubKey,
      #{<<"ttl">>      => TTL},
      #{<<"fee">>      => Fee}].
 
--spec deserialize(list(map())) -> update_tx().
-deserialize([#{<<"type">>     := ?NAME_UPDATE_TX_TYPE},
-             #{<<"vsn">>      := ?NAME_UPDATE_TX_VSN},
+-spec deserialize(list(map())) -> tx().
+deserialize([#{<<"vsn">>      := ?NAME_UPDATE_TX_VSN},
              #{<<"account">>  := AccountPubKey},
              #{<<"nonce">>    := Nonce},
              #{<<"hash">>     := NameHash},
@@ -152,11 +149,7 @@ deserialize([#{<<"type">>     := ?NAME_UPDATE_TX_TYPE},
                   ttl       = TTL,
                   fee       = Fee}.
 
--spec type() -> binary().
-type() ->
-    ?NAME_UPDATE_TX_TYPE.
-
--spec for_client(update_tx()) -> map().
+-spec for_client(tx()) -> map().
 for_client(#ns_update_tx{account   = AccountPubKey,
                          nonce     = Nonce,
                          name_hash = NameHash,
@@ -164,8 +157,7 @@ for_client(#ns_update_tx{account   = AccountPubKey,
                          pointers  = Pointers,
                          ttl       = TTL,
                          fee       = Fee}) ->
-    #{<<"type">>      => <<"NameUpdateTxObject">>, % swagger schema name
-      <<"vsn">>       => version(),
+    #{<<"vsn">>       => version(),
       <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>     => Nonce,
       <<"name_hash">> => aec_base58c:encode(name, NameHash),
@@ -178,15 +170,15 @@ for_client(#ns_update_tx{account   = AccountPubKey,
 %%% Getters
 %%%===================================================================
 
--spec name_ttl(update_tx()) -> integer().
+-spec name_ttl(tx()) -> integer().
 name_ttl(#ns_update_tx{name_ttl = NameTTL}) ->
     NameTTL.
 
--spec pointers(update_tx()) -> list().
+-spec pointers(tx()) -> list().
 pointers(#ns_update_tx{pointers = Pointers}) ->
     Pointers.
 
--spec ttl(update_tx()) -> non_neg_integer().
+-spec ttl(tx()) -> non_neg_integer().
 ttl(#ns_update_tx{ttl = TTL}) ->
     TTL.
 

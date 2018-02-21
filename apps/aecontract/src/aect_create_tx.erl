@@ -23,7 +23,6 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         type/0,
          for_client/1
         ]).
 
@@ -37,7 +36,6 @@
          gas_price/1,
          call_data/1]).
 
--define(CONTRACT_CREATE_TX_TYPE, <<"contract_create">>).
 -define(CONTRACT_CREATE_TX_VSN, 1).
 -define(CONTRACT_CREATE_TX_FEE, 4).
 
@@ -46,53 +44,53 @@
 
 -type amount() :: aect_contracts:amount().
 
--type create_tx() :: #contract_create_tx{}.
+-opaque tx() :: #contract_create_tx{}.
 
--export_type([create_tx/0]).
+-export_type([tx/0]).
 
 %%%===================================================================
 %%% Getters
 
--spec owner(create_tx()) -> pubkey().
+-spec owner(tx()) -> pubkey().
 owner(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
--spec code(create_tx()) -> binary().
+-spec code(tx()) -> binary().
 code(#contract_create_tx{code = X}) ->
     X.
 
--spec vm_version(create_tx()) -> aect_contracts:vm_version().
+-spec vm_version(tx()) -> aect_contracts:vm_version().
 vm_version(#contract_create_tx{vm_version = X}) ->
     X.
 
--spec deposit(create_tx()) -> amount().
+-spec deposit(tx()) -> amount().
 deposit(#contract_create_tx{deposit = X}) ->
     X.
 
--spec amount(create_tx()) -> amount().
+-spec amount(tx()) -> amount().
 amount(#contract_create_tx{amount = X}) ->
     X.
 
--spec gas(create_tx()) -> amount().
+-spec gas(tx()) -> amount().
 gas(#contract_create_tx{gas = X}) ->
     X.
 
--spec gas_price(create_tx()) -> amount().
+-spec gas_price(tx()) -> amount().
 gas_price(#contract_create_tx{gas_price = X}) ->
     X.
 
--spec call_data(create_tx()) -> binary().
+-spec call_data(tx()) -> binary().
 call_data(#contract_create_tx{call_data = X}) ->
     X.
 
 %%%===================================================================
 %%% Behavior API
 
--spec fee(create_tx()) -> integer().
+-spec fee(tx()) -> integer().
 fee(#contract_create_tx{fee = Fee}) ->
     Fee.
 
--spec new(map()) -> {ok, create_tx()}.
+-spec new(map()) -> {ok, aetx:tx()}.
 new(#{owner      := OwnerPubKey,
       nonce      := Nonce,
       code       := Code,
@@ -103,7 +101,7 @@ new(#{owner      := OwnerPubKey,
       gas_price  := GasPrice,
       call_data  := CallData,
       fee        := Fee}) ->
-    {ok, #contract_create_tx{owner      = OwnerPubKey,
+    Tx = #contract_create_tx{owner      = OwnerPubKey,
                              nonce      = Nonce,
                              code       = Code,
                              vm_version = VmVersion,
@@ -112,18 +110,19 @@ new(#{owner      := OwnerPubKey,
                              gas        = Gas,
                              gas_price  = GasPrice,
                              call_data  = CallData,
-                             fee        = Fee}}.
+                             fee        = Fee},
+    {ok, aetx:new(?MODULE, Tx)}.
 
--spec nonce(create_tx()) -> non_neg_integer().
+-spec nonce(tx()) -> non_neg_integer().
 nonce(#contract_create_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(create_tx()) -> pubkey().
+-spec origin(tx()) -> pubkey().
 origin(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
 %% Owner should exist, and have enough funds for the fee
--spec check(create_tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
 check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
                           fee = Fee}, Trees, Height) ->
     Checks =
@@ -134,15 +133,15 @@ check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(create_tx()) -> [pubkey()].
+-spec accounts(tx()) -> [pubkey()].
 accounts(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec signers(create_tx()) -> [pubkey()].
+-spec signers(tx()) -> [pubkey()].
 signers(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec process(create_tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), trees(), height()) -> {ok, trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
                             fee   = Fee} = CreateTx, Trees0, Height) ->
@@ -178,8 +177,7 @@ serialize(#contract_create_tx{owner      = OwnerPubKey,
                               gas        = Gas,
                               gas_price  = GasPrice,
                               call_data  = CallData}) ->
-    [#{<<"type">>       => type()},
-     #{<<"vsn">>        => version()},
+    [#{<<"vsn">>        => version()},
      #{<<"owner">>      => OwnerPubKey},
      #{<<"nonce">>      => Nonce},
      #{<<"code">>       => Code},
@@ -191,8 +189,7 @@ serialize(#contract_create_tx{owner      = OwnerPubKey,
      #{<<"gas_price">>  => GasPrice},
      #{<<"call_data">>  => CallData}].
 
-deserialize([#{<<"type">>       := ?CONTRACT_CREATE_TX_TYPE},
-             #{<<"vsn">>        := ?CONTRACT_CREATE_TX_VSN},
+deserialize([#{<<"vsn">>        := ?CONTRACT_CREATE_TX_VSN},
              #{<<"owner">>      := OwnerPubKey},
              #{<<"nonce">>      := Nonce},
              #{<<"code">>       := Code},
@@ -224,25 +221,21 @@ for_client(#contract_create_tx{ owner      = OwnerPubKey,
                                 gas        = Gas,
                                 gas_price  = GasPrice,
                                 call_data  = CallData}) ->
-    #{<<"type">>       => <<"ContractCreateTxObject">>, % swagger schema name
-      <<"vsn">>        => version(),
-      <<"owner">>      => aec_base58c:encode(account_pubkey, OwnerPubKey),
-      <<"nonce">>      => Nonce,
-      <<"code">>       => aect_utils:hex_bytes(Code),
-      <<"vm_version">> => aect_utils:hex_byte(VmVersion),
-      <<"fee">>        => Fee,
-      <<"deposit">>    => Deposit,
-      <<"amount">>     => Amount,
-      <<"gas">>        => Gas,
-      <<"gas_price">>  => GasPrice,
-      <<"call_data">>  => aect_utils:hex_bytes(CallData)}.
+    #{<<"data_schema">> => <<"ContractCreateTxObject">>, % swagger schema name
+      <<"vsn">>         => version(),
+      <<"owner">>       => aec_base58c:encode(account_pubkey, OwnerPubKey),
+      <<"nonce">>       => Nonce,
+      <<"code">>        => aect_utils:hex_bytes(Code),
+      <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
+      <<"fee">>         => Fee,
+      <<"deposit">>     => Deposit,
+      <<"amount">>      => Amount,
+      <<"gas">>         => Gas,
+      <<"gas_price">>   => GasPrice,
+      <<"call_data">>   => aect_utils:hex_bytes(CallData)}.
 
 %%%===================================================================
 %%% Internal functions
-
--spec type() -> binary().
-type() ->
-    ?CONTRACT_CREATE_TX_TYPE.
 
 -spec version() -> non_neg_integer().
 version() ->

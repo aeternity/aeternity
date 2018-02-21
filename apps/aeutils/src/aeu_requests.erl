@@ -2,33 +2,33 @@
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
 %%%     HTTP request support.
-%%%     This module contains a function for each HTTP endpoint with 
+%%%     This module contains a function for each HTTP endpoint with
 %%%     as arguments
 %%%     1) the host (e.g. http://localhost:3013) in binary format
 %%%        to allow utf8 characters,
 %%%     2) the parameters.
 %%%
 %%%     This module is preparing for an HTTP request according to the
-%%%     specification in swagger.yaml. That is, it checks types and 
+%%%     specification in swagger.yaml. That is, it checks types and
 %%%     business logic of the input and of the response.
 %%%
 %%%     The actual HTTP request is performed via aeu_http_client:request.
 %%%     The latter is also validating request input and response according
-%%%     to the swagger schema definitions, but is unaware of the actual 
+%%%     to the swagger schema definitions, but is unaware of the actual
 %%%     business logic.
 %%%     For example,
 %%%     the ping request provides a "share" parameter stating how many
 %%%     peers it maximally want to receive in the response.
-%%%     It is hard to express this relation in the JSON schema(s), but 
-%%%     easy to verify here that the list of returned pings has a length 
-%%%     not exceeding Share. 
-%%%     
-%%%     Note that we perform both the JSON encoding and the actual 
+%%%     It is hard to express this relation in the JSON schema(s), but
+%%%     easy to verify here that the list of returned pings has a length
+%%%     not exceeding Share.
+%%%
+%%%     Note that we perform both the JSON encoding and the actual
 %%%     request in the separate aeu_http_client module. This allows
 %%%     mocking on the request layer during testing.
 %%% @end
 %%% Created: 2017
-%%% 
+%%%
 %%%-------------------------------------------------------------------
 
 -module(aeu_requests).
@@ -50,7 +50,7 @@
 
 -spec ping(http_uri:uri(), map()) -> {ok, map(), list(http_uri:uri())} | {error, any()}.
 ping(Uri, LocalPingObj) ->
-    #{<<"share">> := Share, 
+    #{<<"share">> := Share,
       <<"genesis_hash">> := GHash,
       <<"best_hash">> := TopHash
      } = LocalPingObj,
@@ -136,12 +136,12 @@ get_block(Uri, Hash) ->
             {error, unexpected_response}
     end.
 
--spec transactions(http_uri:uri()) -> response([aec_tx:signed_tx()]).
+-spec transactions(http_uri:uri()) -> response([aetx_sign:signed_tx()]).
 transactions(Uri) ->
     Response = process_request(Uri, 'GetTxs', []),
     lager:debug("transactions Response = ~p", [pp(Response)]),
     case tx_response(Response) of
-        bad_result -> 
+        bad_result ->
            lager:warning("Wrong response type: ~p", [Response]),
            {error, wrong_response_type};
         Txs when is_list(Txs) ->
@@ -149,7 +149,7 @@ transactions(Uri) ->
                       fun(#{<<"tx">> := T}) ->
                               {transaction, Dec} =
                                   aec_base58c:decode(T),
-                            aec_tx_sign:deserialize_from_binary(Dec)
+                            aetx_sign:deserialize_from_binary(Dec)
                       end, Txs)}
            catch
                error:Reason ->
@@ -180,10 +180,10 @@ send_block(Uri, Block) ->
             {error, unexpected_response}
     end.
 
--spec send_tx(http_uri:uri(), aec_tx:signed_tx()) -> response(ok).
+-spec send_tx(http_uri:uri(), aetx_sign:signed_tx()) -> response(ok).
 send_tx(Uri, SignedTx) ->
     TxSerialized = aec_base58c:encode(
-                     transaction, aec_tx_sign:serialize_to_binary(SignedTx)),
+                     transaction, aetx_sign:serialize_to_binary(SignedTx)),
     Response = process_request(Uri, 'PostTx', #{tx => TxSerialized}),
     case Response of
         {ok, 200, _Map} ->

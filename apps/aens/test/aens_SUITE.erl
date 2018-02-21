@@ -83,8 +83,8 @@ preclaim(Cfg) ->
     %% Create Preclaim tx and apply it on trees
     TxSpec = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
-    {ok, [SignedTx], Trees1} = aec_tx:apply_signed([SignedTx], Trees, Height),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment created
@@ -107,7 +107,7 @@ preclaim_negative(Cfg) ->
     TxSpec1 = aens_test_utils:preclaim_tx_spec(BadPubKey, CHash, S1),
     {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
     {error, account_not_found} =
-        aens_preclaim_tx:check(Tx1, Trees, Height),
+        aetx:check(Tx1, Trees, Height),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
@@ -115,13 +115,13 @@ preclaim_negative(Cfg) ->
     TxSpec2 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx2} = aens_preclaim_tx:new(TxSpec2),
     {error, insufficient_funds} =
-        aens_preclaim_tx:check(Tx2, Trees2, Height),
+        aetx:check(Tx2, Trees2, Height),
 
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:preclaim_tx_spec(PubKey, CHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_preclaim_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
-        aens_preclaim_tx:check(Tx3, Trees, Height),
+        aetx:check(Tx3, Trees, Height),
 
     %% Test commitment already present
     {PubKey2, Name, NameSalt, S3} = preclaim(Cfg),
@@ -131,7 +131,7 @@ preclaim_negative(Cfg) ->
     TxSpec4 = aens_test_utils:preclaim_tx_spec(PubKey2, CHash2, S3),
     {ok, Tx4} = aens_preclaim_tx:new(TxSpec4),
     {error, commitment_already_present}
-        = aens_preclaim_tx:check(Tx4, Trees3, Height),
+        = aetx:check(Tx4, Trees3, Height),
     ok.
 
 %%%===================================================================
@@ -154,9 +154,9 @@ claim(Cfg) ->
     %% Create Claim tx and apply it on trees
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx} = aens_claim_tx:new(TxSpec),
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_tx:apply_signed([SignedTx], Trees, Height),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment removed and name entry added
@@ -178,14 +178,14 @@ claim_negative(Cfg) ->
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx0} = aens_claim_tx:new(TxSpec),
     {error, commitment_delta_too_small} =
-        aens_claim_tx:check(Tx0, Trees, Height),
+        aetx:check(Tx0, Trees, Height),
 
     %% Test bad account key
     BadPubKey = <<42:65/unit:8>>,
     TxSpec1 = aens_test_utils:claim_tx_spec(BadPubKey, Name, NameSalt, S1),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
     {error, account_not_found} =
-        aens_claim_tx:check(Tx1, Trees, Height),
+        aetx:check(Tx1, Trees, Height),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
@@ -193,19 +193,19 @@ claim_negative(Cfg) ->
     TxSpec2 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, S1),
     {ok, Tx2} = aens_claim_tx:new(TxSpec2),
     {error, insufficient_funds} =
-        aens_claim_tx:check(Tx2, Trees2, Height),
+        aetx:check(Tx2, Trees2, Height),
 
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, #{nonce => 0}, S1),
     {ok, Tx3} = aens_claim_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
-        aens_claim_tx:check(Tx3, Trees, Height),
+        aetx:check(Tx3, Trees, Height),
 
     %% Test commitment not found
     TxSpec4 = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt + 1, S1),
     {ok, Tx4} = aens_claim_tx:new(TxSpec4),
     {error, name_not_preclaimed} =
-        aens_claim_tx:check(Tx4, Trees, Height),
+        aetx:check(Tx4, Trees, Height),
 
     %% Test commitment not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
@@ -213,13 +213,13 @@ claim_negative(Cfg) ->
     TxSpec5 = aens_test_utils:claim_tx_spec(PubKey2, Name, NameSalt, S3),
     {ok, Tx5} = aens_claim_tx:new(TxSpec5),
     {error, commitment_not_owned} =
-        aens_claim_tx:check(Tx5, Trees3, Height),
+        aetx:check(Tx5, Trees3, Height),
 
     %% Test bad name
     TxSpec6 = aens_test_utils:claim_tx_spec(PubKey, <<"abcdefghi">>, NameSalt, S1),
     {ok, Tx6} = aens_claim_tx:new(TxSpec6),
     {error, no_registrar} =
-        aens_claim_tx:check(Tx6, Trees, Height),
+        aetx:check(Tx6, Trees, Height),
     ok.
 
 claim_race_negative(_Cfg) ->
@@ -234,7 +234,7 @@ claim_race_negative(_Cfg) ->
     %% Test bad account key
     TxSpec1 = aens_test_utils:claim_tx_spec(PubKey2, Name2, NameSalt2, S2),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
-    {error, name_already_taken} = aens_claim_tx:check(Tx1, Trees, Height).
+    {error, name_already_taken} = aetx:check(Tx1, Trees, Height).
 
 %%%===================================================================
 %%% Update
@@ -257,9 +257,9 @@ update(Cfg) ->
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
     {ok, Tx} = aens_update_tx:new(TxSpec),
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_tx:apply_signed([SignedTx], Trees, Height),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
 
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -277,14 +277,14 @@ update_negative(Cfg) ->
     TxSpec1 = aens_test_utils:update_tx_spec(PubKey, NHash, #{ttl => MaxTTL + 1}, S1),
     {ok, Tx1} = aens_update_tx:new(TxSpec1),
     {error, ttl_too_high} =
-        aens_update_tx:check(Tx1, Trees, Height),
+        aetx:check(Tx1, Trees, Height),
 
     %% Test bad account key
     BadPubKey = <<42:65/unit:8>>,
     TxSpec2 = aens_test_utils:update_tx_spec(BadPubKey, NHash, S1),
     {ok, Tx2} = aens_update_tx:new(TxSpec2),
     {error, account_not_found} =
-        aens_update_tx:check(Tx2, Trees, Height),
+        aetx:check(Tx2, Trees, Height),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
@@ -292,20 +292,20 @@ update_negative(Cfg) ->
     TxSpec3 = aens_test_utils:update_tx_spec(PubKey, NHash, S1),
     {ok, Tx3} = aens_update_tx:new(TxSpec3),
     {error, insufficient_funds} =
-        aens_update_tx:check(Tx3, Trees2, Height),
+        aetx:check(Tx3, Trees2, Height),
 
     %% Test too high account nonce
     TxSpec4 = aens_test_utils:update_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx4} = aens_update_tx:new(TxSpec4),
     {error, account_nonce_too_high} =
-        aens_update_tx:check(Tx4, Trees, Height),
+        aetx:check(Tx4, Trees, Height),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
     TxSpec5 = aens_test_utils:update_tx_spec(PubKey, NHash2, S1),
     {ok, Tx5} = aens_update_tx:new(TxSpec5),
     {error, name_does_not_exist} =
-        aens_update_tx:check(Tx5, Trees, Height),
+        aetx:check(Tx5, Trees, Height),
 
     %% Test name not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
@@ -313,7 +313,7 @@ update_negative(Cfg) ->
     TxSpec6 = aens_test_utils:update_tx_spec(PubKey2, NHash, S3),
     {ok, Tx6} = aens_update_tx:new(TxSpec6),
     {error, name_not_owned} =
-        aens_update_tx:check(Tx6, Trees3, Height),
+        aetx:check(Tx6, Trees3, Height),
 
     %% Test name revoked
     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
@@ -322,7 +322,7 @@ update_negative(Cfg) ->
     TxSpec7 = aens_test_utils:update_tx_spec(PubKey, NHash, S4),
     {ok, Tx7} = aens_update_tx:new(TxSpec7),
     {error, name_revoked} =
-        aens_update_tx:check(Tx7, aens_test_utils:trees(S4), Height),
+        aetx:check(Tx7, aens_test_utils:trees(S4), Height),
     ok.
 
 %%%===================================================================
@@ -345,9 +345,9 @@ transfer(Cfg) ->
     TxSpec = aens_test_utils:transfer_tx_spec(
                PubKey, NHash, PubKey2, S1),
     {ok, Tx} = aens_transfer_tx:new(TxSpec),
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees2} = aec_tx:apply_signed([SignedTx], Trees1, Height),
+    {ok, [SignedTx], Trees2} = aec_trees:apply_signed_txs([SignedTx], Trees1, Height),
 
     %% Check name new owner
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
@@ -364,7 +364,7 @@ transfer_negative(Cfg) ->
     TxSpec1 = aens_test_utils:transfer_tx_spec(BadPubKey, NHash, PubKey, S1),
     {ok, Tx1} = aens_transfer_tx:new(TxSpec1),
     {error, account_not_found} =
-        aens_transfer_tx:check(Tx1, Trees, Height),
+        aetx:check(Tx1, Trees, Height),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
@@ -372,20 +372,20 @@ transfer_negative(Cfg) ->
     TxSpec2 = aens_test_utils:transfer_tx_spec(PubKey, NHash, PubKey, S1),
     {ok, Tx2} = aens_transfer_tx:new(TxSpec2),
     {error, insufficient_funds} =
-        aens_transfer_tx:check(Tx2, Trees2, Height),
+        aetx:check(Tx2, Trees2, Height),
 
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:transfer_tx_spec(PubKey, NHash, PubKey, #{nonce => 0}, S1),
     {ok, Tx3} = aens_transfer_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
-        aens_transfer_tx:check(Tx3, Trees, Height),
+        aetx:check(Tx3, Trees, Height),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
     TxSpec4 = aens_test_utils:transfer_tx_spec(PubKey, NHash2, PubKey, S1),
     {ok, Tx4} = aens_transfer_tx:new(TxSpec4),
     {error, name_does_not_exist} =
-        aens_transfer_tx:check(Tx4, Trees, Height),
+        aetx:check(Tx4, Trees, Height),
 
     %% Test name not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
@@ -393,7 +393,7 @@ transfer_negative(Cfg) ->
     TxSpec5 = aens_test_utils:transfer_tx_spec(PubKey2, NHash, PubKey, S3),
     {ok, Tx5} = aens_transfer_tx:new(TxSpec5),
     {error, name_not_owned} =
-        aens_transfer_tx:check(Tx5, Trees3, Height),
+        aetx:check(Tx5, Trees3, Height),
 
     %% Test name revoked
     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
@@ -402,7 +402,7 @@ transfer_negative(Cfg) ->
     TxSpec6 = aens_test_utils:transfer_tx_spec(PubKey, NHash, PubKey, S4),
     {ok, Tx6} = aens_transfer_tx:new(TxSpec6),
     {error, name_revoked} =
-        aens_transfer_tx:check(Tx6, aens_test_utils:trees(S4), Height),
+        aetx:check(Tx6, aens_test_utils:trees(S4), Height),
     ok.
 
 %%%===================================================================
@@ -422,9 +422,9 @@ revoke(Cfg) ->
     %% Create Transfer tx and apply it on trees
     TxSpec = aens_test_utils:revoke_tx_spec(PubKey, NHash, S1),
     {ok, Tx} = aens_revoke_tx:new(TxSpec),
-    SignedTx = aec_tx_sign:sign(Tx, PrivKey),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_tx:apply_signed([SignedTx], Trees, Height),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
 
     %% Check name revoked
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -441,7 +441,7 @@ revoke_negative(Cfg) ->
     TxSpec1 = aens_test_utils:revoke_tx_spec(BadPubKey, NHash, S1),
     {ok, Tx1} = aens_revoke_tx:new(TxSpec1),
     {error, account_not_found} =
-        aens_revoke_tx:check(Tx1, Trees, Height),
+        aetx:check(Tx1, Trees, Height),
 
     %% Insufficient funds
     S2 = aens_test_utils:set_account_balance(PubKey, 0, S1),
@@ -449,20 +449,20 @@ revoke_negative(Cfg) ->
     TxSpec2 = aens_test_utils:revoke_tx_spec(PubKey, NHash, S1),
     {ok, Tx2} = aens_revoke_tx:new(TxSpec2),
     {error, insufficient_funds} =
-        aens_revoke_tx:check(Tx2, Trees2, Height),
+        aetx:check(Tx2, Trees2, Height),
 
     %% Test too high account nonce
     TxSpec3 = aens_test_utils:revoke_tx_spec(PubKey, NHash, #{nonce => 0}, S1),
     {ok, Tx3} = aens_revoke_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
-        aens_revoke_tx:check(Tx3, Trees, Height),
+        aetx:check(Tx3, Trees, Height),
 
     %% Test name not present
     {ok, NHash2} = aens:get_name_hash(<<"othername.test">>),
     TxSpec4 = aens_test_utils:revoke_tx_spec(PubKey, NHash2, S1),
     {ok, Tx4} = aens_revoke_tx:new(TxSpec4),
     {error, name_does_not_exist} =
-        aens_revoke_tx:check(Tx4, Trees, Height),
+        aetx:check(Tx4, Trees, Height),
 
     %% Test name not owned
     {PubKey2, S3} = aens_test_utils:setup_new_account(S1),
@@ -470,7 +470,7 @@ revoke_negative(Cfg) ->
     TxSpec5 = aens_test_utils:revoke_tx_spec(PubKey2, NHash, S3),
     {ok, Tx5} = aens_revoke_tx:new(TxSpec5),
     {error, name_not_owned} =
-        aens_revoke_tx:check(Tx5, Trees3, Height),
+        aetx:check(Tx5, Trees3, Height),
 
     %% Test name already revoked
     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
@@ -479,7 +479,7 @@ revoke_negative(Cfg) ->
     TxSpec6 = aens_test_utils:revoke_tx_spec(PubKey, NHash, S4),
     {ok, Tx6} = aens_revoke_tx:new(TxSpec6),
     {error, name_revoked} =
-        aens_revoke_tx:check(Tx6, aens_test_utils:trees(S4), Height),
+        aetx:check(Tx6, aens_test_utils:trees(S4), Height),
     ok.
 
 %%%===================================================================

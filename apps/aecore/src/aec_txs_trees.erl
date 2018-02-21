@@ -16,7 +16,7 @@
 -include("blocks.hrl").
 
 -type key() :: aec_hash:hash(signed_tx, value()).
--type value() :: aec_tx_sign:binary_signed_tx(). %% Deterministic.
+-type value() :: aetx_sign:binary_signed_tx(). %% Deterministic.
 -opaque txs_tree() :: aeu_mtrees:mtree(key(), value()).
 
 %% ?TXS_HASH_BYTES*8 bits binary
@@ -26,7 +26,7 @@
 %%% API
 %%%===================================================================
 
--spec from_txs([aec_tx_sign:signed_tx(), ...]) -> txs_tree().
+-spec from_txs([aetx_sign:signed_tx(), ...]) -> txs_tree().
 from_txs(Txs = [_|_]) ->
     lists:foldl(fun enter_signed_tx/2, empty(), Txs).
 
@@ -45,6 +45,6 @@ enter(K, V, T) ->
     aeu_mtrees:enter(K, V, T).
 
 enter_signed_tx(SignedTx, TxsTree) ->
-    V = aec_tx_sign:serialize_to_binary(SignedTx),
+    V = aetx_sign:serialize_to_binary(SignedTx),
     K = aec_hash:hash(signed_tx, V),
     enter(K, V, TxsTree).

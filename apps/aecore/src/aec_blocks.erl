@@ -77,7 +77,7 @@ set_target(Block, Target) ->
     Block#block{target = Target}.
 
 %% TODO: have a spec for list of transactions
--spec txs(block()) -> list(aec_tx_sign:signed_tx()).
+-spec txs(block()) -> list(aetx_sign:signed_tx()).
 txs(Block) ->
     Block#block.txs.
 
@@ -85,12 +85,12 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(), list(aec_tx_sign:signed_tx()), trees()) -> block().
+-spec new(block(), list(aetx_sign:signed_tx()), trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
     {B, _} = new_with_state(LastBlock, Txs, Trees0),
     B.
 
--spec new_with_state(block(), list(aec_tx_sign:signed_tx()), trees()) -> {block(), trees()}.
+-spec new_with_state(block(), list(aetx_sign:signed_tx()), trees()) -> {block(), trees()}.
 new_with_state(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
@@ -99,9 +99,9 @@ new_with_state(LastBlock, Txs, Trees0) ->
     %% We should not have any transactions with invalid signatures for
     %% creation of block candidate, as only txs with validated signatures should land in mempool.
     %% Let's hardcode this expectation for now.
-    Txs = aec_tx:filter_out_invalid_signatures(Txs),
+    Txs = aetx_sign:filter_invalid_signatures(Txs),
 
-    {ok, Txs1, Trees} = aec_tx:apply_signed(Txs, Trees0, Height),
+    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees0, Height),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
         #block{height = Height,
@@ -159,7 +159,7 @@ serialize_client_readable(Encoding, B) ->
     serialize_to_map(B,
                      fun(Tx) ->
                          H = to_header(B),
-                         aec_tx_sign:serialize_for_client(Encoding, H, Tx)
+                         aetx_sign:serialize_for_client(Encoding, H, Tx)
                       end).
 
 serialize_to_map(B = #block{}) ->
@@ -180,11 +180,11 @@ serialize_to_map(B = #block{}, SerializeTxFun) ->
 
 serialize_tx(Tx) ->
     #{<<"tx">> => aec_base58c:encode(
-                    transaction, aec_tx_sign:serialize_to_binary(Tx))}.
+                    transaction, aetx_sign:serialize_to_binary(Tx))}.
 
 deserialize_tx(#{<<"tx">> := Bin}) ->
     {transaction, Dec} = aec_base58c:decode(Bin),
-    aec_tx_sign:deserialize_from_binary(Dec).
+    aetx_sign:deserialize_from_binary(Dec).
 
 -define(STORAGE_VERSION, 1).
 serialize_for_store(B = #block{}) ->
@@ -286,7 +286,7 @@ validate_coinbase_txs_count(#block{txs = Txs}) ->
     CoinbaseTxsCount =
         lists:foldl(
           fun(SignedTx, Count) ->
-                  case aec_tx:is_coinbase(SignedTx) of
+                  case aetx_sign:is_coinbase(SignedTx) of
                       true ->
                           Count + 1;
                       false ->
@@ -312,7 +312,7 @@ validate_txs_hash(#block{txs = Txs,
     end.
 
 validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
-    FilteredTxs = aec_tx:filter_out_invalid_signatures(Txs),
+    FilteredTxs = aetx_sign:filter_invalid_signatures(Txs),
     case FilteredTxs =:= Txs of
         true ->
             ok;
@@ -323,4 +323,4 @@ validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
 cointains_coinbase_tx(#block{txs = []}) ->
     false;
 cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
-    aec_tx:is_coinbase(CoinbaseTx).
+    aetx_sign:is_coinbase(CoinbaseTx).

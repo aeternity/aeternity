@@ -85,7 +85,7 @@ handle_request('GetTxs', _Req, _Context) ->
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
     Txs = [#{<<"tx">> => aec_base58c:encode(
                            transaction,
-                           aec_tx_sign:serialize_to_binary(T))}
+                           aetx_sign:serialize_to_binary(T))}
            || T <- Txs0],
     {200, [], Txs};
 
@@ -111,7 +111,7 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}};
         {ok, DecodedTx} ->
             DeserializedTx =
-                try {ok, aec_tx_sign:deserialize_from_binary(DecodedTx)}
+                try {ok, aetx_sign:deserialize_from_binary(DecodedTx)}
                 catch _:_ -> {error, broken_tx}
                 end,
             case DeserializedTx of
@@ -139,7 +139,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
         {ok, Data} ->
             {ok, Tx} = aect_create_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
@@ -158,7 +158,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aect_call_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
@@ -181,7 +181,7 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
                     CallData = aeu_hex:hexstring_decode(HexCallData),
                     {ok, Tx} = aect_call_tx:new(maps:put(call_data, CallData, Data)),
                     {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}};
+                                                 aetx:serialize_to_binary(Tx))}};
                 {error, ErrorMsg} when is_binary(ErrorMsg) ->
                     {400, [], #{reason => <<"Failed to compute call_data, reason: ",
                                             ErrorMsg/binary>>}}
@@ -202,7 +202,7 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_register_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
@@ -221,7 +221,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_query_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
@@ -238,7 +238,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aeo_response_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
@@ -253,7 +253,7 @@ handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aens_preclaim_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
@@ -269,7 +269,7 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aens_claim_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
@@ -286,7 +286,7 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aens_update_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
@@ -303,7 +303,7 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aens_transfer_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
@@ -318,12 +318,12 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aens_revoke_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([sender, 
+                 read_required_params([sender,
                                        {recipient_pubkey, recipient},
                                        amount, fee]),
                  base58_decode([{sender, sender, account_pubkey},
@@ -335,7 +335,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
         {ok, Data} ->
             {ok, Tx} = aec_spend_tx:new(Data),
             {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aec_tx:serialize_to_binary(Tx))}}
+                                                 aetx:serialize_to_binary(Tx))}}
     end;
 
 
@@ -441,7 +441,7 @@ handle_request('GetInfo', _Req, _Context) ->
 
 handle_request('CompileContract', Req, _Context) ->
     case Req of
-        #{'Contract' := 
+        #{'Contract' :=
               #{ <<"code">> := Code
                , <<"options">> := Options }} ->
             %% TODO: Handle other languages
