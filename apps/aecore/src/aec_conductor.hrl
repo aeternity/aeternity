@@ -23,7 +23,7 @@
 
 
 -record(state, {block_candidate                   :: #candidate{} | 'undefined',
-                blocked_tags            = []      :: ordsets:ordsets(atom()),
+                blocked_tags            = []      :: ordsets:ordset(atom()),
                 fetch_new_txs_from_pool = true    :: boolean(),
                 keys_ready              = false   :: boolean(),
                 mining_state            = running :: mining_state(),
