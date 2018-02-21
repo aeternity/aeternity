@@ -20,6 +20,8 @@
          root_hash/1,
          validate/1]).
 
+-export_type([header/0]).
+
 -include("common.hrl").
 -include("blocks.hrl").
 
