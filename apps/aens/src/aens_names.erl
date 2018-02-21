@@ -49,7 +49,7 @@
 id(N) ->
     hash(N).
 
--spec new(aens_claim_tx:claim_tx(), non_neg_integer(), height()) -> name().
+-spec new(aens_claim_tx:tx(), non_neg_integer(), height()) -> name().
 new(ClaimTx, Expiration, BlockHeight) ->
     Expires    = BlockHeight + Expiration,
     Name       = aens_claim_tx:name(ClaimTx),
@@ -60,7 +60,7 @@ new(ClaimTx, Expiration, BlockHeight) ->
           expires = Expires,
           status  = claimed}.
 
--spec update(aens_update_tx:update_tx(), name(), height()) -> name().
+-spec update(aens_update_tx:tx(), name(), height()) -> name().
 update(UpdateTx, Name, BlockHeight) ->
     Expires = BlockHeight + aens_update_tx:ttl(UpdateTx),
     Name#name{expires  = Expires,
@@ -73,7 +73,7 @@ revoke(Name, Expiration, BlockHeight) ->
     Name#name{status  = revoked,
               expires = Expires}.
 
--spec transfer(aens_transfer_tx:transfer_tx(), name()) -> name().
+-spec transfer(aens_transfer_tx:tx(), name()) -> name().
 transfer(TransferTx, Name) ->
     Name#name{owner = aens_transfer_tx:recipient_account(TransferTx)}.
 

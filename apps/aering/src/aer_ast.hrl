@@ -81,7 +81,7 @@
              | t_clause()
              | t_pid()
              | t_receiver()
-             | alpaca_typer:cell().  % a reference cell for a type.
+             | {cell, {cell_name, integer()}}.  % a reference cell for a type.
 
 %%% ## ALPACA AST Nodes
 

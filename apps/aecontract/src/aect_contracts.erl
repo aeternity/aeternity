@@ -90,7 +90,7 @@
 id(C) ->
   pubkey(C).
 
--spec new(pubkey(), aect_create_tx:create_tx(), height()) -> contract().
+-spec new(pubkey(), aect_create_tx:tx(), height()) -> contract().
 new(ContractPubKey, RTx, BlockHeight) ->
     C = #contract{ pubkey     = ContractPubKey,
                    balance    = aect_create_tx:amount(RTx),

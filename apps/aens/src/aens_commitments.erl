@@ -45,7 +45,7 @@
 id(C) ->
     hash(C).
 
--spec new(aens_preclaim_tx:preclaim_tx(), non_neg_integer(), height()) -> commitment().
+-spec new(aens_preclaim_tx:tx(), non_neg_integer(), height()) -> commitment().
 new(PreclaimTx, Expiration, BlockHeight) ->
     Expires = BlockHeight + Expiration,
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2

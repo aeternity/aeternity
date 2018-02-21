@@ -42,7 +42,7 @@
 oracle(#oracle_response_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
--spec query_id(tx()) -> aeo_query:oracle_tx_id().
+-spec query_id(tx()) -> aeo_query:id().
 query_id(#oracle_response_tx{query_id = QId}) ->
     QId.
 

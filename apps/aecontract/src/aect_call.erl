@@ -61,7 +61,7 @@
 %%% API
 %%%===================================================================
 
--spec new(aect_call_tx:call_tx(), height()) -> call().
+-spec new(aect_call_tx:tx(), height()) -> call().
 new(CallTx, BlockHeight) ->
     C = #call{ caller_address   = aect_call_tx:caller(CallTx)
              , caller_nonce     = aect_call_tx:nonce(CallTx)

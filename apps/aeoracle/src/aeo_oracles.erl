@@ -78,7 +78,7 @@
 id(O) ->
   owner(O).
 
--spec new(aeo_register_tx:register_tx(), height()) -> oracle().
+-spec new(aeo_register_tx:tx(), height()) -> oracle().
 new(RTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:ttl(RTx)),
     O = #oracle{ owner = aeo_register_tx:account(RTx)
