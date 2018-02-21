@@ -15,6 +15,7 @@
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
 -define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(INT_ACCEPTORS_POOLSIZE, 10).
+-define(INT_EXTERNAL_POOLSIZE, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -29,8 +30,9 @@
 start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     {ok, _} = ws_task_worker_sup:start_link(),
-    ok = start_swagger_external(),
-    ok = start_swagger_internal(),
+    %ok = start_swagger_external(),
+    %ok = start_swagger_internal(),
+    ok = start_restapi_external(),
     ok = start_websocket_internal(),
     MaxWsHandlers = get_internal_websockets_acceptors(),
     ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers},
@@ -69,6 +71,26 @@ start_swagger_internal() ->
                                        logic_handler => aehttp_dispatch_int
                                       }),
     {ok, _} = supervisor:start_child(aehttp_sup, Spec),
+    ok.
+
+start_restapi_external() ->
+    Port = get_external_port(),
+    ListenAddress = get_external_listen_address(),
+    PoolSize = get_external_http_acceptors(),
+
+    Dispatch = cowboy_router:compile([
+        {'_', [
+            {co_ctrl:path(), co_ctrl, []}
+        ]}
+    ]),
+    HTTPOpts = [{port, Port}, {ip, ListenAddress}],
+    Opts = [{env,
+                [{dispatch, Dispatch},
+                 {compress, false}]},
+            middleware, [cowboy_router, co_middle, cowboy_handler]],
+
+
+    {ok, _} = cowboy:start_http(http, PoolSize, HTTPOpts, Opts),
     ok.
 
 start_websocket_internal() ->
@@ -117,5 +139,9 @@ get_internal_websockets_port() ->
 get_internal_websockets_acceptors() ->
     aeu_env:user_config_or_env([<<"websocket">>, <<"internal">>, <<"acceptors">>],
                                aehttp, [internal, websocket, handlers], ?INT_ACCEPTORS_POOLSIZE).
+
+get_external_http_acceptors() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"acceptors">>],
+        aehttp, [external, websocket, pool], ?INT_EXTERNAL_POOLSIZE).
 
 ws_handlers_queue_max_size() -> 5.
