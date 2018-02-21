@@ -33,6 +33,7 @@
 
 -export_type([ tree/0
              , iterator/0
+             , iterator_opts/0
              , key/0
              , value/0
              ]).
