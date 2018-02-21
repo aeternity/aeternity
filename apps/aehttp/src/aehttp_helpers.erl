@@ -1,6 +1,6 @@
 -module(aehttp_helpers).
 
--export([ parse_request/2
+-export([ process_request/2
         , parse_map_to_atom_keys/0
         , read_required_params/1
         , base58_decode/1
@@ -20,22 +20,22 @@
 -export([ ok_response/1
         , unsigned_tx_response/1]).
 
-parse_request(FunsList, Req) ->
-    parse_request(FunsList, Req, #{}).
+process_request(FunsList, Req) ->
+    process_request(FunsList, Req, #{}).
 
-parse_request([], _Req, {ok, {Code, _, _Response} = Result})
+process_request([], _Req, {ok, {Code, _, _Response} = Result})
     when is_integer(Code) ->
     Result;
-parse_request([], _Req, Result) ->
+process_request([], _Req, Result) ->
     Result;
-parse_request([Fun | T], Req, Result0) ->
+process_request([Fun | T], Req, Result0) ->
     case Fun(Req, Result0) of
         ok ->
-            parse_request(T, Req, Result0);
+            process_request(T, Req, Result0);
         {ok, Result} ->
-            parse_request(T, Req, Result);
+            process_request(T, Req, Result);
         {ok, Req1, Result} ->
-            parse_request(T, Req1, Result);
+            process_request(T, Req1, Result);
         {error, ErrMsg}->
             ErrMsg
     end.

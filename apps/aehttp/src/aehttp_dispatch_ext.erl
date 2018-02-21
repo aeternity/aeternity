@@ -5,7 +5,7 @@
          add_missing_to_genesis_block/1]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ parse_request/2
+-import(aehttp_helpers, [ process_request/2
                         , read_required_params/1
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
@@ -137,7 +137,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                  hexstrings_decode([code, call_data]),
                  unsigned_tx_response(fun aect_create_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -151,7 +151,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                  hexstrings_decode([call_data]),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -165,7 +165,7 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
                  compute_contract_call_data(),
                  unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -177,7 +177,7 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                  ttl_decode(ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -191,7 +191,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                  verify_oracle_existence(oracle),
                  unsigned_tx_response(fun aeo_query_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -203,7 +203,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
                  verify_oracle_query_existence(oracle, query_id),
                  unsigned_tx_response(fun aeo_response_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -213,7 +213,7 @@ handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
                  get_nonce(account),
                  unsigned_tx_response(fun aens_preclaim_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -224,7 +224,7 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
                  verify_name(name),
                  unsigned_tx_response(fun aens_claim_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -236,7 +236,7 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
                  get_nonce(account),
                  unsigned_tx_response(fun aens_update_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -248,7 +248,7 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
                  get_nonce(account),
                  unsigned_tx_response(fun aens_transfer_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -258,7 +258,7 @@ handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
                  get_nonce(account),
                  unsigned_tx_response(fun aens_revoke_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -270,7 +270,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                  get_nonce(sender),
                  unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
-    parse_request(ParseFuns, Req);
+    process_request(ParseFuns, Req);
 
 handle_request('GetAccountBalance', Req, _Context) ->
     Decoded =
