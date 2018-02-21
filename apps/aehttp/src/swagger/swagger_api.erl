@@ -1249,84 +1249,84 @@ validate_response('PostBlock', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostContractCall', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostContractCall', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostContractCall', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostContractCallCompute', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostContractCallCompute', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostContractCallCompute', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostContractCreate', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostContractCreate', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostContractCreate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostNameClaim', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostNameClaim', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNameClaim', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostNamePreclaim', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostNamePreclaim', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNamePreclaim', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostNameRevoke', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostNameRevoke', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNameRevoke', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostNameTransfer', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostNameTransfer', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNameTransfer', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostNameUpdate', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostNameUpdate', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNameUpdate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQuery', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostOracleQuery', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostOracleQuery', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleRegister', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostOracleRegister', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostOracleRegister', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleResponse', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostOracleResponse', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostOracleResponse', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostSpend', 200, Body, ValidatorState) ->
-    validate_response_body('Tx', 'Tx', Body, ValidatorState);
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostSpend', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostSpend', 404, Body, ValidatorState) ->

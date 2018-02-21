@@ -187,7 +187,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -216,7 +216,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -245,7 +245,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -274,7 +274,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -303,7 +303,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -332,7 +332,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -359,7 +359,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -386,7 +386,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -413,7 +413,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -440,7 +440,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -467,7 +467,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -496,7 +496,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/Tx'
+            $ref: '#/definitions/UnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -2603,6 +2603,18 @@ definitions:
     - gas_price
     - function
     - arguments
+  UnsignedTx:
+    type: object
+    properties:
+      tx:
+        description: Unsigned transaction object 
+        $ref: '#/definitions/EncodedHash'
+      tx_hash:
+        description: Transaction's hash
+        $ref: '#/definitions/EncodedHash'
+    required:
+    - tx
+    - tx_hash
 
 externalDocs:
   description: Find out more about Aeternity

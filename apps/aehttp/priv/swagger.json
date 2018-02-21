@@ -214,7 +214,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -251,7 +251,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -288,7 +288,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -325,7 +325,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -362,7 +362,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -399,7 +399,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -435,7 +435,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -471,7 +471,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -507,7 +507,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -543,7 +543,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -579,7 +579,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -616,7 +616,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/Tx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
@@ -3286,6 +3286,24 @@
         "gas" : 0,
         "arguments" : "arguments",
         "nonce" : 0
+      }
+    },
+    "UnsignedTx" : {
+      "type" : "object",
+      "required" : [ "tx", "tx_hash" ],
+      "properties" : {
+        "tx" : {
+          "description" : "Unsigned transaction object",
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "tx_hash" : {
+          "description" : "Transaction's hash",
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "tx" : { },
+        "tx_hash" : null
       }
     },
     "inline_response_200" : {

@@ -5,7 +5,7 @@
          add_missing_to_genesis_block/1]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ parse_request/2
+-import(aehttp_helpers, [ process_request/2
                         , read_required_params/1
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
@@ -18,7 +18,9 @@
                         , verify_oracle_query_existence/2
                         , verify_name/1
                         , ttl_decode/1
+                        , compute_contract_call_data/0
                         , relative_ttl_decode/1
+                        , unsigned_tx_response/1
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -132,15 +134,10 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                                        call_data]),
                  base58_decode([{owner, owner, account_pubkey}]),
                  get_nonce(owner),
-                 hexstrings_decode([code, call_data])
+                 hexstrings_decode([code, call_data]),
+                 unsigned_tx_response(fun aect_create_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aect_create_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -151,42 +148,24 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                                {contract, contract, account_pubkey}]),
                  get_nonce(caller),
                  get_contract_code(contract, contract_code),
-                 hexstrings_decode([call_data])
+                 hexstrings_decode([call_data]),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aect_call_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee,
                                        function, arguments]),
-                base58_decode([{caller, caller, account_pubkey},
+                 base58_decode([{caller, caller, account_pubkey},
                                {contract, contract, account_pubkey}]),
-                get_nonce(caller),
-                get_contract_code(contract, contract_code)
+                 get_nonce(caller),
+                 get_contract_code(contract, contract_code),
+                 compute_contract_call_data(),
+                 unsigned_tx_response(fun aect_call_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, #{contract_code := Code,
-               function := Function,
-               arguments := Argument} =Data} ->
-            case aect_dispatch:encode_call_data(<<"ring">>, Code, Function, Argument) of
-                {ok, HexCallData} ->
-                    CallData = aeu_hex:hexstring_decode(HexCallData),
-                    {ok, Tx} = aect_call_tx:new(maps:put(call_data, CallData, Data)),
-                    {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}};
-                {error, ErrorMsg} when is_binary(ErrorMsg) ->
-                    {400, [], #{reason => <<"Failed to compute call_data, reason: ",
-                                            ErrorMsg/binary>>}}
-            end
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -195,15 +174,10 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                                        query_fee, fee, ttl]),
                  base58_decode([{account, account, account_pubkey}]),
                  get_nonce(account),
-                 ttl_decode(ttl)
+                 ttl_decode(ttl),
+                 unsigned_tx_response(fun aeo_register_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aeo_register_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -214,15 +188,10 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                  get_nonce(sender),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
-                 verify_oracle_existence(oracle)
+                 verify_oracle_existence(oracle),
+                 unsigned_tx_response(fun aeo_query_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aeo_query_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -231,30 +200,20 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
                  base58_decode([{oracle, oracle, account_pubkey},
                                {query_id, query_id, oracle_query_id}]),
                  get_nonce(oracle),
-                 verify_oracle_query_existence(oracle, query_id)
+                 verify_oracle_query_existence(oracle, query_id),
+                 unsigned_tx_response(fun aeo_response_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aeo_response_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, commitment, fee]),
                  base58_decode([{account, account, account_pubkey},
                                 {commitment, commitment, commitment}]),
-                 get_nonce(account)
+                 get_nonce(account),
+                 unsigned_tx_response(fun aens_preclaim_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aens_preclaim_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -262,15 +221,10 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
                  base58_decode([{account, account, account_pubkey},
                                 {name, name, name}]),
                  get_nonce(account),
-                 verify_name(name)
+                 verify_name(name),
+                 unsigned_tx_response(fun aens_claim_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aens_claim_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -279,15 +233,10 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
                  base58_decode([{account, account, account_pubkey},
                                 {name_hash, name_hash, name}]),
                  nameservice_pointers_decode(pointers),
-                 get_nonce(account)
+                 get_nonce(account),
+                 unsigned_tx_response(fun aens_update_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aens_update_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -296,30 +245,20 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
                  base58_decode([{account, account, account_pubkey},
                                 {recipient_pubkey, recipient_account, account_pubkey},
                                 {name_hash, name_hash, name}]),
-                 get_nonce(account)
+                 get_nonce(account),
+                 unsigned_tx_response(fun aens_transfer_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aens_transfer_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name_hash, fee]),
                  base58_decode([{account, account, account_pubkey},
                                 {name_hash, name_hash, name}]),
-                 get_nonce(account)
+                 get_nonce(account),
+                 unsigned_tx_response(fun aens_revoke_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aens_revoke_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
+    process_request(ParseFuns, Req);
 
 handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
@@ -328,16 +267,10 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                                        amount, fee]),
                  base58_decode([{sender, sender, account_pubkey},
                                 {recipient, recipient, account_pubkey}]),
-                 get_nonce(sender)
+                 get_nonce(sender),
+                 unsigned_tx_response(fun aec_spend_tx:new/1)
                 ],
-    case parse_request(ParseFuns, Req) of
-        {error, ErrResponse} -> ErrResponse;
-        {ok, Data} ->
-            {ok, Tx} = aec_spend_tx:new(Data),
-            {200, [], #{tx => aec_base58c:encode(transaction,
-                                                 aetx:serialize_to_binary(Tx))}}
-    end;
-
+    process_request(ParseFuns, Req);
 
 handle_request('GetAccountBalance', Req, _Context) ->
     Decoded =

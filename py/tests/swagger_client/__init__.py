@@ -72,6 +72,7 @@ from swagger_client.models.ttl import TTL
 from swagger_client.models.transactions import Transactions
 from swagger_client.models.tx import Tx
 from swagger_client.models.tx_objects import TxObjects
+from swagger_client.models.unsigned_tx import UnsignedTx
 from swagger_client.models.uri import Uri
 from swagger_client.models.version import Version
 from swagger_client.models.block import Block
