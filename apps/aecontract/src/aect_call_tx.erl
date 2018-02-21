@@ -242,7 +242,7 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 
 %% Call the contract and update the call object with the return value and gas
 %% used.
--spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
+-spec run_contract(tx(), aect_call:call(), height(), trees()) -> aect_call:call().
 run_contract(#contract_call_tx
              { caller    = Caller
              , contract  = ContractPubKey
