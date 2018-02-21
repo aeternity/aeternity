@@ -329,10 +329,12 @@ delete_tx(Hash, Where) when is_binary(Where) ->
 delete_tx_(Hash, Where) ->
     ?t(delete(aec_tx, {Hash, Where})).
 
+-dialyzer({nowarn_function, transactions_by_account/1}). %% For mnesia patches.
 transactions_by_account(AcctPubKey) ->
     ?t([T || #aec_tx{tx = T}
                  <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx})]).
 
+-dialyzer({nowarn_function, transactions_by_account/2}). %% For mnesia patches.
 transactions_by_account(AcctPubKey, Filter) ->
     ?t([T || #aec_tx{tx = T}
         <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx}), Filter(T)]).
