@@ -194,7 +194,7 @@ nameservice_pointers_decode(PointersKey) ->
         Pointers = maps:get(PointersKey, State),
         try {ok, maps:put(PointersKey, jsx:decode(Pointers), State)}
         catch _:_ ->
-            {error, {400, [], #{<<"reason">> => <<"Invayylid pointers">>}}}
+            {error, {400, [], #{<<"reason">> => <<"Invalid pointers">>}}}
         end
     end.
 
