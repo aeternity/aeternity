@@ -37,7 +37,7 @@
 
 -type mkey() :: aens_commitments:id() | aens_names:id().
 -type mvalue() :: aens_commitments:serialized() | aens_names:serialized().
--type nstree() :: aeu_mtrees:tree(mkey(), mvalue()).
+-type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
 -type name() :: aens_names:name().
 -type cache() :: gb_sets:set({integer(), binary()}).

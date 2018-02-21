@@ -44,7 +44,7 @@
 %%% Types
 %%%===================================================================
 
--type otree() :: aeu_mtrees:tree().
+-type otree() :: aeu_mtrees:mtree().
 -type query() :: aeo_query:query().
 -type oracle() :: aeo_oracles:oracle().
 -type cache_item() :: {oracle, aeo_oracles:id()}
