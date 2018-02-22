@@ -116,6 +116,7 @@
 %% websocket endpoints
 -export(
    [ws_get_genesis/1,
+    ws_request_tag/1,
     ws_block_mined/1,
     ws_refused_on_limit_reached/1,
     ws_tx_on_chain/1,
@@ -236,6 +237,7 @@ groups() ->
       ]},
      {websocket, [sequence],
       [ws_get_genesis,
+       ws_request_tag,
        ws_block_mined,
        ws_refused_on_limit_reached,
        ws_tx_on_chain,
@@ -2295,7 +2297,8 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
 
 ws_get_genesis(_Config) ->
     {ok, ConnPid} = ws_start_link(),
-    #{ <<"block">> := Block } = ws_chain_get(ConnPid, #{height => 0, type => block}),
+    {_Tag, #{ <<"block">> := Block }} =
+        ws_chain_get(ConnPid, #{height => 0, type => block}),
     {ok, 200, BlockMap} = get_internal_block_by_height(0, message_pack),
     ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
@@ -2304,18 +2307,33 @@ ws_get_genesis(_Config) ->
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
 
+ws_request_tag(_Config) ->
+    {ok, ConnPid} = ws_start_link(),
+
+    %% Test with tag
+    {<<"supersecret_tag">>, #{<<"block">> := _Block}} =
+        ws_chain_get(ConnPid, supersecret_tag, #{height => 0, type => block}),
+
+    %% And test without tag
+    {<<"untagged">>, #{<<"block">> := _Block}} =
+        ws_chain_get(ConnPid, #{height => 0, type => block}),
+
+    ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+
+
 ws_block_mined(_Config) ->
     {ok, ConnPid} = ws_start_link(),
 
     %% Register for mined_block events
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
-    {Height, Hash} = ws_mine_blocks(ConnPid, ?NODE, 1),
+    {Height, Hash} = ws_mine_block(ConnPid, ?NODE),
 
-    #{<<"block">> := Block} = ws_chain_get(ConnPid, #{height => Height, type => block}),
-    #{<<"block">> := Block} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
-    #{<<"header">> := Header} = ws_chain_get(ConnPid, #{height => Height, type => header}),
-    #{<<"header">> := Header} = ws_chain_get(ConnPid, #{hash => Hash, type => header}),
+    {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{height => Height, type => block}),
+    {_Tag, #{<<"block">> := Block}} = ws_chain_get(ConnPid, #{hash => Hash, type => block}),
+    {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{height => Height, type => header}),
+    {_Tag, #{<<"header">> := Header}} = ws_chain_get(ConnPid, #{hash => Hash, type => header}),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -2397,7 +2415,7 @@ ws_tx_on_chain(_Config) ->
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
     %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
 
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
@@ -2420,7 +2438,7 @@ ws_tx_on_chain(_Config) ->
 
     %% Mine a block and check that an event is receieved corresponding to
     %% the Tx.
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
     {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
@@ -2433,7 +2451,7 @@ ws_oracles(_Config) ->
     ws_subscribe(ConnPid, #{ type => mined_block }),
 
     %% Mine a block to make sure the Pubkey has some funds!
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
 
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
@@ -2451,7 +2469,7 @@ ws_oracles(_Config) ->
       <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, register, RegisterData),
 
     %% Mine a block to get the oracle onto the chain
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
 
     %% Register for events when the freshly registered oracle is queried!
     ws_subscribe(ConnPid, #{ type => oracle_query, oracle_id => OId }),
@@ -2471,7 +2489,7 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
     {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
@@ -2487,7 +2505,7 @@ ws_oracles(_Config) ->
       <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
 
     %% Finally mine a block and check that an event is received
-    ws_mine_blocks(ConnPid, ?NODE, 1),
+    ws_mine_block(ConnPid, ?NODE),
     {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
@@ -2652,26 +2670,32 @@ peers(_Config) ->
 ws_do_request(ConnPid, Target, Action, Args) ->
     ok = ?WS:register_test_for_event(ConnPid, Target, Action),
     ?WS:send(ConnPid, Target, Action, Args),
-    {ok, Res} = ?WS:wait_for_event(Target, Action),
+    {ok, _, Res} = ?WS:wait_for_event(Target, Action),
     ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
     Res.
 
 ws_subscribe(ConnPid, PayLoad) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
     ?WS:send(ConnPid, chain, subscribe, PayLoad),
-    {ok, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
+    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
 
 ws_chain_get(ConnPid, PayLoad) ->
-    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
-    ?WS:send(ConnPid, chain, get, PayLoad),
-    {ok, Res} = ?WS:wait_for_event(chain, requested_data),
-    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
-    Res.
+    ws_chain_get(ConnPid, undefined, PayLoad).
 
-ws_mine_blocks(ConnPid, Node, N) ->
+ws_chain_get(ConnPid, Tag, PayLoad) ->
+    ok = ?WS:register_test_for_event(ConnPid, chain, requested_data),
+    case Tag of
+        undefined -> ?WS:send(ConnPid, chain, get, PayLoad);
+        _         -> ?WS:send(ConnPid, chain, get, Tag, PayLoad)
+    end,
+    {ok, Tag1, Res} = ?WS:wait_for_event(chain, requested_data),
+    ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
+    {Tag1, Res}.
+
+ws_mine_block(ConnPid, Node) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), N),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
     {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(chain, mined_block),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
     {Height, Hash}.

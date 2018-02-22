@@ -13,7 +13,7 @@
 -export([websocket_handle/3]).
 -export([websocket_info/3]).
 -export([websocket_terminate/3]).
--export([send_msg/4, broadcast/2, broadcast/3]).
+-export([send_msg/5, broadcast/2, broadcast/3]).
 
 -define(GPROC_KEY, {p, l, {?MODULE, broadcast}}).
 
@@ -40,6 +40,9 @@ websocket_handle(_Data, Req, State) ->
 
 websocket_info({send, SenderName, Action, Payload}, Req, State) ->
     Msg = create_message(SenderName, Action, Payload),
+    {reply, {text, jsx:encode(Msg)}, Req, State};
+websocket_info({send, SenderName, Action, Tag, Payload}, Req, State) ->
+    Msg = create_message(SenderName, Action, Tag, Payload),
     {reply, {text, jsx:encode(Msg)}, Req, State};
 websocket_info({event, Event, EventData}, Req, State) ->
     case create_message_from_event(Event, EventData) of
@@ -68,25 +71,31 @@ broadcast(SenderName, Action, Payload) ->
             lager:info("ws_handler broadcasting when there is no client")
     end.
 
-send_msg(WsPid, SenderName, Action, Payload) ->
-    WsPid ! {send, SenderName, Action, Payload}.
+send_msg(WsPid, SenderName, Action, Tag, Payload) ->
+    WsPid ! {send, SenderName, Action, Tag, Payload}.
 
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+create_message(SenderName, Action, Tag, Payload) ->
+    create_message_(SenderName, Action, Payload, #{tag => Tag}).
+
 create_message(SenderName, Action, Payload) ->
-    MsgWithoutPayload = #{origin => SenderName,
-                          action => Action},
-    EmptyPayload =
+    create_message_(SenderName, Action, Payload, #{}).
+
+create_message_(SenderName, Action, Payload, Msg0) ->
+    MsgWithoutPayload = Msg0#{origin => SenderName,
+                              action => Action},
+    NoPayload =
         case Payload of
             _ when is_list(Payload) ->
                 Payload == [];
             _ when is_map(Payload) ->
                 maps:size(Payload) == 0
         end,
-    case EmptyPayload of
+    case NoPayload of
         true ->
             MsgWithoutPayload;
         false ->
