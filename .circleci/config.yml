@@ -359,15 +359,15 @@ workflows:
             tags:
               only: /^v.*$/
 
-      # - deploy_integration:
-      #     requires:
-      #       - test
-      #       - eunit
-      #       - static_analysis
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: master
+      - deploy_integration:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+            - linux_package
+          filters:
+            branches:
+              only: master
 
       - deploy_dev1:
           requires:
@@ -391,15 +391,15 @@ workflows:
             tags:
               only: /^v.*$/
 
-      # - deploy_uat:
-      #     requires:
-      #       - linux_package
-      #       - hodl
-      #     filters:
-      #       branches:
-      #         ignore: /.*/
-      #       tags:
-      #         only: /^v.*$/
+      - deploy_uat:
+          requires:
+            - linux_package
+            - hodl
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
 
       - github_release_linux:
           requires:
