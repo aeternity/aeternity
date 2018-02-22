@@ -61,6 +61,7 @@
 -type serialized() :: binary().
 
 -export_type([ id/0
+             , oracle_response/0
              , query/0
              , serialized/0
              ]).
