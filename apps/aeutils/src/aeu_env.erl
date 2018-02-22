@@ -18,6 +18,9 @@
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
+-type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+-type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
+
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
 -type config_tree() :: [{binary(), config_tree() | basic_or_list()}].
@@ -399,7 +402,7 @@ load_schema(F) ->
 
 -define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
 
--spec local_peer() -> {http_uri:scheme(), http_uri:host(), http_uri:port()}.
+-spec local_peer() -> {http_uri:scheme(), http_uri_host(), http_uri_port()}.
 local_peer() ->
     ExternalPort = 
         user_config_or_env([<<"http">>, <<"external">>, <<"port">>],

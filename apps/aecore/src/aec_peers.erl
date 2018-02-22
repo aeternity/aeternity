@@ -60,10 +60,10 @@
 
 %% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
-          uri = ""          :: http_uri:uri(),   %% try not to use!
+          uri = ""          :: http_uri_uri(),   %% try not to use!
           scheme            :: http_uri:scheme(),
-          host              :: http_uri:host(),
-          port              :: http_uri:port(),
+          host              :: http_uri_host(),
+          port              :: http_uri_port(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
@@ -71,15 +71,19 @@
           trusted = false   :: boolean() % Is it a pre-configured peer
          }).
 
+-type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
+-type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
+-type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+
 -type peer() :: #peer{}.
 
 %%%=============================================================================
 
--spec valid_uri(http_uri:uri(), fun((peer()) -> T)) -> T | {error, any()}.
+-spec valid_uri(http_uri_uri(), fun((peer()) -> T)) -> T | {error, any()}.
 valid_uri(Uri, Success) ->
     valid_uri(Uri, Success, fun(X) -> X end).
 
--spec valid_uri(http_uri:uri(), fun((peer()) -> T1), fun(({error, any()}) -> T2)) -> T1 | T2.
+-spec valid_uri(http_uri_uri(), fun((peer()) -> T1), fun(({error, any()}) -> T2)) -> T1 | T2.
 valid_uri(Uri, Success, Failure) ->
     case parse_uri(Uri) of
         {error, _} = Error ->
@@ -89,7 +93,7 @@ valid_uri(Uri, Success, Failure) ->
         end.
 
 %% parse the uri's and keep the valid once as peer.
--spec valid_uris(list(http_uri:uri())) -> list(peer()).
+-spec valid_uris(list(http_uri_uri())) -> list(peer()).
 valid_uris(Uris) ->
     [ Peer || Uri <- Uris, #peer{} = Peer <- [parse_uri(Uri)] ].
 
@@ -97,7 +101,7 @@ valid_uris(Uris) ->
 %%------------------------------------------------------------------------------
 %% Add peer by url. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
--spec add(http_uri:uri() | peer(), boolean()) -> ok | {error, any()}.
+-spec add(http_uri_uri() | peer(), boolean()) -> ok | {error, any()}.
 add(Uri, Connect) when is_boolean(Connect) ->
     valid_uri(Uri, fun(Peer) ->
                        gen_server:cast(?MODULE, {add, Peer, Connect})
@@ -106,7 +110,7 @@ add(Uri, Connect) when is_boolean(Connect) ->
 %%------------------------------------------------------------------------------
 %% Add peers by uri.
 %%------------------------------------------------------------------------------
--spec add_and_ping_peers([http_uri:uri()]) -> ok.
+-spec add_and_ping_peers([http_uri_uri()]) -> ok.
 add_and_ping_peers(Uris) ->
     add_and_ping_peers(Uris, false).
 
@@ -114,7 +118,7 @@ add_and_ping_peers(Uris) ->
 %% Add peers by uri. Indicate whether they are trusted (i.e. pre-configured) or
 %% not.
 %%------------------------------------------------------------------------------
--spec add_and_ping_peers([http_uri:uri()], boolean()) -> ok.
+-spec add_and_ping_peers([http_uri_uri()], boolean()) -> ok.
 add_and_ping_peers(Uris, Trusted) ->
     case valid_uris(Uris) of
         [] -> ok;
@@ -126,7 +130,7 @@ add_and_ping_peers(Uris, Trusted) ->
 %%------------------------------------------------------------------------------
 %% Block peer
 %%------------------------------------------------------------------------------
--spec block_peer(http_uri:uri()) -> ok | {error, any()}.
+-spec block_peer(http_uri_uri()) -> ok | {error, any()}.
 block_peer(Uri) ->
     valid_uri(Uri, 
               fun(Peer) -> gen_server:call(?MODULE, {block, Peer}) end).
@@ -135,7 +139,7 @@ block_peer(Uri) ->
 %%------------------------------------------------------------------------------
 %% Unblock peer
 %%------------------------------------------------------------------------------
--spec unblock_peer(http_uri:uri()) -> ok | {error, any()}.
+-spec unblock_peer(http_uri_uri()) -> ok | {error, any()}.
 unblock_peer(Uri) ->
     valid_uri(Uri, 
               fun(Peer) -> gen_server:call(?MODULE, {unblock, Peer}) end).
@@ -143,7 +147,7 @@ unblock_peer(Uri) ->
 %%------------------------------------------------------------------------------
 %% Check if peer is blocked. Erroneous URI is by definition blocked.
 %%------------------------------------------------------------------------------
--spec is_blocked(http_uri:uri()) -> boolean().
+-spec is_blocked(http_uri_uri()) -> boolean().
 is_blocked(Uri) ->
     valid_uri(Uri, 
               fun(Peer) -> gen_server:call(?MODULE, {is_blocked, Peer}) end,
@@ -153,7 +157,7 @@ is_blocked(Uri) ->
 %% Remove peer by url.
 %% At the moment also removes uri from the blocked list
 %%------------------------------------------------------------------------------
--spec remove(http_uri:uri()) -> ok | {error, any()}.
+-spec remove(http_uri_uri()) -> ok | {error, any()}.
 remove(Uri) ->
     valid_uri(Uri,
               fun(Peer) -> gen_server:cast(?MODULE, {remove, Peer}) end).
@@ -162,11 +166,11 @@ remove(Uri) ->
 %% Get list of all peers. The list may be big. Use with caution.
 %% Consider using get_random instead.
 %%------------------------------------------------------------------------------
--spec all() -> list(http_uri:uri()).
+-spec all() -> list(http_uri_uri()).
 all() ->
     gen_server:call(?MODULE, all).
 
--spec blocked() -> list(http_uri:uri()).
+-spec blocked() -> list(http_uri_uri()).
 blocked() ->
     gen_server:call(?MODULE, blocked).
 
@@ -177,7 +181,7 @@ blocked() ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(all | non_neg_integer()) -> [http_uri:uri()].
+-spec get_random(all | non_neg_integer()) -> [http_uri_uri()].
 get_random(NumberOfPeers) ->
     get_random(NumberOfPeers, []).
 
@@ -188,7 +192,7 @@ get_random(NumberOfPeers) ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(all | non_neg_integer(), [http_uri:uri()]) -> [http_uri:uri()].
+-spec get_random(all | non_neg_integer(), [http_uri_uri()]) -> [http_uri_uri()].
 get_random(N, Exclude) when is_list(Exclude), 
     N == all orelse (is_integer(N) andalso N >= 0) ->
     gen_server:call(?MODULE, {get_random, N, valid_uris(Exclude)}).
@@ -196,7 +200,7 @@ get_random(N, Exclude) when is_list(Exclude),
 %%------------------------------------------------------------------------------
 %% Set our own peer address
 %%------------------------------------------------------------------------------
--spec set_local_peer_uri(http_uri:uri()) -> ok | {error, any()}.
+-spec set_local_peer_uri(http_uri_uri()) -> ok | {error, any()}.
 set_local_peer_uri(Uri) ->
     valid_uri(Uri,
               fun(Peer) -> 
@@ -206,21 +210,21 @@ set_local_peer_uri(Uri) ->
 %%------------------------------------------------------------------------------
 %% Set our own peer address
 %%------------------------------------------------------------------------------
--spec get_local_peer_uri() -> http_uri:uri().
+-spec get_local_peer_uri() -> http_uri_uri().
 get_local_peer_uri() ->
     gen_server:call(?MODULE, get_local_peer_uri).
 
 %%------------------------------------------------------------------------------
 %% Update `last_seen` timestamp
 %%------------------------------------------------------------------------------
--spec update_last_seen(http_uri:uri()) -> ok | {error, any()}.
+-spec update_last_seen(http_uri_uri()) -> ok | {error, any()}.
 update_last_seen(Uri) ->
     valid_uri(Uri,
               fun(Peer) -> 
                   gen_server:cast(?MODULE, {update_last_seen, Peer, timestamp()}) 
               end).
 
--spec log_ping(http_uri:uri(), good | error) -> ok | {error, any()}.
+-spec log_ping(http_uri_uri(), good | error) -> ok | {error, any()}.
 log_ping(Uri, Result) ->
     valid_uri(Uri,
               fun(Peer) -> 
@@ -269,8 +273,8 @@ unblock_all() ->
 
 
 -record(state, {peers :: gb_trees:tree(binary(), peer()),
-                blocked = gb_sets:new() :: gb_sets:set(http_uri:uri()),
-                errored = gb_sets:new() :: gb_sets:set(http_uri:uri()),
+                blocked = gb_sets:new() :: gb_sets:set(http_uri_uri()),
+                errored = gb_sets:new() :: gb_sets:set(http_uri_uri()),
                 local_peer :: peer(),  %% for universal handling of URIs
                 next_unblock = 0 :: integer() %% Erlang timestamp in ms.
                }).
@@ -485,7 +489,7 @@ enter_peer(#peer{} = P, Peers) ->
 timestamp() ->
     erlang:system_time(millisecond).
 
--spec hash_uri(http_uri:uri()) -> binary().
+-spec hash_uri(http_uri_uri()) -> binary().
 hash_uri(Uri) ->
     Hash = crypto:hash(md4, Uri),
     <<Hash/binary, Uri/binary>>.
@@ -670,7 +674,7 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
     lager:debug("is_local_uri(~p) -> ~p (~p)", [uri_of_peer(Peer), R, uri_of_peer(LocalPeer)]),
     R.
 
--spec parse_uri(http_uri:uri()) -> peer() | {error, any()}.
+-spec parse_uri(http_uri_uri()) -> peer() | {error, any()}.
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
@@ -681,6 +685,6 @@ parse_uri(Uri) ->
             Error
     end.
 
--spec uri_of_peer(peer()) -> http_uri:uri().
+-spec uri_of_peer(peer()) -> http_uri_uri().
 uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->
     aeu_requests:pp_uri({Scheme, Host, Port}).
