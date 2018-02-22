@@ -3,7 +3,7 @@
 
 %% API
 -export([start_link/2,
-         send/4,
+         send/4, send/5,
          register_test_for_event/3,
          unregister_test_for_event/3,
          wait_for_event/2,
@@ -44,13 +44,19 @@ wait_for_connect(Pid) ->
 stop(ConnPid) ->
     ok = websocket_client:stop(ConnPid).
 
+send(ConnPid, Target, Action, Tag, Payload) ->
+    send_(ConnPid, Target, Action, Payload, #{tag => Tag}).
+
 send(ConnPid, Target, Action, Payload) ->
-    Msg0 = #{target => Target,
-             action => Action},
+    send_(ConnPid, Target, Action, Payload, #{}).
+
+send_(ConnPid, Target, Action, Payload, Msg0) ->
+    Msg1 = Msg0#{target => Target,
+                 action => Action},
     Msg =
         case Payload == [] orelse Payload == #{} of
-            true -> Msg0;
-            false -> maps:put(payload, Payload, Msg0)
+            true  -> Msg1;
+            false -> maps:put(payload, Payload, Msg1)
         end,
     ct:log("Sending to server ~p", [Msg]),
     websocket_client:cast(ConnPid, {text, jsx:encode(Msg)}),
@@ -73,7 +79,7 @@ unregister_test_for_event(ConnPid, Origin, Action) ->
     ConnPid ! {unregister_test, self(), Event},
     ok = wait_for_event(unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
     ok.
-    
+
 
 %% consumes messages from the mailbox:
 %% {websocket_event, Origin::atom(), Action::atom()}
@@ -85,6 +91,8 @@ wait_for_event(Origin, Action) ->
 -spec wait_for_event(atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
 wait_for_event(Origin, Action, Timeout) ->
     receive
+        {websocket_event, Origin, Action, Tag, Payload} ->
+            {ok, Tag, Payload};
         {websocket_event, Origin, Action, Payload} ->
             {ok, Payload};
         {websocket_event, Origin, Action} ->
@@ -92,16 +100,18 @@ wait_for_event(Origin, Action, Timeout) ->
     after Timeout ->
         timeout
     end.
-          
-inform_registered(RegisteredPid, Origin, Action) ->
-    inform_registered(RegisteredPid, Origin, Action, []).
 
-inform_registered(RegisteredPid, Origin, Action, Payload) ->
+inform_registered(RegisteredPid, Origin, Action) ->
+    inform_registered(RegisteredPid, Origin, Action, undefined, []).
+
+inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
     case Payload == [] orelse Payload == #{} of
         true ->
             RegisteredPid ! {websocket_event, Origin, Action};
+        false when Tag == undefined ->
+            RegisteredPid ! {websocket_event, Origin, Action, Payload};
         false ->
-            RegisteredPid ! {websocket_event, Origin, Action, Payload}
+            RegisteredPid ! {websocket_event, Origin, Action, Tag, Payload}
     end.
 
 init(WaitingPid) ->
@@ -125,14 +135,15 @@ ondisconnect({remote, closed}, Regs) ->
 websocket_handle({pong, _}, _ConnState, Regs) ->
     {ok, Regs};
 websocket_handle({text, MsgBin}, _ConnState, Regs) ->
-    Msg = jsx:decode(MsgBin, [return_maps]), 
+    Msg = jsx:decode(MsgBin, [return_maps]),
     ct:log("Received msg ~p~n", [Msg]),
     Origin = binary_to_existing_atom(maps:get(<<"origin">>, Msg), utf8),
     Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
+    Tag = maps:get(<<"tag">>, Msg, undefined),
     Payload = maps:get(<<"payload">>, Msg, []),
     Registered = get_registered({Origin, Action}, Regs),
     lists:foreach(
-        fun(Pid) -> inform_registered(Pid, Origin, Action, Payload) end,
+        fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,
         Registered),
 
     % for easier debugging
@@ -163,7 +174,7 @@ get_registered(Event, Regs) ->
 
 put_registration(RegPid, Event, Regs) ->
     Pids0 = get_registered(Event, Regs),
-    false = lists:member(RegPid, Pids0), % assert there is no double registration 
+    false = lists:member(RegPid, Pids0), % assert there is no double registration
     maps:put(Event, [RegPid | Pids0], Regs).
 
 delete_registered(RegPid, Event, Regs) ->
