@@ -33,18 +33,19 @@
 
 -export_type([ tree/0
              , iterator/0
+             , iterator_opts/0
              , key/0
              , value/0
              ]).
 
 -record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
-             , db   = new_dict_db() :: aeu_mp_trees:db()
+             , db   = new_dict_db() :: aeu_mp_trees_db:db()
              }).
 
 -record(iter, { key  = <<>>          :: <<>> | key()
               , root = <<>>          :: <<>> | hash()
               , max_length           :: pos_integer() | 'undefined'
-              , db   = new_dict_db() :: aeu_mp_trees:db()
+              , db   = new_dict_db() :: aeu_mp_trees_db:db()
               }).
 
 -opaque tree() :: #mpt{}.

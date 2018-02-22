@@ -29,6 +29,8 @@
          validate/1,
          cointains_coinbase_tx/1]).
 
+-export_type([block/0]).
+
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.

@@ -24,7 +24,7 @@
 %%% Types
 %%%===================================================================
 
--type contract_tree() :: aeu_mtrees:tree().
+-type contract_tree() :: aeu_mtrees:mtree().
 
 -record(contract_tree, {
           contracts = aeu_mtrees:empty() :: contract_tree()
