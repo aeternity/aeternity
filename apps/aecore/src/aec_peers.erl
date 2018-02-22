@@ -64,7 +64,6 @@
           scheme            :: http_uri:scheme(),
           host              :: http_uri:host(),
           port              :: http_uri:port(),
-          path              :: http_uri:path(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
@@ -674,10 +673,10 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
 -spec parse_uri(http_uri:uri()) -> peer() | {error, any()}.
 parse_uri(Uri) ->
     case http_uri:parse(Uri) of
-        {ok, {Scheme, _UserInfo, Host, Port, Path, _Query, _Fragment}} ->
-            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
-        {ok, {Scheme, _UserInfo, Host, Port, Path, _Query}} ->
-            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port, path = Path};
+        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port};
+        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
+            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port};
         {error, _} = Error ->
             Error
     end.
