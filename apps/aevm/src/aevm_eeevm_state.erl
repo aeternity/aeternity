@@ -115,8 +115,9 @@ get_balances(#{} = Pre) ->
 
 get_blockhash_fun(Opts, Env, H) ->
     case maps:get(blockhash, Opts, default) of
-	default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
-	sha3 -> fun(N,_A) ->
+	%% default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
+	%% sha3 ->
+	_ -> fun(N,_A) ->
 			%% Because the data of the blockchain is not
 			%% given, the opcode BLOCKHASH could not
 			%% return the hashes of the corresponding
