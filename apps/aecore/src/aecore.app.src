@@ -13,6 +13,7 @@
     stdlib,
     crypto,
     setup,
+    sext,
     rocksdb,
     mnesia_rocksdb,
     parse_trans,

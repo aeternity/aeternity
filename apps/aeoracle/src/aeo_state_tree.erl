@@ -47,13 +47,13 @@
 -type otree() :: aeu_mtrees:tree().
 -type query() :: aeo_query:query().
 -type oracle() :: aeo_oracles:oracle().
--type cache_item() :: {oracle, aeo_oracles:id()}
-                    | {query, aeo_oracles:id(), aeo_query:id()}.
--type cache() :: gb_sets:set({integer(), cache_item()}).
+-type cache() :: aeu_mtrees:tree(cache_key(), cache_value()).
+-type cache_key() :: binary(). %% Sext encoded
+-type cache_value() :: binary(). %% ?DUMMY_VAL
 -type block_height() :: non_neg_integer().
 
 -record(oracle_tree, { otree  = aeu_mtrees:empty() :: otree()
-                     , cache  = cache_new()        :: cache()
+                     , cache  = aeu_mtrees:empty() :: cache()
                      }).
 
 -opaque tree() :: #oracle_tree{}.
@@ -69,16 +69,16 @@
 
 -spec empty() -> tree().
 empty() ->
-    OTree  = aeu_mtrees:empty(),
-    #oracle_tree{ otree  = OTree
-                , cache  = cache_new()
+    #oracle_tree{ otree  = aeu_mtrees:empty()
+                , cache  = aeu_mtrees:empty()
                 }.
 
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
     OTree  = aeu_mtrees:empty_with_backend(aec_db_backends:oracles_backend()),
+    Cache  = aeu_mtrees:empty_with_backend(aec_db_backends:oracles_cache_backend()),
     #oracle_tree{ otree  = OTree
-                , cache  = cache_new()
+                , cache  = Cache
                 }.
 
 
@@ -171,8 +171,10 @@ query_list(#oracle_tree{otree = OTree}) ->
 -endif.
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#oracle_tree{otree = OTree} = Tree) ->
-    Tree#oracle_tree{otree = aeu_mtrees:commit_to_db(OTree)}.
+commit_to_db(#oracle_tree{otree = OTree, cache = Cache} = Tree) ->
+    Tree#oracle_tree{otree = aeu_mtrees:commit_to_db(OTree),
+                     cache = aeu_mtrees:commit_to_db(Cache)
+                    }.
 
 %%%===================================================================
 %%% Internal functions
@@ -292,18 +294,21 @@ find_oracle_query_ids(OracleId, {Key,_Val, Iter}, Type, Acc) ->
 %%%===================================================================
 %%% TTL Cache
 %%%===================================================================
-
-cache_new() ->
-    gb_sets:empty().
+-define(DUMMY_VAL, <<0>>).
 
 cache_push(Id, Expires, C) ->
-    gb_sets:add({Expires, Id}, C).
+    SExt = sext:encode({Expires, Id}),
+    aeu_mtrees:enter(SExt, ?DUMMY_VAL, C).
 
 cache_safe_peek(C) ->
-    case gb_sets:is_empty(C) of
-        true  -> none;
-        false -> gb_sets:smallest(C)
+    case aeu_mtrees:iterator_next(aeu_mtrees:iterator(C)) of
+        '$end_of_table' -> none;
+        {Next, ?DUMMY_VAL, _Iter} -> sext:decode(Next)
     end.
 
 cache_pop(C) ->
-    gb_sets:take_smallest(C).
+    case aeu_mtrees:iterator_next(aeu_mtrees:iterator(C)) of
+        '$end_of_table' -> none;
+        {Next,?DUMMY_VAL,_Iter} ->
+            {sext:decode(Next), aeu_mtrees:delete(Next, C)}
+    end.
