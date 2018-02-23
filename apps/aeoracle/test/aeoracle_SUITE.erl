@@ -188,9 +188,9 @@ query_response_negative(Cfg) ->
     ok.
 
 query_response(Cfg) ->
-    {OracleKey, ID, S1}  = query_oracle(Cfg),
-    Trees                = aeo_test_utils:trees(S1),
-    CurrHeight           = 5,
+    {OracleKey, ID, S1} = query_oracle(Cfg),
+    Trees               = aeo_test_utils:trees(S1),
+    CurrHeight          = 5,
 
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
@@ -211,58 +211,73 @@ query_response(Cfg) ->
 
 prune_oracle(Cfg) ->
     {OracleKey, S} = register_oracle(Cfg),
-    OTrees         = aeo_test_utils:oracles(S),
+    Trees          = aeo_test_utils:trees(S),
+    OTrees         = aec_trees:oracles(Trees),
     Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
     Expires        = aeo_oracles:expires(Oracle),
 
     %% Test that the oracle is pruned
-    Gone  = prune_from_until(0, Expires + 1, OTrees),
-    none  = aeo_state_tree:lookup_oracle(OracleKey, Gone),
+    Gone  = prune_from_until(0, Expires + 1, Trees),
+    none  = aeo_state_tree:lookup_oracle(OracleKey, aec_trees:oracles(Gone)),
 
     %% Test that the oracle remains
-    Left      = prune_from_until(0, Expires, OTrees),
-    Oracle    = aeo_state_tree:get_oracle(OracleKey, Left),
+    Left      = prune_from_until(0, Expires, Trees),
+    Oracle    = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left)),
     OracleKey = aeo_oracles:owner(Oracle),
     ok.
 
 prune_query(Cfg) ->
     {OracleKey, ID, S} = query_oracle(Cfg),
-    OTrees  = aeo_test_utils:oracles(S),
-    OIO     = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires = aeo_query:expires(OIO),
+    Trees              = aeo_test_utils:trees(S),
+    OTrees             = aec_trees:oracles(Trees),
+    OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
+    Expires            = aeo_query:expires(OIO),
+    SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(0, Expires + 1, OTrees),
-    none  = aeo_state_tree:lookup_query(OracleKey, ID, Gone),
+    Gone  = prune_from_until(0, Expires + 1, Trees),
+    none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
+
+    %% Check that the query fee was refunded
+    PreAccount  = aec_accounts_trees:get(SenderKey, aec_trees:accounts(Trees)),
+    PostAccount = aec_accounts_trees:get(SenderKey, aec_trees:accounts(Gone)),
+    true = aec_accounts:balance(PreAccount) < aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(0, Expires, OTrees),
-    OIO2  = aeo_state_tree:get_query(OracleKey, ID, Left),
+    Left  = prune_from_until(0, Expires, Trees),
+    OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.
 
 prune_response(Cfg) ->
     {OracleKey, ID, S} = query_response(Cfg),
-    OTrees  = aeo_test_utils:oracles(S),
-    OIO     = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires = aeo_query:expires(OIO),
+    Trees              = aeo_test_utils:trees(S),
+    OTrees             = aec_trees:oracles(Trees),
+    OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
+    Expires            = aeo_query:expires(OIO),
+    SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(0, Expires + 1, OTrees),
-    none  = aeo_state_tree:lookup_query(OracleKey, ID, Gone),
+    Gone  = prune_from_until(0, Expires + 1, Trees),
+    none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
+
+    %% Check that the query fee was not refunded
+    PreAccount  = aec_accounts_trees:get(SenderKey, aec_trees:accounts(Trees)),
+    PostAccount = aec_accounts_trees:get(SenderKey, aec_trees:accounts(Gone)),
+    true = aec_accounts:balance(PreAccount) == aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(0, Expires, OTrees),
-    OIO2  = aeo_state_tree:get_query(OracleKey, ID, Left),
+    Left  = prune_from_until(0, Expires, Trees),
+    OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.
 
-prune_from_until(From, Until, OTree) when is_integer(From),
+prune_from_until(From, Until, Trees) when is_integer(From),
                                           is_integer(Until),
                                           From < Until ->
-    do_prune_until(From, Until, OTree).
+    do_prune_until(From, Until, Trees).
 
-do_prune_until(N1, N1, OTree) ->
-    aeo_state_tree:prune(N1, OTree);
-do_prune_until(N1, N2, OTree) ->
-    do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, OTree)).
+do_prune_until(N1, N1, Trees) ->
+    aeo_state_tree:prune(N1, Trees);
+do_prune_until(N1, N2, Trees) ->
+    do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
