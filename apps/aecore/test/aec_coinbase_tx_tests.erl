@@ -22,9 +22,7 @@ coinbase_tx_existing_account_test_() ->
     {foreach,
      fun() ->
              PubKey = <<"my_pubkey">>,
-             Account0 = #account{pubkey = PubKey,
-                                 balance = 23,
-                                 height = 6},
+             Account0 = aec_accounts:new(PubKey, 23, 6),
              {PubKey, aec_test_utils:create_state_tree_with_account(Account0)}
      end,
      fun(_) ->
@@ -57,9 +55,9 @@ coinbase_tx_existing_account_test_() ->
 
                        AccountsTree = aec_trees:accounts(Trees),
                        {value, Account} = aec_accounts_trees:lookup(PubKey, AccountsTree),
-                       ?assertEqual(PubKey, Account#account.pubkey),
-                       ?assertEqual(23 + 10, Account#account.balance), %% block reward = 10
-                       ?assertEqual(9, Account#account.height)
+                       ?assertEqual(PubKey, aec_accounts:pubkey(Account)),
+                       ?assertEqual(23 + 10, aec_accounts:balance(Account)), %% block reward = 10
+                       ?assertEqual(9, aec_accounts:height(Account))
                end}
       end
      ]
@@ -82,10 +80,8 @@ create_coinbase_tx_no_account_test() ->
                        {Succ, Trees} = aec_coinbase_tx:check(CoinbaseTx, Trees0, 9),
                        ?assertEqual(ok, Succ),
                        AccountsTrees = aec_trees:accounts(Trees),
-                       ?assertEqual({value, #account{pubkey = PubKey,
-                                                     balance = 0,
-                                                     nonce = 0,
-                                                     height = 9}},
+                       Account = aec_accounts:set_nonce(aec_accounts:new(PubKey, 0, 0), 9),
+                       ?assertEqual({value, Account},
                                     aec_accounts_trees:lookup(PubKey, AccountsTrees))
                end}
       end,

@@ -61,7 +61,6 @@
 
 
 -include("common.hrl"). %% Just for types
--include("blocks.hrl"). %% Just for types
 
 %%%===================================================================
 %%% Accounts
@@ -181,10 +180,9 @@ get_transactions_between(Hash, Hash, Acc) ->
     {ok, Acc};
 get_transactions_between(Hash, Root, Acc) ->
     case get_block(Hash) of
-        {ok, #block{prev_hash = Parent,
-                    txs = BlockTransactions}} ->
-            NewAcc = [{T,Hash} || T <- BlockTransactions] ++ Acc,
-            get_transactions_between(Parent, Root, NewAcc);
+        {ok, Block} ->
+            NewAcc = [{T,Hash} || T <- aec_blocks:txs(Block)] ++ Acc,
+            get_transactions_between(aec_blocks:prev_hash(Block), Root, NewAcc);
         error -> error
     end.
 
@@ -193,7 +191,7 @@ get_transactions_between(Hash, Root, Acc) ->
 %%% Chain
 %%%===================================================================
 
--spec top_header() -> 'undefined' | #header{}.
+-spec top_header() -> 'undefined' | aec_headers:header().
 top_header() ->
     case top_header_hash() of
         undefined -> undefined;
@@ -204,21 +202,21 @@ top_header() ->
 top_header_hash() ->
     aec_db:get_top_header_hash().
 
--spec top_block() -> 'undefined' | #block{}.
+-spec top_block() -> 'undefined' | aec_blocks:block().
 top_block() ->
     case top_block_hash() of
         undefined -> undefined;
         Hash -> aec_db:get_block(Hash)
     end.
 
--spec top_block_with_state() -> 'undefined' | {#block{}, #trees{}}.
+-spec top_block_with_state() -> 'undefined' | {aec_blocks:block(), aec_trees:trees()}.
 top_block_with_state() ->
     case top_block_hash() of
         undefined -> undefined;
         Hash -> {aec_db:get_block(Hash), aec_db:get_block_state(Hash)}
     end.
 
--spec top_block_header() -> 'undefined' | #header{}.
+-spec top_block_header() -> 'undefined' | aec_headers:header().
 top_block_header() ->
     case top_block_hash() of
         undefined -> undefined;
@@ -233,14 +231,14 @@ top_block_hash() ->
 genesis_hash() ->
     aec_db:get_genesis_hash().
 
--spec genesis_block() -> 'undefined' | #block{}.
+-spec genesis_block() -> 'undefined' | aec_blocks:block().
 genesis_block() ->
     case aec_db:get_genesis_hash() of
         undefined -> undefined;
         Hash -> aec_db:get_block(Hash)
     end.
 
--spec genesis_header() -> 'undefined' | #header{}.
+-spec genesis_header() -> 'undefined' | aec_headers:header().
 genesis_header() ->
     case aec_db:get_genesis_hash() of
         undefined -> undefined;
@@ -257,7 +255,7 @@ find_common_ancestor(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
 hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
     aec_chain_state:hash_is_connected_to_genesis(Hash).
 
--spec get_n_headers_from_hash(binary(), pos_integer()) -> {'ok', [#header{}]} |
+-spec get_n_headers_from_hash(binary(), pos_integer()) -> {'ok', [aec_headers:header()]} |
                                                           'error'.
 %% @doc Get n headers backwards in chain. Returns headers old -> new
 get_n_headers_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
@@ -392,7 +390,7 @@ get_block_state(Hash) ->
 has_block(Hash) ->
     aec_db:has_block(Hash).
 
--spec get_block(binary()) -> {'ok', block()} | 'error'.
+-spec get_block(binary()) -> {'ok', aec_blocks:block()} | 'error'.
 get_block(Hash) when is_binary(Hash) ->
     case aec_db:find_block(Hash) of
         none -> error;
@@ -400,7 +398,7 @@ get_block(Hash) when is_binary(Hash) ->
     end.
 
 -spec get_block_by_height(non_neg_integer()) ->
-                                 {'ok', #block{}} |
+                                 {'ok', aec_blocks:block()} |
                                  {'error', 'chain_too_short' | 'block_not_found'}.
 get_block_by_height(Height) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_hash_at_height(Height) of
@@ -420,7 +418,7 @@ get_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 has_header(Hash) ->
     aec_db:has_header(Hash).
 
--spec get_header(binary()) -> {'ok', #header{}} | 'error'.
+-spec get_header(binary()) -> {'ok', aec_headers:header()} | 'error'.
 get_header(Hash) when is_binary(Hash) ->
     case aec_db:find_header(Hash) of
         none -> error;
@@ -428,7 +426,7 @@ get_header(Hash) when is_binary(Hash) ->
     end.
 
 -spec get_header_by_height(non_neg_integer()) ->
-                              {'ok', #header{}} | {'error', 'chain_too_short'}.
+                              {'ok', aec_headers:header()} | {'error', 'chain_too_short'}.
 get_header_by_height(Height) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_hash_at_height(Height) of
         error -> {error, chain_too_short};

@@ -8,7 +8,6 @@
 
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -122,7 +121,7 @@ origin(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
 %% Owner should exist, and have enough funds for the fee
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
                           fee = Fee}, Trees, Height) ->
     Checks =
@@ -141,7 +140,7 @@ accounts(#contract_create_tx{owner = OwnerPubKey}) ->
 signers(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
                             fee   = Fee} = CreateTx, Trees0, Height) ->

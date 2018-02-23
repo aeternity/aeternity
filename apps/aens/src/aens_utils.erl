@@ -8,7 +8,6 @@
 -module(aens_utils).
 
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 %% API
 -export([check_name_claimed_and_owned/3,
@@ -26,7 +25,7 @@
 %%% API
 %%%===================================================================
 
--spec check_name_claimed_and_owned(binary(), pubkey(), trees()) -> ok | {error, term()}.
+-spec check_name_claimed_and_owned(binary(), pubkey(), aec_trees:trees()) -> ok | {error, term()}.
 check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) ->
     NamesTree = aec_trees:ns(Trees),
     case aens_state_tree:lookup_name(NameHash, NamesTree) of

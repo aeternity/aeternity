@@ -14,7 +14,7 @@
 %% Returns {error | chain_too_short_to_recalculate_target} if initial height is a negative value
 %% or it points to genesis block.
 -spec determine_delta_header_height(
-        header()) -> {ok, non_neg_integer()}
+        aec_headers:header()) -> {ok, non_neg_integer()}
                          | {error, chain_too_short_to_recalculate_target}.
 determine_delta_header_height(Header) ->
     Height = aec_headers:height(Header),
@@ -72,7 +72,7 @@ determine_delta_header_height(Header) ->
 %%              ≈ DesiredRate * TotalTime * K / Sum(K div Target[i])
 %%              ≈ TotalTime * K div (DesiredTimeBetweenBlocks * Sum(K div Target[i]))
 %%
--spec recalculate(header(), nonempty_list(header())) -> non_neg_integer().
+-spec recalculate(aec_headers:header(), nonempty_list(aec_headers:header())) -> non_neg_integer().
 recalculate(Top, PrevHeaders0) ->
     %% Ensure the list of previous headers are in order - oldest first.
     PrevHeaders              = lists:keysort(#header.height, PrevHeaders0),
@@ -85,7 +85,7 @@ recalculate(Top, PrevHeaders0) ->
     NewTargetInt             = TotalTime * K div (DesiredTimeBetweenBlocks * SumKDivTargets),
     min(?HIGHEST_TARGET_SCI, aec_pow:integer_to_scientific(NewTargetInt)).
 
--spec verify(header(), nonempty_list(header())) ->
+-spec verify(aec_headers:header(), nonempty_list(aec_headers:header())) ->
           ok | {error, {wrong_target, non_neg_integer(), non_neg_integer()}}.
 verify(Top, PrevHeaders) ->
     HeaderTarget = aec_headers:target(Top),
@@ -99,7 +99,7 @@ verify(Top, PrevHeaders) ->
 
 %% Internals
 
--spec mining_time_between(header(), header()) -> integer().
+-spec mining_time_between(aec_headers:header(), aec_headers:header()) -> integer().
 mining_time_between(Header1, Header2) ->
     Time1 = aec_headers:time_in_msecs(Header1),
     Time2 = aec_headers:time_in_msecs(Header2),

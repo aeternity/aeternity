@@ -28,6 +28,15 @@
          apply_signed_txs_strict/3,
          ensure_account_at_height/3]).
 
+-record(trees, {
+          accounts  :: aec_accounts_trees:tree(),
+          oracles   :: aeo_state_tree:tree(),
+          ns        :: aens_state_tree:tree(),
+          contracts :: aect_state_tree:tree()}).
+
+-opaque trees() :: #trees{}.
+-export_type([trees/0]).
+
 %%%%=============================================================================
 %% API
 %%%=============================================================================

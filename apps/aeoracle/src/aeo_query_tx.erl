@@ -7,7 +7,6 @@
 -module(aeo_query_tx).
 
 -include("oracle_txs.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -99,7 +98,7 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
                        query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, Trees, Height) ->
@@ -124,7 +123,7 @@ accounts(#oracle_query_tx{sender = SenderPubKey,
 signers(#oracle_query_tx{sender = SenderPubKey}) ->
     [SenderPubKey].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
                          query_fee = QueryFee} = QueryTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

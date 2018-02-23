@@ -21,7 +21,6 @@
 -behavior(aetx).
 
 -include("common.hrl").
--include("trees.hrl").
 
 -record(spend_tx, {
           sender    = <<>> :: pubkey(),
@@ -62,7 +61,7 @@ origin(#spend_tx{sender = Sender}) ->
 recipient(#spend_tx{recipient = Recipient}) ->
     Recipient.
 
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{recipient = RecipientPubkey} = SpendTx, Trees0, Height) ->
     Checks = [fun check_tx_fee/3,
               fun check_sender_account/3],
@@ -85,7 +84,7 @@ accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
 -spec signers(tx()) -> [pubkey()].
 signers(#spend_tx{sender = SenderPubKey}) -> [SenderPubKey].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
                   amount = Amount,
@@ -148,7 +147,7 @@ version() ->
 
 %% Internals
 
--spec check_tx_fee(tx(), trees(), height()) ->
+-spec check_tx_fee(tx(), aec_trees:trees(), height()) ->
                           ok | {error, too_low_fee}.
 check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
     case Fee >= aec_governance:minimum_tx_fee() of
@@ -158,7 +157,7 @@ check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
             {error, too_low_fee}
     end.
 
--spec check_sender_account(tx(), trees(), height()) ->
+-spec check_sender_account(tx(), aec_trees:trees(), height()) ->
                                   ok | {error, term()}.
 check_sender_account(#spend_tx{sender = SenderPubkey, amount = Amount,
                                fee = Fee, nonce = TxNonce }, Trees, Height) ->

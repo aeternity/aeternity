@@ -151,7 +151,7 @@ setup() ->
                             215,21,130,172,94,58,168,240,32,124,242,147,171,
                             183,186,62,21,253,155,101,132,121,17,72,89,101,
                             145,206>>]},
-    Trees = #trees{accounts = [#account{pubkey = <<"pubkey">>}]},
+    Trees = aec_test_utils:create_state_tree_with_account(aec_accounts:new(<<"pubkey">>, 0, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
     meck:expect(aetx_sign, filter_invalid_signatures, fun(X) -> X end),
     meck:expect(aec_trees, apply_signed_txs, 3, {ok, [SignedTx], Trees}),

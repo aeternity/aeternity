@@ -40,7 +40,7 @@
 -type nstree() :: aeu_mtrees:mtree(mkey(), mvalue()).
 -type commitment() :: aens_commitments:commitment().
 -type name() :: aens_names:name().
--type cache() :: aeu_mtrees:tree(cache_key(), cache_value()).
+-type cache() :: aeu_mtrees:mtree(cache_key(), cache_value()).
 -type cache_key() :: binary(). %% Sext encoded
 -type cache_value() :: binary(). %% ?DUMMY_VAL
 -type block_height() :: non_neg_integer().

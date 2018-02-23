@@ -8,7 +8,6 @@
 
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -78,7 +77,7 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee,
                         gas = GasLimit, gas_price = GasPrice
@@ -102,7 +101,7 @@ accounts(Tx) ->
 signers(Tx) ->
     [caller(Tx)].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
                           gas_price = GasPrice
                          } = CallTx, Trees0, Height) ->
@@ -242,7 +241,7 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 
 %% Call the contract and update the call object with the return value and gas
 %% used.
--spec run_contract(tx(), aect_call:call(), height(), trees()) -> aect_call:call().
+-spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
 run_contract(#contract_call_tx
              { caller    = Caller
              , contract  = ContractPubKey
@@ -270,7 +269,7 @@ run_contract(#contract_call_tx
                       currentNumber     => Height,
                       currentTimestamp  => 0},
              pre => #{}},
-          #{trace => false}) 
+          #{trace => false})
     of
 	InitState ->
 	    try aevm_eeevm:eval(InitState) of

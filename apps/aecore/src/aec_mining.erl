@@ -15,29 +15,30 @@
 -endif.
 
 -include("common.hrl").
--include("blocks.hrl").
 -include("core_txs.hrl").
 
 
 %% API
 
--spec create_block_candidate(block(), trees(), list(header())) ->
-                                    {ok, block(), aec_pow:nonce()} |
+-spec create_block_candidate(aec_blocks:block(), aec_trees:trees(),
+                             list(aec_headers:header())) ->
+                                    {ok, aec_blocks:block(), aec_pow:nonce()} |
                                     {error, term()}.
 create_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
     create_block_candidate(get_txs_to_mine_in_pool(),
                            TopBlock, TopBlockTrees,
                            AdjHeaders).
 
--spec need_to_regenerate(block()) -> boolean().
-need_to_regenerate(#block{txs = [_Coinbase|Txs]}) ->
+-spec need_to_regenerate(aec_blocks:block()) -> boolean().
+need_to_regenerate(Block) ->
+    [_Coinbase | Txs] = aec_blocks:txs(Block),
     %% TODO: This should be an access function in tx pool
     MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
     CurrentTxsBlockCount = length(Txs) + 1,
     (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
         andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
 
--spec mine(block(), aec_pow:nonce()) -> {ok, block()} | {error, term()}.
+-spec mine(aec_blocks:block(), aec_pow:nonce()) -> {ok, aec_blocks:block()} | {error, term()}.
 mine(Block, Nonce) ->
     Target = aec_blocks:target(Block),
     BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
@@ -70,8 +71,8 @@ get_txs_to_mine_in_pool() ->
 
 -spec create_block_candidate(
         list(aetx_sign:signed_tx()),
-        block(), trees(),
-        list(header())) -> {ok, block(), aec_pow:nonce()} |
+        aec_blocks:block(), aec_trees:trees(),
+        list(aec_headers:header())) -> {ok, aec_blocks:block(), aec_pow:nonce()} |
                            {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
     case create_signed_coinbase_tx() of
@@ -116,8 +117,8 @@ create_coinbase_tx() ->
             Error
     end.
 
--spec adjust_target(block(), list(header())) ->
-            {ok, block()} | {error, term()}.
+-spec adjust_target(aec_blocks:block(), list(aec_headers:header())) ->
+            {ok, aec_blocks:block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
     DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
