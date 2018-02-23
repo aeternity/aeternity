@@ -1,0 +1,42 @@
+#!/bin/bash
+
+## Check rebar.lock is up-to-date.
+##
+## Copies `rebar.lock` file to temporary directory, then attempts to
+## re-generate it, checks it is the same, finally deletes the
+## temporary directory.
+##
+## The re-generation of the `rebar-lock` file is attempted by:
+## * First running `rebar3 unlock` - so to delete the old lock file;
+## * Then running `rebar3 upgrade` - so to generate a lock file
+##   attempting to minimize contamination by already-fetched
+##   dependencies (e.g. transitive ones) - if any.
+##
+## On failure neither the `rebar.lock` file nor the fetched
+## dependencies are restored.
+
+on_exit() {
+    rm -r "${TmpDir:?}"
+}
+
+set -e
+
+R="${1:?}" ## Absolute path of `rebar3` executable.
+D="${2:?}" ## Directory where `rebar.lock` file is present and from where `rebar3` command is meant to be executed.
+
+## Create temporary directory.  Ensure that on exit the temporary
+## directory is deleted.
+TmpDir="$(mktemp -d)"
+trap on_exit EXIT
+
+## Copy old `rebar.lock` file under version control to temporary
+## directory.
+LP="${D:?}"/rebar.lock ## Lock file path.
+OldLP="${TmpDir:?}"/rebar.lock.backup
+cp -p "${LP:?}" "${OldLP:?}"
+
+## Re-generate `rebar.lock` file.
+( cd "${D:?}" && "${R:?}" unlock && "${R:?}" upgrade; )
+
+## Check that re-generating `rebar.lock` led to same generated file.
+diff -u "${OldLP:?}" "${LP:?}"

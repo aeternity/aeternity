@@ -162,6 +162,7 @@ jobs:
             - _build/default/rebar3_20.2.2_plt
       - run: make dialyzer
       - run: make swagger-check
+      - run: make rebar-lock-check
 
   linux_package:
     <<: *container_config
