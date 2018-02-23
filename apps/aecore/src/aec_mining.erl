@@ -7,7 +7,7 @@
 %% API
 -export([create_block_candidate/3,
          need_to_regenerate/1,
-         mine/2,
+         mine/3,
          get_miner_account_balance/0]). %% For tests.
 
 -ifdef(TEST).
@@ -38,18 +38,9 @@ need_to_regenerate(Block) ->
     (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
         andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
 
--spec mine(aec_blocks:block(), aec_pow:nonce()) -> {ok, aec_blocks:block()} | {error, term()}.
-mine(Block, Nonce) ->
-    Target = aec_blocks:target(Block),
-    BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
-    case aec_pow_cuckoo:generate(BlockBin, Target, Nonce) of
-        {ok, {Nonce, Evd}} ->
-            {ok, aec_blocks:set_pow(Block, Nonce, Evd)};
-        {error, no_solution} = Error ->
-            Error;
-        {error, {runtime, _}} = Error ->
-            Error
-    end.
+-spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce()) ->  aec_pow:pow_result().
+mine(HeaderBin, Target, Nonce) ->
+    aec_pow_cuckoo:generate(HeaderBin, Target, Nonce).
 
 -spec get_miner_account_balance() -> {ok, non_neg_integer()} |
                                      {error, account_not_found}.

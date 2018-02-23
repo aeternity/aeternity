@@ -10,8 +10,6 @@
          time_in_secs/1,
          time_in_msecs/1,
          serialize_for_hash/1,
-         serialize_for_store/1,
-         deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          hash_header/1,
@@ -72,59 +70,6 @@ serialize_to_map(H = #header{}) ->
         <<"txs_hash">> => aec_base58c:encode(block_tx_hash, H#header.txs_hash)
       },
     {ok, Serialized}.
-
--define(STORAGE_VERSION, 1).
-serialize_for_store(H = #header{}) ->
-    Bin = term_to_binary({?STORAGE_VERSION,
-                          height(H),
-                          prev_hash(H),
-                          H#header.root_hash,
-                          H#header.txs_hash,
-                          H#header.target,
-                          H#header.nonce,
-                          H#header.time,
-                          H#header.version,
-                          H#header.pow_evidence
-                         }, [{compressed,9}]),
-    <<?STORAGE_TYPE_HEADER:8, Bin/binary>>.
-
-
-deserialize_from_store(<<?STORAGE_TYPE_HEADER, Bin/binary>>) ->
-    case binary_to_term(Bin) of
-        {?STORAGE_VERSION,
-         Height,
-         PrevHash,
-         RootHash,
-         TxsHash,
-         Target,
-         Nonce,
-         Time,
-         Version,
-         PowEvidence
-        } when Nonce >= 0,
-               Nonce =< ?MAX_NONCE ->
-            {ok,
-             #header{
-                height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                txs_hash = TxsHash,
-                target = Target,
-                nonce = Nonce,
-                time = Time,
-                version = Version,
-                pow_evidence = PowEvidence}
-             };
-        T when tuple_size(T) > 0 ->
-            case element(1, T) of
-                I when is_integer(I), I > ?STORAGE_VERSION ->
-                    exit({future_storage_version, I, Bin});
-                %% Add handler of old version here when upgrading version.
-                I when is_integer(I), I < ?STORAGE_VERSION ->
-                    exit({old_forgotten_storage_version, I, Bin})
-            end
-    end;
-deserialize_from_store(_) -> false.
 
 
 -spec deserialize_from_map(map()) -> {ok, header()}.

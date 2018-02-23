@@ -327,7 +327,7 @@ block_candidate_test_() ->
                   meck:passthrough([TopBlock, TopBlockState, AdjChain])
               end),
           meck:expect(aec_mining, mine,
-              fun(_, _) ->
+              fun(_, _, _) ->
                   timer:sleep(3000),
                   {error, no_solution}
               end),
