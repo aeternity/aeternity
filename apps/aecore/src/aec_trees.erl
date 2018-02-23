@@ -83,7 +83,7 @@ set_oracles(Trees, Oracles) ->
 
 -spec perform_pre_transformations(trees(), non_neg_integer()) -> trees().
 perform_pre_transformations(Trees, Height) ->
-    Trees1 = set_oracles(Trees, aeo_state_tree:prune(Height, oracles(Trees))),
+    Trees1 = aeo_state_tree:prune(Height, Trees),
     set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))).
 
 -spec contracts(trees()) -> aect_state_tree:tree().
