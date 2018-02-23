@@ -544,48 +544,66 @@ start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     create_block_candidate(State#state{block_candidate = undefined});
-start_mining(#state{} = State) ->
+start_mining(#state{block_candidate = Candidate} = State) ->
     epoch_mining:info("Starting mining"),
-    #candidate{block = Block,
-               nonce = Nonce} = State#state.block_candidate,
-    Info = [{top_block_hash, State#state.seen_top_block_hash}],
+    BlockBin = Candidate#candidate.bin,
+    Nonce    = Candidate#candidate.nonce,
+    Target   = aec_blocks:target(Candidate#candidate.block),
+    Info     = [{top_block_hash, State#state.seen_top_block_hash}],
     aec_events:publish(start_mining, Info),
-    Fun = fun() -> {aec_mining:mine(Block, Nonce),
-                    State#state.block_candidate}
+    Fun = fun() ->
+                  {aec_mining:mine(BlockBin, Target, Nonce)
+                  , BlockBin}
           end,
     dispatch_worker(mining, Fun, State).
 
-handle_mining_reply({{ok, Block},_Candidate}, State) ->
-    aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
-    State1 = State#state{block_candidate = undefined},
-    case handle_mined_block(Block, State1) of
-        {ok, State2} ->
-            State2;
-        {{error, Reason}, State2} ->
-            epoch_mining:error("Block insertion failed: ~p.", [Reason]),
-            start_mining(State2)
+handle_mining_reply(_Reply, #state{block_candidate = undefined} = State) ->
+    %% Something invalidated the block candidate already.
+    start_mining(State);
+handle_mining_reply({{ok, {Nonce, Evd}}, BlockBin}, #state{} = State) ->
+    Candidate = State#state.block_candidate,
+    %% Check that the solution is for this block
+    case BlockBin =:= Candidate#candidate.bin of
+        true ->
+            aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
+            State1 = State#state{block_candidate = undefined},
+            Block = aec_blocks:set_pow(Candidate#candidate.block, Nonce, Evd),
+            case handle_mined_block(Block, State1) of
+                {ok, State2} ->
+                    State2;
+                {{error, Reason}, State2} ->
+                    epoch_mining:error("Block insertion failed: ~p.", [Reason]),
+                    start_mining(State2)
+            end;
+        _Other ->
+            %% This mining effort was for an earlier block candidate.
+            epoch_mining:error("Found solution for old block", []),
+            start_mining(State)
     end;
-handle_mining_reply({{error, no_solution}, Candidate}, State) ->
+handle_mining_reply({{error, no_solution}, _}, State) ->
+    Candidate = State#state.block_candidate,
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:debug("Failed to mine block, no solution (nonce ~p); "
                        "retrying.", [Candidate#candidate.nonce]),
-    retry_mining(Candidate, State);
-handle_mining_reply({{error, {runtime, Reason}}, Candidate},State) ->
+    retry_mining(State);
+handle_mining_reply({{error, {runtime, Reason}}, _}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
+    Candidate = State#state.block_candidate,
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce (was ~p). "
                        "Error: ~p", [Candidate#candidate.nonce, Reason]),
-    retry_mining(Candidate, State).
+    retry_mining(State).
 
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(#candidate{top_hash = Hash1},
-             #state{seen_top_block_hash = Hash2} =State) when Hash1 =/= Hash2 ->
+retry_mining(#state{block_candidate = #candidate{top_hash = Hash1},
+                    seen_top_block_hash = Hash2} = State) when Hash1 =/= Hash2 ->
     %% Stale hash for candidate. Rebuild it.
     epoch_mining:info("Stale hash for candidate"),
     start_mining(State#state{block_candidate = undefined});
-retry_mining(Candidate, #state{fetch_new_txs_from_pool = true} = State) ->
+retry_mining(#state{block_candidate = Candidate,
+                    fetch_new_txs_from_pool = true} = State) ->
     Block = Candidate#candidate.block,
     %% We should first see if we can get a new candidate.
     case aec_mining:need_to_regenerate(Block) of
@@ -596,7 +614,7 @@ retry_mining(Candidate, #state{fetch_new_txs_from_pool = true} = State) ->
             epoch_mining:debug("New txs added for mining"),
             start_mining(State#state{block_candidate = undefined})
     end;
-retry_mining(Candidate, State) ->
+retry_mining(#state{block_candidate = Candidate} = State) ->
     retry_mining_with_new_nonce(Candidate, State).
 
 retry_mining_with_new_nonce(#candidate{nonce = N, max_nonce = N}, State) ->
@@ -616,7 +634,9 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%% Worker: Generate new block candidates
 
 new_candidate(Block, Nonce, MaxNonce, State) ->
+    BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
     #candidate{block = Block,
+               bin = BlockBin,
                nonce = Nonce,
                max_nonce = MaxNonce,
                top_hash = State#state.seen_top_block_hash

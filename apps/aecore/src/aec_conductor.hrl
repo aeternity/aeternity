@@ -16,6 +16,7 @@
 -type mining_state() :: 'running' | 'stopped'.
 
 -record(candidate, {block     :: aec_blocks:block(),
+                    bin       :: binary(), %% Serialized for hash
                     nonce     :: aec_pow:nonce(),
                     max_nonce :: aec_pow:nonce(),
                     top_hash  :: binary()
