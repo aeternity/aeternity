@@ -7,7 +7,6 @@
 -module(aeo_response_tx).
 
 -include("oracle_txs.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -77,7 +76,7 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           query_id = QId, fee = Fee}, Trees, Height) ->
     case fetch_query(OraclePubKey, QId, Trees) of
@@ -107,7 +106,7 @@ accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
 signers(#oracle_response_tx{oracle = OraclePubKey}) ->
     [OraclePubKey].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                             query_id = QId, response = Response,
                             fee = Fee}, Trees0, Height) ->

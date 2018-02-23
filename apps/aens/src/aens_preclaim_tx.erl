@@ -9,7 +9,6 @@
 
 -include("ns_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -68,7 +67,7 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 origin(#ns_preclaim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
                       fee = Fee, commitment = Commitment}, Trees, Height) ->
     Checks =
@@ -80,7 +79,7 @@ check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
                         nonce = Nonce} = PreclaimTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

@@ -25,7 +25,6 @@
 -export_type([tree/0]).
 
 -include("common.hrl").
--include("trees.hrl").
 
 -type key() :: pubkey().
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
@@ -42,24 +41,24 @@ empty() ->
 empty_with_backend() ->
     aeu_mtrees:empty_with_backend(aec_db_backends:accounts_backend()).
 
--spec get(pubkey(), tree()) -> account().
+-spec get(pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
-    #account{pubkey = Pubkey} = %% Hardcoded expectation.
-        aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)).
+    Account = aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)),
+    Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
+    Account.
 
--spec lookup(pubkey(), tree()) -> none | {value, account()}.
+-spec lookup(pubkey(), tree()) -> none | {value, aec_accounts:account()}.
 lookup(Pubkey, Tree) ->
     case aeu_mtrees:lookup(Pubkey, Tree) of
         none ->
             none;
         {value, SerializedAccount} ->
-            Account =
-                #account{pubkey = Pubkey} = %% Hardcoded expectation.
-                aec_accounts:deserialize(SerializedAccount),
+            Account = aec_accounts:deserialize(SerializedAccount),
+            Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
             {value, Account}
     end.
 
--spec enter(account(), tree()) -> tree().
+-spec enter(aec_accounts:account(), tree()) -> tree().
 enter(Account, Tree) ->
     aeu_mtrees:enter(key(Account), value(Account), Tree).
 
@@ -73,19 +72,18 @@ root_hash(Tree) ->
 
 -spec lookup_with_proof(pubkey(), tree()) ->
                                none |
-                               {value_and_proof, account(), aeu_mtrees:proof()}.
+                               {value_and_proof, aec_accounts:account(), aeu_mtrees:proof()}.
 lookup_with_proof(Pubkey, Tree) ->
     case aeu_mtrees:lookup_with_proof(Pubkey, Tree) of
         none ->
             none;
         {value_and_proof, SerializedAccount, Proof} ->
-            Account =
-                #account{pubkey = Pubkey} = %% Hardcoded expectation.
-                aec_accounts:deserialize(SerializedAccount),
+            Account = aec_accounts:deserialize(SerializedAccount),
+            Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
             {value_and_proof, Account, Proof}
     end.
 
--spec verify_proof(account(), aeu_mtrees:root_hash(), aeu_mtrees:proof()) ->
+-spec verify_proof(aec_accounts:account(), aeu_mtrees:root_hash(), aeu_mtrees:proof()) ->
                           {ok, verified} | {error, term()}.
 verify_proof(Account, RootHash, Proof) ->
     aeu_mtrees:verify_proof(key(Account), value(Account), RootHash, Proof).

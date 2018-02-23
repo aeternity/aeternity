@@ -20,10 +20,13 @@
          root_hash/1,
          validate/1]).
 
--export_type([header/0]).
-
 -include("common.hrl").
 -include("blocks.hrl").
+
+%% header() can't be opaque since it is currently used
+%% in a an involved way by aec_blocks - TODO: untangle
+-type header() :: #header{}.
+-export_type([header/0]).
 
 -define(POW_EV_SIZE, 42).
 

@@ -20,7 +20,6 @@
 -behavior(aetx).
 
 -include("common.hrl").
--include("trees.hrl").
 
 -record(coinbase_tx, {account   = <<>> :: pubkey()}).
 
@@ -44,14 +43,15 @@ nonce(#coinbase_tx{}) ->
 origin(#coinbase_tx{}) ->
     undefined.
 
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) ->
+                    {ok, aec_trees:trees()} | {error, term()}.
 check(#coinbase_tx{account = AccountPubkey}, Trees, Height) ->
     aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height).
 
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block
 %% is added to miner's account in aec_trees:apply_signed_txs/3.
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),

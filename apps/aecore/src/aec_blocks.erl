@@ -29,8 +29,6 @@
          validate/1,
          cointains_coinbase_tx/1]).
 
--export_type([block/0]).
-
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
@@ -39,6 +37,10 @@
 -include("blocks.hrl").
 -include("core_txs.hrl").
 
+%% block() can't be opaque since aec_block_genesis also needs to
+%% be able to handle the raw #block{} record - TODO: change this
+-type block() :: #block{}.
+-export_type([block/0]).
 
 -define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
 
@@ -87,12 +89,13 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(), list(aetx_sign:signed_tx()), trees()) -> block().
+-spec new(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) -> block().
 new(LastBlock, Txs, Trees0) ->
     {B, _} = new_with_state(LastBlock, Txs, Trees0),
     B.
 
--spec new_with_state(block(), list(aetx_sign:signed_tx()), trees()) -> {block(), trees()}.
+-spec new_with_state(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) ->
+                                {block(), aec_trees:trees()}.
 new_with_state(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
@@ -116,7 +119,7 @@ new_with_state(LastBlock, Txs, Trees0) ->
                version = ?CURRENT_BLOCK_VERSION},
     {NewBlock, Trees}.
 
--spec to_header(block()) -> header().
+-spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,
                  prev_hash = PrevHash,
                  txs_hash = TxsHash,

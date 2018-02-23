@@ -9,7 +9,6 @@
 
 -include("ns_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -70,7 +69,7 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
 origin(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
                    fee = Fee, name = Name, name_salt = NameSalt}, Trees, Height) ->
     case aens_utils:to_ascii(Name) of
@@ -93,7 +92,7 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             {error, Reason}
     end.
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                      name = PlainName, name_salt = NameSalt} = ClaimTx, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

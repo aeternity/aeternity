@@ -136,11 +136,11 @@ add_synced_block(Block) ->
 post_header(#header{} = Header) ->
     gen_server:call(?SERVER, {post_header, Header}).
 
--spec get_block_candidate() -> {'ok', block()} | {'error', atom()}.
+-spec get_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_block_candidate() ->
     gen_server:call(?SERVER, get_block_candidate).
 
--spec reinit_chain() -> header().
+-spec reinit_chain() -> aec_headers:header().
 reinit_chain() ->
     gen_server:call(?SERVER, reinit_chain).
 

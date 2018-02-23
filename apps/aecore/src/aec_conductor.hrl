@@ -15,12 +15,11 @@
 -type workers() :: orddict:orddict(pid(), worker_info()).
 -type mining_state() :: 'running' | 'stopped'.
 
--record(candidate, {block     :: block(),
+-record(candidate, {block     :: aec_blocks:block(),
                     nonce     :: aec_pow:nonce(),
                     max_nonce :: aec_pow:nonce(),
                     top_hash  :: binary()
                    }).
-
 
 -record(state, {block_candidate                   :: #candidate{} | 'undefined',
                 blocked_tags            = []      :: ordsets:ordset(atom()),

@@ -5,7 +5,6 @@
 -module(aetx).
 
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -export([ accounts/1
         , check/3
@@ -83,11 +82,11 @@
 -callback signers(Tx :: tx_instance()) ->
     [pubkey()].
 
--callback check(Tx :: tx_instance(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()} | {error, Reason :: term()}.
+-callback check(Tx :: tx_instance(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
--callback process(Tx :: tx_instance(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()}.
+-callback process(Tx :: tx_instance(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+    {ok, NewTrees :: aec_trees:trees()}.
 
 -callback serialize(Tx :: tx_instance()) ->
     term().
@@ -135,13 +134,13 @@ accounts(#aetx{ type = Type, tx = Tx }) ->
 signers(#aetx{ type = Type, tx = Tx }) ->
     Type:signers(Tx).
 
--spec check(Tx :: tx(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()} | {error, Reason :: term()}.
+-spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 check(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
     Type:check(Tx, Trees, Height).
 
--spec process(Tx :: tx(), Trees :: trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: trees()}.
+-spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+    {ok, NewTrees :: aec_trees:trees()}.
 process(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
     Type:process(Tx, Trees, Height).
 

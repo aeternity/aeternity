@@ -7,7 +7,6 @@
 -module(aeo_register_tx).
 
 -include("oracle_txs.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -behavior(aetx).
 
@@ -89,7 +88,7 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
 %% Account should exist, and have enough funds for the fee + the query_fee.
--spec check(tx(), trees(), height()) -> {ok, trees()} | {error, term()}.
+-spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
                           ttl = TTL, fee = Fee}, Trees, Height) ->
     Checks =
@@ -110,7 +109,7 @@ accounts(#oracle_register_tx{account = AccountPubKey}) ->
 signers(#oracle_register_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec process(tx(), trees(), height()) -> {ok, trees()}.
+-spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{account       = AccountPubKey,
                             nonce         = Nonce,
                             fee           = Fee} = RegisterTx, Trees0, Height) ->
