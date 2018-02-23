@@ -19,8 +19,6 @@
          new_with_state/3,
          from_header_and_txs/2,
          to_header/1,
-         serialize_for_store/1,
-         deserialize_from_store/1,
          serialize_to_map/1,
          deserialize_from_map/1,
          serialize_client_readable/2,
@@ -190,59 +188,6 @@ serialize_tx(Tx) ->
 deserialize_tx(#{<<"tx">> := Bin}) ->
     {transaction, Dec} = aec_base58c:decode(Bin),
     aetx_sign:deserialize_from_binary(Dec).
-
--define(STORAGE_VERSION, 1).
-serialize_for_store(B = #block{}) ->
-    Bin = term_to_binary({?STORAGE_VERSION,
-                          height(B),
-                          prev_hash(B),
-                          B#block.root_hash,
-                          B#block.txs_hash,
-                          B#block.target,
-                          B#block.nonce,
-                          B#block.time,
-                          B#block.version,
-                          B#block.pow_evidence,
-                          B#block.txs}, [{compressed,9}]),
-    <<?STORAGE_TYPE_BLOCK:8, Bin/binary>>.
-
-deserialize_from_store(<<?STORAGE_TYPE_BLOCK, Bin/binary>>) ->
-    case binary_to_term(Bin) of
-        {?STORAGE_VERSION,
-         Height,
-         PrevHash,
-         RootHash,
-         TxsHash,
-         Target,
-         Nonce,
-         Time,
-         Version,
-         PowEvidence,
-         Txs} when Nonce >= 0,
-                   Nonce =< ?MAX_NONCE ->
-            {ok,
-             #block{
-                height = Height,
-                prev_hash = PrevHash,
-                root_hash = RootHash,
-                txs_hash = TxsHash,
-                target = Target,
-                nonce = Nonce,
-                time = Time,
-                version = Version,
-                txs = Txs,
-                pow_evidence = PowEvidence}
-            };
-        T when tuple_size(T) > 0 ->
-            case element(1, T) of
-                I when is_integer(I), I > ?STORAGE_VERSION ->
-                    exit({future_storage_version, I, Bin});
-                %% Add handler of old version here when upgrading version.
-                I when is_integer(I), I < ?STORAGE_VERSION ->
-                    exit({old_forgotten_storage_version, I, Bin})
-            end
-    end;
-deserialize_from_store(_) -> false.
 
 deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
                                                    Nonce > ?MAX_NONCE ->
