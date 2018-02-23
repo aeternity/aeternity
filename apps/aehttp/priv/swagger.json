@@ -230,6 +230,49 @@
         }
       }
     },
+    "/tx/{tx_hash}" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Post a new transaction",
+        "operationId" : "GetTx",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_hash",
+          "in" : "path",
+          "description" : "Hash of the transaction to get",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "tx_encoding",
+          "in" : "query",
+          "description" : "Transaction encoding",
+          "required" : false,
+          "type" : "string",
+          "default" : "message_pack",
+          "enum" : [ "message_pack", "json" ]
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The transaction found",
+            "schema" : {
+              "$ref" : "#/definitions/SingleTxObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/contract/create" : {
       "post" : {
         "tags" : [ "external" ],

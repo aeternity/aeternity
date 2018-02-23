@@ -108,10 +108,22 @@ init([]) ->
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
 handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
-    [pool_db_put(Mempool, pool_db_key(Tx), Tx, Event) || Tx <- Txs],
+    lists:foreach(
+        fun(Tx) ->
+            pool_db_put(Mempool, pool_db_key(Tx), Tx, Event),
+            TxHash = aetx:hash(aetx_sign:tx(Tx)),
+            aec_db:write_tx(TxHash, mempool, Tx)
+        end,
+        Txs),
     {reply, ok, State};
 handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
-    [pool_db_delete(Mempool, pool_db_key(Tx)) || Tx <- Txs],
+    lists:foreach(
+        fun(Tx) ->
+            pool_db_delete(Mempool, pool_db_key(Tx)),
+            TxHash = aetx:hash(aetx_sign:tx(Tx)),
+            aec_db:delete_tx(TxHash, mempool)
+        end,
+        Txs),
     {reply, ok, State};
 handle_call({fork_update, AddedFromChain, RemovedFromChain}, _From,
             #state{db = Mempool} = State) ->

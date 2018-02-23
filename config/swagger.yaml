@@ -195,6 +195,40 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /tx/{tx_hash}:
+    get:
+      tags:
+        - external
+      operationId: GetTx
+      description: 'Post a new transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: path 
+          name: tx_hash
+          description: Hash of the transaction to get
+          required: true
+          type: string
+        - in: query
+          name: tx_encoding
+          description: 'Transaction encoding'
+          type: string
+          enum: [message_pack, json]
+          default: message_pack
+      responses:
+        '200':
+          description: The transaction found
+          schema:
+            $ref: '#/definitions/SingleTxObject'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Transaction not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
   /tx/contract/create:
     post:
       tags:

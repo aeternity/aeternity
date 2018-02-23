@@ -19,13 +19,18 @@ tx_pool_test_() ->
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
+             meck:new(aec_db, [passthrough]),
+             meck:expect(aec_db, write_tx, 3, ok),
+             meck:expect(aec_db, delete_tx, 2, ok),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
              ets:delete(?TAB),
-             ok = aec_tx_pool:stop()
+             ok = aec_tx_pool:stop(),
+             meck:unload(aec_db),
+             ok
      end,
      [{"No txs in mempool",
        fun() ->
