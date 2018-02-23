@@ -244,7 +244,7 @@ oracle_refund(Q, H, ATree) ->
                 none ->
                     lager:error("Account ~p could not be found for refunding oracle query ~p",
                                 [aeo_query:sender_address(Q), aeo_query:id(Q)]),
-                    ATree
+                    error({account_disappeared, aeo_query:sender_address(Q)})
             end;
         true ->
             ATree
