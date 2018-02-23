@@ -46,9 +46,13 @@
 
 -import(aeu_debug, [pp/1]).
 
+-type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
+-type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
+-type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+
 -type response(Type) :: {ok, Type} | {error, string()}.
 
--spec ping(http_uri:uri(), map()) -> {ok, map(), list(http_uri:uri())} | {error, any()}.
+-spec ping(http_uri_uri(), map()) -> {ok, map(), list(http_uri_uri())} | {error, any()}.
 ping(Uri, LocalPingObj) ->
     #{<<"share">> := Share,
       <<"genesis_hash">> := GHash,
@@ -104,7 +108,7 @@ ping(Uri, LocalPingObj) ->
             {error, protocol_violation}
     end.
 
--spec top(http_uri:uri()) -> response(aec_headers:header()).
+-spec top(http_uri_uri()) -> response(aec_headers:header()).
 top(Uri) ->
     Response = process_request(Uri, 'GetTop', []),
     case Response of
@@ -120,7 +124,7 @@ top(Uri) ->
     end.
 
 
--spec get_block(http_uri:uri(), binary()) -> response(aec_blocks:block()).
+-spec get_block(http_uri_uri(), binary()) -> response(aec_blocks:block()).
 get_block(Uri, Hash) ->
     EncHash = aec_base58c:encode(block_hash, Hash),
     Response = process_request(Uri,'GetBlockByHash', [{"hash", EncHash}]),
@@ -136,7 +140,7 @@ get_block(Uri, Hash) ->
             {error, unexpected_response}
     end.
 
--spec transactions(http_uri:uri()) -> response([aetx_sign:signed_tx()]).
+-spec transactions(http_uri_uri()) -> response([aetx_sign:signed_tx()]).
 transactions(Uri) ->
     Response = process_request(Uri, 'GetTxs', []),
     lager:debug("transactions Response = ~p", [pp(Response)]),
@@ -164,7 +168,7 @@ tx_response({ok, 200, []}) -> [];
 tx_response(_Other) -> bad_result.
 
 
--spec send_block(http_uri:uri(), aec_blocks:block()) -> response(ok).
+-spec send_block(http_uri_uri(), aec_blocks:block()) -> response(ok).
 send_block(Uri, Block) ->
     BlockSerialized = aec_blocks:serialize_to_map(Block),
     lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
@@ -180,7 +184,7 @@ send_block(Uri, Block) ->
             {error, unexpected_response}
     end.
 
--spec send_tx(http_uri:uri(), aetx_sign:signed_tx()) -> response(ok).
+-spec send_tx(http_uri_uri(), aetx_sign:signed_tx()) -> response(ok).
 send_tx(Uri, SignedTx) ->
     TxSerialized = aec_base58c:encode(
                      transaction, aetx_sign:serialize_to_binary(SignedTx)),
@@ -220,7 +224,7 @@ process_request(Uri, OperationId, Params) ->
     aeu_http_client:request(Uri, OperationId, Params).
 
 %% No trailing /, since BaseUri starts with /
--spec pp_uri({http_uri:scheme(), http_uri:host(), http_uri:port()}) -> binary().
+-spec pp_uri({http_uri:scheme(), http_uri_host(), http_uri_port()}) -> binary().
 pp_uri({Scheme, Host, Port}) when is_list(Host) ->
     pp_uri({Scheme, unicode:characters_to_binary(Host, utf8), Port});
 pp_uri({Scheme, Host, Port}) ->

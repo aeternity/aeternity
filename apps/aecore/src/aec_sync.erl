@@ -29,6 +29,8 @@
 %% Callback for jobs producer queue
 -export([sync_worker/0]).
 
+-type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
+
 -type ping_obj() :: map().
 
 -ifdef(TEST).
@@ -39,7 +41,7 @@
 %%% API
 %%%=============================================================================
 
--spec connect_peer(http_uri:uri()) -> ok.
+-spec connect_peer(http_uri_uri()) -> ok.
 connect_peer(Uri) ->
     gen_server:cast(?MODULE, {connect, Uri}).
 
@@ -77,7 +79,7 @@ local_ping_object() ->
 %% 3. Compare difficulty: if ours is greater, we don't initiate sync
 %%    - Otherwise, trigger a sync, return 'ok'.
 %% Note that the caller ensures the Uri to be a valid Uri
--spec compare_ping_objects(http_uri:uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
+-spec compare_ping_objects(http_uri_uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
 compare_ping_objects(RemoteUri, Local, Remote) ->
     lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, Local, Remote]),
     ok = aec_peers:add(RemoteUri, false),  %% in case aec_peers has restarted inbetween
