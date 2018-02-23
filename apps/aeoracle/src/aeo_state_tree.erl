@@ -81,13 +81,11 @@ empty_with_backend() ->
                 , cache  = Cache
                 }.
 
-
--spec prune(block_height(), tree()) -> tree().
-prune(Height, #oracle_tree{} = Tree) ->
-    %% TODO: We need to know what we pruned as well
+-spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
+prune(Height, Trees) ->
     %% Oracle information should be around for the expiry block
     %% since we prune before the block, use Height - 1 for pruning.
-    int_prune(Height - 1, Tree).
+    int_prune(Height - 1, Trees).
 
 -spec enter_query(query(), tree()) -> tree().
 enter_query(I, Tree) ->
@@ -195,31 +193,62 @@ add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
                     , cache  = Cache
                     }.
 
-int_prune(Height, #oracle_tree{ cache = Cache } = Tree) ->
-    int_prune(cache_safe_peek(Cache), Height, Tree).
+int_prune(Height, Trees) ->
+    OTree = #oracle_tree{ cache = Cache } = aec_trees:oracles(Trees),
+    ATree = aec_trees:accounts(Trees),
+    {OTree1, ATree1} = int_prune(cache_safe_peek(Cache), Height, OTree, ATree),
+    aec_trees:set_accounts(aec_trees:set_oracles(Trees, OTree1), ATree1).
 
-int_prune(none, _Height, Tree) ->
-    Tree;
-int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = Tree) ->
+int_prune(none, _Height, OTree, ATree) ->
+    {OTree, ATree};
+int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree) ->
     {{Height, Id}, Cache1} = cache_pop(Cache),
-    Tree1 = delete(Id, Tree#oracle_tree{ cache = Cache1 }),
-    int_prune(cache_safe_peek(Cache1), Height, Tree1);
-int_prune({Height1,_Id}, Height2, Tree) when Height2 < Height1 ->
-    Tree.
+    {OTree1, ATree1} = delete(Id, Height, OTree#oracle_tree{ cache = Cache1 }, ATree),
+    int_prune(cache_safe_peek(Cache1), Height, OTree1, ATree1);
+int_prune({Height1,_Id}, Height2, OTree, ATree) when Height2 < Height1 ->
+    {OTree, ATree}.
 
-delete({oracle, Id}, Tree) ->
-    TreeIds = find_oracle_query_tree_ids(Id, Tree),
-    OTree = int_delete([Id|TreeIds], Tree#oracle_tree.otree),
-    Tree#oracle_tree{ otree = OTree};
-delete({query, OracleId, Id}, Tree) ->
+delete({oracle, Id}, H, OTree, ATree) ->
+    TreeIds = find_oracle_query_tree_ids(Id, OTree),
+    {OTree1, ATree1} = int_delete(TreeIds, H, {OTree#oracle_tree.otree, ATree}),
+    OTree2 = aeu_mtrees:delete(Id, OTree1),
+    {OTree#oracle_tree{otree = OTree2}, ATree1};
+delete({query, OracleId, Id}, H, OTree, ATree) ->
     TreeId = <<OracleId/binary, Id/binary>>,
-    Otree = aeu_mtrees:delete(TreeId, Tree#oracle_tree.otree),
-    Tree#oracle_tree{otree = Otree}.
+    {OTree1, ATree1} = int_delete_query(TreeId, H, {OTree#oracle_tree.otree, ATree}),
+    {OTree#oracle_tree{otree = OTree1}, ATree1}.
 
-int_delete([Id|Left], OTree) ->
-    int_delete(Left, aeu_mtrees:delete(Id, OTree));
-int_delete([], OTree) ->
-    OTree.
+int_delete([Id|Left], H, Trees) ->
+    int_delete(Left, H, int_delete_query(Id, H, Trees));
+int_delete([], _H, Trees) ->
+    Trees.
+
+int_delete_query(Id, H, {OTree, ATree}) ->
+    ATree1 =
+        case aeu_mtrees:lookup(Id, OTree) of
+            {value, Val} ->
+                Q = aeo_query:deserialize(Val),
+                oracle_refund(Q, H, ATree);
+            none ->
+                ATree
+        end,
+    {aeu_mtrees:delete(Id, OTree), ATree1}.
+
+oracle_refund(Q, H, ATree) ->
+    case aeo_query:is_closed(Q) of
+        false ->
+            case aec_accounts_trees:lookup(aeo_query:sender_address(Q), ATree) of
+                {value, Account} ->
+                    {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Q), H),
+                    aec_accounts_trees:enter(Account1, ATree);
+                none ->
+                    lager:error("Account ~p could not be found for refunding oracle query ~p",
+                                [aeo_query:sender_address(Q), aeo_query:id(Q)]),
+                    ATree
+            end;
+        true ->
+            ATree
+    end.
 
 %%%===================================================================
 %%% Iterator for finding all oracle queries
