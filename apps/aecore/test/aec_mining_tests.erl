@@ -33,9 +33,9 @@ mine_block_test_() ->
                  meck:expect(aec_pow, pick_nonce, 0, 54),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
-                 BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(BlockBin, Target, Nonce),
+                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, Block#block.height),
@@ -50,10 +50,10 @@ mine_block_test_() ->
                  TopBlock = #block{target = ?LOWEST_TARGET_SCI},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
-                 BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  ?assertEqual({error, no_solution},
-                              ?TEST_MODULE:mine(BlockBin, Target, Nonce))
+                              ?TEST_MODULE:mine(HeaderBin, Target, Nonce))
          end}}
       ]}.
 
@@ -96,9 +96,9 @@ difficulty_recalculation_test_() ->
 
                  TopBlock = #block{},
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
-                 BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(BlockBin, Target, Nonce),
+                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(30, Block#block.height),
@@ -127,9 +127,9 @@ difficulty_recalculation_test_() ->
 
                  TopBlock = #block{},
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
-                 BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(BlockBin, Target, Nonce),
+                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(200, Block#block.height),

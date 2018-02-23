@@ -38,8 +38,9 @@ need_to_regenerate(Block) ->
     (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
         andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
 
-mine(BlockBin, Target, Nonce) ->
-    aec_pow_cuckoo:generate(BlockBin, Target, Nonce).
+-spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce()) ->  aec_pow:pow_result().
+mine(HeaderBin, Target, Nonce) ->
+    aec_pow_cuckoo:generate(HeaderBin, Target, Nonce).
 
 -spec get_miner_account_balance() -> {ok, non_neg_integer()} |
                                      {error, account_not_found}.

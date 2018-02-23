@@ -546,24 +546,24 @@ start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
     create_block_candidate(State#state{block_candidate = undefined});
 start_mining(#state{block_candidate = Candidate} = State) ->
     epoch_mining:info("Starting mining"),
-    BlockBin = Candidate#candidate.bin,
-    Nonce    = Candidate#candidate.nonce,
-    Target   = aec_blocks:target(Candidate#candidate.block),
-    Info     = [{top_block_hash, State#state.seen_top_block_hash}],
+    HeaderBin = Candidate#candidate.bin,
+    Nonce     = Candidate#candidate.nonce,
+    Target    = aec_blocks:target(Candidate#candidate.block),
+    Info      = [{top_block_hash, State#state.seen_top_block_hash}],
     aec_events:publish(start_mining, Info),
     Fun = fun() ->
-                  {aec_mining:mine(BlockBin, Target, Nonce)
-                  , BlockBin}
+                  {aec_mining:mine(HeaderBin, Target, Nonce)
+                  , HeaderBin}
           end,
     dispatch_worker(mining, Fun, State).
 
 handle_mining_reply(_Reply, #state{block_candidate = undefined} = State) ->
     %% Something invalidated the block candidate already.
     start_mining(State);
-handle_mining_reply({{ok, {Nonce, Evd}}, BlockBin}, #state{} = State) ->
+handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
     Candidate = State#state.block_candidate,
     %% Check that the solution is for this block
-    case BlockBin =:= Candidate#candidate.bin of
+    case HeaderBin =:= Candidate#candidate.bin of
         true ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
             State1 = State#state{block_candidate = undefined},
@@ -634,9 +634,9 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%% Worker: Generate new block candidates
 
 new_candidate(Block, Nonce, MaxNonce, State) ->
-    BlockBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
+    HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
     #candidate{block = Block,
-               bin = BlockBin,
+               bin = HeaderBin,
                nonce = Nonce,
                max_nonce = MaxNonce,
                top_hash = State#state.seen_top_block_hash
