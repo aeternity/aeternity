@@ -248,7 +248,7 @@ test_chain_genesis_state() ->
     ?assertEqual(GHH, aec_chain:genesis_hash()),
     ?assertEqual(GH, aec_chain:genesis_header()),
     ?assertEqual(GB, aec_chain:genesis_block()),
-    ?assertMatch({ok, #trees{}}, aec_chain:get_block_state(GHH)),
+
     {ok, GBS1} = aec_chain:get_block_state(GHH),
     ?assertEqual(aec_trees:hash(GBS1), aec_trees:hash(GBS)),
 
@@ -261,7 +261,8 @@ test_chain_genesis_state() ->
     ?assertEqual({ok, GenesisAccountsBalances},
                  aec_chain:all_accounts_balances_at_hash(GHH)),
     [{PK, Balance} | _] = GenesisAccountsBalances,
-    ?assertMatch({value, #account{pubkey = PK, balance = Balance}},
+    GenAccount = aec_accounts:new(PK, Balance, 0),
+    ?assertMatch({value, GenAccount},
                  aec_chain:get_account(PK)),
     ?assertEqual(none, aec_chain:get_account(<<"I am a fake public key">>)),
     ok.

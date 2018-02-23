@@ -19,8 +19,9 @@ check_test_() ->
     [{"Tx fee lower than minimum fee defined in governance",
       fun() ->
               {ok, SpendTx} = spend_tx(#spend_tx{fee = 0}), %% minimum governance fee = 1
+              StateTree = aec_test_utils:create_state_tree(),
               ?assertEqual({error, too_low_fee},
-                           aetx:check(SpendTx, #trees{}, 10))
+                           aetx:check(SpendTx, StateTree, 10))
       end},
      {"Sender account does not exist in state trees",
       fun() ->
@@ -41,7 +42,7 @@ check_test_() ->
               ?assertEqual(12, aetx:nonce(SpendTx)),
               ?assertEqual(10, aetx:fee(SpendTx)),
 
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 55, nonce = 5, height = 10},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5, height => 10}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, insufficient_funds},
                            aetx:check(SpendTx, StateTree, 20))
@@ -53,7 +54,7 @@ check_test_() ->
                                                  amount = 50,
                                                  nonce = 12}),
               AccountNonce = 15,
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = AccountNonce, height = 10},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce, height => 10}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, account_nonce_too_high},
                            aetx:check(SpendTx, StateTree, 20))
@@ -66,7 +67,7 @@ check_test_() ->
                                                  nonce = 12}),
               AccountHeight = 100,
               BlockHeight = 20,
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = AccountHeight},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => AccountHeight}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, sender_account_height_too_big},
                            aetx:check(SpendTx, StateTree, BlockHeight))
@@ -82,8 +83,8 @@ check_test_() ->
               SenderAccountHeight = 10,
               RecipientAccountHeight = 100,
               BlockHeight = 20,
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY, balance = 100, nonce = 10, height = SenderAccountHeight},
-              RecipientAccount = #account{pubkey = ?RECIPIENT_PUBKEY, height = RecipientAccountHeight},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => SenderAccountHeight}),
+              RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, height => RecipientAccountHeight}),
               StateTree = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
               ?assertEqual({error, recipient_account_height_too_big},
                            aetx:check(SpendTx, StateTree, BlockHeight))
@@ -92,14 +93,8 @@ check_test_() ->
 process_test_() ->
     [{"Check and process valid spend tx",
       fun() ->
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY,
-                                       balance = 100,
-                                       nonce = 10,
-                                       height = 10},
-              RecipientAccount = #account{pubkey = ?RECIPIENT_PUBKEY,
-                                          balance = 80,
-                                          nonce = 12,
-                                          height = 11},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => 10}),
+              RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12, height => 11}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
@@ -123,10 +118,7 @@ process_test_() ->
       end},
       {"Check spend to oneself",
        fun() ->
-              SenderAccount = #account{pubkey = ?SENDER_PUBKEY,
-                                       balance = 100,
-                                       nonce = 10,
-                                       height = 10},
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => 10}),
               StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount]),
 
               {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
@@ -147,3 +139,9 @@ process_test_() ->
 
 spend_tx(RawSpendTx) ->
     {ok, aetx:new(aec_spend_tx, RawSpendTx)}.
+
+new_account(Map) ->
+    aec_accounts:set_nonce(
+        aec_accounts:new(maps:get(pubkey, Map),
+                         maps:get(balance, Map, 0),
+                         maps:get(height, Map, 1)), maps:get(nonce, Map, 0)).

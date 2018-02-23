@@ -7,7 +7,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("apps/aecore/include/common.hrl").
--include_lib("apps/aecore/include/trees.hrl").
 
 -define(TEST_MODULE, aetx).
 
@@ -26,14 +25,10 @@ apply_signed_txs_test_() ->
        fun() ->
                %% Init state tree with 2 accounts
                {ok, MinerPubkey} = aec_keys:pubkey(),
-               MinerAccount = #account{pubkey = MinerPubkey,
-                                       balance = 100,
-                                       nonce = 10,
-                                       height = 10},
-               AnotherAccount = #account{pubkey = ?RECIPIENT_PUBKEY,
-                                         balance = 80,
-                                         nonce = 12,
-                                         height = 7},
+               MinerAccount =
+                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100, 10), 10),
+               AnotherAccount =
+                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80, 7), 12),
                StateTree0 = aec_test_utils:create_state_tree_with_accounts(
                               [MinerAccount, AnotherAccount]),
 

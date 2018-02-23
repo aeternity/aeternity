@@ -7,7 +7,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("common.hrl").
--include("trees.hrl").
 
 -define(TEST_MODULE, aec_trees).
 
@@ -21,9 +20,7 @@ ensure_account_at_height_test_() ->
               {ok, Trees} = ?TEST_MODULE:ensure_account_at_height(AccountPubkey, Trees0, BlockHeight),
 
               AccountsTree = aec_trees:accounts(Trees),
-              ExpectedAccount = #account{pubkey = AccountPubkey,
-                                         balance = 0,
-                                         height = BlockHeight},
+              ExpectedAccount = aec_accounts:new(AccountPubkey, 0, BlockHeight),
               ?assertEqual({value, ExpectedAccount}, aec_accounts_trees:lookup(AccountPubkey, AccountsTree))
       end},
      {"account_height_too_bit is returned on block height lower than current account height",
@@ -31,9 +28,7 @@ ensure_account_at_height_test_() ->
               AccountPubkey = <<"account_pubkey">>,
               AccountHeight = 25,
               BlockHeight = 23,
-              Account = #account{pubkey = AccountPubkey,
-                                 balance = 777,
-                                 height = AccountHeight},
+              Account = aec_accounts:new(AccountPubkey, 777, AccountHeight),
               Trees = aec_test_utils:create_state_tree_with_account(Account),
 
               ?assertEqual({error, account_height_too_big},
@@ -44,9 +39,7 @@ ensure_account_at_height_test_() ->
               AccountPubkey = <<"account_pubkey">>,
               AccountHeight = 21,
               BlockHeight = 23,
-              Account = #account{pubkey = AccountPubkey,
-                                 balance = 777,
-                                 height = AccountHeight},
+              Account = aec_accounts:new(AccountPubkey, 777, AccountHeight),
               Trees = aec_test_utils:create_state_tree_with_account(Account),
 
               ?assertEqual({ok, Trees},
