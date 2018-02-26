@@ -1,6 +1,6 @@
 #!/bin/bash -ex
 git clone git@github.com:aeternity/epoch-api-docs.git /tmp/epoch-api-docs
-cp apps/aehttp/priv/swagger-docs/swagger.json /tmp/epoch-api-docs/
+cp apps/aehttp/priv/swagger.json /tmp/epoch-api-docs/
 cd /tmp/epoch-api-docs/
 
 git add swagger.json;
