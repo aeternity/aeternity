@@ -10,7 +10,7 @@
 
 -export([get_ann/1, get_ann/2, get_ann/3]).
 
--export_type([ann_line/0, ann_origin/0, ann_format/0, ann/0]).
+-export_type([ann_line/0, ann_col/0, ann_origin/0, ann_format/0, ann/0]).
 -export_type([name/0, id/0, con/0, tvar/0, op/0]).
 -export_type([bin_op/0, un_op/0]).
 -export_type([decl/0, letbind/0, typedef/0]).
@@ -18,10 +18,11 @@
 -export_type([type/0, constant/0, expr/0, field/1, stmt/0, alt/0, lvalue/0, pat/0]).
 
 -type ann_line()   :: integer().
+-type ann_col()    :: integer().
 -type ann_origin() :: system | user.
 -type ann_format() :: '?:' | hex | infix | prefix.
 
--type ann() :: [{line, ann_line()} | {format, ann_format()} | {origin, ann_origin()}].
+-type ann() :: [{line, ann_line()} | {col, ann_col()} | {format, ann_format()} | {origin, ann_origin()}].
 
 -type name() :: string().
 -type id()   :: {id,   ann(), name()}.

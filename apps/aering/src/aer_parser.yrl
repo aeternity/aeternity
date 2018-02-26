@@ -25,11 +25,11 @@ Terminals
 
 %% Keywords
 contract type 'let' rec switch 'if' else mutable
-'and'
+'and' true false
 
 %% Identifiers and literals
 id qid con qcon tvar
-int hex bool hash string char
+int hex hash string char
 
 %% Symbols
 ';' ':' ',' '=' '(' ')' '{' '}' '|' '[' ']' '?'
@@ -182,7 +182,8 @@ Rootsymbol 'File'.
 
 'ExprAtom' -> int    : token('$1').
 'ExprAtom' -> hex    : set_ann(format, hex, setelement(1, '$1', int)).
-'ExprAtom' -> bool   : token('$1').
+'ExprAtom' -> true   : {bool, get_ann('$1'), true}.
+'ExprAtom' -> false  : {bool, get_ann('$1'), false}.
 'ExprAtom' -> id     : token('$1').
 'ExprAtom' -> con    : token('$1').
 'ExprAtom' -> qid    : token('$1').
@@ -257,8 +258,8 @@ Erlang code.
 
 string(S) ->
     case aer_scan:scan(S) of
-        {ok, Toks, _} -> parse(Toks);
-        Err           -> Err
+        {ok, Toks} -> parse(Toks);
+        Err        -> Err
     end.
 
 -spec ret_err(integer(), string()) -> no_return().
@@ -280,13 +281,14 @@ bad_expr_err(Reason, E) ->
 
 -type ann()      :: aer_syntax:ann().
 -type ann_line() :: aer_syntax:ann_line().
+-type ann_col()  :: aer_syntax:ann_col().
 
--spec line_ann(ann_line()) -> ann().
-line_ann(Line) -> [{line, Line}].
+-spec pos_ann(ann_line(), ann_col()) -> ann().
+pos_ann(Line, Col) -> [{line, Line}, {col, Col}].
 
 get_ann(Node) ->
     case element(2, Node) of
-        Line when is_integer(Line) -> line_ann(Line);
+        Pos={Line, Col} when is_integer(Line), is_integer(Col) -> pos_ann(Line, Col);
         Ann -> Ann
     end.
 
@@ -297,8 +299,8 @@ set_ann(Key, Val, Node) ->
     Ann = get_ann(Node),
     setelement(2, Node, lists:keystore(Key, 1, Ann, {Key, Val})).
 
-token({Tok, Line}) -> {Tok, line_ann(Line)};
-token({Tok, Line, Val}) -> {Tok, line_ann(Line), Val}.
+token({Tok, {Line, Col}}) -> {Tok, pos_ann(Line, Col)};
+token({Tok, {Line, Col}, Val}) -> {Tok, pos_ann(Line, Col), Val}.
 
 infix(L, Op, R) -> set_ann(format, infix, {app, get_ann(L), Op, [L, R]}).
 prefix(Op, E)   -> set_ann(format, prefix, {app, get_ann(Op), Op, [E]}).
@@ -365,7 +367,8 @@ parse_pattern(E = {con, _, _})    -> E;
 parse_pattern(E = {id, _, _})     -> E;
 parse_pattern(E = {unit, _})      -> E;
 parse_pattern(E = {int, _, _})    -> E;
-parse_pattern(E = {bool, _, _})   -> E;
+parse_pattern(E = {true, _})      -> E;
+parse_pattern(E = {false, _})     -> E;
 parse_pattern(E = {hash, _, _})   -> E;
 parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;

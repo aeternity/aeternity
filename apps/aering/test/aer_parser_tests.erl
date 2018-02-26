@@ -36,7 +36,7 @@ simple_contracts_test_() ->
                         Par({Op, A})           -> lists:concat(["(", Op, " ", Par(A), ")"])
                     end,
             Parse = fun(S) ->
-                    try parse_expr(S)
+                    try remove_line_numbers(parse_expr(S))
                     catch _:_ -> ?assertMatch(ok, {parse_fail, S}) end
                 end,
             CheckParens = fun(Expr) ->
@@ -96,6 +96,7 @@ round_trip(Text) ->
     ?assertMatch(NoSrcLoc, diff(NoSrcLoc, NoSrcLoc1)).
 
 remove_line_numbers({line, _L}) -> {line, 0};
+remove_line_numbers({col,  _C}) -> {col, 0};
 remove_line_numbers([H|T]) ->
   [remove_line_numbers(H) | remove_line_numbers(T)];
 remove_line_numbers(T) when is_tuple(T) ->
