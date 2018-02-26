@@ -173,7 +173,6 @@ jobs:
       - checkout
       - run:
           command: |
-            make make swagger-docs
             bash deployment/deploy_api_docs.sh
 
   osx_package:
