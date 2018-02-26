@@ -665,7 +665,7 @@ oracle_transactions(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
-    % contract_create_tx positive test
+    % oracle_register_tx positive test
     RegEncoded = #{account => MinerAddress,
                    query_format => <<"something">>,
                    response_format => <<"something else">>,
@@ -681,8 +681,8 @@ oracle_transactions(_Config) ->
                                fun get_oracle_register/1,
                                fun aeo_register_tx:new/1, MinerPubkey),
 
-    % in order to test a positive case for oracle_query_tx we first need an
-    % actual Oracle on the chain
+    % in order to test a positive case for oracle_extend_tx and
+    % oracle_query_tx we first need an actual Oracle on the chain
 
     {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
     sign_and_post_tx(RegisterTx),
@@ -692,6 +692,17 @@ oracle_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    % oracle_extend_tx positive test
+    ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+                   fee => 2,
+                   ttl => #{type => <<"delta">>, value => 500}},
+    ExtDecoded = maps:merge(ExtEncoded,
+                            #{oracle => MinerPubkey,
+                              ttl => {delta, 500}}),
+    unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
+                               fun get_oracle_extend/1,
+                               fun aeo_extend_tx:new/1, MinerPubkey),
 
     % oracle_query_tx positive test
     QueryEncoded = #{sender => MinerAddress,
@@ -2507,9 +2518,27 @@ ws_oracles(_Config) ->
     #{<<"result">> := <<"ok">>,
       <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
 
-    %% Finally mine a block and check that an event is received
+    %% Mine a block and check that an event is received
     ws_mine_block(ConnPid, ?NODE),
     {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
+
+    %% Check that we can extend the oracle TTL
+    ExtendData =
+        #{ type => 'OracleExtendTxObject',
+           oracle => OId,
+           ttl => #{ type => delta, value => 50 },
+           fee => 2 },
+    #{<<"result">> := <<"ok">>,
+      <<"tx_hash">> := ExtendTxHash,
+      <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, extend, ExtendData),
+
+    %% Subscribe for an event once the Tx goes onto the chain...
+    ws_subscribe(ConnPid, #{ type => tx, tx_hash => ExtendTxHash }),
+    ok = ?WS:register_test_for_event(ConnPid, chain, tx_chain),
+
+    %% Mine a block and check that the extend tx made it onto the chain
+    ws_mine_block(ConnPid, ?NODE),
+    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -2731,6 +2760,10 @@ get_oracle_register(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/oracle/register", Data).
 
+get_oracle_extend(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/oracle/extend", Data).
+
 get_oracle_query(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/oracle/query", Data).
@@ -2738,7 +2771,6 @@ get_oracle_query(Data) ->
 get_oracle_response(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/oracle/response", Data).
-
 
 get_name_preclaim(Data) ->
     Host = external_address(),
