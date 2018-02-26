@@ -73,6 +73,41 @@
         }
       }
     },
+    "/header-by-hash" : {
+      "get" : {
+        "tags" : [ "external" ],
+        "description" : "Get a header by hash",
+        "operationId" : "GetHeaderByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "query",
+          "description" : "Hash of the block header to fetch",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The header found",
+            "schema" : {
+              "$ref" : "#/definitions/Header"
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Header not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/block-by-height" : {
       "get" : {
         "tags" : [ "external" ],
@@ -2085,6 +2120,17 @@
         "pow" : {
           "$ref" : "#/definitions/Pow"
         }
+      },
+      "example" : {
+        "txs_hash" : null,
+        "state_hash" : null,
+        "prev_hash" : { },
+        "pow" : "",
+        "time" : 5,
+        "nonce" : 1,
+        "version" : 5,
+        "height" : 0,
+        "target" : 6
       }
     },
     "Block" : {
