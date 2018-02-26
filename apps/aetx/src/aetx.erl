@@ -35,6 +35,7 @@
 -type tx_type() :: aec_spend_tx
                  | aec_coinbase_tx
                  | aeo_register_tx
+                 | aeo_extend_tx
                  | aeo_query_tx
                  | aeo_response_tx
                  | aens_preclaim_tx
@@ -48,6 +49,7 @@
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
                      | aeo_register_tx:tx()
+                     | aeo_extend_tx:tx()
                      | aeo_query_tx:tx()
                      | aeo_response_tx:tx()
                      | aens_preclaim_tx:tx()
@@ -180,6 +182,7 @@ tx_types() ->
     [ aec_spend_tx
     , aec_coinbase_tx
     , aeo_register_tx
+    , aeo_extend_tx
     , aeo_query_tx
     , aeo_response_tx
     , aens_preclaim_tx

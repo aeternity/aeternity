@@ -87,7 +87,7 @@ nonce(#oracle_register_tx{nonce = Nonce}) ->
 origin(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
-%% Account should exist, and have enough funds for the fee + the query_fee.
+%% Account should exist, and have enough funds for the fee.
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
                           ttl = TTL, fee = Fee}, Trees, Height) ->

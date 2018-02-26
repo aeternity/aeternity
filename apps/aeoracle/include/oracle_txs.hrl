@@ -10,6 +10,13 @@
           fee                                         :: integer()
           }).
 
+-record(oracle_extend_tx, {
+          oracle :: pubkey(),
+          nonce  :: integer(),
+          ttl    :: aeo_oracles:relative_ttl(),
+          fee    :: integer()
+          }).
+
 -record(oracle_query_tx, {
           sender       :: pubkey(),
           nonce        :: integer(),

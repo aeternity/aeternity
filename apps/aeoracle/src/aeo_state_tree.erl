@@ -16,6 +16,7 @@
         , get_oracles/3
         , empty/0
         , empty_with_backend/0
+        , enter_oracle/2
         , enter_query/2
         , insert_query/2
         , insert_oracle/2
@@ -110,17 +111,13 @@ lookup_query(OracleId, Id, Tree) ->
         none -> none
     end.
 
+-spec enter_oracle(oracle(), tree()) -> tree().
+enter_oracle(O, Tree) ->
+    add_oracle(enter, O, Tree).
+
 -spec insert_oracle(oracle(), tree()) -> tree().
 insert_oracle(O, Tree) ->
-    Id = aeo_oracles:id(O),
-    Serialized = aeo_oracles:serialize(O),
-    Expires = aeo_oracles:expires(O),
-
-    OTree  = aeu_mtrees:insert(Id, Serialized, Tree#oracle_tree.otree),
-    Cache  = cache_push({oracle, Id}, Expires, Tree#oracle_tree.cache),
-    Tree#oracle_tree{ otree  = OTree
-                    , cache  = Cache
-                    }.
+    add_oracle(insert, O, Tree).
 
 -spec get_oracle(binary(), tree()) -> oracle().
 get_oracle(Id, Tree) ->
@@ -177,6 +174,19 @@ commit_to_db(#oracle_tree{otree = OTree, cache = Cache} = Tree) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
+    Id = aeo_oracles:id(O),
+    Serialized = aeo_oracles:serialize(O),
+    Expires = aeo_oracles:expires(O),
+
+    OTree1 = case How of
+                enter  -> aeu_mtrees:enter(Id, Serialized, OTree);
+                insert -> aeu_mtrees:insert(Id, Serialized, OTree)
+            end,
+    Cache  = cache_push({oracle, Id}, Expires, Tree#oracle_tree.cache),
+    Tree#oracle_tree{ otree  = OTree1
+                    , cache  = Cache
+                    }.
 
 add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
     OracleId    = aeo_query:oracle_address(I),
@@ -209,14 +219,27 @@ int_prune({Height1,_Id}, Height2, OTree, ATree) when Height2 < Height1 ->
     {OTree, ATree}.
 
 delete({oracle, Id}, H, OTree, ATree) ->
-    TreeIds = find_oracle_query_tree_ids(Id, OTree),
-    {OTree1, ATree1} = int_delete(TreeIds, H, {OTree#oracle_tree.otree, ATree}),
-    OTree2 = aeu_mtrees:delete(Id, OTree1),
-    {OTree#oracle_tree{otree = OTree2}, ATree1};
+    {OTree1, ATree1} =
+        %% If oracle was extended the cache might be stale
+        case oracle_expired(Id, H, OTree) of
+            true ->
+                TreeIds = find_oracle_query_tree_ids(Id, OTree),
+                OTree0 = aeu_mtrees:delete(Id, OTree#oracle_tree.otree),
+                int_delete(TreeIds, H, {OTree0, ATree});
+            false ->
+                {OTree#oracle_tree.otree, ATree}
+        end,
+    {OTree#oracle_tree{otree = OTree1}, ATree1};
 delete({query, OracleId, Id}, H, OTree, ATree) ->
     TreeId = <<OracleId/binary, Id/binary>>,
     {OTree1, ATree1} = int_delete_query(TreeId, H, {OTree#oracle_tree.otree, ATree}),
     {OTree#oracle_tree{otree = OTree1}, ATree1}.
+
+oracle_expired(Id, H, OTree) ->
+    case lookup_oracle(Id, OTree) of
+        {value, O} -> H >= aeo_oracles:expires(O);
+        none       -> false
+    end.
 
 int_delete([Id|Left], H, Trees) ->
     int_delete(Left, H, int_delete_query(Id, H, Trees));
