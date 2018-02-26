@@ -10,7 +10,6 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_blocks).
 

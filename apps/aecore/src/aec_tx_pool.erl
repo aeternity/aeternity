@@ -12,7 +12,6 @@
 -behaviour(gen_server).
 
 -include("common.hrl").
--include("core_txs.hrl").
 
 -define(MEMPOOL, mempool).
 -define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1'}, '_'}).

@@ -15,8 +15,6 @@
 -endif.
 
 -include("common.hrl").
--include("core_txs.hrl").
-
 
 %% API
 

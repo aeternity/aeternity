@@ -33,7 +33,6 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 %% block() can't be opaque since aec_block_genesis also needs to
 %% be able to handle the raw #block{} record - TODO: change this

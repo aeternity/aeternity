@@ -12,7 +12,6 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_mining).
 -define(LOWEST_TARGET_SCI, 16#01010000).

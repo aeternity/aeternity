@@ -10,15 +10,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 -import(aec_test_utils,
         [ extend_block_chain_with_state/3
         , blocks_only_chain/1
         , genesis_block/0
         , genesis_block_with_state/0
-        , aec_keys_setup/0
-        , aec_keys_cleanup/1
         ]).
 
 -import(aec_chain_state,
