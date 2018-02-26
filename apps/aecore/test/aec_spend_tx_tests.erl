@@ -142,7 +142,7 @@ spend_tx(Data) ->
                     amount => 0,
                     fee => 0,
                     nonce => 0},
-    {ok, aec_spend_tx:new(maps:merge(DefaultData, Data))}.
+    aec_spend_tx:new(maps:merge(DefaultData, Data)).
 
 new_account(Map) ->
     aec_accounts:set_nonce(

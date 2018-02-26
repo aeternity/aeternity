@@ -177,9 +177,10 @@ no_tx_pool_size_test() ->
     ?assertEqual(undefined, aec_tx_pool:size()).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
-    Tx = aec_spend_tx:new(#{sender => acct(Sender),
-                            recipient => acct(Recipient),
-                            nonce => Nonce, fee => Fee}),
+    {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
+                                  recipient => acct(Recipient),
+                                  amount => 0,
+                                  nonce => Nonce, fee => Fee}),
     {ok, STx} = sign(Sender, Tx),
     STx.
 

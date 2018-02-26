@@ -33,7 +33,8 @@ apply_signed_txs_test_() ->
                               [MinerAccount, AnotherAccount]),
 
                %% Create 3 signed transactions (2 valid, 1 invalid)
-               {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => MinerPubkey}),
+               {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => MinerPubkey,
+                                                        block_height => 30}),
                {ok, SpendTx} = aec_spend_tx:new(
                                  #{sender => MinerPubkey,
                                    recipient => ?RECIPIENT_PUBKEY,

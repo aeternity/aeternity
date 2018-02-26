@@ -347,9 +347,10 @@ test_get_block_candidate() ->
     {ok, MyAccount} = aec_keys:pubkey(),
     lists:foreach(
         fun(_) ->
-            Tx = aec_spend_tx:new(#{sender => MyAccount,
-                                    recipient => MyAccount,
-                                    nonce => 0, fee => 0}),
+            {ok, Tx} = aec_spend_tx:new(#{sender => MyAccount,
+                                          recipient => MyAccount,
+                                          amount => 0,
+                                          nonce => 0, fee => 0}),
             {ok, STx} = aec_keys:sign(Tx),
             ok = aec_tx_pool:push(STx, tx_received)
         end,

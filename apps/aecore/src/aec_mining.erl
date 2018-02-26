@@ -64,7 +64,8 @@ get_txs_to_mine_in_pool() ->
         list(aec_headers:header())) -> {ok, aec_blocks:block(), aec_pow:nonce()} |
                            {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
-    case create_signed_coinbase_tx() of
+    Height = aec_blocks:height(TopBlock) + 1,
+    case create_signed_coinbase_tx(Height) of
         {error, _} = Error ->
             Error;
         {ok, SignedCoinbaseTx} ->
@@ -83,9 +84,9 @@ create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
             end
     end.
 
--spec create_signed_coinbase_tx() -> {ok, aetx_sign:signed_tx()} | {error, term()}.
-create_signed_coinbase_tx() ->
-    case create_coinbase_tx() of
+-spec create_signed_coinbase_tx(integer()) -> {ok, aetx_sign:signed_tx()} | {error, term()}.
+create_signed_coinbase_tx(Height) ->
+    case create_coinbase_tx(Height) of
         {ok, CoinbaseTx} ->
             case aec_keys:sign(CoinbaseTx) of
                 {ok, SignedCoinbaseTx} ->
@@ -97,11 +98,11 @@ create_signed_coinbase_tx() ->
             Error
     end.
 
--spec create_coinbase_tx() -> {ok, aetx:tx()} | {error, term()}.
-create_coinbase_tx() ->
+-spec create_coinbase_tx(integer()) -> {ok, aetx:tx()} | {error, term()}.
+create_coinbase_tx(Height) ->
     case aec_keys:pubkey() of
         {ok, Pubkey} ->
-            aec_coinbase_tx:new(#{account => Pubkey});
+            aec_coinbase_tx:new(#{account => Pubkey, block_height => Height});
         {error, _} = Error ->
             Error
     end.
