@@ -21,9 +21,9 @@ references:
       key: *build_cache_key
 
   packages_workspace: &packages_workspace /tmp/packages
-  build_package: &build_package
+  set_package_path: &set_package_path
     run:
-      name: Build Package Tarball
+      name: Set package path
       environment:
         PACKAGES_DIR: *packages_workspace
       command: |
@@ -32,9 +32,18 @@ references:
         elif [ "$(uname -s)" == "Linux" ]; then
             PKG_SUFFIX="ubuntu"
         fi
+        export PACKAGE_TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+        echo "export PACKAGE_TARBALL=${PACKAGE_TARBALL}" >> $BASH_ENV
+
+  build_package: &build_package
+    run:
+      name: Build Package Tarball
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
         make prod-package
         mkdir ${PACKAGES_DIR:?}
-        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+        mv _build/prod/rel/epoch/epoch-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
 
   package_tests_workspace: &package_tests_workspace /tmp/package_tests
   test_package: &test_package
@@ -44,15 +53,10 @@ references:
         PACKAGES_DIR: *packages_workspace
         PACKAGE_TESTS_DIR: *package_tests_workspace
       command: |
-        if [ "$(uname -s)" == "Darwin" ]; then
-            PKG_SUFFIX="osx-$(sw_vers -productVersion)"
-        elif [ "$(uname -s)" == "Linux" ]; then
-            PKG_SUFFIX="ubuntu"
-        fi
         epmd -daemon
         make python-env
         mkdir ${PACKAGE_TESTS_DIR:?}
-        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
+        make python-release-test WORKDIR=${PACKAGE_TESTS_DIR:?} TARBALL=${PACKAGE_TARBALL:?}
 
   store_package_artifacts: &store_package_artifacts
     store_artifacts:
@@ -77,6 +81,16 @@ references:
           ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
             --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?}" \
             deploy.yml
+
+  upload_github_release_asset: &upload_github_release_asset
+    run:
+      name: Upload GitHub Release Asset
+      environment:
+        PACKAGES_DIR: *packages_workspace
+      command: |
+        ./deployment/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
+          owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
+          tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
 jobs:
   build:
@@ -153,7 +167,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
-      - run: id
+      - *set_package_path
       - *build_package
       - *test_package
       - store_artifacts:
@@ -167,6 +181,7 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+
   deploy_api_docs:
     <<: *container_config
     steps:
@@ -187,6 +202,7 @@ jobs:
             brew update
             brew install libsodium
             brew install file://`pwd`/deployment/homebrew/erlang.rb
+      - *set_package_path
       - *build_package
       - *test_package
       - store_artifacts:
@@ -196,6 +212,10 @@ jobs:
       - store_artifacts:
           path: /tmp/package_tests/node3/log
       - *store_package_artifacts
+      - persist_to_workspace:
+          root: *packages_workspace
+          paths:
+            - "*.tar.gz"
 
   uat_tests:
     <<: *container_config
@@ -247,6 +267,22 @@ jobs:
     environment:
       - DEPLOY_ENV: uat
     steps: *deploy_steps
+
+  github_release_osx:
+    <<: *container_config
+    steps:
+      - checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - *upload_github_release_asset
+
+  github_release_linux:
+    <<: *container_config
+    steps:
+      - checkout
+      - attach_workspace:
+          at: *packages_workspace
+      - *upload_github_release_asset
 
 # CircleCI skips a job for a tag by default.
 # A job must have a filters tags section to run as a part of a tag push
@@ -323,15 +359,15 @@ workflows:
             tags:
               only: /^v.*$/
 
-      # - deploy_integration:
-      #     requires:
-      #       - test
-      #       - eunit
-      #       - static_analysis
-      #       - linux_package
-      #     filters:
-      #       branches:
-      #         only: master
+      - deploy_integration:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+            - linux_package
+          filters:
+            branches:
+              only: master
 
       - deploy_dev1:
           requires:
@@ -347,23 +383,44 @@ workflows:
             branches:
               only: env/dev2
 
-      # - hodl:
-      #     type: approval
-      #     filters:
-      #       branches:
-      #         ignore: /.*/
-      #       tags:
-      #         only: /^v.*$/
+      - hodl:
+          type: approval
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
 
-      # - deploy_uat:
-      #     requires:
-      #       - linux_package
-      #       - hodl
-      #     filters:
-      #       branches:
-      #         ignore: /.*/
-      #       tags:
-      #         only: /^v.*$/
+      - deploy_uat:
+          requires:
+            - linux_package
+            - hodl
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - github_release_linux:
+          requires:
+            - linux_package
+            - hodl
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - github_release_osx:
+          requires:
+            - osx_package
+            - hodl
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
   nightly:
     triggers:
       - schedule:
