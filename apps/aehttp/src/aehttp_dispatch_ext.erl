@@ -81,6 +81,25 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
             end
     end;
 
+handle_request('GetHeaderByHash', Req, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            case aec_chain:get_header(Hash) of
+                {ok, Header} ->
+                    %% We serialize to a map because the client expects a
+                    %% decoded JSON object as response.
+                    lager:debug("Header = ~p", [pp(Header)]),
+                    {ok, HH} = aec_headers:serialize_to_map(Header),
+                    Resp = cleanup_genesis(HH),
+                    lager:debug("Resp = ~p", [pp(Resp)]),
+                    {200, [], Resp};
+                error ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end
+    end;
+
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
