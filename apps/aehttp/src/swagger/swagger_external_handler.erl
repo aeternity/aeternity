@@ -240,6 +240,14 @@ allowed_methods(
 allowed_methods(
     Req,
     State = #state{
+        operation_id = 'PostOracleExtend'
+    }
+) ->
+    {[<<"POST">>], Req, State};
+
+allowed_methods(
+    Req,
+    State = #state{
         operation_id = 'PostOracleQuery'
     }
 ) ->
@@ -557,6 +565,16 @@ valid_content_headers(
     Req0,
     State = #state{
         operation_id = 'PostNameUpdate'
+    }
+) ->
+    Headers = [],
+    {Result, Req} = validate_headers(Headers, Req0),
+    {Result, Req, State};
+
+valid_content_headers(
+    Req0,
+    State = #state{
+        operation_id = 'PostOracleExtend'
     }
 ) ->
     Headers = [],

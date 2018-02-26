@@ -126,6 +126,11 @@ request_params('PostNameUpdate') ->
         'NameUpdateTx'
     ];
 
+request_params('PostOracleExtend') ->
+    [
+        'OracleExtendTx'
+    ];
+
 request_params('PostOracleQuery') ->
     [
         'OracleQueryTx'
@@ -314,6 +319,11 @@ request_params('PostNameTransferTx') ->
 request_params('PostNameUpdateTx') ->
     [
         'NameUpdateTx'
+    ];
+
+request_params('PostOracleExtendTx') ->
+    [
+        'OracleExtendTx'
     ];
 
 request_params('PostOracleQueryTx') ->
@@ -529,6 +539,15 @@ request_param_info('PostNameTransfer', 'NameTransferTx') ->
     };
 
 request_param_info('PostNameUpdate', 'NameUpdateTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleExtend', 'OracleExtendTx') ->
     #{
         source =>   body,
         rules => [
@@ -1109,6 +1128,15 @@ request_param_info('PostNameUpdateTx', 'NameUpdateTx') ->
         ]
     };
 
+request_param_info('PostOracleExtendTx', 'OracleExtendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
 request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
     #{
         source =>   body,
@@ -1325,6 +1353,13 @@ validate_response('PostNameUpdate', 400, Body, ValidatorState) ->
 validate_response('PostNameUpdate', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('PostOracleExtend', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostOracleExtend', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostOracleExtend', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('PostOracleQuery', 200, Body, ValidatorState) ->
     validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
 validate_response('PostOracleQuery', 400, Body, ValidatorState) ->
@@ -1500,6 +1535,11 @@ validate_response('PostNameUpdateTx', 200, Body, ValidatorState) ->
 validate_response('PostNameUpdateTx', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostNameUpdateTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleExtendTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleRegisterResponse', 'OracleRegisterResponse', Body, ValidatorState);
+validate_response('PostOracleExtendTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->

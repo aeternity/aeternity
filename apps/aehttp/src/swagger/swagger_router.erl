@@ -170,6 +170,11 @@ get_operations() ->
             method => <<"POST">>,
             handler => 'swagger_external_handler'
         },
+        'PostOracleExtend' => #{
+            path => "/v2/tx/oracle/extend",
+            method => <<"POST">>,
+            handler => 'swagger_external_handler'
+        },
         'PostOracleQuery' => #{
             path => "/v2/tx/oracle/query",
             method => <<"POST">>,
@@ -327,6 +332,11 @@ get_operations() ->
         },
         'PostNameUpdateTx' => #{
             path => "/v2/name-update-tx",
+            method => <<"POST">>,
+            handler => 'swagger_internal_handler'
+        },
+        'PostOracleExtendTx' => #{
+            path => "/v2/oracle-extend-tx",
             method => <<"POST">>,
             handler => 'swagger_internal_handler'
         },

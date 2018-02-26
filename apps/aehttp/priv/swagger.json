@@ -378,6 +378,43 @@
         }
       }
     },
+    "/tx/oracle/extend" : {
+      "post" : {
+        "tags" : [ "external" ],
+        "description" : "Get an oracle_extend transaction",
+        "operationId" : "PostOracleExtend",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleExtendTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Account not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/oracle/query" : {
       "post" : {
         "tags" : [ "external" ],
@@ -873,6 +910,38 @@
           "required" : true,
           "schema" : {
             "$ref" : "#/definitions/OracleRegisterTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/OracleRegisterResponse"
+            }
+          },
+          "404" : {
+            "description" : "Oracle register transaction validation error",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/oracle-extend-tx" : {
+      "post" : {
+        "tags" : [ "internal" ],
+        "description" : "Create oracle extend transaction",
+        "operationId" : "PostOracleExtendTx",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "description" : "Creates new oracle extend transaction",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/OracleExtendTx"
           }
         } ],
         "responses" : {
@@ -2416,6 +2485,35 @@
         "tx_hash" : { }
       }
     },
+    "OracleExtendTx" : {
+      "type" : "object",
+      "required" : [ "fee", "ttl" ],
+      "properties" : {
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
+          "$ref" : "#/definitions/TTL"
+        },
+        "oracle" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64"
+        }
+      },
+      "example" : {
+        "oracle" : { },
+        "fee" : 0,
+        "ttl" : {
+          "type" : "delta",
+          "value" : 1
+        },
+        "nonce" : 6
+      }
+    },
     "OracleQueryTx" : {
       "type" : "object",
       "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
@@ -2968,6 +3066,19 @@
       } ]
     },
     "OracleRegisterTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "type" : "object",
+        "required" : [ "ttl" ],
+        "properties" : {
+          "ttl" : {
+            "$ref" : "#/definitions/TTL"
+          }
+        }
+      } ]
+    },
+    "OracleExtendTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
