@@ -30,6 +30,9 @@ all:	local-build
 console:
 	@./rebar3 shell --config config/sys.config --sname epoch
 
+local-compile-deps: KIND=local
+local-compile-deps: internal-compile-deps
+
 local-build: KIND=local
 local-build: internal-build
 
@@ -44,6 +47,9 @@ local-attach: internal-attach
 
 prod-package: KIND=prod
 prod-package: internal-package
+
+prod-compile-deps: KIND=prod
+prod-compile-deps: internal-compile-deps
 
 prod-build: KIND=prod
 prod-build: internal-build
@@ -74,6 +80,9 @@ multi-clean:
 	@$(MAKE) dev1-clean
 	@$(MAKE) dev2-clean
 	@$(MAKE) dev3-clean
+
+dev1-compile-deps: KIND=dev1
+dev1-compile-deps: internal-compile-deps
 
 dev1-build: KIND=dev1
 dev1-build: internal-build
@@ -229,6 +238,9 @@ multi-build: dev1-build
 #
 
 .SECONDEXPANSION:
+
+internal-compile-deps: $$(KIND)
+	@./rebar3 as $(KIND) compile --deps-only
 
 internal-package: $$(KIND)
 	@./rebar3 as $(KIND) tar
