@@ -65,6 +65,29 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
 
+handle_request('PostOracleExtendTx', #{'OracleExtendTx' := OracleExtendTxObj}, _Context) ->
+    case get_local_pubkey_with_next_nonce() of
+        {ok, Pubkey, Nonce} ->
+            #{<<"fee">> := Fee,
+              <<"ttl">> := TTL} = OracleExtendTxObj,
+            TTLType = delta,
+            TTLValue = maps:get(<<"value">>, TTL),
+            {ok, OracleExtendTx} =
+                aeo_extend_tx:new(
+                  #{oracle => Pubkey,
+                    nonce  => Nonce,
+                    ttl    => {TTLType, TTLValue},
+                    fee    => Fee}),
+            sign_and_push_to_mempool(OracleExtendTx),
+            TxHash = aetx:hash(OracleExtendTx),
+            {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
+                        tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"No funds in an account">>}};
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"Keys not configured">>}}
+    end;
+
 handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of
         {ok, Pubkey, Nonce} ->

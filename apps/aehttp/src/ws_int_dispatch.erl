@@ -102,6 +102,19 @@ do_execute(oracle, register, RegisterData) ->
     catch _:_ ->
         {error, <<"Bad Oracle register request">>}
     end;
+do_execute(oracle, extend, ExtendData) ->
+    try
+        case aehttp_dispatch_int:handle_request('PostOracleExtendTx',
+                                                #{'OracleExtendTx' => ExtendData},
+                                                #{}) of
+            {200, _, #{oracle_id := OId, tx_hash := TxHash}} ->
+                {ok, oracle, extend, [{result, ok}, {oracle_id, OId}, {tx_hash, TxHash}]};
+            {_, _, #{reason := Reason}} ->
+                {error, Reason}
+        end
+    catch _:_ ->
+        {error, <<"Bad Oracle extend request">>}
+    end;
 do_execute(oracle, query, QueryData) ->
     try
         case aehttp_dispatch_int:handle_request('PostOracleQueryTx',

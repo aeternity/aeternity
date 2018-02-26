@@ -221,7 +221,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Owner account not found 
+          description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
   /tx/contract/call:
@@ -250,7 +250,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Caller account or contract not found 
+          description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
   /tx/contract/call/compute:
@@ -279,7 +279,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Caller account or contract not found 
+          description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
   /tx/oracle/register:
@@ -308,7 +308,36 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Account not found 
+          description: Account not found
+          schema:
+            $ref: '#/definitions/Error'
+  /tx/oracle/extend:
+    post:
+      tags:
+        - external
+      operationId: PostOracleExtend
+      description: 'Get an oracle_extend transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          required: true
+          schema:
+            $ref: '#/definitions/OracleExtendTx'
+      responses:
+        '200':
+          description: Successful operation
+          schema:
+            $ref: '#/definitions/UnsignedTx'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Account not found
           schema:
             $ref: '#/definitions/Error'
   /tx/oracle/query:
@@ -393,7 +422,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Account not found 
+          description: Account not found
           schema:
             $ref: '#/definitions/Error'
   /tx/name/claim:
@@ -420,7 +449,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Account or name not found 
+          description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
   /tx/name/update:
@@ -474,7 +503,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Account or name not found 
+          description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
   /tx/name/revoke:
@@ -501,7 +530,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Account or name not found 
+          description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
   /tx/spend:
@@ -715,6 +744,33 @@ paths:
           required: true
           schema:
             $ref: '#/definitions/OracleRegisterTx'
+      responses:
+        '200':
+          description: successful operation
+          schema:
+            $ref: '#/definitions/OracleRegisterResponse'
+        '404':
+          description: Oracle register transaction validation error
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /oracle-extend-tx:
+    post:
+      tags:
+        - internal
+      operationId: PostOracleExtendTx
+      description: 'Create oracle extend transaction'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: Creates new oracle extend transaction
+          required: true
+          schema:
+            $ref: '#/definitions/OracleExtendTx'
       responses:
         '200':
           description: successful operation
@@ -1013,7 +1069,7 @@ paths:
           maximum: 100
           minimum: 1
         - in: query
-          name: offset 
+          name: offset
           description: 'Offset to start transaction list from'
           required: false
           type: integer
@@ -1951,6 +2007,22 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       oracle_id:
         $ref: '#/definitions/EncodedHash'
+  OracleExtendTx:
+    type: object
+    properties:
+      fee:
+        type: integer
+        format: int64
+      ttl:
+        $ref: '#/definitions/TTL'
+      oracle:
+        $ref: '#/definitions/EncodedHash'
+      nonce:
+        type: integer
+        format: int64
+    required:
+    - fee
+    - ttl
   OracleQueryTx:
     type: object
     properties:
@@ -2292,8 +2364,9 @@ definitions:
         properties:
           sender: string
           nonce: integer
-          que: string
+          query_spec: string
           response_spec: string
+          query_fee: integer
           ttl:
             $ref: '#/definitions/TTL'
           fee: integer
@@ -2302,6 +2375,22 @@ definitions:
         - nonce
         - query_spec
         - response_spec
+        - query_fee
+        - ttl
+        - fee
+  OracleExtendTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - type: object
+        properties:
+          oracle: string
+          nonce: integer
+          ttl:
+            $ref: '#/definitions/TTL'
+          fee: integer
+        required:
+        - oracle
+        - nonce
         - ttl
         - fee
   OracleQueryTxJSON:
@@ -2480,13 +2569,13 @@ definitions:
               type: string
               description: 'Peer''s URI'
             last_seen:
-              type: integer 
+              type: integer
               description: 'Timestamp of last message. If none - 0'
       blocked:
         type: array
         description: All blocked peers
         items:
-          type: string 
+          type: string
   ContractCreateData:
     type: object
     properties:
@@ -2497,15 +2586,15 @@ definitions:
         description: Owner's nonce
         type: integer
       code:
-        description: 'Contract''s code' 
+        description: 'Contract''s code'
         type: string
       vm_version:
-        description: 'Virtual machine''s version' 
+        description: 'Virtual machine''s version'
         type: integer
         minimum: 0
         maximum: 255
       deposit:
-        description: Deposit 
+        description: Deposit
         type: integer
         minimum: 0
       amount:
@@ -2547,10 +2636,10 @@ definitions:
         description: Caller's nonce
         type: integer
       contract:
-        description: 'Contract''s pub_key' 
+        description: 'Contract''s pub_key'
         type: string
       vm_version:
-        description: 'Virtual machine''s version' 
+        description: 'Virtual machine''s version'
         type: integer
         minimum: 0
         maximum: 255
@@ -2592,10 +2681,10 @@ definitions:
         description: Caller's nonce
         type: integer
       contract:
-        description: 'Contract''s pub_key' 
+        description: 'Contract''s pub_key'
         type: string
       vm_version:
-        description: 'Virtual machine''s version' 
+        description: 'Virtual machine''s version'
         type: integer
         minimum: 0
         maximum: 255
@@ -2635,7 +2724,7 @@ definitions:
     type: object
     properties:
       tx:
-        description: Unsigned transaction object 
+        description: Unsigned transaction object
         $ref: '#/definitions/EncodedHash'
       tx_hash:
         description: Transaction's hash
