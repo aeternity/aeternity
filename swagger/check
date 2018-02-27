@@ -61,8 +61,8 @@ rm -r "${PC:?}"
 ## Re-generate files.
 make "${MT:?}"
 
-## Check that re-generating JSON from YAML lead to same generated JSON.
+## Check that re-generating JSON from YAML led to same generated JSON.
 diff -u "${SJ:?}" "${TmpSJ:?}"
-## Check that re-generating code from YAML lead to same generated code.
+## Check that re-generating code from YAML led to same generated code.
 diff -ru -NB "${ES:?}" "${TmpES:?}"
 diff -ru -NB "${PC:?}" "${TmpPC:?}"

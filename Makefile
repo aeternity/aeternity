@@ -184,6 +184,11 @@ swagger-check:
 $(SWAGGER_CODEGEN_CLI):
 	curl -fsS --create-dirs -o $@ http://central.maven.org/maven2/io/swagger/swagger-codegen-cli/$(SWAGGER_CODEGEN_CLI_V)/swagger-codegen-cli-$(SWAGGER_CODEGEN_CLI_V).jar
 
+rebar-lock-check:
+	./scripts/rebar_lock_check \
+		"$(CURDIR)/rebar3" \
+		"$(CURDIR)"
+
 kill:
 	@echo "Kill all beam processes only from this directory tree"
 	$(shell pkill -9 -f ".*/beam.*-boot `pwd`" || true)
@@ -251,4 +256,5 @@ internal-clean: $$(KIND)
 	test aevm-test-deps\
 	kill killall \
 	clean distclean \
-	swagger swagger-docs swagger-check
+	swagger swagger-docs swagger-check \
+	rebar-lock-check
