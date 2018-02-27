@@ -848,21 +848,9 @@ get_account_transactions(Account, Req) ->
         {_, {error, unknown_type} = Err} ->
             Err;
         {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
-            %% the logic below is a subject to some refactoring as soon as
-            %% coinbase_tx become distinguishable and having disting tx hashes
-            %% current solution is a workaround
-            NonCoinbases = get_non_coinbase_txs_and_headers(KeepTxTypes,
-                                                            DropTxTypes,
-                                                            Account),
-            CoinbaseType = aetx:tx_type(aec_coinbase_tx),
-            CoinbaseRequested = lists:member(CoinbaseType, KeepTxTypes)
-                  orelse KeepTxTypes =:= [],
-            Coinbases =
-                case CoinbaseRequested andalso
-                    not lists:member(CoinbaseType, DropTxTypes) of
-                    true -> get_coinbase_txs_and_headers(Account);
-                    false -> []
-                end,
+            FilteredTxs = get_txs_and_headers(KeepTxTypes,
+                                              DropTxTypes,
+                                              Account),
             Res =
               lists:sort(
                   fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
@@ -873,39 +861,16 @@ get_account_transactions(Account, Req) ->
                       {HeightA, aetx:origin(TxA), aetx:nonce(TxA)} >
                       {HeightB, aetx:origin(TxB), aetx:nonce(TxB)}
                   end,
-                  NonCoinbases ++ Coinbases),
+                  FilteredTxs),
             {ok, offset_and_limit(Req, Res)}
       end.
 
-
-%% WORKAROUND
-%% Currently all coinbase txs are the same and thus having the same tx hash
-%% There is no point in fetching them via aec_db:transactions_by_account/2
-%% TODO: remove this workaround
-get_coinbase_txs_and_headers(Account) ->
-    {ok, SampleCoinbaseTx} = aec_coinbase_tx:new(#{account => Account}),
-    CoinbaseHash = aetx:hash(SampleCoinbaseTx),
-    %% all coinbases share the same transaction hash and we can fetch them
-    lists:map(
-        fun({BlockHash, SignedCoinbaseTx}) ->
-            {ok, Header} = aec_chain:get_header(BlockHash),
-            {Header, SignedCoinbaseTx}
-        end,
-        aec_db:read_tx(CoinbaseHash)).
-
-%% WORKAROUND
-%% Currently all coinbase txs are the same and thus having the same tx hash
-%% The following function is the correct behavior with removing the commented
-%% line that filters out coinbase types
-%% TODO: remove this workaround
-get_non_coinbase_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
-    CoinbaseType = aetx:tx_type(aec_coinbase_tx),
+get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
     Filter =
         fun(SignedTx) ->
               Tx = aetx_sign:tx(SignedTx),
               TxType = aetx:tx_type(Tx),
-              Drop = lists:member(TxType, DropTxTypes)
-                  orelse TxType =:= CoinbaseType, %% later remove this
+              Drop = lists:member(TxType, DropTxTypes),
               Keep = KeepTxTypes =:= []
                   orelse lists:member(TxType, KeepTxTypes),
               Keep andalso not Drop

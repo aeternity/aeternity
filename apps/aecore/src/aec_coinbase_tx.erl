@@ -21,15 +21,17 @@
 
 -include("common.hrl").
 
--record(coinbase_tx, {account   = <<>> :: pubkey()}).
+-record(coinbase_tx, {account       = <<>> :: pubkey(),
+                      block_height  :: non_neg_integer()}).
 
 -opaque tx() :: #coinbase_tx{}.
 
 -export_type([tx/0]).
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account := AccountPubkey}) ->
-    {ok, aetx:new(?MODULE, #coinbase_tx{account = AccountPubkey})}.
+new(#{account := AccountPubkey, block_height := Height}) ->
+    {ok, aetx:new(?MODULE, #coinbase_tx{account = AccountPubkey,
+                                        block_height = Height })}.
 
 -spec fee(tx()) -> integer().
 fee(#coinbase_tx{}) ->
@@ -45,6 +47,9 @@ origin(#coinbase_tx{}) ->
 
 -spec check(tx(), aec_trees:trees(), height()) ->
                     {ok, aec_trees:trees()} | {error, term()}.
+check(#coinbase_tx{block_height = CBHeight}, _Trees, Height)
+    when CBHeight =/= Height ->
+    {error, wrong_height};
 check(#coinbase_tx{account = AccountPubkey}, Trees, Height) ->
     aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height).
 
@@ -72,18 +77,21 @@ signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 -define(CB_TX_VSN, 1).
 
 -spec serialize(tx()) -> [map()].
-serialize(#coinbase_tx{account = Account}) ->
+serialize(#coinbase_tx{account = Account, block_height = Height}) ->
     [#{<<"vsn">> => version()},
-     #{<<"acct">> => Account}].
+     #{<<"acct">> => Account},
+     #{<<"h">> => Height}].
 
 -spec deserialize([map()]) -> tx().
 deserialize([#{<<"vsn">>  := ?CB_TX_VSN},
-             #{<<"acct">> := Account}]) ->
-    #coinbase_tx{account = Account}.
+             #{<<"acct">> := Account},
+             #{<<"h">> := Height}]) ->
+    #coinbase_tx{account = Account, block_height = Height}.
 
-for_client(#coinbase_tx{account = Account}) ->
+for_client(#coinbase_tx{account = Account, block_height = Height}) ->
     #{<<"account">> => aec_base58c:encode(account_pubkey,Account),
       <<"data_schema">> => <<"CoinbaseTxJSON">>, % swagger schema name
+      <<"block_height">> => Height,
       <<"vsn">> => ?CB_TX_VSN}.
 
 version() ->

@@ -10,7 +10,6 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_blocks).
 
@@ -94,14 +93,15 @@ validate_test_() ->
      ]}.
 
 validate_test_multiple_coinbase() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
     Block = #block{txs = [SignedCoinbase, SignedCoinbase]},
 
     ?assertEqual({error, multiple_coinbase_txs}, ?TEST_MODULE:validate(Block)).
 
 validate_test_malformed_txs_root_hash() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
-    {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"malformed_account">> }),
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
+    {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"malformed_account">>,
+                                                 block_height => 1}),
     MalformedTxs = [SignedCoinbase, aetx_sign:sign(BadCoinbaseTx, <<"pubkey">>)],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
     {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
@@ -110,7 +110,7 @@ validate_test_malformed_txs_root_hash() ->
     ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block)).
 
 validate_test_malformed_tx_signature() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
     Txs = [{signed_tx, aetx_sign:tx(SignedCoinbase), []}],
     Tree = aec_txs_trees:from_txs(Txs),
     {ok, RootHash} = aec_txs_trees:root_hash(Tree),
@@ -119,7 +119,7 @@ validate_test_malformed_tx_signature() ->
     ?assertEqual({error, invalid_transaction_signature}, ?TEST_MODULE:validate(Block)).
 
 validate_test_pass_validation() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(),
+    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
     Txs = [SignedCoinbase],
     Tree = aec_txs_trees:from_txs(Txs),
     {ok, RootHash} = aec_txs_trees:root_hash(Tree),

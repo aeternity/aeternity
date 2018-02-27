@@ -6,7 +6,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("common.hrl").
--include("core_txs.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 
@@ -178,10 +177,10 @@ no_tx_pool_size_test() ->
     ?assertEqual(undefined, aec_tx_pool:size()).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
-    Tx = aetx:new(aec_spend_tx,
-                  #spend_tx{sender = acct(Sender),
-                            recipient = acct(Recipient),
-                            nonce = Nonce, fee = Fee}),
+    {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
+                                  recipient => acct(Recipient),
+                                  amount => 0,
+                                  nonce => Nonce, fee => Fee}),
     {ok, STx} = sign(Sender, Tx),
     STx.
 

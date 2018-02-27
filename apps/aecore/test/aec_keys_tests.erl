@@ -26,7 +26,8 @@ all_test_() ->
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),
                         {ok, Tx} =
-                            aec_coinbase_tx:new(#{account => PubKey}),
+                            aec_coinbase_tx:new(#{account => PubKey,
+                                                  block_height => 1}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},

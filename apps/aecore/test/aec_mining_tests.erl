@@ -12,13 +12,16 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
--include("core_txs.hrl").
 
 -define(TEST_MODULE, aec_mining).
 -define(LOWEST_TARGET_SCI, 16#01010000).
--define(TEST_PUB, <<4,130,41,165,13,201,185,26,2,151,146,68,56,108,22,242,94,157,95,191,140,86,
-                    145,96,71,82,28,176,23,5,128,17,245,174,170,199,54,248,167,43,185,12,108,91,
-                    107,188,126,242,98,36,211,79,105,50,16,124,227,93,228,142,83,163,126,167,206>>).
+-define(TEST_PUB, <<4,94,128,206,55,62,168,73,150,204,73,
+                    91,104,62,51,55,157,144,3,185,127,129,
+                    152,105,238,172,232,250,124,52,57,83,
+                    214,253,227,65,225,150,54,203,2,77,179,
+                    110,238,243,104,31,88,220,217,49,139,
+                    215,140,228,209,85,119,11,221,117,185,
+                    126,17>>).
 
 mine_block_test_() ->
     {foreach,
@@ -30,7 +33,12 @@ mine_block_test_() ->
          fun() ->
                  TopBlock = #block{height = 0,
                                    target = ?HIGHEST_TARGET_SCI},
-                 meck:expect(aec_pow, pick_nonce, 0, 54),
+                 % if there is a change in the structure of the block
+                 % this will result in a change in the hash of the header
+                 % and will invalidate the nonce value below
+                 % in order to find a proper nonce for your
+                 %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
+                 meck:expect(aec_pow, pick_nonce, 0, 2629620709420228981),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
@@ -82,9 +90,11 @@ difficulty_recalculation_test_() ->
          fun() ->
                  Now = 1504731164584,
                  OneBlockExpectedMineTime = 300000,
-                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"pubkey">> }),
+                 BlockHeight = 30,
+                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{ account => ?TEST_PUB,
+                                                           block_height => BlockHeight}),
                  meck:expect(aec_blocks, new, 3,
-                             #block{height = 30,
+                             #block{height = BlockHeight,
                                     target = ?HIGHEST_TARGET_SCI,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
                                     time = Now}),
@@ -110,13 +120,16 @@ difficulty_recalculation_test_() ->
         {"Too few blocks mined in time increases new block's target threshold",
          fun() ->
                  Now = 1504731164584,
+                 BlockHeight = 200,
                  TS  = [ {X, Now - X * 300001} || X <- lists:seq(1, 10) ], %% Almost perfect timing!!
                  PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
-                 Chain = [ #header{ height = 200 - I, target = PastTarget, time = T } || {I, T} <- TS ],
+                 Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T } || {I, T} <- TS ],
 
-                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"pubkey">> }),
+
+                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => ?TEST_PUB,
+                                                          block_height => BlockHeight}),
                  meck:expect(aec_blocks, new, 3,
-                             #block{height = 200,
+                             #block{height = BlockHeight,
                                     target = PastTarget,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
                                     time = Now}),
@@ -152,16 +165,17 @@ setup() ->
     meck:new(aec_keys,[passthrough]),
     meck:new(aec_trees, [passthrough]),
     meck:new(aeu_time, [passthrough]),
-    meck:expect(aeu_time, now_in_msecs, 0, 1510253222889),
+    meck:expect(aeu_time, now_in_msecs, 0, 1519659148405),
     {ok, _} = aec_tx_pool:start_link(),
-    SignedTx = {signed_tx,{aetx, aec_coinbase_tx, {coinbase_tx,<<"pubkey">>}},
-                         [<<48,69,2,32,44,5,112,89,79,175,39,38,68,238,0,83,
-                            234,249,73,148,30,94,88,10,210,129,137,122,164,
-                            221,55,4,187,21,52,128,2,33,0,158,123,167,116,
-                            215,21,130,172,94,58,168,240,32,124,242,147,171,
-                            183,186,62,21,253,155,101,132,121,17,72,89,101,
-                            145,206>>]},
-    Trees = aec_test_utils:create_state_tree_with_account(aec_accounts:new(<<"pubkey">>, 0, 0)),
+    SignedTx = {signed_tx,{aetx, aec_coinbase_tx, {coinbase_tx, ?TEST_PUB, 1}},
+                         [<<48,70,2,33,0,247,96,99,204,37,44,253,86,102,
+                            233,172,140,93,187,16,5,16,48,200,208,94,8,
+                            23,59,135,39,126,108,43,152,66,171,2,33,0,
+                            197,245,135,154,3,78,30,207,216,164,203,102,
+                            212,186,232,187,66,202,202,64,203,0,171,2,
+                            109,11,237,130,23,161,104,8>>]},
+    Trees =
+    aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
     meck:expect(aetx_sign, filter_invalid_signatures, fun(X) -> X end),
     meck:expect(aec_trees, apply_signed_txs, 3, {ok, [SignedTx], Trees}),
@@ -184,5 +198,18 @@ cleanup(_) ->
     meck:unload(aeu_time),
     ok = aec_tx_pool:stop(),
     ok = meck:unload(aeu_env).
+
+generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
+    could_not_find_nonce;
+generate_valid_test_data(TopBlock, Tries) ->
+    {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+    HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
+    Target = aec_blocks:target(BlockCandidate),
+    case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of
+        {ok, {Nonce1, _Evd}} ->
+            {ok, BlockCandidate, Nonce1};
+        {error, no_solution} ->
+            generate_valid_test_data(TopBlock, Tries -1)
+    end.
 
 -endif.
