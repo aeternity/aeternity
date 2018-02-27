@@ -5,7 +5,7 @@
 %%%     Compiler from Aeterinty Ring language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 21 Dec 2017
-%%% 
+%%%
 %%%-------------------------------------------------------------------
 -module(aer_ast_to_icode).
 
@@ -14,8 +14,9 @@
 -include("aer_icode.hrl").
 
 convert(Tree, Options) ->
-%% Add this line to turn on the type-checker:
-    code(aer_ast_infer_types:infer(Tree),
+    TypedTree = aer_ast_infer_types:infer(Tree),
+    [io:format("Typed tree:\n  ~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+    code(TypedTree,
 %%    code(Tree,
 	 #{ functions => []
 	  , env => []
@@ -39,14 +40,15 @@ code([], Icode) -> Icode.
 contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
     %% TODO: Handle types
     contract_to_icode(Rest, Icode);
-contract_to_icode([{letfun,_Attrib, Name, Args,_What, Body}|Rest], Icode) ->
+contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
     %% TODO: Handle types
     FunName = ast_id(Name),
     %% TODO: push funname to env
     FunArgs = ast_args(Args, []),
     %% TODO: push args to env
     FunBody = ast_body(Body),
-    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, Icode),
+    TypeRep = ast_typerep(T),
+    NewIcode = ast_fun_to_icode(FunName, FunArgs, FunBody, TypeRep, Icode),
     contract_to_icode(Rest, NewIcode);
 contract_to_icode([{letrec,_,Defs}|Rest], Icode) ->
     %% OBS! This code ignores the letrec structure of the source,
@@ -68,7 +70,7 @@ ast_args([], Acc) -> lists:reverse(Acc).
 
 %% ICode is untyped, surely?
 ast_type(T) ->
-    T.                                 
+    T.
 
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
@@ -87,7 +89,7 @@ ast_body({app,[_,{format,prefix}],{Op,_},[A]}) ->
 ast_body({app,[_,{format,infix}],{Op,_},[A,B]}) ->
     #binop{op = Op, left = ast_body(A), right = ast_body(B)};
 ast_body({app,_,Fun,Args}) ->
-    #funcall{function=ast_body(Fun), 
+    #funcall{function=ast_body(Fun),
 	     args=[ast_body(A) || A <- Args]};
 ast_body({'if',_,Dec,Then,Else}) ->
     #ifte{decision = ast_body(Dec)
@@ -99,10 +101,23 @@ ast_body({switch,_,A,Cases}) ->
     #switch{expr=ast_body(A),
 	    cases=[{ast_body(Pat),ast_body(Body)}
 		   || {'case',_,Pat,Body} <- Cases]};
+ast_body({block,As,[{letval,_,Pat,_,E}|Rest]}) ->
+    #switch{expr=ast_body(E),
+	    cases=[{ast_body(Pat),ast_body({block,As,Rest})}]};
+ast_body({block,_,[]}) ->
+    #tuple{cpts=[]};
+ast_body({block,_,[E]}) ->
+    ast_body(E);
+ast_body({block,As,[E|Rest]}) ->
+    #switch{expr=ast_body(E),
+	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
+ast_body({lam,_,Args,Body}) ->
+    #lambda{args=[{ast_id(P),ast_type(T)} || {arg,_,P,T} <- Args],
+	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
-    #tuple{cpts = 
+    #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
 			[{line,Line}] = Attrs,
@@ -112,17 +127,52 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 			ast_body(E)
 		end
 		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
+ast_body({typed,_,{record,Attrs,Fields},T}) ->
+    error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
-    [Index] = [I 
-	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
+    [Index] = [I
+	       || {I,{field_t,_,_,{id,_,Name},_}} <-
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
+ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
+    UpdatedNames = [Name || {field,_,{id,_,Name},_} <- Update],
+    #switch{expr=ast_body(Record),
+	    cases=[{#var_ref{name = "_record"},
+		    ast_body({typed,Attrs,
+			      {record,Attrs,
+			       Update ++
+				   [{field,Attrs,{id,Attrs,Name},
+				     {proj,Attrs,
+				      {typed,Attrs,{id,Attrs,"_record"},RecType},
+				      {id,Attrs,Name}}}
+				    || {field_t,_,_,{id,_,Name},_} <- Fields,
+				       not lists:member(Name,UpdatedNames)]},
+			      RecType})}
+		   ]};
 ast_body({typed, _, Body, _}) ->
-    ast_body(Body).    
+    ast_body(Body).
 
-ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
-    NewFuns = [{Name, Args, Body}| Funs],
+ast_typerep({id,_,"int"}) ->
+    word;
+ast_typerep({id,_,"string"}) ->
+    string;
+ast_typerep({tvar,_,_}) ->
+    %% We serialize type variables just as addresses in the originating VM.
+    word;
+ast_typerep({tuple_t,_,Cpts}) ->
+    #tuple{cpts = [ast_typerep(C) || C<-Cpts]};
+ast_typerep({record_t,Fields}) ->
+    #tuple{cpts = [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
+ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
+    #list{elems=[ast_typerep(Elem)]}; %% Reusing value-level lists
+ast_typerep({fun_t,_,_,_}) ->
+    function.
+
+
+
+ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
+    NewFuns = [{Name, Args, Body, TypeRep}| Funs],
     set_functions(NewFuns, Icode).
 
 %% -------------------------------------------------------------------
@@ -130,7 +180,7 @@ ast_fun_to_icode(Name, Args, Body, #{functions := Funs} = Icode) ->
 %% -------------------------------------------------------------------
 get_line(Attribs) -> %% TODO: use AST primitives.
      proplists:get_value(line, Attribs).
-                    
+
 
 %% -------------------------------------------------------------------
 %% Icode
@@ -140,6 +190,6 @@ set_name(Name, Icode) ->
 
 get_name(#{contract_name := Name}) -> Name;
 get_name(_) -> error(name_not_defined).
-    
+
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).

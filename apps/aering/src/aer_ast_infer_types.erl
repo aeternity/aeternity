@@ -100,6 +100,8 @@ infer_expr(Env,Body={id,As,Name}) ->
 	Type ->
 	    {typed,As,Body,Type}
     end;
+infer_expr(Env,{unit,As}) ->
+    infer_expr(Env,{tuple,As,[]});
 infer_expr(Env,{tuple,As,Cpts}) ->
     NewCpts = [infer_expr(Env,C) || C <- Cpts],
     CptTypes = [T || {typed,_,_,T} <- NewCpts],
@@ -110,9 +112,15 @@ infer_expr(Env,{list,As,Elems}) ->
     [unify(ElemType,T) || {typed,_,_,T} <- NewElems],
     {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};    
 infer_expr(Env,{typed,As,Body,Type}) ->
+    AnnotType = case Type of
+		    {id,Attrs,"_"} ->
+			fresh_uvar(Attrs);
+		    _ ->
+			Type
+		end,
     {typed,_,NewBody,NewType} = infer_expr(Env,Body),
-    unify(NewType,Type),
-    {typed,As,NewBody,Type};
+    unify(NewType,AnnotType),
+    {typed,As,NewBody,AnnotType};
 infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
     TypedArgs = [infer_expr(Env,A) || A <- Args],
     ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
@@ -147,12 +155,30 @@ infer_expr(Env,{record,Attrs,Fields}) ->
     constrain([{RecordType,FieldName,T}
 	       || {field,_,FieldName,{typed,_,_,T}} <- NewFields]),
     {typed,Attrs,{record,Attrs,NewFields},RecordType};
+infer_expr(Env,{record,Attrs,Record,Update}) ->
+    NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
+    NewUpdate = [{field,A,FieldName,infer_expr(Env,Expr)}
+		 || {field,A,FieldName,Expr} <- Update],
+    constrain([{RecordType,FieldName,T}
+	       || {field,_,FieldName,{typed,_,_,T}} <- NewUpdate]),
+    {typed,Attrs,{record,Attrs,NewRecord,NewUpdate},RecordType};
 infer_expr(Env,{proj,Attrs,Record,FieldName}) ->
     NewRecord = {typed,_,_,RecordType} = infer_expr(Env,Record),
     FieldType = fresh_uvar(Attrs),
     constrain({RecordType,FieldName,FieldType}),
-    {typed,Attrs,{proj,Attrs,NewRecord,FieldName},FieldType}.
-
+    {typed,Attrs,{proj,Attrs,NewRecord,FieldName},FieldType};
+infer_expr(Env,{block,Attrs,Stmts}) ->
+    BlockType = fresh_uvar(Attrs),
+    NewStmts = infer_block(Env,Attrs,Stmts,BlockType),
+    {typed,Attrs,{block,Attrs,NewStmts},BlockType};
+infer_expr(Env,{lam,Attrs,Args,Body}) ->
+    ArgTypes = [fresh_uvar(As) || {arg,As,_,_} <- Args],
+    ArgPatterns = [{typed,As,Pat,T} || {arg,As,Pat,T} <- Args],
+    ResultType = fresh_uvar(Attrs),
+    {'case',_,{typed,_,{tuple,_,NewArgPatterns},_},NewBody} = 
+	infer_case(Env,Attrs,{tuple,Attrs,ArgPatterns},{tuple_t,Attrs,ArgTypes},Body,ResultType),
+    NewArgs = [{arg,As,NewPat,NewT} || {typed,As,NewPat,NewT} <- NewArgPatterns],
+    {typed,Attrs,{lam,Attrs,NewArgs,NewBody},{fun_t,Attrs,ArgTypes,ResultType}}.    
 
 infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     Vars = free_vars(Pattern),
@@ -178,6 +204,23 @@ infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     unify(PatType,ExprType),
     unify(BranchType,SwitchType),
     {'case',Attrs,NewPattern,NewBranch}.
+
+%% NewStmts = infer_block(Env,Attrs,Stmts,BlockType)
+infer_block(Env,Attrs,[],BlockType) ->
+    %% DANG! A block with no value. Interpret it as unit.
+    unify({tuple_t,Attrs,[]},BlockType),
+    [];
+infer_block(Env,_,[{letval,Attrs,Pattern,Type,E}|Rest],BlockType) ->
+    NewE = {typed,_,_,PatType} = infer_expr(Env,{typed,Attrs,E,arg_type(Type)}),
+    {'case',_,NewPattern,{typed,_,{block,_,NewRest},_}} =
+	infer_case(Env,Attrs,Pattern,PatType,{block,Attrs,Rest},BlockType),
+    [{letval,Attrs,NewPattern,Type,NewE}|NewRest];
+infer_block(Env,_,[E],BlockType) ->
+    NewE = {typed,_,_,Type} = infer_expr(Env,E),
+    unify(Type,BlockType),
+    [NewE];
+infer_block(Env,Attrs,[E|Rest],BlockType) ->
+    [infer_expr(Env,E)|infer_block(Env,Attrs,Rest,BlockType)].
 
 infer_infix({IntOp,As}) 
   when IntOp=='+'; IntOp=='-'; IntOp=='*'; IntOp=='/';
@@ -210,6 +253,8 @@ free_vars({app,_,{'::',_},Args}) ->
     free_vars(Args);
 free_vars({record,_,Fields}) ->
     free_vars([E || {field,_,_,E} <- Fields]);
+free_vars({typed,_,A,_}) ->
+    free_vars(A);
 free_vars(L) when is_list(L) ->
     [V || Elem <- L,
 	  V <- free_vars(Elem)].
@@ -309,6 +354,7 @@ solve_known_record_types(Constraints) ->
 	 || {RecordType,FieldName,FieldType} <- Constraints],
     SolvedConstraints =
 	[begin
+	     RecId = {id,Attrs,RecName} = record_type_name(RecType),
 	     case ets:lookup(record_types,RecName) of
 		 [] ->
 		     io:format("Undefined record type: ~s\n",RecName),
@@ -332,8 +378,17 @@ solve_known_record_types(Constraints) ->
 		     end
 	     end			     
 	 end
-	 || {RecType={app_t,Attrs,RecId={id,_,RecName},_Args},FieldName,FieldType} <- DerefConstraints],
+	 || {RecType,FieldName,FieldType} <- DerefConstraints,
+	    case RecType of
+		{uvar,_,_} -> false;
+		_          -> true
+	    end],
     DerefConstraints--SolvedConstraints.
+
+record_type_name({app_t,_Attrs,RecId={id,_,_},_Args}) ->
+    RecId;
+record_type_name(RecId={id,_,_}) ->
+    RecId.
 
 solve_for_uvar(UVar,Fields) ->
     %% Does this set of fields uniquely identify a record type?
@@ -380,17 +435,8 @@ lowest_scores([]) ->
 %% names. But, before we pass the typed program to the code generator,
 %% we replace record types annotating expressions with their
 %% definition. This enables the code generator to see the fields.
-unfold_record_types({typed,Attr,E,Type={app_t,_,{id,_,RecName},_}}) ->
-    %% We should really instantiate the entire record type
-    %% appropriately, but that is awkward--and unnecessary if the only
-    %% use we make of the type is the list of fields.
-    case ets:lookup(record_types,RecName) of
-	[] ->
-	    %% Not a record type.
-	    {typed,Attr,unfold_record_types(E),Type};
-	[{RecName,_Formals,Fields}] ->
-	    {typed,Attr,unfold_record_types(E),{record_t,Fields}}
-    end;
+unfold_record_types({typed,Attr,E,Type}) ->
+    {typed,Attr,unfold_record_types(E),unfold_record_types_in_type(Type)};
 unfold_record_types(T) when is_tuple(T) ->
     list_to_tuple(unfold_record_types(tuple_to_list(T)));
 unfold_record_types([H|T]) ->
@@ -398,10 +444,54 @@ unfold_record_types([H|T]) ->
 unfold_record_types(X) ->
     X.
 
+unfold_record_types_in_type(Type={app_t,_,{id,_,RecName},Args}) ->
+    case ets:lookup(record_types,RecName) of
+	[{RecName,Formals,Fields}] when length(Formals)==length(Args) ->
+	    {record_t,
+	     unfold_record_types_in_type(
+	       subst_tvars(lists:zip(Formals,Args),Fields))};
+	_ ->
+	    %% Not a record type, or ill-formed record type.
+	    Type
+    end;
+unfold_record_types_in_type(Type={id,_,RecName}) ->
+    %% Like the case above, but for record types without parameters.
+    case ets:lookup(record_types,RecName) of
+	[{RecName,[],Fields}] ->
+	    {record_t,
+	     unfold_record_types_in_type(Fields)};
+	_ ->
+	    %% Not a record type, or ill-formed record type
+	    Type
+    end;
+unfold_record_types_in_type({field_t,Attr,Mut,Name,Type}) ->
+    {field_t,Attr,Mut,Name,unfold_record_types_in_type(Type)};
+unfold_record_types_in_type(T) when is_tuple(T) ->
+    list_to_tuple(unfold_record_types_in_type(tuple_to_list(T)));
+unfold_record_types_in_type([H|T]) ->
+    [unfold_record_types_in_type(H)|unfold_record_types_in_type(T)];
+unfold_record_types_in_type(X) ->
+    X.
 
+
+subst_tvars(Env,Type) ->
+    subst_tvars1([{V,T} || {{tvar,_,V},T} <- Env],Type).
+
+subst_tvars1(Env,T={tvar,_,Name}) ->
+    proplists:get_value(Name,Env,T);
+subst_tvars1(Env,[H|T]) ->
+    [subst_tvars1(Env,H)|subst_tvars1(Env,T)];
+subst_tvars1(Env,Type) when is_tuple(Type) ->
+    list_to_tuple(subst_tvars1(Env,tuple_to_list(Type)));
+subst_tvars1(Env,X) ->
+    X.
 
 %% Unification
 
+unify({id,_,"_"},_) ->
+  true;
+unify(_,{id,_,"_"}) ->
+  true;
 unify(T1,T2) ->
   unify1(dereference(T1),dereference(T2)).
 
@@ -433,6 +523,13 @@ unify1({app_t,_,{id,_,F},Args1},{app_t,_,{id,_,F},Args2})
 unify1({tuple_t,_,As},{tuple_t,_,Bs}) 
   when length(As)==length(Bs) ->
     unify(As,Bs);
+%% The grammar is a bit inconsistent about whether types without
+%% arguments are represented as applications to an empty list of
+%% parameters or not. We therefore allow them to unify.
+unify1({app_t,_,T,[]},B) ->
+    unify(T,B);
+unify1(A,{app_t,_,T,[]}) ->
+    unify(A,T);
 unify1(A,B) ->
     cannot_unify(A,B),
     false.
@@ -520,5 +617,10 @@ pp({tvar,_,Name}) ->
     Name;
 pp({tuple_t,_,Cpts}) ->
     ["(",pp(Cpts),")"];
+pp({app_t,_,T,[]}) ->
+    pp(T);
 pp({app_t,_,{id,_,Name},Args}) ->
-    [Name,"(",pp(Args),")"].
+    [Name,"(",pp(Args),")"];
+pp({fun_t,_,As,B}) ->
+    ["(",pp(As),") => ",pp(B)].
+

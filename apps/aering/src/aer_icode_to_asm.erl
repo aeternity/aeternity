@@ -22,16 +22,21 @@ convert(#{ contract_name := _ContractName
     DispatchFun = {"_main",[{"arg","_"}],
 		   {switch,{var_ref,"arg"},
 		    [{{tuple,[fun_hash(FName)|make_args(Args)]},
-		      {funcall,{var_ref,FName},make_args(Args)}}
-		     || {FName,Args,_} <- Functions]}},
-    NewFunctions = Functions ++ [DispatchFun],
+		      {encode,TypeRep,{funcall,{var_ref,FName},make_args(Args)}}}
+		     || {FName,Args,_,TypeRep} <- Functions]},
+		   word},
+    %% Find the type-reps we need encoders for
+    TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions]),
+    Encoders = [make_encoder(T) || T <- TypeReps],
+    Library = [make_copymem()],
+    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
-    	    || {Name, Args, _Body} <- NewFunctions],
+    	    || {Name, Args, _Body, _Type} <- NewFunctions],
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
-    MainFunction = lookup_fun(Funs,"_main",1),
+    MainFunction = lookup_fun(Funs,"_main"),
     DispatchCode = [%% read all call data into memory at address zero
 		    aeb_opcodes:mnemonic(?CALLDATASIZE),
 		    push(0),
@@ -44,12 +49,12 @@ convert(#{ contract_name := _ContractName
 		    {push_label,MainFunction},
 		    aeb_opcodes:mnemonic(?JUMP),
 		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
-                    %% For now we simply return the top of the stack as an integer.
-                    aeb_opcodes:mnemonic(?PUSH1), 0,
-                    aeb_opcodes:mnemonic(?MSTORE),
-                    %% Return mem[0]-mem[32]
-                    aeb_opcodes:mnemonic(?PUSH1), 32,
-                    aeb_opcodes:mnemonic(?PUSH1), 0,
+		    %% A pointer to a binary is on top of the stack
+		    %% Get size of data area
+		    dup(1), aeb_opcodes:mnemonic(?MLOAD), swap(1),
+		    %% Get address of data area
+		    push(32), aeb_opcodes:mnemonic(?ADD),
+		    %% Return byte vector
                     aeb_opcodes:mnemonic(?RETURN)
 		   ],
 
@@ -58,7 +63,7 @@ convert(#{ contract_name := _ContractName
     %% references take the form {push_label,Ref}, which is translated
     %% into a PUSH instruction.
     Code = [assemble_function(Funs,Name,Args,Body)
-	    || {Name,Args,Body} <- NewFunctions],
+	    || {Name,Args,Body,_Type} <- NewFunctions],
     resolve_references(
         [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
 	 DispatchCode,
@@ -71,7 +76,7 @@ fun_hash(Name) ->
     {tuple,[{integer,X} || X <- [length(Name)|aer_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
-    [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name,length(Args))},
+    [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name)},
      assemble_expr(Funs, lists:reverse(Args), tail, Body),
      %% swap return value and first argument
      pop_args(length(Args)),
@@ -83,12 +88,24 @@ assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
 	true ->
 	    dup(lookup_var(Id,Stack));
 	false ->
-	    case lists:keyfind(Id,1,Funs) of
-		{Id,_Arity,Label} ->
-		    {push_label,Label};
-		false ->
-		    error({undefined_name,Id})
-	    end
+	    %% Build a closure
+	    %% When a top-level fun is called directly, we do not
+	    %% reach this case.
+	    Eta = make_ref(),
+	    Continue = make_ref(),
+	    [aeb_opcodes:mnemonic(?MSIZE),
+	     {push_label,Eta},
+	     dup(2),
+	     aeb_opcodes:mnemonic(?MSTORE),
+	     {push_label,Continue},
+	     'JUMP',
+	     %% the code of the closure
+	     {'JUMPDEST',Eta},
+	     %% pop the pointer to the function
+	     pop(1),
+	     {push_label,lookup_fun(Funs,Id)},
+	     'JUMP',
+	     {'JUMPDEST',Continue}]
     end;
 assemble_expr(_,_,_,{missing_field,Format,Args}) ->
     io:format(Format,Args),
@@ -104,8 +121,7 @@ assemble_expr(Funs,Stack,_,{tuple,Cpts}) ->
     %% keeping them for a long time on the stack.
     case lists:reverse(Cpts) of
 	[] ->
-	    %% It doesn't matter what the address of the empty tuple is.
-	    push(0);
+	    aeb_opcodes:mnemonic(?MSIZE);
 	[Last|Rest] ->
 	    [assemble_expr(Funs,Stack,nontail,Last),
 	     %% allocate the tuple memory
@@ -158,8 +174,66 @@ assemble_expr(Funs,Stack,_,{binop,Op,A,B}) ->
     [assemble_expr(Funs,Stack,nontail,B),
      assemble_expr(Funs,[dummy|Stack],nontail,A),
      assemble_infix(Op)];
+assemble_expr(Funs,Stack,_,{lambda,Args,Body}) ->
+    Function = make_ref(),
+    FunBody  = make_ref(),
+    Continue = make_ref(),
+    NoMatch  = make_ref(),
+    FreeVars = free_vars({lambda,Args,Body}),
+    {NewVars,MatchingCode} = assemble_pattern(FunBody,NoMatch,{tuple,[{var_ref,"_"}|FreeVars]}),
+    BodyCode = assemble_expr(Funs,NewVars++lists:reverse(Args),tail,Body),
+    [assemble_expr(Funs,Stack,nontail,{tuple,[{label,Function}|FreeVars]}),
+     {push_label,Continue},
+     'JUMP',  %% will be optimized away
+     {'JUMPDEST',Function},
+     %% A pointer to the closure is on the stack
+     MatchingCode,
+     {'JUMPDEST',FunBody},
+     BodyCode,
+     pop_args(length(Args)+length(NewVars)),
+     swap(1),
+     'JUMP',
+     {'JUMPDEST',NoMatch}, %% dead code--raise an exception just in case
+     push(0),
+     aeb_opcodes:mnemonic(?NOT),
+     aeb_opcodes:mnemonic(?MLOAD),
+     aeb_opcodes:mnemonic(?STOP),
+     {'JUMPDEST',Continue}];
+assemble_expr(_,_,_,{label,Label}) ->
+    {push_label,Label};
+assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
+    [assemble_expr(Funs,Stack,nontail,A),
+     %% Allocate memory for the encoding (a binary)
+     aeb_opcodes:mnemonic(?MSIZE),
+     %% The contents of the encoding is a heap fragment with relative
+     %% addresses, whose first word is the value (perhaps a relative
+     %% pointer into the heap fragment). Compute the address of the
+     %% heap fragment--the "base" to which other addresses are
+     %% relative. 
+     push(32), aeb_opcodes:mnemonic(?ADD),
+     %% Write zero here, to ensure that ?MSIZE is increased.
+     push(0), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     %% Call the encoder function
+     assemble_expr(Funs,[{"base","_"},{"value","_"}|Stack],nontail,
+		   {funcall,{var_ref,encoder_name(TypeRep)},
+		    [{var_ref,"base"},{var_ref,"value"}]}),
+     %% Stack: value-to-encode, base address, encoded result
+     %% Store the encoded result in the first word of the heap fragment
+     dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     
+     %% Stack: value-to-encode, base address
+     %% Compute the size of the binary we just constructed
+     dup(1), aeb_opcodes:mnemonic(?MSIZE), aeb_opcodes:mnemonic(?SUB),
+     %% Stack: value-to-encode, base address, binary size
+     %% Reset the base address to the binary address
+     push(32), dup(3), aeb_opcodes:mnemonic(?SUB),
+     %% Stack: value-to-encode, base address, binary size, base-32
+     %% Save the size at the binary address
+     swap(1), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+     %% Stack: value-to-encode, base address, base-32
+     %% and return the address of the binary.
+     pop_args(2)];
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
-    %% TODO: tail-call optimization!
     Return = make_ref(),
     %% This is the obvious code:
     %%   [{push_label,Return},
@@ -170,10 +244,15 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     %% while the arguments are computed, which is unnecessary. To
     %% avoid that, we compute the last argument FIRST, and replace it
     %% with the return address using a SWAP.
+    %% 
+    %% assemble_function leaves the code pointer of the function to
+    %% call on top of the stack, and--if the function is not a
+    %% top-level name--a pointer to its tuple of free variables. In
+    %% either case a JUMP is the right way to call it.
     case Args of
 	[] ->
 	    [{push_label,Return},
-	     assemble_expr(Funs,[return_address|Stack],nontail,Fun),
+	     assemble_function(Funs,[return_address|Stack],Fun),
 	     'JUMP',
 	     {'JUMPDEST',Return}];
 	_ ->
@@ -183,25 +262,33 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
 	     %% reorders the args correctly.
 	     {push_label,Return},
 	     swap(length(Args)),
-	     assemble_expr(Funs,[dummy || _ <- Args]++[return_address|Stack],nontail,Fun),
+	     assemble_function(Funs,[dummy || _ <- Args]++[return_address|Stack],Fun),
 	     'JUMP',
 	     {'JUMPDEST',Return}]
     end;
 assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
-    {Prefix,Suffix} = case is_top_level_fun(Funs,Stack,Fun) of
-			  true ->
-			      {assemble_exprs(Funs,Stack,Args),
-			       %% The Fun CANNOT refer to local variables
-			       [assemble_expr(Funs,[],nontail,Fun)]};
-			  false ->
-			      {assemble_exprs(Funs,Stack,Args++[Fun]),
-			       []}
-		      end,
-    %% Compute the function just before the call if it constant.
+    IsTopLevel = is_top_level_fun(Funs,Stack,Fun),
+    %% If the fun is not top-level, then it may refer to local
+    %% variables and must be computed before stack shuffling.
+    ArgsAndFun = Args++[Fun || not IsTopLevel],
+    ComputeArgsAndFun = assemble_exprs(Funs,Stack,ArgsAndFun),
     %% Copy arguments back down the stack to the start of the frame
-    ShuffleSpec = lists:seq(length(Args)+(1-length(Suffix)),1,-1)++[discard || _ <- Stack],
+    ShuffleSpec = lists:seq(length(ArgsAndFun),1,-1)++[discard || _ <- Stack],
     Shuffle = shuffle_stack(ShuffleSpec),
-    [Prefix,Shuffle,Suffix,'JUMP'];
+    X=[ComputeArgsAndFun,Shuffle,
+     if IsTopLevel ->
+	     %% still need to compute function
+	     assemble_function(Funs,[],Fun);
+	true ->
+	     %% need to unpack a closure
+	     [dup(1), aeb_opcodes:mnemonic(?MLOAD)]
+     end,
+     'JUMP'],
+    io:format("Compiling ~p\n"
+	      " in stack ~p\n"
+	      "       to ~p\n",
+	      [{funcall,Fun,Args},Stack,lists:flatten(X)]),
+    X;
 assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
     %% This compilation scheme introduces a lot of labels and
     %% jumps. Unnecessary ones are removed later in
@@ -270,20 +357,29 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
     Fail = make_ref(),
     {NewVars,MatchingCode} =
 	assemble_pattern(Succeed,Fail,Pattern),
-    [dup(1),   %% save value for next case
+    %% In the code that follows, if this is NOT the last case, then we
+    %% save the value being switched on, and discard it on
+    %% success. The code is simpler if this IS the last case.
+    [[dup(1) || Cases/=[]],   %% save value for next case, if there is one
      MatchingCode,
      {'JUMPDEST',Succeed},
-     %% Discard saved value
-     case NewVars of
-	 [] ->
-	     pop(1);
-	 [_] ->
-	     %% Special case for peep-hole optimization
-	     pop_args(1);
-	 _ ->
-	     [swap(length(NewVars)), pop(1)]
-     end,
-     assemble_expr(Funs,reorder_vars(NewVars)++Stack,Tail,Body),
+     %% Discard saved value, if we saved one
+     [case NewVars of
+	  [] ->
+	      pop(1);
+	  [_] ->
+	      %% Special case for peep-hole optimization
+	      pop_args(1);
+	  _ ->
+	      [swap(length(NewVars)), pop(1)]
+      end
+      || Cases/=[]],
+     assemble_expr(Funs,
+		   case Cases of
+		       [] -> NewVars;
+		       _  -> reorder_vars(NewVars)
+		   end
+		   ++Stack,Tail,Body),
      %% If the Body makes a tail call, then we will not return
      %% here--but it doesn't matter, because
      %% (a) the NewVars will be popped before the tailcall
@@ -402,7 +498,139 @@ assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)
 assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
 %% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
 
-%% shuffle_stack reorders the stack before a tailcall. It is called
+%% a function may either refer to a top-level function, in which case
+%% we fetch the code label from Funs, or it may be a lambda-expression
+%% (including a top-level function passed as a parameter). In the
+%% latter case, the function value is a pointer to a tuple of the code
+%% pointer and the free variables: we keep the pointer and push the
+%% code pointer onto the stack. In either case, we are ready to enter
+%% the function with JUMP.
+assemble_function(Funs,Stack,Fun) ->
+    case is_top_level_fun(Funs,Stack,Fun) of
+	true ->
+	    {var_ref,Name} = Fun,
+	    {push_label, lookup_fun(Funs,Name)};
+	false ->
+	    [assemble_expr(Funs,Stack,nontail,Fun),
+	     dup(1),
+	     aeb_opcodes:mnemonic(?MLOAD)]
+    end.
+
+free_vars(V={var_ref,_}) ->
+    [V];
+free_vars({switch,E,Cases}) ->
+    lists:umerge(free_vars(E),
+		 lists:umerge([free_vars(Body)--free_vars(Pattern)
+			       || {Pattern,Body} <- Cases]));
+free_vars({lambda,Args,Body}) ->
+    free_vars(Body)--[{var_ref,V} || {V,_} <- Args];
+free_vars(T) when is_tuple(T) ->
+    free_vars(tuple_to_list(T));
+free_vars([H|T]) ->
+    lists:umerge(free_vars(H),free_vars(T));
+free_vars(_) ->
+    [].
+
+
+
+
+%% Type-directed encoders
+
+%% Given the type-reps appearing in the program, include children and
+%% eliminate duplicates.
+all_type_reps(InSource) ->
+    all_type_reps(InSource,[]).
+
+all_type_reps([],Found) ->
+    Found;
+all_type_reps([TR|InSource],Found) ->
+    case lists:member(TR,Found) of
+	true ->
+	    all_type_reps(InSource,Found);
+	false ->
+	    Nested = case TR of
+			 {tuple,TRs} ->
+			     TRs;
+			 _ ->
+			     []
+		     end,
+	    all_type_reps(Nested++InSource,[TR|Found])
+    end.
+
+%% We generate encoder function definitions for each type
+%% rep. Encoders take a base address as an argument, and a value to
+%% copy, and construct a copy of the value with all addresses relative
+%% to the base address. Very untyped!
+
+encoder_name(TR) ->
+    "_encode_" ++ lists:flatten(io_lib:write(TR)).
+
+make_encoder(TR) ->
+    {encoder_name(TR),[{"base","_"},{"value","_"}],make_encoder_body(TR),word}.
+
+make_encoder_body(word) ->
+    {var_ref,"value"};
+make_encoder_body(string) ->
+    %% matching against a singleton tuple reads an address
+    {switch,{var_ref,"value"},
+     [{{tuple,[{var_ref,"length"}]},
+       %% allocate the first word
+      {switch,{tuple,[{var_ref,"length"}]},
+       [{{var_ref,"result"},
+	 {funcall,{var_ref,"_copymem"},
+	  [%% address to copy from
+	   {binop,'+',{integer,32},{var_ref,"value"}},
+	   %% number of bytes to copy
+	   {var_ref,"length"},
+	   %% final result
+	   {binop,'-',{var_ref,"result"},{var_ref,"base"}}
+	  ]}}
+       ]}
+      }]};
+make_encoder_body({tuple,TRs}) ->
+    Vars = [{var_ref,"_v"++integer_to_list(I)} || I <- lists:seq(1,length(TRs))],
+    {switch,{var_ref,"value"},
+     [{{tuple,Vars},
+       {binop,'-',
+	{tuple,[{funcall,{var_ref,encoder_name(TR)},[{var_ref,"base"},V]}
+		|| {TR,V} <- lists:zip(TRs,Vars)]},
+	{var_ref,"base"}}}
+     ]};
+make_encoder_body({list,TR}) ->
+    {switch,{var_ref,"value"},
+     [{{list,[]},{list,[]}},
+      {{tuple,[{var_ref,"head"},{var_ref,"tail"}]},
+       {binop,'-',
+	{tuple,[{funcall,{var_ref,encoder_name(TR)},
+		 [{var_ref,"base"},{var_ref,"head"}]},
+		{funcall,{var_ref,encoder_name({list,TR})},
+		 [{var_ref,"base"},{var_ref,"tail"}]}]},
+	{var_ref,"base"}}}
+     ]};
+make_encoder_body(function) ->
+    {integer,33333333333333333}.
+
+
+%% Generates a definition of a function to copy N bytes from address A
+%% to the heap pointer, and return the final argument.
+make_copymem() ->
+    {"_copymem",[{"addr","_"},{"length","_"},{"result","_"}],
+     {ifte,{binop,'>',{var_ref,"length"},{integer,0}},
+      %% read the word at addr
+      {switch,{var_ref,"addr"},
+       [{{tuple,[{var_ref,"word"}]},
+	 %% write the word at the heap pointer
+	 {switch,{tuple,[{var_ref,"word"}]},
+	  [{{var_ref,"_"},
+	    %% and loop
+	    {funcall,{var_ref,"_copymem"},
+	     [{binop,'+',{var_ref,"addr"},{integer,32}},
+	      {binop,'-',{var_ref,"length"},{integer,32}},
+	      {var_ref,"result"}]}}]}}]},
+      {var_ref,"result"}},
+    word}.
+
+%% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
 %% should appear. The argument is a list containing
 %%   a NUMBER for each element that should be kept, the number being
@@ -428,13 +656,13 @@ shuffle_stack([N|Stack]) ->
 
 
 
-lookup_fun(Funs,Name,Arity) ->
-    case [Ref || {Name1,Arity1,Ref} <- Funs,
-		 {Name,Arity} == {Name1,Arity1}] of
+lookup_fun(Funs,Name) ->
+    case [Ref || {Name1,_,Ref} <- Funs,
+		 Name == Name1] of
 	[Ref] ->
 	    Ref;
 	[] ->
-	    error({undefined_function,Name,Arity})
+	    error({undefined_function,Name})
     end.
 
 is_top_level_fun(_Funs,Stack,{var_ref,Id}) ->
