@@ -90,6 +90,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetHeaderByHash' => #{
+            path => "/v2/header-by-hash",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetInfo' => #{
             path => "/v2/info",
             method => <<"GET">>,

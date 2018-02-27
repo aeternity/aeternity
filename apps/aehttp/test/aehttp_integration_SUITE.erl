@@ -485,6 +485,9 @@ block_by_hash(_Config) ->
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             BlockMap = ExpectedBlockMap,
+            {ok, 200, HeaderMap} = get_header_by_hash(Hash),
+            %% Equal upto transactions.
+            HeaderMap = maps:without([<<"transactions">>], ExpectedBlockMap),
             #{<<"height">> := Height} = BlockMap
         end,
         lists:seq(0, BlocksToCheck)), % from genesis
@@ -2768,6 +2771,10 @@ get_block_by_height(Height) ->
 get_block_by_hash(Hash) ->
     Host = external_address(),
     http_request(Host, get, "block-by-hash", [{hash, Hash}]).
+
+get_header_by_hash(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "header-by-hash", [{hash, Hash}]).
 
 get_transactions() ->
     Host = external_address(),
