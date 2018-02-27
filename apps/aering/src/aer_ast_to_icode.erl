@@ -5,7 +5,7 @@
 %%%     Compiler from Aeterinty Ring language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 21 Dec 2017
-%%% 
+%%%
 %%%-------------------------------------------------------------------
 -module(aer_ast_to_icode).
 
@@ -70,7 +70,7 @@ ast_args([], Acc) -> lists:reverse(Acc).
 
 %% ICode is untyped, surely?
 ast_type(T) ->
-    T.                                 
+    T.
 
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
@@ -89,7 +89,7 @@ ast_body({app,[_,{format,prefix}],{Op,_},[A]}) ->
 ast_body({app,[_,{format,infix}],{Op,_},[A,B]}) ->
     #binop{op = Op, left = ast_body(A), right = ast_body(B)};
 ast_body({app,_,Fun,Args}) ->
-    #funcall{function=ast_body(Fun), 
+    #funcall{function=ast_body(Fun),
 	     args=[ast_body(A) || A <- Args]};
 ast_body({'if',_,Dec,Then,Else}) ->
     #ifte{decision = ast_body(Dec)
@@ -117,7 +117,7 @@ ast_body({lam,_,Args,Body}) ->
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
     NamedFields = [{Name,E} || {field,_,{id,_,Name},E} <- Fields],
-    #tuple{cpts = 
+    #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
 			[{line,Line}] = Attrs,
@@ -130,8 +130,8 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 ast_body({typed,_,{record,Attrs,Fields},T}) ->
     error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
-    [Index] = [I 
-	       || {I,{field_t,_,_,{id,_,Name},_}} <- 
+    [Index] = [I
+	       || {I,{field_t,_,_,{id,_,Name},_}} <-
 		      lists:zip(lists:seq(1,length(Fields)),Fields),
 		  Name==FieldName],
     #binop{op = '!', left = #integer{value = 32*(Index-1)}, right = ast_body(Record)};
@@ -151,7 +151,7 @@ ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
 			      RecType})}
 		   ]};
 ast_body({typed, _, Body, _}) ->
-    ast_body(Body).    
+    ast_body(Body).
 
 ast_typerep({id,_,"int"}) ->
     word;
@@ -180,7 +180,7 @@ ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
 %% -------------------------------------------------------------------
 get_line(Attribs) -> %% TODO: use AST primitives.
      proplists:get_value(line, Attribs).
-                    
+
 
 %% -------------------------------------------------------------------
 %% Icode
@@ -190,6 +190,6 @@ set_name(Name, Icode) ->
 
 get_name(#{contract_name := Name}) -> Name;
 get_name(_) -> error(name_not_defined).
-    
+
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).
