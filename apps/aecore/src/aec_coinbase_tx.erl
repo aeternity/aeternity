@@ -22,7 +22,7 @@
 -include("common.hrl").
 
 -record(coinbase_tx, {account       = <<>> :: pubkey(),
-                      block_height  = -1 :: integer()}).
+                      block_height  :: non_neg_integer()}).
 
 -opaque tx() :: #coinbase_tx{}.
 

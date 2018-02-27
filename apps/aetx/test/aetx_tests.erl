@@ -32,9 +32,10 @@ apply_signed_txs_test_() ->
                StateTree0 = aec_test_utils:create_state_tree_with_accounts(
                               [MinerAccount, AnotherAccount]),
 
+               BlockHeight = 30,
                %% Create 3 signed transactions (2 valid, 1 invalid)
                {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => MinerPubkey,
-                                                        block_height => 30}),
+                                                        block_height => BlockHeight}),
                {ok, SpendTx} = aec_spend_tx:new(
                                  #{sender => MinerPubkey,
                                    recipient => ?RECIPIENT_PUBKEY,
@@ -52,7 +53,8 @@ apply_signed_txs_test_() ->
                {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
                SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
 
-               {ok, ValidSignedTxs, StateTree} = aec_trees:apply_signed_txs(SignedTxs, StateTree0, 30),
+               {ok, ValidSignedTxs, StateTree} =
+                  aec_trees:apply_signed_txs(SignedTxs, StateTree0, BlockHeight),
                ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),
