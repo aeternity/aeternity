@@ -249,7 +249,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UnsignedTx"
+              "$ref" : "#/definitions/CreateContractUnsignedTx"
             }
           },
           "400" : {
@@ -286,7 +286,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/CreateContractUnsignedTx"
+              "$ref" : "#/definitions/UnsignedTx"
             }
           },
           "400" : {
