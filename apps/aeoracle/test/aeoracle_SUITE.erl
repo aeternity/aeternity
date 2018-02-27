@@ -11,7 +11,10 @@
         ]).
 
 %% test case exports
--export([ prune_oracle/1
+-export([ extend_oracle/1
+        , extend_oracle_negative/1
+        , prune_oracle/1
+        , prune_oracle_extend/1
         , prune_query/1
         , prune_response/1
         , query_oracle/1
@@ -40,12 +43,15 @@ groups() ->
                               ]}
     , {transactions, [sequence], [ register_oracle
                                  , register_oracle_negative
+                                 , extend_oracle
+                                 , extend_oracle_negative
                                  , query_oracle
                                  , query_oracle_negative
                                  , query_response
                                  , query_response_negative
                                  ]}
     , {state_tree, [ prune_oracle
+                   , prune_oracle_extend
                    , prune_query
                    , prune_response
                    ]}
@@ -94,6 +100,70 @@ register_oracle(_Cfg) ->
     {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
+
+%%%===================================================================
+%%% Extend oracle
+%%%===================================================================
+
+extend_oracle_negative(Cfg) ->
+    {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
+    Trees        = aeo_test_utils:trees(S1),
+    CurrHeight   = 1,
+
+    %% Test registering a bogus account
+    BadPubKey = <<42:65/unit:8>>,
+    RTx1      = aeo_test_utils:extend_tx(BadPubKey, S1),
+    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight),
+
+    %% Test extending non-existent oracle
+    RTx2 = aeo_test_utils:extend_tx(PubKey, S1),
+    {error, account_is_not_an_active_oracle} =
+        aetx:check(RTx2, Trees, CurrHeight),
+
+    %% Register the oracle
+    {OracleKey, S2} = register_oracle(Cfg),
+    Trees2          = aeo_test_utils:trees(S2),
+    CurrHeight2     = 3,
+
+    %% Insufficient funds
+    S3     = aeo_test_utils:set_account_balance(OracleKey, 0, S2),
+    Trees3 = aeo_test_utils:trees(S3),
+    RTx3 = aeo_test_utils:extend_tx(OracleKey, S3),
+    {error, insufficient_funds} =
+        aetx:check(RTx3, Trees3, CurrHeight2),
+
+    %% Test too high account nonce
+    RTx4 = aeo_test_utils:extend_tx(OracleKey, #{nonce => 0}, S2),
+    {error, account_nonce_too_high} =
+        aetx:check(RTx4, Trees2, CurrHeight2),
+
+    %% Test too low fee
+    RTx5 = aeo_test_utils:extend_tx(OracleKey, #{fee => 0}, S2),
+    {error, too_low_fee} = aetx:check(RTx5, Trees2, CurrHeight2),
+    ok.
+
+extend_oracle(Cfg) ->
+    {OracleKey, S} = register_oracle(Cfg),
+    PrivKey        = aeo_test_utils:priv_key(OracleKey, S),
+    Trees          = aeo_test_utils:trees(S),
+    OTrees         = aec_trees:oracles(Trees),
+    Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
+    Expires0       = aeo_oracles:expires(Oracle),
+    CurrHeight     = 3,
+
+    %% Test that ExtendTX is accepted
+    Tx       = aeo_test_utils:extend_tx(OracleKey, #{ ttl => {delta, 50} }, S),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
+    S1       = aeo_test_utils:set_trees(Trees1, S),
+
+    OTrees1  = aec_trees:oracles(Trees1),
+    Oracle1  = aeo_state_tree:get_oracle(OracleKey, OTrees1),
+    Expires1 = aeo_oracles:expires(Oracle1),
+    ct:pal("Expires0 = ~p\nExpires1 = ~p\n", [Expires0, Expires1]),
+    true = (Expires0 + 50) == Expires1,
+
+    {OracleKey, Expires0, Expires1, S1}.
 
 %%%===================================================================
 %%% Query oracle
@@ -206,7 +276,7 @@ query_response(Cfg) ->
     {OracleKey, ID, S2}.
 
 %%%===================================================================
-%%% Prune oracle
+%%% Pruning tests
 %%%===================================================================
 
 prune_oracle(Cfg) ->
@@ -224,6 +294,25 @@ prune_oracle(Cfg) ->
     Left      = prune_from_until(0, Expires, Trees),
     Oracle    = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left)),
     OracleKey = aeo_oracles:owner(Oracle),
+    ok.
+
+prune_oracle_extend(Cfg) ->
+    {OracleKey, Exp1, Exp2, S} = extend_oracle(Cfg),
+    Trees                      = aeo_test_utils:trees(S),
+
+    %% Test that the oracle is not pruned prematurely
+    Left1 = prune_from_until(0, Exp1 + 1, Trees),
+    Oracle0   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left1)),
+    OracleKey = aeo_oracles:owner(Oracle0),
+
+    %% Test that the oracle is pruned
+    Gone  = prune_from_until(0, Exp2 + 1, Trees),
+    none  = aeo_state_tree:lookup_oracle(OracleKey, aec_trees:oracles(Gone)),
+
+    %% Test that the oracle remains
+    Left2     = prune_from_until(0, Exp2, Trees),
+    Oracle2   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left2)),
+    OracleKey = aeo_oracles:owner(Oracle2),
     ok.
 
 prune_query(Cfg) ->

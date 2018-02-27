@@ -49,6 +49,7 @@ class JSONTx(object):
         'NamePreclaimTxObject': 'NamePreclaimTxObject',
         'NameTransferTxObject': 'NameTransferTxObject',
         'SpendTxJSON': 'SpendTxJSON',
+        'OracleExtendTxJSON': 'OracleExtendTxJSON',
         'OracleQueryTxJSON': 'OracleQueryTxJSON',
         'OracleRegisterTxJSON': 'OracleRegisterTxJSON'
     }

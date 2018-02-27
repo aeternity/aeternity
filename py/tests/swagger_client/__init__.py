@@ -50,6 +50,7 @@ from swagger_client.models.name_preclaim_tx import NamePreclaimTx
 from swagger_client.models.name_revoke_tx import NameRevokeTx
 from swagger_client.models.name_transfer_tx import NameTransferTx
 from swagger_client.models.name_update_tx import NameUpdateTx
+from swagger_client.models.oracle_extend_tx import OracleExtendTx
 from swagger_client.models.oracle_query_response import OracleQueryResponse
 from swagger_client.models.oracle_query_tx import OracleQueryTx
 from swagger_client.models.oracle_questions import OracleQuestions
@@ -85,6 +86,7 @@ from swagger_client.models.name_preclaim_tx_object import NamePreclaimTxObject
 from swagger_client.models.name_revoke_tx_object import NameRevokeTxObject
 from swagger_client.models.name_transfer_tx_object import NameTransferTxObject
 from swagger_client.models.name_update_tx_object import NameUpdateTxObject
+from swagger_client.models.oracle_extend_tx_json import OracleExtendTxJSON
 from swagger_client.models.oracle_query_tx_json import OracleQueryTxJSON
 from swagger_client.models.oracle_register_tx_json import OracleRegisterTxJSON
 from swagger_client.models.oracle_response_tx_json import OracleResponseTxJSON

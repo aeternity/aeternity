@@ -5,7 +5,9 @@
 %%%-------------------------------------------------------------------
 -module(aeo_test_utils).
 
--export([ new_state/0
+-export([ extend_tx/2
+        , extend_tx/3
+        , new_state/0
         , oracles/1
         , priv_key/2
         , query_tx/3
@@ -78,6 +80,28 @@ register_tx_default_spec(PubKey, State) ->
      , fee       => 5
      , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , query_fee => 5
+     }.
+
+%%%===================================================================
+%%% Extend tx
+%%%===================================================================
+
+extend_tx(PubKey, State) ->
+    extend_tx(PubKey, #{}, State).
+
+extend_tx(PubKey, Spec0, State) ->
+    Spec = maps:merge(extend_tx_default_spec(PubKey, State), Spec0),
+    aetx:new(aeo_extend_tx,
+             #oracle_extend_tx{ oracle = PubKey
+                              , nonce  = maps:get(nonce, Spec)
+                              , ttl    = maps:get(ttl, Spec)
+                              , fee    = maps:get(fee, Spec)
+                              }).
+
+extend_tx_default_spec(PubKey, State) ->
+    #{ ttl       => {delta, 10}
+     , fee       => 5
+     , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
 %%%===================================================================

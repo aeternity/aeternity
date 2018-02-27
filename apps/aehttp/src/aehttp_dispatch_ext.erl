@@ -197,6 +197,16 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
+handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([oracle, fee, ttl]),
+                 base58_decode([{oracle, oracle, oracle_pubkey}]),
+                 get_nonce(oracle),
+                 ttl_decode(ttl),
+                 unsigned_tx_response(fun aeo_extend_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender, oracle_pubkey, query,
