@@ -1312,7 +1312,7 @@ validate_response('PostContractCallCompute', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('PostContractCreate', 200, Body, ValidatorState) ->
-    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+    validate_response_body('CreateContractUnsignedTx', 'CreateContractUnsignedTx', Body, ValidatorState);
 validate_response('PostContractCreate', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('PostContractCreate', 404, Body, ValidatorState) ->

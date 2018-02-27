@@ -215,7 +215,7 @@ paths:
         '200':
           description: Successful operation
           schema:
-            $ref: '#/definitions/UnsignedTx'
+            $ref: '#/definitions/CreateContractUnsignedTx'
         '400':
           description: Invalid transaction
           schema:
@@ -2732,6 +2732,16 @@ definitions:
     required:
     - tx
     - tx_hash
+  CreateContractUnsignedTx:
+    allOf:
+      - $ref: '#/definitions/UnsignedTx'
+      - type: object
+        properties:
+          contract_address:
+            description: Address of the contract to be created
+            type: string
+        required:
+        - contract_address
 
 externalDocs:
   description: Find out more about Aeternity

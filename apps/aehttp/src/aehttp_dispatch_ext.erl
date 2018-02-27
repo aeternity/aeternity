@@ -21,6 +21,7 @@
                         , compute_contract_call_data/0
                         , relative_ttl_decode/1
                         , unsigned_tx_response/1
+                        , ok_response/1
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -153,7 +154,17 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                  base58_decode([{owner, owner, account_pubkey}]),
                  get_nonce(owner),
                  hexstrings_decode([code, call_data]),
-                 unsigned_tx_response(fun aect_create_tx:new/1)
+                 ok_response(
+                    fun(Data) ->
+                        {ok, Tx} = aect_create_tx:new(Data),
+                        #{owner := Owner, nonce := Nonce} = Data,
+                        ContractPubKey =
+                            aect_contracts:compute_contract_pubkey(Owner, Nonce),
+                        #{tx => aec_base58c:encode(transaction,
+                                                  aetx:serialize_to_binary(Tx)),
+                          contract_address => ContractPubKey,
+                          tx_hash => aec_base58c:encode(tx_hash, aetx:hash(Tx))}
+                    end)
                 ],
     process_request(ParseFuns, Req);
 
@@ -162,8 +173,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
                  read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee,
                                        call_data]),
-                 base58_decode([{caller, caller, account_pubkey},
-                               {contract, contract, account_pubkey}]),
+                 base58_decode([{caller, caller, account_pubkey}]),
                  get_nonce(caller),
                  get_contract_code(contract, contract_code),
                  hexstrings_decode([call_data]),
@@ -176,8 +186,7 @@ handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Cont
                  read_required_params([caller, contract, vm_version,
                                        amount, gas, gas_price, fee,
                                        function, arguments]),
-                 base58_decode([{caller, caller, account_pubkey},
-                               {contract, contract, account_pubkey}]),
+                 base58_decode([{caller, caller, account_pubkey}]),
                  get_nonce(caller),
                  get_contract_code(contract, contract_code),
                  compute_contract_call_data(),
@@ -212,7 +221,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
                  read_required_params([sender, oracle_pubkey, query,
                                        query_fee, fee, query_ttl, response_ttl]),
                  base58_decode([{sender, sender, account_pubkey},
-                               {oracle_pubkey, oracle, account_pubkey}]),
+                               {oracle_pubkey, oracle, oracle_pubkey}]),
                  get_nonce(sender),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
