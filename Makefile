@@ -238,8 +238,7 @@ internal-attach: $$(KIND)
 	@./_build/$(KIND)/$(CORE) attach
 
 internal-clean: $$(KIND)
-	@rm -rf ./_build/$(KIND)/rel/epoch/data/*
-	@rm -rf ./_build/$(KIND)/rel/epoch/blocks/*
+	@rm -rf ./_build/$(KIND)/rel/epoch/data/mnesia
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
 
