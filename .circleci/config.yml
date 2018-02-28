@@ -14,8 +14,8 @@ references:
     run:
       name: Checkout merged master
       command: |
-        if [ -n "$CIRCLE_PR_NUMBER" ]; then
-          git fetch origin +refs/pull/${CIRCLE_PR_NUMBER}/merge
+        if [ -n "$CIRCLE_PULL_REQUEST" ]; then
+          git fetch origin +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
           git checkout -qf FETCH_HEAD
         fi
 
