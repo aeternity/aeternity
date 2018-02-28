@@ -173,7 +173,7 @@ jobs:
       - save_cache:
           key: dialyzer-cache-v2-{{ .Branch }}-{{ .Revision }}
           paths:
-            - _build/default/rebar3_20.2.2_plt
+            - _build/default/rebar3_20.2.3_plt
       - run: make dialyzer
       - run: make swagger-check
       - run: make rebar-lock-check
