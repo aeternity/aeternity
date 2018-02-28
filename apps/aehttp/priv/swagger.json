@@ -249,7 +249,7 @@
           "200" : {
             "description" : "Successful operation",
             "schema" : {
-              "$ref" : "#/definitions/UnsignedTx"
+              "$ref" : "#/definitions/CreateContractUnsignedTx"
             }
           },
           "400" : {
@@ -3462,6 +3462,20 @@
         "tx" : { },
         "tx_hash" : null
       }
+    },
+    "CreateContractUnsignedTx" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/UnsignedTx"
+      }, {
+        "type" : "object",
+        "required" : [ "contract_address" ],
+        "properties" : {
+          "contract_address" : {
+            "type" : "string",
+            "description" : "Address of the contract to be created"
+          }
+        }
+      } ]
     },
     "inline_response_200" : {
       "properties" : {

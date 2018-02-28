@@ -531,7 +531,9 @@ contract_transactions(_Config) ->
     ContractPubKey = aect_contracts:compute_contract_pubkey(MinerPubkey, Nonce),
 
     %% prepare a contract_create_tx and post it
-    {ok, 200, #{<<"tx">> := EncodedUnsignedTx}} = get_contract_create(ValidEncoded),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedTx,
+                <<"contract_address">> := CAddress}} = get_contract_create(ValidEncoded),
+    CAddress = ContractPubKey,
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
@@ -550,7 +552,7 @@ contract_transactions(_Config) ->
     {value, _ } = rpc(aect_state_tree, lookup_contract, [ContractPubKey,
                                                          ContractsTree]),
     ContractCallEncoded = #{ caller => MinerAddress,
-                             contract => aec_base58c:encode(account_pubkey, ContractPubKey),
+                             contract => ContractPubKey,
                              vm_version => 1,
                              amount => 10,
                              gas => 1000,
@@ -560,7 +562,6 @@ contract_transactions(_Config) ->
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
                               #{caller => MinerPubkey,
-                                contract => ContractPubKey,
                                 call_data => aeu_hex:hexstring_decode(CallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
@@ -570,7 +571,7 @@ contract_transactions(_Config) ->
     Function = <<"main">>,
     Argument = <<"42">>,
     ComputeCCallEncoded = #{ caller => MinerAddress,
-                             contract => aec_base58c:encode(account_pubkey, ContractPubKey),
+                             contract => ContractPubKey,
                              vm_version => 1,
                              amount => 10,
                              gas => 1000,
@@ -583,7 +584,6 @@ contract_transactions(_Config) ->
                                                        Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller => MinerPubkey,
-                                contract => ContractPubKey,
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
@@ -599,22 +599,10 @@ contract_transactions(_Config) ->
     % invalid caller hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
         get_contract_call(maps:put(caller, InvalidHash, ContractCallEncoded)),
-    % invalid contract hash
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
-        get_contract_call(maps:put(contract, InvalidHash, ContractCallEncoded)),
-    % invalid contract and caller hash
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract,caller">>}} =
-        get_contract_call(maps:merge(ContractCallEncoded, #{contract => InvalidHash,
-                                                            caller => InvalidHash})),
     % invalid caller hash
     {ok, 400, #{<<"reason">> := <<"Invalid hash: caller">>}} =
         get_contract_call_compute(maps:put(caller, InvalidHash,
                                            ComputeCCallEncoded)),
-    % invalid contract hash
-    {ok, 400, #{<<"reason">> := <<"Invalid hash: contract">>}} =
-        get_contract_call_compute(maps:put(contract, InvalidHash,
-                                           ComputeCCallEncoded)),
-
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
     %% owner not found
@@ -706,7 +694,7 @@ oracle_transactions(_Config) ->
 
     % oracle_query_tx positive test
     QueryEncoded = #{sender => MinerAddress,
-                     oracle_pubkey => MinerAddress, % same
+                     oracle_pubkey => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
                      fee => 30,
@@ -764,6 +752,7 @@ oracle_transactions(_Config) ->
 
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    RandOracleAddress = aec_base58c:encode(oracle_pubkey, random_hash()),
     RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
     {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
         get_oracle_register(maps:put(account, RandAddress, RegEncoded)),
@@ -775,7 +764,7 @@ oracle_transactions(_Config) ->
         get_oracle_response(maps:put(oracle, RandAddress, ResponseEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
-        get_oracle_query(maps:put(oracle_pubkey, RandAddress, QueryEncoded)),
+        get_oracle_query(maps:put(oracle_pubkey, RandOracleAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle query for key query_id not found">>}} =
         get_oracle_response(maps:put(query_id, RandQueryID, ResponseEncoded)),

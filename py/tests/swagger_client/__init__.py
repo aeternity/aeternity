@@ -78,6 +78,7 @@ from swagger_client.models.uri import Uri
 from swagger_client.models.version import Version
 from swagger_client.models.block import Block
 from swagger_client.models.coinbase_tx_json import CoinbaseTxJSON
+from swagger_client.models.create_contract_unsigned_tx import CreateContractUnsignedTx
 from swagger_client.models.generic_block import GenericBlock
 from swagger_client.models.json_txs import JSONTxs
 from swagger_client.models.msg_pack_txs import MsgPackTxs
