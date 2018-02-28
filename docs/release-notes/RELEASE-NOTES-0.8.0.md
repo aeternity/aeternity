@@ -2,16 +2,21 @@
 
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.8.0) is focused on stability of the testnet.
 It:
-* Fine-tunes oracles, refunding oracle query fee when oracle does not answer on time. This impacts consensus;
+* Fine-tunes oracles:
+  * Refunding oracle query fee when oracle does not answer on time. This impacts consensus;
+  * Adding the possibility to extend the time-to-live of an oracle. This impacts consensus.
+* Fine-tunes coinbase transaction, by including block height in it so to make its hash unique in the chain. This impacts consensus;
 * Fine-tunes naming system user API, by stopping resolving name in revoke period;
 * Enriches user API re unsigned transactions by returning its transaction hash so to enable querying it;
 * Enriches WebSocket user API by tagging request-response;
+* Enhances contract creation user API, by returning the address of the contract to be created (#800);
+* (#798) Enriches user API by adding functionality for getting a transaction by hash. This works both for transactions already included in a block and still pending ones;
 * Optimizes memory usage of cache of naming system and oracles. This impacts the persisted DB;
 * Optimizes memory usage when launching mining;
 * Refactors transaction-related internals. This impacts the persisted DB;
 * Improves the stability of the testnet.
 
-This release introduces backward incompatible changes in the chain format: this is due to oracles-related changes.
+This release introduces backward incompatible changes in the chain format.
 After upgrading your node, you will not have your previous balance (even if you keep your key pair).
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
