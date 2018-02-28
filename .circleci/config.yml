@@ -1,6 +1,5 @@
 version: 2
 
-
 references:
   container_config: &container_config
     setup_remote_docker:
@@ -316,6 +315,7 @@ workflows:
                 - env/dev2
             tags:
               only: /^v.*$/
+
       - deploy_api_docs:
           requires:
             - static_analysis
@@ -324,7 +324,6 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*$/
-
 
       - test:
           requires:
@@ -409,6 +408,9 @@ workflows:
 
       - deploy_uat:
           requires:
+            - test
+            - eunit
+            - static_analysis
             - linux_package
             - hodl
           filters:
@@ -419,6 +421,9 @@ workflows:
 
       - github_release_linux:
           requires:
+            - test
+            - eunit
+            - static_analysis
             - linux_package
             - hodl
           filters:
@@ -429,6 +434,9 @@ workflows:
 
       - github_release_osx:
           requires:
+            - test
+            - eunit
+            - static_analysis
             - osx_package
             - hodl
           filters:
