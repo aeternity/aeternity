@@ -1077,7 +1077,7 @@ class ExternalApi(object):
     def get_tx(self, tx_hash, **kwargs):  # noqa: E501
         """get_tx  # noqa: E501
 
-        Post a new transaction  # noqa: E501
+        Get a transaction by hash  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_tx(tx_hash, async=True)
@@ -1100,7 +1100,7 @@ class ExternalApi(object):
     def get_tx_with_http_info(self, tx_hash, **kwargs):  # noqa: E501
         """get_tx  # noqa: E501
 
-        Post a new transaction  # noqa: E501
+        Get a transaction by hash  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_tx_with_http_info(tx_hash, async=True)

@@ -200,7 +200,7 @@ paths:
       tags:
         - external
       operationId: GetTx
-      description: 'Post a new transaction'
+      description: 'Get a transaction by hash'
       produces:
         - application/json
       parameters:

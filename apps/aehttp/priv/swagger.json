@@ -233,7 +233,7 @@
     "/tx/{tx_hash}" : {
       "get" : {
         "tags" : [ "external" ],
-        "description" : "Post a new transaction",
+        "description" : "Get a transaction by hash",
         "operationId" : "GetTx",
         "produces" : [ "application/json" ],
         "parameters" : [ {

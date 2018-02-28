@@ -329,14 +329,13 @@ get_transaction(TxKey, TxStateKey) ->
 
 parse_tx_encoding(TxEncodingKey) ->
     fun(_Req, State) ->
-        TxEncoding =
-            case maps:get(TxEncodingKey, State) of
-                message_pack -> message_pack;
-                <<"message_pack">> -> message_pack;
-                json -> json;
-                <<"json">> -> json
-            end,
-        {ok, maps:put(TxEncodingKey, TxEncoding, State)}
+        TxEncoding = maps:get(TxEncodingKey, State),
+        case lists:member(TxEncoding, [message_pack, json]) of
+            true ->
+                {ok, maps:put(TxEncodingKey, TxEncoding, State)};
+            false ->
+                {error, {400, [], #{reason => <<"Unsupported transaction encoding">>}}}
+        end
     end.
     
 encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
