@@ -110,6 +110,11 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetTx' => #{
+            path => "/v2/tx/:tx_hash",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetTxs' => #{
             path => "/v2/transactions",
             method => <<"GET">>,

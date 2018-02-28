@@ -38,6 +38,8 @@
     nameservice_transactions/1,
     spend_transaction/1,
 
+    get_transaction/1,
+
     % sync gossip
     pending_transactions/1,
     post_correct_blocks/1,
@@ -163,6 +165,8 @@ groups() ->
         oracle_transactions,
         nameservice_transactions,
         spend_transaction,
+
+        get_transaction,
 
         % sync gossip
         pending_transactions,
@@ -992,6 +996,63 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
     RandomNonce = rand:uniform(999) + 1,
     Test(RandomNonce, maps:put(nonce, RandomNonce, Params)).
 
+
+get_transaction(_Config) ->
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    add_spend_txs(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    Encodings = [default, message_pack, json],
+    lists:foreach(
+        fun(Encoding) ->
+            lists:foreach(
+                fun(TxType) ->
+                    Params = maps:put(tx_types, [TxType], tx_encoding_param(Encoding)),
+                    {ok, 200, #{<<"transactions">> := Txs}} =
+                        get_account_transactions(EncodedPubKey, Params),
+                    Tx = hd(Txs),
+                    E = case Encoding of
+                          default -> message_pack;
+                          E0 -> E0
+                        end,
+                    #{hash := Hash0} = aetx_sign:meta_data_from_client_serialized(E, Tx),
+                    TxHash = aec_base58c:encode(tx_hash, Hash0),
+                    {ok, 200, #{<<"transaction">> := ReceivedTx}} = get_tx(TxHash, Encoding),
+                    ct:log("Expected transaction: ~p~nActual transaction: ~p", [Tx, ReceivedTx]),
+                    Tx = ReceivedTx
+                end,
+                [<<"aec_coinbase_tx">>, <<"aec_spend_tx">>])
+        end,
+        Encodings),
+            
+    %% test in mempool
+    RandAddress = random_hash(),
+    Encoded = #{sender => EncodedPubKey,
+                recipient_pubkey => aec_base58c:encode(account_pubkey,
+                                                       RandAddress),
+                amount => 2,
+                fee => 1},
+    {ok, 200, #{<<"tx">> := EncodedSpendTx,
+                <<"tx_hash">> := TxHash}} = get_spend(Encoded),
+    {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
+    SpendTx = aetx:deserialize_from_binary(SpendTxBin),
+    {ok, SignedSpendTx} = rpc(aec_keys, sign, [SpendTx]),
+    SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
+    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedSpendTx)),
+    lists:foreach(
+        fun(Encoding) ->
+            {ok, 200, #{<<"transaction">> := PendingTx}} = get_tx(TxHash, Encoding),
+            E = case Encoding of
+                  default -> message_pack;
+                  E0 -> E0
+                end,
+            Expected = aetx_sign:serialize_for_client_pending(E, SignedSpendTx),
+            Expected = PendingTx
+        end,
+        Encodings),
+
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ok.
 
 %% Maybe this test should be broken into a couple of smaller tests
 %% it currently tests the positive cases for
@@ -2800,6 +2861,11 @@ get_header_by_hash(Hash) ->
 get_transactions() ->
     Host = external_address(),
     http_request(Host, get, "transactions", []).
+
+get_tx(TxHash, TxEncoding) ->
+    Params = tx_encoding_param(TxEncoding),
+    Host = external_address(),
+    http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
 
 post_spend_tx(Recipient, Amount, Fee) ->
     Host = internal_address(),

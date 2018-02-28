@@ -7,6 +7,7 @@
 -import(aeu_debug, [pp/1]).
 -import(aehttp_helpers, [ process_request/2
                         , read_required_params/1
+                        , read_optional_params/1
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
                         , hexstrings_decode/1
@@ -18,9 +19,12 @@
                         , verify_oracle_query_existence/2
                         , verify_name/1
                         , ttl_decode/1
+                        , parse_tx_encoding/1
                         , compute_contract_call_data/0
                         , relative_ttl_decode/1
                         , unsigned_tx_response/1
+                        , get_transaction/2
+                        , encode_transaction/3
                         , ok_response/1
                         ]).
 
@@ -457,6 +461,20 @@ handle_request('EncodeCalldata', Req, _Context) ->
         _ -> {403, [], #{reason => <<"Bad request">>}}
     end;
 
+handle_request('GetTx', Req, _Context) ->
+    ParseFuns = [read_required_params([tx_hash]),
+                 read_optional_params([{tx_encoding, tx_encoding, message_pack}]),
+                 parse_tx_encoding(tx_encoding),
+                 base58_decode([{tx_hash, tx_hash, tx_hash}]),
+                 get_transaction(tx_hash, tx),
+                 encode_transaction(tx, tx_encoding, encoded_tx),
+                 ok_response(
+                    fun(#{encoded_tx := #{tx := Tx, schema := Schema}}) ->
+                        #{transaction => Tx,
+                          data_schema => Schema}
+                    end)
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(

@@ -1074,6 +1074,105 @@ class ExternalApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def get_tx(self, tx_hash, **kwargs):  # noqa: E501
+        """get_tx  # noqa: E501
+
+        Get a transaction by hash  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_tx(tx_hash, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str tx_hash: Hash of the transaction to get (required)
+        :param str tx_encoding: Transaction encoding
+        :return: SingleTxObject
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_tx_with_http_info(tx_hash, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_tx_with_http_info(tx_hash, **kwargs)  # noqa: E501
+            return data
+
+    def get_tx_with_http_info(self, tx_hash, **kwargs):  # noqa: E501
+        """get_tx  # noqa: E501
+
+        Get a transaction by hash  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_tx_with_http_info(tx_hash, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str tx_hash: Hash of the transaction to get (required)
+        :param str tx_encoding: Transaction encoding
+        :return: SingleTxObject
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['tx_hash', 'tx_encoding']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_tx" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'tx_hash' is set
+        if ('tx_hash' not in params or
+                params['tx_hash'] is None):
+            raise ValueError("Missing the required parameter `tx_hash` when calling `get_tx`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+        if 'tx_hash' in params:
+            path_params['tx_hash'] = params['tx_hash']  # noqa: E501
+
+        query_params = []
+        if 'tx_encoding' in params:
+            query_params.append(('tx_encoding', params['tx_encoding']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/tx/{tx_hash}', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='SingleTxObject',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def get_txs(self, **kwargs):  # noqa: E501
         """get_txs  # noqa: E501
 

@@ -3,9 +3,11 @@
 -export([ process_request/2
         , parse_map_to_atom_keys/0
         , read_required_params/1
+        , read_optional_params/1
         , base58_decode/1
         , hexstrings_decode/1
         , ttl_decode/1
+        , parse_tx_encoding/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
@@ -15,6 +17,10 @@
         , verify_oracle_query_existence/2
         , verify_name/1
         , compute_contract_call_data/0
+        ]).
+
+-export([ get_transaction/2
+        , encode_transaction/3
         ]).
 
 -export([ ok_response/1
@@ -45,6 +51,20 @@ read_required_params(ParamNames) ->
                 undefined -> error;
                 Val -> {ok, Val}
             end
+        end,
+        "Not found").
+
+read_optional_params(Params) ->
+    params_read_fun(Params,
+        fun({Name, DefaultValue}, Req, _) ->
+            Val =
+                %% swagger puts an 'undefined' value for missing not reqired
+                %% params
+                case maps:get(Name, Req) of
+                    undefined -> DefaultValue;
+                    V -> V
+                end,
+            {ok, Val}
         end,
         "Not found").
 
@@ -288,3 +308,56 @@ compute_contract_call_data() ->
                 {error, {400, [], #{<<"reason">> => Reason}}}
         end
     end.
+
+get_transaction(TxKey, TxStateKey) ->
+    fun(_Req, State) ->
+        TxHash = maps:get(TxKey, State),
+        case aec_db:read_tx(TxHash) of
+            [] ->
+                {error, {404, [], #{<<"reason">> => <<"Transaction not found">>}}};
+            [{Block0, Tx}] ->
+                BlockHash =
+                    case Block0 of
+                        mempool -> mempool;
+                        BH when is_binary(BH) -> BH
+                    end,
+                {ok, maps:put(TxStateKey, #{tx => Tx,
+                                            tx_block_hash => BlockHash},
+                             State)}
+        end
+    end.
+
+parse_tx_encoding(TxEncodingKey) ->
+    fun(_Req, State) ->
+        TxEncoding = maps:get(TxEncodingKey, State),
+        case lists:member(TxEncoding, [message_pack, json]) of
+            true ->
+                {ok, maps:put(TxEncodingKey, TxEncoding, State)};
+            false ->
+                {error, {400, [], #{reason => <<"Unsupported transaction encoding">>}}}
+        end
+    end.
+    
+encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
+    fun(_Req, State) ->
+        #{tx := Tx,
+          tx_block_hash := BlockHash} = maps:get(TxKey, State),
+        TxEncoding = maps:get(TxEncodingKey, State),
+        DataSchema =
+            case TxEncoding of
+                json ->
+                    <<"SingleTxJSON">>;
+                message_pack ->
+                    <<"SingleTxMsgPack">>
+            end,
+        T =
+            case BlockHash of
+                mempool ->
+                    aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
+                _ when is_binary(BlockHash) -> 
+                    H = aec_db:get_header(BlockHash),
+                    aetx_sign:serialize_for_client(TxEncoding, H, Tx)
+            end,
+        {ok, maps:put(EncodedTxKey, #{tx => T, schema => DataSchema}, State)}
+    end.
+

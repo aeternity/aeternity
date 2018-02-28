@@ -30,6 +30,7 @@
 -export([verify/1,
          serialize/1,
          serialize_for_client/3,
+         serialize_for_client_pending/2,
          meta_data_from_client_serialized/2,
          serialize_to_binary/1,
          deserialize/1,
@@ -155,18 +156,32 @@ serialize_for_client(Encoding, Header, #signed_tx{tx = Tx}=S) ->
     serialize_for_client(Encoding, S, aec_headers:height(Header), BlockHash,
                          TxHash).
 
-serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash,
+-spec serialize_for_client_pending(json|message_pack, aetx_sign:signed_tx()) ->
+                              binary() | map().
+serialize_for_client_pending(Encoding, #signed_tx{tx = Tx}=S) ->
+    TxHash = aetx:hash(Tx),
+    serialize_for_client(Encoding, S, -1, <<>>, TxHash).
+
+serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash0,
                      TxHash) ->
+    BlockHash = case BlockHash0 of
+                    <<>> -> <<"none">>;
+                    _ -> aec_base58c:encode(block_hash, BlockHash0)
+                end,
     MetaData = [#{<<"block_height">> => BlockHeight},
-                #{<<"block_hash">> => aec_base58c:encode(block_hash, BlockHash)},
+                #{<<"block_hash">> => BlockHash},
                 #{<<"hash">> => aec_base58c:encode(tx_hash, TxHash)}
                ],
     aec_base58c:encode(transaction, msgpack:pack(serialize(S) ++ [MetaData]));
 serialize_for_client(json, #signed_tx{tx = Tx, signatures = Sigs},
-                     BlockHeight, BlockHash, TxHash) ->
+                     BlockHeight, BlockHash0, TxHash) ->
+    BlockHash = case BlockHash0 of
+                    <<>> -> <<"none">>;
+                    _ -> aec_base58c:encode(block_hash, BlockHash0)
+                end,
     #{<<"tx">> => aetx:serialize_for_client(Tx),
       <<"block_height">> => BlockHeight,
-      <<"block_hash">> => aec_base58c:encode(block_hash, BlockHash),
+      <<"block_hash">> => BlockHash,
       <<"hash">> => aec_base58c:encode(tx_hash, TxHash),
       <<"signatures">> => lists:map(fun(Sig) -> aec_base58c:encode(signature, Sig) end, Sigs)}.
 
