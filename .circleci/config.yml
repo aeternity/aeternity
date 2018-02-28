@@ -17,6 +17,7 @@ references:
         if [ -n "$CIRCLE_PULL_REQUEST" ]; then
           git fetch origin +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
           git checkout -qf FETCH_HEAD
+          git rev-parse HEAD
         fi
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
