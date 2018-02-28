@@ -15,7 +15,7 @@ references:
       name: Checkout merged master
       command: |
         if [ -n "$CIRCLE_PULL_REQUEST" ]; then
-          git fetch origin +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
+          git fetch https://github.com/aeternity/epoch.git +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
           git checkout -qf FETCH_HEAD
           git rev-parse HEAD
         fi
