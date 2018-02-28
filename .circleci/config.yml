@@ -10,6 +10,16 @@ references:
         user: builder
     working_directory: ~/epoch
 
+  merge_checkout: &merge_checkout
+    run:
+      name: Checkout merged master
+      command: |
+        if [ -n "$CIRCLE_PULL_REQUEST" ]; then
+          git fetch origin +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
+          git checkout -qf FETCH_HEAD
+          git rev-parse HEAD
+        fi
+
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
     restore_cache:
@@ -97,6 +107,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *restore_rebar_cache
       - run:
           name: Build
@@ -117,6 +128,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *restore_rebar_cache
       - *restore_build_cache
       - run:
@@ -133,6 +145,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *restore_rebar_cache
       - *restore_build_cache
       - run:
@@ -145,6 +158,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *restore_rebar_cache
       - *restore_build_cache
       - run: ./rebar3 edoc
@@ -168,6 +182,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *set_package_path
       - *build_package
       - *test_package
