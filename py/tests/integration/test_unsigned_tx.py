@@ -33,7 +33,7 @@ def test_contract_create():
     print("Unsigned decoded transaction: " + str(tx))
 
     # make sure same tx
-    assert_equals(tx['type'], 'contract_create')
+    assert_equals(tx['type'], 'aect_create_tx')
     assert_equals(tx['owner'], common.base58_decode(test_settings["alice"]["pubkey"]))
     assert_equals(tx['vm_version'], test_settings["create_contract"]["vm_version"])
     assert_equals(tx['deposit'], test_settings["create_contract"]["deposit"])
