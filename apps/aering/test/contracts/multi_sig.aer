@@ -3,136 +3,122 @@
 
 */
 
-contract MultiSig = {
+contract MultiSig =
 
-type pending_state = { yetNeeded : uint, ownersDone : uint, index : uint };
+    type pending_state = { yetNeeded : uint, ownersDone : uint, index : uint }
 
-type event =
-    Confirmation (address, hash)    // of { .owner : Address, .operation : Hash }
-  | Revoke       (address, hash)    // of { .owner : Address, .operation : Hash }
-  | OwnerChanged (address, address) // of { .oldOwner : Address, .newOwner : Address }
-  | OwnerAdded   (address)          // of { .newOwner : Address }
-  | OwnerRemoved (address)          // of { .removedOwner : Address }
-  | ReqChanged   (uint);             // of { .newReq : uint }
+    type event =
+        Confirmation (address, hash)    // of { .owner : Address, .operation : Hash }
+      | Revoke       (address, hash)    // of { .owner : Address, .operation : Hash }
+      | OwnerChanged (address, address) // of { .oldOwner : Address, .newOwner : Address }
+      | OwnerAdded   (address)          // of { .newOwner : Address }
+      | OwnerRemoved (address)          // of { .removedOwner : Address }
+      | ReqChanged   (uint)             // of { .newReq : uint }
 
-let maxOwners : uint = 250;
+    let maxOwners : uint = 250
 
-type state = { nRequired    : uint
-             , nOwners      : uint
-             , owners       : map(uint, address)
-             , ownerIndex   : map(address, uint)
-             , pending      : map(hash, pending_state)
-             , pendingIndex : list(address) };
+    type state = { nRequired    : uint
+                 , nOwners      : uint
+                 , owners       : map(uint, address)
+                 , ownerIndex   : map(address, uint)
+                 , pending      : map(hash, pending_state)
+                 , pendingIndex : list(address) }
 
-let init (owners : list(address), nRequired : uint) : state = {
-  let n = length(owners) + 1;
-  { nRequired:  nRequired
-  , nOwners:    n
-  , owners:     Map.from_list(List.zip([1..n], caller() :: owners))
-  , ownerIndex: Map.from_list(List.zip(caller() :: owners, [1..n])) }
-};
+    function init (owners : list(address), nRequired : uint) : state =
+      let n = length(owners) + 1
+      { nRequired  = nRequired,
+        nOwners    = n,
+        owners     = Map.from_list(List.zip([1..n], caller() :: owners)),
+        ownerIndex = Map.from_list(List.zip(caller() :: owners, [1..n])) }
 
-let lookup(map, key) =
-  switch(Map.get(key, map)) {
-  | None        => abort()
-  | Some(value) => value
-  };
+    function lookup(map, key) =
+      switch(Map.get(key, map))
+        None        => abort()
+        Some(value) => value
 
-let revoke(operation : hash) = {
-  let ownerIx = lookup(state().ownerIndex, caller());
-  let pending = lookup(state().pendingIndex, operation);
-  let ownerIxBit = 1 bsl (ownerIx - 1);
-  let _ = require(pending.ownersDone band ownerIxBit > 0);
-  let pending' = pending { yetNeeded:  pending.yetNeeded + 1
-                         , ownersDone: pending.ownersDone - ownerIxBit };
-  { state:  state() { pendingIndex.operator: pending' }
-  , events: [Revoke(caller(), operation)] }
-};
+    function revoke(operation : hash) =
+      let ownerIx = lookup(state.ownerIndex, caller())
+      let pending = lookup(state.pendingIndex, operation)
+      let ownerIxBit = 1 bsl (ownerIx - 1)
+      let _ = require(pending.ownersDone band ownerIxBit > 0)
+      let pending' = pending { yetNeeded  = pending.yetNeeded + 1
+                             , ownersDone = pending.ownersDone - ownerIxBit }
+      put(state{ pendingIndex.operator = pending' })
+      event(Revoke(caller, operation))
 
 
-type check_pending = CheckOk(state)
-                   | CheckFail(state);
+    type check_pending = CheckOk(state)
+                       | CheckFail(state)
 
-let changeOwner(fromOwner : address, toOwner : address) =
-  switch(check_pending(callhash())) {
-  | CheckFail(state') => { state: state' }
-  | CheckOk(state') =>
-    if(isOwner(toOwner)) { state: state' } else {
-      switch(Map.get(fromOwner, state().ownerIndex)) {
-      | None => { state: state' }
-      | Some(ownerIx) =>
-        { state: state' { owners: Map.insert(ownerIx, toOwner, state'.owners)
-                        , ownerIndex: Map.delete(fromOwner, Map.insert(toOwner, ownerIx, state'.ownerIndex))
-                        , pending: Map.empty
-                        , pendingIx: [] }
-        , events: [OwnerChanged(fromOwner, toOwner)] }
-      }
-    }
-  };
+    function changeOwner(fromOwner : address, toOwner : address) =
+      switch(check_pending(callhash()))
+        CheckFail(state') => { state = state' }
+        CheckOk(state') =>
+            if(isOwner(toOwner)) put(state')
+            else
+              switch(Map.get(fromOwner, state.ownerIndex))
+                None => { state = state' }
+                Some(ownerIx) =>
+                    { state = state' { owners = Map.insert(ownerIx, toOwner, state'.owners)
+                                    , ownerIndex = Map.delete(fromOwner, Map.insert(toOwner, ownerIx, state'.ownerIndex))
+                                    , pending = Map.empty
+                                    , pendingIx = [] },
+                      events = [OwnerChanged(fromOwner, toOwner)] }
 
-let addOwner(newOwner : address) = {
-  let _ = require (!isOwner(newOwner));
-  switch(check_pending(callhash())) {
-  | CheckFail(state') => { state: state' }
-  | CheckOk(state') =>
-    if(state().nOwners >= maxOwners) () /* TODO */ else {
-      let nOwners' = state'.nOwners + 1;
-      { state: state' { owners:     Map.insert(nOwners', newOwner, state'.owners)
-                      , ownerIndex: Map.insert(newOwner, nOwners', state'.ownerIndex)
-                      , pending:    Map.empty
-                      , pendingIx:  [] }
-      , event: [OwnerAdded(newOwner)] }
-    }
-  }
-};
+    function addOwner(newOwner : address) =
+      let _ = require (!isOwner(newOwner))
+      switch(check_pending(callhash()))
+        CheckFail(state') => { state = state' }
+        CheckOk(state') =>
+            if(state.nOwners >= maxOwners) () /* TODO */
+            else
+              let nOwners' = state'.nOwners + 1
+              { state = state' { owners    = Map.insert(nOwners', newOwner, state'.owners)
+                              , ownerIndex = Map.insert(newOwner, nOwners', state'.ownerIndex)
+                              , pending    = Map.empty
+                              , pendingIx  = [] },
+                event = [OwnerAdded(newOwner)] }
 
-let removeOwner(oldOwner : address) = {
-  let _ = require(isOwner(oldOwner));
-  let _ = require(state().nRequired > state().nOwners - 1);
-  switch(check_pending(callhash())) {
-  | CheckFail(state') => { state: state' }
-  | CheckOk(state') =>
-    let ownerIx = lookup(state'.ownerIndex, oldOwner);
-    { state: state' { owners: Map.delete(ownerIx, state'.owners)
-                    , ownerIndex: Map.delete(newOwner, state'.ownerIndex)
-                    , pending: Map.empty
-                    , pendingIx: [] }
-    , event: [OwnerRemoved(oldOwner)] }
-  }
-};
+    function removeOwner(oldOwner : address) =
+      let _ = require(isOwner(oldOwner))
+      let _ = require(state.nRequired > state.nOwners - 1)
+      switch(check_pending(callhash()))
+        CheckFail(state') => { state = state' }
+        CheckOk(state') =>
+            let ownerIx = lookup(state'.ownerIndex, oldOwner)
+            { state = state' { owners = Map.delete(ownerIx, state'.owners)
+                             , ownerIndex = Map.delete(newOwner, state'.ownerIndex)
+                             , pending = Map.empty
+                             , pendingIx = [] },
+              event = [OwnerRemoved(oldOwner)] }
 
-let changeRequirement(newReq : uint) = {
-  let _ = require(newReq =< state().nOwners);
-  switch(check_pending(callhash())) {
-  | CheckFail(state') => { state: state' }
-  | CheckOk(state') =>
-      { state: state' { nRequired: newReq
-                      , pending: Map.empty
-                      , pendingIx: [] }
-      , event: [ReqChanged(newReq)] }
-  }
-};
+    function changeRequirement(newReq : uint) =
+      let _ = require(newReq =< state.nOwners)
+      switch(check_pending(callhash()))
+        CheckFail(state') => { state = state' }
+        CheckOk(state') =>
+          { state = state' { nRequired = newReq
+                           , pending = Map.empty
+                           , pendingIx = [] },
+            event = [ReqChanged(newReq)] }
 
 
-let getOwner(ownerIx0 : uint) =
-  lookup(state().owners, ownerIx0 + 1);
+    function getOwner(ownerIx0 : uint) =
+      lookup(state.owners, ownerIx0 + 1)
 
-let isOwner(owner : address) =
-  switch(Map.get(owner, state().ownerIndex)) {
-  | None    => false
-  | Some(_) => true
-  };
+    function isOwner(owner : address) =
+      switch(Map.get(owner, state.ownerIndex))
+        None    => false
+        Some(_) => true
 
-let hasConfirmed(operation : hash, owner : address) =
-  switch(Map.get(operation, state().pending)) {
-  | None => false
-  | Some(pending) =>
-    let _ = require(isOwner(owner));
-    let ownerIx = lookup(state().ownerIndex, owner);
-    let ownerIxBit = 1 bsl (ownerIx - 1);
-    (pending.ownersDone band ownerIxBit) != 0
-  };
+    function hasConfirmed(operation : hash, owner : address) =
+      switch(Map.get(operation, state.pending))
+        None => false
+        Some(pending) =>
+          let _ = require(isOwner(owner))
+          let ownerIx = lookup(state.ownerIndex, owner)
+          let ownerIxBit = 1 bsl (ownerIx - 1)
+          (pending.ownersDone band ownerIxBit) != 0
 
-/* Leave the rest for now... */
+    /* Leave the rest for now... */
 
-}

@@ -2,59 +2,55 @@
    http://solidity.readthedocs.io/en/develop/common-patterns.html
 
    contract WithdrawalContract {
-     address public richest;
-     uint public mostSent;
+     address public richest
+     uint public mostSent
 
-      mapping (address => uint) pendingWithdrawals;
+      mapping (address => uint) pendingWithdrawals
 
       function WithdrawalContract() payable {
-        richest = msg.sender;
-        mostSent = msg.value;
+        richest = msg.sender
+        mostSent = msg.value
       }
 
       function becomeRichest() payable returns (bool) {
         if (msg.value > mostSent) {
-            pendingWithdrawals[richest] += msg.value;
-            richest = msg.sender;
-            mostSent = msg.value;
-            return true;
+            pendingWithdrawals[richest] += msg.value
+            richest = msg.sender
+            mostSent = msg.value
+            return true
         } else {
-            return false;
+            return false
         }
       }
 
       function withdraw() {
-        uint amount = pendingWithdrawals[msg.sender];
+        uint amount = pendingWithdrawals[msg.sender]
         // Remember to zero the pending refund before
         // sending to prevent re-entrancy attacks
-        pendingWithdrawals[msg.sender] = 0;
-        msg.sender.transfer(amount);
+        pendingWithdrawals[msg.sender] = 0
+        msg.sender.transfer(amount)
       }
   }
 
 */
 
-contract WithdrawalContract = {
+contract WithdrawalContract =
 
-type state = { richest  : address,
-               mostSent : uint,
-               pendingWithdrawals : map(address, uint) };
+  type state = { richest  : address,
+                 mostSent : uint,
+                 pendingWithdrawals : map(address, uint) }
 
-let becomeRichest() : result(bool) =
-    if (call().value > state().mostSent) {
-        let totalAmount : uint = Map.get_(state().richest, pendingWithdrawals) + call().value;
-        {state: state() { pendingWithdrawals: Map.insert(state().richest, call().value, state().pendingWithdrawals),
-                          richest:  call().sender,
-                          mostSent: call().value },
-        result: true}
-     } else {
-         {result: false}
-     };
+  function becomeRichest() : result(bool) =
+      if (call().value > state.mostSent)
+        let totalAmount : uint = Map.get_(state.richest, pendingWithdrawals) + call().value
+        {state = state{ pendingWithdrawals = Map.insert(state.richest, call().value, state.pendingWithdrawals),
+                        richest  = call().sender,
+                        mostSent = call().value },
+         result = true}
+      else
+        {result = false}
 
-let withdraw() = {
-    let amount : uint = Map.get_(call().sender, state().pendingWithdrawals);
-    { state: state() { pendingWithdrawals: Map.insert(call().sender, 0, state().pendingWithdrawals) },
-      transactions: spend_tx(amount, call().sender) };
-};
-
-}
+  function withdraw() =
+      let amount : uint = Map.get_(call().sender, state.pendingWithdrawals)
+      { state.pendingWithdrawals = Map.insert(call().sender, 0, state.pendingWithdrawals),
+        transactions = spend_tx(amount, call().sender) }

@@ -34,7 +34,6 @@ apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
 apps/aecore/priv
 aevm_external
-apps/aering/src/aer_parser.erl
 apps/aebytecode/src/aeb_asm_scan.erl
 apps/*/doc/*.html
 apps/*/doc/edoc-info

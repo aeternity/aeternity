@@ -4,34 +4,26 @@
    The Solidity code:
 
    contract SimpleStorage {
-       uint storedData;
+       uint storedData
 
        function set(uint x) {
-           storedData = x;
+           storedData = x
        }
 
        function get() constant returns (uint) {
-           return storedData;
+           return storedData
        }
    }
 */
 
-contract type SimpleStorage = {
-  type state;
-  let init : uint => state;
-  let set  : uint => unit;
-  let get  : unit => uint;
-};
+contract SimpleStorage =
 
-contract SimpleStorage = {
+  type event = unit
+  type state = { data : uint }
 
-  type event = unit;
-  type state = { data : uint };
+  function init(value : uint) : state = { data = value }
 
-  let init(value : uint) : state = { data: value };
+  function get() : uint = state.data
 
-  let get() : uint = state().data;
-
-  let set(value : uint) : result(unit) = { state: { data: value } }
-}
+  function set(value : uint) : result(unit) = { state = { data = value } }
 

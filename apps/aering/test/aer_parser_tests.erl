@@ -8,17 +8,10 @@ simple_contracts_test_() ->
     {foreach,
      fun() -> ok end,
      fun(_) -> ok end,
-     [{"Parse an empty contract.",
+     [{"Parse a contract with an identity function.",
        fun() ->
-            Text = "contract Empty = { }",
-            ?assertMatch([{contract, _, {con, _, "Empty"}, []}], parse_string(Text)),
-            ok
-       end},
-      {"Parse a contract with an identity function.",
-       fun() ->
-            Text = "contract Identity = {\n"
-                   "  let id(x) = x\n"
-                   "}",
+            Text = "contract Identity =\n"
+                   "  function id(x) = x\n",
             ?assertMatch(
                 [{contract, _, {con, _, "Identity"},
                     [{letfun, _, {id, _, "id"}, [{arg, _, {id, _, "x"}, {id, _, "_"}}], {id, _, "_"},
@@ -44,8 +37,10 @@ simple_contracts_test_() ->
                 end,
             LeftAssoc  = fun(Op) -> CheckParens({{a, Op, b}, Op, c}) end,
             RightAssoc = fun(Op) -> CheckParens({a, Op, {b, Op, c}}) end,
-            NonAssoc   = fun(Op) -> ?assertError({error, {_, aer_parser, ["syntax error" ++ _, _]}},
-                                                 parse_expr(NoPar({a, Op, {b, Op, c}}))) end,
+            NonAssoc   = fun(Op) ->
+                            OpAtom = list_to_atom(Op),
+                            ?assertError({error, {_, parse_error, _}},
+                                         parse_expr(NoPar({a, Op, {b, Op, c}}))) end,
             Stronger = fun(Op1, Op2) ->
                     CheckParens({{a, Op1, b}, Op2, c}),
                     CheckParens({a, Op2, {b, Op1, c}})
@@ -83,8 +78,8 @@ parse_string(Text) ->
     end.
 
 parse_expr(Text) ->
-    [{contract, _, _, [{letval, _, _, _, Expr}]}] =
-        parse_string("contract Dummy = { let _ = " ++ Text ++ "}"),
+    [{letval, _, _, _, Expr}] =
+        parse_string("let _ = " ++ Text),
     Expr.
 
 round_trip(Text) ->

@@ -8,7 +8,7 @@
 
 -module(aer_test_utils).
 
--export([read_contract/1, contract_path/0, run_contract/4]).
+-export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -26,6 +26,16 @@ contract_path() ->
 read_contract(Name) ->
     {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aer"]))),
     binary_to_list(Bin).
+
+pp(Name) -> pp(Name, []).
+
+pp(Name, Options) ->
+    case aer_parser:string(read_contract(Name)) of
+        {ok, AST} ->
+            [ io:format("~s\n", [prettypr:format(aer_pretty:decls(AST))]) || not lists:member(quiet, Options) ];
+        {error, {{L, C}, parse_error, Err}} ->
+            io:format("Parse error at ~p:~p:~p\n~s\n", [Name, L, C, Err])
+    end.
 
 dummy_state(Code,Data) ->
   #{ gas        => 10000,

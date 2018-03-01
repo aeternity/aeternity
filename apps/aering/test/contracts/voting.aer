@@ -1,113 +1,97 @@
 
 /* Contract type */
-contract type Voting = {
-  type state;
-  let init            : list(string) => state;
+contract VotingType =
+  type state
+  function init            : list(string) => state
 
-  let giveRightToVote : address => unit;
-  let delegate        : address => unit;
-  let vote            : int => unit;
-  let winnerName      : unit => string;
-  let currentTally    : unit => list((string, int));
-};
+  function giveRightToVote : address => unit
+  function delegate        : address => unit
+  function vote            : int => unit
+  function winnerName      : unit => string
+  function currentTally    : unit => list((string, int))
 
 /* Contract implementation */
-contract Voting = {
+contract Voting =
 
   // Types
-
   type proposal =
-    { name: string
-    , mutable voteCount: uint
-    };
+    { name : string
+    , voteCount : uint
+    }
 
-  type vote = NotVoted | Voted(int) | Delegated(address);
+  type vote = NotVoted | Voted(int) | Delegated(address)
 
   type voter =
-    { mutable weight: int
-    , mutable vote: vote
-    };
+    { weight : int
+    , vote : vote
+    }
 
   type state =
-    { chairPerson: address
-    , mutable voters: map(address, voter)
-    , proposals: list(proposal)
-    };
+    { chairPerson : address
+    , voters : map(address, voter)
+    , proposals : list(proposal)
+    }
 
   // Initialization
-  let init(proposalNames: list(string)): state =
-    { chairPerson: caller(),
-      voters:      Map.empty,
-      proposals:   List.map((name) => {name: name, voteCount: 0}, proposalNames)
-    };
+  function init(proposalNames: list(string)): state =
+    { chairPerson = caller(),
+      voters      = Map.empty,
+      proposals   = List.map((name) => {name = name, voteCount = 0}, proposalNames) }
 
-  let initVoter() = { weight: 1, vote: NotVoted};
+  function initVoter() = { weight = 1, vote = NotVoted}
 
-  let giveRightToVote(voter: address) = {
-    require(caller() == state().chairPerson);
-    require(!Map.mem(voter, state().voters));
-    state().voters = Map.add(voter, initVoter(), state().voters);
-    ()
-  };
+  function giveRightToVote(voter: address) =
+    require(caller() == state.chairPerson)
+    require(!Map.mem(voter, state.voters))
+    put(state{ voters = Map.add(voter, initVoter(), state.voters) })
 
-  let rec delegateChain(delegate: address) = {
-    require(delegate != caller()); /* Delegation loop! */
-    let voter = Map.find(delegate, state().voters);
-    switch(voter.vote) {
-    | Delegated(d) => delegateChain(d)
-    | _            => delegate
-    }
-  };
+  function delegateChain(delegate: address) =
+    require(delegate != caller()) /* Delegation loop! */
+    let voter = Map.find(delegate, state.voters)
+    switch(voter.vote)
+      Delegated(d) => delegateChain(d)
+      _            => delegate
 
-  let addVote(candidate, weight) = {
-    let proposal = List.nth(state().proposals, candidate);
-    proposal.voteCount = proposal.voteCount + weight;
-  };
+  function addVote(candidate, weight) =
+    let proposal = List.nth(state.proposals, candidate)
+    proposal{ voteCount = proposal.voteCount + weight }
 
-  let delegateVote(delegateTo: address, weight: uint) = {
-    let voter = Map.find(delegateTo, state().voters);
-    switch(voter.vote) {
-    | Voted(vote)  => addVote(vote, weight)
-    | Delegated(_) => abort()   // impossible
-    | NotVoted     => voter.weight = voter.weight + weight
-    }
-  };
+  function delegateVote(delegateTo: address, weight: uint) =
+    let voter = Map.find(delegateTo, state.voters)
+    switch(voter.vote)
+      Voted(vote)  => addVote(vote, weight)
+      Delegated(_) => abort()   // impossible
+      NotVoted     => voter{ weight = voter.weight + weight }
 
-  let delegate(delegateTo: address) = {
-    require(delegateTo != caller());
-    let voter = Map.find(caller(), state().voters);
-    require(voter.vote == NotVoted);
-    let finalDelegate = delegateChain(delegateTo);
-    voter.vote = Delegated(finalDelegate);
+  function delegate(delegateTo: address) =
+    require(delegateTo != caller())
+    let voter = Map.find(caller(), state.voters)
+    require(voter.vote == NotVoted)
+    let finalDelegate = delegateChain(delegateTo)
+    let voter' = voter{ vote = Delegated(finalDelegate) }
     delegateVote(finalDelegate, voter.weight)
-  };
 
-  let vote(candidate: uint) = {
-    let voter = Map.find(caller(), state().voters);
-    require(voter.vote == NotVoted);
-    voter.vote = Voted(candidate);
-    addVote(candidate, voter.weight);
-  };
+  function vote(candidate: uint) =
+    let voter = Map.find(caller(), state.voters)
+    require(voter.vote == NotVoted)
+    let voter' = voter{ vote = Voted(candidate) }
+    addVote(candidate, voter.weight)
 
-  let rec winningProposal'(current, rest) =
-    switch(rest) {
-    | []      => current;
-    | p :: ps => winningProposal'(p.voteCount > current.voteCount ? p : current, ps)
-    };
+  function winningProposal'(current, rest) =
+    switch(rest)
+      []      => current
+      p :: ps => winningProposal'(if (p.voteCount > current.voteCount) p else current, ps)
 
   // const
-  let winningProposal() : proposal = {
-    switch(state().proposals) {
-    | []      => abort()
-    | p :: ps => winningProposal'(p, ps)
-    }
-  };
+  function winningProposal() : proposal =
+    switch(state.proposals)
+      []      => abort()
+      p :: ps => winningProposal'(p, ps)
 
   // const
-  let winnerName() = winningProposal().name;
+  function winnerName() = winningProposal().name
 
   // const
-  let currentTally() =
-    List.map((p) => (p.name, p.voteCount), state().proposals);
+  function currentTally() =
+    List.map((p) => (p.name, p.voteCount), state.proposals)
 
-}

@@ -1,14 +1,3 @@
 
-contract type Identity = {
-  type state;
-
-  let main: int => int;
-};
-
-contract Identity = {
-  let main(x:int) = {
-    x;
-  };
-};
-
-
+contract Identity =
+  function main (x:int) = x

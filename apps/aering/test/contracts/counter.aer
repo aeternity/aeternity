@@ -1,25 +1,15 @@
 
-contract type Counter = {
-  type state;
-  let init : unit => state;
-  let get  : unit => int;
-  let tick : unit => unit;
-};
+contract Counter =
 
-contract Counter = {
+  type state = int
 
-  type state = int;
+  function init() = 0
 
-  let init() = 0;
-
-  let get() = {
-    let s = state();
+  function get() =
+    let s = state()
     (s, s)
-  };
 
-  let tick() = {
-    let s = state();
+  function tick() =
+    let s = state()
     ((), s + 1)
-  };
-};
 

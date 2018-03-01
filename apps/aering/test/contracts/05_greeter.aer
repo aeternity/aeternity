@@ -12,23 +12,23 @@
 
     function Greeter(string _greeting) public   // The constructor. It accepts a string input and saves it to the contract's "greeting" variable.
     {
-        creator = msg.sender;
-        greeting = _greeting;
+        creator = msg.sender
+        greeting = _greeting
     }
 
     function greet() constant returns (string)
     {
-        return greeting;
+        return greeting
     }
 
     function getBlockNumber() constant returns (uint) // this doesn't have anything to do with the act of greeting
     {													// just demonstrating return of some global variable
-        return block.number;
+        return block.number
     }
 
     function setGreeting(string _newgreeting)
     {
-        greeting = _newgreeting;
+        greeting = _newgreeting
     }
 
      /**********
@@ -45,32 +45,33 @@
 
 */
 
-contract Greeter = {
+contract Greeter =
 
 
- /* The creator of the contract will automatically
-   be set in creator() by the transaction creating the contract. */
-let blockheight: unit => uint;
-type transaction = { tx: string };
-type state = { mutable greeting: string };
-type retval = { mutable state: state,
-                mutable transactions: list(transaction)};
+     /* The creator of the contract will automatically
+       be set in creator() by the transaction creating the contract. */
+    function blockheight : unit => uint
+    type transaction = { tx : string }
+    type state = { greeting: string }
+    type retval = { state: state,
+                    transactions: list(transaction)}
 
-let state = { greeting : "Hello" };
+    let state = { greeting = "Hello" }
 
-let setGreeting = (greeting: string) =>
-  state.greeting = greeting;
+    let setGreeting =
+        (greeting: string) =>
+            state{ greeting = greeting }
 
 
 
-/* this doesn't have anything to do with the act of greeting
-   just demonstrating return of some global variable */
-let getBlockNumber = ()  => blockheight();
+    /* this doesn't have anything to do with the act of greeting
+       just demonstrating return of some global variable */
+    function getBlockNumber() = blockheight()
 
-/* There is no suicide functionallity in Ring */
-let kill = () =>
-  if ((caller() == creator()) /* only allow this action if the account sending the signal is the creator */
-      && (balance() > 0)) /* only creata a transaction if there is something to send */
-  { state.transactions = [spend_tx(creator(), balance())] } else { state }
+    /* There is no suicide functionallity in Ring */
+    function kill() =
+      if ((caller() == creator()) /* only allow this action if the account sending the signal is the creator */
+          && (balance() > 0)) /* only creata a transaction if there is something to send */
+          state{ transactions = [spend_tx(creator(), balance())] }
+      else state
 
-}
