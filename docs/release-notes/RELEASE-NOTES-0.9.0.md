@@ -15,6 +15,7 @@ Troubleshooting of common issues is documented [in the wiki](https://github.com/
 
 The instructions below describe:
 * [How to retrieve the released software for running a node](#retrieve-the-software-for-running-a-node);
+* [How to install a node](#install-node);
 * [How to join the testnet](#join-the-testnet).
 
 ## Retrieve the software for running a node
@@ -28,13 +29,6 @@ The release binaries are tested on the following platforms:
 * macOS Sierra (x86-64);
 * macOS High Sierra (x86-64).
 
-The macOS package has a hard dependency on OpenSSL v1.0.0 installed with [Homebrew](https://brew.sh/) in its default path `/usr/local/opt/openssl/lib/libcrypto.1.0.0.dylib` and also a hard
-dependency on libsodium v1.0.16 installed with [Homebrew](https://brew.sh/) also in its default path `/usr/local/opt/libsodium/lib/libsodium.23.dylib`.
-In case you have installed either of them in a non-default path, you could use symlink(s) to work around the issue.
-
-To run on Ubuntu 16.04 you need to have a libsodium shared library (v1.0.16) in `/usr/local/lib/libsodium.so.23`. (`wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz`,
-unpack, then do `./configure && make && sudo make install && sudo ldconfig`)
-
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
@@ -44,6 +38,12 @@ The node API - i.e. peer-to-peer network API and user API - is documented:
   * An interactive visualization of the same specification is available [online](https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.9.0/apps/aehttp/priv/swagger.json).
 * WebSocket API endpoints are [specified online](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md);
 * The intended usage of the user API (HTTP and WebSocket) is [documented online](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md).
+
+## Install node
+
+The instructions for installing a node using a release binary are in [the dedicated separate document](../../docs/installation.md).
+
+For installation of a node using the Docker image, please refer to [its documentation online](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
 ## Join the testnet
 
@@ -62,19 +62,7 @@ Information, e.g. height, of the top block of the longest chain as seen by these
 
 ### Setup your node
 
-#### Deploy node
-
-In the instructions below, the node is deployed in directory `/tmp/node`: you may prefer to deploy the node in an alternative (and less ephemeral) location - e.g. a `node` directory inside your home directory - by amending the instructions accordingly.
-It is recommended that the partition where the node directory is has at least 10 GB free: this is needed for the chain and the log files.
-
-Open a Terminal window or get to the command line.
-
-Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
-```
-mkdir /tmp/node
-cd /tmp/node
-tar xf ~/Downloads/epoch-0.9.0-osx-10.12.6.tar.gz
-```
+The instructions below assume that the node is deployed in directory `/tmp/node`: if that is not the case, amend the instructions accordingly.
 
 #### Configure node
 
