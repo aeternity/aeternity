@@ -391,6 +391,7 @@ workflows:
             - eunit
             - static_analysis
             - linux_package
+            - uat_tests
           filters:
             branches:
               only: master
