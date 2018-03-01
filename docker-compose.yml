@@ -2,9 +2,7 @@
 version: '3'
 services:
   node1:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile-epoch
+    build: .
     image: aetrnty/epoch
     hostname: node1
     environment:
