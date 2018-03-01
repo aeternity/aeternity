@@ -352,8 +352,6 @@ workflows:
               only: /^v.*$/
 
       - uat_tests:
-          requires:
-            - static_analysis
           filters:
             branches:
               only: master
