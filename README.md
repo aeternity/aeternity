@@ -36,4 +36,6 @@ How to start?
 ---
 
 We publish packages in github for major platforms: [Releases](https://github.com/aeternity/epoch/releases)
-The best way to start is to install the package and connect to testnet. We try to document the process in [Release Notes](https://github.com/aeternity/epoch/tree/master/docs/release-notes)
+
+The best way to start is to install the package and connect to testnet.
+We try to document the process in [Release Notes](docs/release-notes)
