@@ -2,7 +2,7 @@
 
 -include("aec_hash.hrl").
 
--export([blake2s_hash/1,
+-export([blake2b_256_hash/1,
          hash/2,
          sha256_hash/1
         ]).
@@ -21,13 +21,13 @@
 hash(evm, Bin) when is_binary(Bin) ->
     sha3_hash(Bin);
 hash(_ObjType, Bin) when is_binary(Bin) ->
-    blake2s_hash(Bin).
+    blake2b_256_hash(Bin).
 
 %%------------------------------------------------------------------------------
-%% Calculate the BLAKE2s hash value of a binary
+%% Calculate a 256 bit digest BLAKE2b hash value of a binary
 %%------------------------------------------------------------------------------
--spec blake2s_hash(hashable()) -> hash().
-blake2s_hash(Bin) ->
+-spec blake2b_256_hash(hashable()) -> hash().
+blake2b_256_hash(Bin) ->
     {ok, Hash} = enacl:generichash(?HASH_BYTES, Bin),
     Hash.
 
