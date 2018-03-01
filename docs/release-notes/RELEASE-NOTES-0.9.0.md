@@ -18,7 +18,7 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.9.0) corresponding to your platform, e.g. `epoch-0.9.0-osx-10.12.6.tar.gz`; you would normally find the downloaded package in `~/Downloads` on macOS.
+Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.9.0) corresponding to your platform.
 
 The binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
@@ -65,7 +65,7 @@ It is recommended that the partition where the node directory is has at least 10
 
 Open a Terminal window or get to the command line.
 
-Create a directory and unpack the downloaded package:
+Create a directory and unpack the downloaded package (you may need to amend the directory and/or file name of the package):
 ```
 mkdir /tmp/node
 cd /tmp/node
