@@ -36,10 +36,12 @@ Alternatively to the release binaries, you can use the published `aetrnty/epoch`
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
 
-HTTP API endpoints are specified in the [swagger.yaml](https://github.com/aeternity/epoch/blob/v0.9.0/config/swagger.yaml); a swagger.json version of the same specification is present in the release binary at path `lib/aehttp-0.1.0/priv/swagger.json`, and its interactive visualization is available [online](https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.9.0/apps/aehttp/priv/swagger.json).
-WebSocket API endpoints are [specified](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md).
-
-The intended usage of the API (HTTP and WebSocket) of the node is [documented](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md).
+The node API - i.e. peer-to-peer network API and user API - is documented:
+* HTTP API endpoints are specified [online in swagger.yaml](https://github.com/aeternity/epoch/blob/v0.9.0/config/swagger.yaml);
+  * A JSON version of same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`;
+  * An interactive visualization of the same specification is available [online](https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.9.0/apps/aehttp/priv/swagger.json).
+* WebSocket API endpoints are [specified online](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md);
+* The intended usage of the user API (HTTP and WebSocket) is [documented online](https://github.com/aeternity/protocol/blob/epoch-v0.9.0/epoch/api/README.md).
 
 ## Join the testnet
 
