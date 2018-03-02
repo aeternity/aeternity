@@ -68,10 +68,10 @@ local_ping_object() ->
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
     {ok, PubKey} = aec_keys:pubkey(),
     #{<<"genesis_hash">> => GHash,
-      <<"pub_key">>      => PubKey,
       <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
       <<"source">>       => Source,
+      <<"source_id">>    => PubKey,
       <<"share">>        => 32,  % TODO: make this configurable
       <<"peers">>        => []}.
 

@@ -56,13 +56,15 @@
 ping(Uri, LocalPingObj) ->
     #{<<"share">> := Share,
       <<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
+      <<"best_hash">> := TopHash,
+      <<"source_id">> := SourceId
      } = LocalPingObj,
     Peers = aec_peers:get_random(Share, [Uri]),
     lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
     PingObj = LocalPingObj#{<<"peers">> => Peers,
                             <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
-                            <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
+                            <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash),
+                            <<"source_id">> => aec_base58c:encode(node_id, SourceId)
                            },
     Response = process_request(Uri, 'Ping', PingObj),
     case Response of
@@ -79,22 +81,30 @@ ping(Uri, LocalPingObj) ->
                       _ -> Reason
                     end};
         {ok, 200, #{ <<"genesis_hash">> := EncRemoteGHash,
-                <<"best_hash">> := EncRemoteTopHash} = Map} ->
+                     <<"best_hash">> := EncRemoteTopHash,
+                     <<"source_id">> := EncSourceId} = Map} ->
+            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
+                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash),
+                  aec_base58c:safe_decode(node_id, EncSourceId)} of
+              {{ok, RemoteGHash}, {ok, RemoteTopHash}, {ok, SourceId}} ->
+                  RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
+                                   <<"best_hash">>  => RemoteTopHash,
+                                   <<"source_id">>  => SourceId},
+                  decoded_ping_response(Uri, LocalPingObj, RemoteObj, false);
+              _ ->
+                %% Something is wrong, block the peer later on
+                lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
+                {error, protocol_violation}
+            end;
+        {ok, 200, #{ <<"genesis_hash">> := EncRemoteGHash,
+                     <<"best_hash">> := EncRemoteTopHash} = Map} ->
+            %% Response from a deprecated node without `source_id`.
             case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
                   aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
               {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
                   RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
                                    <<"best_hash">>  => RemoteTopHash},
-                  RemotePeers = maps:get(<<"peers">>, Map, []),
-                  case maps:get(<<"peers">>, Map, []) of
-                      RemotePeers when is_list(RemotePeers), length(RemotePeers) =< Share ->
-                          lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
-                          {ok, RemoteObj, RemotePeers};
-                      _ ->
-                          lager:debug("ping response with too many peers ~p", [Uri]),
-                          %% Do not print the object, that in itself opens a DoS attack
-                          {error, protocol_violation}
-                 end;
+                  decoded_ping_response(Uri, LocalPingObj, RemoteObj, true);
               _ ->
                 %% Something is wrong, block the peer later on
                 lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
@@ -105,6 +115,18 @@ ping(Uri, LocalPingObj) ->
         _ ->
             %% Should have been turned to {error, _} by swagger validation
             lager:debug("unexpected response (~p): ~p", [Uri, Response]),
+            {error, protocol_violation}
+    end.
+
+decoded_ping_response(Uri, LocalObj, RemoteObj, _IsDeprecated) ->
+	#{<<"share">> := Share} = LocalObj,
+    case maps:get(<<"peers">>, RemoteObj, []) of
+        RemotePeers when is_list(RemotePeers), length(RemotePeers) =< Share ->
+            lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
+            {ok, RemoteObj, RemotePeers};
+        _ ->
+            lager:debug("ping response with too many peers ~p", [Uri]),
+            %% Do not print the object, that in itself opens a DoS attack
             {error, protocol_violation}
     end.
 

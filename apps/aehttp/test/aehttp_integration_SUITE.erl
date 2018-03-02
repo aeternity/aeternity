@@ -22,6 +22,7 @@
     not_blocked_ping/1,
     auto_unblocked_peer/1,
     correct_ping/1,
+    correct_deprecated_ping/1,
 
     % get block-s
     get_top_empty_chain/1,
@@ -150,6 +151,7 @@ groups() ->
         not_blocked_ping,
         auto_unblocked_peer,
         correct_ping,
+        correct_deprecated_ping,
 
         % get block-s
         get_top_empty_chain,
@@ -301,16 +303,36 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 correct_ping(_Config) ->
     #{<<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
+      <<"best_hash">> := TopHash,
+      <<"source_id">> := SourceId
      } = PingObj = rpc(aec_sync, local_ping_object, []),
     EncGHash = aec_base58c:encode(block_hash, GHash),
     EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    EncSourceId = aec_base58c:encode(node_id, SourceId),
     Peer = unique_peer(),
     {ok, 200, _} =
         post_ping(
           maps:put(<<"source">>, Peer,
                    PingObj#{<<"genesis_hash">> => EncGHash,
-                            <<"best_hash">> => EncTopHash})),
+                            <<"best_hash">> => EncTopHash,
+                            <<"source_id">> => EncSourceId})),
+    rpc(aec_peers, remove, [Peer]),
+    ok.
+
+correct_deprecated_ping(_Config) ->
+    %% Tests that a ping without `source_id` is still working.
+    #{<<"genesis_hash">> := GHash,
+      <<"best_hash">> := TopHash
+     } = PingObj = rpc(aec_sync, local_ping_object, []),
+    DeprecatedPingObj = maps:remove(<<"source_id">>, PingObj),
+    EncGHash = aec_base58c:encode(block_hash, GHash),
+    EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    EncPingObj = DeprecatedPingObj#{<<"genesis_hash">> => EncGHash,
+                                    <<"best_hash">> => EncTopHash},
+    Peer = unique_peer(),
+    {ok, 200, _} =
+        post_ping(
+          maps:put(<<"source">>, Peer, EncPingObj)),
     rpc(aec_peers, remove, [Peer]),
     ok.
 
@@ -2694,12 +2716,15 @@ peers(_Config) ->
 
     %% post some pings
     #{<<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
+      <<"best_hash">> := TopHash,
+      <<"source_id">> := SourceId
     } = PingObj0 = rpc(aec_sync, local_ping_object, []),
     EncGHash = aec_base58c:encode(block_hash, GHash),
     EncTopHash = aec_base58c:encode(block_hash, TopHash),
+    EncSourceId = aec_base58c:encode(node_id, SourceId),
     PingObj = PingObj0#{<<"genesis_hash">> => EncGHash,
-                        <<"best_hash">> => EncTopHash},
+                        <<"best_hash">> => EncTopHash,
+                        <<"source_id">> => EncSourceId},
     PostPing =
         fun(Peer) ->
             {ok, 200, _} =
