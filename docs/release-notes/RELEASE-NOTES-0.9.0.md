@@ -19,9 +19,11 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-Download the [release binary](https://github.com/aeternity/epoch/releases/tag/v0.9.0) corresponding to your platform.
+You can run a node by using either:
+* The published [release binary](https://github.com/aeternity/epoch/releases/tag/v0.9.0) corresponding to your platform; or
+* The published [Docker image `aetrnty/epoch`](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
-The binaries are tested on the following platforms:
+The release binaries are tested on the following platforms:
 * Ubuntu 16.04.3 LTS (x86-64);
 * macOS Sierra (x86-64);
 * macOS High Sierra (x86-64).
@@ -33,9 +35,8 @@ In case you have installed either of them in a non-default path, you could use s
 To run on Ubuntu 16.04 you need to have a libsodium shared library (v1.0.16) in `/usr/local/lib/libsodium.so.23`. (`wget https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz`,
 unpack, then do `./configure && make && sudo make install && sudo ldconfig`)
 
-Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
-
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
+For specifying configuration using the Docker image, please refer to [its documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
 The node API - i.e. peer-to-peer network API and user API - is documented:
 * HTTP API endpoints are specified [online in swagger.yaml](https://github.com/aeternity/epoch/blob/v0.9.0/config/swagger.yaml);
@@ -47,6 +48,8 @@ The node API - i.e. peer-to-peer network API and user API - is documented:
 ## Join the testnet
 
 This section describes how to run a node as part of the testnet - the public test network of nodes - by using the release binary.
+
+For running a node as part of the testnet by using the Docker image, please consult [its documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md) in addition to this section.
 
 ### Inspect the testnet
 
