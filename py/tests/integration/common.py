@@ -124,6 +124,10 @@ def encode_signed_tx(encoded_tx, signatures):
     str = base58.b58encode_check(msgpack.packb(["sig_tx", 1, encoded_tx, signatures], use_bin_type=True))
     return "tx$" + str
 
+def encode_pubkey(pubkey):
+    str = base58.b58encode_check(pubkey)
+    return "ak$" + str
+
 def unpack_tx(tx):
     return msgpack.unpackb(tx)
 

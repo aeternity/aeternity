@@ -104,7 +104,6 @@ tests: # test specific settings
         node: dev1
       blocks_to_mine: 3
       alice:
-        pubkey: ak$3Kfn4zPmFVHc6ZtSVRWYwouYTtEPvzN1c8mhvSLxjaDC2YnTPFR9eBSGhofzx8jwwFhrMqU2PkU4MAbpHYc8eMxzbdQnUV
         amount: 20
         fee: 1
       create_contract:
@@ -116,17 +115,14 @@ tests: # test specific settings
         gas_price: 1
         fee: 11
         call_data: "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000046d61696e00000000000000000000000000000000000000000000000000000000"
-        signature: "48,69,2,32,71,171,200,76,208,92,100,158,72,126,90,164,254,28,6,0,104,57,73,83,197,251,95,119,16,166,100,225,59,247,252,43,2,33,0,129,128,218,245,11,37,127,197,165,232,78,217,210,130,25,44,123,161,122,123,241,133,245,47,245,221,214,219,52,107,197,116"
     test_contract_call:
       nodes:
         node: dev1
       blocks_to_mine: 7
       alice:
-        pubkey: ak$3Kfn4zPmFVHc6ZtSVRWYwouYTtEPvzN1c8mhvSLxjaDC2YnTPFR9eBSGhofzx8jwwFhrMqU2PkU4MAbpHYc8eMxzbdQnUV
         amount: 50
         fee: 1
       contract_call:
-        contract: ak$foHWQQpfLNhav7CahBuP6phCtdRvLNQngQuzNRvUi2Zxe1wEGALHRyXottSmLbxbiY1VjhX3QMoZfnk643hDptbKXre8bP 
         vm_version: 1
         fee: 1
         amount: 10
@@ -135,4 +131,14 @@ tests: # test specific settings
         data:
           function: main
           argument: "42"
-        signature: "48,69,2,33,0,207,85,190,252,133,96,24,144,99,155,120,250,12,237,145,186,24,90,103,20,207,171,85,145,78,100,178,255,239,20,184,220,2,32,17,255,106,140,202,211,39,221,71,99,126,119,112,123,105,100,42,230,7,227,245,114,130,207,11,176,219,33,26,242,212,175"
+    test_spend:
+      nodes:
+        node: dev1
+      blocks_to_mine: 7
+      alice:
+        amount: 50
+        fee: 1
+      spend_tx:
+        amount: 13
+        fee: 1
+        recipient: ak$3WkBeo6uZn

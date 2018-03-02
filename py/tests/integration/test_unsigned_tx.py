@@ -15,6 +15,8 @@ from swagger_client.models.contract_create_data import ContractCreateData
 from swagger_client.models.contract_call_data import ContractCallData
 from swagger_client.models.contract_call_input import ContractCallInput
 
+import keys
+
 settings = common.test_settings(__name__.split(".")[-1])
 
 def test_contract_create():
@@ -22,11 +24,17 @@ def test_contract_create():
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
 
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    private_key = keys.new_private()
+    public_key = keys.public_key(private_key)
 
-    encoded_tx = get_unsigned_contract_create(test_settings["alice"]["pubkey"], test_settings["create_contract"], external_api)
+    alice_address = keys.address(public_key)
+
+    test_settings["alice"]["pubkey"] = alice_address
+    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
+    print("Contract address: " + contract_address)
     unsigned_tx = common.base58_decode(encoded_tx)
     unpacked_tx = common.unpack_tx(unsigned_tx)
     tx = common.parse_tx(unpacked_tx)
@@ -48,19 +56,19 @@ def test_contract_create():
     call_data = bytearray.fromhex(test_settings["create_contract"]["call_data"][2:]) # without 0x
     assert_equals(tx['call_data'], call_data)
 
-    signature = bytearray(list(map(int, test_settings["create_contract"]["signature"].split(","))))
-    signed = common.encode_signed_tx(unpacked_tx, [signature]) 
+    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
     print("Signed transaction " + signed)
 
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
+    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
 
     assert_equals(alice_balance0, alice_balance + test_settings["create_contract"]["fee"])
+    print("Fee was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
 
@@ -70,22 +78,28 @@ def test_contract_call():
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
 
+    private_key = keys.new_private()
+    public_key = keys.public_key(private_key)
+
+    alice_address = keys.address(public_key)
+
+    test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user("alice", test_settings, internal_api, external_api)
 
     ## create contract
-    encoded_tx = get_unsigned_contract_create(test_settings["alice"]["pubkey"], create_settings["create_contract"], external_api)
+    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
     unpacked_tx = common.unpack_tx(unsigned_tx)
-    signature = bytearray(list(map(int, create_settings["create_contract"]["signature"].split(","))))
-    signed = common.encode_signed_tx(unpacked_tx,[signature]) 
 
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
+    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
+    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
 
     # assert contract created:
     call_contract = test_settings["contract_call"]
@@ -97,7 +111,7 @@ def test_contract_call():
     result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller=test_settings["alice"]["pubkey"],
-        contract=call_contract["contract"],
+        contract=contract_address,
         vm_version=call_contract["vm_version"],
         fee=call_contract["fee"],
         amount=call_contract["amount"],
@@ -115,28 +129,74 @@ def test_contract_call():
     tx = common.parse_tx(unpacked_call_tx)
     print("Unsigned decoded transaction: " + str(tx))
 
-    signature = bytearray(list(map(int, test_settings["contract_call"]["signature"].split(","))))
+    signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, unpacked_call_tx, private_key, public_key)
 
-    signed = common.encode_signed_tx(unpacked_call_tx,[signature]) 
-
-    print("Signed transaction: " + signed)
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
-    tx_object = Tx(tx=signed)
+    print("Signed transaction: " + signed_call)
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    tx_object = Tx(tx=signed_call)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=test_settings["alice"]["pubkey"]).balance
+    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
 
-    print("BALANCE0 " + str(alice_balance0))
-    print("BALANCE " + str(alice_balance))
     # assert contract created:
     assert_equals(alice_balance0, alice_balance + test_settings["contract_call"]["fee"])
-
-
+    print("Fee was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
 
+
+def test_spend():
+    test_settings = settings["test_spend"]
+    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
+    internal_api = common.internal_api(node)
+
+    private_key = keys.new_private()
+    public_key = keys.public_key(private_key)
+
+    alice_address = keys.address(public_key)
+    bob_address = test_settings["spend_tx"]["recipient"]
+
+    test_settings["alice"]["pubkey"] = alice_address
+    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+
+    spend_data_obj = SpendTx(
+            sender=alice_address,
+            recipient_pubkey=bob_address,
+            amount=test_settings["spend_tx"]["amount"],
+            fee=test_settings["spend_tx"]["fee"])
+    unsigned_spend_obj = external_api.post_spend(spend_data_obj)
+    unsigned_spend_enc = unsigned_spend_obj.tx
+    tx_hash = unsigned_spend_obj.tx_hash
+    unsigned_tx = common.base58_decode(unsigned_spend_enc)
+    unpacked_tx = common.unpack_tx(unsigned_tx)
+    print("Tx " + str(common.parse_tx(unpacked_tx)))
+
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
+
+    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    print("Signed transaction " + signed)
+    print("Tx hash " + tx_hash)
+
+    tx_object = Tx(tx=signed)
+    external_api.post_tx(tx_object)
+    
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    bob_balance = common.get_account_balance(internal_api, pub_key=bob_address).balance
+    tx = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
+
+    print("Alice balance now is " + str(alice_balance))
+    print("Bob balance now is " + str(bob_balance))
+    print("Balances are updated, transaction has been executed")
+
+    assert_equals(alice_balance0, alice_balance + test_settings["spend_tx"]["fee"] + test_settings["spend_tx"]["amount"])
+
+    assert_equals(bob_balance0, bob_balance - test_settings["spend_tx"]["amount"])
+    cleanup(node, root_dir)
 
 def cleanup(node, root_dir):
     common.stop_node(node)
@@ -203,4 +263,4 @@ def get_unsigned_contract_create(owner, contract, external_api):
         call_data=contract["call_data"])
 
     tx_obj = external_api.post_contract_create(contract_create_data_obj)
-    return tx_obj.tx
+    return (tx_obj.tx, tx_obj.contract_address)

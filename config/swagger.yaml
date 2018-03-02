@@ -2324,22 +2324,22 @@ definitions:
     - data_schema
   SingleTxJSON:
     allOf:
-      - $ref: '#/definitions/SingleTxObject'
-      - type: object
-        properties:
-          transaction:
-            $ref: '#/definitions/SignedTxJSON'
-        required:
-        - transaction
+    - $ref: '#/definitions/SingleTxObject'
+    - type: object
+      properties:
+        transaction:
+          $ref: '#/definitions/SignedTxJSON'
+      required:
+      - transaction
   SingleTxMsgPack:
     allOf:
-      - $ref: '#/definitions/SingleTxObject'
-      - type: object
-        properties:
-          transaction:
-            $ref: '#/definitions/Tx'
-        required:
-        - transaction
+    - $ref: '#/definitions/SingleTxObject'
+    - type: object
+      properties:
+        transaction:
+          $ref: '#/definitions/Tx'
+      required:
+      - transaction
   SignedTxJSON:
     type: object
     properties:
