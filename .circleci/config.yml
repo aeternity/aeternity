@@ -349,6 +349,8 @@ workflows:
               only: /^v.*$/
 
       - uat_tests:
+          requires:
+            - build
           filters:
             branches:
               only: master
