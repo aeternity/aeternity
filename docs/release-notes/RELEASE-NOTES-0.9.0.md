@@ -6,8 +6,9 @@ It:
 * Does that TODOFILLMEIN. This impacts the persisted DB;
 * Does that TODOFILLMEIN.
 
-This release introduces backward incompatible changes in the chain format.
-After upgrading your node, you will not have your previous balance (even if you keep your key pair).
+This release introduces backward incompatible changes in the chain format:
+* After upgrading your node, you will not have your previous balance (even if you keep your key pair);
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.8.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -127,9 +128,7 @@ chain:
     db_path: ./my_db
 ```
 
-(The node automatically creates the directory `db_path` for storing the blockchain.)
-
-As of release "v0.9.0", as the chain format changed from the previous release, please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.8.x".
+The node automatically creates the directory `db_path`, for storing the blockchain, if not present.
 
 You can validate the configuration file before starting the node:
 ```
