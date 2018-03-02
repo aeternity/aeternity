@@ -65,8 +65,7 @@ class Ping(object):
         self.genesis_hash = genesis_hash
         self.best_hash = best_hash
         self.difficulty = difficulty
-        if share is not None:
-            self.share = share
+        self.share = share
         if peers is not None:
             self.peers = peers
 
@@ -180,6 +179,8 @@ class Ping(object):
         :param share: The share of this Ping.  # noqa: E501
         :type: int
         """
+        if share is None:
+            raise ValueError("Invalid value for `share`, must not be `None`")  # noqa: E501
         if share is not None and share > 32:  # noqa: E501
             raise ValueError("Invalid value for `share`, must be a value less than or equal to `32`")  # noqa: E501
 
