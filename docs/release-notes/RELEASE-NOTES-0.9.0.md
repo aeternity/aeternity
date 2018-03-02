@@ -34,7 +34,7 @@ unpack, then do `./configure && make && sudo make install && sudo ldconfig`)
 
 Alternatively to the release binaries, you can use the published `aetrnty/epoch` Docker image by consulting its [documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
-The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration) though the instructions below contain easy-to-use examples.
+The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 
 The node API - i.e. peer-to-peer network API and user API - is documented:
 * HTTP API endpoints are specified [online in swagger.yaml](https://github.com/aeternity/epoch/blob/v0.9.0/config/swagger.yaml);
