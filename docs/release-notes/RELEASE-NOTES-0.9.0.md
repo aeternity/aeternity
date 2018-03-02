@@ -24,11 +24,6 @@ You can run a node by using either:
 * The published [release binary](https://github.com/aeternity/epoch/releases/tag/v0.9.0) corresponding to your platform; or
 * The published [Docker image `aetrnty/epoch`](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
-The release binaries are tested on the following platforms:
-* Ubuntu 16.04.3 LTS (x86-64);
-* macOS Sierra (x86-64);
-* macOS High Sierra (x86-64).
-
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation](https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md).
 
