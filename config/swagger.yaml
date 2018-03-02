@@ -1942,6 +1942,7 @@ definitions:
     - genesis_hash
     - best_hash
     - difficulty
+    - share
   Balance:
     type: object
     properties:
