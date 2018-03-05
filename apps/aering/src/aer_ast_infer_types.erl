@@ -2,9 +2,6 @@
 
 -export([infer/1]).
 
-infer([ContractType={contract_type,_,_,_}|Rest]) ->
-    %% ignore contract types for now
-    [ContractType|infer(Rest)];
 infer([{contract,Attribs,ConName,Code}|Rest]) ->
     %% do type inference on each contract independently.
     [{contract,Attribs,ConName,infer_contract(Code)}|infer(Rest)];
@@ -18,7 +15,7 @@ infer_contract(Defs) ->
     C.
 
 %% infer_contract takes a proplist mapping global names to types, and
-%% a list of definitions.  
+%% a list of definitions.
 infer_contract(Env,[Def={type_def,_,_,_,_}|Rest]) ->
     %% TODO: handle type defs
     [Def|infer_contract(Env,Rest)];
@@ -43,7 +40,7 @@ infer_nonrec(Env,LetFun) ->
     ets:delete(type_vars),
     print_typesig(TypeSig),
     Result.
-    
+
 infer_letrec(Env,{letrec,Attrs,Defs}) ->
     ets:new(type_vars,[set,named_table,public]),
     create_unification_errors(),
@@ -60,7 +57,7 @@ infer_letrec(Env,{letrec,Attrs,Defs}) ->
     destroy_field_constraints(),
     ets:delete(type_vars),
     {TypeSigs,{letrec,Attrs,NewDefs}}.
-    
+
 infer_letfun(Env,{letfun,Attrib,{id,NameAttrib,Name},Args,What,Body}) ->
     ArgTypes  = [{ArgName,arg_type(T)} || {arg,_,{id,_,ArgName},T} <- Args],
     NewBody={typed,_,_,ResultType} = infer_expr(ArgTypes++Env,Body),
@@ -110,7 +107,7 @@ infer_expr(Env,{list,As,Elems}) ->
     NewElems = [infer_expr(Env,X) || X <- Elems],
     ElemType = fresh_uvar(As),
     [unify(ElemType,T) || {typed,_,_,T} <- NewElems],
-    {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};    
+    {typed,As,{list,As,NewElems},{app_t,As,{id,As,"list"},[ElemType]}};
 infer_expr(Env,{typed,As,Body,Type}) ->
     AnnotType = case Type of
 		    {id,Attrs,"_"} ->
@@ -129,7 +126,7 @@ infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
     {typed,As,{app,As,Op,TypedArgs},ResultType};
 %% TODO: prefix operators
 infer_expr(Env,{app,As,Fun,Args}) ->
-    NewFun={typed,_,_,FunType} = infer_expr(Env,Fun), 
+    NewFun={typed,_,_,FunType} = infer_expr(Env,Fun),
     NewArgs = [infer_expr(Env,A) || A <- Args],
     ArgTypes = [T || {typed,_,_,T} <- NewArgs],
     ResultType = fresh_uvar(As),
@@ -145,7 +142,7 @@ infer_expr(Env,{'if',Attrs,Cond,Then,Else}) ->
 infer_expr(Env,{switch,Attrs,Expr,Cases}) ->
     NewExpr = {typed,_,_,ExprType} = infer_expr(Env,Expr),
     SwitchType = fresh_uvar(Attrs),
-    NewCases = [infer_case(Env,As,Pattern,ExprType,Branch,SwitchType) 
+    NewCases = [infer_case(Env,As,Pattern,ExprType,Branch,SwitchType)
 		|| {'case',As,Pattern,Branch} <- Cases],
     {typed,Attrs,{switch,Attrs,NewExpr,NewCases},SwitchType};
 infer_expr(Env,{record,Attrs,Fields}) ->
@@ -175,10 +172,10 @@ infer_expr(Env,{lam,Attrs,Args,Body}) ->
     ArgTypes = [fresh_uvar(As) || {arg,As,_,_} <- Args],
     ArgPatterns = [{typed,As,Pat,T} || {arg,As,Pat,T} <- Args],
     ResultType = fresh_uvar(Attrs),
-    {'case',_,{typed,_,{tuple,_,NewArgPatterns},_},NewBody} = 
+    {'case',_,{typed,_,{tuple,_,NewArgPatterns},_},NewBody} =
 	infer_case(Env,Attrs,{tuple,Attrs,ArgPatterns},{tuple_t,Attrs,ArgTypes},Body,ResultType),
     NewArgs = [{arg,As,NewPat,NewT} || {typed,As,NewPat,NewT} <- NewArgPatterns],
-    {typed,Attrs,{lam,Attrs,NewArgs,NewBody},{fun_t,Attrs,ArgTypes,ResultType}}.    
+    {typed,Attrs,{lam,Attrs,NewArgs,NewBody},{fun_t,Attrs,ArgTypes,ResultType}}.
 
 infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     Vars = free_vars(Pattern),
@@ -189,7 +186,7 @@ infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
 	    ok;
 	Nonlinear ->
 	    Plural = case lists:usort(Nonlinear) of
-			 [_] -> 
+			 [_] ->
 			     "";
 			 _ ->
 			     "s"
@@ -222,14 +219,14 @@ infer_block(Env,_,[E],BlockType) ->
 infer_block(Env,Attrs,[E|Rest],BlockType) ->
     [infer_expr(Env,E)|infer_block(Env,Attrs,Rest,BlockType)].
 
-infer_infix({IntOp,As}) 
+infer_infix({IntOp,As})
   when IntOp=='+'; IntOp=='-'; IntOp=='*'; IntOp=='/';
        IntOp=='band'; IntOp=='bor'; IntOp=='bxor' ->
     Int = {id,As,"int"},
     {fun_t,As,[Int,Int],Int};
-infer_infix({RelOp,As}) 
-  when RelOp=='=='; RelOp=='!='; 
-       RelOp=='<'; RelOp=='>'; 
+infer_infix({RelOp,As})
+  when RelOp=='=='; RelOp=='!=';
+       RelOp=='<'; RelOp=='>';
        RelOp=='<='; RelOp=='>=' ->
     Int = {id,As,"int"},
     Bool = {id,As,"bool"},
@@ -281,9 +278,9 @@ create_field_constraints() ->
     %% A relation from uvars to constraints
     ets:new(field_constraints,[public,named_table,bag]).
 
-destroy_field_constraints() ->    
+destroy_field_constraints() ->
     ets:delete(field_constraints).
-    
+
 constrain(FieldConstraints) ->
     ets:insert(field_constraints,FieldConstraints).
 
@@ -349,7 +346,7 @@ solve_ambiguous_field_constraints(Constraints) ->
     end.
 
 solve_known_record_types(Constraints) ->
-    DerefConstraints = 
+    DerefConstraints =
 	[{dereference(RecordType),FieldName,FieldType}
 	 || {RecordType,FieldName,FieldType} <- Constraints],
     SolvedConstraints =
@@ -376,7 +373,7 @@ solve_known_record_types(Constraints) ->
 			     unify(FreshRecType,RecType),
 			     {RecType,FieldName,FieldType}
 		     end
-	     end			     
+	     end
 	 end
 	 || {RecType,FieldName,FieldType} <- DerefConstraints,
 	    case RecType of
@@ -395,7 +392,7 @@ solve_for_uvar(UVar,Fields) ->
     UniqueFields = lists:usort(Fields),
     Candidates = [RecName || {_,_,{app_t,_,{id,_,RecName},_}} <- ets:lookup(record_fields,hd(Fields))],
     TypesAndFields = [case ets:lookup(record_types,RecName) of
-			  [{RecName,_,RecFields}] ->		
+			  [{RecName,_,RecFields}] ->
 			      {RecName,[Field || {field_t,_,_,{id,_,Field},_} <- RecFields]};
 			  [] ->
 			      error({no_definition_for,RecName,in,Candidates})
@@ -517,10 +514,10 @@ unify1({id,_,Name},{id,_,Name}) ->
     true;
 unify1({fun_t,_,Args1,Result1},{fun_t,_,Args2,Result2}) ->
     unify(Args1,Args2) andalso unify(Result1,Result2);
-unify1({app_t,_,{id,_,F},Args1},{app_t,_,{id,_,F},Args2}) 
+unify1({app_t,_,{id,_,F},Args1},{app_t,_,{id,_,F},Args2})
   when length(Args1)==length(Args2) ->
     unify(Args1,Args2);
-unify1({tuple_t,_,As},{tuple_t,_,Bs}) 
+unify1({tuple_t,_,As},{tuple_t,_,Bs})
   when length(As)==length(Bs) ->
     unify(As,Bs);
 %% The grammar is a bit inconsistent about whether types without
@@ -542,7 +539,7 @@ dereference(T = {uvar,_,R}) ->
 	    dereference(Type)
     end;
 dereference(T) ->
-    T.	    
+    T.
 
 occurs_check(R,T) ->
     %% TODO

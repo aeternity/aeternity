@@ -31,8 +31,7 @@
 -type qcon() :: {qcon, ann(), [name()]}.
 -type tvar() :: {tvar, ann(), name()}.
 
--type decl() :: {contract_type, ann(), con(), [decl()]}
-              | {contract, ann(), con(), [decl()]}
+-type decl() :: {contract, ann(), con(), [decl()]}
               | {type_decl, ann(), id(), [tvar()]}
               | {type_def, ann(), id(), [tvar()], typedef()}
               | {fun_decl, ann(), id(), type()}
