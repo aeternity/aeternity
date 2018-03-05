@@ -6,10 +6,17 @@ import shutil
 import time
 from nose.tools import assert_equals, assert_not_equals, with_setup
 import common
+import json
 from waiting import wait
 from swagger_client.models.ping import Ping 
+from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.name_preclaim_tx import NamePreclaimTx
+from swagger_client.models.name_claim_tx import NameClaimTx
+from swagger_client.models.name_update_tx import NameUpdateTx
 from swagger_client.rest import ApiException
+
+import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -143,6 +150,64 @@ def test_not_enough_tokens():
     common.stop_node(bob_node)
     shutil.rmtree(root_dir)
 
+def test_send_by_name():
+    # Bob registers a name 'bob.aet'
+    # Alice should be able to send tokens to Bob using that name
+    test_settings = settings["test_send_by_name"]
+    coinbase_reward = common.coinbase_reward() 
+    (root_dir, node, ext_api, top) = setup_node_with_tokens(test_settings, "miner") 
+    int_api = common.internal_api(node)
+
+    alice_private_key = keys.new_private()
+    alice_public_key = keys.public_key(alice_private_key)
+    alice_address = keys.address(alice_public_key)
+
+    bob_private_key = keys.new_private()
+    bob_public_key = keys.public_key(bob_private_key)
+    bob_address = keys.address(bob_public_key)
+
+    # initial balances - amounts that the miner should send them
+    alice_init_balance = test_settings["send_tokens"]["alice"]
+    bob_init_balance = test_settings["send_tokens"]["bob"]
+
+    # populate accounts with tokens
+    miner_send_tokens(alice_address, alice_init_balance, int_api, ext_api)
+    miner_send_tokens(bob_address, bob_init_balance, int_api, ext_api)
+
+    # validate balances
+    alice_balance0 = common.get_account_balance(int_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(int_api, pub_key=bob_address).balance
+
+    assert_equals(alice_balance0, alice_init_balance)
+    assert_equals(bob_balance0, bob_init_balance)
+    print("Alice balance is " + str(alice_balance0))
+    print("Bob balance is " + str(bob_balance0))
+    print("Bob address is " + bob_address)
+
+    bob_name = test_settings["name_register"]["name"]
+    register_name(bob_name, bob_address, ext_api, bob_private_key)
+
+    print("Bob has registered " + bob_name)
+    bob_balance1 = common.get_account_balance(int_api, pub_key=bob_address).balance
+    print("Bob balance is " + str(bob_balance1))
+
+    tokens_to_send = test_settings["spend_tx"]["amount"]
+    print("Alice is about to send " + str(tokens_to_send) + " to " + bob_name)
+    send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, ext_api)
+
+    # validate balances
+    alice_balance2 = common.get_account_balance(int_api, pub_key=alice_address).balance
+    bob_balance2 = common.get_account_balance(int_api, pub_key=bob_address).balance
+
+    print("Alice balance is " + str(alice_balance2))
+    print("Bob balance is " + str(bob_balance2))
+
+    assert_equals(alice_balance2, alice_balance0 - tokens_to_send - 1)
+    assert_equals(bob_balance2, bob_balance1 + tokens_to_send)
+
+    # stop node
+    common.stop_node(node)
+    shutil.rmtree(root_dir)
 
 def make_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
@@ -175,4 +240,70 @@ def setup_node_with_tokens(test_settings, node_name):
 
     return (root_dir, node, api, top)
 
+def miner_send_tokens(address, amount, internal_api, external_api): 
+    spend_tx_obj = SpendTx(
+        recipient_pubkey=address,
+        amount=amount,
+        fee=1)
 
+    # populate account
+    internal_api.post_spend_tx(spend_tx_obj)
+
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+
+def register_name(name, address, external_api, private_key):
+    salt = 42
+    commitment = external_api.get_commitment_hash(name, salt).commitment
+
+    # preclaim
+    unsinged_preclaim = common.base58_decode(\
+        external_api.post_name_preclaim(\
+            NamePreclaimTx(commitment=commitment, fee=1, account=address)).tx)
+    signed_preclaim = keys.sign_encode_tx(unsinged_preclaim, private_key)
+
+    external_api.post_tx(Tx(tx=signed_preclaim))
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+
+    # claim
+    encoded_name = common.encode_name(name)
+    unsinged_claim = common.base58_decode(\
+        external_api.post_name_claim(\
+            NameClaimTx(name=encoded_name, name_salt=salt, fee=1, account=address)).tx)
+    signed_claim = keys.sign_encode_tx(unsinged_claim, private_key)
+
+    external_api.post_tx(Tx(tx=signed_claim))
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+    name_entry0 = external_api.get_name(name)
+    print("Name " + name_entry0.name + " has been claimed and has hash " + name_entry0.name_hash)
+
+    # set pointers
+    pointers_str = json.dumps({'account_pubkey': address})
+    unsinged_update = common.base58_decode(\
+        external_api.post_name_update(\
+            NameUpdateTx(name_hash=name_entry0.name_hash, name_ttl=600000, ttl=50,\
+                pointers=pointers_str, fee=1, account=address)).tx)
+    signed_update = keys.sign_encode_tx(unsinged_update, private_key)
+
+    external_api.post_tx(Tx(tx=signed_update))
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+    name_entry = external_api.get_name(name)
+    received_pointers = json.loads(name_entry.pointers)
+    assert_equals(address, received_pointers['account_pubkey'])
+
+def send_tokens_to_name(name, tokens, sender_address, private_key, external_api):
+    name_entry = external_api.get_name(name)
+    resolved_address = json.loads(name_entry.pointers)['account_pubkey']
+    print("Name " + name + " resolved to address " + resolved_address)
+
+    unsinged_spend = common.base58_decode(\
+        external_api.post_spend(\
+            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1)).tx)
+    signed_spend = keys.sign_encode_tx(unsinged_spend, private_key)
+
+    external_api.post_tx(Tx(tx=signed_spend))
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
