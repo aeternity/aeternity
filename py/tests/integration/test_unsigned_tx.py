@@ -239,7 +239,7 @@ def send_tokens_to_user(user, test_settings, internal_api, external_api):
     spend_tx_obj = SpendTx(
         recipient_pubkey=test_settings[user]["pubkey"],
         amount=test_settings[user]["amount"],
-        fee=test_settings[user]["amount"])
+        fee=test_settings[user]["fee"])
 
     # populate Alice's account
     internal_api.post_spend_tx(spend_tx_obj)

@@ -128,6 +128,10 @@ def encode_pubkey(pubkey):
     str = base58.b58encode_check(pubkey)
     return "ak$" + str
 
+def encode_name(name):
+    str = base58.b58encode_check(name)
+    return "nm$" + str
+
 def unpack_tx(tx):
     return msgpack.unpackb(tx)
 

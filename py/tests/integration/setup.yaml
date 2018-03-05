@@ -88,6 +88,19 @@ tests: # test specific settings
         alice_pubkey: ak$v6kQV2Z6uXv2PsUJdv955gE
         amount: 1000
         fee: 20
+    test_send_by_name:
+    # Bob registers a name 'bob.aet'
+    # Alice should be able to send tokens to Bob using that name
+      nodes:
+        miner: dev1
+      blocks_to_mine: 3
+      send_tokens:
+        alice: 10
+        bob: 10
+      name_register:
+        name: "bob.aet"
+      spend_tx:
+        amount: 7
   test_contracts:
     test_compile_id:
       nodes:
