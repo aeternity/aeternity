@@ -14,7 +14,8 @@
                     | account_pubkey
                     | signature
                     | name
-                    | commitment.
+                    | commitment
+                    | node_id.
 
 -type payload() :: binary().
 -type encoded() :: binary().
