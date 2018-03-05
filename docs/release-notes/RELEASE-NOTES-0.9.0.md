@@ -26,7 +26,7 @@ You can run a node by using either:
 * The published [release binary][this-release] corresponding to your platform; or
 * The published [Docker image `aetrnty/epoch`][docker].
 
-[dockerTODO]: https://github.com/aeternity/epoch/blob/master/v0.9.0/docker.md
+[dockerTODO]: https://github.com/aeternity/epoch/blob/v0.9.0/docs/docker.md
 [docker]: /docs/docker.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
