@@ -202,7 +202,10 @@ def test_send_by_name():
     print("Alice balance is " + str(alice_balance2))
     print("Bob balance is " + str(bob_balance2))
 
+    # Alice's balance should be decresed by the amount being send and the fee (1)
     assert_equals(alice_balance2, alice_balance0 - tokens_to_send - 1)
+
+    # Bob's balance should be incresed by the amount being send
     assert_equals(bob_balance2, bob_balance1 + tokens_to_send)
 
     # stop node
@@ -257,10 +260,10 @@ def register_name(name, address, external_api, private_key):
     commitment = external_api.get_commitment_hash(name, salt).commitment
 
     # preclaim
-    unsinged_preclaim = common.base58_decode(\
+    unsigned_preclaim = common.base58_decode(\
         external_api.post_name_preclaim(\
             NamePreclaimTx(commitment=commitment, fee=1, account=address)).tx)
-    signed_preclaim = keys.sign_encode_tx(unsinged_preclaim, private_key)
+    signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
     external_api.post_tx(Tx(tx=signed_preclaim))
     top = external_api.get_top()
@@ -268,10 +271,10 @@ def register_name(name, address, external_api, private_key):
 
     # claim
     encoded_name = common.encode_name(name)
-    unsinged_claim = common.base58_decode(\
+    unsigned_claim = common.base58_decode(\
         external_api.post_name_claim(\
             NameClaimTx(name=encoded_name, name_salt=salt, fee=1, account=address)).tx)
-    signed_claim = keys.sign_encode_tx(unsinged_claim, private_key)
+    signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_tx(Tx(tx=signed_claim))
     top = external_api.get_top()
@@ -281,11 +284,11 @@ def register_name(name, address, external_api, private_key):
 
     # set pointers
     pointers_str = json.dumps({'account_pubkey': address})
-    unsinged_update = common.base58_decode(\
+    unsigned_update = common.base58_decode(\
         external_api.post_name_update(\
             NameUpdateTx(name_hash=name_entry0.name_hash, name_ttl=600000, ttl=50,\
                 pointers=pointers_str, fee=1, account=address)).tx)
-    signed_update = keys.sign_encode_tx(unsinged_update, private_key)
+    signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
     external_api.post_tx(Tx(tx=signed_update))
     top = external_api.get_top()
@@ -299,10 +302,10 @@ def send_tokens_to_name(name, tokens, sender_address, private_key, external_api)
     resolved_address = json.loads(name_entry.pointers)['account_pubkey']
     print("Name " + name + " resolved to address " + resolved_address)
 
-    unsinged_spend = common.base58_decode(\
+    unsigned_spend = common.base58_decode(\
         external_api.post_spend(\
             SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1)).tx)
-    signed_spend = keys.sign_encode_tx(unsinged_spend, private_key)
+    signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 
     external_api.post_tx(Tx(tx=signed_spend))
     top = external_api.get_top()
