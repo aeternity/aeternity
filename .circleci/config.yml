@@ -202,8 +202,8 @@ jobs:
     steps:
       - checkout
       - run:
-          command: |
-            bash deployment/deploy_api_docs.sh
+          name: Deploy API docs
+          command: ./deployment/deploy_api_docs.sh
 
   osx_package:
     macos:
