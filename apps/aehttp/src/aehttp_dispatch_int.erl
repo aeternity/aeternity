@@ -881,8 +881,8 @@ get_account_transactions(Account, Req) ->
                   fun({mempool, SignedTxA}, {mempool, SignedTxB}) ->
                       TxA = aetx_sign:tx(SignedTxA),
                       TxB = aetx_sign:tx(SignedTxB),
-                      {aetx:origin(TxA), aetx:nonce(TxA)} >
-                      {aetx:origin(TxB), aetx:nonce(TxB)};
+                      {aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
+                      {aetx:origin(TxB), aetx:nonce(TxB), TxB};
                      ({mempool, _}, {_, _}) -> true;
                      ({_, _}, {mempool, _}) -> false;
                      ({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
@@ -890,8 +890,8 @@ get_account_transactions(Account, Req) ->
                       HeightB = aec_headers:height(HeaderB),
                       TxA = aetx_sign:tx(SignedTxA),
                       TxB = aetx_sign:tx(SignedTxB),
-                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA)} >
-                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB)}
+                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
+                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB), TxB}
                   end,
                   FilteredTxs),
             {ok, offset_and_limit(Req, Res)}

@@ -1471,7 +1471,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                             AllPendingTxs),
                     AccountPendingTx = encode_pending_tx(
                                          lists:sort(fun(A, B) ->
-                                                        aetx:nonce(aetx_sign:tx(A)) >
+                                                        aetx:nonce(aetx_sign:tx(A)) >=
                                                         aetx:nonce(aetx_sign:tx(B))
                                                     end,
                                                     FilteredPendingTxs),
