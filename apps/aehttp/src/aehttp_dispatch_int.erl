@@ -31,7 +31,7 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
                     {404, [], #{reason => <<"Invalid key">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -60,7 +60,7 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
             {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
                         tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -83,7 +83,7 @@ handle_request('PostOracleExtendTx', #{'OracleExtendTx' := OracleExtendTxObj}, _
             {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
                         tx_hash => aec_base58c:encode(tx_hash, TxHash)}};
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -122,7 +122,7 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
                     {404, [], #{reason => <<"Invalid key">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -150,7 +150,7 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
                     {404, [], #{reason => <<"Invalid Query Id">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {404, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -222,7 +222,7 @@ handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _
                     {400, [], #{reason => <<"Invalid commitment hash">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {400, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -249,7 +249,7 @@ handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) 
                     {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {400, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -279,7 +279,7 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
                     {400, [], #{reason => <<"Invalid name hash">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {400, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -310,7 +310,7 @@ handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _
                     {400, [], #{reason => <<"Invalid name hash">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {400, [], #{reason => <<"Keys not configured">>}}
     end;
@@ -334,7 +334,7 @@ handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Contex
                     {400, [], #{reason => <<"Invalid name hash">>}}
             end;
         {error, account_not_found} ->
-            {404, [], #{reason => <<"No funds in an account">>}};
+            {404, [], #{reason => <<"Account not found">>}};
         {error, key_not_found} ->
             {400, [], #{reason => <<"Keys not configured">>}}
     end;
