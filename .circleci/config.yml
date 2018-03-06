@@ -46,6 +46,25 @@ references:
     restore_cache:
       key: *build_cache_key
 
+  pip_cache_key: &pip_cache_key pip-v1-{{ checksum "deployment/ansible/pip-requirements.txt" }}
+  restore_pip_cache: &restore_pip_cache
+    restore_cache:
+      keys:
+        - *pip_cache_key
+        - pip-v1
+
+  save_pip_cache: &save_pip_cache
+    save_cache:
+      key: *pip_cache_key
+      paths:
+        - ~/.cache/pip
+
+  install_pip_requirements: &install_pip_requirements
+    run:
+      name: Install PIP Requirements
+      command: |
+        pip install --user -r deployment/ansible/pip-requirements.txt
+
   packages_workspace: &packages_workspace /tmp/packages
   set_package_path: &set_package_path
     run:
@@ -91,12 +110,11 @@ references:
 
   deploy_steps: &deploy_steps
     - checkout
+    - *restore_pip_cache
+    - *install_pip_requirements
+    - *save_pip_cache
     - attach_workspace:
         at: *packages_workspace
-    - run:
-        name: Install PIP Requirements
-        command: |
-          pip install --user -r deployment/ansible/pip-requirements.txt
     - run:
         name: Deploy
         environment:
@@ -318,10 +336,9 @@ jobs:
     <<: *container_config
     steps:
       - checkout
-      - run:
-          name: Install PIP Requirements
-          command: |
-            pip install --user -r deployment/ansible/pip-requirements.txt
+      - *restore_pip_cache
+      - *install_pip_requirements
+      - *save_pip_cache
       - run:
           name: Snapshot of UAT blockchain
           command: |
