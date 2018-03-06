@@ -3,6 +3,10 @@ git clone git@github.com:aeternity/epoch-api-docs.git /tmp/epoch-api-docs
 cp apps/aehttp/priv/swagger.json /tmp/epoch-api-docs/
 cd /tmp/epoch-api-docs/
 
+
+git config user.name "CircleCI"
+git config user.email "circleci@aeternity.com"
+
 git add swagger.json;
 STATUS=`git status --porcelain`
 
