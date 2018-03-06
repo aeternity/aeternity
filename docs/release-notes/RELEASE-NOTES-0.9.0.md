@@ -2,6 +2,7 @@
 
 [This release](https://github.com/aeternity/epoch/releases/tag/v0.9.0) is focused on TODOFILLMEIN.
 It:
+* Improves the stability of the testnet.
 * Does this TODOFILLMEIN. This impacts consensus;
 * Does that TODOFILLMEIN. This impacts the persisted DB;
 * Does that TODOFILLMEIN.
