@@ -42,6 +42,8 @@ from swagger_client.models.name_preclaim_tx import NamePreclaimTx
 from swagger_client.models.name_revoke_tx import NameRevokeTx
 from swagger_client.models.name_transfer_tx import NameTransferTx
 from swagger_client.models.name_update_tx import NameUpdateTx
+from swagger_client.models.node import Node
+from swagger_client.models.node_id import NodeId
 from swagger_client.models.oracle_extend_tx import OracleExtendTx
 from swagger_client.models.oracle_query_response import OracleQueryResponse
 from swagger_client.models.oracle_query_tx import OracleQueryTx
@@ -50,6 +52,7 @@ from swagger_client.models.oracle_questions_inner import OracleQuestionsInner
 from swagger_client.models.oracle_register_response import OracleRegisterResponse
 from swagger_client.models.oracle_register_tx import OracleRegisterTx
 from swagger_client.models.oracle_response_tx import OracleResponseTx
+from swagger_client.models.peer import Peer
 from swagger_client.models.peers import Peers
 from swagger_client.models.peers_peers import PeersPeers
 from swagger_client.models.ping import Ping

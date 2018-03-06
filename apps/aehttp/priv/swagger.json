@@ -2198,6 +2198,13 @@
     "Uri" : {
       "type" : "string"
     },
+    "NodeId" : {
+      "type" : "string"
+    },
+    "Node" : {
+      "type" : "object"
+    },
+    "Peer" : { },
     "Header" : {
       "type" : "object",
       "properties" : {
@@ -2385,7 +2392,7 @@
         "peers" : {
           "type" : "array",
           "items" : {
-            "$ref" : "#/definitions/Uri"
+            "$ref" : "#/definitions/Peer"
           }
         }
       },
