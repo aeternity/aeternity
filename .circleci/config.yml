@@ -346,6 +346,10 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - uat_tests:
+          requires:
+            - build
+
       - static_analysis:
           requires:
             - build
@@ -375,6 +379,7 @@ workflows:
             - eunit
             - static_analysis
             - linux_package
+            - uat_tests
           filters:
             branches:
               only: master
@@ -439,14 +444,3 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*$/
-
-  nightly:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - uat_tests
