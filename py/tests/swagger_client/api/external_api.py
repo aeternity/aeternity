@@ -610,7 +610,7 @@ class ExternalApi(object):
     def get_commitment_hash(self, name, salt, **kwargs):  # noqa: E501
         """get_commitment_hash  # noqa: E501
 
-        Compute commitment hash for a given salt and name  # noqa: E501
+        Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client's implementations.  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_commitment_hash(name, salt, async=True)
@@ -633,7 +633,7 @@ class ExternalApi(object):
     def get_commitment_hash_with_http_info(self, name, salt, **kwargs):  # noqa: E501
         """get_commitment_hash  # noqa: E501
 
-        Compute commitment hash for a given salt and name  # noqa: E501
+        Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client's implementations.  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_commitment_hash_with_http_info(name, salt, async=True)

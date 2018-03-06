@@ -2248,15 +2248,15 @@ naming_system_broken_txs(_Config) ->
         get_commitment_hash(<<"abcd.badregistrar">>, 123),
     {ok, 400, #{<<"reason">> := <<"Name validation failed with a reason: registrar_unknown">>}} =
         get_name(<<"abcd.badregistrar">>),
-    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_preclaim_tx(CHash, Fee),
-    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_claim_tx(Name, NameSalt, Fee),
-    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_update_tx(NHash, 5, <<"pointers">>, 5, Fee),
-    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_transfer_tx(NHash, random_hash(), Fee),
-    {ok, 404, #{<<"reason">> := <<"No funds in an account">>}} =
+    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
         post_name_revoke_tx(NHash, Fee),
 
     %% Check mempool still empty

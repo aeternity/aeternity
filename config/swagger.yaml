@@ -616,7 +616,7 @@ paths:
       tags:
         - external
       operationId: GetCommitmentHash
-      description: 'Compute commitment hash for a given salt and name'
+      description: 'Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client''s implementations.'
       produces:
         - application/json
       parameters:
