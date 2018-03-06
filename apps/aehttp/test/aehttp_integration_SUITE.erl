@@ -1440,6 +1440,10 @@ account_transactions(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Unknown transaction type">>}} =
         get_account_transactions(EncodedPubKey, #{tx_types => [<<"hejsan">>,
                                                                <<"svejsan">>]}),
+    add_spend_txs(), % in mempool
+    acc_txs_test(EncodedPubKey, 0, 2),
+    acc_txs_test(EncodedPubKey, 0, 20),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     ok.
 
 acc_txs_test(Pubkey, Offset, Limit) ->
@@ -1457,6 +1461,21 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                             Tx = aetx_sign:tx(SignedTx),
                             lists:member(PKDecoded, aetx:accounts(Tx))
                         end,
+                    {ok, AllPendingTxs} = rpc(aec_tx_pool, peek, [infinity]),
+                    FilteredPendingTxs =
+                        lists:filter(
+                            fun(Tx) ->
+                                PubkeyInTx(Tx) andalso
+                                apply_tx_type_filter(TT, [Tx]) =/= []
+                            end,
+                            AllPendingTxs),
+                    AccountPendingTx = encode_pending_tx(
+                                         lists:sort(fun(A, B) ->
+                                                        aetx:nonce(aetx_sign:tx(A)) >=
+                                                        aetx:nonce(aetx_sign:tx(B))
+                                                    end,
+                                                    FilteredPendingTxs),
+                                        TxEncoding),
                     #{<<"data_schema">> := ExpectedDS,
                       <<"transactions">> := AllTxs} =
                         expected_range_result(0, ToHeight, TxEncoding, TT,
@@ -1477,7 +1496,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                                 false -> lists:sublist(List, Start, Len)
                             end
                         end,
-                    ExpectedTxs = Sublist(AllTxs, Offset + 1, Limit),
+                    ExpectedTxs = Sublist(AccountPendingTx ++ AllTxs, Offset + 1, Limit),
                     ct:log("Transactions:~nExpected ~p,~nActual: ~p",
                            [ExpectedTxs, Txs]),
                     ExpectedTxs = Txs
@@ -1958,6 +1977,17 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes) ->
     expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes,
                           fun(_Tx) -> true end, false).
 
+encode_pending_tx(Txs, TxEncoding0) ->
+    TxEncoding =
+        case TxEncoding0 of
+            default -> message_pack;
+            Other -> Other
+        end,
+    lists:map(
+        fun(Tx) -> aetx_sign:serialize_for_client_pending(TxEncoding, Tx)
+        end,
+        Txs).
+
 expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
                       Reverse) ->
     {ok, Blocks} = rpc(aec_chain, get_block_range_by_height, [HeightFrom,
@@ -1976,19 +2006,7 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
                         true -> lists:reverse(aec_blocks:txs(Block))
                     end,
                 CustomFiltered = lists:filter(Filter, AllBlockTxs),
-                FilteredTxs =
-                    case TxTypes of
-                        all ->
-                            CustomFiltered;
-                        {only, Includes} ->
-                            lists:filter(
-                                fun(Tx) -> lists:member(tx_type(Tx), Includes) end,
-                                CustomFiltered);
-                        {exclude, Excludes} ->
-                            lists:filter(
-                                fun(Tx) -> not lists:member(tx_type(Tx), Excludes) end,
-                                CustomFiltered)
-                      end,
+                FilteredTxs = apply_tx_type_filter(TxTypes, CustomFiltered),
                 H = aec_blocks:to_header(Block),
                 lists:map(
                     fun(Tx) ->
@@ -2009,6 +2027,20 @@ expected_range_result(HeightFrom, HeightTo, TxEncoding0, TxTypes, Filter,
           end,
     #{<<"data_schema">> => DataSchema,
       <<"transactions">> => SerializedTxs}.
+
+apply_tx_type_filter(TxTypes, Txs) ->
+    case TxTypes of
+        all ->
+            Txs;
+        {only, Includes} ->
+            lists:filter(
+                fun(Tx) -> lists:member(tx_type(Tx), Includes) end,
+                Txs);
+        {exclude, Excludes} ->
+            lists:filter(
+                fun(Tx) -> not lists:member(tx_type(Tx), Excludes) end,
+                Txs)
+      end.
 
 tx_type(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),

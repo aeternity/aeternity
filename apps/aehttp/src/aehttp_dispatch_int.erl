@@ -855,7 +855,9 @@ encode_txs(HeaderTxs, Req) ->
                 end,
             EncodedTxs =
                 lists:map(
-                    fun({BlockHeader, Tx}) ->
+                    fun({mempool, Tx}) ->
+                        aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
+                    ({BlockHeader, Tx}) ->
                         aetx_sign:serialize_for_client(TxEncoding,
                                                        BlockHeader, Tx)
                     end,
@@ -876,13 +878,20 @@ get_account_transactions(Account, Req) ->
                                               Account),
             Res =
               lists:sort(
-                  fun({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
+                  fun({mempool, SignedTxA}, {mempool, SignedTxB}) ->
+                      TxA = aetx_sign:tx(SignedTxA),
+                      TxB = aetx_sign:tx(SignedTxB),
+                      {aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
+                      {aetx:origin(TxB), aetx:nonce(TxB), TxB};
+                     ({mempool, _}, {_, _}) -> true;
+                     ({_, _}, {mempool, _}) -> false;
+                     ({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
                       HeightA = aec_headers:height(HeaderA),
                       HeightB = aec_headers:height(HeaderB),
                       TxA = aetx_sign:tx(SignedTxA),
                       TxB = aetx_sign:tx(SignedTxB),
-                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA)} >
-                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB)}
+                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
+                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB), TxB}
                   end,
                   FilteredTxs),
             {ok, offset_and_limit(Req, Res)}
@@ -902,8 +911,13 @@ get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
     lists:map(
         fun(SignedTx) ->
             TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
-            [{BlockHash, _}] = aec_db:read_tx(TxHash),
-            {ok, Header} = aec_chain:get_header(BlockHash),
+            Header =
+                case aec_db:read_tx(TxHash) of
+                    [{mempool, _}] -> mempool;
+                    [{BlockHash, _}] ->
+                        {ok, H} = aec_chain:get_header(BlockHash),
+                        H
+                end,
             {Header, SignedTx}
         end,
         Txs).
