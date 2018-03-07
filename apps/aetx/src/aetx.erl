@@ -43,7 +43,8 @@
                  | name_update_tx
                  | name_revoke_tx
                  | contract_create_tx
-                 | contract_call_tx.
+                 | contract_call_tx
+                 | channel_create_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -57,7 +58,8 @@
                      | aens_update_tx:tx()
                      | aens_revoke_tx:tx()
                      | aect_create_tx:tx()
-                     | aect_call_tx:tx().
+                     | aect_call_tx:tx()
+                     | aesc_create_tx:tx().
 
 -export_type([ tx/0
              , tx_instance/0

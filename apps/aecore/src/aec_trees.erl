@@ -14,14 +14,16 @@
          commit_to_db/1,
          hash/1,
          new/0,
+         channels/1,
+         contracts/1,
          ns/1,
          oracles/1,
-         contracts/1,
          perform_pre_transformations/2,
          set_accounts/2,
-         set_oracles/2,
+         set_channels/2,
          set_contracts/2,
-         set_ns/2
+         set_ns/2,
+         set_oracles/2
         ]).
 
 -export([apply_signed_txs/3,
@@ -30,9 +32,10 @@
 
 -record(trees, {
           accounts  :: aec_accounts_trees:tree(),
-          oracles   :: aeo_state_tree:tree(),
+          channels  :: aesc_state_tree:tree(),
+          contracts :: aect_state_tree:tree(),
           ns        :: aens_state_tree:tree(),
-          contracts :: aect_state_tree:tree()}).
+          oracles   :: aeo_state_tree:tree()}).
 
 -opaque trees() :: #trees{}.
 -export_type([trees/0]).
@@ -44,15 +47,16 @@
 -spec new() -> trees().
 new() ->
     #trees{accounts  = aec_accounts_trees:empty_with_backend(),
-           oracles   = aeo_state_tree:empty_with_backend(),
+           channels  = aesc_state_tree:empty_with_backend(),
            contracts = aect_state_tree:empty_with_backend(),
-           ns        = aens_state_tree:empty_with_backend()
+           ns        = aens_state_tree:empty_with_backend(),
+           oracles   = aeo_state_tree:empty_with_backend()
           }.
 
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
     %% Make this in a transaction to get atomicity.
-    aec_db:transaction(fun() -> internal_commit_to_db(Trees)end).
+    aec_db:transaction(fun() -> internal_commit_to_db(Trees) end).
 
 hash(Trees) ->
     internal_hash(Trees).
@@ -64,6 +68,14 @@ accounts(Trees) ->
 -spec set_accounts(trees(), aec_accounts_trees:tree()) -> trees().
 set_accounts(Trees, Accounts) ->
     Trees#trees{accounts = Accounts}.
+
+-spec channels(trees()) -> aesc_state_tree:tree().
+channels(Trees) ->
+    Trees#trees.channels.
+
+-spec set_channels(trees(), aesc_state_tree:tree()) -> trees().
+set_channels(Trees, Channels) ->
+    Trees#trees{channels = Channels}.
 
 -spec ns(trees()) -> aens_state_tree:tree().
 ns(Trees) ->
@@ -111,10 +123,12 @@ apply_signed_txs(SignedTxs, Trees, Height) ->
 
 internal_hash(Trees) ->
     AccountsHash = pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
+    ChannelsHash = pad_empty(aesc_state_tree:root_hash(channels(Trees))),
     ContractsHash = pad_empty(aect_state_tree:root_hash(contracts(Trees))),
     OraclesHash = pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
     NamingSystemHash = pad_empty(aens_state_tree:root_hash(ns(Trees))),
     List = lists:sort([ {<<"accounts"/utf8>> , AccountsHash}
+                      , {<<"channels"/utf8>> , ChannelsHash}
                       , {<<"contracts"/utf8>>, ContractsHash}
                       , {<<"oracles"/utf8>>  , OraclesHash}
                       , {<<"ns"/utf8>>       , NamingSystemHash}
@@ -131,6 +145,7 @@ pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
 
 internal_commit_to_db(Trees) ->
     Trees#trees{ contracts = aect_state_tree:commit_to_db(contracts(Trees))
+               , channels  = aesc_state_tree:commit_to_db(channels(Trees))
                , ns        = aens_state_tree:commit_to_db(ns(Trees))
                , oracles   = aeo_state_tree:commit_to_db(oracles(Trees))
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
