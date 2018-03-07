@@ -19,10 +19,13 @@
         , origin/1
         , process/4
         , process_from_contract/4
+        , is_verifiable/1
         , serialize_for_client/1
         , serialize_to_binary/1
         , signers/1
         , specialize_type/1
+        , specialize_callback/1
+        , update_tx/2
         , tx_type/1
         , tx_types/0]).
 
@@ -49,7 +52,15 @@
                  | name_update_tx
                  | name_revoke_tx
                  | contract_create_tx
-                 | contract_call_tx.
+                 | contract_call_tx
+                 | channel_create_tx
+                 | channel_deposit_tx
+                 | channel_withdraw_tx
+                 | channel_close_mutual_tx
+                 | channel_close_solo_tx
+                 | channel_slash_tx
+                 | channel_settle_tx
+                 | channel_offchain_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -63,7 +74,15 @@
                      | aens_update_tx:tx()
                      | aens_revoke_tx:tx()
                      | aect_create_tx:tx()
-                     | aect_call_tx:tx().
+                     | aect_call_tx:tx()
+                     | aesc_create_tx:tx()
+                     | aesc_deposit_tx:tx()
+                     | aesc_withdraw_tx:tx()
+                     | aesc_close_mutual_tx:tx()
+                     | aesc_close_solo_tx:tx()
+                     | aesc_slash_tx:tx()
+                     | aesc_settle_tx:tx()
+                     | aesc_offchain_tx:tx().
 
 %% @doc Where does this transaction come from? Is it a top level transaction or was it created by
 %%      smart contract. In the latter case the fee logic is different.
@@ -117,6 +136,11 @@
 
 -callback for_client(Tx :: tx_instance()) ->
     map().
+
+-callback is_verifiable(Tx :: tx_instance()) ->
+    boolean().
+
+-optional_callbacks([is_verifiable/1]).
 
 %% -- ADT Implementation -----------------------------------------------------
 
@@ -177,6 +201,7 @@ process(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
 -spec process_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
                             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
+
 process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
     CB:process(Tx, aetx_contract, Trees, Height, ConsensusVersion).
 
@@ -203,20 +228,44 @@ deserialize_from_binary(Bin) ->
     Fields = aec_serialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
 
-type_to_cb(spend_tx)           -> aec_spend_tx;
-type_to_cb(coinbase_tx)        -> aec_coinbase_tx;
-type_to_cb(oracle_register_tx) -> aeo_register_tx;
-type_to_cb(oracle_extend_tx)   -> aeo_extend_tx;
-type_to_cb(oracle_query_tx)    -> aeo_query_tx;
-type_to_cb(oracle_response_tx) -> aeo_response_tx;
-type_to_cb(name_preclaim_tx)   -> aens_preclaim_tx;
-type_to_cb(name_claim_tx)      -> aens_claim_tx;
-type_to_cb(name_transfer_tx)   -> aens_transfer_tx;
-type_to_cb(name_update_tx)     -> aens_update_tx;
-type_to_cb(name_revoke_tx)     -> aens_revoke_tx;
-type_to_cb(name_create_tx)     -> aens_create_tx;
-type_to_cb(contract_call_tx)   -> aect_call_tx;
-type_to_cb(contract_create_tx) -> aect_create_tx.
+type_to_cb(spend_tx)                -> aec_spend_tx;
+type_to_cb(coinbase_tx)             -> aec_coinbase_tx;
+type_to_cb(oracle_register_tx)      -> aeo_register_tx;
+type_to_cb(oracle_extend_tx)        -> aeo_extend_tx;
+type_to_cb(oracle_query_tx)         -> aeo_query_tx;
+type_to_cb(oracle_response_tx)      -> aeo_response_tx;
+type_to_cb(name_preclaim_tx)        -> aens_preclaim_tx;
+type_to_cb(name_claim_tx)           -> aens_claim_tx;
+type_to_cb(name_transfer_tx)        -> aens_transfer_tx;
+type_to_cb(name_update_tx)          -> aens_update_tx;
+type_to_cb(name_revoke_tx)          -> aens_revoke_tx;
+type_to_cb(name_create_tx)          -> aens_create_tx;
+type_to_cb(contract_call_tx)        -> aect_call_tx;
+type_to_cb(contract_create_tx)      -> aect_create_tx;
+type_to_cb(channel_create_tx)       -> aesc_create_tx;
+type_to_cb(channel_deposit_tx)      -> aesc_deposit_tx;
+type_to_cb(channel_withdraw_tx)     -> aesc_withdraw_tx;
+type_to_cb(channel_close_solo_tx)   -> aesc_close_solo_tx;
+type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
+type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
+type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
+type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
+
+-spec is_verifiable(Tx :: tx()) -> boolean().
+is_verifiable(Tx) ->
+    call_optional_callback(Tx, is_verifiable, [], true).
+
+
+call_optional_callback(#aetx{ cb = CB, tx = Tx }, FunAtom, Params0, Default) ->
+    Params = [Tx | Params0],
+    Arity = length(Params),
+    case erlang:function_exported(CB, FunAtom, Arity) of
+        true ->
+            apply(CB, FunAtom, Params);
+        false ->
+            Default
+    end.
+
 
 -spec is_coinbase(Tx :: tx()) -> boolean().
 is_coinbase(#aetx{ type = Type }) ->
@@ -224,6 +273,13 @@ is_coinbase(#aetx{ type = Type }) ->
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
+
+-spec specialize_callback(Tx :: tx()) -> {module(), tx_instance()}.
+specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
+
+-spec update_tx(tx(), tx_instance()) -> tx().
+update_tx(#aetx{} = Tx, NewTxI) ->
+    Tx#aetx{tx = NewTxI}.
 
 -spec tx_types() -> list(tx_type()).
 tx_types() ->
@@ -241,6 +297,14 @@ tx_types() ->
     , name_create_tx
     , contract_call_tx
     , contract_create_tx
+    , channel_create_tx
+    , channel_deposit_tx
+    , channel_withdraw_tx
+    , channel_close_mutual_tx
+    , channel_close_solo_tx
+    , channel_slash_tx
+    , channel_settle_tx
+    , channel_offchain_tx
     ].
 
 -spec is_tx_type(MaybeTxType :: binary() | atom()) -> boolean().
@@ -248,7 +312,7 @@ is_tx_type(X) when is_binary(X) ->
     try
         is_tx_type(erlang:binary_to_existing_atom(X, utf8))
     catch _:_ ->
-        false
+            false
     end;
 is_tx_type(X) when is_atom(X) ->
     lists:member(X, tx_types()).
@@ -257,3 +321,4 @@ is_tx_type(X) when is_atom(X) ->
 tx(Tx) ->
     Tx#aetx.tx.
 -endif.
+

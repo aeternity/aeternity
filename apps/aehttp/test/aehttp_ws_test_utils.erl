@@ -3,12 +3,19 @@
 
 %% API
 -export([start_link/2,
-         send/4, send/5,
+         start_link_channel/4,
+         start_channel/4,
+         send/3, send/4, send/5,
+         send_tagged/4,
          register_test_for_event/3,
          unregister_test_for_event/3,
-         wait_for_event/2,
+         register_test_for_channel_event/2,
+         unregister_test_for_channel_event/2,
          wait_for_event/3,
+         wait_for_event/4,
+         wait_for_channel_event/2,
          wait_for_connect/1,
+         wait_for_connect_any/0,
          stop/1]).
 
 %% behaviour exports
@@ -24,14 +31,44 @@
 -define(DEFAULT_EVENT_TIMEOUT, 5000).
 -define(DEFAULT_SUB_TIMEOUT, 1000).
 
+-define(CHANNEL, channel).
+
 start_link(Host, Port) ->
     WsAddress = "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
     wait_for_connect(Pid).
 
+start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
+    Role = atom_to_binary(RoleA, utf8),
+    WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
+    ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
+    {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
+    wait_for_connect(Pid).
+
+start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
+    Role = atom_to_binary(RoleA, utf8),
+    WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
+    ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
+    {ok, Pid} = websocket_client:start(WsAddress, ?MODULE, self()),
+    wait_for_connect(Pid).
+
+
+make_channel_connect_address(Host, Port, Role, Opts0) ->
+    Opts = maps:put(role, Role, Opts0),
+    Params = encode_params(Opts),
+    "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/channel" ++ Params.
+
+wait_for_connect_any() ->
+    case wait_for_event_any(websocket, connected) of
+        {ok, Pid} ->
+            {ok, Pid};
+        timeout ->
+            {error, none_connected}
+    end.
+
 wait_for_connect(Pid) ->
-    case wait_for_event(websocket, connected, ?DEFAULT_SUB_TIMEOUT) of
+    case wait_for_event(Pid, websocket, connected, ?DEFAULT_SUB_TIMEOUT) of
         ok ->
             {ok, Pid};
         timeout ->
@@ -44,6 +81,12 @@ wait_for_connect(Pid) ->
 stop(ConnPid) ->
     ok = websocket_client:stop(ConnPid).
 
+send(ConnPid, Action, Payload) ->
+    send_(ConnPid, none, Action, Payload, #{}).
+
+send_tagged(ConnPid, Action, Tag, Payload) ->
+    send_(ConnPid, none, Action, Payload, #{tag => Tag}).
+
 send(ConnPid, Target, Action, Tag, Payload) ->
     send_(ConnPid, Target, Action, Payload, #{tag => Tag}).
 
@@ -51,8 +94,11 @@ send(ConnPid, Target, Action, Payload) ->
     send_(ConnPid, Target, Action, Payload, #{}).
 
 send_(ConnPid, Target, Action, Payload, Msg0) ->
-    Msg1 = Msg0#{target => Target,
-                 action => Action},
+    Msg1 = case Target of
+              none -> Msg0#{action => Action};
+              _ -> Msg0#{target => Target,
+                          action => Action}
+           end,
     Msg =
         case Payload == [] orelse Payload == #{} of
             true  -> Msg1;
@@ -64,42 +110,82 @@ send_(ConnPid, Target, Action, Payload, Msg0) ->
 
 %% when an WS event occours, the registered process will receive a message in
 %% the mailbox. Message structure will be:
-%% {websocket_event, Origin::atom(), Action::atom()}
-%% {websocket_event, Origin::atom(), Action::atom(), Payload::map()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
 %% where the Origin and Action are the same as the ones for which the process
 %% had registered. This message is consumed by wait_for_event/2,3
 register_test_for_event(ConnPid, Origin, Action) ->
     Event = {Origin, Action},
     ConnPid ! {register_test, self(), Event},
-    ok = wait_for_event(registered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    ok = wait_for_event(ConnPid, registered_test, Event, ?DEFAULT_SUB_TIMEOUT),
     ok.
 
 unregister_test_for_event(ConnPid, Origin, Action) ->
     Event = {Origin, Action},
     ConnPid ! {unregister_test, self(), Event},
-    ok = wait_for_event(unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    ok = wait_for_event( ConnPid, unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
     ok.
+
+register_test_for_channel_event(ConnPid, Action) ->
+    register_test_for_event(ConnPid, ?CHANNEL, Action).
+
+unregister_test_for_channel_event(ConnPid, Action) ->
+    unregister_test_for_event(ConnPid, ?CHANNEL, Action).
 
 
 %% consumes messages from the mailbox:
-%% {websocket_event, Origin::atom(), Action::atom()}
-%% {websocket_event, Origin::atom(), Action::atom(), Payload::map()}
--spec wait_for_event(atom(), atom()) -> ok | {ok, map()} | timeout.
-wait_for_event(Origin, Action) ->
-    wait_for_event(Origin, Action, ?DEFAULT_EVENT_TIMEOUT).
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
+-spec wait_for_event_any(atom(), atom()) -> {ok, pid()}
+                                          | {ok, pid(), map()}
+                                          | {ok, pid(), term(), map()}
+                                          | timeout.
+wait_for_event_any(Origin, Action) ->
+    wait_for_event_any(Origin, Action, ?DEFAULT_EVENT_TIMEOUT).
 
--spec wait_for_event(atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
-wait_for_event(Origin, Action, Timeout) ->
+-spec wait_for_event_any(atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
+wait_for_event_any(Origin, Action, Timeout) ->
     receive
-        {websocket_event, Origin, Action, Tag, Payload} ->
+        {AnyConnPid, websocket_event, Origin, Action, Tag, Payload} ->
+            {ok, AnyConnPid, Tag, Payload};
+        {AnyConnPid, websocket_event, Origin, Action, Payload} ->
+            {ok, AnyConnPid, Payload};
+        {AnyConnPid, websocket_event, Origin, Action} ->
+            {ok, AnyConnPid}
+    after Timeout ->
+        timeout
+    end.
+
+%% consumes messages from the mailbox:
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
+-spec wait_for_event(pid(), atom(), atom()) -> ok | {ok, map()} | timeout.
+wait_for_event(ConnPid, Origin, Action) ->
+    wait_for_event(ConnPid, Origin, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+-spec wait_for_event(pid(), atom(), atom(), integer()) -> ok | {ok, map()} | timeout.
+wait_for_event(ConnPid, Origin, Action, Timeout) ->
+    receive
+        {ConnPid, websocket_event, Origin, Action, Tag, Payload} ->
             {ok, Tag, Payload};
-        {websocket_event, Origin, Action, Payload} ->
+        {ConnPid, websocket_event, Origin, Action, Payload} ->
             {ok, Payload};
-        {websocket_event, Origin, Action} ->
+        {ConnPid, websocket_event, Origin, Action} ->
             ok
     after Timeout ->
         timeout
     end.
+
+%% consumes messages from the mailbox:
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
+%% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
+-spec wait_for_channel_event(pid(), atom()) -> ok | {ok, map()} | timeout.
+wait_for_channel_event(ConnPid, Action) ->
+    wait_for_channel_event(ConnPid, Action, ?DEFAULT_EVENT_TIMEOUT).
+
+-spec wait_for_channel_event(pid(), atom(), integer()) -> ok | {ok, map()} | timeout.
+wait_for_channel_event(ConnPid, Action, Timeout) ->
+    wait_for_event(ConnPid, ?CHANNEL, Action, Timeout).
 
 inform_registered(RegisteredPid, Origin, Action) ->
     inform_registered(RegisteredPid, Origin, Action, undefined, []).
@@ -107,11 +193,11 @@ inform_registered(RegisteredPid, Origin, Action) ->
 inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
     case Payload == [] orelse Payload == #{} of
         true ->
-            RegisteredPid ! {websocket_event, Origin, Action};
+            RegisteredPid ! {self(), websocket_event, Origin, Action};
         false when Tag == undefined ->
-            RegisteredPid ! {websocket_event, Origin, Action, Payload};
+            RegisteredPid ! {self(), websocket_event, Origin, Action, Payload};
         false ->
-            RegisteredPid ! {websocket_event, Origin, Action, Tag, Payload}
+            RegisteredPid ! {self(), websocket_event, Origin, Action, Tag, Payload}
     end.
 
 init(WaitingPid) ->
@@ -144,7 +230,8 @@ websocket_handle({pong, Nonce}, _ConnState, Regs) ->
 websocket_handle({text, MsgBin}, _ConnState, Regs) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
     ct:log("Received msg ~p~n", [Msg]),
-    Origin = binary_to_existing_atom(maps:get(<<"origin">>, Msg), utf8),
+    Origin = binary_to_existing_atom(maps:get(<<"origin">>, Msg,
+                                              atom_to_binary(?CHANNEL, utf8)), utf8),
     Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
     Tag = maps:get(<<"tag">>, Msg, undefined),
     Payload = maps:get(<<"payload">>, Msg, []),
@@ -197,4 +284,23 @@ delete_registered(RegPid, Event, Regs) ->
         true -> maps:remove(Event, Regs);
         false -> maps:put(Event, PidsLeft, Regs)
     end.
+
+encode_params(#{} = Ps) ->
+    encode_params(maps:to_list(Ps));
+encode_params([{K,V}|T]) ->
+    ["?", [str(K),"=",uenc(V)
+           | [["&", str(K1), "=", uenc(V1)]
+              || {K1, V1} <- T]]];
+encode_params([]) ->
+    [].
+
+str(A) when is_atom(A) ->
+    str(atom_to_binary(A, utf8));
+str(S) when is_list(S); is_binary(S) ->
+    S.
+
+uenc(I) when is_integer(I) ->
+    uenc(integer_to_list(I));
+uenc(V) ->
+    http_uri:encode(V).
 

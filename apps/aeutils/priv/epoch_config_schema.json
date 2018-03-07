@@ -191,6 +191,26 @@
                             "type" : "integer"
                         }
                     }
+                },
+                "channel" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "port" : {
+                            "description" :
+                            "Listen port for channels websocket interface.",
+                            "type" : "integer"
+                        },
+                        "listen_address": {
+                          "description": "Listen address for channels websocket interface.",
+                          "type": "string",
+                          "example": "192.168.168.25"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in pool",
+                            "type" : "integer"
+                        }
+                    }
                 }
             }
         },

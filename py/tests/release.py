@@ -48,6 +48,9 @@ websocket:
     internal:
         port: 9914
         acceptors: 100
+    channel:
+        port: 9814
+        acceptors: 100
 
 mining:
     cuckoo:
@@ -100,6 +103,9 @@ websocket:
     internal:
         port: 9924
         acceptors: 100
+    channel:
+        port: 9824
+        acceptors: 100
 
 mining:
     cuckoo:
@@ -151,6 +157,9 @@ http:
 websocket:
     internal:
         port: 9934
+        acceptors: 100
+    channel:
+        port: 9834
         acceptors: 100
 
 mining:

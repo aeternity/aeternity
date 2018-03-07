@@ -9,6 +9,7 @@
 
 -export([ accounts_backend/0
         , calls_backend/0
+        , channels_backend/0
         , contracts_backend/0
         , ns_backend/0
         , ns_cache_backend/0
@@ -33,6 +34,10 @@ accounts_backend() ->
 -spec calls_backend() -> aeu_mp_trees_db:db().
 calls_backend() ->
     aeu_mp_trees_db:new(db_spec(calls)).
+
+-spec channels_backend() -> aeu_mp_trees_db:db().
+channels_backend() ->
+    aeu_mp_trees_db:new(db_spec(channels)).
 
 -spec contracts_backend() -> aeu_mp_trees_db:db().
 contracts_backend() ->
@@ -73,6 +78,8 @@ db_get(Key, accounts) ->
     aec_db:find_accounts_node(Key);
 db_get(Key, calls) ->
     aec_db:find_calls_node(Key);
+db_get(Key, channels) ->
+    aec_db:find_channels_node(Key);
 db_get(Key, contracts) ->
     aec_db:find_contracts_node(Key);
 db_get(Key, ns) ->
@@ -88,6 +95,9 @@ db_put(Key, Val, {gb_trees, Tree}) ->
     {gb_trees, gb_trees:enter(Key, Val, Tree)};
 db_put(Key, Val, accounts = Handle) ->
     ok = aec_db:write_accounts_node(Key, Val),
+    {ok, Handle};
+db_put(Key, Val, channels = Handle) ->
+    ok = aec_db:write_channels_node(Key, Val),
     {ok, Handle};
 db_put(Key, Val, ns = Handle) ->
     ok = aec_db:write_ns_node(Key, Val),
