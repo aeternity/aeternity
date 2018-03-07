@@ -27,10 +27,11 @@
 	, init/2
 	, jumpdests/1
 	, logs/1
-	, origin/1
-        , out/1
 	, mem/1
 	, number/1
+	, origin/1
+        , out/1
+	, return_data/1
 	, set_call/2
 	, set_code/2
 	, set_cp/2
@@ -59,13 +60,14 @@ init(#{ env  := Env
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env, Address),
 
-    #{ address   => Address
-     , caller    => maps:get(caller, Exec)
-     , data      => maps:get(data, Exec)
-     , gas       => maps:get(gas, Exec)
-     , gas_price => maps:get(gasPrice, Exec)
-     , origin    => maps:get(origin, Exec)
-     , value     => maps:get(value, Exec)
+    #{ address     => Address
+     , caller      => maps:get(caller, Exec)
+     , return_data => maps:get(return_data, Exec, <<>>)
+     , data        => maps:get(data, Exec)
+     , gas         => maps:get(gas, Exec)
+     , gas_price   => maps:get(gasPrice, Exec)
+     , origin      => maps:get(origin, Exec)
+     , value       => maps:get(value, Exec)
 
      , coinbase   => maps:get(currentCoinbase, Env)
      , difficulty => maps:get(currentDifficulty, Env)
@@ -143,14 +145,14 @@ init_trace_fun(Opts) ->
 
 accountbalance(Address, State) ->
     maps:get(Address band ?MASK160, maps:get(balances, State), 0).
-address(State)   -> maps:get(address, State).
+address(State)     -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
-call(State)      -> maps:get(call, State).
-caller(State)    -> maps:get(caller, State).
-code(State)      -> maps:get(code, State).
-coinbase(State)  -> maps:get(coinbase, State).
-cp(State)        -> maps:get(cp, State).
-data(State)      -> maps:get(data, State).
+call(State)        -> maps:get(call, State).
+caller(State)      -> maps:get(caller, State).
+code(State)        -> maps:get(code, State).
+coinbase(State)    -> maps:get(coinbase, State).
+cp(State)          -> maps:get(cp, State).
+data(State)        -> maps:get(data, State).
 difficulty(State)-> maps:get(difficulty, State).
 extcodesize(Adr, State) ->
     maps:get(Adr band ?MASK160, maps:get(ext_code_sizes, State), 0).
@@ -159,23 +161,24 @@ extcode(Account, Start, Length, State) ->
 			 maps:get(ext_code_blocks, State), <<>>),
     aevm_eeevm_utils:bin_copy(Start, Length, CodeBlock).
 
-jumpdests(State) -> maps:get(jumpdests, State).
-stack(State)     -> maps:get(stack, State).
-mem(State)       -> maps:get(memory, State).
-number(State)    -> maps:get(number, State).
-origin(State)    -> maps:get(origin, State).
-out(State)       -> maps:get(out, State).
-gas(State)       -> maps:get(gas, State).
-gaslimit(State)  -> maps:get(gas_limit, State).
-gasprice(State)  -> maps:get(gas_price, State).
-logs(State)      -> maps:get(logs, State).
-storage(State)   -> maps:get(storage, State).
-value(State)     -> maps:get(value, State).
-timestamp(State) -> maps:get(timestamp, State).
+jumpdests(State)   -> maps:get(jumpdests, State).
+stack(State)       -> maps:get(stack, State).
+mem(State)         -> maps:get(memory, State).
+number(State)      -> maps:get(number, State).
+origin(State)      -> maps:get(origin, State).
+out(State)         -> maps:get(out, State).
+return_data(State) -> maps:get(return_data, State).
+gas(State)         -> maps:get(gas, State).
+gaslimit(State)    -> maps:get(gas_limit, State).
+gasprice(State)    -> maps:get(gas_price, State).
+logs(State)        -> maps:get(logs, State).
+storage(State)     -> maps:get(storage, State).
+value(State)       -> maps:get(value, State).
+timestamp(State)   -> maps:get(timestamp, State).
 
-do_trace(State)  -> maps:get(do_trace, State).
-trace(State)     -> maps:get(trace, State).
-trace_fun(State) -> maps:get(trace_fun, State).
+do_trace(State)    -> maps:get(do_trace, State).
+trace(State)       -> maps:get(trace, State).
+trace_fun(State)   -> maps:get(trace_fun, State).
 
 
 set_call(Value, State)    -> maps:put(call, Value, State).
