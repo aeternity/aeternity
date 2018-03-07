@@ -13,7 +13,7 @@ empty_contract_test_() ->
      [{"Scan an empty contract.",
        fun() ->
                Text = " ",
-               {ok, [], _} = aer_scan:scan(Text),
+               {ok, []} = aer_scan:scan(Text),
                ok
        end}
      ]}.
@@ -26,7 +26,7 @@ all_tokens_test_() ->
             Tokens = all_tokens(),
             Text = string:join(lists:map(fun show_token/1, Tokens), " "),
             io:format("~s\n", [Text]),
-            {ok, Tokens1, _} = aer_scan:scan(Text),
+            {ok, Tokens1} = aer_scan:scan(Text),
             true = compare_tokens(Tokens, Tokens1),
             ok
         end}
@@ -43,9 +43,10 @@ all_tokens() ->
     %% Keywords
     lists:map(Lit, [contract, type, 'let', switch, rec, 'and']) ++
     %% Comment token (not an actual token), just for tests
-    [{comment, 0, "*Comment!\""}] ++
+    [{comment, 0, "// *Comment!\"\n"},
+     {comment, 0, "/* bla /* bla bla */*/"}] ++
     %% Literals
-    [ Tok(bool, true), Tok(bool, false)
+    [ Lit(true), Lit(false)
     , Tok(id, "foo"), Tok(id, "_"), Tok(con, "Foo")
     , Tok(hash, Hash)
     , Tok(int, 1234567890), Tok(hex, 9876543210)
@@ -53,7 +54,9 @@ all_tokens() ->
     ].
 
 compare_tokens([], []) -> true;
-compare_tokens([T | Ts1], [T | Ts2]) ->
+compare_tokens([{T, _} | Ts1], [{T, _} | Ts2]) ->
+    compare_tokens(Ts1, Ts2);
+compare_tokens([{T, _, V} | Ts1], [{T, _, V} | Ts2]) ->
     compare_tokens(Ts1, Ts2);
 compare_tokens([{comment, _, _} | Ts1], Ts2) ->
     compare_tokens(Ts1, Ts2);
@@ -69,7 +72,6 @@ fmt(X) -> fmt("~p", X).
 fmt(Fmt, X) -> lists:flatten(io_lib:format(Fmt, [X])).
 
 show_token({T, _}) -> atom_to_list(T);
-show_token({bool, _, V}) -> atom_to_list(V);
 show_token({id, _, X}) -> X;
 show_token({con, _, C}) -> C;
 show_token({param, _, P}) -> "@" ++ P;
@@ -77,6 +79,6 @@ show_token({string, _, S}) -> fmt(binary_to_list(S));
 show_token({int, _, N}) -> fmt(N);
 show_token({hex, _, N}) -> fmt("0x~.16b", N);
 show_token({hash, _, <<N:256>>}) -> fmt("#~.16b", N);
-show_token({comment, _, S}) -> "/*" ++ S ++ "*/";
+show_token({comment, _, S}) -> S;
 show_token({_, _, _}) -> "TODO".
 

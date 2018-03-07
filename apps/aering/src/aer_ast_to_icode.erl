@@ -22,19 +22,9 @@ convert(Tree, Options) ->
 	  , env => []
 	  , options => Options}).
 
-code([{contract_type,_Attribs, {con, _, Name}, _TypeDecls}|Rest], Icode) ->
-    %% TODO: Handle types for future type check.
-    code(Rest, set_name(Name, Icode));
-code([{contract, Attribs, {con, _, Name}, Code}|Rest], Icode) ->
-    try get_name(Icode) of
-        Name ->
-            NewIcode = contract_to_icode(Code, Icode),
-            code(Rest, NewIcode);
-        _ -> error({contract_name_mismatch, get_line(Attribs)})
-    catch
-        error:name_not_defined ->
-            error({contract_name_not_defined, get_line(Attribs)})
-    end;
+code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
+    NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
+    code(Rest, NewIcode);
 code([], Icode) -> Icode.
 
 contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
@@ -178,8 +168,8 @@ ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
 %% -------------------------------------------------------------------
 %% AST
 %% -------------------------------------------------------------------
-get_line(Attribs) -> %% TODO: use AST primitives.
-     proplists:get_value(line, Attribs).
+%% get_line(Attribs) -> %% TODO: use AST primitives.
+%%      proplists:get_value(line, Attribs).
 
 
 %% -------------------------------------------------------------------
@@ -188,8 +178,8 @@ get_line(Attribs) -> %% TODO: use AST primitives.
 set_name(Name, Icode) ->
     maps:put(contract_name, Name, Icode).
 
-get_name(#{contract_name := Name}) -> Name;
-get_name(_) -> error(name_not_defined).
+%% get_name(#{contract_name := Name}) -> Name;
+%% get_name(_) -> error(name_not_defined).
 
 set_functions(NewFuns, Icode) ->
     maps:put(functions, NewFuns, Icode).

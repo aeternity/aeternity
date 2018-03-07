@@ -1,51 +1,51 @@
 // Try to cover all syntactic constructs.
 
-contract type AllSyntax = {
-  type typeDecl; /* bla */
-  type paramTypeDecl('a, 'b);
+contract AllSyntaxType =
+  type typeDecl /* bla */
+  type paramTypeDecl('a, 'b)
 
   /** Multi-
     * line
     * comment
     */
-  let foo : _;
-};
+  function foo : _
 
-contract AllSyntax = {
+contract AllSyntax =
 
-  type typeDecl = int;
-  type paramTypeDecl('a, 'b) = (('a, 'b) => 'b) => list('a) => 'b => 'b;
+  type typeDecl = int
+  type paramTypeDecl('a, 'b) = (('a, 'b) => 'b) => list('a) => 'b => 'b
 
-  type nestedRecord = { x : int };
-  type recordType = { z : nestedRecord, mutable y : int };
-  type variantType('a) = None | Some('a);
+  type nestedRecord = { x : int }
+  type recordType = { z : nestedRecord, y : int }
+  type variantType('a) = None | Some('a)
 
-  let valWithType : map(int, int) => option(int) = m => Map.get(m, 42);
+  let valWithType : map(int, int) => option(int) = (m) => Map.get(m, 42)
   let valNoType =
-        if(valWithType(Map.empty) == None) {
+        if(valWithType(Map.empty) == None)
           print(42 mod 10 * 5 / 3)
-        };
 
-  let funWithType(x : int, y) : (int, list(int)) = (x, 0 :: [y] ++ []);
-  let funNoType() = {
-    let foo = (x, y : bool) => if (! (y && x =< 0x0b || true)) [x] else { [11..20] };
-    let setY(r : recordType) : unit = r.y = 5;
-    let setX(r : recordType, x : int) : recordType = r { z.x: x };  // nested record update
-    let getY(r) = switch(r) { | {y: y} => y };
-    switch (funWithType(1, -2)) {
-    | (x, [y, z]) => bar({x: z, y: -y + - -z * (-1)})
-    | (x, y :: _) => ()
-    };
-  };
+  function funWithType(x : int, y) : (int, list(int)) = (x, 0 :: [y] ++ [])
+  function funNoType() =
+    let foo = (x, y : bool) =>
+                if (! (y && x =< 0x0b || true)) [x]
+                else [11..20]
+    let setY(r : recordType) : unit = r{ y = 5 }
+    let setX(r : recordType, x : int) : recordType = r { z.x = x }  // nested record update
+    let getY(r) = switch(r) {y = y} => y
+    switch (funWithType(1, -2))
+      (x, [y, z]) => bar({x = z, y = -y + - -z * (-1)})
+      (x, y :: _) => ()
 
-  let bitOperations(x, y) = bnot (0xff00 band x bsl 4 bxor 0xa5a5a5 bsr 4 bor y);
+  function bitOperations(x, y) = bnot (0xff00 band x bsl 4 bxor 0xa5a5a5 bsr 4 bor y)
 
-  let rec recFun(x : int) = mutFun(x)
-      and mutFun(x) = x =< 0 ? 1 : x * recFun(x - 1);
+  function mutual() =
+    let rec recFun(x : int) = mutFun(x)
+        and mutFun(x) = if(x =< 0) 1 else x * recFun(x - 1)
+    recFun(0)
 
-  let hash : address = #01ab0fff11;
-  let b = false;
-  let qcon = Mod.Con;
-  let str = "blabla\nfoo";
-  let chr = '"';
-}
+  let hash : address = #01ab0fff11
+  let b = false
+  let qcon = Mod.Con
+  let str = "blabla\nfoo"
+  let chr = '"'
+

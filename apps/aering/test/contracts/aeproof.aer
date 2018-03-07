@@ -1,85 +1,85 @@
 /*
 contract AeToken {
-	function balanceOf(address addr) returns (uint256);
+	function balanceOf(address addr) returns (uint256)
 }
 
 contract AEProof {
 
-	AeToken aeToken;
-	mapping (bytes32 => Proof) private proofs;
-	mapping (address => bytes32[]) private proofsByOwner;
+	AeToken aeToken
+	mapping (bytes32 => Proof) private proofs
+	mapping (address => bytes32[]) private proofsByOwner
 
 	function AEProof(address tokenAddress) {
-		aeToken = AeToken(tokenAddress);
+		aeToken = AeToken(tokenAddress)
 	}
 
 	struct Proof {
-		address owner;
-		uint timestamp;
-		uint proofBlock;
-		string comment;
-		string ipfsHash;
-		string document;
+		address owner
+		uint timestamp
+		uint proofBlock
+		string comment
+		string ipfsHash
+		string document
 	}
 
 	function notarize(string document, string comment, string ipfsHash) onlyTokenHolder {
-		var proofHash = calculateHash(document);
-		var proof = proofs[proofHash];
-		require(proof.owner == address(0));
-		proof.owner = msg.sender;
-		proof.timestamp = block.timestamp;
-		proof.proofBlock = block.number;
-		proof.comment = comment;
-		proof.ipfsHash = ipfsHash;
-		proof.document = document;
+		var proofHash = calculateHash(document)
+		var proof = proofs[proofHash]
+		require(proof.owner == address(0))
+		proof.owner = msg.sender
+		proof.timestamp = block.timestamp
+		proof.proofBlock = block.number
+		proof.comment = comment
+		proof.ipfsHash = ipfsHash
+		proof.document = document
 
-		proofsByOwner[msg.sender].push(proofHash);
+		proofsByOwner[msg.sender].push(proofHash)
 	}
 
 	function calculateHash(string document) constant returns (bytes32) {
-		return sha256(document);
+		return sha256(document)
 	}
 
 	function getProof(string document) constant returns (address owner, uint timestamp, uint proofBlock, string comment, string ipfsHash, string storedDocument) {
-		var calcHash = calculateHash(document);
-		var proof = proofs[calcHash];
-		require(proof.owner != address(0));
-		owner = proof.owner;
-		timestamp = proof.timestamp;
-		proofBlock = proof.proofBlock;
-		comment = proof.comment;
-		ipfsHash = proof.ipfsHash;
-		storedDocument = proof.document;
+		var calcHash = calculateHash(document)
+		var proof = proofs[calcHash]
+		require(proof.owner != address(0))
+		owner = proof.owner
+		timestamp = proof.timestamp
+		proofBlock = proof.proofBlock
+		comment = proof.comment
+		ipfsHash = proof.ipfsHash
+		storedDocument = proof.document
 	}
 
 	function getProofByHash(bytes32 hash) constant returns (address owner, uint timestamp, uint proofBlock, string comment, string ipfsHash, string storedDocument) {
-		var proof = proofs[hash];
-		require(proof.owner != address(0));
-		owner = proof.owner;
-		timestamp = proof.timestamp;
-		proofBlock = proof.proofBlock;
-		comment = proof.comment;
-		ipfsHash = proof.ipfsHash;
-		storedDocument = proof.document;
+		var proof = proofs[hash]
+		require(proof.owner != address(0))
+		owner = proof.owner
+		timestamp = proof.timestamp
+		proofBlock = proof.proofBlock
+		comment = proof.comment
+		ipfsHash = proof.ipfsHash
+		storedDocument = proof.document
 	}
 
 	function hasProof(string document) constant returns (bool) {
-		var calcHash = calculateHash(document);
-		var storedProof = proofs[calcHash];
+		var calcHash = calculateHash(document)
+		var storedProof = proofs[calcHash]
 		if (storedProof.owner == address(0)) {
-			return false;
+			return false
 		}
-		return true;
+		return true
 	}
 
 	function getProofsByOwner(address owner) constant returns (bytes32[]) {
-		return proofsByOwner[owner];
+		return proofsByOwner[owner]
 	}
 
 	modifier onlyTokenHolder() {
-		uint balance = aeToken.balanceOf(msg.sender);
-		require(balance > 0);
-		_;
+		uint balance = aeToken.balanceOf(msg.sender)
+		require(balance > 0)
+		_
 	}
 }
 */
@@ -88,72 +88,58 @@ contract AEProof {
 // import contract aetoken
 // fun balanceOf(addr : Address) : uint
 
-contract type AEProof = {
-    let notarize : _;
-    let getProof : _;
-    let getProofByHash : _;
-    let hasProof : _;
-    let getProofsByOwner : _;
-};
+contract AEProof =
 
-contract AEProof = {
-
-type proof = { owner: address
-             , timestamp: uint
-             , proofBlock: uint
-             , comment: string
-             , ipfsHash: string
-             , document: string
-             };
+    type proof = { owner: address
+                 , timestamp: uint
+                 , proofBlock: uint
+                 , comment: string
+                 , ipfsHash: string
+                 , document: string
+                 }
 
 
-type state = { aeToken : aetoken,
-               proofs  : map(uint, proof),
-               proofsByOwner : map(address, array(uint)) };
+    type state = { aeToken : aetoken,
+                   proofs  : map(uint, proof),
+                   proofsByOwner : map(address, array(uint)) }
 
-let notarize(document:string, comment:string, ipfsHash:hash) = {
-    let _ = require(aetoken.balanceOf(caller()) > 0);
-    let proofHash: uint = calculateHash(document);
-    let proof : proof = Map.get_(proofHash, state().proofs);
-    let _ = require(proof.owner == #0);
-    let proof' : proof = proof { owner: caller()
-                               , timestamp: block().timestamp
-		               , proofBlock: block().height
-                               , comment: comment
-                               , ipfsHash: ipfsHash
-		               , document: document
-                               };
-    { state: state() { proofsByOwner: Map.insert(caller(), proofHash, state().proofsByOwner),
-                       proofs: Map.insert(proofHash, proof', state().proofs) } }
-};
-
-
-let calculateHash(document: string) : uint = sha256(document);
-
-let getProof(document) : proof = {
-    let calcHash = calculateHash(document);
-    let proof = Map.get_(calcHash, state().proofs);
-    let _ = require(proof.owner != #0);
-    proof
-};
-
-let getProofByHash(hash: uint) : proof = {
-    let proof = Map.get_(hash, state().proofs);
-    let _ = require(proof.owner != #0);
-    proof;
-};
+    function notarize(document:string, comment:string, ipfsHash:hash) =
+        let _ = require(aetoken.balanceOf(caller()) > 0)
+        let proofHash: uint = calculateHash(document)
+        let proof : proof = Map.get_(proofHash, state().proofs)
+        let _ = require(proof.owner == #0)
+        let proof' : proof = proof { owner = caller()
+                                   , timestamp = block().timestamp
+                                   , proofBlock = block().height
+                                   , comment = comment
+                                   , ipfsHash = ipfsHash
+                                   , document = document
+                                   }
+        state{ proofsByOwner = Map.insert(caller, proofHash, state.proofsByOwner),
+               proofs = Map.insert(proofHash, proof', state.proofs) }
 
 
-let hasProof(document: string) : bool = {
-    let calcHash = calculateHash(document);
-    let storedProof = Map.get_(calcHash, state().proofs);
-    storedProof.owner != #0;
-};
+    function calculateHash(document: string) : uint = sha256(document)
 
-let getProofsByOwner(owner: address): array(uint) =
-    Map.get(owner, state());
+    function getProof(document) : proof =
+        let calcHash = calculateHash(document)
+        let proof = Map.get_(calcHash, state().proofs)
+        let _ = require(proof.owner != #0)
+        proof
 
-let require(x : bool) : unit = if(x) () else { abort() };
+    function getProofByHash(hash: uint) : proof =
+        let proof = Map.get_(hash, state().proofs)
+        let _ = require(proof.owner != #0)
+        proof
 
-}
+
+    function hasProof(document: string) : bool =
+        let calcHash = calculateHash(document)
+        let storedProof = Map.get_(calcHash, state().proofs)
+        storedProof.owner != #0
+
+    function getProofsByOwner(owner: address): array(uint) =
+        Map.get(owner, state())
+
+    function require(x : bool) : unit = if(x) () else abort()
 

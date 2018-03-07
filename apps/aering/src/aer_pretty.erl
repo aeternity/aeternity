@@ -39,7 +39,7 @@ option(Key, Default) ->
 show_generated() -> option(show_generated, false).
 
 -spec indent() -> non_neg_integer().
-indent() -> option(indent, 4).
+indent() -> option(indent, 2).
 
 -spec with_options(options(), fun(() -> A)) -> A.
 with_options(Options, Fun) ->
@@ -96,14 +96,11 @@ paren(true,  D) -> paren(D).
 indent(D) -> nest(indent(), D).
 
 %% block(Header, Body) ->
-%%  Header {
+%%  Header
 %%      Body
-%%  }
 -spec block(doc(), doc()) -> doc().
 block(Header, Body) ->
-    sep([ hsep([Header, text("{")])
-        , indent(Body)
-        , text("}")]).
+    sep([ Header, indent(Body) ]).
 
 -spec comma_brackets(string(), string(), [doc()]) -> doc().
 comma_brackets(Open, Close, Ds) ->
@@ -141,15 +138,13 @@ decls(Ds, Options) ->
     with_options(Options, fun() -> decls(Ds) end).
 
 -spec decls([aer_syntax:decl()]) -> doc().
-decls(Ds) -> above([ beside(decl(D), text(";")) || D <- Ds ]).
+decls(Ds) -> above([ decl(D) || D <- Ds ]).
 
 -spec decl(aer_syntax:decl(), options()) -> doc().
 decl(D, Options) ->
     with_options(Options, fun() -> decl(D) end).
 
 -spec decl(aer_syntax:decl()) -> doc().
-decl({contract_type, _, C, Ds}) ->
-    block(follow(text("contract type"), hsep(name(C), text("="))), decls(Ds));
 decl({contract, _, C, Ds}) ->
     block(follow(text("contract"), hsep(name(C), text("="))), decls(Ds));
 decl({type_decl, _, T, []})   -> hsep(text("type"), name(T));
@@ -159,9 +154,9 @@ decl({type_decl, _, T, Vars}) ->
 decl({type_def, Ann, T, Vars, Def}) ->
     equals(decl({type_decl, Ann, T, Vars}), typedef(Def));
 decl({fun_decl, _, F, T}) ->
-    hsep(text("let"), typed(name(F), T));
+    hsep(text("function"), typed(name(F), T));
+decl(D = {letfun, _, _, _, _, _}) -> letdecl("function", D);
 decl(D = {letval, _, _, _, _})    -> letdecl("let", D);
-decl(D = {letfun, _, _, _, _, _}) -> letdecl("let", D);
 decl(D = {letrec, _, _})          -> letdecl("let", D).
 
 -spec expr(aer_syntax:expr(), options()) -> doc().
@@ -207,8 +202,6 @@ constructor_t({constr_t, _, C, []}) -> name(C);
 constructor_t({constr_t, _, C, Args}) -> beside(name(C), tuple_type(Args)).
 
 -spec field_t(aer_syntax:field_t()) -> doc().
-field_t({field_t, _, mutable, Name, Type}) ->
-    typed(hsep(text("mutable"), name(Name)), Type);
 field_t({field_t, _, immutable, Name, Type}) ->
     typed(name(Name), Type).
 
@@ -229,29 +222,20 @@ tuple_type(Args) ->
 -spec expr_p(integer(), aer_syntax:expr()) -> doc().
 expr_p(P, {lam, _, Args, E}) ->
     paren(P > 100, follow(hsep(args(Args), text("=>")), expr_p(100, E)));
-expr_p(P, If = {'if', _, Cond, Then, Else}) ->
+expr_p(P, If = {'if', Ann, Cond, Then, Else}) ->
     Format   = aer_syntax:get_ann(format, If),
-    HideElse = aer_syntax:get_ann(origin, Else) == system andalso
-               not show_generated(),
     if  Format == '?:' ->
             paren(P > 100,
                 follow(expr_p(200, Cond),
                 follow(hsep(text("?"), expr_p(100, Then)),
                    hsep(text(":"), expr_p(100, Else)), 0)));
-        HideElse ->
-            paren(P > 850,
-                block_expr(1000, beside(text("if"), paren(expr(Cond))), Then));
         true ->
-            paren(P > 850,
-                block_expr(1000, hsep([block_expr(1000, beside(text("if"), paren(expr(Cond))), Then),
-                                     text("else")]),
-                           Else))
+            {Elifs, Else1} = get_elifs(Else),
+            above([ stmt_p(Stmt) || Stmt <- [{'if', Ann, Cond, Then} | Elifs] ++ [Else1]])
     end;
-expr_p(P, {switch, _, E, Cases}) ->
-    paren(P > 850,
-        sep([ hsep(beside(text("switch"), paren(expr(E))), text("{"))
-            , above(lists:map(fun alt/1, Cases))
-            , text("}") ]));
+expr_p(_P, {switch, _, E, Cases}) ->
+    block(beside(text("switch"), paren(expr(E))),
+          above(lists:map(fun alt/1, Cases)));
 expr_p(_, {tuple, _, Es}) ->
     tuple(lists:map(fun expr/1, Es));
 expr_p(_, {list, _, Es}) ->
@@ -303,6 +287,17 @@ expr_p(_, E = {con, _, _})  -> name(E);
 expr_p(_, E = {qid, _, _})  -> name(E);
 expr_p(_, E = {qcon, _, _}) -> name(E).
 
+stmt_p({'if', _, Cond, Then}) ->
+    block_expr(200, beside(text("if"), paren(expr(Cond))), Then);
+stmt_p({elif, _, Cond, Then}) ->
+    block_expr(200, beside(text("elif"), paren(expr(Cond))), Then);
+stmt_p({else, Else}) ->
+    HideGenerated = not show_generated(),
+    case aer_syntax:get_ann(origin, Else) of
+        system when HideGenerated -> empty();
+        _ -> block_expr(200, text("else"), Else)
+    end.
+
 -spec bin_prec(aer_syntax:bin_op()) -> {integer(), integer(), integer()}.
 bin_prec('..')   -> {  0,   0,   0};  %% Always printed inside '[ ]'
 bin_prec('||')   -> {200, 300, 200};
@@ -348,10 +343,10 @@ app(P, F, Args) ->
            tuple(lists:map(fun expr/1, Args)))).
 
 field({field, _, LV, E}) ->
-    follow(beside(expr_p(900, LV), text(":")), expr(E)).
+    follow(hsep(expr_p(900, LV), text("=")), expr(E)).
 
 alt({'case', _, Pat, Body}) ->
-    hsep(text("|"), block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body)).
+    block_expr(0, hsep(expr_p(500, Pat), text("=>")), Body).
 
 block_expr(_, Header, {block, _, Ss}) ->
     block(Header, statements(Ss));
@@ -359,12 +354,21 @@ block_expr(P, Header, E) ->
     follow(Header, expr_p(P, E)).
 
 statements(Stmts) ->
-    sep([ beside(statement(S), text(";")) || S <- Stmts ]).
+    above([ statement(S) || S <- Stmts ]).
 
-statement(S = {letval, _, _, _, _})    -> decl(S);
-statement(S = {letfun, _, _, _, _, _}) -> decl(S);
-statement(S = {letrec, _, _})          -> decl(S);
+statement(S = {letval, _, _, _, _})    -> letdecl("let", S);
+statement(S = {letfun, _, _, _, _, _}) -> letdecl("let", S);
+statement(S = {letrec, _, _})          -> letdecl("let", S);
 statement(E) -> expr(E).
+
+get_elifs(Expr) -> get_elifs(Expr, []).
+
+get_elifs(If = {'if', Ann, Cond, Then, Else}, Elifs) ->
+    case aer_syntax:get_ann(format, If) of
+        elif -> get_elifs(Else, [{elif, Ann, Cond, Then} | Elifs]);
+        _    -> {lists:reverse(Elifs), If}
+    end;
+get_elifs(Else, Elifs) -> {lists:reverse(Elifs), {else, Else}}.
 
 fmt(Fmt, Args) -> text(lists:flatten(io_lib:format(Fmt, Args))).
 term(X) -> fmt("~p", [X]).
