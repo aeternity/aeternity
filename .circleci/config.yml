@@ -314,19 +314,6 @@ jobs:
             ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
 
-  docker_push_test:
-    <<: *container_config
-    steps:
-      - checkout
-      - *setup_remote_docker
-      - *install_docker_client
-      - run:
-          name: Build and push Docker image to DockerHub
-          command: |
-            ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:test .
-            ~/bin/docker push ${DOCKERHUB_REPO:?}:test
-
   deploy_integration:
     <<: *container_config
     environment:
@@ -454,6 +441,15 @@ workflows:
             branches:
               only: master
 
+      - docker_push_dev:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+          filters:
+            branches:
+              only: master
+
       - deploy_dev1:
           requires:
             - linux_package
@@ -515,12 +511,17 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - docker_push_test:
+      - docker_push_tag:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+            - hodl
           filters:
             branches:
-              ignore:
-                - env/dev1
-                - env/dev2
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
 
   nightly:
     triggers:
