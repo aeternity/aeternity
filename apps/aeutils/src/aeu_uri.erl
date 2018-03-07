@@ -13,9 +13,12 @@
 %%%===================================================================
 
 %% Scheme validation function meant to be used with http_uri:parse/2
+%%
+%% The specified valid schemes shall be lowercase.
 scheme_validation_fun(ValidSchemeStrings) ->
     fun(SchemeStr) ->
-            case lists:member(SchemeStr, ValidSchemeStrings) of
+            SchemeStrLower = http_util:to_lower(SchemeStr),
+            case lists:member(SchemeStrLower, ValidSchemeStrings) of
                 true ->
                     valid;
                 false ->
