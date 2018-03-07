@@ -100,7 +100,7 @@ valid_uris(Uris) ->
 %%------------------------------------------------------------------------------
 %% Add peer by url. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
--spec add(http_uri_uri() | peer(), boolean()) -> ok | {error, any()}.
+-spec add(http_uri_uri(), boolean()) -> ok | {error, any()}.
 add(Uri, Connect) when is_boolean(Connect) ->
     valid_uri(Uri, fun(Peer) ->
                        gen_server:cast(?MODULE, {add, Peer, Connect})
