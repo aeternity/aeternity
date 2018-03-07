@@ -41,6 +41,7 @@
     aecuckoo,
     aetx,
     aeoracle,
+    aechannel,
     aecontract,
     aens,
     ranch
