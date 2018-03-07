@@ -8,6 +8,28 @@ references:
       - image: aetrnty/builder
         user: builder
     working_directory: ~/epoch
+    environment:
+      DOCKER_CLIENT_VERSION: "17.09.0-ce"
+
+  setup_remote_docker: &setup_remote_docker
+    setup_remote_docker:
+      docker_layer_caching: true
+      version: "17.09.0-ce"
+
+  install_docker_client: &install_docker_client
+    run:
+      name: Install Docker client
+      command: |
+        curl -L -o /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz \
+          https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLIENT_VERSION:?}.tgz
+        tar -xz -C /tmp -f /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz
+        mkdir ~/bin && mv /tmp/docker/docker ~/bin
+
+  docker_build: &docker_build
+    run:
+      name: Build Docker image
+      command: |
+        ~/bin/docker build .
 
   merge_checkout: &merge_checkout
     run:
@@ -259,6 +281,14 @@ jobs:
           path: _build/dev3/rel/epoch/log
           destination: node3/
 
+  docker_image_build:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - *docker_build
+
   deploy_integration:
     <<: *container_config
     environment:
@@ -314,6 +344,13 @@ workflows:
                 - env/dev2
             tags:
               only: /^v.*$/
+
+      - docker_image_build:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
 
       - deploy_api_docs:
           requires:
