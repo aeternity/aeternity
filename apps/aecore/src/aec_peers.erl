@@ -62,7 +62,7 @@
 -record(peer, {
           scheme            :: http_uri:scheme(),
           host              :: http_uri_host(),
-          port              :: http_uri_port(),
+          port              :: inet:port_number(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
@@ -70,9 +70,8 @@
           trusted = false   :: boolean() % Is it a pre-configured peer
          }).
 
--type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
--type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
--type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+-type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
+-type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
 
 -type peer() :: #peer{}.
 

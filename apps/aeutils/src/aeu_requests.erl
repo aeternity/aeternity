@@ -49,9 +49,8 @@
 
 -import(aeu_debug, [pp/1]).
 
--type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
--type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
--type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+-type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
+-type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
 
 -type response(Type) :: {ok, Type} | {error, string()}.
 
@@ -276,7 +275,8 @@ process_request(Uri, OperationId, Params) ->
     aeu_http_client:request(Uri, OperationId, Params).
 
 %% No trailing /, since BaseUri starts with /
--spec pp_uri({http_uri:scheme(), http_uri_host(), http_uri_port()}) -> binary().
+-spec pp_uri({http_uri:scheme(), http_uri_host(), inet:port_number()}) ->
+                    binary().
 pp_uri({Scheme, Host, Port}) when is_list(Host) ->
     pp_uri({Scheme, unicode:characters_to_binary(Host, utf8), Port});
 pp_uri({Scheme, Host, Port}) ->
