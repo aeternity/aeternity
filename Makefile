@@ -57,6 +57,9 @@ prod-stop: internal-stop
 prod-attach: KIND=prod
 prod-attach: internal-attach
 
+prod-clean: KIND=prod
+prod-clean: internal-clean
+
 multi-start:
 	@make dev1-start
 	@make dev2-start
