@@ -299,7 +299,7 @@ jobs:
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
             ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
             ~/bin/docker tag ${DOCKERHUB_REPO:?}:latest ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-            ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
+            ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
 
   docker_push_dev:
     <<: *container_config
