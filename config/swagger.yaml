@@ -13,6 +13,22 @@ tags:
     description: External API
   - name: internal
     description: Internal API
+  - name: gossip
+    description: Gossip protocol API
+  - name: nameservice
+    description: Name resolution API
+  - name: chain 
+    description: Chain state inspection endpoints
+  - name: trasnactions
+    description: Transactions insection endpoints
+  - name: node_operator
+    description: Node operator endpoints
+  - name: dev
+    description: Development only API - for validation of client implementations. Should not be used in real life scenrios
+  - name: debug 
+    description: Debug endpoints
+  - name: obsolete
+    description: Old endpoints that will be removed
 schemes:
   - http
 paths:
@@ -25,6 +41,7 @@ paths:
     post:
       tags:
         - external
+        - gossip
       operationId: Ping
       description: ''
       produces:
@@ -54,6 +71,7 @@ paths:
     get:
       tags:
         - external
+        - gossip
       operationId: GetTop
       description: 'Get the top block header'
       produces:
@@ -69,6 +87,7 @@ paths:
     get:
       tags:
         - external
+        - gossip
       operationId: GetHeaderByHash
       description: 'Get a header by hash'
       produces:
@@ -97,6 +116,7 @@ paths:
     get:
       tags:
         - external
+        - gossip
       operationId: GetBlockByHeight
       description: 'Get a block by height'
       produces:
@@ -121,6 +141,7 @@ paths:
     get:
       tags:
         - external
+        - gossip
       operationId: GetBlockByHash
       description: 'Get a block by hash'
       produces:
@@ -149,6 +170,7 @@ paths:
     post:
       tags:
         - external
+        - gossip
       operationId: PostBlock
       description: 'Post a new block'
       consumes:
@@ -174,6 +196,7 @@ paths:
     post:
       tags:
         - external
+        - gossip
       operationId: PostTx
       description: 'Post a new transaction'
       consumes:
@@ -199,6 +222,7 @@ paths:
     get:
       tags:
         - external
+        - transactions
       operationId: GetTx
       description: 'Get a transaction by hash'
       produces:
@@ -233,6 +257,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostContractCreate
       description: 'Get a contract_create transaction'
       consumes:
@@ -262,6 +287,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostContractCall
       description: 'Get a contract_call transaction'
       consumes:
@@ -291,6 +317,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostContractCallCompute
       description: 'Compute the call_data for RING and get contract_call transaction'
       consumes:
@@ -320,6 +347,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostOracleRegister
       description: 'Get a oracle_register transaction'
       consumes:
@@ -349,6 +377,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostOracleExtend
       description: 'Get an oracle_extend transaction'
       consumes:
@@ -378,6 +407,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostOracleQuery
       description: 'Get a oracle_query transaction'
       consumes:
@@ -407,6 +437,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostOracleResponse
       description: 'Get a oracle_response transaction'
       consumes:
@@ -436,6 +467,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostNamePreclaim
       description: 'Get a name_preclaim transaction'
       produces:
@@ -463,6 +495,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostNameClaim
       description: 'Get a name_claim transaction'
       produces:
@@ -490,6 +523,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostNameUpdate
       description: 'Get a name_update transaction'
       produces:
@@ -517,6 +551,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostNameTransfer
       description: 'Get a name_transfer transaction'
       produces:
@@ -544,6 +579,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostNameRevoke
       description: 'Get a name_revoke transaction'
       produces:
@@ -571,6 +607,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: PostSpend
       description: 'Get a spend transaction'
       consumes:
@@ -601,6 +638,7 @@ paths:
     get:
       tags:
         - external
+        - transactions
       operationId: GetTxs
       description: 'Get transactions in the mempool'
       produces:
@@ -615,6 +653,7 @@ paths:
     get:
       tags:
         - external
+        - dev
       operationId: GetCommitmentHash
       description: 'Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client''s implementations.'
       produces:
@@ -644,6 +683,7 @@ paths:
     get:
       tags:
         - external
+        - nameservice
       operationId: GetName
       description: 'Get name entry from Naming System'
       produces:
@@ -677,6 +717,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostSpendTx
       description: 'Create spend transaction'
       consumes:
@@ -702,6 +743,7 @@ paths:
     get:
       tags:
         - internal
+        - obsolete
       operationId: GetActiveRegisteredOracles
       description: 'Get active registered oracles'
       produces:
@@ -729,6 +771,7 @@ paths:
     get:
       tags:
         - internal
+        - obsolete
       operationId: GetOracleQuestions
       description: 'Get active oracle questions'
       produces:
@@ -765,6 +808,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostOracleRegisterTx
       description: 'Create oracle register transaction'
       consumes:
@@ -792,6 +836,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostOracleExtendTx
       description: 'Create oracle extend transaction'
       consumes:
@@ -819,6 +864,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostOracleQueryTx
       description: 'Create oracle query transaction'
       consumes:
@@ -846,6 +892,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostOracleResponseTx
       description: 'Create oracle response transaction'
       consumes:
@@ -873,6 +920,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostNamePreclaimTx
       description: 'Create name preclaim transaction'
       consumes:
@@ -904,6 +952,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostNameClaimTx
       description: 'Create name claim transaction'
       consumes:
@@ -935,6 +984,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostNameUpdateTx
       description: 'Create name update transaction'
       consumes:
@@ -966,6 +1016,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostNameTransferTx
       description: 'Create name transfer transaction'
       consumes:
@@ -997,6 +1048,7 @@ paths:
     post:
       tags:
         - internal
+        - obsolete
       operationId: PostNameRevokeTx
       description: 'Create name revoke transaction'
       consumes:
@@ -1028,6 +1080,7 @@ paths:
     get:
       tags:
         - internal
+        - node_operator
       operationId: GetPubKey
       description: 'Get user''s public key address'
       produces:
@@ -1047,6 +1100,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetAccountBalance
       description: 'Get accounts''s balance'
       produces:
@@ -1084,6 +1138,7 @@ paths:
     get:
       tags:
         - internal
+        - transactions
       operationId: GetAccountTransactions
       description: 'Get accounts''s transactions included in blocks in the longest chain'
       produces:
@@ -1144,6 +1199,7 @@ paths:
     get:
       tags:
         - external
+        - debug
       operationId: GetAccountsBalances
       description: 'Get all users'' balances'
       produces:
@@ -1163,6 +1219,7 @@ paths:
     get:
       tags:
         - external
+        - debug
       operationId: GetVersion
       description: 'Get node''s version'
       produces:
@@ -1178,6 +1235,7 @@ paths:
     get:
       tags:
         - external
+        - debug
       operationId: GetInfo
       description: 'Get node info'
       produces:
@@ -1197,6 +1255,7 @@ paths:
     get:
       tags:
         - internal
+        - debug
       operationId: GetPeers
       description: 'Get node Peers'
       produces:
@@ -1217,6 +1276,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockNumber
       description: 'Get the current block''s height'
       produces:
@@ -1232,6 +1292,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockByHeightInternal
       description: 'Get a block by height'
       produces:
@@ -1262,6 +1323,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockByHashInternal
       description: 'Get a block by hash'
       produces:
@@ -1296,6 +1358,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockGenesis
       description: 'Get the genesis block'
       produces:
@@ -1317,6 +1380,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockLatest
       description: 'Get the top block'
       produces:
@@ -1338,6 +1402,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockPending
       description: 'Get the block being mined'
       produces:
@@ -1363,6 +1428,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockTxsCountByHash
       description: 'Get a block transactions count by hash'
       produces:
@@ -1405,6 +1471,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetBlockTxsCountByHeight
       description: 'Get a block transactions count by height'
       produces:
@@ -1443,6 +1510,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetGenesisBlockTxsCount
       description: 'Get the genesis block transactions count'
       produces:
@@ -1472,6 +1540,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetLatestBlockTxsCount
       description: 'Get the latest block transactions count'
       produces:
@@ -1501,6 +1570,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetPendingBlockTxsCount
       description: 'Get the pending block transactions count'
       produces:
@@ -1530,6 +1600,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetTransactionFromBlockHeight
       description: 'Get a transaction by index in the block by height'
       produces:
@@ -1565,6 +1636,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetTxsListFromBlockRangeByHeight
       description: 'Get transactions list from a block range by height'
       produces:
@@ -1616,6 +1688,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetTransactionFromBlockHash
       description: 'Get a transaction by index in the block by hash'
       produces:
@@ -1651,6 +1724,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetTransactionFromBlockLatest
       description: 'Get a transaction by index in the latest block'
       produces:
@@ -1681,6 +1755,7 @@ paths:
     get:
       tags:
         - internal
+        - chain
       operationId: GetTxsListFromBlockRangeByHash
       description: 'Get transactions list from a block range by hash'
       produces:
@@ -1732,6 +1807,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: 'CompileContract'
       description: 'Compila a ring contract from source and return byte code'
       consumes:
@@ -1758,6 +1834,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: 'CallContract'
       description: 'Call a ring function with a given name and argument in the given bytecode off chain.'
       consumes:
@@ -1784,6 +1861,7 @@ paths:
     post:
       tags:
         - external
+        - dev
       operationId: 'EncodeCalldata'
       description: 'Encode ring data and function name according to ring ABI.'
       consumes:

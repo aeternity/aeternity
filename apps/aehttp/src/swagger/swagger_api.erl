@@ -15,6 +15,219 @@
 -spec request_params(OperationID :: operation_id()) -> [Param :: request_param()].
 
 
+request_params('GetAccountBalance') ->
+    [
+        'account_pubkey',
+        'height',
+        'hash'
+    ];
+
+request_params('GetBlockByHashInternal') ->
+    [
+        'hash',
+        'tx_encoding'
+    ];
+
+request_params('GetBlockByHeightInternal') ->
+    [
+        'height',
+        'tx_encoding'
+    ];
+
+request_params('GetBlockGenesis') ->
+    [
+        'tx_encoding'
+    ];
+
+request_params('GetBlockLatest') ->
+    [
+        'tx_encoding'
+    ];
+
+request_params('GetBlockNumber') ->
+    [
+    ];
+
+request_params('GetBlockPending') ->
+    [
+        'tx_encoding'
+    ];
+
+request_params('GetBlockTxsCountByHash') ->
+    [
+        'hash',
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetBlockTxsCountByHeight') ->
+    [
+        'height',
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetGenesisBlockTxsCount') ->
+    [
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetLatestBlockTxsCount') ->
+    [
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetPendingBlockTxsCount') ->
+    [
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetTransactionFromBlockHash') ->
+    [
+        'hash',
+        'tx_index',
+        'tx_encoding'
+    ];
+
+request_params('GetTransactionFromBlockHeight') ->
+    [
+        'height',
+        'tx_index',
+        'tx_encoding'
+    ];
+
+request_params('GetTransactionFromBlockLatest') ->
+    [
+        'tx_index',
+        'tx_encoding'
+    ];
+
+request_params('GetTxsListFromBlockRangeByHash') ->
+    [
+        'from',
+        'to',
+        'tx_encoding',
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+request_params('GetTxsListFromBlockRangeByHeight') ->
+    [
+        'from',
+        'to',
+        'tx_encoding',
+        'tx_types',
+        'exclude_tx_types'
+    ];
+
+
+request_params('GetAccountsBalances') ->
+    [
+    ];
+
+request_params('GetInfo') ->
+    [
+    ];
+
+request_params('GetPeers') ->
+    [
+    ];
+
+request_params('GetVersion') ->
+    [
+    ];
+
+
+request_params('CallContract') ->
+    [
+        'ContractCallInput'
+    ];
+
+request_params('CompileContract') ->
+    [
+        'Contract'
+    ];
+
+request_params('EncodeCalldata') ->
+    [
+        'ContractCallInput'
+    ];
+
+request_params('GetCommitmentHash') ->
+    [
+        'name',
+        'salt'
+    ];
+
+request_params('PostContractCall') ->
+    [
+        'ContractCallData'
+    ];
+
+request_params('PostContractCallCompute') ->
+    [
+        'ContractCallCompute'
+    ];
+
+request_params('PostContractCreate') ->
+    [
+        'ContractCreateData'
+    ];
+
+request_params('PostNameClaim') ->
+    [
+        'NameClaimTx'
+    ];
+
+request_params('PostNamePreclaim') ->
+    [
+        'NamePreclaimTx'
+    ];
+
+request_params('PostNameRevoke') ->
+    [
+        'NameRevokeTx'
+    ];
+
+request_params('PostNameTransfer') ->
+    [
+        'NameTransferTx'
+    ];
+
+request_params('PostNameUpdate') ->
+    [
+        'NameUpdateTx'
+    ];
+
+request_params('PostOracleExtend') ->
+    [
+        'OracleExtendTx'
+    ];
+
+request_params('PostOracleQuery') ->
+    [
+        'OracleQueryTx'
+    ];
+
+request_params('PostOracleRegister') ->
+    [
+        'OracleRegisterTx'
+    ];
+
+request_params('PostOracleResponse') ->
+    [
+        'OracleResponseTx'
+    ];
+
+request_params('PostSpend') ->
+    [
+        'SpendTx'
+    ];
+
+
 request_params('CallContract') ->
     [
         'ContractCallInput'
@@ -155,6 +368,41 @@ request_params('PostOracleResponse') ->
 request_params('PostSpend') ->
     [
         'SpendTx'
+    ];
+
+request_params('PostTx') ->
+    [
+        'Tx'
+    ];
+
+
+request_params('GetBlockByHash') ->
+    [
+        'hash'
+    ];
+
+request_params('GetBlockByHeight') ->
+    [
+        'height'
+    ];
+
+request_params('GetHeaderByHash') ->
+    [
+        'hash'
+    ];
+
+request_params('GetTop') ->
+    [
+    ];
+
+request_params('Ping') ->
+    [
+        'Ping'
+    ];
+
+request_params('PostBlock') ->
+    [
+        'Block'
     ];
 
 request_params('PostTx') ->
@@ -352,6 +600,102 @@ request_params('PostSpendTx') ->
         'SpendTx'
     ];
 
+
+request_params('GetName') ->
+    [
+        'name'
+    ];
+
+
+request_params('GetPubKey') ->
+    [
+    ];
+
+
+request_params('GetActiveRegisteredOracles') ->
+    [
+        'from',
+        'max'
+    ];
+
+request_params('GetOracleQuestions') ->
+    [
+        'oracle_pub_key',
+        'from',
+        'max'
+    ];
+
+request_params('PostNameClaimTx') ->
+    [
+        'NameClaimTx'
+    ];
+
+request_params('PostNamePreclaimTx') ->
+    [
+        'NamePreclaimTx'
+    ];
+
+request_params('PostNameRevokeTx') ->
+    [
+        'NameRevokeTx'
+    ];
+
+request_params('PostNameTransferTx') ->
+    [
+        'NameTransferTx'
+    ];
+
+request_params('PostNameUpdateTx') ->
+    [
+        'NameUpdateTx'
+    ];
+
+request_params('PostOracleExtendTx') ->
+    [
+        'OracleExtendTx'
+    ];
+
+request_params('PostOracleQueryTx') ->
+    [
+        'OracleQueryTx'
+    ];
+
+request_params('PostOracleRegisterTx') ->
+    [
+        'OracleRegisterTx'
+    ];
+
+request_params('PostOracleResponseTx') ->
+    [
+        'OracleResponseTx'
+    ];
+
+request_params('PostSpendTx') ->
+    [
+        'SpendTx'
+    ];
+
+
+request_params('GetAccountTransactions') ->
+    [
+        'account_pubkey',
+        'limit',
+        'offset',
+        'tx_types',
+        'exclude_tx_types',
+        'tx_encoding'
+    ];
+
+request_params('GetTx') ->
+    [
+        'tx_hash',
+        'tx_encoding'
+    ];
+
+request_params('GetTxs') ->
+    [
+    ];
+
 request_params(_) ->
     error(unknown_operation).
 
@@ -380,6 +724,545 @@ request_params(_) ->
     rules => [rule()]
 }.
 
+
+
+request_param_info('GetAccountBalance', 'account_pubkey') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetAccountBalance', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountBalance', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockByHashInternal', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHashInternal', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockByHeightInternal', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHeightInternal', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockGenesis', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockLatest', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockPending', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHash', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHash', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHash', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHeight', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHeight', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetBlockTxsCountByHeight', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetGenesisBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetGenesisBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetLatestBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetLatestBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetPendingBlockTxsCount', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetPendingBlockTxsCount', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHash', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'height') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockHeight', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_index') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetTransactionFromBlockLatest', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHash', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'to') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetTxsListFromBlockRangeByHeight', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+
+
+request_param_info('CallContract', 'ContractCallInput') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('CompileContract', 'Contract') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('EncodeCalldata', 'ContractCallInput') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('GetCommitmentHash', 'name') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetCommitmentHash', 'salt') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('PostContractCall', 'ContractCallData') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCallCompute', 'ContractCallCompute') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostContractCreate', 'ContractCreateData') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameClaim', 'NameClaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNamePreclaim', 'NamePreclaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameRevoke', 'NameRevokeTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameTransfer', 'NameTransferTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameUpdate', 'NameUpdateTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleExtend', 'OracleExtendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleQuery', 'OracleQueryTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleRegister', 'OracleRegisterTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleResponse', 'OracleResponseTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostSpend', 'SpendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
 
 
 request_param_info('CallContract', 'ContractCallInput') ->
@@ -609,6 +1492,61 @@ request_param_info('PostOracleResponse', 'OracleResponseTx') ->
     };
 
 request_param_info('PostSpend', 'SpendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostTx', 'Tx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+
+request_param_info('GetBlockByHash', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetBlockByHeight', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetHeaderByHash', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('Ping', 'Ping') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostBlock', 'Block') ->
     #{
         source =>   body,
         rules => [
@@ -1198,6 +2136,235 @@ request_param_info('PostSpendTx', 'SpendTx') ->
         ]
     };
 
+
+request_param_info('GetName', 'name') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+
+
+request_param_info('GetActiveRegisteredOracles', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetActiveRegisteredOracles', 'max') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 1000 }, 
+            {min, 1 },
+            not_required
+        ]
+    };
+
+request_param_info('GetOracleQuestions', 'oracle_pub_key') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetOracleQuestions', 'from') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetOracleQuestions', 'max') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 1000 }, 
+            {min, 1 },
+            not_required
+        ]
+    };
+
+request_param_info('PostNameClaimTx', 'NameClaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNamePreclaimTx', 'NamePreclaimTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameRevokeTx', 'NameRevokeTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameTransferTx', 'NameTransferTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostNameUpdateTx', 'NameUpdateTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleExtendTx', 'OracleExtendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleQueryTx', 'OracleQueryTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleRegisterTx', 'OracleRegisterTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostOracleResponseTx', 'OracleResponseTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+request_param_info('PostSpendTx', 'SpendTx') ->
+    #{
+        source =>   body,
+        rules => [
+            schema,
+            required
+        ]
+    };
+
+
+request_param_info('GetAccountTransactions', 'account_pubkey') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'limit') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {max, 100 }, 
+            {min, 1 },
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'offset') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            {min, 0 },
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'exclude_tx_types') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
+request_param_info('GetAccountTransactions', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
+request_param_info('GetTx', 'tx_hash') ->
+    #{
+        source =>  binding ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetTx', 'tx_encoding') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            {enum, ['message_pack', 'json'] },
+            not_required
+        ]
+    };
+
 request_param_info(OperationID, Name) ->
     error({unknown_param, OperationID, Name}).
 
@@ -1243,6 +2410,221 @@ populate_request_param(OperationID, Name, Req0, ValidatorState) ->
     Body :: jesse:json_term(),
     ValidatorState :: jesse_state:state()
 ) -> ok | no_return().
+
+
+validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
+    validate_response_body('Balance', 'Balance', Body, ValidatorState);
+validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetAccountBalance', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockByHashInternal', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockByHashInternal', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetBlockByHashInternal', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockByHeightInternal', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockByHeightInternal', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockGenesis', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+
+validate_response('GetBlockLatest', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+
+validate_response('GetBlockNumber', 200, Body, ValidatorState) ->
+    validate_response_body('BlockHeight', 'BlockHeight', Body, ValidatorState);
+
+validate_response('GetBlockPending', 200, Body, ValidatorState) ->
+    validate_response_body('GenericBlock', 'GenericBlock', Body, ValidatorState);
+validate_response('GetBlockPending', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockTxsCountByHash', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockTxsCountByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetBlockTxsCountByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetGenesisBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+
+validate_response('GetLatestBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+
+validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->
+    validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockHash', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockHeight', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTransactionFromBlockLatest', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
+validate_response('GetTransactionFromBlockLatest', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHash', 200, Body, ValidatorState) ->
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxsListFromBlockRangeByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTxsListFromBlockRangeByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
+validate_response('GetAccountsBalances', 200, Body, ValidatorState) ->
+    validate_response_body('AccountsBalances', 'AccountsBalances', Body, ValidatorState);
+validate_response('GetAccountsBalances', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetInfo', 200, Body, ValidatorState) ->
+    validate_response_body('Info', 'Info', Body, ValidatorState);
+validate_response('GetInfo', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetPeers', 200, Body, ValidatorState) ->
+    validate_response_body('Peers', 'Peers', Body, ValidatorState);
+validate_response('GetPeers', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetVersion', 200, Body, ValidatorState) ->
+    validate_response_body('Version', 'Version', Body, ValidatorState);
+
+
+validate_response('CallContract', 200, Body, ValidatorState) ->
+    validate_response_body('CallResult', 'CallResult', Body, ValidatorState);
+validate_response('CallContract', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('CompileContract', 200, Body, ValidatorState) ->
+    validate_response_body('ByteCode', 'ByteCode', Body, ValidatorState);
+validate_response('CompileContract', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('EncodeCalldata', 200, Body, ValidatorState) ->
+    validate_response_body('Calldata', 'Calldata', Body, ValidatorState);
+validate_response('EncodeCalldata', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetCommitmentHash', 200, Body, ValidatorState) ->
+    validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
+validate_response('GetCommitmentHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCall', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostContractCall', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCall', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCallCompute', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostContractCallCompute', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCallCompute', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostContractCreate', 200, Body, ValidatorState) ->
+    validate_response_body('CreateContractUnsignedTx', 'CreateContractUnsignedTx', Body, ValidatorState);
+validate_response('PostContractCreate', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostContractCreate', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameClaim', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostNameClaim', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameClaim', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNamePreclaim', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostNamePreclaim', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNamePreclaim', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameRevoke', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostNameRevoke', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameRevoke', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameTransfer', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostNameTransfer', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameTransfer', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameUpdate', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostNameUpdate', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameUpdate', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleExtend', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostOracleExtend', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostOracleExtend', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleQuery', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostOracleQuery', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostOracleQuery', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleRegister', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostOracleRegister', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostOracleRegister', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleResponse', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostOracleResponse', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostOracleResponse', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostSpend', 200, Body, ValidatorState) ->
+    validate_response_body('UnsignedTx', 'UnsignedTx', Body, ValidatorState);
+validate_response('PostSpend', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostSpend', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 
 validate_response('CallContract', 200, Body, ValidatorState) ->
@@ -1426,6 +2808,46 @@ validate_response('PostTx', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 
+validate_response('GetBlockByHash', 200, Body, ValidatorState) ->
+    validate_response_body('Block', 'Block', Body, ValidatorState);
+validate_response('GetBlockByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetBlockByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetBlockByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('Block', 'Block', Body, ValidatorState);
+validate_response('GetBlockByHeight', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetHeaderByHash', 200, Body, ValidatorState) ->
+    validate_response_body('Header', 'Header', Body, ValidatorState);
+validate_response('GetHeaderByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetHeaderByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTop', 200, Body, ValidatorState) ->
+    validate_response_body('Top', 'Top', Body, ValidatorState);
+
+validate_response('Ping', 200, Body, ValidatorState) ->
+    validate_response_body('Ping', 'Ping', Body, ValidatorState);
+validate_response('Ping', 403, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('Ping', 409, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostBlock', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostBlock', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
 validate_response('GetAccountBalance', 200, Body, ValidatorState) ->
     validate_response_body('Balance', 'Balance', Body, ValidatorState);
 validate_response('GetAccountBalance', 400, Body, ValidatorState) ->
@@ -1593,6 +3015,107 @@ validate_response('PostSpendTx', 200, Body, ValidatorState) ->
     validate_response_body('', '', Body, ValidatorState);
 validate_response('PostSpendTx', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
+validate_response('GetName', 200, Body, ValidatorState) ->
+    validate_response_body('NameEntry', 'NameEntry', Body, ValidatorState);
+validate_response('GetName', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetName', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
+validate_response('GetPubKey', 200, Body, ValidatorState) ->
+    validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
+validate_response('GetPubKey', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
+validate_response('GetActiveRegisteredOracles', 200, Body, ValidatorState) ->
+    validate_response_body('RegisteredOracles', 'RegisteredOracles', Body, ValidatorState);
+
+validate_response('GetOracleQuestions', 200, Body, ValidatorState) ->
+    validate_response_body('OracleQuestions', 'OracleQuestions', Body, ValidatorState);
+validate_response('GetOracleQuestions', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameClaimTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameClaimTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameClaimTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNamePreclaimTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameCommitmentHash', 'NameCommitmentHash', Body, ValidatorState);
+validate_response('PostNamePreclaimTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNamePreclaimTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameRevokeTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameRevokeTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameRevokeTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameTransferTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameTransferTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameTransferTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostNameUpdateTx', 200, Body, ValidatorState) ->
+    validate_response_body('NameHash', 'NameHash', Body, ValidatorState);
+validate_response('PostNameUpdateTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('PostNameUpdateTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleExtendTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleRegisterResponse', 'OracleRegisterResponse', Body, ValidatorState);
+validate_response('PostOracleExtendTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleQueryTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleQueryResponse', 'OracleQueryResponse', Body, ValidatorState);
+validate_response('PostOracleQueryTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleRegisterTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleRegisterResponse', 'OracleRegisterResponse', Body, ValidatorState);
+validate_response('PostOracleRegisterTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostOracleResponseTx', 200, Body, ValidatorState) ->
+    validate_response_body('OracleQueryResponse', 'OracleQueryResponse', Body, ValidatorState);
+validate_response('PostOracleResponseTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('PostSpendTx', 200, Body, ValidatorState) ->
+    validate_response_body('', '', Body, ValidatorState);
+validate_response('PostSpendTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+
+validate_response('GetAccountTransactions', 200, Body, ValidatorState) ->
+    validate_response_body('TxObjects', 'TxObjects', Body, ValidatorState);
+validate_response('GetAccountTransactions', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetAccountTransactions', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTx', 200, Body, ValidatorState) ->
+    validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
+validate_response('GetTx', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetTx', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetTxs', 200, Body, ValidatorState) ->
+    validate_response_body('Transactions', 'Transactions', Body, ValidatorState);
 
 
 validate_response(_OperationID, _Code, _Body, _ValidatorState) ->

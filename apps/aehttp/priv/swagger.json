@@ -16,12 +16,36 @@
   }, {
     "name" : "internal",
     "description" : "Internal API"
+  }, {
+    "name" : "gossip",
+    "description" : "Gossip protocol API"
+  }, {
+    "name" : "nameservice",
+    "description" : "Name resolution API"
+  }, {
+    "name" : "chain",
+    "description" : "Chain state inspection endpoints"
+  }, {
+    "name" : "trasnactions",
+    "description" : "Transactions insection endpoints"
+  }, {
+    "name" : "node_operator",
+    "description" : "Node operator endpoints"
+  }, {
+    "name" : "dev",
+    "description" : "Development only API - for validation of client implementations. Should not be used in real life scenrios"
+  }, {
+    "name" : "debug",
+    "description" : "Debug endpoints"
+  }, {
+    "name" : "obsolete",
+    "description" : "Old endpoints that will be removed"
   } ],
   "schemes" : [ "http" ],
   "paths" : {
     "/ping" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "",
         "operationId" : "Ping",
         "produces" : [ "application/json" ],
@@ -58,7 +82,7 @@
     },
     "/top" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Get the top block header",
         "operationId" : "GetTop",
         "produces" : [ "application/json" ],
@@ -75,7 +99,7 @@
     },
     "/header-by-hash" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Get a header by hash",
         "operationId" : "GetHeaderByHash",
         "produces" : [ "application/json" ],
@@ -110,7 +134,7 @@
     },
     "/block-by-height" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Get a block by height",
         "operationId" : "GetBlockByHeight",
         "produces" : [ "application/json" ],
@@ -139,7 +163,7 @@
     },
     "/block-by-hash" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Get a block by hash",
         "operationId" : "GetBlockByHash",
         "produces" : [ "application/json" ],
@@ -174,7 +198,7 @@
     },
     "/block" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Post a new block",
         "operationId" : "PostBlock",
         "consumes" : [ "application/json" ],
@@ -203,7 +227,7 @@
     },
     "/tx" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "gossip" ],
         "description" : "Post a new transaction",
         "operationId" : "PostTx",
         "consumes" : [ "application/json" ],
@@ -232,7 +256,7 @@
     },
     "/tx/{tx_hash}" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "transactions" ],
         "description" : "Get a transaction by hash",
         "operationId" : "GetTx",
         "produces" : [ "application/json" ],
@@ -275,7 +299,7 @@
     },
     "/tx/contract/create" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a contract_create transaction",
         "operationId" : "PostContractCreate",
         "consumes" : [ "application/json" ],
@@ -312,7 +336,7 @@
     },
     "/tx/contract/call" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a contract_call transaction",
         "operationId" : "PostContractCall",
         "consumes" : [ "application/json" ],
@@ -349,7 +373,7 @@
     },
     "/tx/contract/call/compute" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Compute the call_data for RING and get contract_call transaction",
         "operationId" : "PostContractCallCompute",
         "consumes" : [ "application/json" ],
@@ -386,7 +410,7 @@
     },
     "/tx/oracle/register" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a oracle_register transaction",
         "operationId" : "PostOracleRegister",
         "consumes" : [ "application/json" ],
@@ -423,7 +447,7 @@
     },
     "/tx/oracle/extend" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get an oracle_extend transaction",
         "operationId" : "PostOracleExtend",
         "consumes" : [ "application/json" ],
@@ -460,7 +484,7 @@
     },
     "/tx/oracle/query" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a oracle_query transaction",
         "operationId" : "PostOracleQuery",
         "consumes" : [ "application/json" ],
@@ -497,7 +521,7 @@
     },
     "/tx/oracle/response" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a oracle_response transaction",
         "operationId" : "PostOracleResponse",
         "consumes" : [ "application/json" ],
@@ -534,7 +558,7 @@
     },
     "/tx/name/preclaim" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a name_preclaim transaction",
         "operationId" : "PostNamePreclaim",
         "produces" : [ "application/json" ],
@@ -570,7 +594,7 @@
     },
     "/tx/name/claim" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a name_claim transaction",
         "operationId" : "PostNameClaim",
         "produces" : [ "application/json" ],
@@ -606,7 +630,7 @@
     },
     "/tx/name/update" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a name_update transaction",
         "operationId" : "PostNameUpdate",
         "produces" : [ "application/json" ],
@@ -642,7 +666,7 @@
     },
     "/tx/name/transfer" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a name_transfer transaction",
         "operationId" : "PostNameTransfer",
         "produces" : [ "application/json" ],
@@ -678,7 +702,7 @@
     },
     "/tx/name/revoke" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a name_revoke transaction",
         "operationId" : "PostNameRevoke",
         "produces" : [ "application/json" ],
@@ -714,7 +738,7 @@
     },
     "/tx/spend" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Get a spend transaction",
         "operationId" : "PostSpend",
         "consumes" : [ "application/json" ],
@@ -751,7 +775,7 @@
     },
     "/transactions" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "transactions" ],
         "description" : "Get transactions in the mempool",
         "operationId" : "GetTxs",
         "produces" : [ "application/json" ],
@@ -768,7 +792,7 @@
     },
     "/commitment-hash" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Compute commitment hash for a given salt and name. Commitment hash must be computed client side. This endpoint is for verifying client's implementations.",
         "operationId" : "GetCommitmentHash",
         "produces" : [ "application/json" ],
@@ -803,7 +827,7 @@
     },
     "/name" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "nameservice" ],
         "description" : "Get name entry from Naming System",
         "operationId" : "GetName",
         "produces" : [ "application/json" ],
@@ -838,7 +862,7 @@
     },
     "/spend-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create spend transaction",
         "operationId" : "PostSpendTx",
         "consumes" : [ "application/json" ],
@@ -867,7 +891,7 @@
     },
     "/oracles" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Get active registered oracles",
         "operationId" : "GetActiveRegisteredOracles",
         "produces" : [ "application/json" ],
@@ -898,7 +922,7 @@
     },
     "/oracle-questions" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Get active oracle questions",
         "operationId" : "GetOracleQuestions",
         "produces" : [ "application/json" ],
@@ -941,7 +965,7 @@
     },
     "/oracle-register-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create oracle register transaction",
         "operationId" : "PostOracleRegisterTx",
         "consumes" : [ "application/json" ],
@@ -973,7 +997,7 @@
     },
     "/oracle-extend-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create oracle extend transaction",
         "operationId" : "PostOracleExtendTx",
         "consumes" : [ "application/json" ],
@@ -1005,7 +1029,7 @@
     },
     "/oracle-query-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create oracle query transaction",
         "operationId" : "PostOracleQueryTx",
         "consumes" : [ "application/json" ],
@@ -1037,7 +1061,7 @@
     },
     "/oracle-response-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create oracle response transaction",
         "operationId" : "PostOracleResponseTx",
         "consumes" : [ "application/json" ],
@@ -1069,7 +1093,7 @@
     },
     "/name-preclaim-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create name preclaim transaction",
         "operationId" : "PostNamePreclaimTx",
         "consumes" : [ "application/json" ],
@@ -1107,7 +1131,7 @@
     },
     "/name-claim-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create name claim transaction",
         "operationId" : "PostNameClaimTx",
         "consumes" : [ "application/json" ],
@@ -1145,7 +1169,7 @@
     },
     "/name-update-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create name update transaction",
         "operationId" : "PostNameUpdateTx",
         "consumes" : [ "application/json" ],
@@ -1183,7 +1207,7 @@
     },
     "/name-transfer-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create name transfer transaction",
         "operationId" : "PostNameTransferTx",
         "consumes" : [ "application/json" ],
@@ -1221,7 +1245,7 @@
     },
     "/name-revoke-tx" : {
       "post" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "obsolete" ],
         "description" : "Create name revoke transaction",
         "operationId" : "PostNameRevokeTx",
         "consumes" : [ "application/json" ],
@@ -1259,7 +1283,7 @@
     },
     "/account/pub-key" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "node_operator" ],
         "description" : "Get user's public key address",
         "operationId" : "GetPubKey",
         "produces" : [ "application/json" ],
@@ -1282,7 +1306,7 @@
     },
     "/account/balance/{account_pubkey}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get accounts's balance",
         "operationId" : "GetAccountBalance",
         "produces" : [ "application/json" ],
@@ -1329,7 +1353,7 @@
     },
     "/account/txs/{account_pubkey}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "transactions" ],
         "description" : "Get accounts's transactions included in blocks in the longest chain",
         "operationId" : "GetAccountTransactions",
         "produces" : [ "application/json" ],
@@ -1401,7 +1425,7 @@
     },
     "/balances" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "debug" ],
         "description" : "Get all users' balances",
         "operationId" : "GetAccountsBalances",
         "produces" : [ "application/json" ],
@@ -1424,7 +1448,7 @@
     },
     "/version" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "debug" ],
         "description" : "Get node's version",
         "operationId" : "GetVersion",
         "produces" : [ "application/json" ],
@@ -1441,7 +1465,7 @@
     },
     "/info" : {
       "get" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "debug" ],
         "description" : "Get node info",
         "operationId" : "GetInfo",
         "produces" : [ "application/json" ],
@@ -1464,7 +1488,7 @@
     },
     "/debug/peers" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "debug" ],
         "description" : "Get node Peers",
         "operationId" : "GetPeers",
         "produces" : [ "application/json" ],
@@ -1487,7 +1511,7 @@
     },
     "/block/number" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the current block's height",
         "operationId" : "GetBlockNumber",
         "produces" : [ "application/json" ],
@@ -1504,7 +1528,7 @@
     },
     "/block/height/{height}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a block by height",
         "operationId" : "GetBlockByHeightInternal",
         "produces" : [ "application/json" ],
@@ -1541,7 +1565,7 @@
     },
     "/block/hash/{hash}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a block by hash",
         "operationId" : "GetBlockByHashInternal",
         "produces" : [ "application/json" ],
@@ -1584,7 +1608,7 @@
     },
     "/block/genesis" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the genesis block",
         "operationId" : "GetBlockGenesis",
         "produces" : [ "application/json" ],
@@ -1609,7 +1633,7 @@
     },
     "/block/latest" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the top block",
         "operationId" : "GetBlockLatest",
         "produces" : [ "application/json" ],
@@ -1634,7 +1658,7 @@
     },
     "/block/pending" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the block being mined",
         "operationId" : "GetBlockPending",
         "produces" : [ "application/json" ],
@@ -1665,7 +1689,7 @@
     },
     "/block/txs/count/hash/{hash}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a block transactions count by hash",
         "operationId" : "GetBlockTxsCountByHash",
         "produces" : [ "application/json" ],
@@ -1712,7 +1736,7 @@
     },
     "/block/txs/count/height/{height}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a block transactions count by height",
         "operationId" : "GetBlockTxsCountByHeight",
         "produces" : [ "application/json" ],
@@ -1753,7 +1777,7 @@
     },
     "/block/txs/count/genesis" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the genesis block transactions count",
         "operationId" : "GetGenesisBlockTxsCount",
         "produces" : [ "application/json" ],
@@ -1782,7 +1806,7 @@
     },
     "/block/txs/count/latest" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the latest block transactions count",
         "operationId" : "GetLatestBlockTxsCount",
         "produces" : [ "application/json" ],
@@ -1811,7 +1835,7 @@
     },
     "/block/txs/count/pending" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get the pending block transactions count",
         "operationId" : "GetPendingBlockTxsCount",
         "produces" : [ "application/json" ],
@@ -1840,7 +1864,7 @@
     },
     "/block/tx/height/{height}/{tx_index}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a transaction by index in the block by height",
         "operationId" : "GetTransactionFromBlockHeight",
         "produces" : [ "application/json" ],
@@ -1883,7 +1907,7 @@
     },
     "/block/txs/list/height" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get transactions list from a block range by height",
         "operationId" : "GetTxsListFromBlockRangeByHeight",
         "produces" : [ "application/json" ],
@@ -1946,7 +1970,7 @@
     },
     "/block/tx/hash/{hash}/{tx_index}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a transaction by index in the block by hash",
         "operationId" : "GetTransactionFromBlockHash",
         "produces" : [ "application/json" ],
@@ -1989,7 +2013,7 @@
     },
     "/block/tx/latest/{tx_index}" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get a transaction by index in the latest block",
         "operationId" : "GetTransactionFromBlockLatest",
         "produces" : [ "application/json" ],
@@ -2026,7 +2050,7 @@
     },
     "/block/txs/list/hash" : {
       "get" : {
-        "tags" : [ "internal" ],
+        "tags" : [ "internal", "chain" ],
         "description" : "Get transactions list from a block range by hash",
         "operationId" : "GetTxsListFromBlockRangeByHash",
         "produces" : [ "application/json" ],
@@ -2089,7 +2113,7 @@
     },
     "/contract/compile" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Compila a ring contract from source and return byte code",
         "operationId" : "CompileContract",
         "consumes" : [ "application/json" ],
@@ -2121,7 +2145,7 @@
     },
     "/contract/call" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Call a ring function with a given name and argument in the given bytecode off chain.",
         "operationId" : "CallContract",
         "consumes" : [ "application/json" ],
@@ -2153,7 +2177,7 @@
     },
     "/contract/encode-calldata" : {
       "post" : {
-        "tags" : [ "external" ],
+        "tags" : [ "external", "dev" ],
         "description" : "Encode ring data and function name according to ring ABI.",
         "operationId" : "EncodeCalldata",
         "consumes" : [ "application/json" ],
