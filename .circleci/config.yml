@@ -10,7 +10,6 @@ references:
     working_directory: ~/epoch
     environment:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
-      DOCKERHUB_REPO: aetrnty/epoch
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
@@ -30,7 +29,7 @@ references:
     run:
       name: Build Docker image
       command: |
-        ~/bin/docker build -t $DOCKERHUB_REPO:$DOCKER_TAG .
+        ~/bin/docker build .
 
   merge_checkout: &merge_checkout
     run:
@@ -288,10 +287,6 @@ jobs:
       - checkout
       - *setup_remote_docker
       - *install_docker_client
-      - run:
-          name: Configure docker image tag
-          command: |
-            echo "export DOCKER_TAG=ci-build-$CIRCLE_BRANCH" >> $BASH_ENV
       - *docker_build
 
   deploy_integration:
