@@ -70,6 +70,14 @@ tag(contract) -> 40;
 tag(contract_call) -> 41;
 tag(contract_create_tx) -> 42;
 tag(contract_call_tx) -> 43;
+tag(channel_create_tx) -> 50;
+tag(channel_deposit_tx) -> 51;
+tag(channel_withdraw_tx) -> 52;
+tag(channel_close_mutual_tx) -> 53;
+tag(channel_close_solo_tx) -> 54;
+tag(channel_slash_tx) -> 55;
+tag(channel_settle_tx) -> 56;
+tag(channel_offchain_tx) -> 57;
 tag(block) -> 100.
 
 rev_tag(10) -> account;
@@ -93,4 +101,12 @@ rev_tag(40) -> contract;
 rev_tag(41) -> contract_call;
 rev_tag(42) -> contract_create_tx;
 rev_tag(43) -> contract_call_tx;
+rev_tag(50) -> channel_create_tx;
+rev_tag(51) -> channel_deposit_tx;
+rev_tag(52) -> channel_withdraw_tx;
+rev_tag(53) -> channel_close_mutual_tx;
+rev_tag(54) -> channel_close_solo_tx;
+rev_tag(55) -> channel_slash_tx;
+rev_tag(56) -> channel_settle_tx;
+rev_tag(57) -> channel_offchain_tx;
 rev_tag(100) -> block.
