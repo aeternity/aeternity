@@ -8,7 +8,14 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--export([check_account/5]).
+%% API
+-export([check_account/4,
+         check_account/5,
+         check_ttl/2]).
+
+%%%===================================================================
+%%% API
+%%%===================================================================
 
 %% Checks that an account (PubKey) exist at this height, has enough funds,
 %% and that the Nonce is ok.
@@ -18,8 +25,7 @@
                     Nonce   :: non_neg_integer(),
                     Amount  :: non_neg_integer()) -> ok | {error, term()}.
 check_account(AccountPubKey, Trees, Height, Nonce, Amount) ->
-    AccountsTrees = aec_trees:accounts(Trees),
-    case aec_accounts_trees:lookup(AccountPubKey, AccountsTrees) of
+    case get_account(AccountPubKey, Trees) of
         {value, Account} ->
             BalanceOk = check_balance(Account, Amount),
             HeightOk  = check_height(Account, Height),
@@ -29,6 +35,35 @@ check_account(AccountPubKey, Trees, Height, Nonce, Amount) ->
             {error, account_not_found}
     end.
 
+-spec check_account(Account :: pubkey(),
+                    Trees   :: aec_trees:trees(),
+                    Height  :: height(),
+                    Amount  :: non_neg_integer()) -> ok | {error, term()}.
+check_account(AccountPubKey, Trees, Height, Amount) ->
+    case get_account(AccountPubKey, Trees) of
+        {value, Account} ->
+            BalanceOk = check_balance(Account, Amount),
+            HeightOk  = check_height(Account, Height),
+            checks_ok([BalanceOk, HeightOk]);
+        none ->
+            {error, account_not_found}
+    end.
+
+-spec check_ttl(non_neg_integer(), non_neg_integer()) -> ok | {error, ttl_expired}.
+check_ttl(TTL, Height) ->
+    case TTL >= Height of
+      	true -> ok;
+      	false -> {error, ttl_expired}
+    end.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+-spec get_account(pubkey(), aec_trees:trees()) -> none | {value, aec_accounts:account()}.
+get_account(AccountPubKey, Trees) ->
+    AccountsTrees = aec_trees:accounts(Trees),
+    aec_accounts_trees:lookup(AccountPubKey, AccountsTrees).
 
 -spec check_balance(aec_accounts:account(), non_neg_integer()) ->
                            ok | {error, insufficient_funds}.

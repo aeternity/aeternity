@@ -6,6 +6,7 @@
 %% take care of that at the end of the test.
 %%
 
+-include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
    [
@@ -47,6 +48,7 @@
     oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
+    state_channels_onchain_transactions/1,
 
     get_transaction/1,
 
@@ -198,6 +200,13 @@
     ws_oracles/1
    ]).
 
+%% channel websocket endpoints
+-export(
+   [sc_ws_open/1,
+    sc_ws_update/1,
+    sc_ws_close/1
+   ]).
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -215,7 +224,8 @@ groups() ->
                                   {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
                                   {group, websocket},
-                                  {group, naming}
+                                  {group, naming},
+                                  {group, channel_websocket}
                                   ]},
      {external_endpoints, [sequence],
       [
@@ -242,6 +252,7 @@ groups() ->
         oracle_transactions,
         nameservice_transactions,
         spend_transaction,
+        state_channels_onchain_transactions,
 
         get_transaction,
 
@@ -380,6 +391,11 @@ groups() ->
        ws_refused_on_limit_reached,
        ws_tx_on_chain,
        ws_oracles
+      ]},
+     {channel_websocket, [sequence],
+      [sc_ws_open,
+       sc_ws_update,
+       sc_ws_close
       ]}
     ].
 
@@ -397,7 +413,7 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    Forks = aecore_suite_utils:forks(), 
+    Forks = aecore_suite_utils:forks(),
 
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
                                                  #{<<"persist">> => true,
@@ -410,6 +426,30 @@ end_per_suite(_Config) ->
 
 init_per_group(all_endpoints, Config) ->
     Config;
+init_per_group(channel_websocket, Config) ->
+    aecore_suite_utils:start_node(?NODE, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    %% prepare participants
+    {IPubkey, IPrivkey} = generate_key_pair(),
+    {RPubkey, RPrivkey} = generate_key_pair(),
+    IStartAmt = 20,
+    RStartAmt = 10,
+    Fee = 1,
+
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    assert_balance(IPubkey, IStartAmt),
+    assert_balance(RPubkey, RStartAmt),
+    Participants = #{initiator => #{pub_key => IPubkey,
+                                    priv_key => IPrivkey,
+                                    start_amt => IStartAmt},
+                     responder => #{pub_key => RPubkey,
+                                    priv_key => RPrivkey,
+                                    start_amt => RStartAmt}},
+    [{participants, Participants} | Config];
 init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -443,7 +483,7 @@ get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
-    {ok, 200, GenBlockMap} = get_block_by_height_deprecated(0),
+    {ok, 200, GenBlockMap} = get_block_by_height(0),
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
@@ -506,7 +546,7 @@ block_by_height_deprecated(_Config) ->
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
             ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
-            {ok, 200, BlockMap} = get_block_by_height_deprecated(Height),
+            {ok, 200, BlockMap} = get_block_by_height(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             BlockMap = ExpectedBlockMap,
@@ -523,7 +563,7 @@ block_not_found_by_height_deprecated(_Config) ->
     lists:foreach(
         fun(_) ->
             Height = rand:uniform(99) + 1 + InitialHeight, % random number 1-100 + CurrentTopHeight
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height_deprecated(Height)
+            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height(Height)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
@@ -1083,6 +1123,168 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     test_missing_address(account, Encoded, fun get_name_revoke/1),
     ok.
 
+%% tests the following
+%% GET channel_create_tx unsigned transaction
+%% GET channel_deposit_tx unsigned transaction
+%% GET channel_withdraw_tx unsigned transaction
+%% GET channel_close_mutual_tx unsigned transaction
+%% GET channel_close_solo unsigned transaction
+%% GET channel_slash_tx unsigned transaction
+%% GET channel_settle_tx unsigned transaction
+state_channels_onchain_transactions(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    ParticipantPubkey = random_hash(),
+    ok = give_tokens(ParticipantPubkey, 100),
+    {ok, AeTx} = state_channels_create(MinerPubkey, ParticipantPubkey),
+    ChannelId = state_channel_id(AeTx),
+    state_channels_deposit(ChannelId, MinerPubkey),
+    state_channels_withdrawal(ChannelId, MinerPubkey),
+    state_channels_close_mutual(ChannelId, MinerPubkey),
+    state_channels_close_solo(ChannelId, MinerPubkey),
+    state_channels_slash(ChannelId, MinerPubkey),
+    state_channels_settle(ChannelId, MinerPubkey),
+    ok.
+
+state_channel_id(Tx) ->
+    {channel_create_tx, ChCTx} = aetx:specialize_type(Tx),
+    Initiator = aesc_create_tx:initiator(ChCTx),
+    Nonce = aesc_create_tx:nonce(ChCTx),
+    Responder = aesc_create_tx:responder(ChCTx),
+    aesc_channels:id(Initiator, Nonce, Responder).
+
+state_channels_create(MinerPubkey, ResponderPubkey) ->
+    Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
+                initiator_amount => 2,
+                responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
+                responder_amount => 3,
+                push_amount => 5, channel_reserve => 5,
+                lock_period => 20,
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{initiator => MinerPubkey,
+                          responder => ResponderPubkey}),
+    {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_create/1,
+                               fun aesc_create_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, initiator, Encoded, fun get_channel_create/1),
+    test_invalid_hash(ResponderPubkey, responder, Encoded, fun get_channel_create/1),
+    test_missing_address(initiator, Encoded, fun get_channel_create/1),
+    {ok, Tx}.
+
+state_channels_deposit(ChannelId, MinerPubkey) ->
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => MinerAddress,
+                amount => 2,
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{channel_id => ChannelId,
+                          from => MinerPubkey}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_deposit/1,
+                               fun aesc_deposit_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, from, Encoded1, fun get_channel_deposit/1),
+    ok.
+
+state_channels_withdrawal(ChannelId, MinerPubkey) ->
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                to => MinerAddress,
+                ttl => 100,
+                amount => 2,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{channel_id => ChannelId,
+                          to => MinerPubkey}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_withdrawal/1,
+                               fun aesc_withdraw_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, to, Encoded1, fun get_channel_withdrawal/1),
+    ok.
+
+state_channels_close_mutual(ChannelId, SenderPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => aec_base58c:encode(account_pubkey, SenderPubkey),
+                initiator_amount => 4,
+                responder_amount => 3,
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{channel_id => ChannelId,
+                          from => SenderPubkey}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_close_mutual/1,
+                               fun aesc_close_mutual_tx:new/1, SenderPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [SenderPubkey]),
+                            SenderPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(ChannelId, channel_id, Encoded1, fun get_channel_close_mutual/1),
+    test_invalid_hash(SenderPubkey, from, Encoded1, fun get_channel_close_mutual/1),
+    ok.
+
+state_channels_close_solo(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{from => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_close_solo/1,
+                               fun aesc_close_solo_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey,  from, Encoded, fun get_channel_close_solo/1),
+    ok.
+
+state_channels_slash(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{from => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_slash/1,
+                               fun aesc_slash_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, from, Encoded, fun get_channel_slash/1),
+    ok.
+
+state_channels_settle(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
+                initiator_amount => 4,
+                responder_amount => 3,
+                ttl => 100,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{from => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_settle/1,
+                               fun aesc_settle_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, from, Encoded1, fun get_channel_settle/1),
+    ok.
 
 %% tests the following
 %% GET spend_tx unsigned transaction
@@ -1100,7 +1302,7 @@ spend_transaction(_Config) ->
     Decoded = maps:merge(Encoded,
                         #{sender => MinerPubkey,
                           recipient => RandAddress}),
-    T = unsigned_tx_positive_test(Decoded, Encoded,
+    {ok, T} = unsigned_tx_positive_test(Decoded, Encoded,
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
@@ -1108,7 +1310,7 @@ spend_transaction(_Config) ->
 
     EncodedWithPayoad = Encoded#{payload => <<"hejsan svejsan">>},
     DecodedWithPayoad = Decoded#{payload => <<"hejsan svejsan">>},
-    TWithPayload = unsigned_tx_positive_test(DecodedWithPayoad, EncodedWithPayoad,
+    {ok, TWithPayload} = unsigned_tx_positive_test(DecodedWithPayoad, EncodedWithPayoad,
                                               fun get_spend/1,
                                               fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTxPayload} = aetx:specialize_type(TWithPayload),
@@ -1119,10 +1321,17 @@ spend_transaction(_Config) ->
     test_missing_address(sender, Encoded, fun get_spend/1),
     ok.
 
-unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
-    {ok, NextNonce} = rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey) ->
+    unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
+                              false).
+
+unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
+                          NonceRequred) ->
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+                            Pubkey},
     Test =
         fun(Nonce, P) ->
+            ct:log("PARAMS ~p", [P]),
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
             {ok, 200, #{<<"tx">> := ActualTx,
                         <<"tx_hash">> := ActualHash}} = HTTPCallFun(P),
@@ -1135,11 +1344,15 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
             ActualHash = TxHash,
             Tx
         end,
-    Transaction = Test(NextNonce, Params),
+    Params =
+        case NonceRequred of
+            true -> maps:put(nonce, NextNonce, Params0);
+            false -> Params0
+        end,
+    Tx = Test(NextNonce, Params),
     RandomNonce = rand:uniform(999) + 1,
     Test(RandomNonce, maps:put(nonce, RandomNonce, Params)),
-    Transaction.
-
+    {ok, Tx}.
 
 get_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
@@ -1515,12 +1728,12 @@ test_info(BlocksToMine) ->
               <<"time">>  := 0} = BlockSummary;
         (BlockSummary, ExpectedHeight) ->
             #{<<"height">> := ExpectedHeight} = BlockSummary,
-            {ok, 200, BlockMap} = get_block_by_height_deprecated(ExpectedHeight),
+            {ok, 200, BlockMap} = get_block_by_height(ExpectedHeight),
             #{<<"time">> := Time, <<"target">> := Target} = BlockMap,
             #{<<"time">> := Time} = BlockSummary,
             Difficulty = aec_pow:target_to_difficulty(Target),
             #{<<"difficulty">> := Difficulty} = BlockSummary,
-            {ok, 200, PreviousBlockMap} = get_block_by_height_deprecated(ExpectedHeight -1),
+            {ok, 200, PreviousBlockMap} = get_block_by_height(ExpectedHeight -1),
             #{<<"time">> := PrevTime} = PreviousBlockMap,
             TimeDelta = Time - PrevTime,
             #{<<"time_delta_to_parent">> := TimeDelta} = BlockSummary,
@@ -2628,7 +2841,7 @@ ws_refused_on_limit_reached(_Config) ->
             %% stop one
             ?WS:stop(Pid),
             %% another one connects in its place and it doesn't matter which one
-            {ok, some_pid} = ?WS:wait_for_connect(some_pid),
+            {ok, _SomePid} = ?WS:wait_for_connect_any(),
             %% total amount of connected WS clients is still the maximum
             MaxWsCount = open_websockets_count()
         end,
@@ -2677,7 +2890,7 @@ ws_tx_on_chain(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the Tx.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -2728,7 +2941,7 @@ ws_oracles(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_query),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
     ws_subscribe(ConnPid, #{ type => oracle_response, query_id => QId }),
@@ -2744,7 +2957,7 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that an event is received
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_response),
 
     %% Check that we can extend the oracle TTL
     ExtendData =
@@ -2762,9 +2975,160 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that the extend tx made it onto the chain
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+%%
+%% Channels
+%%
+assert_balance(Pubkey, ExpectedBalance) ->
+    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok, 200, #{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
+
+channel_sign_tx(ConnPid, Privkey, Tag) ->
+    {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
+    {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+    Tx = aetx:deserialize_from_binary(CreateBinTx),
+    SignedCreateTx = aetx_sign:sign(Tx, Privkey),
+    EncSignedCreateTx = aec_base58c:encode(transaction,
+                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
+    ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
+    Tx.
+
+sc_ws_open(Config) ->
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey,
+                    start_amt := IStartAmt},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey,
+                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
+
+    IAmt = 7,
+    RAmt = 3,
+
+    ChannelOpts =
+        #{port => 1234,
+          initiator => aec_base58c:encode(account_pubkey, IPubkey),
+          responder => aec_base58c:encode(account_pubkey, RPubkey),
+          lock_period => 10,
+          push_amount => 10,
+          initiator_amount => IAmt,
+          responder_amount => RAmt,
+          channel_reserve => 2,
+          ttl => 1000
+         },
+    {ok, IConnPid} = channel_ws_start(initiator,
+                                           maps:put(host, <<"localhost">>, ChannelOpts)),
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+
+    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
+
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+    %% initiator gets to sign a create_tx
+    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_signed">>),
+    {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    %% responder gets to sign a create_tx
+    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_signed">>),
+    {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    IPubkey = aesc_create_tx:initiator(Tx),
+    RPubkey = aesc_create_tx:responder(Tx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
+    TxHash = aec_base58c:encode(tx_hash, aetx:hash(CrTx)),
+
+    %% ensure the tx is in the mempool
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+
+    %% balances hadn't changed yet
+    assert_balance(IPubkey, IStartAmt),
+    assert_balance(RPubkey, RStartAmt),
+
+    % mine the create_tx
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% ensure the tx had been mined
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := BlockHeight}}} = get_tx(TxHash, json),
+    true = BlockHeight =/= -1,
+
+    %% ensure new balances
+    assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    assert_balance(RPubkey, RStartAmt - RAmt),
+
+    % mine min depth
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    UpdateTx = channel_sign_tx(IConnPid, IPrivkey, <<"update">>),
+
+    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
+
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
+
+    ChannelClients = #{initiator => IConnPid,
+                       responder => RConnPid},
+    {save_config, [{channel_clients, ChannelClients} | Config]}.
+
+sc_ws_update(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
+
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+
+    SendTokens =
+        fun(SenderPid, ReceiverPid, SenderPubkey, SenderPrivkey,
+                                    ReceiverPubkey, ReceiverPrivkey, Amount) ->
+            ?WS:send_tagged(SenderPid, <<"update">>, <<"new">>,
+                #{from => aec_base58c:encode(account_pubkey, SenderPubkey),
+                  to => aec_base58c:encode(account_pubkey, ReceiverPubkey),
+                  amount => Amount}),
+            UpdateTx = channel_sign_tx(SenderPid, SenderPrivkey, <<"update">>),
+            ct:log("Update tx ~p", [UpdateTx]),
+            {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(ReceiverPid, info),
+            UpdateTx = channel_sign_tx(ReceiverPid, ReceiverPrivkey, <<"update_ack">>),
+            %% consume wrong event message
+            {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(SenderPid, info),
+            {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(ReceiverPid, info),
+            ok
+        end,
+    SendTokens(IConnPid, RConnPid, IPubkey, IPrivkey, RPubkey, RPrivkey, 2),
+    SendTokens(RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey, 2),
+    {save_config, ConfigList}.
+
+sc_ws_close(Config) ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
     ok.
 
 %% changing of another account's balance is checked in pending_transactions test
@@ -2875,14 +3239,14 @@ peers(_Config) ->
 ws_do_request(ConnPid, Target, Action, Args) ->
     ok = ?WS:register_test_for_event(ConnPid, Target, Action),
     ?WS:send(ConnPid, Target, Action, Args),
-    {ok, _, Res} = ?WS:wait_for_event(Target, Action),
+    {ok, _, Res} = ?WS:wait_for_event(ConnPid, Target, Action),
     ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
     Res.
 
 ws_subscribe(ConnPid, PayLoad) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
     ?WS:send(ConnPid, chain, subscribe, PayLoad),
-    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
+    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(ConnPid, chain, subscribe),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
 
 ws_chain_get(ConnPid, PayLoad) ->
@@ -2894,14 +3258,14 @@ ws_chain_get(ConnPid, Tag, PayLoad) ->
         undefined -> ?WS:send(ConnPid, chain, get, PayLoad);
         _         -> ?WS:send(ConnPid, chain, get, Tag, PayLoad)
     end,
-    {ok, Tag1, Res} = ?WS:wait_for_event(chain, requested_data),
+    {ok, Tag1, Res} = ?WS:wait_for_event(ConnPid, chain, requested_data),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
     {Tag1, Res}.
 
 ws_mine_block(ConnPid, Node) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
-    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(chain, mined_block),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(ConnPid, chain, mined_block),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
     {Height, Hash}.
 
@@ -2965,12 +3329,40 @@ get_name_revoke(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/name/revoke", Data).
 
+get_channel_create(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/create", Data).
+
+get_channel_deposit(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/deposit", Data).
+
+get_channel_withdrawal(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/withdrawal", Data).
+
+get_channel_close_mutual(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/close/mutual", Data).
+
+get_channel_close_solo(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/close/solo", Data).
+
+get_channel_slash(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/slash", Data).
+
+get_channel_settle(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/settle", Data).
+
 get_block_by_height(Height, TxObjects) ->
     Params = tx_encoding_param(TxObjects),
     Host = external_address(),
     http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
 
-get_block_by_height_deprecated(Height) ->
+get_block_by_height(Height) ->
     Host = external_address(),
     http_request(Host, get, "block-by-height", [{height, Height}]).
 
@@ -3543,6 +3935,12 @@ ws_host_and_port() ->
                 aehttp, [internal, websocket, port], 8144]),
     {"127.0.0.1", Port}.
 
+channel_ws_host_and_port() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"websocket">>, <<"channel">>, <<"port">>],
+                aehttp, [channel, websocket, port], 8045]),
+    {"localhost", Port}.
+
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
             iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
@@ -3647,7 +4045,7 @@ random_hash() ->
     HList =
         lists:map(
             fun(_) -> rand:uniform(255) end,
-            lists:seq(1, 32)),
+            lists:seq(1, 65)),
     list_to_binary(HList).
 
 prepare_for_spending(BlocksToMine) ->
@@ -3714,6 +4112,19 @@ populate_block(Txs) ->
         maps:get(spend_txs, Txs, [])),
     ok.
 
+give_tokens(RecipientPubkey, Amount) ->
+    MineReward = rpc(aec_governance, block_mine_reward, []),
+    MinFee = rpc(aec_governance, minimum_tx_fee, []),
+    NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   NeededBlocks),
+    SpendData = #{recipient => RecipientPubkey,
+                  amount => Amount,
+                  fee => MinFee},
+    populate_block(#{spend_txs => [SpendData]}),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    ok.
+
 %% we don't have any guarantee for the ordering of the txs in the block
 equal_block_maps(MapL0, MapR0) ->
     Pop =
@@ -3741,6 +4152,10 @@ ws_start_link() ->
     {Host, Port} = ws_host_and_port(),
     ?WS:start_link(Host, Port).
 
+channel_ws_start(Role, Opts) ->
+    {Host, Port} = channel_ws_host_and_port(),
+    ?WS:start_channel(Host, Port, Role, Opts).
+
 open_websockets_count() ->
     QueueName = ws_handlers_queue,
     % ensure queue exsits
@@ -3767,3 +4182,8 @@ make_params([H | T], Accum) when is_map(H) ->
     make_params(T, maps:to_list(H) ++ Accum);
 make_params([{K, V} | T], Accum) ->
     make_params(T, [{K, V} | Accum]).
+
+generate_key_pair() ->
+    {_NewPubKey, _NewPrivKey} =
+        crypto:generate_key(?CRYPTO_KEYTYPE, crypto:ec_curve(?CRYPTO_CURVE)).
+

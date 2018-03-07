@@ -97,7 +97,7 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    Forks = aecore_suite_utils:forks(), 
+    Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"metrics">> =>
                    #{<<"rules">> =>
                          [#{<<"name">> => <<"ae.epoch.system.**">>,
