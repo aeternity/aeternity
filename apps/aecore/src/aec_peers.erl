@@ -60,7 +60,6 @@
 
 %% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
-          uri = ""          :: http_uri_uri(),   %% try not to use!
           scheme            :: http_uri:scheme(),
           host              :: http_uri_host(),
           port              :: http_uri_port(),
