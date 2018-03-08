@@ -119,7 +119,12 @@ dialyzer:
 	@./rebar3 dialyzer
 
 test:
-	@./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config
+	$(eval EPOCH_PROCESSES := $(shell ps -fea | grep "bin/epoch" | grep -v grep | wc -l))
+	@if [ $(EPOCH_PROCESSES) -gt 0 ] ; then \
+		echo "An Epoch node is already running";\
+	else \
+		./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
+	fi
 
 eunit:
 	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
