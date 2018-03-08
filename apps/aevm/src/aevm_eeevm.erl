@@ -29,7 +29,30 @@
 %%
 %%
 eval(State) ->
-    loop(valid_jumpdests(State)).
+    NewState = loop(valid_jumpdests(State)),
+    Metaop = check_eval_state(NewState),
+    case Metaop of
+	{call, Data} ->
+	    io:format("Call function ~p~n", [Data]),
+	    %% TODO: check call stack depth
+	    %% TODO: handle returndata
+	    eval(aevm_eeevm_state:init_call(NewState));
+	{return, Data} ->
+	    io:format("Return ~p~n", [Data]),
+	    NewState;
+	{error, Data}  ->
+	    io:format("error ~p~n", [Data]),
+	    NewState
+    end.
+
+check_eval_state(State) ->
+    case aevm_eeevm_state:call(State) of
+	#{to := _To } = Call ->
+	    {call, Call};
+	_ -> {return,  aevm_eeevm_state:out(State)}
+    end.
+	
+       
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
