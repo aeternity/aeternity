@@ -25,6 +25,7 @@
 	, gasprice/1
 	, init/1
 	, init/2
+	, init_call/1
 	, jumpdests/1
 	, logs/1
 	, mem/1
@@ -56,51 +57,88 @@ init(Spec) -> init(Spec, #{}).
 
 init(#{ env  := Env
       , exec := Exec
-      , pre  := Pre} = _Spec, Opts) ->
+      , pre  := Pre} = Spec, Opts) ->
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env, Address),
 
-    #{ address     => Address
-     , caller      => maps:get(caller, Exec)
-     , return_data => maps:get(return_data, Exec, <<>>)
-     , data        => maps:get(data, Exec)
-     , gas         => maps:get(gas, Exec)
-     , gas_price   => maps:get(gasPrice, Exec)
-     , origin      => maps:get(origin, Exec)
-     , value       => maps:get(value, Exec)
+    State = 
+	#{ address     => Address
+	 , caller      => maps:get(caller, Exec)
+	 , return_data => maps:get(return_data, Exec, <<>>)
+	 , data        => maps:get(data, Exec)
+	 , gas         => maps:get(gas, Exec)
+	 , gas_price   => maps:get(gasPrice, Exec)
+	 , origin      => maps:get(origin, Exec)
+	 , value       => maps:get(value, Exec)
 
-     , coinbase   => maps:get(currentCoinbase, Env)
-     , difficulty => maps:get(currentDifficulty, Env)
-     , gas_limit  => maps:get(currentGasLimit, Env)
-     , number     => maps:get(currentNumber, Env)
-     , timestamp  => maps:get(currentTimestamp, Env)
+	 , coinbase   => maps:get(currentCoinbase, Env)
+	 , difficulty => maps:get(currentDifficulty, Env)
+	 , gas_limit  => maps:get(currentGasLimit, Env)
+	 , number     => maps:get(currentNumber, Env)
+	 , timestamp  => maps:get(currentTimestamp, Env)
 
-     , balances        => get_balances(Pre)
-     , ext_code_blocks => get_ext_code_blocks(Pre)
-     , ext_code_sizes  => get_ext_code_sizes(Pre)
-     , block_hash_fun  => BlockHashFun
+	 , balances        => get_balances(Pre)
+	 , ext_code_blocks => get_ext_code_blocks(Pre)
+	 , ext_code_sizes  => get_ext_code_sizes(Pre)
+	 , block_hash_fun  => BlockHashFun
 
-     , out       => <<>>
-     , call      => #{}
+	 , do_trace  => maps:get(trace, Opts, false)
+	 , trace => []
+	 , trace_fun => init_trace_fun(Opts)
 
-     , code      => maps:get(code, Exec)
-     , cp        => 0
-     , logs      => []
-     , memory    => #{}
-     , stack     => []
-     , storage   => init_storage(Address, Pre)
+	 , environment => 
+	       #{ spec => Spec
+		, options => Opts }
 
-     , do_trace  => maps:get(trace, Opts, false)
-     , trace     => []
-     , trace_fun => init_trace_fun(Opts)
+	 },
 
-     }.
+    init_vm(State,
+	    maps:get(code, Exec),
+	    init_storage(Address, Pre)).
+
+
+
+init_vm(State, Code, Store) ->
+    State#{ out       => <<>>
+	  , call      => #{}
+	  , code      => Code
+	  , cp        => 0
+	  , logs      => []
+	  , memory    => #{}
+	  , stack     => []
+	  , storage   => Store
+	  }.
+
+init_call(#{ environment := #{ spec := #{ pre := Pre}}} = State) ->
+    #{ to := Address,
+       value := Value,
+       gas := Gas} = _Call = call(State),
+    %% TODO: check values
+    %% TODO: handle value
+    NewState = 
+	State#{ address     => Address
+	      , gas         => Gas*10
+	      , value       => Value
+	      , call        => #{}
+	      , return_data => <<>>},
+    %% TODO: This should be fetched from the state tree
+    Code = get_code(Address, Pre),
+    Store = init_storage(Address, Pre),
+    init_vm(NewState, Code, Store).
+		
 
 init_storage(Address, #{} = Pre) ->
     case maps:get(Address, Pre, undefined) of
         undefined -> #{};
         #{storage := S} -> S
     end.
+
+get_code(Address, #{} = Pre) ->
+    case maps:get(Address, Pre, undefined) of
+        undefined -> <<>>;
+        #{code := Code} -> Code
+    end.
+
 
 get_ext_code_sizes(#{} = Pre) ->
     maps:from_list(
@@ -207,6 +245,7 @@ trace_format(String, Argument, State) ->
 	    F("~8.16.0B : ~w", [CP, aevm_opcodes:op_name(OP)]),
 	    F(" ~w", [stack(State)]),
 	    F(" ~p", [mem(State)]),
+	    F("G: ~p", [gas(State)]),
 	    F(String, Argument),
 	    add_trace({CP, OP}, State);
 	false ->
