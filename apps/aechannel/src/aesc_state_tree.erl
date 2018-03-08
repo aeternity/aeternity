@@ -10,11 +10,15 @@
 -export([commit_to_db/1,
          empty/0,
          empty_with_backend/0,
+         enter/2,
+         lookup/2,
          root_hash/1]).
 
 %%%===================================================================
 %%% Types
 %%%===================================================================
+
+-type channel() :: aesc_channels:channel().
 
 -type chkey() :: aesc_channels:id().
 -type chvalue() :: aesc_channels:serialized().
@@ -51,6 +55,21 @@ empty_with_backend() ->
     Cache  = aeu_mtrees:empty_with_backend(aec_db_backends:channels_cache_backend()),
     #channel_tree{chtree = ChTree,
                   cache  = Cache}.
+
+-spec enter(channel(), tree()) -> tree().
+enter(Channel, Tree) ->
+    Id         = aesc_channels:id(Channel),
+    Serialized = aesc_channels:serialize(Channel),
+    ChTree     = aeu_mtrees:enter(Id, Serialized, Tree#channel_tree.chtree),
+    %% TODO: update cache as well
+    Tree#channel_tree{chtree = ChTree}.
+
+-spec lookup(aesc_channels:id(), tree()) -> {value, channel()} | none.
+lookup(Id, Tree) ->
+    case aeu_mtrees:lookup(Id, Tree#channel_tree.chtree) of
+        {value, Val} -> {value, aesc_channels:deserialize(Val)};
+        none         -> none
+    end.
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#channel_tree{chtree = ChTree}) ->
