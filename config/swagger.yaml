@@ -15,11 +15,11 @@ tags:
     description: Internal API
   - name: gossip
     description: Gossip protocol API
-  - name: nameservice
+  - name: name_service
     description: Name resolution API
   - name: chain 
     description: Chain state inspection endpoints
-  - name: trasnactions
+  - name: transactions
     description: Transactions insection endpoints
   - name: node_operator
     description: Node operator endpoints

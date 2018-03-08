@@ -52,7 +52,7 @@ stop(_State) ->
 check_env() ->
     %TODO: we need to validate that all tags are present
     GroupDefaults = #{<<"gossip">>        => true,
-                      <<"nameservice">>   => true,
+                      <<"name_service">>   => true,
                       <<"chain">>         => true,
                       <<"transactions">>  => true,
                       <<"node_operator">> => true,

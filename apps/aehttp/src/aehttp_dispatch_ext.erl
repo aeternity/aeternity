@@ -40,7 +40,7 @@
 handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
     handle_ping(PingObj);
 
-handle_request('GetTop', _Req, _Context) ->
+handle_request('GetTop', _, _Context) ->
     Header = aec_chain:top_header(),
     {ok, HH} = aec_headers:hash_header(Header),
     {ok, Top} = aec_headers:serialize_to_map(Header),

@@ -99,7 +99,7 @@
                         "description" : "Gossip protocol API",
                         "type" : "boolean"
                     },
-                    "nameservice" : {
+                    "name_service" : {
                         "description" : "Name resolution API",
                         "type" : "boolean"
                     },
