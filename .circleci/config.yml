@@ -297,9 +297,9 @@ jobs:
           name: Build and push Docker image to DockerHub
           command: |
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
-            ~/bin/docker tag ${DOCKERHUB_REPO:?}:latest ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
 
   docker_push_dev:
     <<: *container_config
