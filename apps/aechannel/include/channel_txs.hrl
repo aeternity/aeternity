@@ -8,9 +8,10 @@
 
 -record(channel_create_tx, {
           initiator          :: pubkey(),
+          initiator_amount   :: non_neg_integer(),
           participant        :: pubkey(),
-          initiator_amount   :: integer(),
-          participant_amount :: integer(),
+          participant_amount :: non_neg_integer(),
+          ttl                :: non_neg_integer(),
           fee                :: non_neg_integer(),
           nonce              :: non_neg_integer()
          }).
