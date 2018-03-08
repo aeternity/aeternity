@@ -85,6 +85,7 @@ set_level(L) when is_binary(L) ->
     case lists:member(Level, levels()) of
         true ->
             lager_set_level_env(Level),
+            adjust_sinks(Level),
             if_running(lager, fun() -> live_set_level(Level) end);
         false ->
             lager:error("Unknown log level: ~p", [Level]),
@@ -105,8 +106,41 @@ lager_set_level_env(L) ->
             ignore
     end.
 
+adjust_sinks(L) ->
+    Sinks = application:get_env(lager, extra_sinks, []),
+    Sinks1 =
+        lists:map(
+          fun({epoch_mining_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             (X) ->
+                  X
+          end, Sinks),
+    application:set_env(lager, extra_sinks, Sinks1).
+
+set_sink_level(L, Opts) ->
+    {handlers, Hs} = lists:keyfind(handlers, 1, Opts),
+    NewHs =
+        case lists:keyfind(lager_file_backend, 1, Hs) of
+            {_, Opts1} ->
+                lists:keyreplace(
+                  lager_file_backend, 1, Hs,
+                  {lager_file_backend,
+                   lists:keystore(level, 1, Opts1, {level, L})});
+            false ->
+                Hs
+        end,
+    lists:keyreplace(handlers, 1, Opts, {handlers, NewHs}).
+
 live_set_level(L) ->
-    lager:set_loglevel({lager_file_backend, "log/epoch.log"}, L).
+    lager:set_loglevel({lager_file_backend, "log/epoch.log"}, L),
+    lager:set_loglevel(epoch_mining_lager_event,
+                       {lager_file_backend, "log/epoch_mining.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_pow_cuckoo_lager_event,
+                       {lager_file_backend, "log/epoch_pow_cuckoo.log"},
+                       undefined, L).
 
 levels() ->
     %% copied from lager.hrl
