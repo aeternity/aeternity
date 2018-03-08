@@ -97,7 +97,7 @@ paths:
           name: hash
           description: 'Hash of the block header to fetch'
           required: true
-          type : string
+          type: string
       responses:
         '200':
           description: The header found
@@ -108,6 +108,67 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
+          description: Header not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /headers-by-hash:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetHeadersByHash
+      description: 'Get N headers from hash (down)'
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: hash
+          description: 'Hash of first block header to fetch'
+          required: true
+          type: string
+        - in: query
+          name: number
+          description: 'Number of hashes to fetch'
+          type: integer
+          default: 1
+      responses:
+        '200':
+          description: The headers found
+          schema:
+            type: array 
+            items:
+              $ref: '#/definitions/Header'
+        '400':
+          description: Invalid hash or number
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Header(s) not found
+          schema:
+            $ref: '#/definitions/Error'
+      security:
+  /header-by-height:
+    get:
+      tags:
+        - external
+        - gossip
+      operationId: GetHeaderByHeight
+      description: 'Get a header by its height in the chain'
+      produces:
+        - application/json
+      parameters:
+        - in: query
+          name: height
+          description: 'Height of the header to fetch'
+          required: true
+          type: integer
+      responses:
+        '200':
+          description: The header found
+          schema:
+            $ref: '#/definitions/Header'
+        '400':
           description: Header not found
           schema:
             $ref: '#/definitions/Error'
