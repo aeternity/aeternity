@@ -10,6 +10,7 @@ references:
     working_directory: ~/epoch
     environment:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
+      DOCKERHUB_REPO: aetrnty/epoch
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
@@ -24,12 +25,6 @@ references:
           https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLIENT_VERSION:?}.tgz
         tar -xz -C /tmp -f /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz
         mkdir ~/bin && mv /tmp/docker/docker ~/bin
-
-  docker_build: &docker_build
-    run:
-      name: Build Docker image
-      command: |
-        ~/bin/docker build .
 
   merge_checkout: &merge_checkout
     run:
@@ -287,7 +282,37 @@ jobs:
       - checkout
       - *setup_remote_docker
       - *install_docker_client
-      - *docker_build
+      - run:
+          name: Build Docker image
+          command: |
+            ~/bin/docker build .
+
+  docker_push_tag:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - run:
+          name: Build and push Docker image to DockerHub
+          command: |
+            ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
+            ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
+            ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
+
+  docker_push_dev:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - run:
+          name: Build and push Docker image to DockerHub
+          command: |
+            ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
+            ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
 
   deploy_integration:
     <<: *container_config
@@ -351,6 +376,7 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+                - master
 
       - deploy_api_docs:
           requires:
@@ -416,6 +442,15 @@ workflows:
             branches:
               only: master
 
+      - docker_push_dev:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+          filters:
+            branches:
+              only: master
+
       - deploy_dev1:
           requires:
             - linux_package
@@ -470,6 +505,18 @@ workflows:
             - eunit
             - static_analysis
             - osx_package
+            - hodl
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - docker_push_tag:
+          requires:
+            - test
+            - eunit
+            - static_analysis
             - hodl
           filters:
             branches:
