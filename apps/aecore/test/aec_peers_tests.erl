@@ -72,6 +72,36 @@ do_remove_all() ->
     [] = aec_peers:all(),
     ok.
 
+uri_parsing_test_() ->
+    {setup,
+     fun setup/0,
+     fun teardown/1,
+     [{"Check that parsing not sanitized URI does not leak atom",
+       fun() ->
+               BadSch = <<"thisisnotascheme">>,
+               BadUri = <<BadSch/binary, "://1.2.3.4:8080/">>,
+               ?assertError(badarg, binary_to_existing_atom(BadSch, unicode)),
+               IsBlocked = aec_peers:is_blocked(BadUri), %% Assumption: Synchronous URI parsing.
+               ?assert(is_boolean(IsBlocked)),
+               ?assertError(badarg, binary_to_existing_atom(BadSch, unicode)),
+               ?assert(IsBlocked)
+       end},
+      {"Check that parsing performs case-insensitive match on URI scheme",
+       fun() ->
+               %% This test exploits that unparsable URIs for bad
+               %% scheme are considered blocked by default:
+               ?assert(aec_peers:is_blocked(<<"badscheme://1.2.3.4:8080/">>)),
+               %% Perform actual tests.
+               ?assertNot(aec_peers:is_blocked(<<"http://1.2.3.4:8080/">>)),
+               ?assertNot(aec_peers:is_blocked(<<"HTTP://1.2.3.4:8080/">>)),
+               ?assertNot(aec_peers:is_blocked(<<"hTtp://1.2.3.4:8080/">>)),
+               ?assertNot(aec_peers:is_blocked("http://1.2.3.4:8080/")),
+               ?assertNot(aec_peers:is_blocked("HTTP://1.2.3.4:8080/")),
+               ?assertNot(aec_peers:is_blocked("hTtp://1.2.3.4:8080/")),
+               ok
+       end}
+     ]
+    }.
 
 setup() ->
     application:ensure_started(crypto),

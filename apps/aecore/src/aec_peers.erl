@@ -60,10 +60,9 @@
 
 %% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
-          uri = ""          :: http_uri_uri(),   %% try not to use!
           scheme            :: http_uri:scheme(),
           host              :: http_uri_host(),
-          port              :: http_uri_port(),
+          port              :: inet:port_number(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
@@ -71,9 +70,8 @@
           trusted = false   :: boolean() % Is it a pre-configured peer
          }).
 
--type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
--type http_uri_host() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L64
--type http_uri_port() :: pos_integer(). %% https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L66
+-type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
+-type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
 
 -type peer() :: #peer{}.
 
@@ -101,7 +99,7 @@ valid_uris(Uris) ->
 %%------------------------------------------------------------------------------
 %% Add peer by url. Connect if `Connect==true`
 %%------------------------------------------------------------------------------
--spec add(http_uri_uri() | peer(), boolean()) -> ok | {error, any()}.
+-spec add(http_uri_uri(), boolean()) -> ok | {error, any()}.
 add(Uri, Connect) when is_boolean(Connect) ->
     valid_uri(Uri, fun(Peer) ->
                        gen_server:cast(?MODULE, {add, Peer, Connect})
@@ -676,7 +674,7 @@ is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
 
 -spec parse_uri(http_uri_uri()) -> peer() | {error, any()}.
 parse_uri(Uri) ->
-    case http_uri:parse(Uri) of
+    case uri_safe_parse(Uri) of
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
             #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port};
         {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
@@ -684,6 +682,15 @@ parse_uri(Uri) ->
         {error, _} = Error ->
             Error
     end.
+
+uri_safe_parse(Uri) when is_binary(Uri) -> %% Workaround for https://github.com/erlang/otp/pull/1739
+    uri_safe_parse(unicode:characters_to_list(Uri, utf8));
+uri_safe_parse(Uri) ->
+    F = aeu_uri:scheme_validation_fun(valid_uri_schemes()),
+    http_uri:parse(Uri, [{scheme_validation_fun, F}]).
+
+valid_uri_schemes() ->
+    ["http", <<"http">>].
 
 -spec uri_of_peer(peer()) -> http_uri_uri().
 uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->

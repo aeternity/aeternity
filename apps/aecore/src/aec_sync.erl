@@ -29,7 +29,7 @@
 %% Callback for jobs producer queue
 -export([sync_worker/0]).
 
--type http_uri_uri() :: string() | unicode:unicode_binary(). %% From https://github.com/erlang/otp/blob/OTP-20.2.3/lib/inets/doc/src/http_uri.xml#L57
+-type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
 
 -type ping_obj() :: map().
 
