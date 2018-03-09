@@ -27,7 +27,7 @@
     "description" : "Chain state inspection endpoints"
   }, {
     "name" : "transactions",
-    "description" : "Transactions insection endpoints"
+    "description" : "Transactions inspection endpoints"
   }, {
     "name" : "node_operator",
     "description" : "Node operator endpoints"
