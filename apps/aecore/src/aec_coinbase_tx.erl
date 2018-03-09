@@ -15,14 +15,16 @@
          signers/1,
          serialize/1,
          deserialize/1,
-         for_client/1]).
+         for_client/1,
+         reward/1]).
 
 -behavior(aetx).
 
 -include("common.hrl").
 
 -record(coinbase_tx, {account       = <<>> :: pubkey(),
-                      block_height  :: non_neg_integer()}).
+                      block_height  :: non_neg_integer(),
+                      reward        :: non_neg_integer()}).
 
 -opaque tx() :: #coinbase_tx{}.
 
@@ -31,6 +33,7 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{account := AccountPubkey, block_height := Height}) ->
     {ok, aetx:new(?MODULE, #coinbase_tx{account = AccountPubkey,
+                                        reward = aec_governance:block_mine_reward(),
                                         block_height = Height })}.
 
 -spec fee(tx()) -> integer().
@@ -50,18 +53,23 @@ origin(#coinbase_tx{}) ->
 check(#coinbase_tx{block_height = CBHeight}, _Trees, Height)
     when CBHeight =/= Height ->
     {error, wrong_height};
-check(#coinbase_tx{account = AccountPubkey}, Trees, Height) ->
-    aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height).
+check(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees, Height) ->
+    ExpectedReward = aec_governance:block_mine_reward(),
+    case Reward =:= ExpectedReward of
+        true ->
+            aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height);
+        false ->
+            {error, wrong_reward}
+    end.
 
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block
 %% is added to miner's account in aec_trees:apply_signed_txs/3.
 -spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#coinbase_tx{account = AccountPubkey}, Trees0, Height) ->
+process(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),
 
-    Reward = aec_governance:block_mine_reward(),
     {ok, Account} = aec_accounts:earn(Account0, Reward, Height),
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
@@ -77,22 +85,29 @@ signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 -define(CB_TX_VSN, 1).
 
 -spec serialize(tx()) -> [map()].
-serialize(#coinbase_tx{account = Account, block_height = Height}) ->
+serialize(#coinbase_tx{account = Account, block_height = Height, reward = Reward}) ->
     [#{<<"vsn">> => version()},
      #{<<"acct">> => Account},
-     #{<<"h">> => Height}].
+     #{<<"h">> => Height},
+     #{<<"r">> => Reward}].
 
 -spec deserialize([map()]) -> tx().
 deserialize([#{<<"vsn">>  := ?CB_TX_VSN},
              #{<<"acct">> := Account},
-             #{<<"h">> := Height}]) ->
-    #coinbase_tx{account = Account, block_height = Height}.
+             #{<<"h">> := Height},
+             #{<<"r">> := Reward}]) ->
+    #coinbase_tx{account = Account, block_height = Height, reward = Reward}.
 
-for_client(#coinbase_tx{account = Account, block_height = Height}) ->
+for_client(#coinbase_tx{account = Account, block_height = Height, reward = Reward}) ->
     #{<<"account">> => aec_base58c:encode(account_pubkey,Account),
       <<"data_schema">> => <<"CoinbaseTxJSON">>, % swagger schema name
       <<"block_height">> => Height,
+      <<"reward">> => Reward,
       <<"vsn">> => ?CB_TX_VSN}.
 
 version() ->
     ?CB_TX_VSN.
+
+reward(#coinbase_tx{reward = Reward}) ->
+    Reward.
+
