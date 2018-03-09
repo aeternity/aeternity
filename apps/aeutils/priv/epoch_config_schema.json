@@ -209,7 +209,14 @@
                     "description" :
                     "Controls the overload protection in the logs. Default=50.",
                     "type" : "integer",
-                    "minimum" : 50 }
+                    "minimum" : 50 },
+                "level"   : {
+                    "description" :
+                    "Sets the level of logging in the epoch, mining and cuckoo logs.",
+                    "type": "string",
+                    "enum" : [ "debug", "info", "warning", "error", "none" ],
+                    "default": "debug"
+                }
             }
         },
         "metrics" : {

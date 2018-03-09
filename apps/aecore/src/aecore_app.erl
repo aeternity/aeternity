@@ -8,7 +8,7 @@
          prep_stop/1,
          stop/1]).
 -export([check_env/0]).
-
+-export([set_level/1]).
 %%====================================================================
 %% API
 %%====================================================================
@@ -41,6 +41,7 @@ stop(_State) ->
 %% to relx.
 check_env() ->
     check_env([{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
+               {[<<"logging">>, <<"level">>]   , fun set_level/1},
                {[<<"mining">>, <<"autostart">>], {set_env, autostart}},
                {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
                {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
@@ -78,6 +79,72 @@ live_set_hwm(Hwm) ->
     [lager:set_loghwm(lager_event, H, Hwm)
      || H <- gen_event:which_handlers(lager_event),
         element(1, H) =:= lager_file_backend].
+
+set_level(L) when is_binary(L) ->
+    Level = binary_to_existing_atom(L, latin1),
+    case lists:member(Level, levels()) of
+        true ->
+            lager_set_level_env(Level),
+            adjust_sinks(Level),
+            if_running(lager, fun() -> live_set_level(Level) end);
+        false ->
+            lager:error("Unknown log level: ~p", [Level]),
+            ignore
+    end.
+
+lager_set_level_env(L) ->
+    Hs = application:get_env(lager, handlers, []),
+    case lists:keyfind(lager_file_backend, 1, Hs) of
+        {_, Opts} ->
+            Opts1 = lists:keystore(level, 1, Opts, {level, L}),
+            application:set_env(
+              lager, handlers,
+              lists:keyreplace(lager_file_backend, 1, Hs,
+                               {lager_file_backend, Opts1}));
+        false ->
+            lager:warning("Cannot find 'epoch.log' file backend", []),
+            ignore
+    end.
+
+adjust_sinks(L) ->
+    Sinks = application:get_env(lager, extra_sinks, []),
+    Sinks1 =
+        lists:map(
+          fun({epoch_mining_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
+             (X) ->
+                  X
+          end, Sinks),
+    application:set_env(lager, extra_sinks, Sinks1).
+
+set_sink_level(L, Opts) ->
+    {handlers, Hs} = lists:keyfind(handlers, 1, Opts),
+    NewHs =
+        case lists:keyfind(lager_file_backend, 1, Hs) of
+            {_, Opts1} ->
+                lists:keyreplace(
+                  lager_file_backend, 1, Hs,
+                  {lager_file_backend,
+                   lists:keystore(level, 1, Opts1, {level, L})});
+            false ->
+                Hs
+        end,
+    lists:keyreplace(handlers, 1, Opts, {handlers, NewHs}).
+
+live_set_level(L) ->
+    lager:set_loglevel({lager_file_backend, "log/epoch.log"}, L),
+    lager:set_loglevel(epoch_mining_lager_event,
+                       {lager_file_backend, "log/epoch_mining.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_pow_cuckoo_lager_event,
+                       {lager_file_backend, "log/epoch_pow_cuckoo.log"},
+                       undefined, L).
+
+levels() ->
+    %% copied from lager.hrl
+    [debug, info, notice, warning, error, critical, alert, emergency, none].
 
 if_running(App, F) ->
     case lists:keymember(App, 1, application:which_applications()) of
