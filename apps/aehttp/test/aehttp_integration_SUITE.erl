@@ -60,6 +60,7 @@
     info_more_than_30/1,
     info_less_than_30/1
    ]).
+
 %%
 %% test case exports
 %% internal endpoints
@@ -113,6 +114,68 @@
 
     peers/1
    ]).
+
+%%
+%% test case exports
+%% wrong http method for all endpoints
+-export([
+    wrong_http_method_top/1,
+    wrong_http_method_contract_create/1,
+    wrong_http_method_contract_call/1,
+    wrong_http_method_contract_call_compute/1,
+    wrong_http_method_spend/1,
+    wrong_http_method_oracle_register/1,
+    wrong_http_method_oracle_extend/1,
+    wrong_http_method_oracle_query/1,
+    wrong_http_method_oracle_response/1,
+    wrong_http_method_name_preclaim/1,
+    wrong_http_method_name_claim/1,
+    wrong_http_method_name_update/1,
+    wrong_http_method_name_transfer/1,
+    wrong_http_method_name_revoke/1,
+    wrong_http_method_ping/1,
+    wrong_http_method_block_by_height/1,
+    wrong_http_method_block_by_hash/1,
+    wrong_http_method_header_by_hash/1,
+    wrong_http_method_transactions/1,
+    wrong_http_method_tx_id/1,
+    wrong_http_method_spend_tx/1,
+    wrong_http_method_name_preclaim_tx/1,
+    wrong_http_method_name_claim_tx/1,
+    wrong_http_method_name_update_tx/1,
+    wrong_http_method_name_transfer_tx/1,
+    wrong_http_method_name_revoke_tx/1,
+    wrong_http_method_commitment_hash/1,
+    wrong_http_method_name/1,
+    wrong_http_method_balance/1,
+    wrong_http_method_account_transactions/1,
+    wrong_http_method_block/1,
+    wrong_http_method_tx/1,
+    wrong_http_method_all_accounts_balances/1,
+    wrong_http_method_miner_pub_key/1,
+    wrong_http_method_version/1,
+    wrong_http_method_info/1,
+    wrong_http_method_block_number/1,
+    wrong_http_method_internal_block_by_height/1,
+    wrong_http_method_internal_block_by_hash/1,
+    wrong_http_method_internal_block_latest/1,
+    wrong_http_method_internal_block_genesis/1,
+    wrong_http_method_internal_block_pending/1,
+    wrong_http_method_block_txs_count_by_height/1,
+    wrong_http_method_block_txs_count_by_hash/1,
+    wrong_http_method_block_txs_count_latest/1,
+    wrong_http_method_block_txs_count_genesis/1,
+    wrong_http_method_block_txs_count_pending/1,
+    wrong_http_method_block_tx_by_index_height/1,
+    wrong_http_method_block_tx_by_index_hash/1,
+    wrong_http_method_block_tx_by_index_latest/1,
+    wrong_http_method_block_txs_list_by_height/1,
+    wrong_http_method_block_txs_list_by_hash/1,
+    wrong_http_method_list_oracles/1,
+    wrong_http_method_list_oracle_queries/1,
+    wrong_http_method_peers/1
+    ]).
+
 %%
 %% test case exports
 %% websocket endpoints
@@ -139,6 +202,7 @@ groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints},
+                                  {group, wrong_http_method_endpoints},
                                   {group, websocket},
                                   {group, naming}
                                   ]},
@@ -236,6 +300,63 @@ groups() ->
 
         peers
       ]},
+     {wrong_http_method_endpoints, [], [
+        wrong_http_method_top,
+        wrong_http_method_contract_create,
+        wrong_http_method_contract_call,
+        wrong_http_method_contract_call_compute,
+        wrong_http_method_spend,
+        wrong_http_method_oracle_register,
+        wrong_http_method_oracle_extend,
+        wrong_http_method_oracle_query,
+        wrong_http_method_oracle_response,
+        wrong_http_method_name_preclaim,
+        wrong_http_method_name_claim,
+        wrong_http_method_name_update,
+        wrong_http_method_name_transfer,
+        wrong_http_method_name_revoke,
+        wrong_http_method_ping,
+        wrong_http_method_block_by_height,
+        wrong_http_method_block_by_hash,
+        wrong_http_method_header_by_hash,
+        wrong_http_method_transactions,
+        wrong_http_method_tx_id,
+        wrong_http_method_spend_tx,
+        wrong_http_method_name_preclaim_tx,
+        wrong_http_method_name_claim_tx,
+        wrong_http_method_name_update_tx,
+        wrong_http_method_name_transfer_tx,
+        wrong_http_method_name_revoke_tx,
+        wrong_http_method_commitment_hash,
+        wrong_http_method_name,
+        wrong_http_method_balance,
+        wrong_http_method_account_transactions,
+        wrong_http_method_block,
+        wrong_http_method_tx,
+        wrong_http_method_all_accounts_balances,
+        wrong_http_method_miner_pub_key,
+        wrong_http_method_version,
+        wrong_http_method_info,
+        wrong_http_method_block_number,
+        wrong_http_method_internal_block_by_height,
+        wrong_http_method_internal_block_by_hash,
+        wrong_http_method_internal_block_latest,
+        wrong_http_method_internal_block_genesis,
+        wrong_http_method_internal_block_pending,
+        wrong_http_method_block_txs_count_by_height,
+        wrong_http_method_block_txs_count_by_hash,
+        wrong_http_method_block_txs_count_latest,
+        wrong_http_method_block_txs_count_genesis,
+        wrong_http_method_block_txs_count_pending,
+        wrong_http_method_block_tx_by_index_height,
+        wrong_http_method_block_tx_by_index_hash,
+        wrong_http_method_block_tx_by_index_latest,
+        wrong_http_method_block_txs_list_by_height,
+        wrong_http_method_block_txs_list_by_hash,
+        wrong_http_method_list_oracles,
+        wrong_http_method_list_oracle_queries,
+        wrong_http_method_peers
+     ]},
      {naming, [sequence],
       [naming_system_manage_name
       ]},
@@ -380,7 +501,6 @@ auto_unblocked_peer(_Config) ->
     rpc(aec_peers, remove, [Peer]),
     rpc(application, unset_env, [aecore, peer_unblock_interval]),
     ok.
-
 
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
@@ -1024,7 +1144,7 @@ get_transaction(_Config) ->
                 [<<"aec_coinbase_tx">>, <<"aec_spend_tx">>])
         end,
         Encodings),
-            
+
     %% test in mempool
     RandAddress = random_hash(),
     Encoded = #{sender => EncodedPubKey,
@@ -3099,6 +3219,230 @@ get_list_oracle_queries(Oracle, From, Max) ->
 get_peers() ->
     Host = internal_address(),
     http_request(Host, get, "debug/peers", []).
+
+%% ============================================================
+%% HTTP Requests with wrong method
+%% ============================================================
+
+wrong_http_method_top(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "top", []).
+
+wrong_http_method_contract_create(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/contract/create", []).
+
+wrong_http_method_contract_call(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/contract/call", []).
+
+wrong_http_method_contract_call_compute(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/contract/call/compute", []).
+
+wrong_http_method_spend(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/spend", []).
+
+wrong_http_method_oracle_register(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/oracle/register", []).
+
+wrong_http_method_oracle_extend(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/oracle/extend", []).
+
+wrong_http_method_oracle_query(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/oracle/query", []).
+
+wrong_http_method_oracle_response(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/oracle/response", []).
+
+wrong_http_method_name_preclaim(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/name/preclaim", []).
+
+wrong_http_method_name_claim(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/name/claim", []).
+
+wrong_http_method_name_update(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/name/update", []).
+
+wrong_http_method_name_transfer(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/name/transfer", []).
+
+wrong_http_method_name_revoke(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
+
+wrong_http_method_ping(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "ping", []).
+
+wrong_http_method_block_by_height(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "block-by-height", []).
+
+wrong_http_method_block_by_hash(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "block-by-hash", []).
+
+wrong_http_method_header_by_hash(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "header-by-hash", []).
+
+wrong_http_method_transactions(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "transactions", []).
+
+wrong_http_method_tx_id(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "tx/123", []).
+
+wrong_http_method_spend_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "spend-tx", []).
+
+wrong_http_method_name_preclaim_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "name-preclaim-tx", []).
+
+wrong_http_method_name_claim_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "name-claim-tx", []).
+
+wrong_http_method_name_update_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "name-update-tx", []).
+
+wrong_http_method_name_transfer_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "name-transfer-tx", []).
+
+wrong_http_method_name_revoke_tx(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, get, "name-revoke-tx", []).
+
+wrong_http_method_commitment_hash(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "commitment-hash", []).
+
+wrong_http_method_name(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "name", []).
+
+wrong_http_method_balance(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "account/balance/123", []).
+
+wrong_http_method_account_transactions(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "account/txs/123", []).
+
+wrong_http_method_block(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "block", []).
+
+wrong_http_method_tx(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, get, "tx", []).
+
+wrong_http_method_all_accounts_balances(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "balances", []).
+
+wrong_http_method_miner_pub_key(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "account/pub-key", []).
+
+wrong_http_method_version(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "version", []).
+
+wrong_http_method_info(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "info", []).
+
+wrong_http_method_block_number(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/number", []).
+
+wrong_http_method_internal_block_by_height(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/height/123", []).
+
+wrong_http_method_internal_block_by_hash(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
+
+wrong_http_method_internal_block_latest(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/latest", []).
+
+wrong_http_method_internal_block_genesis(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/genesis", []).
+
+wrong_http_method_internal_block_pending(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/pending", []).
+
+wrong_http_method_block_txs_count_by_height(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/count/height/123", []).
+
+wrong_http_method_block_txs_count_by_hash(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/count/hash/123", []).
+
+wrong_http_method_block_txs_count_latest(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/count/latest", []).
+
+wrong_http_method_block_txs_count_genesis(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/count/genesis", []).
+
+wrong_http_method_block_txs_count_pending(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/count/pending", []).
+
+wrong_http_method_block_tx_by_index_height(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/tx/height/123/123", []).
+
+wrong_http_method_block_tx_by_index_hash(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/tx/hash/123/123", []).
+
+wrong_http_method_block_tx_by_index_latest(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/tx/latest/123", []).
+
+wrong_http_method_block_txs_list_by_height(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/list/height", []).
+
+wrong_http_method_block_txs_list_by_hash(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "block/txs/list/hash", []).
+
+wrong_http_method_list_oracles(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "oracles", []).
+
+wrong_http_method_list_oracle_queries(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "oracle-questions", []).
+
+wrong_http_method_peers(_Config) ->
+    Host = internal_address(),
+    {ok, 405, _} = http_request(Host, post, "debug/peers", []).
 
 %% ============================================================
 %% private functions

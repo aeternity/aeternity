@@ -48,19 +48,15 @@ stop(_State) ->
 %%====================================================================
 
 start_http_api() ->
-    ok = start_http_api(external, aehttp_dispatch_ext, swagger_external_handler),
-    ok = start_http_api(internal, aehttp_dispatch_int, swagger_internal_handler).
+    ok = start_http_api(external, aehttp_dispatch_ext),
+    ok = start_http_api(internal, aehttp_dispatch_int).
 
-start_http_api(Target, LogicHandler, SwaggerHandler) ->
+start_http_api(Target, LogicHandler) ->
     PoolSize = get_http_api_acceptors(Target),
     Port = get_http_api_port(Target),
     ListenAddress = get_http_api_listen_address(Target),
 
-    [{'_', Paths0}] = swagger_router:get_paths(LogicHandler),
-    Paths = [{Path, aehttp_api_handler, Args}
-             || {Path, TmpSwaggerHandler, Args} <- Paths0,
-                TmpSwaggerHandler == SwaggerHandler
-            ],
+    Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),
 
     {ok, _} = cowboy:start_http(Target, PoolSize, [{port, Port}, {ip, ListenAddress}], [
