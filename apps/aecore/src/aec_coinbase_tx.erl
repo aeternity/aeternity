@@ -53,8 +53,14 @@ origin(#coinbase_tx{}) ->
 check(#coinbase_tx{block_height = CBHeight}, _Trees, Height)
     when CBHeight =/= Height ->
     {error, wrong_height};
-check(#coinbase_tx{account = AccountPubkey}, Trees, Height) ->
-    aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height).
+check(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees, Height) ->
+    ExpectedReward = aec_governance:block_mine_reward(),
+    case Reward =:= ExpectedReward of
+        true ->
+            aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height);
+        false ->
+            {error, wrong_reward}
+    end.
 
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block

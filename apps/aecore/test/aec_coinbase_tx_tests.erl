@@ -52,13 +52,29 @@ coinbase_tx_existing_account_test_() ->
       fun({PubKey, Trees0}) ->
               {"Check coinbase trx with existing account, but with wrong block height",
                fun() ->
-                        Height = 9,
+                       Height = 9,
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey,
                                                                 block_height => Height}),
                        ?assertEqual({error, wrong_height},
                                     aetx:check(CoinbaseTx, Trees0, Height - 1)),
                        ?assertEqual({error, wrong_height},
                                     aetx:check(CoinbaseTx, Trees0, Height + 1))
+               end}
+      end,
+      fun({PubKey, Trees0}) ->
+              {"Check coinbase trx with existing account, but with wrong reward",
+               fun() ->
+                       Reward = aec_governance:block_mine_reward(),
+                       Height = 42,
+                       %% no other way of setting a erronous reward
+                       CoinbaseTxBiggerReward = {aetx, aec_coinbase_tx,
+                                      {coinbase_tx, PubKey, Height, Reward + 1}},
+                       CoinbaseTxSmallerReward = {aetx, aec_coinbase_tx,
+                                      {coinbase_tx, PubKey, Height, Reward - 1}},
+                       ?assertEqual({error, wrong_reward},
+                                    aetx:check(CoinbaseTxBiggerReward, Trees0, Height)),
+                       ?assertEqual({error, wrong_reward},
+                                    aetx:check(CoinbaseTxSmallerReward, Trees0, Height))
                end}
       end,
       fun({PubKey, Trees0}) ->
