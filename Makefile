@@ -57,6 +57,9 @@ prod-stop: internal-stop
 prod-attach: KIND=prod
 prod-attach: internal-attach
 
+prod-clean: KIND=prod
+prod-clean: internal-clean
+
 multi-start:
 	@make dev1-start
 	@make dev2-start
@@ -238,8 +241,7 @@ internal-attach: $$(KIND)
 	@./_build/$(KIND)/$(CORE) attach
 
 internal-clean: $$(KIND)
-	@rm -rf ./_build/$(KIND)/rel/epoch/data/*
-	@rm -rf ./_build/$(KIND)/rel/epoch/blocks/*
+	@rm -rf ./_build/$(KIND)/rel/epoch/data/mnesia
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
 
