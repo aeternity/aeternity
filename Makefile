@@ -121,7 +121,7 @@ dialyzer:
 test:
 	$(eval EPOCH_PROCESSES := $(shell ps -fea | grep "bin/epoch" | grep -v grep | wc -l))
 	@if [ $(EPOCH_PROCESSES) -gt 0 ] ; then \
-		echo "An Epoch node is already running";\
+		(echo "An Epoch node is already running, tests are skipped" >&2; exit 1);\
 	else \
 		./rebar3 as test do release, ct $(CT_TEST_FLAGS) --sys_config config/test.config; \
 	fi
