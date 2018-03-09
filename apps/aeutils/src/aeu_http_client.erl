@@ -3,7 +3,7 @@
 %% API
 -export([request/3]).
 
--spec request(iodata(), atom(), list({string(), iodata()}) | map()) -> {ok, integer(), any()} | {error, any()}. 
+-spec request(iodata(), atom(), list({string(), iodata()}) | map()) -> {ok, integer(), any()} | {error, any()}.
 request(BaseUri, OperationId, Params) ->
     Timeout = aeu_env:user_config_or_env(
                 [<<"http">>, <<"external">>,<<"request_timeout">>],
@@ -12,7 +12,9 @@ request(BaseUri, OperationId, Params) ->
                  [<<"http">>, <<"external">>, <<"connect_timeout">>],
                  aehttp, http_connect_timeout, min(Timeout, 1000)),
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
-    #{path := Endpoint, method := Method} = endpoints:operation(OperationId),
+    %% we support only one method at the moment
+    [Method|_] = maps:keys(endpoints:operation(OperationId)),
+    Endpoint = endpoints:path(Method, OperationId, Params),
     request(BaseUri, Method, Endpoint, Params, [], HTTPOptions, []).
 
 request(BaseUri, get, Endpoint, Params, Header, HTTPOptions, Options) ->
@@ -59,6 +61,12 @@ process_http_return(R) ->
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
 encode_get_params(Params) when is_list(Params) ->
-    ["?", lists:join( "&", [ [http_uri:encode(K), "=" , http_uri:encode(V)] 
+    ["?", lists:join( "&", [ [http_uri:encode(to_string(K)), "=" , http_uri:encode(to_string(V))]
                              || {K,V} <- Params ] ) ].
 
+to_string(A) when is_atom(A) ->
+    atom_to_list(A);
+to_string(N) when is_integer(N) ->
+    integer_to_list(N);
+to_string(S) ->
+    S.
