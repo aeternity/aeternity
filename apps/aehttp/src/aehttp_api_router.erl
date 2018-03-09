@@ -22,12 +22,13 @@ get_paths(Target, LogicHandler) ->
             {_, _, {_, _, SwaggerValidator}}
             | _ ]}] = swagger_router:get_paths(LogicHandler),
 
-    [{path(Path), aehttp_api_handler,
+    Paths = [{path(Path), aehttp_api_handler,
         {OperationId, method(Method), LogicHandler, SwaggerValidator}}
         || {OperationId, Spec} <- maps:to_list(endpoints:operations()),
             {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
             is_enabled(Target, Tags)
-    ].
+    ],
+    lists:reverse(lists:sort(Paths)).
 
 path(Path0) ->
     Path1 = binary:replace(Path0, <<"}">>, <<"">>, [global]),
