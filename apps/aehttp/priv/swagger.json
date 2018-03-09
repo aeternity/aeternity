@@ -3098,7 +3098,21 @@
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "type" : "object",
+        "required" : [ "account", "height", "reward" ],
+        "properties" : {
+          "account" : {
+            "$ref" : "#/definitions/EncodedHash"
+          },
+          "height" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "reward" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
       } ]
     },
     "SpendTxJSON" : {

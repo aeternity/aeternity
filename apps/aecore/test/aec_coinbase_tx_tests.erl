@@ -71,7 +71,11 @@ coinbase_tx_existing_account_test_() ->
                        AccountsTree = aec_trees:accounts(Trees),
                        {value, Account} = aec_accounts_trees:lookup(PubKey, AccountsTree),
                        ?assertEqual(PubKey, aec_accounts:pubkey(Account)),
-                       ?assertEqual(23 + 10, aec_accounts:balance(Account)), %% block reward = 10
+
+                       {_, CbTx} = aetx:specialize_type(CoinbaseTx),
+                       Reward = aec_coinbase_tx:reward(CbTx),
+                       ?assertEqual(Reward, aec_governance:block_mine_reward()),
+                       ?assertEqual(23 + Reward, aec_accounts:balance(Account)),
                        ?assertEqual(9, aec_accounts:height(Account))
                end}
       end

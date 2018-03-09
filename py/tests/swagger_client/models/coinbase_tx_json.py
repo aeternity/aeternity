@@ -16,6 +16,7 @@ import re  # noqa: F401
 
 import six
 
+from swagger_client.models.encoded_hash import EncodedHash  # noqa: F401,E501
 from swagger_client.models.json_tx import JSONTx  # noqa: F401,E501
 
 
@@ -33,14 +34,97 @@ class CoinbaseTxJSON(object):
                             and the value is json key in definition.
     """
     swagger_types = {
+        'account': 'EncodedHash',
+        'height': 'int',
+        'reward': 'int'
     }
 
     attribute_map = {
+        'account': 'account',
+        'height': 'height',
+        'reward': 'reward'
     }
 
-    def __init__(self):  # noqa: E501
+    def __init__(self, account=None, height=None, reward=None):  # noqa: E501
         """CoinbaseTxJSON - a model defined in Swagger"""  # noqa: E501
+
+        self._account = None
+        self._height = None
+        self._reward = None
         self.discriminator = None
+
+        self.account = account
+        self.height = height
+        self.reward = reward
+
+    @property
+    def account(self):
+        """Gets the account of this CoinbaseTxJSON.  # noqa: E501
+
+
+        :return: The account of this CoinbaseTxJSON.  # noqa: E501
+        :rtype: EncodedHash
+        """
+        return self._account
+
+    @account.setter
+    def account(self, account):
+        """Sets the account of this CoinbaseTxJSON.
+
+
+        :param account: The account of this CoinbaseTxJSON.  # noqa: E501
+        :type: EncodedHash
+        """
+        if account is None:
+            raise ValueError("Invalid value for `account`, must not be `None`")  # noqa: E501
+
+        self._account = account
+
+    @property
+    def height(self):
+        """Gets the height of this CoinbaseTxJSON.  # noqa: E501
+
+
+        :return: The height of this CoinbaseTxJSON.  # noqa: E501
+        :rtype: int
+        """
+        return self._height
+
+    @height.setter
+    def height(self, height):
+        """Sets the height of this CoinbaseTxJSON.
+
+
+        :param height: The height of this CoinbaseTxJSON.  # noqa: E501
+        :type: int
+        """
+        if height is None:
+            raise ValueError("Invalid value for `height`, must not be `None`")  # noqa: E501
+
+        self._height = height
+
+    @property
+    def reward(self):
+        """Gets the reward of this CoinbaseTxJSON.  # noqa: E501
+
+
+        :return: The reward of this CoinbaseTxJSON.  # noqa: E501
+        :rtype: int
+        """
+        return self._reward
+
+    @reward.setter
+    def reward(self, reward):
+        """Sets the reward of this CoinbaseTxJSON.
+
+
+        :param reward: The reward of this CoinbaseTxJSON.  # noqa: E501
+        :type: int
+        """
+        if reward is None:
+            raise ValueError("Invalid value for `reward`, must not be `None`")  # noqa: E501
+
+        self._reward = reward
 
     def to_dict(self):
         """Returns the model properties as a dict"""

@@ -15,13 +15,11 @@
 
 -define(TEST_MODULE, aec_mining).
 -define(LOWEST_TARGET_SCI, 16#01010000).
--define(TEST_PUB, <<4,94,128,206,55,62,168,73,150,204,73,
-                    91,104,62,51,55,157,144,3,185,127,129,
-                    152,105,238,172,232,250,124,52,57,83,
-                    214,253,227,65,225,150,54,203,2,77,179,
-                    110,238,243,104,31,88,220,217,49,139,
-                    215,140,228,209,85,119,11,221,117,185,
-                    126,17>>).
+-define(TEST_PUB, <<4,176,10,241,172,223,229,80,244,222,165,8,198,46,
+                    167,128,25,34,151,180,162,192,72,103,185,62,161,12,
+                    117,147,72,68,194,188,89,248,81,212,197,21,193,74,
+                    115,216,210,123,239,69,164,128,164,122,116,151,23,
+                    22,56,146,73,13,29,198,110,162,145>>).
 
 mine_block_test_() ->
     {foreach,
@@ -38,7 +36,7 @@ mine_block_test_() ->
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 5323613534633545025),
+                 meck:expect(aec_pow, pick_nonce, 0, 12829721440654966408),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
@@ -167,13 +165,12 @@ setup() ->
     meck:new(aeu_time, [passthrough]),
     meck:expect(aeu_time, now_in_msecs, 0, 1519659148405),
     {ok, _} = aec_tx_pool:start_link(),
-    SignedTx = {signed_tx,{aetx, aec_coinbase_tx, {coinbase_tx, ?TEST_PUB, 1}},
-                         [<<48,70,2,33,0,247,96,99,204,37,44,253,86,102,
-                            233,172,140,93,187,16,5,16,48,200,208,94,8,
-                            23,59,135,39,126,108,43,152,66,171,2,33,0,
-                            197,245,135,154,3,78,30,207,216,164,203,102,
-                            212,186,232,187,66,202,202,64,203,0,171,2,
-                            109,11,237,130,23,161,104,8>>]},
+    SignedTx = {signed_tx,{aetx, aec_coinbase_tx, {coinbase_tx, ?TEST_PUB, 1, 10}},
+                         [<<48,69,2,33,0,151,160,64,156,110,97,161,160,237,140,
+                            18,232,182,37,68,99,200,144,40,65,103,163,173,53,90,
+                            247,6,157,166,84,220,124,2,32,80,201,195,212,6,205,
+                            220,250,64,226,125,99,147,224,227,56,197,82,7,211,9,
+                            129,211,75,78,174,188,130,254,42,200,229>>]},
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
