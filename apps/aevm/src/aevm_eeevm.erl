@@ -24,42 +24,24 @@
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
+-include("aevm_gas.hrl").
 
 %% Main eval loop.
 %%
 %%
 eval(State) ->
-    NewState = loop(valid_jumpdests(State)),
-    Metaop = check_eval_state(NewState),
-    case Metaop of
-	{call, Data} ->
-	    io:format("Call function ~p~n", [Data]),
-	    %% TODO: check call stack depth
-	    %% TODO: handle returndata
-	    eval(aevm_eeevm_state:init_call(NewState));
-	{return, Data} ->
-	    io:format("Return ~p~n", [Data]),
-	    NewState;
-	{error, Data}  ->
-	    io:format("error ~p~n", [Data]),
-	    NewState
+    try {ok, loop(valid_jumpdests(State))}
+    catch
+        throw:?aevm_eval_error(What, StateOut) ->
+            {error, What, StateOut}
     end.
-
-check_eval_state(State) ->
-    case aevm_eeevm_state:call(State) of
-	#{to := _To } = Call ->
-	    {call, Call};
-	_ -> {return,  aevm_eeevm_state:out(State)}
-    end.
-	
-       
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
     JumpDests = jumpdests(0,Code, #{}),
     aevm_eeevm_state:set_jumpdests(JumpDests, State).
 
-%% Jump Destination Validity.
+%% Jump Destination Validity. 
 %% DJ (c, i) ≡ {} if i > |c|
 %%             {i} ∪ DJ (c, N(i, c[i])) if c[i] = JUMPDEST
 %%             DJ (c, N(i, c[i])) otherwise
@@ -86,8 +68,8 @@ loop(StateIn) ->
     case CP >= byte_size(Code) of
 	false ->
 	    OP   = code_get_op(CP, Code),
-            State = spend_op_gas(OP, StateIn),
-	    State0 = aevm_eeevm_state:trace_format("~n", [], State),
+	    State = aevm_eeevm_state:trace_format("~n", [], StateIn),
+            State0 = spend_op_gas(OP, State),
 	    case OP of
 		%% =s: Stop and Arithmetic Operations
 		?STOP ->
@@ -215,10 +197,10 @@ loop(StateIn) ->
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State, State3);
 		%% No opcodes 0x0c-0x0f
-		16#0c -> throw({illegal_instruction, OP, State});
-		16#0d -> throw({illegal_instruction, OP, State});
-		16#0e -> throw({illegal_instruction, OP, State});
-		16#0f -> throw({illegal_instruction, OP, State});
+		16#0c -> eval_error({illegal_instruction, OP}, State);
+		16#0d -> eval_error({illegal_instruction, OP}, State);
+		16#0e -> eval_error({illegal_instruction, OP}, State);
+		16#0f -> eval_error({illegal_instruction, OP}, State);
 		%% 10s: Comparison & Bitwise Logic Operations
 		?LT ->
 		    %% 0x10 LT δ=2 α=1
@@ -348,11 +330,11 @@ loop(StateIn) ->
 		    State3 = push(Val, State2),
 		    next_instruction(OP, State, State3);
 		%% No opcodes 0x1b-0x1f
-		16#1b -> throw({illegal_instruction, OP, State});
-		16#1c -> throw({illegal_instruction, OP, State});
-		16#1d -> throw({illegal_instruction, OP, State});
-		16#1e -> throw({illegal_instruction, OP, State});
-		16#1f -> throw({illegal_instruction, OP, State});
+		16#1b -> eval_error({illegal_instruction, OP}, State);
+		16#1c -> eval_error({illegal_instruction, OP}, State);
+		16#1d -> eval_error({illegal_instruction, OP}, State);
+		16#1e -> eval_error({illegal_instruction, OP}, State);
+		16#1f -> eval_error({illegal_instruction, OP}, State);
 		%% 20s: SHA3
 		?SHA3 ->
 		    %% 0x20 SHA3  δ=2 α=1 Compute Keccak-256 hash.
@@ -366,21 +348,21 @@ loop(StateIn) ->
 		    State4 = push(Val, State3),
 		    next_instruction(OP, State, State4);
 		%% No opcodes 0x21-0x2f
-		16#21 -> throw({illegal_instruction, OP, State});
-		16#22 -> throw({illegal_instruction, OP, State});
-		16#23 -> throw({illegal_instruction, OP, State});
-		16#24 -> throw({illegal_instruction, OP, State});
-		16#25 -> throw({illegal_instruction, OP, State});
-		16#26 -> throw({illegal_instruction, OP, State});
-		16#27 -> throw({illegal_instruction, OP, State});
-		16#28 -> throw({illegal_instruction, OP, State});
-		16#29 -> throw({illegal_instruction, OP, State});
-		16#2a -> throw({illegal_instruction, OP, State});
-		16#2b -> throw({illegal_instruction, OP, State});
-		16#2c -> throw({illegal_instruction, OP, State});
-		16#2d -> throw({illegal_instruction, OP, State});
-		16#2e -> throw({illegal_instruction, OP, State});
-		16#2f -> throw({illegal_instruction, OP, State});
+		16#21 -> eval_error({illegal_instruction, OP}, State);
+		16#22 -> eval_error({illegal_instruction, OP}, State);
+		16#23 -> eval_error({illegal_instruction, OP}, State);
+		16#24 -> eval_error({illegal_instruction, OP}, State);
+		16#25 -> eval_error({illegal_instruction, OP}, State);
+		16#26 -> eval_error({illegal_instruction, OP}, State);
+		16#27 -> eval_error({illegal_instruction, OP}, State);
+		16#28 -> eval_error({illegal_instruction, OP}, State);
+		16#29 -> eval_error({illegal_instruction, OP}, State);
+		16#2a -> eval_error({illegal_instruction, OP}, State);
+		16#2b -> eval_error({illegal_instruction, OP}, State);
+		16#2c -> eval_error({illegal_instruction, OP}, State);
+		16#2d -> eval_error({illegal_instruction, OP}, State);
+		16#2e -> eval_error({illegal_instruction, OP}, State);
+		16#2f -> eval_error({illegal_instruction, OP}, State);
 		%% 30s: Environmental Information
 		?ADDRESS ->
 		    %% 0x30 Address δ=0 α=1
@@ -488,7 +470,7 @@ loop(StateIn) ->
 		    %% Get price of gas in current environment.
 		    %% µ's[0] ≡ Ip
 		    %%  This is gas price specified by the
-		    %% originating transaction.
+		    %% originating transaction.   
 		    Arg = aevm_eeevm_state:gasprice(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State, State1);
@@ -539,7 +521,7 @@ loop(StateIn) ->
 		    State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
 		    next_instruction(OP, State, State4);
 		%% No opcode 0x3f
-		16#3f -> throw({illegal_instruction, OP, State0});
+		16#3f -> eval_error({illegal_instruction, OP}, State0);
 		%% 40s Block Information
 		?BLOCKHASH ->
 		    %% 0x40 BLOCKHASH δ=1 α=1
@@ -597,16 +579,16 @@ loop(StateIn) ->
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State, State1);
 		%% No opcode 0x46-0x4f
-		16#46 -> throw({illegal_instruction, OP, State0});
-		16#47 -> throw({illegal_instruction, OP, State0});
-		16#48 -> throw({illegal_instruction, OP, State0});
-		16#49 -> throw({illegal_instruction, OP, State0});
-		16#4a -> throw({illegal_instruction, OP, State0});
-		16#4b -> throw({illegal_instruction, OP, State0});
-		16#4c -> throw({illegal_instruction, OP, State0});
-		16#4d -> throw({illegal_instruction, OP, State0});
-		16#4e -> throw({illegal_instruction, OP, State0});
-		16#4f -> throw({illegal_instruction, OP, State0});
+		16#46 -> eval_error({illegal_instruction, OP}, State0);
+		16#47 -> eval_error({illegal_instruction, OP}, State0);
+		16#48 -> eval_error({illegal_instruction, OP}, State0);
+		16#49 -> eval_error({illegal_instruction, OP}, State0);
+		16#4a -> eval_error({illegal_instruction, OP}, State0);
+		16#4b -> eval_error({illegal_instruction, OP}, State0);
+		16#4c -> eval_error({illegal_instruction, OP}, State0);
+		16#4d -> eval_error({illegal_instruction, OP}, State0);
+		16#4e -> eval_error({illegal_instruction, OP}, State0);
+		16#4f -> eval_error({illegal_instruction, OP}, State0);
 		%% 50s: Stack, Memory, Storage and Flow Operations
 		?POP ->
 		    %% 0x50 POP δ=1 α=0
@@ -661,7 +643,7 @@ loop(StateIn) ->
 		    %%                   Gsset if µs[1] =/= 0
 		    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
 		    %%                   Gsreset otherwise
-		    %% A'r ≡ Ar + Rsclear if µs[1] = 0
+		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
 		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
 		    %%       0 otherwise
 		    {Address, State1} = pop(State0),
@@ -679,7 +661,7 @@ loop(StateIn) ->
 			true ->
 			    State2 = set_cp(Us0-1, State1),
 			    next_instruction(OP, State, State2);
-			false -> throw({{invalid_jumpdest, Us0}, State1})
+			false -> eval_error({{invalid_jumpdest, Us0}}, State1)
 		    end;
 		?JUMPI ->
 		    %% 0x57 JUMPI δ=2 α=0
@@ -693,10 +675,10 @@ loop(StateIn) ->
 			if Us1 =/= 0 ->
 				JumpDests =  aevm_eeevm_state:jumpdests(State1),
 				case maps:get(Us0, JumpDests, false) of
-				    true ->
+				    true -> 
 					set_cp(Us0-1, State2);
-				    false ->
-					throw({{invalid_jumpdest, Us0}, State1})
+				    false -> 
+					eval_error({{invalid_jumpdest, Us0}}, State1)
 				end;
 			   true      -> State2
 			end,
@@ -730,10 +712,10 @@ loop(StateIn) ->
 		    %% This operation has no effect on machine
 		    %% state during execution.
 		    next_instruction(OP, State, State0);
-		16#5c -> throw({illegal_instruction, OP, State0});
-		16#5d -> throw({illegal_instruction, OP, State0});
-		16#5e -> throw({illegal_instruction, OP, State0});
-		16#5f -> throw({illegal_instruction, OP, State0});
+		16#5c -> eval_error({illegal_instruction, OP}, State0);
+		16#5d -> eval_error({illegal_instruction, OP}, State0);
+		16#5e -> eval_error({illegal_instruction, OP}, State0);
+		16#5f -> eval_error({illegal_instruction, OP}, State0);
 		%% 60s & 70s Push Operations
 		?PUSH1 ->
 		    %% 0x60 PUSH1 δ=0 α=1
@@ -968,7 +950,7 @@ loop(StateIn) ->
 		    State4 = log({Us2}, Us0, Us1, State3),
 		    next_instruction(OP, State, State4);
 		?LOG2 ->
-		    %% 0xa2 LOG2 δ=4 α=0
+		    %% 0xa2 LOG2 δ=4 α=0 
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2],(µs[3])
 		    {Us0, State1} = pop(State0),
@@ -1002,10 +984,10 @@ loop(StateIn) ->
 		    next_instruction(OP, State, State7);
 		OP when OP >= 16#a5,
 			OP =< 16#ef  ->
-		    throw({illegal_instruction, OP, State0});
+		    eval_error({illegal_instruction, OP}, State0);
 		%% F0s: System operations
 		?CREATE->
-		    %% 0xf0 CREATE δ=3 α=1
+		    %% 0xf0 CREATE δ=3 α=1 
 		    %% Create a new account with associated code.
 		    %% i ≡ µm[µs[1] . . .(µs[1] + µs[2] − 1)]
 		    %% (σ', µ'g, A+) ≡ (Λ(σ∗, Ia, Io, L(µg), Ip, µs[0], i, Ie + 1)
@@ -1079,23 +1061,9 @@ loop(StateIn) ->
 		    %% CNEW(σ, µ) ≡ Gnewaccount if σ[µs[1] mod 2^160] = ∅
 		    %%              0 otherwise
 		    %%
-		    %% TODO: This is probably completely wrong:
-		    {Gas, State1} = pop(State0),
-		    {To, State2} = pop(State1),
-		    {Value, State3} = pop(State2),
-		    {IOffset, State4} = pop(State3),
-		    {ISize, State5} = pop(State4),
-		    {OOffset, State6} = pop(State5),
-		    {OSize, State7} = pop(State6),
-		    Call = #{ gas => Gas
-			    , to => To
-			    , value => Value
-			    , in_offset => IOffset
-			    , in_size => ISize
-			    , out_offset => OOffset
-			    , out_size => OSize},
-		    State8 = aevm_eeevm_state:set_call(Call, State7),
-		    spend_mem_gas(State, State8);
+                    {Res, State1} = recursive_call(State0, OP),
+		    State2 = push(Res, State1),
+		    next_instruction(OP, State, State2);
 		?CALLCODE ->
 		    %% 0xf2 CALLCODE 7 1
 		    %% Message-call into this account with an alternative account’s code.
@@ -1110,23 +1078,9 @@ loop(StateIn) ->
 		    %% present address Ia. This means that the recipient is
 		    %% in fact the same account as at present, simply that
 		    %% the code is overwritten.
-		    {Gas, State1} = pop(State0),
-		    {_To, State2} = pop(State1),
-		    {Value, State3} = pop(State2),
-		    {IOffset, State4} = pop(State3),
-		    {ISize, State5} = pop(State4),
-		    {OOffset, State6} = pop(State5),
-		    {OSize, State7} = pop(State6),
-		    %% TODO: This is most certanly wrong
-		    Call = #{ gas => Gas
-			    , to => aevm_eeevm_state:address(State7)
-			    , value => Value
-			    , in_offset => IOffset
-			    , in_size => ISize
-			    , out_offset => OOffset
-			    , out_size => OSize},
-		    State8 = aevm_eeevm_state:set_call(Call, State7),
-                    spend_mem_gas(State, State8);
+                    {Res, State1} = recursive_call(State0, OP),
+		    State2 = push(Res, State1),
+		    next_instruction(OP, State, State2);
 		?RETURN ->
 		    %% 0xf3 RETURN δ=2 α=0
 		    %% Halt execution returning output data.
@@ -1160,45 +1114,22 @@ loop(StateIn) ->
 		    %% This means that the recipient is in fact the same account as at
 		    %% present, simply that the code is overwritten and the context is
 		    %% almost entirely identical.
-		    %% TODO: This is probably completely wrong:
-		    {Gas, State1} = pop(State0),
-		    {To, State2} = pop(State1),
-		    {IOffset, State3} = pop(State2),
-		    {ISize, State4} = pop(State3),
-		    {OOffset, State5} = pop(State4),
-		    {OSize, State6} = pop(State5),
-		    Call = #{ gas => Gas
-			    , to => To
-			    , in_offset => IOffset
-			    , in_size => ISize
-			    , out_offset => OOffset
-			    , out_size => OSize},
-		    State7 = aevm_eeevm_state:set_call(Call, State6),
-		    spend_mem_gas(State, State7);
-		16#f5 -> throw({illegal_instruction, OP, State0});
-		16#f6 -> throw({illegal_instruction, OP, State0});
-		16#f7 -> throw({illegal_instruction, OP, State0});
-		16#f8 -> throw({illegal_instruction, OP, State0});
-		16#f9 -> throw({illegal_instruction, OP, State0});
-		16#fa -> throw({illegal_instruction, OP, State0});
-		16#fb -> throw({illegal_instruction, OP, State0});
-		16#fc -> throw({illegal_instruction, OP, State0});
-		?REVERT -> 
-		    %% 0xfe REVERT δ=2 α=0
-		    %% Halt execution returning output data.
-		    %% HREVERT(µ) ≡ µm[µs[0] . . .(µs[0] + µs[1] − 1)]
-		    %% This has the effect of halting the execution
-		    %% at this point with output defined.
-		    %% µ'i ≡ M(µi, µs[0], µs[1]) TODO: Return error code
-		    {Us0, State1} = pop(State0),
-		    {Us1, State2} = pop(State1),
-		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
-		    State4 = aevm_eeevm_state:set_out(Out, State3),
-                    spend_mem_gas(State, State4);
+                    {Res, State1} = recursive_call(State0, OP),
+		    State2 = push(Res, State1),
+		    next_instruction(OP, State, State2);
+		16#f5 -> eval_error({illegal_instruction, OP}, State0);
+		16#f6 -> eval_error({illegal_instruction, OP}, State0);
+		16#f7 -> eval_error({illegal_instruction, OP}, State0);
+		16#f8 -> eval_error({illegal_instruction, OP}, State0);
+		16#f9 -> eval_error({illegal_instruction, OP}, State0);
+		16#fa -> eval_error({illegal_instruction, OP}, State0);
+		16#fb -> eval_error({illegal_instruction, OP}, State0);
+		16#fc -> eval_error({illegal_instruction, OP}, State0);
+		16#fd -> eval_error({illegal_instruction, OP}, State0);
 		?INVALID -> 
 		    %% 0xfe INVALID δ=∅ α=∅ 
 		    %% Designated invalid instruction.
-		    throw({the_invalid_instruction, OP, State0});
+		    eval_error({the_invalid_instruction, OP}, State0);
 		?SUICIDE ->
 		    %% 0xff SELFDESTRUCT 1 0
 		    %% Halt execution and register account for
@@ -1334,8 +1265,8 @@ data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
     catch error:system_limit ->
-	    throw({out_of_memory, State})
-    end.
+	    eval_error(out_of_memory, State)
+     end.
 
 %% Get a binary of size Size bytes from return data.
 return_data_get_bytes(Address, Size, State) ->
@@ -1383,6 +1314,16 @@ inc_cp(Amount, State) ->
 %% GAS
 %% ------------------------------------------------------------------------
 
+spend_call_gas(State, OP) when OP =:= ?CALL;
+                               OP =:= ?CALLCODE ->
+    spend_gas_common(aevm_gas:op_cost(?CALL, State), State).
+
+spend_op_gas(?CALL, State) ->
+    %% Delay this until the actual operation
+    State;
+spend_op_gas(?CALLCODE, State) ->
+    %% Delay this until the actual operation
+    State;
 spend_op_gas(Op, State) ->
     spend_gas_common(aevm_gas:op_cost(Op, State), State).
 
@@ -1393,7 +1334,7 @@ spend_gas_common(Cost, State) ->
     Gas  = aevm_eeevm_state:gas(State),
     case Gas >= Cost of
 	true ->  aevm_eeevm_state:set_gas(Gas - Cost, State);
-	false -> throw({out_of_gas, State})
+	false -> eval_error(out_of_gas, State)
     end.
 
 %% ------------------------------------------------------------------------
@@ -1464,3 +1405,92 @@ log_topics(AccountAddress, Topics) ->
 create_account(_Value, _CodeArea, State) ->
     %% TODO: Do actual account creation
     {16#DEADC0DE, State}.
+
+
+%% ------------------------------------------------------------------------
+%% CALL
+%% ------------------------------------------------------------------------
+
+recursive_call(State, Op) ->
+    CallDepth = aevm_eeevm_state:calldepth(State),
+    case CallDepth < 1024 of
+        false -> {0, State}; %% TODO: Should this consume gas?
+        true  -> recursive_call(CallDepth, State, Op)
+    end.
+
+recursive_call(CallDepth, StateIn, Op) ->
+    %% Message-call into an account.
+    %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
+    State0            = spend_call_gas(StateIn, Op),
+
+    {Gas, State1}     = pop(State0),
+    {To, State2}      = pop(State1),
+    {Value, State3}   = case Op of
+                            ?CALL         -> pop(State2);
+                            ?CALLCODE     -> pop(State2);
+                            ?DELEGATECALL -> {aevm_eeevm_state:value(State2), State2}
+                        end,
+    {IOffset, State4} = pop(State3),
+    {ISize, State5}   = pop(State4),
+    {OOffset, State6} = pop(State5),
+    {OSize, State7}   = pop(State6),
+    Dest              = case Op of
+                            ?CALL -> To;
+                            ?CALLCODE -> aevm_eeevm_state:address(State6);
+                            ?DELEGATECALL -> aevm_eeevm_state:address(State6)
+                        end,
+    {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
+    GasAfterSpend     = aevm_eeevm_state:gas(State8),
+    Code              = aevm_eeevm_state:extcode(To, State8),
+    CallGas = case Value =/= 0 of
+                  true -> ?GCALLSTIPEND + Gas;
+                  false -> Gas
+              end,
+    case GasAfterSpend >= CallGas of
+        true  -> ok;
+        false -> eval_error(out_of_gas, State7)
+    end,
+    Caller = case Op of
+                 ?CALL -> aevm_eeevm_state:address(State8);
+                 ?CALLCODE -> aevm_eeevm_state:address(State8);
+                 ?DELEGATECALL -> aevm_eeevm_state:caller(State8)
+             end,
+    CallState = aevm_eeevm_state:prepare_for_call(Caller, Dest, CallGas, Value,
+                                                  Code, CallDepth,
+                                                  State8),
+    case aevm_eeevm_state:no_recursion(State8) of
+        true  -> %% TODO: Set callcreates
+            GasOut = GasAfterSpend + CallGas,
+            State9 = aevm_eeevm_state:set_gas(GasOut, State8),
+            State10 = aevm_eeevm_state:add_callcreates(#{ data => I
+                                                        , destination => Dest
+                                                        , gasLimit => CallGas
+                                                        , value => Value
+                                                        }, State9),
+            {1, State10};
+        false ->
+            %% TODO: Should this not count towards mem gas?
+            CallState1 = aevm_eeevm_memory:write_area(0, I, CallState),
+            {OutGas, OutState, R} =
+                case eval(CallState1) of
+                    {ok, OutState2} -> {aevm_eeevm_state:gas(OutState2), OutState2, 1};
+                    {error, {out_of_gas,_RState2}} -> {0, CallState1, 1}
+                end,
+            CallTrace = aevm_eeevm_state:trace(OutState),
+            %% Go back to the caller state.
+            ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State8),
+            GasAfterCall = GasAfterSpend + OutGas,
+            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState1),
+            {Message,_}  = aevm_eeevm_memory:get_area(0, OSize, OutState),
+            ReturnState3 = aevm_eeevm_memory:write_area(OOffset, Message,
+                                                        ReturnState2),
+            {R, ReturnState3}
+    end.
+
+%% ------------------------------------------------------------------------
+%% Error handling
+%% ------------------------------------------------------------------------
+
+-spec eval_error(_, _) -> no_return().
+eval_error(What, State) ->
+    throw(?aevm_eval_error(What, State)).
