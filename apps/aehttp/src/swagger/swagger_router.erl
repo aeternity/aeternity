@@ -593,7 +593,7 @@ get_operations() ->
         'GetName' => #{
             path => "/v2/name",
             method => <<"GET">>,
-            handler => 'swagger_nameservice_handler'
+            handler => 'swagger_name_service_handler'
         },
         'GetPubKey' => #{
             path => "/v2/account/pub-key",

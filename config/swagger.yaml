@@ -683,7 +683,7 @@ paths:
     get:
       tags:
         - external
-        - nameservice
+        - name_service
       operationId: GetName
       description: 'Get name entry from Naming System'
       produces:

@@ -827,7 +827,7 @@
     },
     "/name" : {
       "get" : {
-        "tags" : [ "external", "nameservice" ],
+        "tags" : [ "external", "name_service" ],
         "description" : "Get name entry from Naming System",
         "operationId" : "GetName",
         "produces" : [ "application/json" ],

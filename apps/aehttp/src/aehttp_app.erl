@@ -57,7 +57,7 @@ check_env() ->
                       <<"transactions">>  => true,
                       <<"node_operator">> => true,
                       <<"dev">>           => true,
-                      <<"debug">>         => false,
+                      <<"debug">>         => true,
                       <<"obsolete">>      => true
                       },
     EnabledGroups =
