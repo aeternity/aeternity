@@ -16,6 +16,7 @@
 }].
 
 get_paths(Target, LogicHandler) ->
+    {ok, EnabledGroups} = application:get_env(aehttp, enabled_endpoint_groups),
     % Swagger validation will be replaced
     % we're using it as a intermediate step
     [{'_', [
@@ -26,7 +27,7 @@ get_paths(Target, LogicHandler) ->
         {OperationId, method(Method), LogicHandler, SwaggerValidator}}
         || {OperationId, Spec} <- maps:to_list(endpoints:operations()),
             {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
-            is_enabled(Target, Tags)
+            is_enabled(Target, Tags, EnabledGroups)
     ],
     lists:reverse(lists:sort(Paths)).
 
@@ -37,7 +38,8 @@ path(Path0) ->
 method(Atom) ->
     list_to_binary(string:uppercase(atom_to_list(Atom))).
 
-is_enabled(Target, Tags) when is_atom(Target) ->
-    is_enabled(atom_to_binary(Target, utf8), Tags);
-is_enabled(Target, Tags) ->
-    lists:member(Target, Tags).
+is_enabled(Target, Tags, EnabledGroups) when is_atom(Target) ->
+    TargetBin = atom_to_binary(Target, utf8),
+    lists:member(TargetBin, Tags) andalso
+    lists:any(fun(Tag) -> lists:member(Tag, EnabledGroups) end, Tags).
+

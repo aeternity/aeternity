@@ -93,6 +93,40 @@
                             "type" : "integer"
                         }
                     }
+                },
+                "endpoints" : {
+                    "gossip" : {
+                        "description" : "Gossip protocol API",
+                        "type" : "boolean"
+                    },
+                    "name_service" : {
+                        "description" : "Name resolution API",
+                        "type" : "boolean"
+                    },
+                    "chain" : {
+                        "description" : "Chain state inspection endpoints",
+                        "type" : "boolean"
+                    },
+                    "transactions" : {
+                        "description" : "Transactions insection endpoints",
+                        "type" : "boolean"
+                    },
+                    "node_operator" : {
+                        "description" : "Node operator endpoints",
+                        "type" : "boolean"
+                    },
+                    "dev" : {
+                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenrios",
+                        "type" : "boolean"
+                    },
+                    "debug" : {
+                        "description" : "Debug endpoints",
+                        "type" : "boolean"
+                    },
+                    "obsolete" : {
+                        "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    }
                 }
             }
         },

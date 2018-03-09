@@ -19,6 +19,8 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
+-export([check_env/0]).
+
 %% Tests only
 -export([ws_handlers_queue_max_size/0]).
 
@@ -42,6 +44,41 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     ok.
 
+
+%%------------------------------------------------------------------------------
+%% Check user-provided environment
+%%------------------------------------------------------------------------------
+
+check_env() ->
+    %TODO: we need to validate that all tags are present
+    GroupDefaults = #{<<"gossip">>        => true,
+                      <<"name_service">>   => true,
+                      <<"chain">>         => true,
+                      <<"transactions">>  => true,
+                      <<"node_operator">> => true,
+                      <<"dev">>           => true,
+                      <<"debug">>         => true,
+                      <<"obsolete">>      => true
+                      },
+    EnabledGroups =
+        lists:foldl(
+            fun({Key, Default}, Accum) ->
+                Enabled =
+                    case aeu_env:user_config([<<"http">>, <<"endpoints">>, Key]) of
+                        {ok, Setting} when is_boolean(Setting) ->
+                            Setting;
+                        undefined ->
+                            Default
+                    end,
+                case Enabled of
+                    true -> [Key | Accum];
+                    false -> Accum
+                end
+            end,
+            [],
+            maps:to_list(GroupDefaults)),
+        application:set_env(aehttp, enabled_endpoint_groups, EnabledGroups),
+    ok.
 
 %%====================================================================
 %% Internal functions
