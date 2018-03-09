@@ -129,10 +129,9 @@ sync_fork_in_wrong_order(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
     await_sync_complete(T0, [N2]),
-
-    N2Top = rpc:call(N2, aec_chain, top_block, [], 5000),
-    ct:log("top of chain dev2: ~p", [ N2Top ]),
-    {N1Top, N2Top} = {N2Top, N1Top},
+    aec_test_utils:wait_for_it(
+      fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
+      N1Top),
     ok.
 
 await_sync_complete(T0, Nodes) ->
