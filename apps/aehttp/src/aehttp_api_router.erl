@@ -39,8 +39,7 @@ method(Atom) ->
     list_to_binary(string:uppercase(atom_to_list(Atom))).
 
 is_enabled(Target, Tags, EnabledGroups) when is_atom(Target) ->
-    is_enabled(atom_to_binary(Target, utf8), Tags, EnabledGroups);
-is_enabled(Target, Tags, EnabledGroups) ->
-    lists:member(Target, Tags) andalso
+    TargetBin = atom_to_binary(Target, utf8),
+    lists:member(TargetBin, Tags) andalso
     lists:any(fun(Tag) -> lists:member(Tag, EnabledGroups) end, Tags).
 
