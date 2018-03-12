@@ -2656,7 +2656,8 @@ definitions:
   ByteCode:
     type: object
     properties:
-      bytecode: string
+      bytecode:
+        type: string
   ContractCallInput:
     type: object
     properties:

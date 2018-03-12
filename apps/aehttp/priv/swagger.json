@@ -3262,7 +3262,15 @@
       }
     },
     "ByteCode" : {
-      "type" : "object"
+      "type" : "object",
+      "properties" : {
+        "bytecode" : {
+          "type" : "string"
+        }
+      },
+      "example" : {
+        "bytecode" : "bytecode"
+      }
     },
     "ContractCallInput" : {
       "type" : "object",
