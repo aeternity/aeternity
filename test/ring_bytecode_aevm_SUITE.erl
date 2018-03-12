@@ -30,7 +30,7 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     %% Create the call data
     CallData = aer_abi:create_calldata(Code, "main", "42"),
 
-    Res = 
+    {ok, Res} = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
@@ -58,7 +58,7 @@ execute_identity_fun_from_bytecode(_Cfg) ->
         <<96,0,53,128,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
           0,0,0,0,0,20,98,0,0,44,87,0,91,96,32,53,98,0,0,58,144,98,0,0,67,86,91,
           96,0,82,96,32,96,0,243,91,128,144,80,144,86>>,
-    Res = 
+    {ok, Res} = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,

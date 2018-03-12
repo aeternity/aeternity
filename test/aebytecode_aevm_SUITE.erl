@@ -20,7 +20,7 @@ execute_identy_fun_from_file(_Cfg) ->
     CodeDir = code:lib_dir(aebytecode, test),
     FileName = filename:join(CodeDir, "asm_code/identity.aesm"),
     Code = aeb_asm:file(FileName, []),
-    Res = 
+    {ok, Res} = 
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,

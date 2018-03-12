@@ -759,6 +759,23 @@ vm_system_operations_tests() ->
     ].
 
 %%====================================================================
+%% VM Performance Tests
+%%====================================================================
+
+vm_performance_test_() ->
+    Tests = vm_performance_tests(),
+    Path  = "VMTests/vmPerformance",
+    aevm_test_utils:testcase_generate(Path, Tests, fun extra_opts/1).
+
+vm_performance_tests() ->
+    [ fibonacci10
+    , fibonacci16
+    , ackermann31
+    , ackermann32
+    , manyFunctions100
+    ].
+
+%%====================================================================
 %% Internal functions
 %%====================================================================
 
