@@ -45,7 +45,10 @@
                  | aens_revoke_tx
                  | aect_create_tx
                  | aect_call_tx
-                 | aesc_create_tx.
+                 | aesc_create_tx
+                 | aesc_deposit_tx
+                 | aesc_withdraw_tx
+                 | aesc_close_mutual_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -60,7 +63,10 @@
                      | aens_revoke_tx:tx()
                      | aect_create_tx:tx()
                      | aect_call_tx:tx()
-                     | aesc_create_tx:tx().
+                     | aesc_create_tx:tx()
+                     | aesc_deposit_tx:tx()
+                     | aesc_withdraw_tx:tx()
+                     | aesc_close_mutual_tx:tx().
 
 -export_type([ tx/0
              , tx_instance/0
