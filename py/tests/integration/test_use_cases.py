@@ -4,7 +4,7 @@ import tempfile
 import os
 import shutil
 import time
-from nose.tools import assert_equals, assert_not_equals, with_setup
+from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
 import common
 from waiting import wait
 from swagger_client.models.ping import Ping 
@@ -158,37 +158,32 @@ def test_node_discovery():
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(alice_api, blocks_to_mine)
     alice_top = alice_api.get_top()
-    assert_equals(alice_top.height >= blocks_to_mine, True)
+    assert_true(alice_top.height >= blocks_to_mine)
     # Now Alice has at least blocks_to_mine blocks
 
     # start the other nodes
     common.start_node(bob_node, bob_sys_config)
     common.start_node(carol_node, carol_sys_config)
 
-    time.sleep(1) # give some time for the data to propagate
-
+    # Check that Carol syncs with Alice's chain
     carol_api = common.external_api(carol_node)
-    carol_top = carol_api.get_top()
+    common.wait_until_height(carol_api, alice_top.height)
+    assert_equals(carol_api.get_block_by_hash(alice_top.hash).height, alice_top.height)
+
+    # Check that Carol discovers Alice as a peer
     gen_hash = common.genesis_hash(carol_api)
     ping_obj = Ping(source="http://localhost:1234",
                     genesis_hash=gen_hash,
-                    best_hash=carol_top.hash,
+                    best_hash=gen_hash,
                     difficulty=1,
-                    share=32,
+                    share=32, # expected peer list is small
                     peers=[])
-    ping = carol_api.ping(ping_obj)
-
-    carol_peers = [peer.encode('utf-8') + "/" for peer in ping.peers]
-    synced = alice_peer_url in carol_peers
-
-    print("Carol now has peers " + str(carol_peers))
-    assert_equals(synced, True) # for larger peer lists this might be too fragile
-    assert_equals(carol_top.height >= blocks_to_mine, True)
-    if carol_top.height > alice_top.height: # Alice had mined some more blocks
-        alice_block = alice_api.get_block_by_hash(carol_top.hash) # this block is presnet
-        assert_equals(alice_block.height, carol_top.height)
-    else:
-        assert_equals(alice_top.height, carol_top.height)
+    def carol_peers():
+        ps = [p.encode('utf-8') for p in carol_api.ping(ping_obj).peers]
+        print("Carol now has peers " + str(ps))
+        return ps
+    wait(lambda: common.is_among_peers(alice_peer_url, carol_peers()),
+         timeout_seconds=120, sleep_seconds=0.25)
 
     # cleanup
     common.stop_node(alice_node)

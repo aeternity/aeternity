@@ -9,6 +9,7 @@ import datetime
 import time
 import base64
 import logging
+import urlparse
 
 from swagger_client.rest import ApiException
 from swagger_client.api.external_api import ExternalApi
@@ -140,5 +141,10 @@ def parse_tx(unpacked_tx):
     for elem in unpacked_tx:
         tx.update(elem)
     return tx
+
+def is_among_peers(peer, peers):
+    def url_netloc(url):
+        return urlparse.urlsplit(url).netloc
+    return url_netloc(peer) in [url_netloc(p) for p in peers]
 
 logging.getLogger("urllib3").setLevel(logging.ERROR)
