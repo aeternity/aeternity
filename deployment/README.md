@@ -2,18 +2,41 @@
 
 ## Ansible Deploy
 
+### OpenStack
+
 This implementation supports OpenStack dynamic inventory by using [Ansible 2.4 OpenStack inventory plugin](https://docs.ansible.com/ansible/devel/plugins/inventory/openstack.html).
 To install it's dependencies with `pip`:
 ```bash
 pip install -r ansible/pip-requirements.txt
 ```
 
+
+### Amazon Web Services
+
+Supported by [Ansible AWS EC2 External Inventory](http://docs.ansible.com/ansible/latest/intro_dynamic_inventory.html#example-aws-ec2-external-inventory-script)
+
+And [AWS EC2 script](https://raw.githubusercontent.com/ansible/ansible/v2.5.0b1/contrib/inventory/ec2.py)
+
+## Credentials
+
+### Openstack
 You should make sure [OpenStack credentials are set](https://docs.openstack.org/python-openstackclient/latest/configuration/index.html#environment-variables)
 either by environment variables or clouds.yml file.
 
 ```bash
 source ~/my/secrets/openstack.rc
 ansible-inventory -i inventory/openstack.yml --list
+```
+### Amazon Web Services
+Yous should make sure [AWS CommandLine interface credentials are set](http://docs.ansible.com/ansible/latest/intro_dynamic_inventory.html#example-aws-ec2-external-inventory-script) either by environment vairbales or ~/.aws/credentials file
+
+```bash
+ansible-inventory -i inventory/ec2.py --list
+```
+
+If you hace configured multiple AWS credentials you can pass AWS_PROFILE variable before command
+```bash
+AWS_PROFILE=aeternity ansible-inventory -i inventory/ec2.py --list
 ```
 
 Make sure your OpenStack compute instances has correct "groups" metadata set.
