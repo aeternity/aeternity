@@ -252,7 +252,10 @@ sel_return({Matches, _Cont}) -> Matches.
 do_top_change(OldHash, NewHash, Mempool) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
-    {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
+
+    %% NG: fix finding of common ancestor for micro blocks
+    %{ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
+    Ancestor = OldHash,
     Handled = ets:new(foo, [private, set]),
     update_pool_from_blocks(Ancestor, OldHash, Mempool, Handled),
     update_pool_from_blocks(Ancestor, NewHash, Mempool, Handled),

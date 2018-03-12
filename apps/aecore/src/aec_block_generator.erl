@@ -22,7 +22,7 @@
         , worker = undefined    :: undefined | {pid(), term()}
         , candidate = undefined :: undefined | aec_blocks:block()
         , candidate_state = undefined :: undefined
-                                       | aec_block_candidate:block_info()
+                                       | aec_block_micro_candidate:block_info()
         , new_txs = []          :: list(aetx_sign:signed_tx())
         }).
 
@@ -186,7 +186,7 @@ maybe_start_worker_txs(S) ->
 
 %% Generate block candidate
 create_block_candidate(BlockOrBlockHash) ->
-    case aec_block_candidate:create(BlockOrBlockHash) of
+    case aec_block_micro_candidate:create(BlockOrBlockHash) of
         {ok, NewBlock, BlockInfo} ->
             gen_server:cast(?MODULE, {new_candidate, NewBlock, BlockInfo});
         {error, Reason} ->
@@ -194,7 +194,7 @@ create_block_candidate(BlockOrBlockHash) ->
     end.
 
 update_block_candidate(Block, BlockInfo, Txs) ->
-    case aec_block_candidate:update(Block, Txs, BlockInfo) of
+    case aec_block_micro_candidate:update(Block, Txs, BlockInfo) of
         {error, Reason} ->
             failed_attempt(Reason);
         {ok, AdjBlock, NewBlockInfo} ->

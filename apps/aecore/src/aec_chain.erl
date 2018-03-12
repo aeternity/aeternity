@@ -423,7 +423,10 @@ get_block_range(Height, Height, _, _,_Acc) ->
 get_block_range(Height1, Height2, B1, {ok, B2}, Acc) when Height2 > Height1 ->
     NewAcc = [B2|Acc],
     PrevHash = aec_blocks:prev_hash(B2),
-    get_block_range(Height1, Height2 - 1, B1, get_block(PrevHash), NewAcc).
+    case aec_blocks:is_key_block(B2) of
+        true -> get_block_range(Height1, Height2 - 1, B1, get_block(PrevHash), NewAcc);
+        false -> get_block_range(Height1, Height2, B1, get_block(PrevHash), NewAcc)
+    end.
 
 validate_block_range(HeightFrom, HeightTo) when HeightFrom > HeightTo ->
     {error, invalid_range};

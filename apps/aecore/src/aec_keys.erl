@@ -107,6 +107,9 @@
 %%%===================================================================
 
 -spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
+sign(Bin) when is_binary(Bin) ->
+    {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
+    {ok, aetx_sign:new(Bin, [Signature])};
 sign(Tx) ->
     %% Serialize first to maybe (hopefully) pass as reference.
     Bin = aetx:serialize_to_binary(Tx),

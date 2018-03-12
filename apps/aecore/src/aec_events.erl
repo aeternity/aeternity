@@ -18,6 +18,8 @@
 
 -type event() :: start_mining
                | block_created
+               | micro_block_created
+               | start_mining
                | top_changed
                | block_to_publish
                | tx_created

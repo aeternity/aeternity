@@ -9,7 +9,8 @@
 -define(STATE_HASH_BYTES, 32).
 -define(MINER_PUB_BYTES, 32).
 
--define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
+-define(ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
+-define(ACCEPTED_MICRO_BLOCK_MIN_TIME_DIFF, 3 * 1000). %% 3 secs
 
 -define(STORAGE_TYPE_BLOCK,  0).
 -define(STORAGE_TYPE_HEADER, 1).
@@ -20,9 +21,12 @@
 -type(miner_pubkey() :: <<_:(?MINER_PUB_BYTES*8)>>).
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 
+-type(block_type() :: key | micro).
+
 -record(block, {
           height = 0              :: aec_blocks:height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: aec_blocks:block_header_hash(),
+          key_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           txs = []                :: list(aetx_sign:signed_tx()),
@@ -31,11 +35,13 @@
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey()}).
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(),
+          signature = undefined   :: binary() | undefined}).
 
 -record(header, {
           height = 0              :: aec_blocks:height(),
-          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: aec_blocks:block_header_hash(),
+          key_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
+          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           root_hash = <<>>        :: state_hash(),
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
@@ -43,7 +49,8 @@
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence(),
-          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey()}).
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey(), %% TODO: remove default, confusing
+          signature = undefined   :: binary() | undefined}).
 
 -type(header_binary() :: binary()).
 -type(deterministic_header_binary() :: binary()).

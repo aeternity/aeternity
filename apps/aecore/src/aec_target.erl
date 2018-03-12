@@ -17,7 +17,7 @@
                          | {error, chain_too_short_to_recalculate_target}.
 determine_delta_header_height(Header) ->
     Height = aec_headers:height(Header),
-    BlocksCount = aec_governance:blocks_to_check_difficulty_count(),
+    BlocksCount = aec_governance:key_blocks_to_check_difficulty_count(),
     InitialHeight = Height - BlocksCount,
     GenesisHeight = aec_block_genesis:height(),
     case InitialHeight > GenesisHeight of

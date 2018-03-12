@@ -298,6 +298,7 @@ query_response(Cfg, QueryOpts) ->
     SignedTx = aetx_sign:sign(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
         aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
+
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 
     %% Test that the query is now closed.

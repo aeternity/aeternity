@@ -49,6 +49,7 @@
         , get_mining_workers/0
         , start_mining/0
         , stop_mining/0
+        , handoff_leader/0
         ]).
 
 %% Chain API
@@ -119,6 +120,10 @@ get_mining_state() ->
 get_mining_workers() ->
     gen_server:call(?SERVER, get_mining_workers).
 
+-spec handoff_leader() -> 'ok'.
+handoff_leader() ->
+    gen_server:call(?SERVER, handoff_leader).
+
 %%%===================================================================
 %%% Chain API
 
@@ -147,7 +152,9 @@ init(Options) ->
     State1 = set_option(autostart, Options, #state{}),
     ok     = init_chain_state(),
     TopBlockHash = aec_chain:top_block_hash(),
-    State2 = State1#state{seen_top_block_hash = TopBlockHash},
+    Consensus = #consensus{micro_block_cycle = aec_governance:micro_block_cycle(),
+                           leader = false},
+    State2 = State1#state{seen_top_block_hash = TopBlockHash, consensus = Consensus},
     epoch_mining:info("Miner process initilized ~p", [State2]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
@@ -177,7 +184,7 @@ handle_call({add_synced_block, Block},_From, State) ->
     {reply, Reply, State1};
 handle_call(get_block_candidate,_From, State) ->
     Res =
-        case State#state.block_candidate of
+        case State#state.micro_block_candidate of
             undefined when State#state.mining_state =:= stopped ->
                 {error, not_mining};
             undefined when State#state.mining_state =:= running ->
@@ -192,13 +199,10 @@ handle_call({post_block, Block},_From, State) ->
 handle_call(stop_mining,_From, State) ->
     epoch_mining:info("Mining stopped"),
     State1 = kill_all_workers(State),
-    aec_block_generator:stop_generation(),
     {reply, ok, State1#state{mining_state = 'stopped',
-                             new_candidate_available = false,
-                             block_candidate = undefined}};
+                             key_block_candidate = undefined}};
 handle_call(start_mining,_From, State) ->
     epoch_mining:info("Mining started"),
-    aec_block_generator:start_generation(),
     State1 = start_mining(State#state{mining_state = 'running'}),
     {reply, ok, State1};
 handle_call(get_mining_state,_From, State) ->
@@ -220,8 +224,9 @@ handle_call(reinit_chain, _From, State1) ->
                 hard_reset_block_generator(),
                 epoch_mining:info("Mining started"),
                 start_mining(State3#state{mining_state = running,
-                                          new_candidate_available = false,
-                                          block_candidate = undefined})
+                                          new_micro_candidate_available = false,
+                                          micro_block_candidate = undefined,
+                                          key_block_candidate = undefined})
         end,
     {reply, ok, State};
 handle_call(Request, _From, State) ->
@@ -233,21 +238,21 @@ handle_cast(Other, State) ->
     epoch_mining:error("Received unknown cast: ~p", [Other]),
     {noreply, State}.
 
-handle_info({gproc_ps_event, candidate_block, _}, State = #state{ mining_state = stopped }) ->
-    %% ignore new candidates if we are not running.
+handle_info({gproc_ps_event, candidate_block, _}, State = #state{consensus = #consensus{leader = false}}) ->
+    %% ignore new candidates if we are not a leader any more.
     {noreply, State};
 handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) ->
-    case State#state.block_candidate of
+    case State#state.micro_block_candidate of
         undefined ->
             case try_fetch_and_make_candidate() of
                 {ok, Candidate} ->
-                    State1 = State#state{ block_candidate = Candidate },
-                    {noreply, start_mining(State1)};
+                    State1 = State#state{ micro_block_candidate = Candidate },
+                    {noreply, start_micro_signing(State1)};
                 {error, no_candidate} ->
                     {noreply, State}
             end;
         #candidate{} ->
-            State1 = State#state{ new_candidate_available = true },
+            State1 = State#state{ new_micro_candidate_available = true },
             {noreply, State1}
     end;
 handle_info(init_continue, State) ->
@@ -283,13 +288,13 @@ code_change(_OldVsn, State, _Extra) ->
 try_fetch_and_make_candidate() ->
     case aec_block_generator:get_candidate() of
         {ok, Block} ->
-            Candidate = make_candidate(Block, aec_blocks:prev_hash(Block)),
+            Candidate = make_micro_candidate(Block),
             {ok, Candidate};
         {error, no_candidate} = Err ->
             Err
     end.
 
-make_candidate(Block, TopBlockHash) ->
+make_key_candidate(Block) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     LastNonce = aec_pow:pick_nonce(),
     Nonce     = aec_pow:next_nonce(LastNonce),
@@ -297,7 +302,13 @@ make_candidate(Block, TopBlockHash) ->
                 bin = HeaderBin,
                 nonce = Nonce,
                 max_nonce = LastNonce,
-                top_hash = TopBlockHash }.
+                top_hash = aec_blocks:prev_hash(Block) }.
+
+make_micro_candidate(Block) ->
+    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
+    #candidate{ block = Block,
+                bin = HeaderBin,
+                top_hash = aec_blocks:prev_hash(Block) }.
 
 %%%===================================================================
 %%% Handle init options
@@ -397,6 +408,12 @@ spawn_worker(Tag, Fun) ->
     Timeout = worker_timeout(Tag),
     spawn_worker(Tag, Fun, Timeout).
 
+worker_timeout(create_key_block_candidate) ->
+    infinity;
+worker_timeout(micro_signing) ->
+    infinity;
+worker_timeout(micro_sleep) ->
+    infinity; %% TODO NG: pull from governance and add buffer
 worker_timeout(mining) ->
     aeu_env:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
 worker_timeout(wait_for_keys) ->
@@ -437,30 +454,43 @@ handle_worker_reply(Pid, Reply, State) ->
             State
     end.
 
+
+worker_reply(create_key_block_candidate, Res, State) ->
+    handle_key_block_candidate_reply(Res, State);
 worker_reply(mining, Res, State) ->
     handle_mining_reply(Res, State);
+worker_reply(micro_signing, Res, State) ->
+    handle_micro_signing_reply(Res, State);
+worker_reply(micro_sleep, Res, State) ->
+    handle_micro_sleep_reply(Res, State);
 worker_reply(wait_for_keys, Res, State) ->
     handle_wait_for_keys_reply(Res, State).
 
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
 
-preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
+preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Origin) ->
     case aec_chain:top_block_hash() of
         OldHash -> no_change;
         NewHash ->
             ok = aec_tx_pool:top_change(OldHash, NewHash),
+
             aec_events:publish(top_changed, NewHash),
             {ok, NewBlock} = aec_chain:get_block(NewHash),
-            maybe_publish_top(Publish, NewBlock),
+            maybe_publish_top(Origin, NewBlock),
             aec_metrics:try_update([ae,epoch,aecore,chain,height],
                                    aec_blocks:height(NewBlock)),
             State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
-            {changed, State2#state{block_candidate = undefined}}
+            State3 = kill_all_workers_with_tag(micro_signing, State2),
+            {changed, State3#state{key_block_candidate = undefined}}
     end.
 
+
 maybe_publish_top(block_created,_TopBlock) ->
+    %% A new block we created is published unconditionally below.
+    ok;
+maybe_publish_top(micro_block_created,_TopBlock) ->
     %% A new block we created is published unconditionally below.
     ok;
 maybe_publish_top(block_synced,_TopBlock) ->
@@ -471,6 +501,7 @@ maybe_publish_top(block_received, TopBlock) ->
     %% The received block pushed by a network peer changed the
     %% top. Publish the new top.
     aec_events:publish(block_to_publish, TopBlock).
+
 
 maybe_publish_block(block_synced,_Block) ->
     %% We don't publish blocks pulled from network. Otherwise on
@@ -483,7 +514,13 @@ maybe_publish_block(block_received,_Block) ->
 maybe_publish_block(block_created = T, Block) ->
     aec_events:publish(T, Block),
     %% This is a block we created ourselves. Always publish.
+    aec_events:publish(block_to_publish, Block);
+
+maybe_publish_block(micro_block_created = T, Block) ->
+    aec_events:publish(T, Block),
+    %% This is a block we created ourselves. Always publish.
     aec_events:publish(block_to_publish, Block).
+
 
 
 cleanup_after_worker(Info) ->
@@ -525,6 +562,7 @@ kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
       end, State, Workers).
 
 %%%===================================================================
+
 %%% Worker: Wait for keys to appear
 
 -define(WAIT_FOR_KEYS_RETRIES, 10).
@@ -540,7 +578,7 @@ wait_for_keys_worker(0) ->
     timeout;
 wait_for_keys_worker(N) ->
     case aec_keys:pubkey() of
-        {ok, _Pubkey} -> keys_ready; %% TODO: We could keep the key in the state
+        {ok, _Pubkey} -> keys_ready;
         {error, _} ->
             timer:sleep(500),
             wait_for_keys_worker(N - 1)
@@ -561,25 +599,16 @@ start_mining(#state{keys_ready = false} = State) ->
     wait_for_keys(State);
 start_mining(#state{mining_state = 'stopped'} = State) ->
     State;
-start_mining(#state{block_candidate = undefined} = State) ->
-    %% We have to wait for a new block candidate first.
-    State;
-start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
+start_mining(#state{key_block_candidate = undefined} = State) ->
+    create_key_block_candidate(State);
+start_mining(#state{key_block_candidate = #candidate{top_hash = OldHash},
                     seen_top_block_hash = SeenHash
                    } = State) when OldHash =/= SeenHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
-    State#state{block_candidate = undefined};
-start_mining(#state{new_candidate_available = true} = State) ->
-    State1 =
-        case try_fetch_and_make_candidate() of
-            {ok, Candidate} ->
-                State#state{block_candidate = Candidate};
-            {error, no_candidate} ->
-                State
-        end,
-    start_mining(State1#state{ new_candidate_available = false });
-start_mining(#state{block_candidate = Candidate} = State) ->
+    create_key_block_candidate(State);
+
+start_mining(#state{key_block_candidate = Candidate} = State) ->
     epoch_mining:info("Starting mining"),
     HeaderBin = Candidate#candidate.bin,
     Nonce     = Candidate#candidate.nonce,
@@ -592,16 +621,16 @@ start_mining(#state{block_candidate = Candidate} = State) ->
           end,
     dispatch_worker(mining, Fun, State).
 
-handle_mining_reply(_Reply, #state{block_candidate = undefined} = State) ->
+handle_mining_reply(_Reply, #state{key_block_candidate = undefined} = State) ->
     %% Something invalidated the block candidate already.
     start_mining(State);
 handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
-    Candidate = State#state.block_candidate,
+    Candidate = State#state.key_block_candidate,
     %% Check that the solution is for this block
     case HeaderBin =:= Candidate#candidate.bin of
         true ->
             aec_metrics:try_update([ae,epoch,aecore,mining,blocks_mined], 1),
-            State1 = State#state{block_candidate = undefined},
+            State1 = State#state{key_block_candidate = undefined},
             Block = aec_blocks:set_pow(Candidate#candidate.block, Nonce, Evd),
             case handle_mined_block(Block, State1) of
                 {ok, State2} ->
@@ -616,14 +645,14 @@ handle_mining_reply({{ok, {Nonce, Evd}}, HeaderBin}, #state{} = State) ->
             start_mining(State)
     end;
 handle_mining_reply({{error, no_solution}, _}, State) ->
-    Candidate = State#state.block_candidate,
+    Candidate = State#state.key_block_candidate,
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
     epoch_mining:debug("Failed to mine block, no solution (nonce ~p); "
                        "retrying.", [Candidate#candidate.nonce]),
     retry_mining(State);
 handle_mining_reply({{error, {runtime, Reason}}, _}, State) ->
     aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
-    Candidate = State#state.block_candidate,
+    Candidate = State#state.key_block_candidate,
     epoch_mining:error("Failed to mine block, runtime error; "
                        "retrying with different nonce (was ~p). "
                        "Error: ~p", [Candidate#candidate.nonce, Reason]),
@@ -632,15 +661,138 @@ handle_mining_reply({{error, {runtime, Reason}}, _}, State) ->
 %%%===================================================================
 %%% Retry mining when we failed to find a solution.
 
-retry_mining(S = #state{ block_candidate = Candidate }) ->
-    start_mining(S#state{ block_candidate = bump_nonce(Candidate) }).
+retry_mining(S = #state{ key_block_candidate = Candidate }) ->
+    start_mining(S#state{ key_block_candidate = bump_nonce(Candidate) }).
 
 bump_nonce(#candidate{ nonce = N, max_nonce = N }) ->
     epoch_mining:info("Failed to mine block, "
-                      "nonce range exhausted (was ~p)", [N]),
+    "nonce range exhausted (was ~p)", [N]),
     undefined;
 bump_nonce(C = #candidate{ nonce = N }) ->
     C#candidate{ nonce = aec_pow:next_nonce(N) }.
+
+%%%===================================================================
+%%% Worker: Start signing microblocks
+
+start_micro_signing(#state{keys_ready = false} = State) ->
+    %% We need to get the keys first
+    wait_for_keys(State);
+start_micro_signing(#state{mining_state = 'stopped'} = State) ->
+    State;
+start_micro_signing(#state{consensus = #consensus{leader = true}, micro_block_candidate = undefined} = State) ->
+    %% We have to wait for a new block candidate first.
+    State;
+start_micro_signing(#state{consensus = #consensus{leader = true}, new_micro_candidate_available = true} = State) ->
+    State1 =
+        case try_fetch_and_make_candidate() of
+            {ok, Candidate} ->
+                State#state{micro_block_candidate = Candidate};
+            {error, no_candidate} ->
+                State
+        end,
+    start_mining(State1#state{ new_micro_candidate_available = false });
+start_micro_signing(#state{consensus = #consensus{leader = true},
+                    micro_block_candidate = #candidate{top_hash = MicroBlockHash},
+                    seen_top_block_hash = SeenHash} = State) when MicroBlockHash =/= SeenHash ->
+    %% Candidate generated with stale top hash.
+    %% Regenerate the candidate.
+    State#state{micro_block_candidate = undefined};
+start_micro_signing(#state{consensus = #consensus{leader = true},
+                           micro_block_candidate = MicroCandidate} = State) ->
+    epoch_mining:info("Starting signing round"),
+    HeaderBin = MicroCandidate#candidate.bin,
+    Info      = [{top_block_hash, State#state.seen_top_block_hash}],
+    aec_events:publish(start_micro_signing, Info),
+    Fun = fun() ->
+        aec_keys:sign(HeaderBin)
+    end,
+    dispatch_worker(micro_signing, Fun, State);
+start_micro_signing(#state{consensus = Consensus,
+                           micro_block_candidate = MicroCandidate,
+                           key_block_candidate = KeyBlockCandidate,
+                           seen_top_block_hash = SeenHash
+                           }) ->
+    %% Probably no longer the leader
+    epoch_mining:debug("Fallback clause, candidate conditions not met. micro: ~p, key: ~p, seen top: ~p, consensus: ~p",
+                       [MicroCandidate, KeyBlockCandidate, SeenHash, Consensus]),
+    ok.
+
+handle_micro_signing_reply(_Reply, #state{micro_block_candidate = undefined} = State) ->
+    %% Something invalidated the block candidate already.
+    start_micro_signing(State);
+handle_micro_signing_reply({ok, {HeaderBin, [Signature]}},
+                           #state{micro_block_candidate = #candidate{bin = HeaderBin, block = Block}} = State) ->
+
+    aec_metrics:try_update([ae,epoch,aecore,mining,blocks_micro_signed], 1),
+    State1 = State#state{micro_block_candidate = undefined},
+    Block = aec_blocks:set_signature(Block, Signature),
+    case handle_signed_block(Block, State1) of
+        {ok, State2} ->
+            State2;
+        {{error, Reason}, State2} ->
+            epoch_mining:error("Block insertion failed: ~p.", [Reason]),
+            start_micro_signing(State2)
+    end;
+handle_micro_signing_reply({{error, {runtime, Reason}}, _}, State) ->
+    aec_metrics:try_update([ae,epoch,aecore,mining,retries], 1),
+    Candidate = State#state.micro_block_candidate,
+    epoch_mining:error("Failed to mine block, runtime error; "
+                       "retrying with different nonce (was ~p). "
+                       "Error: ~p", [Candidate#candidate.nonce, Reason]),
+    start_micro_signing(State).
+
+%%%===================================================================
+%%% Worker: Timer for sleep between micro blocks
+
+start_micro_sleep(#state{consensus = #consensus{leader = true, micro_block_cycle = Timeout}} = State) ->
+    epoch_mining:debug("Starting sleep in between microblocks"),
+    Info      = [{starting_micro_sleep, State#state.seen_top_block_hash}],
+    aec_events:publish(starting_micro_sleep, Info),
+    Fun = fun() ->
+                  timer:sleep(Timeout) %% TODO: remove 'timer' dependency
+          end,
+    dispatch_worker(micro_sleep, Fun, State);
+start_micro_sleep(_State) ->
+    no_longer_the_leader.
+
+
+handle_micro_sleep_reply(ok, State) ->
+    start_micro_signing(State).
+
+%%%===================================================================
+%%% Worker: Generate new block candidates
+
+create_key_block_candidate(#state{keys_ready = false} = State) ->
+    %% Keys are needed for creating a candidate
+    wait_for_keys(State);
+create_key_block_candidate(#state{seen_top_block_hash = TopHash} = State) ->
+    epoch_mining:info("Creating key block candidate on the top"),
+
+    %% TODO NG: propagate Fees from microblock to keyblock
+    FeesInfo = #{txs => 0, gas => 0},
+
+    Fun = fun() ->
+                   {aec_block_key_candidate:create(TopHash, FeesInfo),
+                   State#state.seen_top_block_hash}
+    end,
+    dispatch_worker(create_key_block_candidate, Fun, State).
+
+
+handle_key_block_candidate_reply({{ok, KeyBlockCandidate, _Info}, TopHash},
+                                 #state{seen_top_block_hash = TopHash} = State) ->
+            epoch_mining:info("Created key block candidate"
+                              "Its target is ~p (= difficulty ~p).",
+                              [
+                               aec_blocks:target(KeyBlockCandidate),
+                               aec_blocks:difficulty(KeyBlockCandidate)]),
+            Candidate = make_key_candidate(KeyBlockCandidate),
+            State1 = State#state{key_block_candidate = Candidate},
+            start_mining(State1);
+handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
+    start_mining(State#state{keys_ready = false});
+handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
+    epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
+    create_key_block_candidate(State).
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
@@ -650,8 +802,14 @@ handle_synced_block(Block, State) ->
     handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
-    epoch_mining:info("post_block: ~p", [Block]),
-    handle_add_block(Block, State, block_received).
+    case aec_blocks:is_key_block(Block) of
+        true ->
+            epoch_mining:info("post_block: ~p", [Block]),
+            handle_add_block(Block, State, block_received);
+        false ->
+            epoch_mining:info("post_micro_block: ~p", [Block]),
+            handle_add_block(Block, State, micro_block_received)
+    end.
 
 handle_mined_block(Block, State) ->
     epoch_mining:info("Block mined: Height = ~p; Hash = ~s",
@@ -659,10 +817,16 @@ handle_mined_block(Block, State) ->
                        as_hex(aec_blocks:root_hash(Block))]),
     handle_add_block(Block, State, block_created).
 
+handle_signed_block(Block, State) ->
+    epoch_mining:info("Block signed: Height = ~p; Hash = ~s",
+        [aec_blocks:height(Block),
+            as_hex(aec_blocks:root_hash(Block))]),
+    handle_add_block(Block, State, micro_block_created).
+
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
-handle_add_block(Block, State, Publish) ->
+handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} = State, Origin) ->
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     case aec_chain:has_block(Hash) of
@@ -670,29 +834,33 @@ handle_add_block(Block, State, Publish) ->
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
         false ->
-            %% NOTE: Need to validate both header and block
-            %% TODO: Block validation should also validate header
-            case {aec_headers:validate(Header), aec_blocks:validate(Block)} of
-                {ok, ok} ->
+            case aec_validation:validate_block(Block, LeaderKey) of
+                ok ->
                     case aec_chain_state:insert_block(Block) of
                         ok ->
-                            maybe_publish_block(Publish, Block),
-                            case preempt_if_new_top(State, Publish) of
-                                no_change -> {ok, State};
-                                {changed, State1} -> {ok, start_mining(State1)}
+                            maybe_publish_block(Origin, Block),
+                            case preempt_if_new_top(State, Origin) of
+                                no_change ->
+                                    {ok, State};
+                                {changed, State1} ->
+                                    case aec_blocks:is_key_block(Block) of
+                                        true -> {ok, setup_loop(State1, aec_blocks:miner(Block), Origin)};
+                                        false -> {ok, setup_loop(State1, LeaderKey, Origin)}
+                                    end
                             end;
-			{error, Reason} ->
+                        {error, Reason} ->
                             lager:error("Couldn't insert block (~p)", [Reason]),
                             {{error, Reason}, State}
                     end;
-                {{error, Reason}, _} ->
+                {error, {header, Reason}} ->
                     epoch_mining:info("Header failed validation: ~p", [Reason]),
                     {{error, Reason}, State};
-                {ok, {error, Reason}} ->
+                {error, {block, Reason}} ->
                     epoch_mining:info("Block failed validation: ~p", [Reason]),
                     {{error, Reason}, State}
             end
     end.
+
 
 hard_reset_block_generator() ->
     %% Hard reset of aec_block_generator
@@ -706,3 +874,22 @@ flush_candidate() ->
     after 10 ->
         ok
     end.
+
+setup_loop(State, LeaderKey, block_created) ->
+    State1 = State#state{consensus = #consensus{leader = true, leader_key = LeaderKey}},
+    aec_block_generator:start_generation(),
+    State2 = start_micro_signing(State1),
+    start_mining(State2);
+setup_loop(State, LeaderKey, block_received) ->
+    State1 = State#state{consensus = #consensus{leader = false, leader_key = LeaderKey}},
+    start_mining(State1),
+    aec_block_generator:stop_generation();
+setup_loop(State, LeaderKey, micro_block_created) ->
+    State1 = State#state{consensus = #consensus{leader = true, leader_key = LeaderKey}},
+    State2 = start_mining(State1),
+    start_micro_sleep(State2);
+setup_loop(State, no_key, micro_block_received) ->
+    start_mining(State#state{consensus = #consensus{leader = false}});
+setup_loop(State, _, block_synced) ->
+    start_mining(State#state{consensus = #consensus{leader = false}}).
+
