@@ -11,7 +11,7 @@
           initiator_amount   :: non_neg_integer(),
           participant        :: pubkey(),
           participant_amount :: non_neg_integer(),
-          ttl                :: non_neg_integer(),
+          lock_period        :: non_neg_integer(),
           fee                :: non_neg_integer(),
           nonce              :: non_neg_integer()
          }).
@@ -37,7 +37,8 @@
 -record(channel_close_mutual_tx, {
           channel_id   :: binary(),
           amount       :: integer(),
-          account      :: pubkey(),
+          initiator    :: pubkey(),
+          participant  :: pubkey(),
           fee          :: non_neg_integer(),
           nonce        :: non_neg_integer()
          }).
