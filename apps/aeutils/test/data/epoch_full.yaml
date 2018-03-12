@@ -65,6 +65,8 @@ mining:
 logging:
     # Controls the overload protection in the logs.
     hwm: 50
+    # Sets the level of logging.
+    level: debug
 
 metrics:
     # StatsD server and port
