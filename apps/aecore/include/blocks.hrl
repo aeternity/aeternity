@@ -18,6 +18,8 @@
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
 
+-type(block_type() :: key | micro).
+
 -record(block, {
           height = 0              :: height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
@@ -28,7 +30,9 @@
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
-          pow_evidence = no_value :: aec_pow:pow_evidence()}).
+          pow_evidence = no_value :: aec_pow:pow_evidence(),
+          key = undefined         :: binary() | undefined,
+          signature = undefined   :: binary() | undefined}).
 
 -record(header, {
           height = 0              :: height(),

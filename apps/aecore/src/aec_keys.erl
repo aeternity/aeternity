@@ -192,6 +192,10 @@ init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
 %%--------------------------------------------------------------------
 handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
+handle_call({sign, Bin}, _From, #state{sign_priv=PrivKey} = State)
+    when is_binary(Bin) ->
+    {Bin, Signatures} = aetx_sign:sign(Bin, PrivKey),
+    {reply, {ok, {Bin, Signatures}}, State};
 handle_call({sign, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     {reply, {ok, SignedTx}, State};
