@@ -5,7 +5,7 @@
 -module(aec_mining).
 
 %% API
--export([create_block_candidate/3,
+-export([create_micro_block_candidate/2, create_key_block_candidate/3,
          need_to_regenerate/1,
          mine/3,
          get_miner_account_balance/0]). %% For tests.
@@ -18,23 +18,40 @@
 
 %% API
 
--spec create_block_candidate(aec_blocks:block(), aec_trees:trees(),
-                             list(aec_headers:header())) ->
+-spec create_micro_block_candidate(aec_blocks:block(), aec_trees:trees()) ->
                                     {ok, aec_blocks:block(), aec_pow:nonce()} |
                                     {error, term()}.
-create_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
-    create_block_candidate(get_txs_to_mine_in_pool(),
-                           TopBlock, TopBlockTrees,
-                           AdjHeaders).
+create_micro_block_candidate(TopBlock, TopBlockTrees) ->
+    create_micro_block_candidate(get_txs_to_mine_in_pool(), TopBlock, TopBlockTrees).
+
+-spec create_key_block_candidate(
+    aec_blocks:block(), aec_trees:trees(),
+    list(aec_headers:header())) -> {ok, aec_blocks:block(), aec_pow:nonce()} | {error, term()}.
+create_key_block_candidate(TopBlock, TopBlockTrees, AdjHeaders) ->
+    Height = aec_blocks:height(TopBlock) + 1,
+    case create_signed_coinbase_tx(Height) of
+        {error, _} = Error ->
+            Error;
+        {ok, SignedCoinbaseTx} ->
+            Block = aec_blocks:new(TopBlock, [SignedCoinbaseTx], TopBlockTrees),
+            case aec_blocks:cointains_coinbase_tx(Block) of
+                true ->
+                    case adjust_target(Block, AdjHeaders) of
+                        {ok, AdjBlock} ->
+                            {ok, AdjBlock, aec_pow:pick_nonce()};
+                        {error, _} = Error ->
+                            Error
+                    end;
+                false ->
+                    {error, coinbase_tx_rejected}
+            end
+    end.
 
 -spec need_to_regenerate(aec_blocks:block()) -> boolean().
-need_to_regenerate(Block) ->
-    [_Coinbase | Txs] = aec_blocks:txs(Block),
-    %% TODO: This should be an access function in tx pool
-    MaxTxsInBlockCount = aec_governance:max_txs_in_block(),
-    CurrentTxsBlockCount = length(Txs) + 1,
-    (MaxTxsInBlockCount =/= CurrentTxsBlockCount)
-        andalso (lists:sort(get_txs_to_mine_in_pool()) =/= lists:sort(Txs)).
+need_to_regenerate(_Block) ->
+    %% TODO: not the best option, we need to add new fees to earn more - possibly its handled in start_mining in conductor tho
+    %% TODO: it is probably always worth to add new blocks - maybe we can be off by 1-small_N (3?)
+    false.
 
 -spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce()) ->  aec_pow:pow_result().
 mine(HeaderBin, Target, Nonce) ->
@@ -58,31 +75,12 @@ get_txs_to_mine_in_pool() ->
     {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
     Txs.
 
--spec create_block_candidate(
-        list(aetx_sign:signed_tx()),
-        aec_blocks:block(), aec_trees:trees(),
-        list(aec_headers:header())) -> {ok, aec_blocks:block(), aec_pow:nonce()} |
-                           {error, term()}.
-create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
-    Height = aec_blocks:height(TopBlock) + 1,
-    case create_signed_coinbase_tx(Height) of
-        {error, _} = Error ->
-            Error;
-        {ok, SignedCoinbaseTx} ->
-            Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            Block = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
-            case aec_blocks:cointains_coinbase_tx(Block) of
-                true ->
-                    case adjust_target(Block, AdjHeaders) of
-                        {ok, AdjBlock} ->
-                            {ok, AdjBlock, aec_pow:pick_nonce()};
-                        {error, _} = Error ->
-                            Error
-                    end;
-                false ->
-                    {error, coinbase_tx_rejected}
-            end
-    end.
+-spec create_micro_block_candidate(
+    list(aetx_sign:signed_tx()), aec_blocks:block(), aec_trees:trees())
+        -> {ok, aec_blocks:block(), aec_pow:nonce()} | {error, term()}.
+create_micro_block_candidate(Txs, TopBlock, TopBlockTrees) ->
+    _Height = aec_blocks:height(TopBlock) + 1, %% TODO: XXX move height to block, remove from coinbase
+    Block = aec_blocks:new(TopBlock, Txs, TopBlockTrees).
 
 -spec create_signed_coinbase_tx(integer()) -> {ok, aetx_sign:signed_tx()} | {error, term()}.
 create_signed_coinbase_tx(Height) ->

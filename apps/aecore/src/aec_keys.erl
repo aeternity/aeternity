@@ -196,6 +196,10 @@ init([Password, KeysDir]) when is_binary(Password) ->
 %%--------------------------------------------------------------------
 handle_call({sign, _}, _From, #state{priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
+handle_call({sign, Bin}, _From, #state{priv=PrivKey} = State)
+    when is_binary(Bin) ->
+    {Bin, Signatures} = aetx_sign:sign(Bin, PrivKey),
+    {reply, {ok, {Bin, Signatures}}, State};
 handle_call({sign, Tx}, _From,
             #state{pub = PubKey, priv=PrivKey} = State) ->
     Signers = aetx:signers(Tx),
