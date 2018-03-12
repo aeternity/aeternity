@@ -3,7 +3,7 @@
 %% API
 -export([sorted_protocol_versions/0,
          protocols/0,
-         blocks_to_check_difficulty_count/0,
+         key_blocks_to_check_difficulty_count/0,
          expected_block_mine_rate/0,
          block_mine_reward/0,
          max_txs_in_block/0,
@@ -13,7 +13,8 @@
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_delta/0,
-         name_registrars/0]).
+         name_registrars/0,
+         micro_block_cycle/0]).
 
 -export_type([protocols/0]).
 
@@ -49,7 +50,7 @@ protocols() ->
                 maps:to_list(M)))
     end.
 
-blocks_to_check_difficulty_count() ->
+key_blocks_to_check_difficulty_count() ->
     ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.
 
 expected_block_mine_rate() ->
@@ -87,3 +88,7 @@ name_claim_preclaim_delta() ->
 
 name_registrars() ->
     [<<"aet">>, <<"test">>].
+
+micro_block_cycle() ->
+    %% Miliseconds
+    30000.

@@ -40,8 +40,8 @@ mine_block_test_() ->
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  meck:expect(aec_pow, pick_nonce, 0, 5537317755641284530),
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
-                 HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_key_block_candidate(TopBlock, aec_trees:new(), []),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
@@ -59,8 +59,8 @@ mine_block_test_() ->
                                    target = ?LOWEST_TARGET_SCI,
                                    version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
-                 HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
+                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_key_block_candidate(TopBlock, aec_trees:new(), []),
+                 HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  ?assertEqual({error, no_solution},
                               ?TEST_MODULE:mine(HeaderBin, Target, Nonce))
@@ -143,6 +143,7 @@ difficulty_recalculation_test_() ->
                  TopBlock = #block{version = ?PROTOCOL_VERSION},
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
+
                  Target = aec_blocks:target(BlockCandidate),
                  {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
@@ -193,8 +194,8 @@ cleanup(_) ->
 generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
-    {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
-    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
+    {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_key_block_candidate(TopBlock, aec_trees:new(), []),
+    HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     case ?TEST_MODULE:mine(HeaderBin, Target, Nonce) of
         {ok, {Nonce1, _Evd}} ->

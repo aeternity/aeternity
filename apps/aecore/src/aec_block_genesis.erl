@@ -55,9 +55,8 @@ txs_hash() ->
     txs_hash(transactions()).
 
 txs_hash(Txs) ->
-    <<0:?TXS_HASH_BYTES/unit:8>> =
-        aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
-                                                          Txs))).
+    {ok, H = <<0:?TXS_HASH_BYTES/unit:8>>} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs)),
+    H.
 
 pow() ->
     no_value.
@@ -65,8 +64,9 @@ pow() ->
 transactions() ->
     [].
 
-miner() ->
-    <<0:?MINER_PUB_BYTES/unit:8>>.
+height() -> ?GENESIS_HEIGHT.
+
+miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 %% Returns the genesis block and the state trees.
 %%
@@ -115,8 +115,6 @@ populated_trees(Map) ->
                     end, aec_trees:accounts(StateTrees), PresetAccounts),
     aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
-height() ->
-    ?GENESIS_HEIGHT.
 
 %% Returns the difficulty of the genesis block meant to be used in the
 %% computation of the chain difficulty.
