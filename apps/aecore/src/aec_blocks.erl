@@ -11,9 +11,14 @@
          txs/1,
          txs_hash/1,
          difficulty/1,
+         is_key_block/1,
          time_in_msecs/1,
          pow/1,
          set_pow/3,
+         signature/1,
+         set_signature/2,
+         key/1,
+         set_key/2,
          set_target/2,
          new/3,
          new_with_state/3,
@@ -25,8 +30,9 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1,
-         cointains_coinbase_tx/1]).
+         validate/2,
+         cointains_coinbase_tx/1,
+         type/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
 
@@ -58,6 +64,11 @@ target(Block) ->
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
+-spec is_key_block(block()) -> boolean().
+is_key_block(Block) ->
+    Block#block.key =/= undefined.
+
+
 time_in_msecs(Block) ->
     Block#block.time.
 
@@ -74,6 +85,25 @@ set_pow(Block, Nonce, Evd) ->
 -spec pow(block()) -> aec_pow:pow_evidence().
 pow(Block) ->
     Block#block.pow_evidence.
+
+%% Sets the signature for microblock
+-spec set_signature(block(), list()) -> block().
+set_signature(Block, Signature) ->
+    Block#block{signature = Signature}.
+
+-spec key(block()) -> binary().
+key(Block) ->
+    Block#block.key.
+
+%% Sets the leader key in the key block
+-spec set_key(block(), binary()) -> block().
+set_key(Block, Key) ->
+    Block#block{key = Key}.
+
+-spec signature(block()) -> binary().
+signature(Block) ->
+    Block#block.signature.
+
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
@@ -241,9 +271,9 @@ deserialize_from_map(#{<<"height">> := Height,
 hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
 
-
--spec validate(block()) -> ok | {error, term()}.
-validate(Block) ->
+%% TODO: implement validation of microblocks
+-spec validate(block(), binary()) -> ok | {error, term()}.
+validate(Block, _LeaderKey) ->
     Validators = [fun validate_coinbase_txs_count/1,
                   fun validate_txs_hash/1,
                   fun validate_no_txs_with_invalid_signature/1],
@@ -292,3 +322,7 @@ cointains_coinbase_tx(#block{txs = []}) ->
     false;
 cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
     aetx_sign:is_coinbase(CoinbaseTx).
+
+%% NG-INFO: naive check
+type(#block{key = undefined, pow_evidence = no_value, txs = []}) -> micro;
+type(_) -> key.
