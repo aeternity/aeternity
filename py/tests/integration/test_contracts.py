@@ -4,7 +4,7 @@ import tempfile
 import os
 import shutil
 import time
-from nose.tools import assert_equals, assert_not_equals, with_setup
+from nose.tools import assert_equals, assert_not_equals, assert_regexp_matches, with_setup
 import common
 from waiting import wait
 from swagger_client.models.ping import Ping 
@@ -14,10 +14,10 @@ from swagger_client.rest import ApiException
 
 settings = common.test_settings(__name__.split(".")[-1])
 
-def test_compile_id():
+def test_compile_and_call_id():
     # Alice should be able to compile a ring contract with an identity
-    # function into hex string encoded bytecode.
-    test_settings = settings["test_compile_id"]
+    # function into bytecode and call it.
+    test_settings = settings["test_compile_and_call_id"]
     (root_dir, node, api) = setup_node(test_settings, "alice")
 
     # Read a contract
@@ -26,12 +26,15 @@ def test_compile_id():
     contract_file = open(dirPath + "/identity.aer", "r")
     contract_string = contract_file.read()
 
-    # Call the compile function
+    # Compile contract to bytecode
     contract = Contract( contract_string, "")
-    result = api.compile_contract(contract)
+    compilation_result = api.compile_contract(contract)
+    assert_regexp_matches(compilation_result.bytecode, '0x.*')
 
-    bytecode = '0x366000803762000020600080805180516004146200002e57505b5060011951005b805190602001f35b80905090565b602001517f6d61696e00000000000000000000000000000000000000000000000000000000146200005f5762000019565b60200151806200006f9062000028565b5960200160008152818162000085918091505090565b81528059036020820390815292505050905090565b825180599081525060208401602084038393509350935050600082136200009a5780925050509056'
-    assert_equals(result.bytecode, bytecode)
+    # Call contract bytecode
+    call_input = ContractCallInput("ring", compilation_result.bytecode, "main", "42")
+    call_result = api.call_contract(call_input)
+    assert_regexp_matches(call_result.out, '0x.*')
 
     # stop node
     common.stop_node(node)
