@@ -33,7 +33,7 @@ all_test_() ->
                                                fee => 2,
                                                nonce => 3,
                                                payload => <<"">>}),
-                        {ok, SignedTx} = aec_keys:sign(Tx),
+                        {ok, SignedTx} = aec_keys:sign_tx(Tx),
                         ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},
                {"Keys validation (positive case)",

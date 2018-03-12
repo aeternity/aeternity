@@ -20,6 +20,7 @@
          delete_node_db_if_persisted/1,
          mine_blocks/2,
          mine_blocks/3,
+         mine_key_blocks/2,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          forks/0,
@@ -147,38 +148,56 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     {false, _} = {filelib:is_file(MnesiaDir), MnesiaDir},
     ok.
 
+mine_key_blocks(Node, NumBlocksToMine) ->
+    mine_blocks(Node, NumBlocksToMine, 100, key).
+
 mine_blocks(Node, NumBlocksToMine) ->
-    mine_blocks(Node, NumBlocksToMine, 10).
+    mine_blocks(Node, NumBlocksToMine, 100, any).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate) ->
+    mine_blocks(Node, NumBlocksToMine, MiningRate, any).
+
+mine_blocks(Node, NumBlocksToMine, MiningRate, Type) ->
     ok = rpc:call(
            Node, application, set_env, [aecore, expected_mine_rate, MiningRate],
            5000),
     aecore_suite_utils:subscribe(Node, block_created),
+    aecore_suite_utils:subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [], 5000),
     ct:log("aec_conductor:start_mining() (~p) -> ~p", [Node, StartRes]),
-    Res = mine_blocks_loop(NumBlocksToMine),
+    Res = mine_blocks_loop(NumBlocksToMine, Type),
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
     aecore_suite_utils:unsubscribe(Node, block_created),
+    aecore_suite_utils:unsubscribe(Node, micro_block_created),
     case Res of
-        {ok, _BlocksReverse} = OK ->
-            OK;
+        {ok, BlocksReverse} ->
+            {ok, lists:reverse(BlocksReverse)};
         {error, Reason} ->
             erlang:error(Reason)
     end.
 
-mine_blocks_loop(Cnt) ->
-    mine_blocks_loop([], Cnt).
+mine_blocks_loop(Cnt, Type) ->
+    mine_blocks_loop([], Cnt, Type).
 
-mine_blocks_loop(Blocks, 0) ->
+mine_blocks_loop(Blocks, 0,_Type) ->
     {ok, Blocks};
-mine_blocks_loop(Blocks, BlocksToMine) ->
+mine_blocks_loop(Blocks, BlocksToMine, Type) ->
     receive
         {gproc_ps_event, block_created, Info} ->
-            ct:log("block created, Info=~p", [Info]),
+            ct:log("key block created, Info=~p", [Info]),
             #{info := Block} = Info,
-            mine_blocks_loop([Block | Blocks], BlocksToMine - 1)
+            mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type);
+        {gproc_ps_event, micro_block_created, Info} ->
+            ct:log("micro block created, Info=~p", [Info]),
+            #{info := Block} = Info,
+            case Type =:= key of
+                true ->
+                    %% Don't decrement
+                    mine_blocks_loop([Block | Blocks], BlocksToMine, Type);
+                false ->
+                    mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
+            end
     after 30000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),
@@ -197,7 +216,7 @@ spend(Node, FromPub, ToPub, Amount, Fee) ->
                nonce => Nonce,
                payload => <<"foo">>},
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),
-    {ok, SignedTx} = rpc:call(Node, aec_keys, sign, [Tx]),
+    {ok, SignedTx} = rpc:call(Node, aec_keys, sign_tx, [Tx]),
     ok = rpc:call(Node, aec_tx_pool, push, [SignedTx]).
 
 
@@ -233,7 +252,7 @@ unsubscribe(N, Event) ->
 
 all_events_since(N, TS) ->
     [{E, try events_since(N, E, TS) catch error:Err -> Err end}
-     || E <- [block_created, chain_sync, app_started]].
+     || E <- [block_created, micro_block_created, chain_sync, app_started]].
 
 events_since(N, EvType, TS) ->
     call_proxy(N, {events, EvType, TS}).
@@ -274,15 +293,15 @@ await_sync_complete(T0, Nodes) ->
                   check_event(Msg, Acc)
           end, Nodes, AllEvents),
     ct:log("SyncNodes = ~p", [SyncNodes]),
-    collect_sync_events(SyncNodes).
+    collect_sync_events(SyncNodes, 100).
 
-collect_sync_events([]) ->
-    done;
-collect_sync_events(SyncNodes) ->
+collect_sync_events(_, 0) -> error(retry_exhausted);
+collect_sync_events([], _) -> done;
+collect_sync_events(SyncNodes, N) ->
     receive
         {gproc_ps_event, chain_sync, Msg} ->
             SyncNodes1 = check_event(Msg, SyncNodes),
-            collect_sync_events(SyncNodes1)
+            collect_sync_events(SyncNodes1, N-1)
     after 20000 ->
             ct:log("Timeout in collect_sync_events: ~p~n"
                    "~p", [SyncNodes, process_info(self(), messages)]),
@@ -672,7 +691,7 @@ call_proxy(N, Req, Tries, Timeout) when Tries > 0 ->
 call_proxy(N, _, _, _) ->
     erlang:error({proxy_not_running, N}).
 
-events() -> [block_created, chain_sync].
+events() -> [block_created, micro_block_created, chain_sync].
 
 tell_subscribers(Subs, Event, Msg) ->
     lists:foreach(

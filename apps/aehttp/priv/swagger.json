@@ -125,35 +125,6 @@
         }
       }
     },
-    "/block" : {
-      "post" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Post a new block",
-        "operationId" : "PostBlock",
-        "consumes" : [ "application/json" ],
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "A new block",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/Block"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "successful operation"
-          },
-          "400" : {
-            "description" : "Block or header validation error",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/tx" : {
       "post" : {
         "tags" : [ "external", "gossip" ],
@@ -2129,69 +2100,6 @@
         }
       }
     },
-    "/block/txs/list/height" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get transactions list from a block range by height",
-        "operationId" : "GetTxsListFromBlockRangeByHeight",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "from",
-          "in" : "query",
-          "description" : "Height of the block to start the range",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "to",
-          "in" : "query",
-          "description" : "Height of the block to end the range",
-          "required" : true,
-          "type" : "integer",
-          "minimum" : 0
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
-        }, {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The list of transactions in block range",
-            "schema" : {
-              "$ref" : "#/definitions/TxObjects"
-            }
-          },
-          "400" : {
-            "description" : "Invalid range",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Range not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/block/tx/hash/{hash}/{tx_index}" : {
       "get" : {
         "tags" : [ "internal", "chain" ],
@@ -2265,69 +2173,6 @@
           },
           "404" : {
             "description" : "Block or transaction not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block/txs/list/hash" : {
-      "get" : {
-        "tags" : [ "internal", "chain" ],
-        "description" : "Get transactions list from a block range by hash",
-        "operationId" : "GetTxsListFromBlockRangeByHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "from",
-          "in" : "query",
-          "description" : "Hash of the block to start the range",
-          "required" : true,
-          "type" : "string",
-          "minimum" : 0
-        }, {
-          "name" : "to",
-          "in" : "query",
-          "description" : "Hash of the block to end the range",
-          "required" : true,
-          "type" : "string",
-          "minimum" : 0
-        }, {
-          "name" : "tx_encoding",
-          "in" : "query",
-          "description" : "Transactions encoding",
-          "required" : false,
-          "type" : "string",
-          "default" : "message_pack",
-          "enum" : [ "message_pack", "json" ]
-        }, {
-          "name" : "tx_types",
-          "in" : "query",
-          "description" : "Transactions types to show. Comma separated",
-          "required" : false,
-          "type" : "string"
-        }, {
-          "name" : "exclude_tx_types",
-          "in" : "query",
-          "description" : "Transactions types not to show. Comma separated. If a tx type appears in both tx_types and exclude_tx_types, it is excluded.",
-          "required" : false,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The list of transactions in block range",
-            "schema" : {
-              "$ref" : "#/definitions/TxObjects"
-            }
-          },
-          "400" : {
-            "description" : "Invalid range",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Range not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -2553,21 +2398,6 @@
         "target" : 6
       }
     },
-    "Block" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/Header"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "transactions" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/definitions/Tx"
-            }
-          }
-        }
-      } ]
-    },
     "GenericBlock" : {
       "allOf" : [ {
         "$ref" : "#/definitions/Header"
@@ -2605,9 +2435,6 @@
         "data_schema" : {
           "type" : "string"
         }
-      },
-      "example" : {
-        "data_schema" : "data_schema"
       }
     },
     "MsgPackTxs" : {

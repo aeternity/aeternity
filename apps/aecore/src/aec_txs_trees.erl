@@ -30,8 +30,12 @@
 %%% API
 %%%===================================================================
 
--spec from_txs([aetx_sign:signed_tx()]) -> txs_tree().
-from_txs(Txs) ->
+-spec from_txs([aetx_sign:signed_tx(), ...] | []) -> txs_tree().
+
+from_txs([]) ->
+    %% NG-INFO: its fine to have empty transaction list (key-block)
+    aeu_mtrees:empty();
+from_txs(Txs = [_|_]) ->
     from_txs(Txs, 0, aeu_mtrees:empty()).
 
 -spec add_txs([aetx_sign:signed_tx()], non_neg_integer(), txs_tree()) ->

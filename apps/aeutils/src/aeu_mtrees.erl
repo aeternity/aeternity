@@ -57,6 +57,7 @@
 -define(HASH_BYTES, 32).
 -define(IS_KEY(K), is_binary(K)).
 -define(IS_VALUE(V), is_binary(V)).
+-define(STATE_HASH_BYTES, 32). %% TODO NG move to proper hrl
 
 -type key() :: binary().
 -type value() :: binary().

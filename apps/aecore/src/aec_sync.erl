@@ -19,7 +19,9 @@
 %% API called from strongly connected component aec_peers
 -export([schedule_ping/1]).
 
--export([start_sync/3]).
+-export([ start_sync/3
+        , get_generation/2
+        , set_last_generation_in_sync/0 ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -37,6 +39,12 @@
 
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).
+
+get_generation(PeerId, Hash) ->
+    gen_server:cast(?MODULE, {get_generation, PeerId, Hash}).
+
+set_last_generation_in_sync() ->
+    gen_server:cast(?MODULE, set_last_generation_in_sync).
 
 schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
@@ -79,9 +87,11 @@ handle_worker(Task, Action) ->
 %% We sync with several nodes at the same time and use as strategy
 %% to pick a random hash from the hashes in the pool.
 
--record(state, {sync_tasks = []}).
 -record(sync_task, {id, chain, pool = [], agreed,
                     adding = [], pending = [], workers = []}).
+-record(state, { sync_tasks = []                 :: [#sync_task{}]
+               , last_generation_in_sync = false :: boolean()
+               }).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -131,6 +141,20 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% opens up for an attack in which someone fakes to have higher difficulty
     run_job(sync_task_workers, fun() -> do_start_sync(PeerId, RemoteHash) end),
     {noreply, State};
+handle_cast({get_generation, PeerId, Hash},
+            State = #state{ last_generation_in_sync = false }) ->
+    run_job(sync_task_workers,
+            fun() ->
+                case do_get_generation(PeerId, Hash) of
+                    ok         -> set_last_generation_in_sync();
+                    {error, _} -> ok
+                end
+            end),
+    {noreply, State};
+handle_cast({get_generation, _PeerId, _Hash}, State) ->
+    {noreply, State};
+handle_cast(set_last_generation_in_sync, State) ->
+    {noreply, State#state{ last_generation_in_sync = true }};
 handle_cast({schedule_ping, PeerId}, State) ->
     case peer_in_sync(State, PeerId) of
         true ->
@@ -642,6 +666,7 @@ agree_on_height(PeerId, RHash0, RH, CheckHeight, Max, Min, AgreedHash) when RH =
 fill_pool(PeerId, StartHash, TargetHash, ST) ->
     case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
+            do_get_generation(PeerId, StartHash),
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
@@ -652,6 +677,16 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             epoch_sync:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
             update_sync_task({error, PeerId}, ST),
             {error, sync_abort}
+    end.
+
+do_get_generation(PeerId, LastHash) ->
+    case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
+        {ok, KeyBlock, MicroBlocks, forward} ->
+            aec_conductor:add_synced_block(#{ key_block => KeyBlock,
+                                              micro_blocks => MicroBlocks,
+                                              dir => forward });
+        Err = {error, _} ->
+            Err
     end.
 
 do_fetch_block(PeerId, Hash) ->
@@ -665,13 +700,15 @@ do_fetch_block(PeerId, Hash) ->
 
 do_fetch_block_ext(Hash, PeerId) ->
     epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
-    case aec_peer_connection:get_block(PeerId, Hash) of
-        {ok, Block} ->
-            case header_hash(Block) =:= Hash of
+    case aec_peer_connection:get_generation(PeerId, Hash, backward) of
+        {ok, KeyBlock, MicroBlocks, backward} ->
+            case header_hash(KeyBlock) =:= Hash of
                 true ->
                     epoch_sync:debug("block fetched from ~p (~p); ~p",
-                                     [ppp(PeerId), pp(Hash), pp(Block)]),
-                    {ok, true, Block};
+                                     [ppp(PeerId), pp(Hash), pp(KeyBlock)]),
+                    {ok, true, #{ key_block    => KeyBlock,
+                                  micro_blocks => MicroBlocks,
+                                  dir          => backward }};
                 false ->
                     {error, hash_mismatch}
             end;
