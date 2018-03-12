@@ -11,6 +11,7 @@
          empty/0,
          empty_with_backend/0,
          enter/2,
+         get/2,
          lookup/2,
          root_hash/1]).
 
@@ -63,6 +64,10 @@ enter(Channel, Tree) ->
     ChTree     = aeu_mtrees:enter(Id, Serialized, Tree#channel_tree.chtree),
     %% TODO: update cache as well
     Tree#channel_tree{chtree = ChTree}.
+
+-spec get(aesc_channels:id(), tree()) -> aesc_channels:channel().
+get(Id, Tree) ->
+    aesc_channels:deserialize(aeu_mtrees:get(Id, Tree#channel_tree.chtree)).
 
 -spec lookup(aesc_channels:id(), tree()) -> {value, channel()} | none.
 lookup(Id, Tree) ->

@@ -27,9 +27,9 @@
 %% Getters
 -export([initiator/1,
          initiator_amount/1,
+         lock_period/1,
          participant/1,
-         participant_amount/1,
-         ttl/1]).
+         participant_amount/1]).
 
 %%%===================================================================
 %%% Types
@@ -50,14 +50,14 @@ new(#{initiator          := InitiatorPubKey,
       initiator_amount   := InitiatorAmount,
       participant        := ParticipantPubKey,
       participant_amount := ParticipantAmount,
-      ttl                := TTL,
+      lock_period        := LockPeriod,
       fee                := Fee,
       nonce              := Nonce}) ->
     Tx = #channel_create_tx{initiator          = InitiatorPubKey,
                             participant        = ParticipantPubKey,
                             initiator_amount   = InitiatorAmount,
                             participant_amount = ParticipantAmount,
-                            ttl                = TTL,
+                            lock_period        = LockPeriod,
                             fee                = Fee,
                             nonce              = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -111,7 +111,7 @@ process(#channel_create_tx{initiator          = InitiatorPubKey,
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount1, AccountsTree1),
 
-    Channel = aesc_channels:new(CreateTx, Height),
+    Channel       = aesc_channels:new(CreateTx),
     ChannelsTree1 = aesc_state_tree:enter(Channel, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree2),
@@ -133,14 +133,14 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              initiator_amount   = InitiatorAmount,
                              participant        = ParticipantPubKey,
                              participant_amount = ParticipantAmount,
-                             fee                = Fee,
+                             lock_period        = LockPeriod,
                              nonce              = Nonce}) ->
     [#{<<"vsn">>                => version()},
      #{<<"initiator">>          => InitiatorPubKey},
      #{<<"initiator_amount">>   => InitiatorAmount},
      #{<<"participant">>        => ParticipantPubKey},
      #{<<"participant_amount">> => ParticipantAmount},
-     #{<<"fee">>                => Fee},
+     #{<<"lock_period">>        => LockPeriod},
      #{<<"nonce">>              => Nonce}].
 
 -spec deserialize(list(map())) -> tx().
@@ -149,13 +149,13 @@ deserialize([#{<<"vsn">>                := ?CHANNEL_CREATE_TX_VSN},
              #{<<"initiator_amount">>   := InitiatorAmount},
              #{<<"participant">>        := ParticipantPubKey},
              #{<<"participant_amount">> := ParticipantAmount},
-             #{<<"fee">>                := Fee},
+             #{<<"lock_period">>        := LockPeriod},
              #{<<"nonce">>              := Nonce}]) ->
     #channel_create_tx{initiator          = InitiatorPubKey,
                        initiator_amount   = InitiatorAmount,
                        participant        = ParticipantPubKey,
                        participant_amount = ParticipantAmount,
-                       fee                = Fee,
+                       lock_period        = LockPeriod,
                        nonce              = Nonce}.
 
 -spec for_client(tx()) -> map().
@@ -163,6 +163,7 @@ for_client(#channel_create_tx{initiator          = Initiator,
                               initiator_amount   = InitiatorAmount,
                               participant        = Participant,
                               participant_amount = ParticipantAmount,
+                              lock_period        = LockPeriod,
                               nonce              = Nonce,
                               fee                = Fee}) ->
     #{<<"vsn">>                => version(),
@@ -170,6 +171,7 @@ for_client(#channel_create_tx{initiator          = Initiator,
       <<"initiator_amount">>   => InitiatorAmount,
       <<"participant">>        => aec_base58c:encode(account_pubkey, Participant),
       <<"participant_amount">> => ParticipantAmount,
+      <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"fee">>                => Fee}.
 
@@ -185,6 +187,10 @@ initiator(#channel_create_tx{initiator = InitiatorPubKey}) ->
 initiator_amount(#channel_create_tx{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
 
+-spec lock_period(tx()) -> non_neg_integer().
+lock_period(#channel_create_tx{lock_period = LockPeriod}) ->
+    LockPeriod.
+
 -spec participant(tx()) -> pubkey().
 participant(#channel_create_tx{participant = ParticipantPubKey}) ->
     ParticipantPubKey.
@@ -192,10 +198,6 @@ participant(#channel_create_tx{participant = ParticipantPubKey}) ->
 -spec participant_amount(tx()) -> non_neg_integer().
 participant_amount(#channel_create_tx{participant_amount = ParticipantAmount}) ->
     ParticipantAmount.
-
--spec ttl(tx()) -> non_neg_integer().
-ttl(#channel_create_tx{ttl = TTL}) ->
-    TTL.
 
 %%%===================================================================
 %%% Internal functions
