@@ -235,7 +235,7 @@ get_local_pubkey_with_next_nonce() ->
 
 sign_and_push_to_mempool(Tx) ->
     lager:debug("Tx = ~p", [pp(Tx)]),
-    {ok, SignedTx} = aec_keys:sign(Tx),
+    {ok, SignedTx} = aec_keys:sign_tx(Tx),
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
                 [pp(aec_tx_pool:peek(10))]),

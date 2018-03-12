@@ -22,7 +22,7 @@
         , worker = undefined    :: undefined | {pid(), term()}
         , candidate = undefined :: undefined | aec_blocks:block()
         , candidate_state = undefined :: undefined
-                                       | aec_block_candidate:block_info()
+                                       | aec_block_micro_candidate:block_info()
         , new_txs = []          :: list(aetx_sign:signed_tx())
         }).
 
@@ -72,7 +72,11 @@ handle_cast(stop_generation, State) ->
 handle_cast({new_candidate, Candidate, CandidateState}, State) ->
     epoch_mining:info("New candidate generated", []),
     lager:debug("New candidate generated", []),
-    publish_candidate(Candidate),
+    %% Only publish non-empty micro-blocks
+    case aec_blocks:txs(Candidate) of
+        [] -> ok;
+        _  -> publish_candidate(Candidate)
+    end,
     State1 = finish_worker(State),
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
@@ -186,7 +190,7 @@ maybe_start_worker_txs(S) ->
 
 %% Generate block candidate
 create_block_candidate(BlockOrBlockHash) ->
-    case aec_block_candidate:create(BlockOrBlockHash) of
+    case aec_block_micro_candidate:create(BlockOrBlockHash) of
         {ok, NewBlock, BlockInfo} ->
             gen_server:cast(?MODULE, {new_candidate, NewBlock, BlockInfo});
         {error, Reason} ->
@@ -195,7 +199,7 @@ create_block_candidate(BlockOrBlockHash) ->
     aec_tx_pool:garbage_collect().
 
 update_block_candidate(Block, BlockInfo, Txs) ->
-    case aec_block_candidate:update(Block, Txs, BlockInfo) of
+    case aec_block_micro_candidate:update(Block, Txs, BlockInfo) of
         {error, Reason} ->
             failed_attempt(Reason);
         {ok, AdjBlock, NewBlockInfo} ->

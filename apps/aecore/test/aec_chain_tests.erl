@@ -240,9 +240,9 @@ broken_chain_wrong_height() ->
     ?assertEqual(ok, insert_block(B2)),
 
     %% Change the height of the last block to an incompatible height.
-    ?assertEqual({error, height_inconsistent_with_previous_hash},
+    ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
                  insert_block(B2#block{height = 4})),
-    ?assertEqual({error, height_inconsistent_with_previous_hash},
+    ?assertEqual({error, height_inconsistent_for_keyblock_with_previous_hash},
                  insert_block(B2#block{height = 1})),
     ok.
 
@@ -267,13 +267,22 @@ broken_chain_wrong_state_hash() ->
     ok.
 
 broken_chain_invalid_transaction() ->
-    [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
+    #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
+    RecipientPubKey = <<42:32/unit:8>>,
+    PresetAccounts = [{SenderPubKey, 100}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Spend = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+
+    Chain0 = gen_block_chain_with_state_by_target(PresetAccounts, [?GENESIS_TARGET], 111),
+
+    TxsFun = fun(_) -> [Spend] end,
+    [B0, B1, MB1, _B2] = blocks_only_chain(extend_chain_with_state(Chain0, [?GENESIS_TARGET], 111, TxsFun)),
 
     %% Insert up to last block.
     ok = write_blocks_to_chain([B0, B1]),
 
     %% Add invalid transaction with too high nonce to last block
-    Txs = B2#block.txs,
+    Txs = MB1#block.txs,
     BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<1:32/unit:8>>,
                                                     amount => 0,
                                                     fee => 1,
@@ -283,10 +292,10 @@ broken_chain_invalid_transaction() ->
 
     ?assertNotEqual(Txs, BogusTxs),
     ?assertMatch({error, invalid_transactions_in_block},
-                 insert_block(B2#block{txs = BogusTxs})),
+                 insert_block(MB1#block{txs = BogusTxs})),
 
     %% Check that we can insert the unmodified last block
-    ?assertEqual(ok, insert_block(B2)),
+    ?assertEqual(ok, insert_block(MB1)),
     ok.
 
 %%%===================================================================
@@ -318,18 +327,18 @@ n_headers_backwards() ->
     ok = write_blocks_to_chain(Chain),
     TopHash = top_block_hash(),
 
-    {ok, Hdrs0} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 2),
+    {ok, Hdrs0} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 2),
 
     ?assertMatch(X when length(X) == 2, Hdrs0),
     ?assertEqual(lists:sublist(Hdrs, 2), lists:reverse(Hdrs0)),
 
 
-    {ok, Hdrs1} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 4),
+    {ok, Hdrs1} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 4),
 
     ?assertMatch(X when length(X) == 4, Hdrs1),
     ?assertEqual(lists:sublist(Hdrs, 4), lists:reverse(Hdrs1)),
 
-    {ok, Hdrs2} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 5),
+    {ok, Hdrs2} = aec_chain:get_n_generation_headers_backwards_from_hash(TopHash, 5),
 
     ?assertMatch(X when length(X) == 5, Hdrs2),
     ?assertEqual(lists:sublist(Hdrs, 5), lists:reverse(Hdrs2)).
@@ -353,12 +362,11 @@ n_headers_forwards(Hdrs, Hashes, M) ->
 n_headers_forwards(_Hdrs,_Hashes,_M, 0) ->
     ok;
 n_headers_forwards(Hdrs, Hashes, M, N) ->
-    io:format("N: ~w M: ~w\n", [N, M]),
     Hash        = lists:nth(N, Hashes),
     PrunedStart = lists:nthtail(N - 1, Hdrs),
     Expected    = lists:sublist(PrunedStart, M),
     ?assertEqual({ok, Expected},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, M)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, M)),
     n_headers_forwards(Hdrs, Hashes, M, N - 1).
 
 
@@ -372,29 +380,29 @@ n_headers_forwards_fork() ->
     Hash = aec_chain:genesis_hash(),
     %% We should now get the headers from the easy chain.
     ?assertEqual({ok, lists:sublist(EasyHdrs, 3)},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
 
     %% Write the hard chain, that will take over as main fork.
     %% We should now get the headers from the hard chain.
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual({ok, lists:sublist(HardHdrs, 3)},
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash, 3)),
 
     %% If we try to get headers forward in the easy chain, we should
     %% get an error since the function is only defined on the main chain.
     Hash1 = block_hash(lists:nth(2, EasyChain)),
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash1, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash1, 1)),
 
     %% A special case error is if the header has higher height than the top hash
     Hash2 = block_hash(lists:last(EasyChain)),
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash2, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash2, 1)),
 
     %% A special case error is if the hash doesn't exist
     Hash3 = <<123:256>>,
     ?assertEqual(error,
-                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash3, 1)),
+                 aec_chain:get_at_most_n_generation_headers_forward_from_hash(Hash3, 1)),
     ok.
 
 %%%===================================================================
@@ -407,7 +415,7 @@ target_validation_test_() ->
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow, [passthrough]),
-             meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 3),
+             meck:expect(aec_governance, key_blocks_to_check_difficulty_count, 0, 3),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
              aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
@@ -421,10 +429,10 @@ target_validation_test_() ->
              aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
-       " in first (blocks_to_check_difficulty_count + 1) headers/blocks",
+       " in first (key_blocks_to_check_difficulty_count + 1) headers/blocks",
        fun constant_target_at_the_beginning_of_the_chain/0},
       {"Ensure target is verified based on calculations"
-       " after (blocks_to_check_difficulty_count + 1) headers/blocks",
+       " after (key_blocks_to_check_difficulty_count + 1) headers/blocks",
        fun target_verified_based_on_calculations/0},
       {"Test target is verified even for blocks coming"
        " in different order, hence fork is rejected",
@@ -726,6 +734,7 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    meck:expect(aec_governance, miner_reward_delay, 0, 100),
     Spend1 = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
     Spend2 = aetx_sign:sign(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, 1, 1],
@@ -743,15 +752,16 @@ fork_get_transaction() ->
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, EasyChainExtensionTargets, 111, TxsFun)),
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, HardChainExtensionTargets, 222, TxsFun)),
 
-    EasyTopBlock = lists:last(EasyChain),
+    %% Txs is in second to last (micro-)block
+    EasyTopBlock = lists:last(lists:droplast(EasyChain)),
     [EasySpend] = aec_blocks:txs(EasyTopBlock),
     EasyTxHash = aetx_sign:hash(EasySpend),
 
-    HardTopBlock = lists:last(HardChain),
+    HardTopBlock = lists:last(lists:droplast(HardChain)),
     [HardSpend] = aec_blocks:txs(HardTopBlock),
     HardTxHash = aetx_sign:hash(HardSpend),
 
-    HardButLastBlock = lists:last(lists:droplast(HardChain)),
+    HardButLastBlock = lists:last(lists:sublist(HardChain, 1, length(HardChain) - 3)),
     [HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
     HardButLastTxHash = aetx_sign:hash(HardButLastSpend),
 

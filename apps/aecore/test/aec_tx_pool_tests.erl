@@ -78,6 +78,13 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
+
+               %% The first block needs to be a key-block
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block()),
+               {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+               ok = aec_chain_state:insert_block(KeyBlock1),
+               ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+
                TopBlock = aec_chain:top_block(),
                TopBlockHash = aec_chain:top_block_hash(),
 
@@ -90,7 +97,9 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
                %% Insert a block in chain.
-               {ok, Candidate1, _} = aec_block_candidate:create(TopBlock),
+               {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
+
                {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(CHash1, aec_chain:top_block_hash()),
@@ -106,32 +115,51 @@ tx_pool_test_() ->
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
 
                %% Create a fork
+               %% First add a chain of two micro blocks with key blocks
+               %% on top of each of them
                STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 1),
-               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
-               ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               {ok, Candidate2, _} = aec_block_candidate:create(TopBlock),
-               {ok, CHash2} = aec_blocks:hash_internal_representation(Candidate2),
+               {ok, USCandidate3, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, Candidate3} = aec_keys:sign_micro_block(USCandidate3),
 
-               %% Ensure that the new fork takes over by
+               ok = aec_chain_state:insert_block(Candidate3),
+               TopBlockFork1 = aec_chain:top_block(),
+               {ok, KeyBlock2} = aec_block_key_candidate:create(TopBlockFork1),
+               {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
+
+               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
+               ?assertEqual(ok, aec_tx_pool:push(STx4)),
+               {ok, USCandidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, Candidate4} = aec_keys:sign_micro_block(USCandidate4),
+
+               ok = aec_chain_state:insert_block(Candidate4),
+               TopBlockFork2 = aec_chain:top_block(),
+               {ok, KeyBlock3} = aec_block_key_candidate:create(TopBlockFork2),
+               {ok, CHashFork2} = aec_blocks:hash_internal_representation(KeyBlock3),
+
+               %% Push the keyblock with the longest chain of micro blocks
+               ok = aec_chain_state:insert_block(KeyBlock3),
+               ?assertEqual(CHashFork2, aec_chain:top_block_hash()),
+               aec_tx_pool:top_change(CHash1, CHashFork2),
+               %% The mempool should now be empty
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
+
+               %% Ensure that the shorter fork takes over by
                %% increasing the difficulty
                meck:new(aec_blocks, [passthrough]),
                meck:expect(aec_headers, difficulty,
                            fun(B) -> meck:passthrough([B]) * 2 end),
 
-               ok = aec_chain_state:insert_block(Candidate2),
-
-               %% The new fork took over
-               ?assertEqual(CHash2, aec_chain:top_block_hash()),
+               %% Push the keyblock with the shorter chain of micro blocks
+               %% and check that it takes over.
+               ok = aec_chain_state:insert_block(KeyBlock2),
+               ?assertEqual(CHashFork1, aec_chain:top_block_hash()),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(CHash1, CHash2),
+               aec_tx_pool:top_change(CHashFork2, CHashFork1),
 
-               %% The old transactions should now be back in the pool
-               {ok, PoolTxs2} = aec_tx_pool:peek(infinity),
-               Sorted2 = lists:sort(PoolTxs2),
-               ?assertEqual(lists:sort([STx1, STx2]), Sorted2),
-
+               %% The not included transaction should now be back in the pool
+               ?assertEqual({ok, [STx4]}, aec_tx_pool:peek(infinity)),
 
                meck:unload(aec_headers),
                ok
@@ -237,12 +265,20 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
+
+               %% The first block needs to be a key-block
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block()),
+               {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+               ok = aec_chain_state:insert_block(KeyBlock1),
+               ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+
                TopBlock = aec_chain:top_block(),
 
                %% Add a transaction to the chain
                STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               {ok, Candidate1, _} = aec_block_candidate:create(TopBlock),
+               {ok, USCandidate1, _} = aec_block_micro_candidate:create(TopBlock),
+               {ok, Candidate1} = aec_keys:sign_micro_block(USCandidate1),
                {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(Top, aec_chain:top_block_hash()),
@@ -284,7 +320,7 @@ tx_pool_test_() ->
                %% A transaction with too low ttl should be rejected
                %% First add another block to make the chain high enough to
                %% fail on TTL
-               {ok, Candidate2, _} = aec_block_candidate:create(aec_chain:top_block()),
+               {ok, Candidate2} = aec_block_key_candidate:create(aec_chain:top_block()),
                {ok, Top2} = aec_blocks:hash_internal_representation(Candidate2),
                ok = aec_chain_state:insert_block(Candidate2),
                ?assertEqual(Top2, aec_chain:top_block_hash()),
@@ -392,7 +428,7 @@ signed_ct_call_tx(Sender, Nonce, Fee, GasPrice) ->
     STx.
 
 sign(me, Tx) ->
-    aec_keys:sign(Tx);  %% why via keys here?
+    aec_keys:sign_tx(Tx);  %% why via keys here?
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),

@@ -56,7 +56,7 @@ txs_hash() ->
 txs_hash(Txs) ->
     <<0:?TXS_HASH_BYTES/unit:8>> =
         aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
-                                                          Txs))).
+            Txs))).
 
 pow() ->
     no_value.
@@ -64,8 +64,9 @@ pow() ->
 transactions() ->
     [].
 
-miner() ->
-    <<0:?MINER_PUB_BYTES/unit:8>>.
+height() -> ?GENESIS_HEIGHT.
+
+miner() -> <<0:?MINER_PUB_BYTES/unit:8>>.
 
 %% Returns the genesis block and the state trees.
 %%
@@ -79,14 +80,13 @@ genesis_block_with_state() ->
 
 genesis_block_with_state(Map) ->
     Txs = transactions(),
+    %% INFO NG: genesis block is a key block. We use micro API, because it handles txs
     {ok, Txs, Trees} =
-        aec_block_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
-                                                   height(), ?GENESIS_VERSION),
+        aec_block_micro_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
+                                                         height(), ?GENESIS_VERSION),
 
-    Block = aec_blocks:new(height(), prev_hash(), aec_trees:hash(Trees),
-                           txs_hash(Txs), Txs, ?HIGHEST_TARGET_SCI, 0, 0, %%Epoch
-                           ?GENESIS_VERSION, miner()),
-
+    Block = aec_blocks:new_key(height(), prev_hash(), aec_trees:hash(Trees),
+                               ?HIGHEST_TARGET_SCI, 0, 0, ?GENESIS_VERSION, miner()),
     {Block, Trees}.
 
 %% Returns state trees at genesis block.
@@ -107,8 +107,6 @@ populated_trees(Map) ->
                     end, aec_trees:accounts(StateTrees), PresetAccounts),
     aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
-height() ->
-    ?GENESIS_HEIGHT.
 
 %% Returns the difficulty of the genesis block meant to be used in the
 %% computation of the chain difficulty.

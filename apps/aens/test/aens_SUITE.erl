@@ -90,7 +90,7 @@ preclaim(Cfg) ->
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     {ok, [SignedTx], Trees1} =
-        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_PRECLAIM, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_PRECLAIM, Trees, Height, ?PROTOCOL_VERSION),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment created
@@ -163,7 +163,7 @@ claim(Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
-        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_CLAIM, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_CLAIM, Trees, Height, ?PROTOCOL_VERSION),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment removed and name entry added
@@ -267,7 +267,7 @@ update(Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
-        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_UPDATE, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_UPDATE, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -363,7 +363,7 @@ transfer(Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
     {ok, [SignedTx], Trees2} =
-        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_TRANSFER, Trees1, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_TRANSFER, Trees1, Height, ?PROTOCOL_VERSION),
 
     %% Check name new owner
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
@@ -441,7 +441,7 @@ revoke(Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
     {ok, [SignedTx], Trees1} =
-        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_REVOKE, Trees, Height, ?PROTOCOL_VERSION),
+        aec_block_micro_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY_REVOKE, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Check name revoked
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),

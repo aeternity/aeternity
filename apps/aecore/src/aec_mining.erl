@@ -26,4 +26,3 @@ get_miner_account_balance() ->
             {error, account_not_found}
     end.
 -endif.
-

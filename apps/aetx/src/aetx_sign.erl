@@ -49,6 +49,9 @@
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
 -spec new(aetx:tx(), [binary()]) -> signed_tx().
+new(Bin, Signatures) when is_binary(Bin) ->
+    true = lists:all(fun is_binary/1, Signatures),
+    {Bin, lists:usort(Signatures)};
 new(Tx, Signatures) ->
     _ = aetx:specialize_type(Tx),
     true = lists:all(fun is_binary/1, Signatures),
@@ -57,18 +60,21 @@ new(Tx, Signatures) ->
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
--spec sign(aetx:tx(), list(binary()) | binary()) -> signed_tx().
+-spec sign(aetx:tx(), list(binary()) | binary()) -> signed_tx() | tuple().
 sign(Tx, PrivKey) when is_binary(PrivKey) ->
-  sign(Tx, [PrivKey]);
+    sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
         [] -> pass
     end,
-    Signatures = [ enacl:sign_detached(Bin, PrivKey)
-                   || PrivKey <- PrivKeys],
-    #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
+    Signatures = sign_bin(Bin, PrivKeys),
+    #signed_tx{tx = Tx, signatures = Signatures}.
+
+sign_bin(Bin, PrivKeys) ->
+    Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
+    lists:sort(Signatures).
 
 -spec hash(signed_tx()) -> binary().
 hash(#signed_tx{} = Tx) ->

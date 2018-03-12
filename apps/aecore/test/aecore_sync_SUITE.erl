@@ -320,6 +320,10 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     aecore_suite_utils:stop_node(Dev2, Config),
 
+    %% Hotfix - make sure mempool is empty
+    aecore_suite_utils:mine_blocks(N1, 4),
+    {ok, []} = rpc:call(N1, aec_tx_pool, peek, [infinity], 5000),
+
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top at Dev1 = ~p", [Top1]),
     ExtraBlocks = 5,  %% Might need more if CPU is really fast!
@@ -398,7 +402,9 @@ mine_on_third(Config) ->
 mine_and_compare(N1, Config) ->
     AllNodes = [N || {_, N} <- ?config(nodes, Config)],
     PrevTop = rpc:call(N1, aec_chain, top_block, [], 5000),
-    aecore_suite_utils:mine_blocks(N1, 1),
+    %% If there are txs in the mempool, the second block will be a micro block.
+    {ok, [KeyBlock, _KeyOrMicroBlock]} = aecore_suite_utils:mine_blocks(N1, 2),
+    true = aec_blocks:is_key_block(KeyBlock),
     NewTop = rpc:call(N1, aec_chain, top_block, [], 5000),
     true = (NewTop =/= PrevTop),
     Bal1 = get_balance(N1),

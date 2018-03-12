@@ -42,7 +42,7 @@ validate_test_() ->
      end,
      [fun() ->
               Header = #header{version = 736},
-              ?assertEqual({error, unknown_protocol_version}, ?TEST_MODULE:validate(Header))
+              ?assertEqual({error, unknown_protocol_version}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               GV = ?GENESIS_VERSION,
@@ -54,28 +54,28 @@ validate_test_() ->
                             3+GV => 150 + ?GENESIS_HEIGHT}),
               %% Check for any off-by-one errors around first switch.
               ?assertEqual({error, {protocol_version_mismatch, GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 99 + ?GENESIS_HEIGHT,
                                       version = 1+GV})),
               ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 100 + ?GENESIS_HEIGHT,
                                       version = GV})),
               ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 101 + ?GENESIS_HEIGHT,
                                       version = 3+GV})),
               %% Check for any off-by-one errors around second switch.
               ?assertEqual({error, {protocol_version_mismatch, 1+GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 149 + ?GENESIS_HEIGHT,
                                       version = 3+GV})),
               ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 150 + ?GENESIS_HEIGHT,
                                       version = 1+GV})),
               ?assertEqual({error, {protocol_version_mismatch, 3+GV}},
-                           ?TEST_MODULE:validate(
+                           ?TEST_MODULE:validate_key_block_header(
                               #header{height = 151 + ?GENESIS_HEIGHT,
                                       version = 1+GV})),
               ok
@@ -83,7 +83,7 @@ validate_test_() ->
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, false),
               Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
-              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate(Header))
+              ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
@@ -91,22 +91,22 @@ validate_test_() ->
               meck:expect(aeu_time, now_in_msecs, 0, NowTime),
               Header = #header{time = 2 * NowTime,
                                height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
-              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate(Header))
+              ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
               Header = #header{height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
-              ?assertEqual(ok, ?TEST_MODULE:validate(Header))
+              ?assertEqual(ok, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
               Header = #header{nonce = -1,
                                height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
-              ?assertError(function_clause, ?TEST_MODULE:validate(Header))
+              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
               Header = #header{nonce = 16#1ffffffffffffffff,
                                height = ?GENESIS_HEIGHT, version = ?GENESIS_VERSION},
-              ?assertError(function_clause, ?TEST_MODULE:validate(Header))
+              ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header))
       end]}.

@@ -60,6 +60,7 @@ init([]) ->
     %% TODO: Think about the startup/sync phase...
     aec_events:subscribe(top_changed),
     aec_events:subscribe(block_created),
+    aec_events:subscribe(micro_block_created),
     {ok, #state{}}.
 
 handle_call(_Msg, _From, State) ->
@@ -78,6 +79,8 @@ handle_info({gproc_ps_event, Event = top_changed, #{ info := BlockHash }}, State
     {ok, Block} = aec_chain:get_block(BlockHash),
     notify_subscribers(Event, Block, State);
 handle_info({gproc_ps_event, Event = block_created, #{ info := Block }}, State) ->
+    notify_subscribers(Event, Block, State);
+handle_info({gproc_ps_event, Event = micro_block_created, #{ info := Block }}, State) ->
     notify_subscribers(Event, Block, State).
 
 notify_subscribers(top_changed = Event, Block, State = #state{ subscribed = Subs }) ->
@@ -85,6 +88,10 @@ notify_subscribers(top_changed = Event, Block, State = #state{ subscribed = Subs
     notify_tx_subscribers(aec_blocks:txs(Block), Subs),
     {noreply, State};
 notify_subscribers(block_created = Event, Block, State = #state{ subscribed = Subs }) ->
+    notify_chain_subscribers(Event, Block, Subs),
+    {noreply, State};
+notify_subscribers(micro_block_created = Event, Block, State = #state{ subscribed = Subs }) ->
+    notify_tx_subscribers(aec_blocks:txs(Block), Subs),
     notify_chain_subscribers(Event, Block, Subs),
     {noreply, State}.
 
@@ -144,6 +151,12 @@ notify_chain_subscribers(block_created, Block, #sub{ chain = Cs }) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     [ Ws ! {event, mined_block, {BlockHeight, BlockHash}}
         || {{ws, Ws}, mined_block} <- Cs ],
+    ok;
+notify_chain_subscribers(micro_block_created, Block, #sub{ chain = Cs }) ->
+    BlockHeight = aec_blocks:height(Block),
+    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    [ Ws ! {event, added_micro_block, {BlockHeight, BlockHash}}
+        || {{ws, Ws}, added_micro_block} <- Cs ],
     ok;
 notify_chain_subscribers(top_changed, Block, #sub{ chain = Cs }) ->
     BlockHeight = aec_blocks:height(Block),
