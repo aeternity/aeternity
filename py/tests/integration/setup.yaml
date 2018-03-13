@@ -102,7 +102,7 @@ tests: # test specific settings
       spend_tx:
         amount: 7
   test_contracts:
-    test_compile_id:
+    test_compile_and_call_id:
       nodes:
         alice: dev1
     test_encode_id_call:
