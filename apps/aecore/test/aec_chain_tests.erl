@@ -687,6 +687,7 @@ forking_test_() ->
      , {"Fork on shorter chain because of difficulty", fun fork_on_shorter/0}
      , {"Fork on last block", fun fork_on_last_block/0}
      , {"Fork and out of order", fun fork_out_of_order/0}
+     , {"Get by height in forks", fun fork_get_by_height/0}
      ]}.
 
 fork_on_genesis() ->
@@ -772,6 +773,23 @@ fork_out_of_order() ->
                  top_block_hash()),
     ok.
 
+
+fork_get_by_height() ->
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2], 111)),
+    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1], 222)),
+
+    ok = write_blocks_to_chain(EasyChain),
+    ?assertEqual({ok, block_hash(lists:last(EasyChain))},
+                 aec_chain_state:get_hash_at_height(4)),
+
+    ok = write_blocks_to_chain(HardChain),
+    ?assertEqual({ok, block_hash(lists:last(HardChain))},
+                 aec_chain_state:get_hash_at_height(4)),
+
+    ?assertEqual(error, aec_chain_state:get_hash_at_height(5)),
+
+    ok.
 
 %%%===================================================================
 %%% Blocks time summary tests

@@ -182,12 +182,27 @@ wrap_header(Header) ->
 export_header(#node{header = Header}) ->
     Header.
 
+%% NOTE: Only return nodes in the main chain.
+%%       The function assumes that a node is in the main chain if
+%%       there is only one node at that height, and the height is lower
+%%       than the current top.
 get_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
     case get_top_header_hash(State) of
         undefined -> error;
         Hash ->
             TopHeight = node_height(db_get_node(Hash)),
-            get_hash_at_height(Height, TopHeight, Hash)
+            case Height > TopHeight of
+                true  -> error;
+                false ->
+                    case db_find_nodes_at_height(Height) of
+                        error -> error({broken_chain, Height});
+                        {ok, [Node]} -> {ok, hash(Node)};
+                        {ok, [_|_]} ->
+                            %% We need to determine which of the
+                            %% nodes that is in the main chain.
+                            get_hash_at_height(Height, TopHeight, Hash)
+                    end
+            end
     end.
 
 get_hash_at_height(Height, Height, Hash) ->
@@ -567,6 +582,15 @@ db_get_node(Hash) ->
     {ok, Node} = db_find_node(Hash),
     Node.
 
+db_find_nodes_at_height(Height) ->
+    case aec_db:find_chain_nodes_at_height(Height) of
+        [_|_] = Nodes ->
+            {ok, lists:map(fun({Type, Header}) -> wrap_node(Type, Header) end,
+                           Nodes)};
+        [] -> error
+    end.
+
+
 db_put_state(Hash, Trees) ->
     Trees1 = aec_trees:commit_to_db(Trees),
     ok = aec_db:write_block_state(Hash, Trees1).
@@ -591,6 +615,8 @@ db_find_prev_hash(Hash) ->
     end.
 
 db_children(Node) ->
-    Hash = hash(Node),
+    Height = node_height(Node),
+    Hash   = hash(Node),
     [wrap_node(Type, Header)
-     || {Type, Header} <- aec_db:find_chain_node_successors(Hash)].
+     || {Type, Header} <- aec_db:find_chain_nodes_at_height(Height + 1),
+        aec_headers:prev_hash(Header) =:= Hash].
