@@ -3,89 +3,18 @@
 import tempfile
 import os
 import shutil
-import time
 from nose.tools import assert_equals, assert_not_equals, with_setup
 import common
 import json
-from waiting import wait
-from swagger_client.models.ping import Ping 
 from swagger_client.models.tx import Tx
 from swagger_client.models.spend_tx import SpendTx
 from swagger_client.models.name_preclaim_tx import NamePreclaimTx
 from swagger_client.models.name_claim_tx import NameClaimTx
 from swagger_client.models.name_update_tx import NameUpdateTx
-from swagger_client.rest import ApiException
 
 import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
-
-def test_successful():
-    # Alice should be able to create a spend transaction to send tokens to
-    # Bob. In a controlled environment, Alice should see her transaction
-    # appear in the next block or two that are added to the blockchain. 
-    #
-    # Once that happens, Alice should see her account debited and Bob's
-    # account credited with the same number of tokens.
-    #
-    # The debit/credit should not happen until the transaction is confirmed,
-    # e.g. included in at least one block in the chain.
-    test_settings = settings["test_successful"]
-    coinbase_reward = common.coinbase_reward() 
-    (root_dir, alice_node, alice_api, alice_top) = setup_node_with_tokens(test_settings, "alice") 
-    alice_internal_api = common.internal_api(alice_node)
-
-    spend_tx_amt = test_settings["spend_tx"]["amount"]
-    spend_tx_fee = test_settings["spend_tx"]["fee"]
-    alice_balance = common.get_account_balance(alice_internal_api)
-    alice_has_enough_tokens = alice_balance.balance >= spend_tx_amt + spend_tx_fee
-    assert_equals(alice_has_enough_tokens, True)
-    print("Alice initial balance is " + str(alice_balance.balance))
-
-    bob_balance0 = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
-    # Alice sends some tokens to Bob 
-    alice_internal_api = common.internal_api(alice_node)
-    spend_tx_obj = SpendTx(
-        recipient_pubkey=test_settings["spend_tx"]["bob_pubkey"],
-        amount=spend_tx_amt,
-        fee=spend_tx_fee)
-    print("Alice's spend_tx is " + str(spend_tx_obj))
-    alice_internal_api.post_spend_tx(spend_tx_obj)
-    print("Transaction sent")
-
-    # ensure Alice balance had not changed
-    alice_balance1 = common.get_account_balance(alice_internal_api)
-    assert_equals(alice_balance.balance, alice_balance1.balance)
-
-    # ensure Bob balance had not changed
-    bob_balance1 = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
-    assert_equals(bob_balance1.balance, bob_balance0.balance)
-
-    # wait for a block to be mined
-    print("Waiting for a next block to be mined")
-    common.wait_until_height(alice_api, alice_top.height + 1)
-
-    alice_new_top = alice_api.get_top()
-    alice_new_balance = common.get_account_balance(alice_internal_api)
-    
-    blocks_mined = alice_new_top.height - alice_top.height
-
-    # Since Alice had mined the block she is receiving the fee and the
-    # coinbase_reward
-    # Alice should have
-    # tokens = old_balance - spent_amt - spend_tx + spent_fee + coinbase_reward
-    expected_balance = alice_balance.balance - spend_tx_amt  + coinbase_reward * blocks_mined
-    assert_equals(alice_new_balance.balance, expected_balance)
-
-    bob_balance = common.get_account_balance(alice_internal_api, pub_key=test_settings["spend_tx"]["bob_pubkey"])
-    print("Coinbase reward is " + str(coinbase_reward) + ", had mined " +
-            str(blocks_mined) + " blocks")
-    print("Alice's balance (with a coinbase reward) is now " + str(alice_new_balance.balance))
-    print("Bob's balance is now " + str(bob_balance.balance))
-    assert_equals(bob_balance.balance, spend_tx_amt)
-    # stop node
-    common.stop_node(alice_node)
-    shutil.rmtree(root_dir)
 
 def test_not_enough_tokens():
     # Bob should not be able to send more tokens than he has

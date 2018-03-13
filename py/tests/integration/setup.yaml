@@ -55,23 +55,6 @@ tests: # test specific settings
         carol: dev3
       blocks_to_mine: 7
   test_spend_tx:
-    test_successful:
-      # Alice should be able to create a spend transaction to send tokens to
-      # Bob. In a controlled environment, Alice should see her transaction
-      # appear in the next block or two that are added to the blockchain. 
-      #
-      # Once that happens, Alice should see her account debited and Bob's
-      # account credited with the same number of tokens.
-      #
-      # The debit/credit should not happen until the transaction is confirmed,
-      # e.g. included in at least one block in the chain.
-      nodes:
-        alice: dev1
-      blocks_to_mine: 7
-      spend_tx:
-        bob_pubkey: ak$3kj9ijauBtf2SZQdJm1f1 
-        amount: 42
-        fee: 2
     test_not_enough_tokens:
     # Bob should not be able to send more tokens than he has
     #

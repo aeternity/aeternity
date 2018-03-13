@@ -148,6 +148,17 @@ def test_contract_call():
 
 
 def test_spend():
+    # Alice should be able to create a spend transaction to send tokens to
+    # Bob. In a controlled environment, Alice should see her transaction
+    # appear in the next block or two that are added to the blockchain.
+    #
+    # Once that happens, Alice should see her account debited and Bob's
+    # account credited with the same number of tokens.
+    #
+    # The debit/credit should not happen until the transaction is confirmed,
+    # e.g. included in at least one block in the chain.
+
+    # Setup
     test_settings = settings["test_spend"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
@@ -161,6 +172,10 @@ def test_spend():
     test_settings["alice"]["pubkey"] = alice_address
     send_tokens_to_user("alice", test_settings, internal_api)
 
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
+
+    # Alice creates spend tx
     spend_data_obj = SpendTx(
             sender=alice_address,
             recipient_pubkey=bob_address,
@@ -172,30 +187,32 @@ def test_spend():
     unsigned_tx = common.base58_decode(unsigned_spend_enc)
     unpacked_tx = common.unpack_tx(unsigned_tx)
     print("Tx " + str(common.parse_tx(unpacked_tx)))
-
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
-
-    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
-    print("Signed transaction " + signed)
     print("Tx hash " + tx_hash)
 
+    # Alice signs spend tx
+    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    print("Signed transaction " + signed)
+
+    # Alice posts spend tx
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
-    
-    top = external_api.get_top()
-    common.wait_until_height(external_api, top.height + 3)
+    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
+
+    # Wait until spend tx is mined
+    wait(lambda: common.get_account_balance(internal_api, pub_key=alice_address).balance < alice_balance0,
+         timeout_seconds=120, sleep_seconds=0.25)
+    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - shall be in a block
+    print("Tx in chain ")
+
+    # Check that Alice was debited and Bob was credited
     alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
     bob_balance = common.get_account_balance(internal_api, pub_key=bob_address).balance
-    tx = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
-
     print("Alice balance now is " + str(alice_balance))
     print("Bob balance now is " + str(bob_balance))
-    print("Balances are updated, transaction has been executed")
-
     assert_equals(alice_balance0, alice_balance + test_settings["spend_tx"]["fee"] + test_settings["spend_tx"]["amount"])
-
     assert_equals(bob_balance0, bob_balance - test_settings["spend_tx"]["amount"])
+
+    # Cleanup
     cleanup(node, root_dir)
 
 def cleanup(node, root_dir):
