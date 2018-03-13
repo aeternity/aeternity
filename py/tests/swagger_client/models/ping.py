@@ -16,7 +16,7 @@ import re  # noqa: F401
 
 import six
 
-from swagger_client.models.uri import Uri  # noqa: F401,E501
+from swagger_client.models.peer import Peer  # noqa: F401,E501
 
 
 class Ping(object):
@@ -38,7 +38,7 @@ class Ping(object):
         'best_hash': 'str',
         'difficulty': 'float',
         'share': 'int',
-        'peers': 'list[Uri]'
+        'peers': 'list[Peer]'
     }
 
     attribute_map = {
@@ -192,7 +192,7 @@ class Ping(object):
 
 
         :return: The peers of this Ping.  # noqa: E501
-        :rtype: list[Uri]
+        :rtype: list[Peer]
         """
         return self._peers
 
@@ -202,7 +202,7 @@ class Ping(object):
 
 
         :param peers: The peers of this Ping.  # noqa: E501
-        :type: list[Uri]
+        :type: list[Peer]
         """
 
         self._peers = peers

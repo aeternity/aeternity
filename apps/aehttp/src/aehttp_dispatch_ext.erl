@@ -536,49 +536,78 @@ handle_ping(#{<<"source">> := Src} = PingObj) ->
             abort_sync(Src, 403, <<"Not allowed">>)
     end.
 
-handle_ping_(Source, PingObj) ->
-    LocalPingObj = aec_sync:local_ping_object(),
+handle_ping_(Source, #{<<"source_id">> := _} = PingObj) ->
     case PingObj of
       #{<<"genesis_hash">> := EncRemoteGHash,
         <<"best_hash">> := EncRemoteTopHash,
-        <<"share">> := Share} ->
+        <<"share">> := _,
+        <<"source_id">> := EncSourceId} ->
+            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
+                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash),
+                  aec_base58c:safe_decode(node_id, EncSourceId)} of
+                {{ok, RemoteGHash}, {ok, RemoteTopHash}, {ok, RemoteSourceId}} ->
+                    RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
+                                         <<"best_hash">>  => RemoteTopHash,
+                                         <<"source_id">>  => RemoteSourceId},
+                    handle_decoded_ping_(Source, RemoteObj, false);
+                _Res ->
+                    lager:debug("EEEEEEEEEE handle_ping_ 1 ERROR ~p~n", [_Res]),
+                    abort_ping(Source)
+            end;
+        _ ->
+          %% violation of protocol
+          abort_ping(Source)
+    end;
+handle_ping_(Source, PingObj) ->
+    %% Handling deprecated ping objects without `source_id`.
+    case PingObj of
+      #{<<"genesis_hash">> := EncRemoteGHash,
+        <<"best_hash">> := EncRemoteTopHash,
+        <<"share">> := _} ->
             case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
                   aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
                 {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
+                    %% Here we could generate a fake `source_id` from the URI,
+                    %% or set it to `undefined`.
                     RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
                                          <<"best_hash">>  => RemoteTopHash},
-                    lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
-                    case aec_sync:compare_ping_objects(
-                           Source, LocalPingObj, RemoteObj) of
-                        ok ->
-                            aec_peers:update_last_seen(Source),
-                            TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
-                            aec_peers:add_and_ping_peers(TheirPeers),
-                            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
-                            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
-                            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
-                                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
-                                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
-                                               },
-                            Res =
-                                case mk_num(Share) of
-                                    N when is_integer(N), N > 0 ->
-                                        Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                                        lager:debug("PeerUris = ~p~n", [Peers]),
-                                        Map#{<<"peers">> => Peers};
-                                    _ ->
-                                        Map
-                                end,
-                            {200, [], Res};
-                        {error, different_genesis_blocks} ->
-                            abort_ping(Source)
-                    end;
+                    handle_decoded_ping_(Source, RemoteObj, true);
                 _ ->
                     abort_ping(Source)
             end;
         _ ->
           %% violation of protocol
           abort_ping(Source)
+    end.
+
+handle_decoded_ping_(Source, RemoteObj, IsDeprecated) ->
+    LocalPingObj = aec_sync:local_ping_object(),
+    #{<<"share">> := Share} = RemoteObj,
+    lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
+    case aec_sync:compare_ping_objects(
+           Source, LocalPingObj, RemoteObj) of
+        ok ->
+            aec_peers:update_last_seen(Source),
+            TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
+            aec_peers:add_and_ping_peers(TheirPeers),
+            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
+            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
+            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
+                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
+                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
+                               },
+            Res =
+                case {IsDeprecated, mk_num(Share)} of
+                    {false, N} when is_integer(N), N > 0 ->
+                        Peers = aec_peers:get_random(N, [Source|TheirPeers]),
+                        lager:debug("PeerUris = ~p~n", [Peers]),
+                        Map#{<<"peers">> => Peers};
+                    _ ->
+                        Map
+                end,
+            {200, [], Res};
+        {error, different_genesis_blocks} ->
+            abort_ping(Source)
     end.
 
 abort_ping(Source) ->

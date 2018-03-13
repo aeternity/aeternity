@@ -68,10 +68,12 @@ local_ping_object() ->
     TopHash = aec_chain:top_header_hash(),
     Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
+    {ok, PubKey} = aec_keys:pubkey(),
     #{<<"genesis_hash">> => GHash,
       <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
       <<"source">>       => Source,
+      <<"source_id">>    => PubKey,
       <<"share">>        => 32,  % TODO: make this configurable
       <<"peers">>        => []}.
 

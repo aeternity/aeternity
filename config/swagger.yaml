@@ -1899,6 +1899,22 @@ definitions:
   Uri:
     type: string
     ## format: uri
+  NodeId:
+    type: string
+  Node:
+    type: object
+    properties:
+      uri:
+        type: '#/definitions/Uri'
+      id:
+        type: '#/definitions/NodeId'
+    required:
+    - uri
+    - id
+  Peer:
+    oneOf:
+    - $ref: '#/definitions/Uri'
+    - $ref: '#/definitions/Node'
   Header:
     type: object
     properties:
@@ -2001,6 +2017,8 @@ definitions:
     properties:
       source:
         type: string
+      source_id:
+        type: '#/definitions/NodeId'
       genesis_hash:
         type: string
       best_hash:
@@ -2013,7 +2031,7 @@ definitions:
       peers:
         type: array
         items:
-          $ref: '#/definitions/Uri'
+          $ref: '#/definitions/Peer'
           maxItems: 32
     required:
     - source
