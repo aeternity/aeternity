@@ -224,13 +224,13 @@ def setup_node_with_tokens(test_settings, node_name):
     common.start_node(node, sys_config)
     api = common.external_api(node)
 
-    # populate the chain so Alice had mined some blocks and has tokens
+    # populate the chain so node had mined some blocks and has tokens
     # to spend
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(api, blocks_to_mine)
     top = api.get_top()
     assert_equals(top.height >= blocks_to_mine, True)
-    # Now the node has at least blocks_to_mine blocks mined by Alice 
+    # Now the node has at least blocks_to_mine blocks mined
 
     return (root_dir, node, api, top)
 
