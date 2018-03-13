@@ -31,14 +31,42 @@ class ByteCode(object):
                             and the value is json key in definition.
     """
     swagger_types = {
+        'bytecode': 'str'
     }
 
     attribute_map = {
+        'bytecode': 'bytecode'
     }
 
-    def __init__(self):  # noqa: E501
+    def __init__(self, bytecode=None):  # noqa: E501
         """ByteCode - a model defined in Swagger"""  # noqa: E501
+
+        self._bytecode = None
         self.discriminator = None
+
+        if bytecode is not None:
+            self.bytecode = bytecode
+
+    @property
+    def bytecode(self):
+        """Gets the bytecode of this ByteCode.  # noqa: E501
+
+
+        :return: The bytecode of this ByteCode.  # noqa: E501
+        :rtype: str
+        """
+        return self._bytecode
+
+    @bytecode.setter
+    def bytecode(self, bytecode):
+        """Sets the bytecode of this ByteCode.
+
+
+        :param bytecode: The bytecode of this ByteCode.  # noqa: E501
+        :type: str
+        """
+
+        self._bytecode = bytecode
 
     def to_dict(self):
         """Returns the model properties as a dict"""
