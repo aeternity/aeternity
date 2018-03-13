@@ -30,7 +30,7 @@ def test_contract_create():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
@@ -84,7 +84,7 @@ def test_contract_call():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
 
     ## create contract
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
@@ -159,7 +159,7 @@ def test_spend():
     bob_address = test_settings["spend_tx"]["recipient"]
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
 
     spend_data_obj = SpendTx(
             sender=alice_address,
@@ -235,20 +235,23 @@ def setup_node_with_tokens(test_settings, node_name):
     return (root_dir, node, api, top)
 
 
-def send_tokens_to_user(user, test_settings, internal_api, external_api):
+def send_tokens_to_user(user, test_settings, internal_api):
+    return send_tokens_to_user_(test_settings[user]["pubkey"],
+                                test_settings[user]["amount"],
+                                test_settings[user]["fee"],
+                                internal_api)
+
+def send_tokens_to_user_(address, tokens, fee, internal_api):
+    def get_balance(k):
+        return common.get_account_balance(internal_api, k).balance
+    bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
-        recipient_pubkey=test_settings[user]["pubkey"],
-        amount=test_settings[user]["amount"],
-        fee=test_settings[user]["fee"])
-
-    # populate Alice's account
+        recipient_pubkey=address,
+        amount=tokens,
+        fee=fee)
     internal_api.post_spend_tx(spend_tx_obj)
-
-    top = external_api.get_top()
-    common.wait_until_height(external_api, top.height + 3)
-
-    balance_obj = common.get_account_balance(internal_api, pub_key=test_settings[user]["pubkey"])
-    print(user.capitalize() + "'s balance is now " + str(balance_obj.balance))
+    wait(lambda: get_balance(address) == (bal0 + tokens),
+         timeout_seconds=120, sleep_seconds=0.25)
 
 def get_unsigned_contract_create(owner, contract, external_api):
     contract_create_data_obj = ContractCreateData(
