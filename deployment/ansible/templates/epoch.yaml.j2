@@ -1,6 +1,6 @@
 ---
 peers:
-    {% for host in groups[env] | difference([inventory_hostname]) %}
+    {% for host in groups[hosts_group] | difference([inventory_hostname]) %}
 - "http://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:3013/"
     {% endfor %}
 

@@ -104,8 +104,8 @@ references:
         command: |
           export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu.tar.gz
           cd deployment/ansible
-          ansible-playbook -i inventory/openstack.yml --limit="epoch:&${DEPLOY_ENV:?}" \
-            --extra-vars "package=${PACKAGE:?} env=${DEPLOY_ENV:?}" \
+          ansible-playbook --limit="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}" \
+            --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?}" \
             deploy.yml
 
   upload_github_release_asset: &upload_github_release_asset

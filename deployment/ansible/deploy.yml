@@ -3,8 +3,8 @@
 # This is required to allow deploying on fraction of group hosts
 # For example rolling updates and deploying only to single hosts of a group
 #
-# For example below command will deploy only to ae-dev2-epoch-n0 host in dev2 group
-# ansible-playbook --limit="ae-dev2-epoch-n0" --extra-vars "env=dev2" deploy.yml
+# For example below command will deploy only to ae-dev2-epoch-n0 host in tag_env_dev2 group
+# ansible-playbook --limit="ae-dev2-epoch-n0" --extra-vars "hosts_group=tag_env_dev2" deploy.yml
 
 - name: Facts setup
   hosts: all
@@ -12,12 +12,12 @@
   # Executor facts will be gathered anyway in the task below
   gather_facts: no
   tasks:
-    - name: Gather facts from all hosts in {{ env }} group
+    - name: Gather facts from all hosts in {{ hosts_group }} group
       setup:
       run_once: yes
       delegate_to: "{{ item }}"
       delegate_facts: yes
-      with_items: "{{ groups[env] }}"
+      with_items: "{{ groups[hosts_group] }}"
 
 - name: Deploy epoch package
   hosts: all
@@ -32,7 +32,10 @@
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
     is_remote_package: false
 
+    # Label used for datadog tagging and ENV file planting
     env: unknown
+    # Group of the hosts used to configure node peers
+    hosts_group: unknown
     config:
       http:
         external:
