@@ -3456,13 +3456,13 @@ rpc(Node, Mod, Fun, Args) ->
 external_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"external">>, <<"port">>],
-                aehttp, [swagger_port_external], 8043]),
+                aehttp, [external, port], 8043]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}). % good enough for requests
 
 internal_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"internal">>, <<"port">>],
-                aehttp, [internal, swagger_port], 8143]),
+                aehttp, [internal, port], 8143]),
     aeu_requests:pp_uri({http, "127.0.0.1", Port}).
 
 ws_host_and_port() ->

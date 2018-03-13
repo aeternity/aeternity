@@ -130,10 +130,10 @@ get_http_api_acceptors(internal) ->
 
 get_http_api_port(external) ->
     aeu_env:user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                               aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT);
+                               aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT);
 get_http_api_port(internal) ->
     aeu_env:user_config_or_env([<<"http">>, <<"internal">>, <<"port">>],
-                               aehttp, [internal, swagger_port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
+                               aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT).
 
 
 get_http_api_listen_address(external) ->
