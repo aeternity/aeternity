@@ -61,19 +61,19 @@ prod-clean: KIND=prod
 prod-clean: internal-clean
 
 multi-start:
-	@make dev1-start
-	@make dev2-start
-	@make dev3-start
+	@$(MAKE) dev1-start
+	@$(MAKE) dev2-start
+	@$(MAKE) dev3-start
 
 multi-stop:
-	@make dev1-stop
-	@make dev2-stop
-	@make dev3-stop
+	@$(MAKE) dev1-stop
+	@$(MAKE) dev2-stop
+	@$(MAKE) dev3-stop
 
 multi-clean:
-	@make dev1-clean
-	@make dev2-clean
-	@make dev3-clean
+	@$(MAKE) dev1-clean
+	@$(MAKE) dev2-clean
+	@$(MAKE) dev3-clean
 
 dev1-build: KIND=dev1
 dev1-build: internal-build

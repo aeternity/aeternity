@@ -30,7 +30,7 @@ def test_contract_create():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
@@ -84,7 +84,7 @@ def test_contract_call():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
 
     ## create contract
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
@@ -148,6 +148,17 @@ def test_contract_call():
 
 
 def test_spend():
+    # Alice should be able to create a spend transaction to send tokens to
+    # Bob. In a controlled environment, Alice should see her transaction
+    # appear in the next block or two that are added to the blockchain.
+    #
+    # Once that happens, Alice should see her account debited and Bob's
+    # account credited with the same number of tokens.
+    #
+    # The debit/credit should not happen until the transaction is confirmed,
+    # e.g. included in at least one block in the chain.
+
+    # Setup
     test_settings = settings["test_spend"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
@@ -159,8 +170,12 @@ def test_spend():
     bob_address = test_settings["spend_tx"]["recipient"]
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api, external_api)
+    send_tokens_to_user("alice", test_settings, internal_api)
 
+    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
+
+    # Alice creates spend tx
     spend_data_obj = SpendTx(
             sender=alice_address,
             recipient_pubkey=bob_address,
@@ -172,30 +187,32 @@ def test_spend():
     unsigned_tx = common.base58_decode(unsigned_spend_enc)
     unpacked_tx = common.unpack_tx(unsigned_tx)
     print("Tx " + str(common.parse_tx(unpacked_tx)))
-
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
-
-    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
-    print("Signed transaction " + signed)
     print("Tx hash " + tx_hash)
 
+    # Alice signs spend tx
+    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    print("Signed transaction " + signed)
+
+    # Alice posts spend tx
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
-    
-    top = external_api.get_top()
-    common.wait_until_height(external_api, top.height + 3)
+    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
+
+    # Wait until spend tx is mined
+    wait(lambda: common.get_account_balance(internal_api, pub_key=alice_address).balance < alice_balance0,
+         timeout_seconds=120, sleep_seconds=0.25)
+    _ = external_api.get_tx(tx_hash=tx_hash) # it is there - shall be in a block
+    print("Tx in chain ")
+
+    # Check that Alice was debited and Bob was credited
     alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
     bob_balance = common.get_account_balance(internal_api, pub_key=bob_address).balance
-    tx = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
-
     print("Alice balance now is " + str(alice_balance))
     print("Bob balance now is " + str(bob_balance))
-    print("Balances are updated, transaction has been executed")
-
     assert_equals(alice_balance0, alice_balance + test_settings["spend_tx"]["fee"] + test_settings["spend_tx"]["amount"])
-
     assert_equals(bob_balance0, bob_balance - test_settings["spend_tx"]["amount"])
+
+    # Cleanup
     cleanup(node, root_dir)
 
 def cleanup(node, root_dir):
@@ -224,31 +241,34 @@ def setup_node_with_tokens(test_settings, node_name):
     common.start_node(node, sys_config)
     api = common.external_api(node)
 
-    # populate the chain so Alice had mined some blocks and has tokens
+    # populate the chain so node had mined some blocks and has tokens
     # to spend
     blocks_to_mine = test_settings["blocks_to_mine"]
     common.wait_until_height(api, blocks_to_mine)
     top = api.get_top()
     assert_equals(top.height >= blocks_to_mine, True)
-    # Now the node has at least blocks_to_mine blocks mined by Alice 
+    # Now the node has at least blocks_to_mine blocks mined
 
     return (root_dir, node, api, top)
 
 
-def send_tokens_to_user(user, test_settings, internal_api, external_api):
+def send_tokens_to_user(user, test_settings, internal_api):
+    return send_tokens_to_user_(test_settings[user]["pubkey"],
+                                test_settings[user]["amount"],
+                                test_settings[user]["fee"],
+                                internal_api)
+
+def send_tokens_to_user_(address, tokens, fee, internal_api):
+    def get_balance(k):
+        return common.get_account_balance(internal_api, k).balance
+    bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
-        recipient_pubkey=test_settings[user]["pubkey"],
-        amount=test_settings[user]["amount"],
-        fee=test_settings[user]["fee"])
-
-    # populate Alice's account
+        recipient_pubkey=address,
+        amount=tokens,
+        fee=fee)
     internal_api.post_spend_tx(spend_tx_obj)
-
-    top = external_api.get_top()
-    common.wait_until_height(external_api, top.height + 3)
-
-    balance_obj = common.get_account_balance(internal_api, pub_key=test_settings[user]["pubkey"])
-    print(user.capitalize() + "'s balance is now " + str(balance_obj.balance))
+    wait(lambda: get_balance(address) == (bal0 + tokens),
+         timeout_seconds=120, sleep_seconds=0.25)
 
 def get_unsigned_contract_create(owner, contract, external_api):
     contract_create_data_obj = ContractCreateData(
