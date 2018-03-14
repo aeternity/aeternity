@@ -368,7 +368,6 @@ validate_block_range(HeightFrom, HeightTo) ->
 
 -spec difficulty_at_top_block() -> {'ok', float()} | {'error', atom()}.
 difficulty_at_top_block() ->
-    %% TODO: This should be cached.
     case top_block_hash() of
         undefined -> {error, no_top};
         Hash -> difficulty_at_hash(Hash)
@@ -384,21 +383,19 @@ difficulty_at_top_header() ->
 
 -spec difficulty_at_hash(binary()) -> {'ok', float()} | {'error', atom()}.
 difficulty_at_hash(Hash) ->
-    case genesis_hash() of
-        undefined -> {error, not_rooted};
-        GHash -> difficulty_at_hash(Hash, GHash, 0)
-    end.
+    difficulty_at_hash(Hash, 0).
 
-difficulty_at_hash(GHash, GHash, Acc) ->
-    {ok, Header} = get_header(GHash),
-    {ok, Acc + aec_headers:difficulty(Header)};
-difficulty_at_hash(Hash, GHash, Acc) ->
-    case get_header(Hash) of
-        error -> {error, 'not_rooted'};
-        {ok, Header} ->
-            NewAcc = Acc + aec_headers:difficulty(Header),
-            PrevHash = aec_headers:prev_hash(Header),
-            difficulty_at_hash(PrevHash, GHash, NewAcc)
+difficulty_at_hash(Hash, Acc) ->
+    case aec_db:find_block_difficulty(Hash) of
+        {value, Difficulty} -> {ok, Acc + Difficulty};
+        none ->
+            case get_header(Hash) of
+                error -> {error, 'not_rooted'};
+                {ok, Header} ->
+                    NewAcc = Acc + aec_headers:difficulty(Header),
+                    PrevHash = aec_headers:prev_hash(Header),
+                    difficulty_at_hash(PrevHash, NewAcc)
+            end
     end.
 
 %%%===================================================================

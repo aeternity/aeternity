@@ -409,8 +409,8 @@ update_state_tree(#node{type = header}, State) ->
 update_state_tree(Node, State) ->
     StateOut = case get_state_trees_in(Node, State) of
                    error -> State;
-                   {ok, Trees} ->
-                       {State1,_Difficulty} = update_state_tree(Node, Trees, 0, State),
+                   {ok, Trees, Difficulty} ->
+                       {State1,_Difficulty} = update_state_tree(Node, Trees, Difficulty, State),
                        State1
                end,
     case find_top_header_hash(StateOut) of
@@ -418,22 +418,22 @@ update_state_tree(Node, State) ->
         not_found -> StateOut
     end.
 
-update_state_tree(#node{type = header},_TreesIn, Difficulty, State) ->
+update_state_tree(#node{type = header}, Difficulty, _TreesIn, State) ->
     {State, Difficulty};
 update_state_tree(Node, TreesIn, Difficulty, State) ->
-    case db_find_state(hash(Node)) of
-        {ok, Trees} -> update_next_state_tree(Node, Trees, Difficulty, State);
+    case db_find_state_and_difficulty(hash(Node)) of
+        {ok, Trees, DifficultyOut} ->
+            update_next_state_tree(Node, Trees, DifficultyOut, State);
         error ->
-            case apply_and_store_state_trees(Node, TreesIn, State) of
-                {ok, Trees} ->
-                    update_next_state_tree(Node, Trees, Difficulty, State);
+            case apply_and_store_state_trees(Node, TreesIn, Difficulty, State) of
+                {ok, Trees, DifficultyOut} ->
+                    update_next_state_tree(Node, Trees, DifficultyOut, State);
                 error ->
                     {State, Difficulty}
             end
     end.
 
-update_next_state_tree(Node, Trees, DifficultyIn, State) ->
-    Difficulty = DifficultyIn + node_difficulty(Node),
+update_next_state_tree(Node, Trees, Difficulty, State) ->
     Hash = hash(Node),
     State1 = set_top_block_hash(Hash, State),
     ChildrenNodes = db_children(Node),
@@ -454,19 +454,20 @@ update_next_state_tree_children([Child|Left], Trees, Difficulty, Max, State) ->
 
 get_state_trees_in(Node, State) ->
     case node_is_genesis_block(Node, State) of
-        true  -> {ok, aec_block_genesis:populated_trees()};
-        false -> db_find_state(prev_hash(Node))
+        true  -> {ok, aec_block_genesis:populated_trees(), 0};
+        false -> db_find_state_and_difficulty(prev_hash(Node))
     end.
 
-apply_and_store_state_trees(Node, TreesIn, #{currently_adding := Hash}) ->
+apply_and_store_state_trees(Node, TreesIn, DifficultyIn, #{currently_adding := Hash}) ->
     NodeHash = hash(Node),
     try
         Trees = apply_node_transactions(Node, TreesIn),
         assert_state_hash_valid(Trees, Node),
         assert_previous_height(Node),
         assert_calculated_target(Node),
-        ok = db_put_state(hash(Node), Trees),
-        {ok, Trees}
+        Difficulty = DifficultyIn + node_difficulty(Node),
+        ok = db_put_state(hash(Node), Trees, Difficulty),
+        {ok, Trees, Difficulty}
     catch
         %% Only catch this if the current node is NOT the one added in
         %% the call. We don't want to give an error message for any
@@ -591,13 +592,13 @@ db_find_nodes_at_height(Height) ->
     end.
 
 
-db_put_state(Hash, Trees) ->
+db_put_state(Hash, Trees, Difficulty) ->
     Trees1 = aec_trees:commit_to_db(Trees),
-    ok = aec_db:write_block_state(Hash, Trees1).
+    ok = aec_db:write_block_state(Hash, Trees1, Difficulty).
 
-db_find_state(Hash) ->
-    case aec_db:find_block_state(Hash) of
-        {value, Trees} -> {ok, Trees};
+db_find_state_and_difficulty(Hash) ->
+    case aec_db:find_block_state_and_difficulty(Hash) of
+        {value, Trees, Difficulty} -> {ok, Trees, Difficulty};
         none -> error
     end.
 
