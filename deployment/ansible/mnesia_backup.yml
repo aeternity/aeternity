@@ -1,0 +1,37 @@
+---
+# Playbook used to download (archived) Mnesia backup from last host in the playbook hosts
+#
+# By default the archive destination is overwritten if already exists,
+# if archive overwrite is not intended the caller is responsible for setting correct (e.g. unique) "backup_suffix"
+#
+# Example steps to restore a mnesia backup:
+# 1. Stop the node
+# 2. Delete existing mnesia database if any
+# 3. Disable mining autostart and empty the peers list in the config
+# 4. Start the node
+# 5. Restore the backup with "mnesia:restore("/tmp/mnesia.bak", [])."
+# 6. Enable mining autostart and restore the peers list in the config
+# 7. Start the node
+
+- name: Backup, archive and download Mnesia database
+  hosts: "{{ ansible_play_hosts | last }}"
+  remote_user: epoch
+
+  vars:
+    epoch_bin: "{{ ansible_env.HOME }}/node/bin/epoch"
+    download_dir: /tmp/mnesia_backups
+    backup_suffix: backup
+
+  tasks:
+    - name: Backup Mnesia database
+      command: "{{ epoch_bin }} eval 'ok = mnesia:backup(\"/tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}\").'"
+
+    - name: Archive Mnesia backup
+      archive:
+        path: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}
+        dest: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}.gz
+
+    - name: Download the Mnesia backup archive
+      fetch:
+        src: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}.gz
+        dest: "{{ download_dir }}"
