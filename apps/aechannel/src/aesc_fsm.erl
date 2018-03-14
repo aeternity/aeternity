@@ -3,6 +3,9 @@
 
 -export([start_link/1]).
 
+%% API
+-export([message/2]).
+
 -export([init/1,
          callback_mode/0,
          code_change/4,
@@ -65,6 +68,8 @@ callback_mode() -> [state_functions, state_enter].
 %%   |                                                                          |
 %%   +--------------------------------------------------------------------------+
 
+message(Fsm, Msg) ->
+    gen_statem:cast(Fsm, Msg).
 
 %% ======================================================================
 %% Timer values
@@ -91,7 +96,7 @@ init(_Args) ->
 
 initialized(enter, _OldSt, D) ->
     {keep_state, D, [timer(accept)]};
-initialized(cast, channel_accept, D) ->
+initialized(cast, {channel_accept, _Msg}, D) ->
     {next_state, accepted, D};
 initialized({timeout, accept} = T, _Msg, D) ->
     close(T, D);
@@ -100,7 +105,7 @@ initialized(cast, disconnect, D) ->
 
 accepted(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_create)]};
-accepted(cast, funding_created, D) ->
+accepted(cast, {funding_created, _Msg}, D) ->
     {next_state, half_signed, D};
 accepted(cast, disconnect, D) ->
     close(disconnect, D);
@@ -109,7 +114,7 @@ accepted({timeout, funding_create} = T, _Msg, D) ->
 
 half_signed(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_sign)]};
-half_signed(cast, funding_signed, D) ->
+half_signed(cast, {funding_signed, _Msg}, D) ->
     {next_state, signed, D};
 half_signed({timeout, funding_sign} = T, _Msg, D) ->
     close(T, D);
@@ -118,11 +123,11 @@ half_signed(cast, disconnect, D) ->
 
 signed(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_lock)]};
-signed(cast, funding_locked, D) ->
+signed(cast, {funding_locked, _Msg}, D) ->
     {next_state, signed, D};
 signed({timeout, funding_lock} = T, _Msg, D) ->
     close(T, D);
-signed(cast, shutdown, D) ->
+signed(cast, {shutdown, _Msg}, D) ->
     {next_state, closing, D};
 signed(cast, disconnect, D) ->
     {next_state, disconnected, D}.
@@ -131,7 +136,10 @@ open(enter, _OldSt, D) ->
     {keep_state, D, [timer(idle)]};
 open(cast, update, D) ->
     {keep_state, D};
-open(cast, shutdown, D) ->
+open(cast, {Upd, _Msg}, D) when Upd =:= update_deposit;
+                                Upd =:= update_withdrawal ->
+    {keep_state, D};
+open(cast, {shutdown, _Msg}, D) ->
     {next_state, closing, D};
 open(cast, disconnect, D) ->
     {next_state, disconnected, D};
@@ -143,7 +151,7 @@ closing(cast, disconnect, D) ->
 closing(cast, closing_signed, D) ->
     close(closing_signed, D).
 
-disconnected(cast, channel_reestablish, D) ->
+disconnected(cast, {channel_reestablish, _Msg}, D) ->
     {next_state, closing, D}.
 
 close(Reason, D) ->
