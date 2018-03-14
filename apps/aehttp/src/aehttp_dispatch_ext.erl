@@ -65,7 +65,6 @@ handle_request('GetBlockByHeight', Req, _Context) ->
     end;
 
 handle_request('GetBlockByHash' = _Method, Req, _Context) ->
-    lager:debug("got ~p; Req = ~p", [_Method, pp(Req)]),
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
@@ -77,8 +76,7 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
                     %% is already encoded to a binary; that's why we use
                     %% aec_blocks:serialize_to_map/1
                     lager:debug("Block = ~p", [pp(Block)]),
-                    Resp =
-                        cleanup_genesis(aec_blocks:serialize_to_map(Block)),
+                    Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
                     lager:debug("Resp = ~p", [pp(Resp)]),
                     {200, [], Resp};
                 error ->
@@ -101,8 +99,41 @@ handle_request('GetHeaderByHash', Req, _Context) ->
                     lager:debug("Resp = ~p", [pp(Resp)]),
                     {200, [], Resp};
                 error ->
-                    {404, [], #{reason => <<"Block not found">>}}
+                    {404, [], #{reason => <<"Header not found">>}}
             end
+    end;
+
+handle_request('GetHeadersByHash', Req, _Context) ->
+    case {aec_base58c:safe_decode(block_hash, maps:get('hash', Req)),
+          maps:get('number', Req, 1)} of
+        {{error, _}, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {_, N} when not is_integer(N) orelse N < 1 ->
+            {400, [], #{reason => <<"Invalid number">>}};
+        {{ok, Hash}, N} ->
+            case aec_chain:get_n_headers_from_hash(Hash, N) of
+                {ok, Headers} ->
+                    Resp = [ begin
+                               {ok, HH} = aec_headers:serialize_to_map(Header),
+                               HH
+                             end || Header <- Headers ],
+                    lager:debug("Resp ~p headers = ~p", [N, pp(Resp)]),
+                    {200, [], Resp};
+                error ->
+                    {404, [], #{reason => <<"Header not found">>}}
+            end
+    end;
+
+handle_request('GetHeaderByHeight', Req, _Context) ->
+    Height = maps:get('height', Req),
+    case aec_chain:get_header_by_height(Height) of
+        {ok, Header} ->
+            {ok, HH} = aec_headers:serialize_to_map(Header),
+            Resp = cleanup_genesis(HH),
+            lager:debug("Resp = ~p", [pp(Resp)]),
+            {200, [], Resp};
+        {error, chain_too_short} ->
+            {400, [], #{reason => <<"Chain too short">>}}
     end;
 
 handle_request('GetTxs', _Req, _Context) ->

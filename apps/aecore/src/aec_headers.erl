@@ -72,7 +72,7 @@ serialize_to_map(H = #header{}) ->
     {ok, Serialized}.
 
 
--spec deserialize_from_map(map()) -> {ok, header()}.
+-spec deserialize_from_map(map()) -> {ok, header()} | {error, deserialize}.
 deserialize_from_map(H = #{}) ->
       #{<<"height">> := Height,
         <<"prev_hash">> := PrevHash,

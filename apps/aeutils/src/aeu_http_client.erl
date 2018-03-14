@@ -7,10 +7,10 @@
 request(BaseUri, OperationId, Params) ->
     Timeout = aeu_env:user_config_or_env(
                 [<<"http">>, <<"external">>,<<"request_timeout">>],
-                aehttp, http_request_timeout, 1000),
+                aehttp, http_request_timeout, 5000),
     CTimeout = aeu_env:user_config_or_env(
                  [<<"http">>, <<"external">>, <<"connect_timeout">>],
-                 aehttp, http_connect_timeout, min(Timeout, 1000)),
+                 aehttp, http_connect_timeout, max(Timeout, 1000)),
     HTTPOptions = [{timeout, Timeout}, {connect_timeout, CTimeout}],
     %% we support only one method at the moment
     [Method|_] = maps:keys(endpoints:operation(OperationId)),

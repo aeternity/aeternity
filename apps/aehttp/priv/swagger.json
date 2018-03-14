@@ -132,6 +132,80 @@
         }
       }
     },
+    "/headers-by-hash" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get N headers from hash (down)",
+        "operationId" : "GetHeadersByHash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "hash",
+          "in" : "query",
+          "description" : "Hash of first block header to fetch",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "name" : "number",
+          "in" : "query",
+          "description" : "Number of hashes to fetch",
+          "required" : false,
+          "type" : "integer",
+          "default" : 1
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The headers found",
+            "schema" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/definitions/Header"
+              }
+            }
+          },
+          "400" : {
+            "description" : "Invalid hash or number",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Header(s) not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/header-by-height" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get a header by its height in the chain",
+        "operationId" : "GetHeaderByHeight",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "height",
+          "in" : "query",
+          "description" : "Height of the header to fetch",
+          "required" : true,
+          "type" : "integer"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The header found",
+            "schema" : {
+              "$ref" : "#/definitions/Header"
+            }
+          },
+          "400" : {
+            "description" : "Header not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/block-by-height" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
