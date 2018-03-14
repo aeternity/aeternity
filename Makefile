@@ -30,9 +30,6 @@ all:	local-build
 console:
 	@./rebar3 shell --config config/sys.config --sname epoch
 
-local-compile-deps: KIND=local
-local-compile-deps: internal-compile-deps
-
 local-build: KIND=local
 local-build: internal-build
 
@@ -80,9 +77,6 @@ multi-clean:
 	@$(MAKE) dev1-clean
 	@$(MAKE) dev2-clean
 	@$(MAKE) dev3-clean
-
-dev1-compile-deps: KIND=dev1
-dev1-compile-deps: internal-compile-deps
 
 dev1-build: KIND=dev1
 dev1-build: internal-build

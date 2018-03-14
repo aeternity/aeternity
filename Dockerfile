@@ -6,6 +6,7 @@ RUN cd /app && make prod-compile-deps
 # Add the whole project and compile epoch itself.
 ADD . /app
 RUN cd /app && make prod-build
+
 # Put epoch node in second stage container
 FROM ubuntu:16.04
 
