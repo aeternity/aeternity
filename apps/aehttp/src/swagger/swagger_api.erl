@@ -268,6 +268,17 @@ request_params('GetHeaderByHash') ->
         'hash'
     ];
 
+request_params('GetHeaderByHeight') ->
+    [
+        'height'
+    ];
+
+request_params('GetHeadersByHash') ->
+    [
+        'hash',
+        'number'
+    ];
+
 request_params('GetInfo') ->
     [
     ];
@@ -389,6 +400,17 @@ request_params('GetBlockByHeight') ->
 request_params('GetHeaderByHash') ->
     [
         'hash'
+    ];
+
+request_params('GetHeaderByHeight') ->
+    [
+        'height'
+    ];
+
+request_params('GetHeadersByHash') ->
+    [
+        'hash',
+        'number'
     ];
 
 request_params('GetTop') ->
@@ -1337,6 +1359,33 @@ request_param_info('GetHeaderByHash', 'hash') ->
         ]
     };
 
+request_param_info('GetHeaderByHeight', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetHeadersByHash', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetHeadersByHash', 'number') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            not_required
+        ]
+    };
+
 request_param_info('GetName', 'name') ->
     #{
         source => qs_val  ,
@@ -1534,6 +1583,33 @@ request_param_info('GetHeaderByHash', 'hash') ->
         rules => [
             {type, 'binary'},
             required
+        ]
+    };
+
+request_param_info('GetHeaderByHeight', 'height') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            required
+        ]
+    };
+
+request_param_info('GetHeadersByHash', 'hash') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            required
+        ]
+    };
+
+request_param_info('GetHeadersByHash', 'number') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'integer'},
+            not_required
         ]
     };
 
@@ -2671,6 +2747,18 @@ validate_response('GetHeaderByHash', 400, Body, ValidatorState) ->
 validate_response('GetHeaderByHash', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
+validate_response('GetHeaderByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('Header', 'Header', Body, ValidatorState);
+validate_response('GetHeaderByHeight', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetHeadersByHash', 200, Body, ValidatorState) ->
+    validate_response_body('list', 'Header', Body, ValidatorState);
+validate_response('GetHeadersByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetHeadersByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
 validate_response('GetInfo', 200, Body, ValidatorState) ->
     validate_response_body('Info', 'Info', Body, ValidatorState);
 validate_response('GetInfo', 403, Body, ValidatorState) ->
@@ -2825,6 +2913,18 @@ validate_response('GetHeaderByHash', 200, Body, ValidatorState) ->
 validate_response('GetHeaderByHash', 400, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 validate_response('GetHeaderByHash', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetHeaderByHeight', 200, Body, ValidatorState) ->
+    validate_response_body('Header', 'Header', Body, ValidatorState);
+validate_response('GetHeaderByHeight', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+
+validate_response('GetHeadersByHash', 200, Body, ValidatorState) ->
+    validate_response_body('list', 'Header', Body, ValidatorState);
+validate_response('GetHeadersByHash', 400, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
+validate_response('GetHeadersByHash', 404, Body, ValidatorState) ->
     validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTop', 200, Body, ValidatorState) ->

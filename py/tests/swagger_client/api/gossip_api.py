@@ -318,6 +318,200 @@ class GossipApi(object):
             _request_timeout=params.get('_request_timeout'),
             collection_formats=collection_formats)
 
+    def get_header_by_height(self, height, **kwargs):  # noqa: E501
+        """get_header_by_height  # noqa: E501
+
+        Get a header by its height in the chain  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_header_by_height(height, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param int height: Height of the header to fetch (required)
+        :return: Header
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_header_by_height_with_http_info(height, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_header_by_height_with_http_info(height, **kwargs)  # noqa: E501
+            return data
+
+    def get_header_by_height_with_http_info(self, height, **kwargs):  # noqa: E501
+        """get_header_by_height  # noqa: E501
+
+        Get a header by its height in the chain  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_header_by_height_with_http_info(height, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param int height: Height of the header to fetch (required)
+        :return: Header
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['height']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_header_by_height" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'height' is set
+        if ('height' not in params or
+                params['height'] is None):
+            raise ValueError("Missing the required parameter `height` when calling `get_header_by_height`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+        if 'height' in params:
+            query_params.append(('height', params['height']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/header-by-height', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='Header',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
+    def get_headers_by_hash(self, hash, **kwargs):  # noqa: E501
+        """get_headers_by_hash  # noqa: E501
+
+        Get N headers from hash (down)  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_headers_by_hash(hash, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str hash: Hash of first block header to fetch (required)
+        :param int number: Number of hashes to fetch
+        :return: list[Header]
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+        kwargs['_return_http_data_only'] = True
+        if kwargs.get('async'):
+            return self.get_headers_by_hash_with_http_info(hash, **kwargs)  # noqa: E501
+        else:
+            (data) = self.get_headers_by_hash_with_http_info(hash, **kwargs)  # noqa: E501
+            return data
+
+    def get_headers_by_hash_with_http_info(self, hash, **kwargs):  # noqa: E501
+        """get_headers_by_hash  # noqa: E501
+
+        Get N headers from hash (down)  # noqa: E501
+        This method makes a synchronous HTTP request by default. To make an
+        asynchronous HTTP request, please pass async=True
+        >>> thread = api.get_headers_by_hash_with_http_info(hash, async=True)
+        >>> result = thread.get()
+
+        :param async bool
+        :param str hash: Hash of first block header to fetch (required)
+        :param int number: Number of hashes to fetch
+        :return: list[Header]
+                 If the method is called asynchronously,
+                 returns the request thread.
+        """
+
+        all_params = ['hash', 'number']  # noqa: E501
+        all_params.append('async')
+        all_params.append('_return_http_data_only')
+        all_params.append('_preload_content')
+        all_params.append('_request_timeout')
+
+        params = locals()
+        for key, val in six.iteritems(params['kwargs']):
+            if key not in all_params:
+                raise TypeError(
+                    "Got an unexpected keyword argument '%s'"
+                    " to method get_headers_by_hash" % key
+                )
+            params[key] = val
+        del params['kwargs']
+        # verify the required parameter 'hash' is set
+        if ('hash' not in params or
+                params['hash'] is None):
+            raise ValueError("Missing the required parameter `hash` when calling `get_headers_by_hash`")  # noqa: E501
+
+        collection_formats = {}
+
+        path_params = {}
+
+        query_params = []
+        if 'hash' in params:
+            query_params.append(('hash', params['hash']))  # noqa: E501
+        if 'number' in params:
+            query_params.append(('number', params['number']))  # noqa: E501
+
+        header_params = {}
+
+        form_params = []
+        local_var_files = {}
+
+        body_params = None
+        # HTTP header `Accept`
+        header_params['Accept'] = self.api_client.select_header_accept(
+            ['application/json'])  # noqa: E501
+
+        # Authentication setting
+        auth_settings = []  # noqa: E501
+
+        return self.api_client.call_api(
+            '/headers-by-hash', 'GET',
+            path_params,
+            query_params,
+            header_params,
+            body=body_params,
+            post_params=form_params,
+            files=local_var_files,
+            response_type='list[Header]',  # noqa: E501
+            auth_settings=auth_settings,
+            async=params.get('async'),
+            _return_http_data_only=params.get('_return_http_data_only'),
+            _preload_content=params.get('_preload_content', True),
+            _request_timeout=params.get('_request_timeout'),
+            collection_formats=collection_formats)
+
     def get_top(self, **kwargs):  # noqa: E501
         """get_top  # noqa: E501
 

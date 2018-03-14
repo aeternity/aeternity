@@ -285,6 +285,16 @@ get_operations() ->
             method => <<"GET">>,
             handler => 'swagger_external_handler'
         },
+        'GetHeaderByHeight' => #{
+            path => "/v2/header-by-height",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
+        'GetHeadersByHash' => #{
+            path => "/v2/headers-by-hash",
+            method => <<"GET">>,
+            handler => 'swagger_external_handler'
+        },
         'GetInfo' => #{
             path => "/v2/info",
             method => <<"GET">>,
@@ -407,6 +417,16 @@ get_operations() ->
         },
         'GetHeaderByHash' => #{
             path => "/v2/header-by-hash",
+            method => <<"GET">>,
+            handler => 'swagger_gossip_handler'
+        },
+        'GetHeaderByHeight' => #{
+            path => "/v2/header-by-height",
+            method => <<"GET">>,
+            handler => 'swagger_gossip_handler'
+        },
+        'GetHeadersByHash' => #{
+            path => "/v2/headers-by-hash",
             method => <<"GET">>,
             handler => 'swagger_gossip_handler'
         },
