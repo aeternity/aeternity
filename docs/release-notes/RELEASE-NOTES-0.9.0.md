@@ -1,13 +1,12 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on improving syncing of chain data among peers.
 It:
-* Improves the stability of the testnet.
+* Reduces the amount of data exchanged during initial chain synchronization among peers;
+* Makes the initial chain synchronization among peers more resilient to network failures;
 * Eases verification of the coinbase transaction, by including the mining reward in it. This impacts both the consensus and the persisted DB;
 * Makes lookup of blocks/headers by height faster by introducing an index in the DB. This impacts the persisted DB;
-* Does this TODOFILLMEIN. This impacts consensus;
-* Does that TODOFILLMEIN. This impacts the persisted DB;
-* Does that TODOFILLMEIN.
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.9.0
 
