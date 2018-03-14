@@ -44,6 +44,8 @@
       keypair:
         dir: "keys"
         password: "{{ vault_keys_password|default('secret') }}"
+      logging:
+        level: "{{ log_level|default('error') }}"
     api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
   tasks:

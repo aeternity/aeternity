@@ -19,3 +19,6 @@ mining:
 chain:
     persist: {{ config.chain.persist | bool | lower }}
     db_path: {{ config.chain.db_path }}
+
+logging:
+    level: {{ config.logging.level }}
