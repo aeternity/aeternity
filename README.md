@@ -11,8 +11,9 @@ Comes with a naming system, for developerability.
 
 Written in Erlang.
 
-Please see the latest [release notes](docs/release-notes) if you want to run the software or just [follow the progress of the project in Pivotal Tracker](https://www.pivotaltracker.com/n/projects/2124891).
+Please see the latest [release notes][release-notes] if you want to run the software or just [follow the progress of the project in Pivotal Tracker](https://www.pivotaltracker.com/n/projects/2124891).
 
+[release-notes]: https://github.com/aeternity/epoch/tree/master/docs/release-notes
 
 What's on board?
 ===
@@ -38,4 +39,4 @@ How to start?
 We publish packages in github for major platforms: [Releases](https://github.com/aeternity/epoch/releases)
 
 The best way to start is to install the package and connect to testnet.
-We try to document the process in [Release Notes](docs/release-notes)
+We try to document the process in [Release Notes][release-notes]
