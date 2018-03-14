@@ -111,7 +111,7 @@ handle_request('GetHeadersByHash', Req, _Context) ->
         {_, N} when not is_integer(N) orelse N < 1 ->
             {400, [], #{reason => <<"Invalid number">>}};
         {{ok, Hash}, N} ->
-            case aec_chain:get_n_headers_from_hash(Hash, N) of
+            case aec_chain:get_n_headers_backwards_from_hash(Hash, N) of
                 {ok, Headers} ->
                     Resp = [ begin
                                {ok, HH} = aec_headers:serialize_to_map(Header),

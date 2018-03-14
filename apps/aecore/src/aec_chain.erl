@@ -19,7 +19,8 @@
         , get_header/1
         , get_header_by_height/1
         , get_missing_block_hashes/0
-        , get_n_headers_from_hash/2
+        , get_n_headers_backwards_from_hash/2
+        , get_at_most_n_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
         , get_transactions_between/2
         , has_block/1
@@ -255,19 +256,53 @@ find_common_ancestor(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
 hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
     aec_chain_state:hash_is_connected_to_genesis(Hash).
 
--spec get_n_headers_from_hash(binary(), pos_integer()) -> {'ok', [aec_headers:header()]} |
-                                                          'error'.
-%% @doc Get n headers backwards in chain. Returns headers old -> new
-get_n_headers_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
-    get_n_headers_from_hash(get_header(Hash), N, []).
 
-get_n_headers_from_hash(_, 0, Acc) ->
+
+-spec get_at_most_n_headers_forward_from_hash(binary(), pos_integer()) ->
+                                                 {'ok', [aec_headers:header()]} |
+                                                 'error'.
+
+%%% @doc Get n headers forwards in chain. Returns headers old -> new
+%%%      This function is only defined for headers in the main chain to avoid
+%%%      ambiguity.
+get_at_most_n_headers_forward_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
+    case top_header() of
+        undefined -> error;
+        TopHeader ->
+            TopHeight = aec_headers:height(TopHeader),
+            case get_header(Hash) of
+                error -> error;
+                {ok, Header} ->
+                    Height = aec_headers:height(Header),
+                    Delta = min(TopHeight - Height, N - 1),
+                    case Delta < 0 of
+                        true -> error;
+                        false ->
+                            Res = {ok, _} = get_header_by_height(Height + Delta),
+                            {ok, Headers} = get_n_headers_backwards_from_hash(Res, Delta + 1, []),
+                            %% Validate that we were on the main fork.
+                            case aec_headers:hash_header(hd(Headers)) =:= {ok, Hash} of
+                                true -> {ok, Headers};
+                                false -> error
+                            end
+                    end
+            end
+    end.
+
+-spec get_n_headers_backwards_from_hash(binary(), pos_integer()) ->
+                                           {'ok', [aec_headers:header()]} |
+                                           'error'.
+%%% @doc Get n headers backwards in chain. Returns headers old -> new
+get_n_headers_backwards_from_hash(Hash, N) when is_binary(Hash), is_integer(N), N > 0 ->
+    get_n_headers_backwards_from_hash(get_header(Hash), N, []).
+
+get_n_headers_backwards_from_hash(_, 0, Acc) ->
     {ok, Acc};
-get_n_headers_from_hash({ok, Header}, N, Acc) ->
+get_n_headers_backwards_from_hash({ok, Header}, N, Acc) ->
     PrevHash = aec_headers:prev_hash(Header),
     NewAcc = [Header|Acc],
-    get_n_headers_from_hash(get_header(PrevHash), N - 1, NewAcc);
-get_n_headers_from_hash(error,_N,_Acc) ->
+    get_n_headers_backwards_from_hash(get_header(PrevHash), N - 1, NewAcc);
+get_n_headers_backwards_from_hash(error,_N,_Acc) ->
     error.
 
 -spec get_missing_block_hashes() -> [binary()].
