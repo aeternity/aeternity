@@ -42,23 +42,24 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
-
--spec deserialize(map()) -> state().
-deserialize(#{<<"vsn">>              := ?LOCAL_STATE_VSN,
-              <<"chain_hash">>       := ChainHash,
-              <<"initiator_pubkey">> := InitiatorPubKey,
-              <<"responder_pubkey">> := ResponderPubKey,
-              <<"initiator_amount">> := InitiatorAmount,
-              <<"responder_amount">> := ResponderAmount,
-              <<"channel_active">>   := ChannelActive,
-              <<"sequence_number">>  := SeqNumber,
-              <<"closed">>           := Closed}) ->
+-spec deserialize(binary()) -> state().
+deserialize(Bin) ->
+    {ok, List} = msgpack:unpack(Bin),
+    [#{<<"vsn">>              := ?LOCAL_STATE_VSN},
+     #{<<"chain_hash">>       := ChainHash},
+     #{<<"initiator_pubkey">> := InitiatorPubKey},
+     #{<<"responder_pubkey">> := ResponderPubKey},
+     #{<<"initiator_amount">> := InitiatorAmount},
+     #{<<"responder_amount">> := ResponderAmount},
+     #{<<"channel_active">>   := ChannelActive},
+     #{<<"sequence_number">>  := SeqNumber},
+     #{<<"closed">>           := Closed}] = List,
     #state{chain_hash       = ChainHash,
            initiator_pubkey = InitiatorPubKey,
            responder_pubkey = ResponderPubKey,
            initiator_amount = InitiatorAmount,
            responder_amount = ResponderAmount,
-           channel_active   = ChannelActive,,
+           channel_active   = ChannelActive,
            sequence_number  = SeqNumber,
            closed           = Closed}.
 
@@ -76,15 +77,16 @@ serialize(#state{chain_hash       = ChainHash,
                  channel_active   = ChannelActive,
                  sequence_number  = SeqNumber,
                  closed           = Closed}) ->
-    #{<<"vsn">>              => ?LOCAL_STATE_VSN,
-      <<"chain_hash">>       => ChainHash,
-      <<"initiator_pubkey">> => InitiatorPubKey,
-      <<"responder_pubkey">> => ResponderPubKey,
-      <<"initiator_amount">> => InitiatorAmount,
-      <<"responder_amount">> => ResponderAmount,
-      <<"channel_active">>   => ChannelActive,
-      <<"sequence_number">>  => SeqNumber,
-      <<"closed">>           => Closed}.
+    msgpack:pack(
+      [#{<<"vsn">>              => ?LOCAL_STATE_VSN},
+       #{<<"chain_hash">>       => ChainHash},
+       #{<<"initiator_pubkey">> => InitiatorPubKey},
+       #{<<"responder_pubkey">> => ResponderPubKey},
+       #{<<"initiator_amount">> => InitiatorAmount},
+       #{<<"responder_amount">> => ResponderAmount},
+       #{<<"channel_active">>   => ChannelActive},
+       #{<<"sequence_number">>  => SeqNumber},
+       #{<<"closed">>           => Closed}]).
 
 -spec serialize_to_bin(state()) -> binary().
 serialize_to_bin(State) ->

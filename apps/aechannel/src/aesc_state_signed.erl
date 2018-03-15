@@ -46,10 +46,10 @@ serialize(#signed_state{state = State, signatures = Sigs}) ->
 
 %% Perhaps reunion signing and verification with aecore tx signing/verification?
 -spec sign_state(signed_state(), priv_key()) -> signed_state().
-sign_state(#signed_state{state = State, signatures = Sigs}, PrivKey) ->
+sign_state(#signed_state{state = State, signatures = Sigs} = S, PrivKey) ->
     Bin  = aesc_state:serialize_to_bin(State),
     Sign = crypto:sign(ecdsa, sha256, Bin, [PrivKey, crypto:ec_curve(secp256k1)]),
-    #signed_state{signatures = ordsets:add_element(Sign, Sigs)}.
+    S#signed_state{signatures = ordsets:add_element(Sign, Sigs)}.
 
 -spec verify(signed_state()) -> boolean().
 verify(#signed_state{state = State, signatures = Sigs}) ->

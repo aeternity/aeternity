@@ -18,6 +18,7 @@
 
 %% Getters
 -export([id/1,
+         id/3,
          initiator/1,
          initiator_amount/1,
          participant/1,
