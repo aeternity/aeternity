@@ -43,7 +43,7 @@
           port: 3013
       chain:
         persist: true
-        db_path: "./db38"
+        db_path: "./db39"
       keypair:
         dir: "keys"
         password: "{{ vault_keys_password|default('secret') }}"
