@@ -118,7 +118,7 @@ paths:
         - external
         - gossip
       operationId: GetHeadersByHash
-      description: 'Get N headers from hash (down)'
+      description: 'Get N headers from hash'
       produces:
         - application/json
       parameters:
@@ -132,6 +132,13 @@ paths:
           description: 'Number of hashes to fetch'
           type: integer
           default: 1
+        - in: query
+          name: direction
+          description: 'Towards top = forward, towards genesis = backward'
+          schema:
+            type: string
+            enum: [forward, backward]
+          default: backward
       responses:
         '200':
           description: The headers found
