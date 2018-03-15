@@ -29,8 +29,9 @@ check_active_channel_exists(ChannelId, Trees) ->
 -spec check_accounts_are_peers(list(pubkey()), aesc_channels:id(), aec_trees:trees()) ->
                                       ok | {error, accounts_not_peers}.
 check_accounts_are_peers(Accounts, ChannelId, Trees) ->
-    Channel = aesc_state_tree:get(ChannelId, Trees),
-    Peers   = aesc_channels:peers(Channel),
+    ChannelsTree = aec_trees:channels(Trees),
+    Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),
+    Peers        = aesc_channels:peers(Channel),
     check_are_peers(Accounts, Peers).
 
 %%%===================================================================

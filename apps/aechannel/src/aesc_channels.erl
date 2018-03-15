@@ -37,7 +37,7 @@
                   initiator_amount   :: amount(),
                   participant_amount :: amount(),
                   lock_period        :: non_neg_integer(),
-                  closes_at          :: height()}).
+                  closes_at          :: 'undefined' | height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -78,7 +78,11 @@ deserialize(Bin) ->
      #{<<"participant">>        := ParticipantPubKey},
      #{<<"participant_amount">> := ParticipantAmount},
      #{<<"lock_period">>        := LockPeriod},
-     #{<<"closes_at">>          := ClosesAt}] = List,
+     #{<<"closes_at">>          := ClosesAt0}] = List,
+    ClosesAt = case ClosesAt0 of
+                   0                    -> undefined;
+                   H when is_integer(H) -> H
+               end,
     #channel{id                 = Id,
              initiator          = InitiatorPubKey,
              initiator_amount   = InitiatorAmount,
@@ -105,6 +109,10 @@ peers(#channel{} = Ch) ->
 
 -spec serialize(channel()) -> binary().
 serialize(#channel{} = Ch) ->
+    ClosesAt = case closes_at(Ch) of
+                   undefined            -> 0;
+                   H when is_integer(H) -> H
+               end,
     msgpack:pack([#{<<"type">>               => ?CHANNEL_TYPE},
                   #{<<"vsn">>                => ?CHANNEL_VSN},
                   #{<<"id">>                 => id(Ch)},
@@ -113,7 +121,7 @@ serialize(#channel{} = Ch) ->
                   #{<<"participant">>        => participant(Ch)},
                   #{<<"participant_amount">> => participant_amount(Ch)},
                   #{<<"lock_period">>        => lock_period(Ch)},
-                  #{<<"closes_at">>          => closes_at(Ch)}
+                  #{<<"closes_at">>          => ClosesAt}
                  ]).
 -spec withdraw(channel(), amount(), pubkey()) -> channel().
 withdraw(#channel{} = Channel, Amount, FromPubKey) ->
@@ -129,7 +137,7 @@ withdraw(#channel{} = Channel, Amount, FromPubKey) ->
 %%% Getters
 %%%===================================================================
 
--spec closes_at(channel()) -> height().
+-spec closes_at(channel()) -> undefined | height().
 closes_at(#channel{closes_at = ClosesAt}) ->
     ClosesAt.
 
