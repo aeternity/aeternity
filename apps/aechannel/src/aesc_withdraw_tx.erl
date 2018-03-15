@@ -39,12 +39,12 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id   = ChannelId,
-      from_account = FromPubKey,
-      to_account   = ToPubKey,
-      amount       = Amount,
-      fee          = Fee,
-      nonce        = Nonce}) ->
+new(#{channel_id   := ChannelId,
+      from_account := FromPubKey,
+      to_account   := ToPubKey,
+      amount       := Amount,
+      fee          := Fee,
+      nonce        := Nonce}) ->
     Tx = #channel_withdraw_tx{
             channel_id   = ChannelId,
             from_account = FromPubKey,
@@ -137,12 +137,14 @@ serialize(#channel_withdraw_tx{from_account = FromPubKey,
 
 -spec deserialize(list(map())) -> tx().
 deserialize([#{<<"vsn">>          := ?CHANNEL_WITHDRAW_TX_VSN},
+             #{<<"channel_id">>   := ChannelId},
              #{<<"from_account">> := FromPubKey},
              #{<<"to_account">>   := ToPubKey},
              #{<<"amount">>       := Amount},
              #{<<"fee">>          := Fee},
              #{<<"nonce">>        := Nonce}]) ->
-    #channel_withdraw_tx{from_account = FromPubKey,
+    #channel_withdraw_tx{channel_id   = ChannelId,
+                         from_account = FromPubKey,
                          to_account   = ToPubKey,
                          amount       = Amount,
                          fee          = Fee,
