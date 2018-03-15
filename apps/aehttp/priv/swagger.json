@@ -135,7 +135,7 @@
     "/headers-by-hash" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
-        "description" : "Get N headers from hash (down)",
+        "description" : "Get N headers from hash",
         "operationId" : "GetHeadersByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -151,6 +151,12 @@
           "required" : false,
           "type" : "integer",
           "default" : 1
+        }, {
+          "name" : "direction",
+          "in" : "query",
+          "description" : "Towards top = forward, towards genesis = backward",
+          "required" : false,
+          "default" : "backward"
         } ],
         "responses" : {
           "200" : {

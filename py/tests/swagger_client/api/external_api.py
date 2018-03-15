@@ -903,7 +903,7 @@ class ExternalApi(object):
     def get_headers_by_hash(self, hash, **kwargs):  # noqa: E501
         """get_headers_by_hash  # noqa: E501
 
-        Get N headers from hash (down)  # noqa: E501
+        Get N headers from hash  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_headers_by_hash(hash, async=True)
@@ -912,6 +912,7 @@ class ExternalApi(object):
         :param async bool
         :param str hash: Hash of first block header to fetch (required)
         :param int number: Number of hashes to fetch
+        :param str direction: Towards top = forward, towards genesis = backward
         :return: list[Header]
                  If the method is called asynchronously,
                  returns the request thread.
@@ -926,7 +927,7 @@ class ExternalApi(object):
     def get_headers_by_hash_with_http_info(self, hash, **kwargs):  # noqa: E501
         """get_headers_by_hash  # noqa: E501
 
-        Get N headers from hash (down)  # noqa: E501
+        Get N headers from hash  # noqa: E501
         This method makes a synchronous HTTP request by default. To make an
         asynchronous HTTP request, please pass async=True
         >>> thread = api.get_headers_by_hash_with_http_info(hash, async=True)
@@ -935,12 +936,13 @@ class ExternalApi(object):
         :param async bool
         :param str hash: Hash of first block header to fetch (required)
         :param int number: Number of hashes to fetch
+        :param str direction: Towards top = forward, towards genesis = backward
         :return: list[Header]
                  If the method is called asynchronously,
                  returns the request thread.
         """
 
-        all_params = ['hash', 'number']  # noqa: E501
+        all_params = ['hash', 'number', 'direction']  # noqa: E501
         all_params.append('async')
         all_params.append('_return_http_data_only')
         all_params.append('_preload_content')
@@ -969,6 +971,8 @@ class ExternalApi(object):
             query_params.append(('hash', params['hash']))  # noqa: E501
         if 'number' in params:
             query_params.append(('number', params['number']))  # noqa: E501
+        if 'direction' in params:
+            query_params.append(('direction', params['direction']))  # noqa: E501
 
         header_params = {}
 
