@@ -248,6 +248,8 @@ expr_p(_, {block, _, Ss}) ->
     block(empty(), statements(Ss));
 expr_p(P, {proj, _, E, X}) ->
     paren(P > 900, beside([expr_p(900, E), text("."), name(X)]));
+expr_p(P, {map_get, _, E, Key}) ->
+    paren(P > 900, beside([expr_p(900, E), list([expr(Key)])]));
 expr_p(P, {typed, _, E, T}) ->
     paren(P > 0, typed(expr(E), T));
 expr_p(P, {assign, _, LV, E}) ->
