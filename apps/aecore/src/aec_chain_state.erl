@@ -95,10 +95,11 @@ get_missing_block_hashes() ->
 
 new_state_from_persistence() ->
     Fun = fun() ->
-                  #{ type               => ?MODULE
-                   , top_header_hash    => aec_db:get_top_header_hash()
-                   , top_block_hash     => aec_db:get_top_block_hash()
-                   , genesis_block_hash => aec_db:get_genesis_hash()
+                  #{ type                  => ?MODULE
+                   , top_header_hash       => aec_db:get_top_header_hash()
+                   , top_header_difficulty => aec_db:get_top_header_difficulty()
+                   , top_block_hash        => aec_db:get_top_block_hash()
+                   , genesis_block_hash    => aec_db:get_genesis_hash()
                    }
           end,
     aec_db:ensure_transaction(Fun).
@@ -111,7 +112,12 @@ internal_error(What) ->
 get_genesis_hash(#{genesis_block_hash := GH}) -> GH.
 
 get_top_header_hash(#{top_header_hash := H}) -> H.
-set_top_header_hash(H, State) when is_binary(H) -> State#{top_header_hash => H}.
+set_top_header_hash(H, State) when is_binary(H) ->
+    State#{top_header_hash => H}.
+
+get_top_header_difficulty(#{top_header_difficulty := D}) -> D.
+set_top_header_difficulty(Difficulty, State) ->
+    State#{top_header_difficulty => Difficulty}.
 
 get_top_block_hash(#{top_block_hash := H}) -> H.
 set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
@@ -279,9 +285,25 @@ internal_insert_1(Node, Original, State) ->
 check_update_after_insert(Node, State) ->
     case determine_chain_relation(Node, State) of
         off_chain -> State;
-        new_top -> update_state_tree(Node, maybe_add_genesis_hash(State, Node));
-        in_chain -> update_state_tree(Node, State);
-        {fork, ForkNode} -> update_state_tree(ForkNode, State)
+        new_top ->
+            State1 = update_state_tree(Node, maybe_add_genesis_hash(State, Node)),
+            case find_top_header_hash(State1) of
+                not_found -> State1;
+                {ok, TopHeaderHash, TopDifficulty} ->
+                    State2 = set_top_header_hash(TopHeaderHash, State1),
+                    set_top_header_difficulty(TopDifficulty, State2)
+            end;
+        in_chain ->
+            %% This cannot change the top header
+            update_state_tree(Node, State);
+        {fork, ForkNode} ->
+            State1 = update_state_tree(ForkNode, State),
+            case find_top_header_hash(State1) of
+                not_found -> State1;
+                {ok, TopHeaderHash, TopDifficulty} ->
+                    State2 = set_top_header_hash(TopHeaderHash, State1),
+                    set_top_header_difficulty(TopDifficulty, State2)
+            end
     end.
 
 determine_chain_relation(Node, State) ->
@@ -330,24 +352,31 @@ assert_previous_height(Node) ->
 find_top_header_hash(#{genesis_block_hash := undefined}) ->
     not_found;
 find_top_header_hash(#{genesis_block_hash := GHash} = State) ->
-    Hash = case get_top_block_hash(State) of
-               undefined -> GHash;
-               TopBlockHash -> TopBlockHash
-           end,
+    {Hash, Difficulty} = case get_top_block_hash(State) of
+                             undefined ->
+                                 D = node_difficulty(db_get_node(GHash)),
+                                 {GHash, D};
+                             TopBlockHash ->
+                                 {ok, D} = db_find_difficulty(TopBlockHash),
+                                 {TopBlockHash, D}
+                         end,
     Node = db_get_node(Hash),
-    Tops = find_tops(Node, node_difficulty(Node)),
-    {_Difficulty, TopHash} = lists:last(lists:keysort(1, Tops)),
-    {ok, TopHash}.
+    Tops = find_tops(Node, Difficulty),
+    {TopDifficulty, TopHash} = lists:last(lists:keysort(1, Tops)),
+    {ok, TopHash, TopDifficulty}.
 
 find_tops(Node, Acc) ->
-    NewAcc = node_difficulty(Node) + Acc,
     case db_children(Node) of
         [] ->
-            [{NewAcc, hash(Node)}];
+            [{Acc, hash(Node)}];
         [ChildNode] ->
+            NewAcc = node_difficulty(ChildNode) + Acc,
             find_tops(ChildNode, NewAcc);
         [_|_]  = List ->
-            Fun = fun(N) -> find_tops(N, NewAcc) end,
+            Fun = fun(N) ->
+                          NewAcc = node_difficulty(N) + Acc,
+                          find_tops(N, NewAcc)
+                  end,
             lists:flatmap(Fun, List)
     end.
 
@@ -402,20 +431,13 @@ get_n_headers_from(Node, N, Acc) ->
 %% starting from the node (which must be in the main chain).
 
 update_state_tree(#node{type = header}, State) ->
-    case find_top_header_hash(State) of
-        {ok, TopHeaderHash} -> set_top_header_hash(TopHeaderHash, State);
-        not_found -> State
-    end;
+    State;
 update_state_tree(Node, State) ->
-    StateOut = case get_state_trees_in(Node, State) of
-                   error -> State;
-                   {ok, Trees, Difficulty} ->
-                       {State1,_Difficulty} = update_state_tree(Node, Trees, Difficulty, State),
-                       State1
-               end,
-    case find_top_header_hash(StateOut) of
-        {ok, TopHeaderHash} -> set_top_header_hash(TopHeaderHash, StateOut);
-        not_found -> StateOut
+    case get_state_trees_in(Node, State) of
+        error -> State;
+        {ok, Trees, Difficulty} ->
+            {State1,_Difficulty} = update_state_tree(Node, Trees, Difficulty, State),
+            State1
     end.
 
 update_state_tree(#node{type = header}, Difficulty, _TreesIn, State) ->
@@ -550,7 +572,9 @@ persist_state(State) ->
             case get_top_header_hash(State) of
                 undefined -> ok;
                 TopHeaderHash ->
-                    aec_db:write_top_header_hash(TopHeaderHash),
+                    Difficulty = get_top_header_difficulty(State),
+                    aec_db:write_top_header_hash_and_difficulty(TopHeaderHash,
+                                                                Difficulty),
                     case get_top_block_hash(State) of
                         undefined -> ok;
                         TopBlockHash ->
@@ -599,6 +623,12 @@ db_put_state(Hash, Trees, Difficulty) ->
 db_find_state_and_difficulty(Hash) ->
     case aec_db:find_block_state_and_difficulty(Hash) of
         {value, Trees, Difficulty} -> {ok, Trees, Difficulty};
+        none -> error
+    end.
+
+db_find_difficulty(Hash) ->
+    case aec_db:find_block_difficulty(Hash) of
+        {value, Difficulty} -> {ok, Difficulty};
         none -> error
     end.
 

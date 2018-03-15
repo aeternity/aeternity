@@ -375,10 +375,9 @@ difficulty_at_top_block() ->
 
 -spec difficulty_at_top_header() -> {'ok', float()} | {'error', atom()}.
 difficulty_at_top_header() ->
-    %% TODO: This should be cached.
-    case top_header_hash() of
+    case aec_db:get_top_header_difficulty() of
         undefined -> {error, no_top};
-        Hash -> difficulty_at_hash(Hash)
+        Difficulty -> {ok, Difficulty}
     end.
 
 -spec difficulty_at_hash(binary()) -> {'ok', float()} | {'error', atom()}.
