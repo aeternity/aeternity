@@ -312,18 +312,12 @@ compute_contract_call_data() ->
 get_transaction(TxKey, TxStateKey) ->
     fun(_Req, State) ->
         TxHash = maps:get(TxKey, State),
-        case aec_db:read_tx(TxHash) of
-            [] ->
+        case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+            none ->
                 {error, {404, [], #{<<"reason">> => <<"Transaction not found">>}}};
-            [{Block0, Tx}] ->
-                BlockHash =
-                    case Block0 of
-                        mempool -> mempool;
-                        BH when is_binary(BH) -> BH
-                    end,
-                {ok, maps:put(TxStateKey, #{tx => Tx,
-                                            tx_block_hash => BlockHash},
-                             State)}
+            {Tag, Tx} ->
+                Val = #{tx => Tx, tx_block_hash => Tag},
+                {ok, maps:put(TxStateKey, Val, State)}
         end
     end.
 
@@ -337,7 +331,7 @@ parse_tx_encoding(TxEncodingKey) ->
                 {error, {400, [], #{reason => <<"Unsupported transaction encoding">>}}}
         end
     end.
-    
+
 encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
     fun(_Req, State) ->
         #{tx := Tx,
