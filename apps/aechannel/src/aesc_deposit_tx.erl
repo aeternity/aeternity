@@ -39,12 +39,12 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id   = ChannelId,
-      from_account = FromPubKey,
-      to_account   = ToPubKey,
-      amount       = Amount,
-      fee          = Fee,
-      nonce        = Nonce}) ->
+new(#{channel_id   := ChannelId,
+      from_account := FromPubKey,
+      to_account   := ToPubKey,
+      amount       := Amount,
+      fee          := Fee,
+      nonce        := Nonce}) ->
     Tx = #channel_deposit_tx{
             channel_id   = ChannelId,
             from_account = FromPubKey,
@@ -117,12 +117,14 @@ signers(#channel_deposit_tx{from_account = FromPubKey,
     [FromPubKey, ToPubKey].
 
 -spec serialize(tx()) -> list(map()).
-serialize(#channel_deposit_tx{from_account = FromPubKey,
+serialize(#channel_deposit_tx{channel_id   = ChannelId,
+                              from_account = FromPubKey,
                               to_account   = ToPubKey,
                               amount       = Amount,
                               fee          = Fee,
                               nonce        = Nonce}) ->
     [#{<<"vsn">>          => version()},
+     #{<<"channel_id">>   => ChannelId},
      #{<<"from_account">> => FromPubKey},
      #{<<"to_account">>   => ToPubKey},
      #{<<"amount">>       => Amount},

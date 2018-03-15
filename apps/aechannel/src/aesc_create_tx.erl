@@ -134,6 +134,7 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              participant        = ParticipantPubKey,
                              participant_amount = ParticipantAmount,
                              lock_period        = LockPeriod,
+                             fee                = Fee,
                              nonce              = Nonce}) ->
     [#{<<"vsn">>                => version()},
      #{<<"initiator">>          => InitiatorPubKey},
@@ -141,6 +142,7 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
      #{<<"participant">>        => ParticipantPubKey},
      #{<<"participant_amount">> => ParticipantAmount},
      #{<<"lock_period">>        => LockPeriod},
+     #{<<"fee">>                => Fee},
      #{<<"nonce">>              => Nonce}].
 
 -spec deserialize(list(map())) -> tx().
@@ -150,12 +152,14 @@ deserialize([#{<<"vsn">>                := ?CHANNEL_CREATE_TX_VSN},
              #{<<"participant">>        := ParticipantPubKey},
              #{<<"participant_amount">> := ParticipantAmount},
              #{<<"lock_period">>        := LockPeriod},
+             #{<<"fee">>                := Fee},
              #{<<"nonce">>              := Nonce}]) ->
     #channel_create_tx{initiator          = InitiatorPubKey,
                        initiator_amount   = InitiatorAmount,
                        participant        = ParticipantPubKey,
                        participant_amount = ParticipantAmount,
                        lock_period        = LockPeriod,
+                       fee                = Fee,
                        nonce              = Nonce}.
 
 -spec for_client(tx()) -> map().

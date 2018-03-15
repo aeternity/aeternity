@@ -39,12 +39,12 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id  = ChannelId,
-      amount      = Amount,
-      initiator   = InitiatorPubKey,
-      participant = ParticipantPubKey,
-      fee         = Fee,
-      nonce       = Nonce}) ->
+new(#{channel_id  := ChannelId,
+      amount      := Amount,
+      initiator   := InitiatorPubKey,
+      participant := ParticipantPubKey,
+      fee         := Fee,
+      nonce       := Nonce}) ->
     Tx = #channel_close_mutual_tx{
             channel_id  = ChannelId,
             amount      = Amount,
