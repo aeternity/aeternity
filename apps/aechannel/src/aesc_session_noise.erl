@@ -63,9 +63,28 @@ establish({accept, Port, Opts}, St) ->
     {ok, EConn} = enoise:accept(TcpSock, enoise_opts(accept, Opts)),
     St#st{econn = EConn};
 establish({connect, Host, Port, Opts}, St) ->
-    {ok, TcpSock} = gen_tcp:connect(Host, Port, tcp_opts(connect, Opts)),
+    {ok, TcpSock} = connect_tcp(Host, Port, tcp_opts(connect, Opts)),
     {ok, EConn} = enoise:connect(TcpSock, enoise_opts(connect, Opts)),
     St#st{econn = EConn}.
+
+connect_tcp(Host, Port, Opts) ->
+    {Timeout, Retries} = get_reconnect_params(),
+    connect_tcp(Retries, Host, Port, Opts, Timeout).
+
+connect_tcp(0, _, _, _, _) ->
+    erlang:error(connect_timeout);
+connect_tcp(Retries, Host, Port, Opts, Timeout) when Retries > 0 ->
+    case gen_tcp:connect(Host, Port, Opts, Timeout) of
+        {ok, _TcpSock} = Ok ->
+            Ok;
+        {error, _} ->
+            timer:sleep(1000),
+            connect_tcp(Retries-1, Host, Port, Opts, Timeout)
+    end.
+
+get_reconnect_params() ->
+    %% {ConnectTimeout, Retries}
+    {10000, 30}.
 
 
 handle_call(_Req, _From, St) ->
@@ -83,6 +102,7 @@ handle_cast(_Msg, St) ->
 handle_info({noise, EConn, Data}, #st{econn = EConn, parent = Parent} = St) ->
     {_Type, _Info} = Msg = aesc_codec:dec(Data),
     aesc_fsm:message(Parent, Msg),
+    enoise:set_active(EConn, once),
     {noreply, St};
 handle_info(_Msg, St) ->
     {noreply, St}.
@@ -99,10 +119,30 @@ cast(P, Msg) ->
 
 tcp_opts(_Op, Opts) ->
     case lists:keyfind(tcp, 1, Opts) of
-        false -> [{active, true}];
+        false -> tcp_defaults();
         {_, TcpOpts} ->
-            TcpOpts
+            [Opt || Opt <- tcp_defaults(),
+                    not tcp_opt_member(Opt, TcpOpts)]
+                ++ TcpOpts
     end.
 
-enoise_opts(_Op, Opts) ->
-    lists:keydelete(tcp, 1, Opts).
+
+noise_defaults() ->
+    [{protocol, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}].
+
+tcp_defaults() ->
+    [{active, once},
+     {reuseaddr, true},
+     {mode, binary}].
+
+tcp_opt_member({mode,M}, L) ->
+    %% handle supported short forms 'binary' and 'list'
+    lists:keymember(mode, 1, L) orelse lists:member(M, L);
+tcp_opt_member({K,_}, L) ->
+    lists:keymember(K, 1, L).
+
+
+enoise_opts(_Op, Opts0) ->
+    Opts = lists:keydelete(tcp, 1, Opts0),
+    [Opt || {K,_} = Opt <- noise_defaults(),
+            not lists:keymember(K, 1, Opts)] ++ Opts.
