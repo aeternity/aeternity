@@ -15,6 +15,7 @@
         , get_contract/2
         , insert_call/2
         , insert_contract/2
+        , enter_contract/2
         , lookup_contract/2
         , root_hash/1]).
 
@@ -52,7 +53,15 @@ insert_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
     Id         = aect_contracts:id(Contract),
     Serialized = aect_contracts:serialize(Contract),
     CtTree1    = aeu_mtrees:insert(Id, Serialized, CtTree),
-    Tree#contract_tree{ contracts = CtTree1}.
+    Tree#contract_tree{ contracts = CtTree1 }.
+
+%% @doc Update an existing contract.
+-spec enter_contract(aect_contracts:contract(), tree()) -> tree().
+enter_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
+    Id         = aect_contracts:id(Contract),
+    Serialized = aect_contracts:serialize(Contract),
+    CtTree1    = aeu_mtrees:enter(Id, Serialized, CtTree),
+    Tree#contract_tree{ contracts = CtTree1 }.
 
 -spec get_contract(aect_contracts:id(), tree()) -> aect_contracts:contract().
 get_contract(Id, #contract_tree{ contracts = CtTree }) ->
