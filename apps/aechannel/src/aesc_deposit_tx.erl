@@ -133,12 +133,14 @@ serialize(#channel_deposit_tx{channel_id   = ChannelId,
 
 -spec deserialize(list(map())) -> tx().
 deserialize([#{<<"vsn">>          := ?CHANNEL_DEPOSIT_TX_VSN},
+             #{<<"channel_id">>   := ChannelId},
              #{<<"from_account">> := FromPubKey},
              #{<<"to_account">>   := ToPubKey},
              #{<<"amount">>       := Amount},
              #{<<"fee">>          := Fee},
              #{<<"nonce">>        := Nonce}]) ->
-    #channel_deposit_tx{from_account = FromPubKey,
+    #channel_deposit_tx{channel_id = ChannelId,
+                        from_account = FromPubKey,
                         to_account   = ToPubKey,
                         amount       = Amount,
                         fee          = Fee,
