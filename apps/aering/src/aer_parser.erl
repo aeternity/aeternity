@@ -35,10 +35,13 @@ decl() ->
     , ?RULE(keyword(type), id(), type_vars(), tok('='), typedef(), {type_def, _1, _2, _3, _5})
 
       %% Function declarations
-    , ?RULE(keyword(function), id(), tok(':'), type(),             {fun_decl, _1, _2, _4})
-    , ?RULE(keyword(function), fundef(),                           set_pos(get_pos(_1), _2))
-    , ?RULE(keyword('let'),    valdef(),                           set_pos(get_pos(_1), _2))
+    , ?RULE(modifiers(), keyword(function), id(), tok(':'), type(), {fun_decl, _2, _3, _5})     %% TODO modifiers
+    , ?RULE(modifiers(), keyword(function), fundef(),               set_pos(get_pos(_2), _3))   %% TODO
+    , ?RULE(keyword('let'),    valdef(),                            set_pos(get_pos(_1), _2))
     ])).
+
+modifiers() ->
+    many(choice([token(stateful), token(public), token(private), token(internal)])).
 
 %% -- Type declarations ------------------------------------------------------
 
@@ -184,13 +187,14 @@ elim() ->
     [ {proj, keyword('.'), id()}
     , ?RULE(paren_list(expr()), {app, get_ann(_1), _1})
     , ?RULE(keyword('{'), comma_sep(field_assignment()), tok('}'), {rec_upd, _1, _2})
-    %% TODO: map lookup
+    , ?RULE(keyword('['), expr(), keyword(']'), {map_get, _1, _2})
     ])).
 
 elim(E, [])                          -> E;
 elim(E, [{proj, Ann, P} | Es])       -> elim({proj, Ann, E, P}, Es);
 elim(E, [{app, Ann, Args} | Es])     -> elim({app, Ann, E, Args}, Es);
-elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim({record, Ann, E, Flds}, Es).
+elim(E, [{rec_upd, Ann, Flds} | Es]) -> elim({record, Ann, E, Flds}, Es);
+elim(E, [{map_get, Ann, Key} | Es])  -> elim({map_get, Ann, E, Key}, Es).
 
 
 field_assignment() ->
@@ -200,8 +204,9 @@ field_assignment() ->
 lvalue() ->
     ?LET_P(E, expr900(),
     case E of
-        E = {proj, _, _, _} -> E;
-        E = {id, _, _}      -> E;   %% TODO: map lvalues
+        E = {proj, _, _, _}    -> E;
+        E = {id, _, _}         -> E;
+        E = {map_get, _, _, _} -> E;
         E -> bad_expr_err("Not a valid lvalue", E)
     end).
 
@@ -324,12 +329,8 @@ tuple_t(_Ann, [Type]) -> Type;  %% Not a tuple
 tuple_t(Ann, Types)   -> {tuple_t, Ann, Types}.
 
 fun_t(Domains, Type) ->
-    lists:foldr(fun({Dom, Ann}, T) -> fun_t(Ann, Dom, T) end,
+    lists:foldr(fun({Dom, Ann}, T) -> {fun_t, Ann, Dom, T} end,
                 Type, Domains).
-
-fun_t(Ann, Domain, {fun_t, _Ann, Domain1, Result}) ->
-  {fun_t, Ann, Domain ++ Domain1, Result};
-fun_t(Ann, Domain, Result) -> {fun_t, Ann, Domain, Result}.
 
 tuple_e(Ann, [])      -> {unit, Ann};
 tuple_e(_Ann, [Expr]) -> Expr;  %% Not a tuple
