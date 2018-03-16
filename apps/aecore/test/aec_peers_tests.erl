@@ -10,37 +10,49 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(A_KEY, <<32,85,25,13,96,60,236,26,225,111,56,107,78,47,70,220,104,39,95,162,186,6,196,171,235,241,179,126,68,226,208,123>>).
+
+someone() ->
+    #{ host => <<"someone.somewhere">>, port => 1337, pubkey => ?A_KEY }.
+
+someoneelse() ->
+    #{ host => <<"someoneelse.somewhereelse">>, port => 1337, pubkey => ?A_KEY }.
+
+localhost() ->
+    localhost(800).
+
+localhost(Port) ->
+    #{ host => <<"localhost">>, port => Port, pubkey => ?A_KEY }.
+
+
 all_test_() ->
     {setup,
      fun setup/0,
      fun teardown/1,
      [{"Add a peer by Uri",
        fun() ->
-               ?assertEqual(ok, aec_peers:add("http://someone.somewhere:1337/baseuri", true))
+               ?assertEqual(ok, aec_peers:add(someone()))
        end},
       {"Get a random peer (from list of 1)",
        fun() ->
-               [Uri] = aec_peers:get_random(1),
-               ?assertEqual(<<"http://someone.somewhere:1337">>, Uri)
+               [Peer] = aec_peers:get_random(1),
+               ?assertEqual(someone(), Peer)
        end},
       {"Add a peer by object",
        fun() ->
-               ?assertEqual(ok, aec_peers:add("http://someonelse.somewhereelse:1337/baseuri/", true))
+               ?assertEqual(ok, aec_peers:add(someoneelse()))
        end},
       {"All and randomly getting peers",
        fun() ->
                ?assertEqual(2, length(aec_peers:all())),
-               [Uri] = aec_peers:get_random(1),
-               ?assert(lists:member(Uri, 
-                                    [<<"http://someone.somewhere:1337">>,
-                                     <<"http://someonelse.somewhereelse:1337">>])),
-               ?assertEqual([<<"http://someonelse.somewhereelse:1337">>],
-                            aec_peers:get_random(2, [<<"http://someone.somewhere:1337/">>]))
+               [Peer] = aec_peers:get_random(1),
+               ?assert(lists:member(Peer, [someone(), someoneelse()])),
+               ?assertEqual([someoneelse()], aec_peers:get_random(2, [someone()]))
        end},
       {"Remove a peer",
        fun() ->
                %% Note that v1 is unimportant and ignored
-               ?assertEqual(ok, aec_peers:remove("http://someone.somewhere:1337/v1")),
+               ?assertEqual(ok, aec_peers:remove(someone())),
                ?assertEqual(1, length(aec_peers:all()))
        end},
       {"Remove all",
@@ -51,15 +63,13 @@ all_test_() ->
        end},
       {"Add peer",
        fun() ->
-               ok = aec_peers:add("http://localhost:800", false),
-               [{<<"http://localhost:800">>, _}] = aec_peers:all()
+               ok = aec_peers:add(localhost()),
+               ?assertEqual([{localhost(), 0}], aec_peers:all())
        end},
       {"Get random N",
        fun() ->
                do_remove_all(),
-               Base = "http://localhost:",
-               [ok = aec_peers:add(Base ++ integer_to_list(N), false)
-                || N <- lists:seq(900,910)],
+               [ok = aec_peers:add(localhost(N)) || N <- lists:seq(900, 910)],
                L1 = aec_peers:get_random(5),
                5 = length(L1)
        end}
@@ -71,37 +81,6 @@ do_remove_all() ->
     [aec_peers:remove(P) || {P, _} <- aec_peers:all()],
     [] = aec_peers:all(),
     ok.
-
-uri_parsing_test_() ->
-    {setup,
-     fun setup/0,
-     fun teardown/1,
-     [{"Check that parsing not sanitized URI does not leak atom",
-       fun() ->
-               BadSch = <<"thisisnotascheme">>,
-               BadUri = <<BadSch/binary, "://1.2.3.4:8080/">>,
-               ?assertError(badarg, binary_to_existing_atom(BadSch, unicode)),
-               IsBlocked = aec_peers:is_blocked(BadUri), %% Assumption: Synchronous URI parsing.
-               ?assert(is_boolean(IsBlocked)),
-               ?assertError(badarg, binary_to_existing_atom(BadSch, unicode)),
-               ?assert(IsBlocked)
-       end},
-      {"Check that parsing performs case-insensitive match on URI scheme",
-       fun() ->
-               %% This test exploits that unparsable URIs for bad
-               %% scheme are considered blocked by default:
-               ?assert(aec_peers:is_blocked(<<"badscheme://1.2.3.4:8080/">>)),
-               %% Perform actual tests.
-               ?assertNot(aec_peers:is_blocked(<<"http://1.2.3.4:8080/">>)),
-               ?assertNot(aec_peers:is_blocked(<<"HTTP://1.2.3.4:8080/">>)),
-               ?assertNot(aec_peers:is_blocked(<<"hTtp://1.2.3.4:8080/">>)),
-               ?assertNot(aec_peers:is_blocked("http://1.2.3.4:8080/")),
-               ?assertNot(aec_peers:is_blocked("HTTP://1.2.3.4:8080/")),
-               ?assertNot(aec_peers:is_blocked("hTtp://1.2.3.4:8080/")),
-               ok
-       end}
-     ]
-    }.
 
 setup() ->
     application:ensure_started(crypto),
