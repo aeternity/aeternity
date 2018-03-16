@@ -22,6 +22,8 @@
 -export([local_ping_object/0,
          compare_ping_objects/3]).
 
+-export([server_get_missing_blocks/1, start_sync/3]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
 	 handle_info/2,  terminate/2, code_change/3]).
@@ -69,12 +71,10 @@ connect_peer(Uri) ->
 local_ping_object() ->
     GHash = aec_chain:genesis_hash(),
     TopHash = aec_chain:top_header_hash(),
-    Source = aec_peers:get_local_peer_uri(),
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
     #{<<"genesis_hash">> => GHash,
       <<"best_hash">>    => TopHash,
       <<"difficulty">>   => Difficulty,
-      <<"source">>       => Source,
       <<"share">>        => 32,  % TODO: make this configurable
       <<"peers">>        => []}.
 
@@ -151,23 +151,23 @@ sync_in_progress(Uri) ->
 %%% gen_server functions
 %%%=============================================================================
 
-%% When we Ping a node with at least as much difficulty as we have, 
+%% When we Ping a node with at least as much difficulty as we have,
 %% then we are going to sync with it.
 %% We already agree upon the genesis block and need to find the highest common
 %% block we agree upon. We use a binary search to find out.
 %% From the height we agree upon, we start asking for blocks to add to the chain.
-%% 
+%%
 %% When an additional Ping arrives for which we agree upon genesis, we have
 %% the following possibilities:
 %% 1. It has worst top hash than our node, do not include in sync
 %% 2. It has better top hash than our node
-%%    We binary search for a node that we agree upon (could be genesis) 
+%%    We binary search for a node that we agree upon (could be genesis)
 %% We add new node to sync pool to sync agreed node upto top of new
 %% 1. If we are already synchronizing, we ignore it,
 %%    the ongoing sync will pick that up later
 %% 2. If we are not already synchronizing, we start doing so.
-%% 
-%% We sync with several nodes at the same time and use as strategy 
+%%
+%% We sync with several nodes at the same time and use as strategy
 %% to pick a random hash from the hashes in the pool.
 
 -record(state, {sync_pool = [], hash_pool = []}).
@@ -179,9 +179,12 @@ init([]) ->
     aec_events:subscribe(block_created),
     aec_events:subscribe(top_changed),
     aec_events:subscribe(tx_created),
-    Peers = application:get_env(aecore, peers, []),
-    BlockedPeers = application:get_env(aecore, blocked_peers, []),
-    [aec_peers:block_peer(P) || P <- BlockedPeers],
+    Peers0 = aeu_env:user_config_or_env(<<"sync_peers">>, aecore, sync_peers, []),
+    Peers = [ #{ host => H, port => P, pubkey => PK } || {H, P, PK} <- Peers0 ],
+    %% BlockedPeers = aeu_env:user_config_or_env(<<"blocked_peers">>, aecore, blocked_peers, []),
+    %% [aec_peers:block_peer(P) || P <- BlockedPeers],
+    lager:debug("SYNC: add_and_ping ~p", [Peers]),
+    lager:debug("SYNC: raw ~p", [application:get_env(aecore, sync_peers, [])]),
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
@@ -189,12 +192,12 @@ handle_call({new_header, Pid, Uri, Header, AgreedHeight, AgreedHash}, _, State) 
     Height = aec_headers:height(Header),
     Difficulty = aec_headers:difficulty(Header),
     %% We have talked to the Uri, so Uri can be trusted
-    {IsNew, NewPool} = insert(#sync_peer{difficulty = Difficulty, 
-                                         from = AgreedHeight, 
-                                         to = Height, 
-                                         hash = AgreedHash, 
+    {IsNew, NewPool} = insert(#sync_peer{difficulty = Difficulty,
+                                         from = AgreedHeight,
+                                         to = Height,
+                                         hash = AgreedHash,
                                          uri = Uri,
-                                         pid = Pid}, 
+                                         pid = Pid},
                               State#state.sync_pool),
     case IsNew of
         true -> erlang:monitor(process, Pid);
@@ -206,7 +209,7 @@ handle_call({update_hash_pool, Hashes}, _From, State) ->
     lager:debug("Hash pool now contains ~p hashes", [length(HashPool)]),
     {reply, ok, State#state{hash_pool = HashPool}};
 handle_call({fetch_next, Uri, HeightIn, HashIn, Result}, _, State) ->
-    HashPool = 
+    HashPool =
        case Result of
          {ok, Block} ->
            BlockH = aec_blocks:height(Block),
@@ -231,8 +234,8 @@ handle_call({fetch_next, Uri, HeightIn, HashIn, Result}, _, State) ->
                    %% this sync should be canceled
                    {reply, {error, sync_stopped}, State#state{hash_pool = []}};
                #sync_peer{to = To} when To =< NewHeight ->
-                   {reply, done, State#state{hash_pool = [], 
-                                             sync_pool = 
+                   {reply, done, State#state{hash_pool = [],
+                                             sync_pool =
                                                lists:keydelete(Uri, #sync_peer.uri, State#state.sync_pool)}};
                #sync_peer{} ->
                    {reply, {fill_pool, NewHeight, NewHash}, State#state{hash_pool = []}}
@@ -243,9 +246,9 @@ handle_call({fetch_next, Uri, HeightIn, HashIn, Result}, _, State) ->
                [] ->
                    %% The peer is behaving weird
                    lager:info("weird peer behaviour ~p at height ~p", [ Uri, NewHeight ]),
-                   {reply, {error, sync_stopped}, 
+                   {reply, {error, sync_stopped},
                     State#state{hash_pool = NewHashPool,
-                                sync_pool = 
+                                sync_pool =
                                   lists:keydelete(Uri, #sync_peer.uri, State#state.sync_pool)}};
                PickAHash ->
                    {PickH, PickHash} = lists:nth(rand:uniform(length(PickAHash)), PickAHash),
@@ -279,7 +282,7 @@ handle_cast({delete_from_pool, Uri}, State) ->
     %% This Uri misbehaved, even if we got a new Ping in-between asking for deletion and
     %% actual deletion, we remove it. A new ping will arrive in the future.
     %% If the reference was kept, demonitor could be used here... but just ignore DOWN for these
-    {noreply, State#state{sync_pool = lists:keydelete(Uri, #sync_peer.uri, State#state.sync_pool)}}; 
+    {noreply, State#state{sync_pool = lists:keydelete(Uri, #sync_peer.uri, State#state.sync_pool)}};
 handle_cast(_, State) ->
     {noreply, State}.
 
@@ -315,18 +318,18 @@ insert(#sync_peer{difficulty = Difficulty,
                   from = From,
                   to = To,
                   uri = Uri} = Sync, Pool) ->
-  {NewUri, NewPool} = 
+  {NewUri, NewPool} =
       case lists:keyfind(Sync#sync_peer.uri, #sync_peer.uri, Pool) of
           false ->
              {true, [Sync | Pool]};
           RSync when RSync#sync_peer.from > From ->
-             {false, lists:keyreplace(Uri, #sync_peer.uri, Pool, 
-                                      RSync#sync_peer{difficulty = 
-                                                        max(Difficulty, RSync#sync_peer.difficulty), 
+             {false, lists:keyreplace(Uri, #sync_peer.uri, Pool,
+                                      RSync#sync_peer{difficulty =
+                                                        max(Difficulty, RSync#sync_peer.difficulty),
                                                       to = max(To, RSync#sync_peer.to)})};
           RSync ->
-             {false, lists:keyreplace(Uri, #sync_peer.uri, Pool, 
-                                      Sync#sync_peer{difficulty = max(Difficulty, RSync#sync_peer.difficulty), 
+             {false, lists:keyreplace(Uri, #sync_peer.uri, Pool,
+                                      Sync#sync_peer{difficulty = max(Difficulty, RSync#sync_peer.difficulty),
                                                      to = max(To, RSync#sync_peer.to)})}
       end,
   {NewUri, lists:keysort(#sync_peer.difficulty, NewPool)}.
@@ -334,7 +337,7 @@ insert(#sync_peer{difficulty = Difficulty,
 
 
 %% both lists are sorted on block height, same height may occur more than once
-%% with different hash 
+%% with different hash
 merge([], NewHashes) ->
   NewHashes;
 merge(OldHashes, []) ->
@@ -344,8 +347,8 @@ merge([{{H1, _Hash1}, _} | OldHashes], [{{H2, Hash2}, Map2} | NewHashes]) when H
   %% try to obtain on the chain. Drop it.
   merge(OldHashes, [{{H2, Hash2}, Map2} | NewHashes]);
 merge([{{H1, Hash1}, Map1} | OldHashes], [{{H2, _Hash2}, _} | NewHashes]) when H1 > H2 ->
-  %% drop Hash2, we have already passed that height. 
-  %% In the very unlikely event that we are on the wrong chain, we will ping with 
+  %% drop Hash2, we have already passed that height.
+  %% In the very unlikely event that we are on the wrong chain, we will ping with
   %% heigher difficulty when this fork has been read.
   merge([{{H1, Hash1}, Map1} | OldHashes], NewHashes);
 merge(OldHashes, [{{H2, Hash2}, Map2} | NewHashes]) ->
@@ -389,15 +392,15 @@ split_hash_pool(Height, PrevHash, [{{H, Hash}, Map} = Item | HashPool], Same) wh
                   lager:debug("Calling post_block(~p) --> hash of header ~p", [pp(Block), Hash]),
                   case aec_conductor:add_synced_block(Block) of
                     ok ->
-                      split_hash_pool(H + 1, Hash, HashPool, []); 
+                      split_hash_pool(H + 1, Hash, HashPool, []);
                     {error, _} = Error ->
                       lager:error("Could not insert ~p: ~p", [Block, Error]),
                       split_hash_pool(Height, PrevHash, HashPool, Same)
-                  end;  
+                  end;
               _ ->
                 split_hash_pool(Height, PrevHash, HashPool, [Item | Same])
             end
-    end;            
+    end;
 split_hash_pool(Height, PrevHash, HashPool, Same) ->
     {Height - 1, PrevHash, Same, HashPool}.
 
@@ -426,8 +429,9 @@ process_job([{_T, Job}]) ->
             do_server_get_missing(Uri);
         {fetch_mempool, Uri} ->
             do_fetch_mempool(Uri);
-        {ping, Uri} ->
-            await_aehttp_and_ping_peer(Uri);
+        {ping, PeerId} ->
+            %% ping_peer(PeerId);
+            await_aehttp_and_ping_peer(PeerId);
         _Other ->
             lager:debug("unknown job", [])
     end.
@@ -435,7 +439,7 @@ process_job([{_T, Job}]) ->
 enqueue(Op, Msg) ->
     [ jobs:enqueue(sync_jobs, {Op, Msg, Uri}) || Uri <- aec_peers:get_random(all) ].
 
-await_aehttp_and_ping_peer(Uri) ->
+await_aehttp_and_ping_peer(PeerId) ->
     %% Don't ping until our own HTTP endpoint is up. This is not strictly
     %% needed for the ping itself, but given that a ping can quickly
     %% lead to a greater discovery, we should be prepared to handle pings
@@ -443,35 +447,32 @@ await_aehttp_and_ping_peer(Uri) ->
     %% The URI comes from aec_peers and is a valid http url.
     case await_aehttp() of
         ok ->
-            ping_peer(Uri);
+            ping_peer(PeerId);
         {error, timeout} ->
-            lager:debug("timeout waiting for aehttp - no ping (~p) will retry", [Uri]),
-            await_aehttp_and_ping_peer(Uri)
+            lager:debug("timeout waiting for aehttp - no ping (~p) will retry", [PeerId]),
+            await_aehttp_and_ping_peer(PeerId)
     end.
 
-ping_peer(Uri) ->
-    LocalPingObj = local_ping_object(),
-    Res = aeu_requests:ping(Uri, LocalPingObj),
-    lager:debug("ping result (~p): ~p", [Uri, Res]),
+ping(PeerId) ->
+    case aec_peers:get_connection(PeerId) of
+        {ok, PeerCon} ->
+            aec_peer_connection:ping(PeerCon);
+        Err = {error, _} ->
+            Err
+    end.
+
+ping_peer(PeerId) ->
+    Res = ping(PeerId),
+    lager:debug("ping result (~p): ~p", [PeerId, Res]),
     case Res of
-        {ok, RemotePingObj, RemotePeers} ->
-            case compare_ping_objects(Uri, LocalPingObj, RemotePingObj) of
-                ok ->
-                    %% log_ping adds peer as side-effect
-                    %% (in case aec_peers has restarted inbetween)
-                    %% If it has been user removed before it was scheduled
-                    %% it is also added again.
-                    aec_peers:log_ping(Uri, good),
-                    aec_peers:add_and_ping_peers(RemotePeers);
-                {error, different_genesis_blocks} ->
-                    aec_peers:block_peer(Uri)
-            end;
+        ok ->
+            aec_peers:log_ping(PeerId, good);
         {error, protocol_violation} ->
-            aec_peers:block_peer(Uri);
+            aec_peers:block_peer(PeerId);
         {error, _} ->
             %% If we ping a peer with wrong API version, time out in aue_request
             %% and Peer is errored until it upgrades/downgrades to the same version.
-            aec_peers:log_ping(Uri, error)
+            aec_peers:log_ping(PeerId, error)
   end.
 
 %% The gproc name below is registered in the start function of
@@ -501,37 +502,46 @@ do_forward_tx(Tx, Uri) ->
     Res = aeu_requests:send_tx(Uri, Tx),
     lager:debug("send_tx Res (~p): ~p", [Uri, Res]).
 
-do_start_sync(Uri, RemoteHash) ->
-    aec_events:publish(chain_sync, {client_start, Uri}),
-    case aeu_requests:get_header_by_hash(Uri, RemoteHash) of
+get_header_by_hash(PeerId, Hash) ->
+    case aec_peers:get_connection(PeerId) of
+        {ok, PeerCon} ->
+            aec_peer_connection:get_header_by_hash(PeerCon, Hash);
+        Err = {error, _} ->
+            Err
+    end.
+
+do_start_sync(PeerId, RemoteHash) ->
+    aec_events:publish(chain_sync, {client_start, PeerId}),
+    case get_header_by_hash(PeerId, RemoteHash) of
         {ok, Hdr} ->
-            lager:debug("New header received (~p): ~p", [Uri, pp(Hdr)]),
+            lager:debug("New header received (~p): ~p", [PeerId, pp(Hdr)]),
             %% We assume that the top of the chain is a moving target
             %% Get a hash first and work with that.
             LocalHeader = aec_chain:top_header(),
             LocalHeight = aec_headers:height(LocalHeader),
             RemoteHeight = aec_headers:height(Hdr),
-            AgreedHeight = 
+            AgreedHeight =
                case LocalHeight == 0 of
                     true -> 0;
                     false ->
-                      agree_on_height(Uri, Hdr, RemoteHeight, 
+                      agree_on_height(PeerId, Hdr, RemoteHeight,
                                       LocalHeader, LocalHeight, LocalHeight, 0)
                end,
-            lager:debug("Agreed upon height (~p): ~p", [Uri, AgreedHeight]),
+            lager:debug("Agreed upon height (~p): ~p", [PeerId, AgreedHeight]),
             {ok, LocalAtHeight} = aec_chain:get_header_by_height(AgreedHeight),
-            {ok, AgreedHash} = aec_headers:hash_header(LocalAtHeight), 
+            {ok, AgreedHash} = aec_headers:hash_header(LocalAtHeight),
             %% The prev_hash of next block should be AgreedHash
-            case new_header(Uri, Hdr, AgreedHeight, AgreedHash) of
+            case new_header(PeerId, Hdr, AgreedHeight, AgreedHash) of
                 false ->
-                    lager:debug("Already syncing with peer ~p", [Uri]),
+                    lager:debug("Already syncing with peer ~p", [PeerId]),
+                    %% Already a sync in progress with this peer
                     ok;
                 true ->
-                    PoolResult = fill_pool(Uri, AgreedHash),
-                    fetch_more(Uri, AgreedHeight, AgreedHash, PoolResult)
+                    PoolResult = fill_pool(PeerId, AgreedHash),
+                    fetch_more(PeerId, AgreedHeight, AgreedHash, PoolResult)
             end;
         {error, Reason} ->
-            lager:debug("fetching top block (~p) failed: ~p", [Uri, Reason])
+            lager:debug("fetching top block (~p) failed: ~p", [PeerId, Reason])
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
@@ -547,7 +557,7 @@ agree_on_height(Uri, RHeader, RH, LHeader, LH, Max, Min) when RH == LH ->
                false ->
                    LH
              end;
-        false -> 
+        false ->
              %% We disagree. Local on a fork compared to remote. Check half-way
              Middle = (Min + LH) div 2,
              case Min < Middle andalso Middle < Max of
@@ -558,10 +568,10 @@ agree_on_height(Uri, RHeader, RH, LHeader, LH, Max, Min) when RH == LH ->
                     Min
              end
     end;
-agree_on_height(Uri, _, RH, LHeader, LH, Max, Min) when RH =/= LH -> 
+agree_on_height(Uri, _, RH, LHeader, LH, Max, Min) when RH =/= LH ->
     case aeu_requests:get_header_by_height(Uri, LH) of
          {ok, RemoteAtHeight} ->
-             lager:debug("New header received (~p): ~p", [Uri, pp(RemoteAtHeight)]),         
+             lager:debug("New header received (~p): ~p", [Uri, pp(RemoteAtHeight)]),
              agree_on_height(Uri, RemoteAtHeight, LH, LHeader, LH, Max, Min);
          {error, Reason} ->
              lager:debug("Fetching header ~p from ~p failed: ~p", [LH, Uri, Reason]),
@@ -598,7 +608,7 @@ fetch_more(Uri, LastHeight, _, {error, Error}) ->
     lager:info("Abort sync at height ~p Error ~p ", [LastHeight, Error]),
     delete_from_pool(Uri);
 fetch_more(Uri, LastHeight, HeaderHash, Result) ->
-    %% We need to supply the Hash, because locally we might have a shorter, 
+    %% We need to supply the Hash, because locally we might have a shorter,
     %% but locally more difficult fork
     case fetch_next(Uri, LastHeight, HeaderHash, Result) of
         {fetch, NewHeight, NewHash, Hash} ->

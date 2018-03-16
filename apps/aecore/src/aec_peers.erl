@@ -4,12 +4,12 @@
 %%%    Module storing peers list and providing functions for peers interaction.
 %%%
 %%% API
-%%%
+%%% TODO: Update the doc...
 %%% The external API takes a http_uri:uri() as input. We first check
 %%% the validity of this input by parsing it (into a peer()). Only
 %%% valid peer() data types are send to the gen_server.
 %%%
-%%% Internally, the peer() data structure is known and the gen_server is 
+%%% Internally, the peer() data structure is known and the gen_server is
 %%% called directly with the peer as argument.
 %%%
 %%% The parsing is performed with continuation style success and
@@ -21,6 +21,8 @@
 
 -behaviour(gen_server).
 
+-include("common.hrl").
+
 %% API
 -export([add_and_ping_peers/1,
          add_and_ping_peers/2,
@@ -30,14 +32,15 @@
          remove/1,
          all/0,
          blocked/0,
+         get_connection/1,
          get_random/1,
          get_random/2,
-         set_local_peer_uri/1,
-         get_local_peer_uri/0,
+         set_local_peer_info/1,
+         get_local_peer_info/0,
          update_last_seen/1]).
 
 %% API only used in aec_sync
--export([ add/2,
+-export([ add/1,
           log_ping/2
         ]).
 
@@ -58,11 +61,11 @@
 -define(PEER_ERROR_EXPIRY, 60 * 60 * 1000).
 
 
-%% We parse the uri's with http_uri, therefore we use types from that module.
 -record(peer, {
-          scheme            :: http_uri:scheme(),
-          host              :: http_uri_host(),
+          pubkey            :: binary(),
+          host              :: string() | binary(),
           port              :: inet:port_number(),
+          connection        :: term(),
           last_seen = 0     :: integer(), % Erlang system time (POSIX time)
           expire            :: undefined | integer(), %% Erlang system time: when to drop this peer
           last_pings = []   :: [integer()], % Erlang system time
@@ -70,105 +73,80 @@
           trusted = false   :: boolean() % Is it a pre-configured peer
          }).
 
--type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
--type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
-
+-type peer_id() :: binary(). %% The Peer is identified by its pubkey for now.
+-type peer_info() :: #{ host    := string() | binary(),
+                        port    := inet:port_number(),
+                        pubkey  := pubkey(),
+                        seckey  => pubkey(),
+                        conn    => term(),
+                        ping    => boolean(),
+                        trusted => boolean() }.
 -type peer() :: #peer{}.
 
 %%%=============================================================================
 
--spec valid_uri(http_uri_uri(), fun((peer()) -> T)) -> T | {error, any()}.
-valid_uri(Uri, Success) ->
-    valid_uri(Uri, Success, fun(X) -> X end).
-
--spec valid_uri(http_uri_uri(), fun((peer()) -> T1), fun(({error, any()}) -> T2)) -> T1 | T2.
-valid_uri(Uri, Success, Failure) ->
-    case parse_uri(Uri) of
-        {error, _} = Error ->
-            Failure(Error);
-        #peer{} = ParsedPeer ->
-            Success(ParsedPeer)
-        end.
-
-%% parse the uri's and keep the valid once as peer.
--spec valid_uris(list(http_uri_uri())) -> list(peer()).
-valid_uris(Uris) ->
-    [ Peer || Uri <- Uris, #peer{} = Peer <- [parse_uri(Uri)] ].
-
+%%------------------------------------------------------------------------------
+%% Add peer
+%%------------------------------------------------------------------------------
+-spec add(peer_info()) -> ok.
+add(PeerInfo) ->
+    gen_server:cast(?MODULE, {add, PeerInfo}).
 
 %%------------------------------------------------------------------------------
-%% Add peer by url. Connect if `Connect==true`
+%% Add peers and configure them for a ping
 %%------------------------------------------------------------------------------
--spec add(http_uri_uri(), boolean()) -> ok | {error, any()}.
-add(Uri, Connect) when is_boolean(Connect) ->
-    valid_uri(Uri, fun(Peer) ->
-                       gen_server:cast(?MODULE, {add, Peer, Connect})
-                   end).
+-spec add_and_ping_peers([peer_info()]) -> ok.
+add_and_ping_peers(Peers) ->
+    [ add(Peer#{ ping => true }) || Peer <- Peers ],
+    ok.
 
 %%------------------------------------------------------------------------------
-%% Add peers by uri.
+%% Add peers and configure them for a ping. Indicate whether they are trusted
+%% (i.e. pre-configured) or not.
 %%------------------------------------------------------------------------------
--spec add_and_ping_peers([http_uri_uri()]) -> ok.
-add_and_ping_peers(Uris) ->
-    add_and_ping_peers(Uris, false).
-
-%%------------------------------------------------------------------------------
-%% Add peers by uri. Indicate whether they are trusted (i.e. pre-configured) or
-%% not.
-%%------------------------------------------------------------------------------
--spec add_and_ping_peers([http_uri_uri()], boolean()) -> ok.
-add_and_ping_peers(Uris, Trusted) ->
-    case valid_uris(Uris) of
-        [] -> ok;
-        Peers0 when is_list(Peers0) ->
-            Peers = [ P#peer{ trusted = Trusted } || P <- Peers0 ],
-            gen_server:cast(?MODULE, {add_and_ping, Peers})
-    end.
+-spec add_and_ping_peers([peer_info()], boolean()) -> ok.
+add_and_ping_peers(Peers, Trusted) ->
+    add_and_ping_peers([ Peer#{ trusted => Trusted } || Peer <- Peers ]).
 
 %%------------------------------------------------------------------------------
 %% Block peer
 %%------------------------------------------------------------------------------
--spec block_peer(http_uri_uri()) -> ok | {error, any()}.
-block_peer(Uri) ->
-    valid_uri(Uri, 
-              fun(Peer) -> gen_server:call(?MODULE, {block, Peer}) end).
+-spec block_peer(peer_id()) -> ok | {error, term()}.
+block_peer(Peer) ->
+    gen_server:call(?MODULE, {block, Peer}).
 
 
 %%------------------------------------------------------------------------------
 %% Unblock peer
 %%------------------------------------------------------------------------------
--spec unblock_peer(http_uri_uri()) -> ok | {error, any()}.
-unblock_peer(Uri) ->
-    valid_uri(Uri, 
-              fun(Peer) -> gen_server:call(?MODULE, {unblock, Peer}) end).
+-spec unblock_peer(peer_id()) -> ok | {error, term()}.
+unblock_peer(Peer) ->
+    gen_server:call(?MODULE, {unblock, Peer}).
 
 %%------------------------------------------------------------------------------
-%% Check if peer is blocked. Erroneous URI is by definition blocked.
+%% Check if peer is blocked. Erroneous Peers is by definition blocked.
 %%------------------------------------------------------------------------------
--spec is_blocked(http_uri_uri()) -> boolean().
-is_blocked(Uri) ->
-    valid_uri(Uri, 
-              fun(Peer) -> gen_server:call(?MODULE, {is_blocked, Peer}) end,
-              fun(_) -> true end).
+-spec is_blocked(peer_id()) -> boolean().
+is_blocked(Peer) ->
+    gen_server:call(?MODULE, {is_blocked, Peer}).
 
 %%------------------------------------------------------------------------------
-%% Remove peer by url.
-%% At the moment also removes uri from the blocked list
+%% Remove peer.
+%% At the moment also removes peer from the blocked list
 %%------------------------------------------------------------------------------
--spec remove(http_uri_uri()) -> ok | {error, any()}.
-remove(Uri) ->
-    valid_uri(Uri,
-              fun(Peer) -> gen_server:cast(?MODULE, {remove, Peer}) end).
+-spec remove(peer_id()) -> ok.
+remove(Peer) ->
+    gen_server:cast(?MODULE, {remove, Peer}).
 
 %%------------------------------------------------------------------------------
 %% Get list of all peers. The list may be big. Use with caution.
 %% Consider using get_random instead.
 %%------------------------------------------------------------------------------
--spec all() -> list(http_uri_uri()).
+-spec all() -> list(peer_info()).
 all() ->
     gen_server:call(?MODULE, all).
 
--spec blocked() -> list(http_uri_uri()).
+-spec blocked() -> list(peer_info()).
 blocked() ->
     gen_server:call(?MODULE, blocked).
 
@@ -179,7 +157,7 @@ blocked() ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(all | non_neg_integer()) -> [http_uri_uri()].
+-spec get_random(all | non_neg_integer()) -> [peer_info()].
 get_random(NumberOfPeers) ->
     get_random(NumberOfPeers, []).
 
@@ -190,63 +168,45 @@ get_random(NumberOfPeers) ->
 %% so we can find a random peer by choosing a point and getting the next peer in gb_tree.
 %% That's what this function does
 %%------------------------------------------------------------------------------
--spec get_random(all | non_neg_integer(), [http_uri_uri()]) -> [http_uri_uri()].
-get_random(N, Exclude) when is_list(Exclude), 
+-spec get_random(all | non_neg_integer(), [peer_id()]) -> [peer_info()].
+get_random(N, Exclude) when is_list(Exclude),
     N == all orelse (is_integer(N) andalso N >= 0) ->
-    gen_server:call(?MODULE, {get_random, N, valid_uris(Exclude)}).
+    gen_server:call(?MODULE, {get_random, N, Exclude}).
 
 %%------------------------------------------------------------------------------
-%% Set our own peer address
+%% Set our own peer id
 %%------------------------------------------------------------------------------
--spec set_local_peer_uri(http_uri_uri()) -> ok | {error, any()}.
-set_local_peer_uri(Uri) ->
-    valid_uri(Uri,
-              fun(Peer) -> 
-                  gen_server:cast(?MODULE, {set_local_peer_uri, Peer}) 
-              end).
+-spec set_local_peer_info(peer_info()) -> ok.
+set_local_peer_info(Peer) ->
+    gen_server:cast(?MODULE, {set_local_peer_info, Peer}).
 
 %%------------------------------------------------------------------------------
-%% Set our own peer address
+%% Set our own peer id
 %%------------------------------------------------------------------------------
--spec get_local_peer_uri() -> http_uri_uri().
-get_local_peer_uri() ->
-    gen_server:call(?MODULE, get_local_peer_uri).
+-spec get_local_peer_info() -> peer_info().
+get_local_peer_info() ->
+    gen_server:call(?MODULE, get_local_peer_info).
+
+get_connection(PeerId) ->
+    gen_server:call(?MODULE, {get_connection, PeerId}).
 
 %%------------------------------------------------------------------------------
 %% Update `last_seen` timestamp
 %%------------------------------------------------------------------------------
--spec update_last_seen(http_uri_uri()) -> ok | {error, any()}.
-update_last_seen(Uri) ->
-    valid_uri(Uri,
-              fun(Peer) -> 
-                  gen_server:cast(?MODULE, {update_last_seen, Peer, timestamp()}) 
-              end).
+-spec update_last_seen(peer_id()) -> ok.
+update_last_seen(Peer) ->
+    gen_server:cast(?MODULE, {update_last_seen, Peer, timestamp()}).
 
--spec log_ping(http_uri_uri(), good | error) -> ok | {error, any()}.
-log_ping(Uri, Result) ->
-    valid_uri(Uri,
-              fun(Peer) -> 
-                  gen_server:cast(?MODULE, {log_ping, Result, Peer, timestamp()})
-              end).
+-spec log_ping(peer(), good | error) -> ok | {error, any()}.
+log_ping(Peer, Result) ->
+    gen_server:cast(?MODULE, {log_ping, Result, Peer, timestamp()}).
 
 %%------------------------------------------------------------------------------
 %% Check user-provided environment
 %%------------------------------------------------------------------------------
 check_env() ->
-    [check_env_(UKey, AKey) ||
-        {UKey, AKey} <- [{<<"peers">>, peers},
-                         {<<"blocked_peers">>, blocked_peers}]],
     check_ping_interval_env(),
     ok.
-
-check_env_(UKey, AKey) ->
-    case aeu_env:user_config(UKey) of
-        {ok, Peers0} when is_list(Peers0) ->
-            Peers = [binary_to_list(P) || P <- Peers0],
-            application:set_env(aecore, AKey, Peers);
-        undefined ->
-            ok
-    end.
 
 check_ping_interval_env() ->
     {DefMin, DefMax} = ping_interval_limits(),
@@ -270,65 +230,73 @@ unblock_all() ->
 %%%=============================================================================
 
 
--record(state, {peers :: gb_trees:tree(binary(), peer()),
-                blocked = gb_sets:new() :: gb_sets:set(http_uri_uri()),
-                errored = gb_sets:new() :: gb_sets:set(http_uri_uri()),
-                local_peer :: peer(),  %% for universal handling of URIs
-                next_unblock = 0 :: integer() %% Erlang timestamp in ms.
+-record(state, {peers                   :: gb_trees:tree(binary(), peer()),
+                blocked = gb_sets:new() :: gb_sets:set(peer_id()),
+                errored = gb_sets:new() :: gb_sets:set(peer_id()),
+                local_peer              :: peer_info(),  %% for universal handling of URIs
+                next_unblock = 0        :: integer() %% Erlang timestamp in ms.
                }).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
 
 init(ok) ->
-    {Scheme, Host, Port} = aeu_env:local_peer(),
-    LocalPeer = #peer{scheme = Scheme, host = Host, port = Port},
+    {_Scheme, Host, _Port} = aeu_env:local_peer(),
+    Port = aeu_env:user_config_or_env(<<"sync_port">>, aecore, sync_port, 1234),
+    {SecKey, PubKey} =  aeu_env:user_config_or_env(<<"sync_keys">>, aecore, sync_keys, {<<>>, <<0:(32*8)>>}),
+    LocalPeer = #{host => Host, port => Port, seckey => SecKey, pubkey => PubKey},
+    lager:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{peers = gb_trees:empty(),
                 local_peer = LocalPeer}}.
 
-handle_call({set_local_peer_uri, Peer}, _From, State) ->
+handle_call({set_local_peer_info, Peer}, _From, State) ->
     {reply, ok, State#state{local_peer = Peer}};
-handle_call(get_local_peer_uri, _From, State) ->
-    {reply, uri_of_peer(State#state.local_peer), State};
+handle_call(get_local_peer_info, _From, State) ->
+    {reply, State#state.local_peer, State};
 handle_call({is_blocked, Peer}, _From, State0) ->
     State = maybe_unblock(State0),
     {reply, is_blocked(Peer, State), State};
 handle_call({block, Peer}, _From, State0) ->
     State = maybe_unblock(State0),
     #state{peers = Peers, blocked = Blocked} = State,
-    Uri = uri_of_peer(Peer),
     NewState =
-        case lookup_peer(Uri, State) of
+        case lookup_peer(Peer, State) of
             {value, _Key, #peer{ trusted = true }} -> State;
             {value, Key, _} ->
-                aec_events:publish(peers, {blocked, Uri}),
+                aec_events:publish(peers, {blocked, Peer}),
                 State#state{peers   = gb_trees:delete_any(Key, Peers),
-                            blocked = gb_sets:add_element(Uri, Blocked)};
+                            blocked = gb_sets:add_element(Peer, Blocked)};
             none ->
-                aec_events:publish(peers, {blocked, Uri}),
-                State#state{blocked = gb_sets:add_element(Uri, Blocked)}
+                aec_events:publish(peers, {blocked, Peer}),
+                State#state{blocked = gb_sets:add_element(Peer, Blocked)}
         end,
     {reply, ok, NewState};
 handle_call({unblock, Peer}, _From, #state{blocked = Blocked} = State) ->
-    Uri = uri_of_peer(Peer),
-    NewState = 
-        case gb_sets:is_element(Uri, Blocked) of
+    NewState =
+        case gb_sets:is_element(Peer, Blocked) of
             false -> State;
             true ->
-                aec_events:publish(peers, {unblocked, Uri}),
-                State#state{blocked = gb_sets:del_element(Uri, Blocked)}
+                aec_events:publish(peers, {unblocked, Peer}),
+                State#state{blocked = gb_sets:del_element(Peer, Blocked)}
         end,
     {reply, ok, NewState};
 %% unblock_all is only available for test
 handle_call(unblock_all, _From, State) ->
     {reply, ok, State#state{blocked = gb_sets:new(), next_unblock = next_unblock()}};
-handle_call(all, _From, State) ->
-    Uris = [ {uri_of_peer(Peer), LastSeen} || #peer{last_seen=LastSeen} = Peer
-                                  <- gb_trees:values(State#state.peers) ],
-    {reply, Uris, State};
+handle_call(all, _From, State = #state{peers = Peers}) ->
+    PeerIds = [ {peer_info(P), LastSeen}
+                || P = #peer{last_seen = LastSeen} <- gb_trees:values(Peers) ],
+    {reply, PeerIds, State};
 handle_call(blocked, _From, State) ->
-    Uris = [ Uri || Uri <- gb_sets:to_list(State#state.blocked) ],
-    {reply, Uris, State};
+    Peers = [ peer_info(Peer) || Peer <- gb_sets:to_list(State#state.blocked) ],
+    {reply, Peers, State};
+handle_call({get_connection, PeerId}, _From, State) ->
+    Res =
+        case lookup_peer(PeerId, State) of
+            {value, _, #peer{ connection = Conn }} -> {ok, Conn};
+            none -> {error, no_connection}
+        end,
+    {reply, Res, State};
 handle_call({get_random, N0, Exclude}, _From, #state{peers = Tree0,
                                                      errored = Errored} = State) ->
     %% first, remove all errored peers
@@ -342,7 +310,7 @@ handle_call({get_random, N0, Exclude}, _From, #state{peers = Tree0,
                        remove_peer(P, Acc)
                end, Tree, Exclude),
     lager:debug("Pruned = ~p", [Pruned]),
-    Peers = 
+    Peers =
         case gb_trees:size(Pruned) of
             Sz when Sz =< N ->
                 gb_trees:values(Pruned);
@@ -350,98 +318,126 @@ handle_call({get_random, N0, Exclude}, _From, #state{peers = Tree0,
                 Ps = random_values(N, Sz),
                 pick_values(Ps, gb_trees:iterator(Pruned))
         end,
-    {reply, [ uri_of_peer(P) || P <- Peers ], State}.
+    {reply, [ peer_info(P) || P <- Peers ], State}.
 
-handle_cast({update_last_seen, Peer, Time}, State = #state{peers = Peers}) ->
-    Uri = uri_of_peer(Peer),
-    case is_local_uri(Peer, State) orelse is_blocked(Peer, State) of
+handle_cast({update_last_seen, PeerId, Time}, State = #state{peers = Peers}) ->
+    case is_local(PeerId, State) orelse is_blocked(PeerId, State)
+            orelse lookup_peer(PeerId, State) == none of
         false ->
-            NewPeer = 
-                case lookup_peer(Uri, State) of
-                    none ->
-                        %% can happen e.g. at first ping
-                        start_ping_timer(
-                            fun set_max_retry/1,
-                            Peer);
-                    {value, _Hash, FoundPeer} ->
-                        start_ping_timer(
-                            fun set_max_retry/1,
-                            FoundPeer)
-                end,
+            {value, _Hash, Peer} = lookup_peer(PeerId, State),
+            NewPeer = start_ping_timer(fun set_max_retry/1, Peer),
             NewPeers = enter_peer(NewPeer#peer{last_seen = Time}, Peers),
-            Errored = update_errored(ok, Uri, State#state.errored),
+            Errored = update_errored(ok, PeerId, State#state.errored),
             {noreply, State#state{peers = NewPeers, errored = Errored}};
         true ->
-            lager:debug("Ignoring last_seen ~p", [Uri]),
+            lager:debug("Ignoring last_seen ~p", [PeerId]),
             {noreply, State}
     end;
 handle_cast({log_ping, error, Peer, Time}, State) ->
     {noreply, log_ping_and_set_reping(
               error,
-              fun calc_backoff_retry/1, uri_of_peer(Peer), Time, State)};
+              fun calc_backoff_retry/1, Peer, Time, State)};
 handle_cast({log_ping, good, Peer, Time}, State) ->
     {noreply, log_ping_and_set_reping(
               ok,
-              fun set_max_retry/1, uri_of_peer(Peer), Time, State)};
-handle_cast({add, Peer, Connect}, State0) ->
-    Uri = uri_of_peer(Peer),
+              fun set_max_retry/1, Peer, Time, State)};
+handle_cast({add, PeerInfo}, State0) ->
     %% only add if not already present: prevent overwriting other fields
-    case is_local_uri(Peer, State0) orelse is_blocked(Peer, State0) orelse 
-         lookup_peer(Uri, State0) =/= none of
+    Peer   = #peer{ host = maps:get(host, PeerInfo),
+                    port = maps:get(port, PeerInfo),
+                    pubkey = maps:get(pubkey, PeerInfo),
+                    connection = maps:get(connection, PeerInfo, undefined) },
+    PeerId = peer_id(Peer),
+    lager:debug("ZZPC: add ~p", [PeerInfo]),
+    case is_local(PeerId, State0) orelse is_blocked(PeerId, State0) of
         false ->
-            State1 = State0#state{peers = enter_peer(Peer, State0#state.peers)}, 
-            case Connect andalso not has_been_seen(Peer) of
-                true ->
-                    lager:debug("will ping peer ~p", [Uri]),
-                    aec_sync:schedule_ping(Uri);
-                false -> ok
-            end,
+            NewPeer =
+                case lookup_peer(PeerId, State0) of
+                    none ->
+                        case maps:get(ping, PeerInfo, false) of
+                            true ->
+                                #{ seckey := SKey, pubkey := PKey,
+                                   host := LHost, port := LPort } = State0#state.local_peer,
+                                ConnInfo = PeerInfo#{ r_pubkey => maps:get(pubkey, PeerInfo),
+                                                      local_host => LHost, local_port => LPort,
+                                                      seckey => SKey, pubkey => PKey },
+                                {ok, Pid} = aec_peer_connection:connect(ConnInfo),
+                                lager:debug("will ping peer ~p", [PeerId]),
+                                aec_sync:schedule_ping(PeerId),
+                                Peer#peer{ connection = Pid };
+                            false ->
+                                lager:debug("ZZPC: new peer no ping ~p", [PeerId]),
+                                lager:debug("ZZPC: new peer no ping ~p", [State0#state.peers]),
+                                Peer
+                        end;
+                    {value, _Key, FoundPeer = #peer{ connection = FConn }} ->
+                        %% Pick "the best" connection
+                        case {FConn, Peer#peer.connection} of
+                            {undefined, Pid} when is_pid(Pid) ->
+                                FoundPeer#peer{ connection = Pid };
+                            {Pid1, Pid2} when Pid1 /= Pid2, is_pid(Pid1), is_pid(Pid2) ->
+                                %% We pick the new one since that one is definitely working or
+                                %% else we would not have gotten this {add, Peer}
+                                lager:debug("Two connection alternatives ~p and ~p", [Pid1, Pid2]),
+                                lager:debug("Closing ~p ", [Pid1]),
+                                aec_peer_connection:stop(Pid1),
+                                FoundPeer#peer{ connection = Pid2 };
+                                %% case {aec_peer_connection:status(Pid1),
+                                %%       aec_peer_connection:status(Pid2)} of
+                                %%     {Ok, error} when Ok /= error ->
+                                %%         lager:debug("Closing ~p ", [Pid2]),
+                                %%         aec_peer_connection:stop(Pid2),
+                                %%         FoundPeer;
+                                %%     {error, Ok} when Ok /= error ->
+                                %%         lager:debug("Closing ~p ", [Pid1]),
+                                %%         aec_peer_connection:stop(Pid1),
+                                %%         FoundPeer#peer{ connection = Pid2 };
+                                %%     {_, _} ->
+                                %%         case PeerId < peer_id(State0#state.local_peer) of
+                                %%             true ->
+                                %%                 lager:debug("Closing ~p ", [Pid2]),
+                                %%                 aec_peer_connection:stop(Pid2),
+                                %%                 FoundPeer;
+                                %%             false ->
+                                %%                 lager:debug("Closing ~p ", [Pid1]),
+                                %%                 aec_peer_connection:stop(Pid1),
+                                %%                 FoundPeer#peer{ connection = Pid2 }
+                                %%         end
+                                %% end;
+                            {_, _} ->
+                                FoundPeer
+                        end
+                end,
+            State1 = State0#state{peers = enter_peer(NewPeer, State0#state.peers)},
             {noreply, metrics(State1)};
         true ->
-            lager:debug("Will not add peer ~p", [Uri]),
+            lager:debug("Will not add peer ~p", [PeerId]),
             {noreply, State0}
     end;
-handle_cast({add_and_ping, Peers}, State0) ->
-    State = maybe_unblock(State0),
-    lager:debug("add and ping peers ~p", [Peers]),
-    State1 = 
-        lists:foldl(
-          fun(P, #state{peers = Ps} = S) ->
-              Uri = uri_of_peer(P), 
-              case is_local_uri(P, S) orelse is_blocked(P, S) orelse lookup_peer(Uri, S) =/= none of
-                  false ->
-                      lager:debug("will ping peer ~p", [Uri]),
-                      aec_sync:schedule_ping(Uri),
-                      S#state{peers = enter_peer(P, Ps)};
-                  true ->
-                      lager:debug("Don't insert nor ping peer (~p)", [Uri]),
-                      S
-              end
-          end, State, Peers),
-    lager:debug("known peers: ~p", [gb_trees:to_list(State1#state.peers)]),
-    {noreply, metrics(State1)};
-handle_cast({remove, Peer}, State = #state{peers = Peers, blocked = Blocked}) ->
-    Uri = uri_of_peer(Peer),
-    NewState = 
-        State#state{peers   = remove_peer(Peer, Peers),
-                    blocked = gb_sets:del_element(Uri, Blocked)},
+handle_cast({remove, PeerId}, State = #state{peers = Peers, blocked = Blocked}) ->
+    case lookup_peer(PeerId, State) of
+        none -> ok;
+        {value, _Key, Peer} -> stop_connection(Peer)
+    end,
+    NewState = State#state{peers   = remove_peer(PeerId, Peers),
+                           blocked = gb_sets:del_element(PeerId, Blocked)},
     {noreply, metrics(NewState)}.
 
-handle_info({timeout, Ref, {ping_peer, Uri}}, State) ->
-    lager:debug("got ping_peer timer msg for ~p", [Uri]),
-    case lookup_peer(Uri, State) of
+handle_info({timeout, Ref, {ping_peer, PeerId}}, State) ->
+    lager:debug("got ping_peer timer msg for ~p", [PeerId]),
+    case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("ping_peer timer msg for unknown uri (~p)", [Uri]),
+            lager:debug("ping_peer timer msg for unknown uri (~p)", [PeerId]),
             {noreply, State};
         {value, _Hash, #peer{ping_tref = Ref} = Peer} ->
             %% TODO: use jobs workers instead
-            maybe_ping_peer(Peer, State),
+            maybe_ping_peer(PeerId, State),
             Peers = enter_peer(
                       Peer#peer{ping_tref = undefined},
                       State#state.peers),
             {noreply, State#state{peers = Peers}};
         {value, _, #peer{}} ->
-            lager:debug("stale ping_peer timer msg (~p) - ignore", [Uri]),
+            lager:debug("stale ping_peer timer msg (~p) - ignore", [PeerId]),
             {noreply, State}
     end;
 handle_info(_Info, State) ->
@@ -482,33 +478,38 @@ next_unblock() ->
 
 %% Updates if already exists.
 enter_peer(#peer{} = P, Peers) ->
-    gb_trees:enter(hash_uri(uri_of_peer(P)), P, Peers).
+    gb_trees:enter(hash_peer(P), P, Peers).
 
 timestamp() ->
     erlang:system_time(millisecond).
 
--spec hash_uri(http_uri_uri()) -> binary().
-hash_uri(Uri) ->
-    Hash = crypto:hash(md4, Uri),
-    <<Hash/binary, Uri/binary>>.
+-spec hash_peer(peer() | binary()) -> binary().
+hash_peer(#peer{} = P) ->
+    hash_peer(peer_id(P));
+hash_peer(<<PK:32/binary, _/binary>>) ->
+    aec_hash:hash(peer_id, PK).
 
 exclude_from_set(Set, Tree, S) ->
     gb_sets:fold(
-      fun(Uri, Acc) ->
-              exclude_peer_uri(Uri, Acc, S)
+      fun(Peer, Acc) ->
+              exclude_peer(Peer, Acc, S)
       end, Tree, Set).
 
 
-exclude_peer_uri(Uri, T, S) ->
-    case lookup_peer(Uri, S) of
+exclude_peer(Peer, T, S) ->
+    case lookup_peer(Peer, S) of
         none ->
             T;
         {value, Key, _} ->
             gb_trees:delete_any(Key, T)
     end.
 
+remove_peer(PeerInfo = #{}, Peers) ->
+    remove_peer(peer_id(PeerInfo), Peers);
 remove_peer(#peer{} = Peer, Peers) ->
-    gb_trees:delete_any(hash_uri(uri_of_peer(Peer)), Peers).
+    remove_peer(peer_id(Peer), Peers);
+remove_peer(PeerId, Peers) when is_binary(PeerId) ->
+    gb_trees:delete_any(hash_peer(PeerId), Peers).
 
 random_values(N, Sz) ->
     random_values(N, Sz, ordsets:new()).
@@ -534,11 +535,8 @@ pick_values([], _, _, Acc) ->
 pick_values(Ps, N, {_, _, Iter}, Acc) ->
     pick_values(Ps, N+1, gb_trees:next(Iter), Acc).
 
-has_been_seen(Peer) ->
-    Peer#peer.last_seen =/= 0.
-
-lookup_peer(Uri, #state{peers = Peers}) when is_binary(Uri) ->
-    Key = hash_uri(Uri),
+lookup_peer(PeerId, #state{peers = Peers}) when is_binary(PeerId) ->
+    Key = hash_peer(PeerId),
     case gb_trees:lookup(Key, Peers) of
         none -> none;
         {value, P} ->
@@ -546,15 +544,14 @@ lookup_peer(Uri, #state{peers = Peers}) when is_binary(Uri) ->
     end.
 
 is_blocked(Peer, #state{blocked = Blocked}) ->
-    Uri = uri_of_peer(Peer),
-    lager:debug("Check for blocked ~p in ~p\n", [Uri, Blocked]), 
-    gb_sets:is_element(Uri, Blocked).
+    lager:debug("Check for blocked ~p in ~p\n", [Peer, Blocked]),
+    gb_sets:is_element(Peer, Blocked).
 
 
-log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
-    case lookup_peer(Uri, State) of
+log_ping_and_set_reping(Res, CalcF, PeerId, Time, State) ->
+    case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("Reported ping event for unknown peer (~p)", [Uri]),
+            lager:debug("Reported ping event for unknown peer (~p)", [PeerId]),
             State;
         {value, _Hash, Peer} ->
             update_ping_metrics(Res),
@@ -562,13 +559,15 @@ log_ping_and_set_reping(Res, CalcF, Uri, Time, State) ->
             %% drop an errored peer if it has expired
             case Time > Peer1#peer.expire andalso not Peer#peer.trusted of
                  true ->
-                     State#state{peers = remove_peer(Peer, State#state.peers), 
-                                 errored = gb_sets:delete_any(
-                                            uri_of_peer(Peer), State#state.errored)};
+                     lager:debug("ZZPC: remove_peer ~p > ~p - ~p", [Time, Peer1#peer.expire, PeerId]),
+                     stop_connection(Peer1),
+                     State#state{peers = remove_peer(PeerId, State#state.peers),
+                                 errored = gb_sets:delete_any(PeerId, State#state.errored)};
                  false ->
                      Peer2 = start_ping_timer(CalcF, Peer1),
+                     lager:debug("ZZPC: set ping_timer for ~p : ~p", [peer_info(PeerId), Peer2#peer.ping_tref]),
                      Peers = enter_peer(Peer2, State#state.peers),
-                     Errored = update_errored(Res, uri_of_peer(Peer), State#state.errored),
+                     Errored = update_errored(Res, PeerId, State#state.errored),
                      State#state{peers = Peers, errored = Errored}
             end
     end.
@@ -580,17 +579,22 @@ update_ping_metrics(Res) ->
            end,
     aec_metrics:try_update(Name, 1).
 
-update_errored(ok, Uri, Errored) ->
-    gb_sets:delete_any(Uri, Errored);
-update_errored(error, Uri, Errored) ->
-    gb_sets:add_element(Uri, Errored).
+update_errored(ok, PeerId, Errored) ->
+    gb_sets:delete_any(PeerId, Errored);
+update_errored(error, PeerId, Errored) ->
+    gb_sets:add_element(PeerId, Errored).
+
+stop_connection(#peer{ connection = Pid }) when is_pid(Pid) ->
+    lager:debug("ZZPC: stopping connection ~p", [Pid]),
+    aec_peer_connection:stop(Pid);
+stop_connection(_) ->
+    ok.
 
 start_ping_timer(CalcF, Peer) ->
-    Uri = uri_of_peer(Peer),
     NewTime = CalcF(Peer),
-    lager:debug("Starting re-ping timer for ~p: ~p", [Uri, NewTime]),
+    lager:debug("Starting re-ping timer for ~p: ~p", [peer_info(Peer), NewTime]),
     TRef = erlang:start_timer(
-             NewTime, self(), {ping_peer, Uri}),
+             NewTime, self(), {ping_peer, peer_id(Peer)}),
     save_ping_timer(TRef, Peer).
 
 save_ping_event(Res, T, Peer) ->
@@ -599,10 +603,10 @@ save_ping_event(Res, T, Peer) ->
                     [A]     -> [T,A];
                     [A,B|_] -> [T,A,B]
                 end,
-    {LastSeen, Expire} = 
+    {LastSeen, Expire} =
         case Res of
             ok    -> {T, T + application:get_env(aecore, peer_error_expiry, ?PEER_ERROR_EXPIRY)};
-            error -> {Peer#peer.last_seen, 
+            error -> {Peer#peer.last_seen,
                       if Peer#peer.expire == undefined -> T;
                          true -> Peer#peer.expire
                       end}
@@ -656,42 +660,40 @@ ping_interval_limits() ->
     end.
 
 maybe_ping_peer(Peer, State) ->
-    Uri = uri_of_peer(Peer),
-    case is_local_uri(Peer, State) orelse is_blocked(Peer, State) of
+    case is_local(Peer, State) orelse is_blocked(Peer, State) of
         false ->
-            lager:debug("will ping peer ~p", [Uri]),
-            aec_sync:schedule_ping(Uri);
+            lager:debug("will ping peer ~p", [Peer]),
+            aec_sync:schedule_ping(Peer);
         true ->
-            lager:debug("will not ping ~p", [Uri]),
+            lager:debug("will not ping ~p", [Peer]),
             ignore
     end.
 
-is_local_uri(Peer, #state{local_peer = LocalPeer}) ->
-    R = Peer#peer.port == LocalPeer#peer.port andalso 
-        lists:member(Peer#peer.host, [<<"localhost">>, <<"127.0.0.1">>, LocalPeer#peer.host]),
-    lager:debug("is_local_uri(~p) -> ~p (~p)", [uri_of_peer(Peer), R, uri_of_peer(LocalPeer)]),
+is_local(Peer, #state{local_peer = LocalPeer}) ->
+    #{ pubkey := PubKey1 } = peer_info(Peer),
+    #{ pubkey := PubKey2 } = peer_info(LocalPeer),
+    R = PubKey1 == PubKey2,
+    lager:debug("is_local_uri(~p) -> ~p (~p)", [Peer, R, LocalPeer]),
     R.
 
--spec parse_uri(http_uri_uri()) -> peer() | {error, any()}.
-parse_uri(Uri) ->
-    case uri_safe_parse(Uri) of
-        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
-            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port};
-        {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
-            #peer{scheme = Scheme, host = iolist_to_binary(Host), port = Port};
-        {error, _} = Error ->
-            Error
-    end.
+peer_id(PeerId) when is_binary(PeerId) ->
+    PeerId;
+peer_id(#{ host := Host, port := Port, pubkey := PubKey }) ->
+    peer_id(PubKey, Host, Port);
+peer_id(#peer{ host = Host, port = Port, pubkey = PubKey }) ->
+    peer_id(PubKey, Host, Port).
 
-uri_safe_parse(Uri) when is_binary(Uri) -> %% Workaround for https://github.com/erlang/otp/pull/1739
-    uri_safe_parse(unicode:characters_to_list(Uri, utf8));
-uri_safe_parse(Uri) ->
-    F = aeu_uri:scheme_validation_fun(valid_uri_schemes()),
-    http_uri:parse(Uri, [{scheme_validation_fun, F}]).
+peer_info(PeerId) when is_binary(PeerId) ->
+    split_peer_id(PeerId);
+peer_info(#peer{ host = H, port = P, pubkey = PK }) ->
+    #{ host => H, port => P, pubkey => PK };
+peer_info(PeerInfo = #{ host := _, port := _, pubkey := _ }) ->
+    PeerInfo.
 
-valid_uri_schemes() ->
-    ["http", <<"http">>].
+peer_id(PubKey, Host, Port) when is_binary(Host) ->
+    <<PubKey/binary, Port:16, Host/binary>>;
+peer_id(PubKey, Host, Port) when is_list(Host) ->
+    peer_id(PubKey, list_to_binary(Host), Port).
 
--spec uri_of_peer(peer()) -> http_uri_uri().
-uri_of_peer(#peer{host = Host, scheme = Scheme, port = Port}) ->
-    aeu_requests:pp_uri({Scheme, Host, Port}).
+split_peer_id(<<PubKey:32/binary, Port:16, Host/binary>>) ->
+    #{ pubkey => PubKey, host => Host, port => Port }.

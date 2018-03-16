@@ -31,6 +31,7 @@ init([]) ->
     {ok, {{one_for_one, 5, 10}, [watchdog_childspec(),
                                  ?CHILD(aec_metrics_rpt_dest, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
+                                 ?CHILD(aec_peer_connection_listener, 5000, worker),
                                  ?CHILD(aec_peers, 5000, worker),
                                  ?CHILD(aec_tx_pool, 5000, worker),
                                  ?CHILD(aec_sync, 5000, worker),
