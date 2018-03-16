@@ -318,7 +318,12 @@ handle_get_header_by_hash_rsp(S, {get_header_by_hash, From}, MsgObj) ->
     lager:debug("ZZPC: got header_by_hash_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
-            gen_server:reply(From, {ok, maps:get(<<"header">>, MsgObj)});
+            case aec_headers:deserialize_from_map(maps:get(<<"header">>, MsgObj)) of
+                {ok, Header} ->
+                    gen_server:reply(From, {ok, Header});
+                Err = {error, _} ->
+                    gen_server:reply(From, Err)
+            end;
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
