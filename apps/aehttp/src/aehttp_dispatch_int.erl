@@ -783,17 +783,10 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
     end.
 
 get_account_balance_at_hash(AccountPubkey, Hash) ->
-    case aec_db:find_block_state(Hash) of
-        none ->
-            {error, not_on_main_chain};
-        {value, Trees} ->
-            AccountsMPTree = aec_trees:accounts(Trees),
-            case aec_accounts_trees:lookup(AccountPubkey, AccountsMPTree) of
-                none ->
-                    {error, account_not_found};
-                {value, Account} ->
-                    {ok, aec_accounts:balance(Account)}
-            end
+    case aec_chain:get_account_at_hash(AccountPubkey, Hash) of
+        {error, no_state_trees} -> {error, not_on_main_chain};
+        none                    -> {error, account_not_found};
+        {value, Account}        -> {ok, aec_accounts:balance(Account)}
     end.
 
 -spec get_block_hash_optionally_by_hash_or_height(map()) ->

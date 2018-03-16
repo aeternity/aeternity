@@ -349,7 +349,7 @@ encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
                 mempool ->
                     aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
                 _ when is_binary(BlockHash) -> 
-                    H = aec_db:get_header(BlockHash),
+                    {ok, H} = aec_chain:get_header(BlockHash),
                     aetx_sign:serialize_for_client(TxEncoding, H, Tx)
             end,
         {ok, maps:put(EncodedTxKey, #{tx => T, schema => DataSchema}, State)}
