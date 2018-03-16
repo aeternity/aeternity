@@ -25,10 +25,14 @@ http:
         request_timeout: 1000
         # Less than request_timeout
         connect_timeout: 100
+        # Number of acceptors in server pool
+        acceptors: 10
     internal:
         # The internal listen address should be not publicly accessible
         listen_address: 127.0.0.1
         port: 3113
+        # Number of acceptors in server pool
+        acceptors: 10
 
 websocket:
     internal:

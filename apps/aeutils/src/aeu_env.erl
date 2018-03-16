@@ -403,11 +403,11 @@ load_schema(F) ->
 
 -spec local_peer() -> {http_uri:scheme(), http_uri_host(), inet:port_number()}.
 local_peer() ->
-    ExternalPort = 
+    ExternalPort =
         user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                                   aehttp, swagger_port_external, ?DEFAULT_SWAGGER_EXTERNAL_PORT),
-    ExternalAddr = 
-        user_config_or_env([<<"http">>, <<"external">>, <<"peer_address">>], 
+                                   aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT),
+    ExternalAddr =
+        user_config_or_env([<<"http">>, <<"external">>, <<"peer_address">>],
                            aehttp, local_peer_address, undefined),
     case ExternalAddr of
         undefined ->
@@ -424,5 +424,5 @@ local_peer() ->
                   erlang:error({cannot_parse, [{local_peer_address, Uri}]})
           end
     end.
-    
+
 

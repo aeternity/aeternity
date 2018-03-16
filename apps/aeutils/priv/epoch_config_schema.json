@@ -75,6 +75,10 @@
                         "connect_timeout" : {
                             "description" : "HTTP Request connect timeout.",
                             "type" : "integer"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in external pool",
+                            "type" : "integer"
                         }
                     }
                 },
@@ -90,6 +94,10 @@
                         "port" : {
                             "description" :
                             "Listen port for internal HTTP interface.",
+                            "type" : "integer"
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in internal pool",
                             "type" : "integer"
                         }
                     }
