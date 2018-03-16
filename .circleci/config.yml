@@ -16,9 +16,6 @@ references:
   machine_config: &machine_config
     machine: true
     working_directory: ~/epoch
-    docker:
-      - image: aetrnty/builder
-        user: builder
     environment:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aetrnty/epoch
