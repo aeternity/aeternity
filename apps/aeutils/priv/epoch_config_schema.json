@@ -8,9 +8,31 @@
             "Pre-configured addresses of epoch nodes to contact",
             "type"  : "array",
             "items" : {
-                "type"    : "string",
-                "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
-                "example" : "http://somehost.somedomain:123/"
+                "type" : "object",
+                "properties" : {
+                    "peer" : {
+                        "type" : "object",
+                        "additionalProperties" : false,
+                        "properties" : {
+                            "host" : {
+                                "type"    : "string",
+                                "pattern" : "^[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*",
+                               "example" : "somehost.somedomain:123"
+                            },
+
+                            "port" : {
+                                "type" : "integer",
+                                "minimum" : 1,
+                                "maximum" : 65535
+                            },
+
+                           "pubkey" : {
+                               "type" : "string",
+                               "description" : "base58c encoded public key"
+                          }
+                        }
+                    }
+                }
             }
         },
         "blocked_peers" : {
@@ -18,28 +40,45 @@
             "Pre-configured addresses of epoch nodes NOT to contact",
             "type"  : "array",
             "items" : {
-                "type"    : "string",
-                "pattern": "^http://[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/$",
-                "example" : "http://somehost.somedomain:123/"
+                "type" : "object",
+                "properties" : {
+                    "peer" : {
+                        "type" : "object",
+                        "additionalProperties" : false,
+                        "properties" : {
+                            "host" : {
+                                "type"    : "string",
+                                "pattern" : "^[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*",
+                               "example" : "somehost.somedomain:123"
+                            },
+
+                            "port" : {
+                                "type" : "integer",
+                                "minimum" : 1,
+                                "maximum" : 65535
+                            },
+
+                           "pubkey" : {
+                               "type" : "string",
+                               "description" : "base58c encoded public key"
+                          }
+                        }
+                    }
+                }
             }
         },
         "sync" : {
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
+                "port" : {
+                    "description" : "Port used for (incoming) sync connections",
+                    "type" : "integer"
+                },
+
                 "ping_interval" : {
-                    "type" : "object",
-                    "additionalProperties" : false,
-                    "properties" : {
-                        "min" : {
-                            "description" : "Minimum ping interval (ms)",
-                            "type" : "integer"
-                        },
-                        "max" : {
-                            "description" : "Maximum ping interval (ms)",
-                            "type" : "integer"
-                        }
-                    }
+                    "description" : "Interval between pings (in ms)",
+                    "type" : "integer"
                 }
             }
         },

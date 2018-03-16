@@ -133,12 +133,10 @@ init([]) ->
     aec_events:subscribe(block_created),
     aec_events:subscribe(top_changed),
     aec_events:subscribe(tx_created),
-    Peers0 = aeu_env:user_config_or_env(<<"sync_peers">>, aecore, sync_peers, []),
-    Peers = [ #{ host => H, port => P, pubkey => PK } || {H, P, PK} <- Peers0 ],
-    %% BlockedPeers = aeu_env:user_config_or_env(<<"blocked_peers">>, aecore, blocked_peers, []),
-    %% [aec_peers:block_peer(P) || P <- BlockedPeers],
+    Peers = parse_peer_configs(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
+    BlockedPeers = parse_peer_configs(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
+    [aec_peers:block_peer(P) || P <- BlockedPeers],
     lager:debug("SYNC: add_and_ping ~p", [Peers]),
-    lager:debug("SYNC: raw ~p", [application:get_env(aecore, sync_peers, [])]),
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
@@ -640,3 +638,15 @@ header_hash(Block) ->
     {ok, HeaderHash} = aec_headers:hash_header(Header),
     HeaderHash.
 
+parse_peer_configs(Ps) ->
+    lists:append([ parse_peer_config(P) || P <- Ps ]).
+
+parse_peer_config(P) ->
+    try
+        #{ <<"host">> := Host, <<"port">> := Port,
+           <<"pubkey">> := EPK } = P,
+        {ok, PK} = aec_base58c:safe_decode(peer_pubkey, EPK),
+        [#{ host => Host, port => Port, pubkey => PK}]
+    catch _:_ ->
+        []
+    end.

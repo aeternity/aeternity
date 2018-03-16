@@ -32,7 +32,7 @@
 -export([check_key_pair/0]).
 
 -ifdef(TEST).
--export([check_keys_pair/5]).
+-export([check_keys_pair/5, encrypt_peerkey/2]).
 -endif.
 
 -define(SERVER, ?MODULE).

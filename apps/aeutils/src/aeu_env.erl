@@ -14,6 +14,7 @@
 -export([user_config/0, user_config/1]).
 -export([user_map/0, user_map/1]).
 -export([user_config_or_env/4]).
+-export([user_map_or_env/4]).
 -export([read_config/0]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
@@ -78,6 +79,15 @@ user_config(Key) when is_binary(Key) ->
 -spec user_config_or_env(config_key(), atom(), env_key(), any()) -> any().
 user_config_or_env(CfgKey, App, EnvKey, Default) ->
     case user_config(CfgKey) of
+        undefined ->
+            get_env(App, EnvKey, Default);
+        {ok, Value} ->
+            Value
+    end.
+
+-spec user_map_or_env(config_key(), atom(), env_key(), any()) -> any().
+user_map_or_env(CfgKey, App, EnvKey, Default) ->
+    case user_map(CfgKey) of
         undefined ->
             get_env(App, EnvKey, Default);
         {ok, Value} ->
