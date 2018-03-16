@@ -8,7 +8,7 @@
 
 %% test case exports
 -export(
-   [ 
+   [
      execute_identity_fun_from_ring_file/1
    ]).
 
@@ -36,7 +36,9 @@ execute_identity_fun_from_ring_file(_Cfg) ->
              currentDifficulty => 0,
              currentGasLimit => 10000,
              currentNumber => 0,
-             currentTimestamp => 0},
+             currentTimestamp => 0,
+             chainState => aevm_dummy_chain:new_state(),
+             chainAPI => aevm_dummy_chain},
           true),
     <<42:256>> = RetVal,
     ok.
