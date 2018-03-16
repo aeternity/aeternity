@@ -5,7 +5,8 @@ It:
 * Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
 * Does this. This impacts consensus;
 * Does that. This impacts the persisted DB;
-* Does that (Improves the stability of the testnet?).
+* Does that;
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.0
 
