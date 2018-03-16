@@ -305,19 +305,18 @@ jobs:
     <<: *machine_config
     steps:
       - checkout
-      # - *setup_remote_docker
-      - *install_docker_client
       - run:
           name: Build Docker image
           command: |
-            ~/bin/docker build .
+            docker build .
       - run:
           name: Smoke test the nodes
           command: |
-            ./docker-compose up -d
+            docker-compose build node1
+            docker-compose up -d
             sleep 10
             curl -f -w "\n" localhost:300{1,2,3}/v2/top
-            ./docker-compose down -v
+            docker-compose down -v
 
   docker_push_tag:
     <<: *container_config
