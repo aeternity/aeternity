@@ -8,6 +8,7 @@
 
 %%% Chain API
 -export([ find_common_ancestor/2
+        , find_transaction_in_main_chain_or_mempool/1
         , genesis_block/0
         , genesis_hash/0
         , genesis_header/0
@@ -26,6 +27,7 @@
         , has_block/1
         , has_header/1
         , hash_is_connected_to_genesis/1
+        , hash_is_in_main_chain/1
         , top_block/0
         , top_block_hash/0
         , top_block_header/0
@@ -187,6 +189,25 @@ get_transactions_between(Hash, Root, Acc) ->
         error -> error
     end.
 
+-spec find_transaction_in_main_chain_or_mempool(binary()) ->
+                                                   'none' |
+                                                   {binary() | 'mempool', aetx:tx()}.
+find_transaction_in_main_chain_or_mempool(TxHash) ->
+    case aec_db:read_tx(TxHash) of
+        [] -> none;
+        [_|_] = BlockTxsList -> pick_transaction(BlockTxsList, none)
+    end.
+
+pick_transaction([{mempool, Tx}|Left], none) ->
+    pick_transaction(Left, {mempool, Tx});
+pick_transaction([{Hash, Tx}|Left], Acc) when is_binary(Hash) ->
+    %% Pick the transaction if it was included in the main chain
+    case aec_chain:hash_is_in_main_chain(Hash) of
+        true  -> {Hash, Tx};
+        false -> pick_transaction(Left, Acc)
+    end;
+pick_transaction([], Acc) ->
+    Acc.
 
 %%%===================================================================
 %%% Chain
@@ -251,6 +272,16 @@ genesis_header() ->
                                   {error, atom()}.
 find_common_ancestor(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
     aec_chain_state:find_common_ancestor(Hash1, Hash2).
+
+
+-spec hash_is_in_main_chain(binary()) -> boolean().
+hash_is_in_main_chain(Hash) when is_binary(Hash) ->
+    case get_header(Hash) of
+        error -> false;
+        {ok, Header} ->
+            Height = aec_headers:height(Header),
+            {ok, Hash} =:= aec_chain_state:get_hash_at_height(Height)
+    end.
 
 -spec hash_is_connected_to_genesis(binary()) -> boolean().
 hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->

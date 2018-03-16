@@ -756,6 +756,8 @@ forking_test_() ->
      , {"Fork on last block", fun fork_on_last_block/0}
      , {"Fork and out of order", fun fork_out_of_order/0}
      , {"Get by height in forks", fun fork_get_by_height/0}
+     , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
+     , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      ]}.
 
 fork_on_genesis() ->
@@ -857,6 +859,81 @@ fork_get_by_height() ->
 
     ?assertEqual(error, aec_chain_state:get_hash_at_height(5)),
 
+    ok.
+
+fork_is_in_main_chain() ->
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
+    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1], 222)),
+
+    ok = write_blocks_to_chain(EasyChain),
+    [?assertEqual(true, aec_chain:hash_is_in_main_chain(block_hash(B)))
+     || B <- EasyChain],
+    ok = write_blocks_to_chain(HardChain),
+    [?assertEqual(true, aec_chain:hash_is_in_main_chain(block_hash(B)))
+     || B <- HardChain],
+    [?assertEqual(false, aec_chain:hash_is_in_main_chain(block_hash(B)))
+     || B <- EasyChain -- blocks_only_chain(CommonChain)],
+    ?assertEqual(false, aec_chain:hash_is_in_main_chain(<<12345:256>>)),
+    ok.
+
+fork_get_transaction() ->
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
+    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1, 1], 222)),
+
+    EasyTopBlock = lists:last(EasyChain),
+    [EasyCoinbase] = aec_blocks:txs(EasyTopBlock),
+    EasyTxHash = aetx:hash(aetx_sign:tx(EasyCoinbase)),
+
+    HardTopBlock = lists:last(HardChain),
+    [HardCoinbase] = aec_blocks:txs(HardTopBlock),
+    HardTxHash = aetx:hash(aetx_sign:tx(HardCoinbase)),
+
+    HardButLastBlock = lists:last(lists:droplast(HardChain)),
+    [HardButLastCoinbase] = aec_blocks:txs(HardButLastBlock),
+    HardButLastTxHash = aetx:hash(aetx_sign:tx(HardButLastCoinbase)),
+
+    %% NOTE: Currently, the coinbase tx has the same hash at the same
+    %% height. This test needs to be rewritten if this precondition
+    %% changes since it is no longer testing the correct thing.
+    ?assertEqual(HardButLastTxHash, EasyTxHash),
+
+    ok = write_blocks_to_chain(EasyChain),
+    ?assertEqual({block_hash(EasyTopBlock), EasyCoinbase},
+                 aec_chain:find_transaction_in_main_chain_or_mempool(EasyTxHash)),
+    ?assertEqual(none,
+                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+
+    ok = write_blocks_to_chain(HardChain),
+    ?assertEqual({block_hash(HardButLastBlock), HardButLastCoinbase},
+                 aec_chain:find_transaction_in_main_chain_or_mempool(HardButLastTxHash)),
+    ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
+                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+
+    %% Now, mock that the transaction is in the mempool as well.
+    %% This should not change the result.
+    meck:new(aec_db, [passthrough]),
+    meck:expect(aec_db, read_tx,
+                fun(TxHash) when TxHash =:= HardTxHash ->
+                        Res = [{_, Tx}|_] = meck:passthrough([HardTxHash]),
+                        [{mempool, Tx}|Res];
+                   (TxHash) -> meck:passthrough([TxHash])
+                end),
+    ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
+                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+
+    %% But if we mock that the transaction is in the easy chain, and in
+    %% the mempool, we should get the mempool as result.
+    meck:expect(aec_db, read_tx,
+                fun(TxHash) when TxHash =:= HardTxHash ->
+                        [{_, Tx}|_] = meck:passthrough([HardTxHash]),
+                        [{mempool, Tx}, {block_hash(EasyTopBlock), Tx}];
+                   (TxHash) -> meck:passthrough([TxHash])
+                end),
+    ?assertEqual({mempool, HardCoinbase},
+                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+    meck:unload(aec_db),
     ok.
 
 %%%===================================================================
