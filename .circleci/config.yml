@@ -188,6 +188,17 @@ jobs:
             epmd -daemon
             make eunit
 
+  aevm_tests:
+    <<: *container_config
+    steps:
+      - checkout
+      - *restore_rebar_cache
+      - *restore_build_cache
+      - run:
+          name: AEVM Tests
+          command: |
+            make aevm-test
+
   static_analysis:
     <<: *container_config
     steps:
@@ -567,6 +578,17 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*$/
+
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - aevm_tests
 
   chain_snapshots:
     triggers:
