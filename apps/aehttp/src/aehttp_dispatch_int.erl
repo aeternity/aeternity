@@ -901,19 +901,15 @@ get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
               Keep andalso not Drop
         end,
     Txs = aec_db:transactions_by_account(Account, Filter),
-    lists:map(
-        fun(SignedTx) ->
-            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
-            Header =
-                case aec_db:read_tx(TxHash) of
-                    [{mempool, _}] -> mempool;
-                    [{BlockHash, _}] ->
-                        {ok, H} = aec_chain:get_header(BlockHash),
-                        H
-                end,
-            {Header, SignedTx}
-        end,
-        Txs).
+    TxHashes = lists:usort([aetx:hash(aetx_sign:tx(SignedTx))
+                            || SignedTx <- Txs]),
+    [case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+         {mempool, SignedTx} -> {mempool, SignedTx};
+         {BlockHash, SignedTx} ->
+             {ok, H} = aec_chain:get_header(BlockHash),
+             {H, SignedTx}
+     end
+     || TxHash <- TxHashes].
 
 
 offset_and_limit(Req, ResultList) ->
