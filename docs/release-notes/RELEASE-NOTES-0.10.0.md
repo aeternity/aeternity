@@ -2,6 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
 * Does this. This impacts consensus;
 * Does that. This impacts the persisted DB;
 * Does that (Improves the stability of the testnet?).

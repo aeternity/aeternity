@@ -19,10 +19,10 @@
          has_header/1,
          write_block/1,
          write_header/1,
-         write_block_state/2,
+         write_block_state/3,
          write_genesis_hash/1,
          write_top_block_hash/1,
-         write_top_header_hash/1,
+         write_top_header_hash_and_difficulty/2,
          find_block/1,
          find_header/1,
          find_chain_node/1,
@@ -32,6 +32,7 @@
          get_genesis_hash/0,
          get_top_block_hash/0,
          get_top_header_hash/0,
+         get_top_header_difficulty/0,
          get_block_state/1
         ]).
 
@@ -50,7 +51,9 @@
         , write_oracles_cache_node/2
         ]).
 
--export([find_block_state/1
+-export([ find_block_state/1
+        , find_block_difficulty/1
+        , find_block_state_and_difficulty/1
         ]).
 
 %% API for maintaining the tx-to-block mapping
@@ -84,7 +87,7 @@
 -record(aec_contract_state     , {key, value}).
 -record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
--record(aec_block_state        , {key, value}).
+-record(aec_block_state        , {key, value, difficulty}).
 -record(aec_oracle_cache       , {key, value}).
 -record(aec_oracle_state       , {key, value}).
 -record(aec_account_state      , {key, value}).
@@ -234,8 +237,9 @@ find_chain_node(Hash) ->
 header_to_node(#aec_headers{has_block = false, value = H}) -> {header, H};
 header_to_node(#aec_headers{has_block = true, value = H}) -> {block, H}.
 
-write_block_state(Hash, Trees) ->
-    ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees})).
+write_block_state(Hash, Trees, AccDifficulty) ->
+    ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees,
+                                     difficulty = AccDifficulty})).
 
 write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node})).
@@ -261,8 +265,9 @@ write_genesis_hash(Hash) when is_binary(Hash) ->
 write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash})).
 
-write_top_header_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_header_hash, value = Hash})).
+write_top_header_hash_and_difficulty(Hash, Difficulty) when is_binary(Hash) ->
+    ?t(mnesia:write(#aec_chain_state{key = top_header_hash,
+                                     value = {Hash, Difficulty}})).
 
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
@@ -271,7 +276,16 @@ get_top_block_hash() ->
     get_chain_state_value(top_block_hash).
 
 get_top_header_hash() ->
-    get_chain_state_value(top_header_hash).
+    case get_chain_state_value(top_header_hash) of
+        undefined -> undefined;
+        {Hash,_Difficulty} -> Hash
+    end.
+
+get_top_header_difficulty() ->
+    case get_chain_state_value(top_header_hash) of
+        undefined -> undefined;
+        {_Hash, Difficulty} -> Difficulty
+    end.
 
 get_block_state(Hash) ->
     ?t(begin
@@ -283,6 +297,18 @@ get_block_state(Hash) ->
 find_block_state(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
         [#aec_block_state{value = Trees}] -> {value, Trees};
+        [] -> none
+    end.
+
+find_block_difficulty(Hash) ->
+    case ?t(mnesia:read(aec_block_state, Hash)) of
+        [#aec_block_state{difficulty = D}] -> {value, D};
+        [] -> none
+    end.
+
+find_block_state_and_difficulty(Hash) ->
+    case ?t(mnesia:read(aec_block_state, Hash)) of
+        [#aec_block_state{value = Trees, difficulty = D}] -> {value, Trees, D};
         [] -> none
     end.
 
