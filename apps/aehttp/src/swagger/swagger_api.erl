@@ -276,7 +276,8 @@ request_params('GetHeaderByHeight') ->
 request_params('GetHeadersByHash') ->
     [
         'hash',
-        'number'
+        'number',
+        'direction'
     ];
 
 request_params('GetInfo') ->
@@ -410,7 +411,8 @@ request_params('GetHeaderByHeight') ->
 request_params('GetHeadersByHash') ->
     [
         'hash',
-        'number'
+        'number',
+        'direction'
     ];
 
 request_params('GetTop') ->
@@ -1386,6 +1388,15 @@ request_param_info('GetHeadersByHash', 'number') ->
         ]
     };
 
+request_param_info('GetHeadersByHash', 'direction') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
+            not_required
+        ]
+    };
+
 request_param_info('GetName', 'name') ->
     #{
         source => qs_val  ,
@@ -1609,6 +1620,15 @@ request_param_info('GetHeadersByHash', 'number') ->
         source => qs_val  ,
         rules => [
             {type, 'integer'},
+            not_required
+        ]
+    };
+
+request_param_info('GetHeadersByHash', 'direction') ->
+    #{
+        source => qs_val  ,
+        rules => [
+            {type, 'binary'},
             not_required
         ]
     };

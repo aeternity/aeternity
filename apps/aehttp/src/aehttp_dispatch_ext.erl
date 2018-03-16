@@ -104,14 +104,25 @@ handle_request('GetHeaderByHash', Req, _Context) ->
     end;
 
 handle_request('GetHeadersByHash', Req, _Context) ->
-    case {aec_base58c:safe_decode(block_hash, maps:get('hash', Req)),
-          maps:get('number', Req, 1)} of
-        {{error, _}, _} ->
+    case {aec_base58c:safe_decode(block_hash, maps:get(hash, Req)),
+          maps:get(number, Req, 1), maps:get(direction, Req, <<"backward">>)} of
+        {{error, _}, _, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
-        {_, N} when not is_integer(N) orelse N < 1 ->
+        {_, N, _} when not is_integer(N) orelse N < 1 ->
             {400, [], #{reason => <<"Invalid number">>}};
-        {{ok, Hash}, N} ->
-            case aec_chain:get_n_headers_backwards_from_hash(Hash, N) of
+        {{ok, Hash}, N, Direction} ->
+            Result = 
+                case Direction of
+                    <<"backward">> ->
+                       aec_chain:get_n_headers_backwards_from_hash(Hash, N);
+                    <<"forward">> ->
+                       aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N);
+                    _ -> 
+                       %% validation should ensure this does not happen
+                       %% but if no direction or name is provided, undefined is the value!
+                       error 
+                end,
+            case Result of
                 {ok, Headers} ->
                     Resp = [ begin
                                {ok, HH} = aec_headers:serialize_to_map(Header),
