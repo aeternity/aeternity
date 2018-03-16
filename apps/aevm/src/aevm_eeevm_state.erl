@@ -39,6 +39,8 @@
         , no_recursion/1
 	, number/1
 	, return_data/1
+        , chain_state/1
+        , chain_api/1
 	, set_code/2
 	, set_cp/2
 	, set_gas/2
@@ -49,6 +51,7 @@
 	, set_selfdestruct/2
 	, set_stack/2
 	, set_storage/2
+        , set_chain_state/2
 	, stack/1
 	, storage/1
 	, timestamp/1
@@ -68,7 +71,7 @@ init(#{ env  := Env
     BlockHashFun = get_blockhash_fun(Opts, Env, Address),
     NoRecursion = maps:get(no_recursion, Opts, false),
 
-    State = 
+    State =
 	#{ address     => Address
 	 , caller      => maps:get(caller, Exec)
 	 , return_data => maps:get(return_data, Exec, <<>>)
@@ -95,7 +98,10 @@ init(#{ env  := Env
 	 , trace => []
 	 , trace_fun => init_trace_fun(Opts)
 
-	 , environment => 
+         , chain_state => maps:get(chainState, Env)
+         , chain_api   => maps:get(chainAPI, Env)
+
+	 , environment =>
 	       #{ spec => Spec
 		, options => Opts }
 
@@ -201,10 +207,10 @@ extcode(Account, Start, Length, State) ->
     CodeBlock = maps:get(Account band ?MASK160,
 			 maps:get(ext_code_blocks, State), <<>>),
     aevm_eeevm_utils:bin_copy(Start, Length, CodeBlock).
-extcode(Account, State) ->    
+extcode(Account, State) ->
     maps:get(Account band ?MASK160,
 	     maps:get(ext_code_blocks, State), <<>>).
-extbalance(Account, State) ->    
+extbalance(Account, State) ->
     maps:get(Account band ?MASK160,
 	     maps:get(balances, State), <<>>).
 no_recursion(State) ->
@@ -230,6 +236,9 @@ do_trace(State)    -> maps:get(do_trace, State).
 trace(State)       -> maps:get(trace, State).
 trace_fun(State)   -> maps:get(trace_fun, State).
 
+chain_state(State) -> maps:get(chain_state, State).
+chain_api(State)   -> maps:get(chain_api, State).
+
 set_cp(Value, State)      -> maps:put(cp, Value, State).
 set_code(Value, State)    -> maps:put(code, Value, State).
 set_stack(Value, State)   -> maps:put(stack, Value, State).
@@ -240,6 +249,7 @@ set_logs(Value, State)    -> maps:put(logs, Value, State).
 set_storage(Value, State) -> maps:put(storage, Value, State).
 set_jumpdests(Value, State)    -> maps:put(jumpdests, Value, State).
 set_selfdestruct(Value, State) -> maps:put(selfdestruct, Value, State).
+set_chain_state(Value, State) -> maps:put(chain_state, Value, State).
 
 add_callcreates(#{ data := _
                  , destination := _
@@ -274,13 +284,13 @@ trace_format(String, Argument, State) ->
 
 format_mem(Mem) ->
    lists:flatten(
-     "[" ++ 
+     "[" ++
 	 format_mem(lists:sort(maps:to_list(Mem)), ?MAXMEMPOS)
      ++ "]").
 format_mem([],_) -> [];
 format_mem( _,0) -> " ...";
-format_mem([{N,V}|Rest], ?MAXMEMPOS) when is_integer(N) -> 
+format_mem([{N,V}|Rest], ?MAXMEMPOS) when is_integer(N) ->
     io_lib:format("~w:~w",[N,V]) ++ format_mem(Rest, ?MAXMEMPOS-1);
-format_mem([{N,V}|Rest],          P) when is_integer(N) -> 
+format_mem([{N,V}|Rest],          P) when is_integer(N) ->
     io_lib:format(", ~w:~w",[N,V]) ++ format_mem(Rest, P-1);
 format_mem([_|Rest], P) -> format_mem(Rest, P).

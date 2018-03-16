@@ -277,6 +277,7 @@ run_contract(#contract_call_tx
     %% TODO: Handle different VMs and ABIs.
     %% TODO: Move init and execution to a separate moidule to be re used by
     %% both on chain and off chain calls.
+    ChainState    = aevm_chain:new_state(Trees, Height, ContractPubKey),
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code     => Code,
 			address  => 0,        %% We start executing at address 0
@@ -291,7 +292,9 @@ run_contract(#contract_call_tx
                       currentDifficulty => 0,
                       currentGasLimit   => Gas,
                       currentNumber     => Height,
-                      currentTimestamp  => 0},
+                      currentTimestamp  => 0,
+                      chainState        => ChainState,
+                      chainAPI          => aevm_chain},
              pre => #{}},
           #{trace => false})
     of
