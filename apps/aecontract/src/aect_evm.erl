@@ -23,6 +23,9 @@ encode_call_data(_Contract, Function, Argument) ->
 call(Code, CallData) ->
     Data = aeu_hex:hexstring_decode(CallData),
 
+    %% TODO: proper setup of chain state!
+    DummyPubKey = aect_contracts:compute_contract_pubkey(<<"TODO!!!">>, 1),
+    ChainState  = aevm_chain:new_state(aec_trees:new(), 1, DummyPubKey),
     Spec = #{ code => Code
             , address => 0
             , caller => 0
@@ -36,6 +39,8 @@ call(Code, CallData) ->
             , currentGasLimit => 10000000000000000000000
             , currentNumber => 1
             , currentTimestamp => 1
+            , chainState => ChainState
+            , chainAPI => aevm_chain
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};
@@ -59,6 +64,8 @@ execute_call(#{ code := CodeAsHexBinString
               , currentGasLimit := GasLimit
               , currentNumber := Number
               , currentTimestamp := TS
+              , chainState := ChainState
+              , chainAPI := ChainAPI
               }, Trace) ->
     %% TODO: Handle Contract In State.
     Code = aeu_hex:hexstring_decode(CodeAsHexBinString),
@@ -77,6 +84,8 @@ execute_call(#{ code := CodeAsHexBinString
                    , currentGasLimit => GasLimit
                    , currentNumber => Number
                    , currentTimestamp => TS
+                   , chainState => ChainState
+                   , chainAPI => ChainAPI
                    },
            pre => #{}},
     TraceSpec =

@@ -8,7 +8,7 @@
 
 %% test case exports
 -export(
-   [ 
+   [
      execute_identity_fun_from_bytecode/1
      , execute_identity_fun_from_ring_file/1
    ]).
@@ -16,7 +16,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
-    [ 
+    [
       execute_identity_fun_from_bytecode,
       execute_identity_fun_from_ring_file ].
 
@@ -30,7 +30,7 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     %% Create the call data
     CallData = aer_abi:create_calldata(Code, "main", "42"),
 
-    {ok, Res} = 
+    {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
@@ -45,7 +45,9 @@ execute_identity_fun_from_ring_file(_Cfg) ->
                         currentDifficulty => 0,
                         currentGasLimit => 10000,
                         currentNumber => 0,
-                        currentTimestamp => 0},
+                        currentTimestamp => 0,
+                        chainState => aevm_dummy_chain:new_state(),
+                        chainAPI => aevm_dummy_chain},
                pre => #{}},
             #{trace => true})
          ),
@@ -54,11 +56,11 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     ok.
 
 execute_identity_fun_from_bytecode(_Cfg) ->
-    Code = 
+    Code =
         <<96,0,53,128,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
           0,0,0,0,0,20,98,0,0,44,87,0,91,96,32,53,98,0,0,58,144,98,0,0,67,86,91,
           96,0,82,96,32,96,0,243,91,128,144,80,144,86>>,
-    {ok, Res} = 
+    {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
@@ -73,7 +75,9 @@ execute_identity_fun_from_bytecode(_Cfg) ->
                         currentDifficulty => 0,
                         currentGasLimit => 10000,
                         currentNumber => 0,
-                        currentTimestamp => 0},
+                        currentTimestamp => 0,
+                        chainState => aevm_dummy_chain:new_state(),
+                        chainAPI => aevm_dummy_chain},
                pre => #{}},
             #{trace => true})
          ),

@@ -52,6 +52,9 @@ simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
+            %% TODO: proper setup of chain state!
+            DummyPubKey = aect_contracts:compute_contract_pubkey(<<"TODO!!!">>, 1),
+            ChainState  = aevm_chain:new_state(aec_trees:new(), 1, DummyPubKey),
             Spec = #{ code => Code
                     , address => 0
                     , caller => 0
@@ -65,6 +68,8 @@ simple_call(Code, Function, Argument) ->
                     , currentGasLimit => 1000000
                     , currentNumber => 1
                     , currentTimestamp => 1
+                    , chainAPI => aevm_chain
+                    , chainState => ChainState
                     },
             case aect_evm:execute_call(Spec, false) of
                 {ok, #{ out := Out }} ->
