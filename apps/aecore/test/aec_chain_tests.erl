@@ -453,22 +453,23 @@ broken_chain_invalid_transaction() ->
 %%%===================================================================
 %%% Block candidate test
 
-n_headers_from_top_test_() ->
+n_headers_test_() ->
     {foreach,
      fun() ->
              aec_test_utils:start_chain_db(),
-             aec_test_utils:mock_genesis(),
-             aec_test_utils:aec_keys_setup()
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             aec_test_utils:unmock_genesis(),
-             aec_test_utils:stop_chain_db()
-     end,
-     [{"Ensure the right headers are returned.",
-       fun n_headers_from_top/0}]}.
+             aec_test_utils:stop_chain_db(),
+             teardown_meck_and_keys(TmpDir)
 
-n_headers_from_top() ->
+     end,
+     [ {"Get n headers backwards.", fun n_headers_backwards/0}
+     , {"Get n headers forwards.", fun n_headers_forwards/0}
+     , {"Get n headers forwards in fork.", fun n_headers_forwards_fork/0}
+     ]}.
+
+n_headers_backwards() ->
     Chain = gen_blocks_only_chain_by_target(
               [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 1),
 
@@ -478,17 +479,84 @@ n_headers_from_top() ->
     ok = write_blocks_to_chain(Chain),
     TopHash = top_header_hash(),
 
-    {ok, Hdrs0} = aec_chain:get_n_headers_from_hash(TopHash, 2),
+    {ok, Hdrs0} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 2),
 
     ?assertMatch(X when length(X) == 2, Hdrs0),
     ?assertEqual(lists:sublist(Hdrs, 2), lists:reverse(Hdrs0)),
 
 
-    {ok, Hdrs1} = aec_chain:get_n_headers_from_hash(TopHash, 4),
+    {ok, Hdrs1} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 4),
 
     ?assertMatch(X when length(X) == 4, Hdrs1),
-    ?assertEqual(lists:sublist(Hdrs, 4), lists:reverse(Hdrs1)).
+    ?assertEqual(lists:sublist(Hdrs, 4), lists:reverse(Hdrs1)),
 
+    {ok, Hdrs2} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 5),
+
+    ?assertMatch(X when length(X) == 5, Hdrs2),
+    ?assertEqual(lists:sublist(Hdrs, 5), lists:reverse(Hdrs2)).
+
+n_headers_forwards() ->
+    Chain = gen_blocks_only_chain_by_target(
+              [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 1),
+
+    Hdrs = [ aec_blocks:to_header(B) || B <- Chain ],
+
+    ok = write_blocks_to_chain(Chain),
+    Hashes = [block_hash(B) || B <- Chain],
+    ok = n_headers_forwards(Hdrs, Hashes, 5).
+
+n_headers_forwards(_Hdrs,_Hashes, 0) ->
+    ok;
+n_headers_forwards(Hdrs, Hashes, M) ->
+    n_headers_forwards(Hdrs, Hashes, M, 5),
+    n_headers_forwards(Hdrs, Hashes, M - 1).
+
+n_headers_forwards(_Hdrs,_Hashes,_M, 0) ->
+    ok;
+n_headers_forwards(Hdrs, Hashes, M, N) ->
+    io:format("N: ~w M: ~w\n", [N, M]),
+    Hash        = lists:nth(N, Hashes),
+    PrunedStart = lists:nthtail(N - 1, Hdrs),
+    Expected    = lists:sublist(PrunedStart, M),
+    ?assertEqual({ok, Expected},
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, M)),
+    n_headers_forwards(Hdrs, Hashes, M, N - 1).
+
+
+n_headers_forwards_fork() ->
+    EasyChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 2, 2, 2, 1], 111),
+    HardChain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
+    EasyHdrs = [ aec_blocks:to_header(B) || B <- EasyChain ],
+    HardHdrs = [ aec_blocks:to_header(B) || B <- HardChain ],
+
+    ok = write_blocks_to_chain(EasyChain),
+    Hash = aec_chain:genesis_hash(),
+    %% We should now get the headers from the easy chain.
+    ?assertEqual({ok, lists:sublist(EasyHdrs, 3)},
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+
+    %% Write the hard chain, that will take over as main fork.
+    %% We should now get the headers from the hard chain.
+    ok = write_blocks_to_chain(HardChain),
+    ?assertEqual({ok, lists:sublist(HardHdrs, 3)},
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash, 3)),
+
+    %% If we try to get headers forward in the easy chain, we should
+    %% get an error since the function is only defined on the main chain.
+    Hash1 = block_hash(lists:nth(2, EasyChain)),
+    ?assertEqual(error,
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash1, 1)),
+
+    %% A special case error is if the header has higher height than the top hash
+    Hash2 = block_hash(lists:last(EasyChain)),
+    ?assertEqual(error,
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash2, 1)),
+
+    %% A special case error is if the hash doesn't exist
+    Hash3 = <<123:256>>,
+    ?assertEqual(error,
+                 aec_chain:get_at_most_n_headers_forward_from_hash(Hash3, 1)),
+    ok.
 
 %%%===================================================================
 %%% Target validation tests

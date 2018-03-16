@@ -662,7 +662,7 @@ get_adjustment_headers(TopBlock) ->
     case aec_blocks:height(TopBlock) < N of
         true  -> [];
         false ->
-            {ok, Headers} = aec_chain:get_n_headers_from_hash(TopHash, N),
+            {ok, Headers} = aec_chain:get_n_headers_backwards_from_hash(TopHash, N),
             Headers
     end.
 
