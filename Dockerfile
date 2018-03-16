@@ -1,7 +1,7 @@
 FROM aetrnty/builder as builder
 
 # Add required files to download and compile only the dependencies
-ADD rebar.config rebar.lock Makefile rebar3 VERSION /app/
+ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script VERSION /app/
 RUN cd /app && make prod-compile-deps
 # Add the whole project and compile epoch itself.
 ADD . /app
