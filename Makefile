@@ -45,6 +45,9 @@ local-attach: internal-attach
 prod-package: KIND=prod
 prod-package: internal-package
 
+prod-compile-deps: KIND=prod
+prod-compile-deps: internal-compile-deps
+
 prod-build: KIND=prod
 prod-build: internal-build
 
@@ -229,6 +232,9 @@ multi-build: dev1-build
 #
 
 .SECONDEXPANSION:
+
+internal-compile-deps: $$(KIND)
+	@./rebar3 as $(KIND) compile --deps-only
 
 internal-package: $$(KIND)
 	@./rebar3 as $(KIND) tar
