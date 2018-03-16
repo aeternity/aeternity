@@ -12,6 +12,17 @@ references:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aeternity/epoch
 
+
+  machine_config: &machine_config
+    machine: true
+    working_directory: ~/epoch
+    docker:
+      - image: aetrnty/builder
+        user: builder
+    environment:
+      DOCKER_CLIENT_VERSION: "17.09.0-ce"
+      DOCKERHUB_REPO: aetrnty/epoch
+
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
       docker_layer_caching: true
@@ -294,10 +305,10 @@ jobs:
           destination: node3/
 
   docker_image_build:
-    <<: *container_config
+    <<: *machine_config
     steps:
       - checkout
-      - *setup_remote_docker
+      # - *setup_remote_docker
       - *install_docker_client
       - run:
           name: Build Docker image
