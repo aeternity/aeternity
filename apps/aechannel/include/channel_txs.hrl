@@ -21,6 +21,8 @@
           from_account :: pubkey(),
           to_account   :: pubkey(),
           amount       :: non_neg_integer(),
+          initiator    :: pubkey(),
+          participant  :: pubkey(),
           fee          :: non_neg_integer(),
           nonce        :: non_neg_integer()
          }).
@@ -30,6 +32,8 @@
           from_account :: pubkey(),
           to_account   :: pubkey(),
           amount       :: non_neg_integer(),
+          initiator    :: pubkey(),
+          participant  :: pubkey(),
           fee          :: non_neg_integer(),
           nonce        :: non_neg_integer()
          }).
