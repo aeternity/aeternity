@@ -87,12 +87,12 @@ signers(#channel_close_mutual_tx{initiator   = InitiatorPubKey,
     [InitiatorPubKey, ParticipantPubKey].
 
 -spec serialize(tx()) -> list(map()).
-serialize(#channel_close_mutual_tx{channel_id = ChannelId,
-                                   amount = Amount,
+serialize(#channel_close_mutual_tx{channel_id  = ChannelId,
+                                   amount      = Amount,
                                    initiator   = InitiatorPubKey,
-                                   participant       = ParticipantPubKey,
-                                   fee          = Fee,
-                                   nonce        = Nonce}) ->
+                                   participant = ParticipantPubKey,
+                                   fee         = Fee,
+                                   nonce       = Nonce}) ->
     [#{<<"vsn">>         => version()},
      #{<<"channel_id">>  => ChannelId},
      #{<<"amount">>      => Amount},
@@ -124,7 +124,7 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
                                     fee         = Fee,
                                     nonce       = Nonce}) ->
     #{<<"vsn">>         => version(),
-      <<"channel_id">>  => ChannelId,
+      <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
       <<"amount">>      => Amount,
       <<"initiator">>   => aec_base58c:encode(account_pubkey, InitiatorPubKey),
       <<"participant">> => aec_base58c:encode(account_pubkey, ParticipantPubKey),
