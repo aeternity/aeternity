@@ -43,6 +43,8 @@ new(#{channel_id   := ChannelId,
       from_account := FromPubKey,
       to_account   := ToPubKey,
       amount       := Amount,
+      initiator    := InitiatorPubKey,
+      participant  := ParticipantPubKey,
       fee          := Fee,
       nonce        := Nonce}) ->
     Tx = #channel_withdraw_tx{
@@ -50,6 +52,8 @@ new(#{channel_id   := ChannelId,
             from_account = FromPubKey,
             to_account   = ToPubKey,
             amount       = Amount,
+            initiator    = InitiatorPubKey,
+            participant  = ParticipantPubKey,
             fee          = Fee,
             nonce        = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -71,12 +75,14 @@ check(#channel_withdraw_tx{channel_id   = ChannelId,
                            from_account = FromPubKey,
                            to_account   = ToPubKey,
                            amount       = Amount,
+                           initiator    = InitiatorPubKey,
+                           participant  = ParticipantPubKey,
                            fee          = Fee,
                            nonce        = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
-         fun() -> aesc_utils:check_active_channel_exists(ChannelId, Trees) end,
-         fun() -> aesc_utils:check_accounts_are_peers([FromPubKey, ToPubKey], ChannelId, Trees) end,
+         fun() -> aesc_utils:check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) end,
+         fun() -> aesc_utils:check_are_peers([FromPubKey, ToPubKey], [InitiatorPubKey, ParticipantPubKey]) end,
          fun() -> check_peer_has_funds(ChannelId, FromPubKey, Amount, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -115,23 +121,29 @@ process(#channel_withdraw_tx{channel_id   = ChannelId,
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_withdraw_tx{from_account = FromPubKey,
                               to_account   = ToPubKey}) ->
-    [FromPubKey, ToPubKey].
+    lists:usort([FromPubKey, ToPubKey]).
 
 -spec signers(tx()) -> list(pubkey()).
-signers(#channel_withdraw_tx{from_account = FromPubKey,
-                             to_account   = ToPubKey}) ->
-    [FromPubKey, ToPubKey].
+signers(#channel_withdraw_tx{initiator   = InitiatorPubKey,
+                             participant = ParticipantPubKey}) ->
+    [InitiatorPubKey, ParticipantPubKey].
 
 -spec serialize(tx()) -> list(map()).
-serialize(#channel_withdraw_tx{from_account = FromPubKey,
+serialize(#channel_withdraw_tx{channel_id   = ChannelId,
+                               from_account = FromPubKey,
                                to_account   = ToPubKey,
                                amount       = Amount,
+                               initiator    = InitiatorPubKey,
+                               participant  = ParticipantPubKey,
                                fee          = Fee,
                                nonce        = Nonce}) ->
     [#{<<"vsn">>          => version()},
+     #{<<"channel_id">>   => ChannelId},
      #{<<"from_account">> => FromPubKey},
      #{<<"to_account">>   => ToPubKey},
      #{<<"amount">>       => Amount},
+     #{<<"initiator">>    => InitiatorPubKey},
+     #{<<"participant">>  => ParticipantPubKey},
      #{<<"fee">>          => Fee},
      #{<<"nonce">>        => Nonce}].
 
@@ -141,25 +153,35 @@ deserialize([#{<<"vsn">>          := ?CHANNEL_WITHDRAW_TX_VSN},
              #{<<"from_account">> := FromPubKey},
              #{<<"to_account">>   := ToPubKey},
              #{<<"amount">>       := Amount},
+             #{<<"initiator">>    := InitiatorPubKey},
+             #{<<"participant">>  := ParticipantPubKey},
              #{<<"fee">>          := Fee},
              #{<<"nonce">>        := Nonce}]) ->
     #channel_withdraw_tx{channel_id   = ChannelId,
                          from_account = FromPubKey,
                          to_account   = ToPubKey,
                          amount       = Amount,
+                         initiator    = InitiatorPubKey,
+                         participant  = ParticipantPubKey,
                          fee          = Fee,
                          nonce        = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_withdraw_tx{from_account = FromPubKey,
+for_client(#channel_withdraw_tx{channel_id   = ChannelId,
+                                from_account = FromPubKey,
                                 to_account   = ToPubKey,
                                 amount       = Amount,
+                                initiator    = InitiatorPubKey,
+                                participant  = ParticipantPubKey,
                                 fee          = Fee,
                                 nonce        = Nonce}) ->
     #{<<"vsn">>          => version(),
+      <<"channel">>      => aec_base58c:encode(channel, ChannelId),
       <<"from_account">> => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"to_account">>   => aec_base58c:encode(account_pubkey, ToPubKey),
       <<"amount">>       => Amount,
+      <<"initiator">>    => aec_base58c:encode(account_pubkey, InitiatorPubKey),
+      <<"participant">>  => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
 
