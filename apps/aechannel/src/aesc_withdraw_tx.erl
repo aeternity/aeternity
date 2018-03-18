@@ -83,7 +83,7 @@ check(#channel_withdraw_tx{channel_id   = ChannelId,
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
          fun() -> aesc_utils:check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) end,
          fun() -> aesc_utils:check_are_peers([FromPubKey, ToPubKey], [InitiatorPubKey, ParticipantPubKey]) end,
-         fun() -> check_peer_has_funds(ChannelId, FromPubKey, Amount, Trees) end],
+         fun() -> aesc_utils:check_peer_has_funds(FromPubKey, ChannelId, Amount, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -197,18 +197,3 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
 version() ->
     ?CHANNEL_WITHDRAW_TX_VSN.
 
--spec check_peer_has_funds(aesc_channels:id(), pubkey(), non_neg_integer(), aec_trees:trees()) ->
-                                  {error, insufficient_channel_peer_amount} | ok.
-check_peer_has_funds(ChannelId, FromPubKey, Amount, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),
-    case aesc_channels:initiator(Channel) =:= FromPubKey of
-        true  -> check_sufficient_funds(aesc_channels:initiator_amount(Channel), Amount);
-        false -> check_sufficient_funds(aesc_channels:participant_amount(Channel), Amount)
-    end.
-
-check_sufficient_funds(Funds, Amount) ->
-    case Funds >= Amount of
-        true  -> ok;
-        false -> {error, insufficient_channel_peer_amount}
-    end.
