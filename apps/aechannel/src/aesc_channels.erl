@@ -91,6 +91,13 @@ deserialize(Bin) ->
              lock_period        = LockPeriod,
              closes_at          = ClosesAt}.
 
+-spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
+id(InitiatorPubKey, Nonce, ParticipantPubKey) ->
+    Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
+            Nonce:?NONCE_SIZE,
+            ParticipantPubKey:?PUB_SIZE/binary>>,
+    aec_hash:hash(pubkey, Bin).
+
 -spec new(aesc_create_tx:tx()) -> channel().
 new(ChCTx) ->
     Id = id(aesc_create_tx:initiator(ChCTx),
@@ -172,13 +179,6 @@ participant_amount(#channel{participant_amount = ParticipantAmount}) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
--spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
-id(InitiatorPubKey, Nonce, ParticipantPubKey) ->
-    Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
-            Nonce:?NONCE_SIZE,
-            ParticipantPubKey:?PUB_SIZE/binary>>,
-    aec_hash:hash(pubkey, Bin).
 
 -spec update_initiator_amount(channel(), amount()) -> channel().
 update_initiator_amount(Channel, Amount) ->
