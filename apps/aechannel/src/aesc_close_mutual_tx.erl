@@ -67,14 +67,45 @@ origin(#channel_close_mutual_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_close_mutual_tx{}, Trees, _Height) ->
-    %% TODO: implement me
-    {ok, Trees}.
+check(#channel_close_mutual_tx{channel_id  = ChannelId,
+                               initiator   = InitiatorPubKey,
+                               participant = ParticipantPubKey,
+                               amount      = Amount,
+                               fee         = Fee,
+                               nonce       = Nonce}, Trees, Height) ->
+    Checks =
+        [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, Fee) end,
+         fun() -> aesc_utils:check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) end,
+         fun() -> check_peer_has_funds(InitiatorPubKey, ParticipantPubKey, ChannelId, Amount, Trees) end],
+    case aeu_validation:run(Checks) of
+        ok ->
+            {ok, Trees};
+        {error, _Reason} = Error ->
+            Error
+    end.
 
 -spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#channel_close_mutual_tx{}, Trees, _Height) ->
-    %% TODO: implement me
-    {ok, Trees}.
+process(#channel_close_mutual_tx{channel_id  = ChannelId,
+                                 initiator   = InitiatorPubKey,
+                                 participant = ParticipantPubKey,
+                                 amount      = Amount,
+                                 fee         = Fee,
+                                 nonce       = Nonce}, Trees, Height) ->
+    AccountsTree0 = aec_trees:accounts(Trees),
+    ChannelsTree0 = aec_trees:channels(Trees),
+
+    InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
+    {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
+    AccountsTree1           = aec_trees:enter(InitiatorAccount1, AccountsTree0, Height),
+
+    Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    Channel1      = aesc_channels:withdraw(Channel0, Amount, InitiatorPubKey),
+    Channel2      = aesc_channels:deposit(Channel1, Amount, ParticipantPubKey),
+    ChannelsTree1 = aesc_state_tree:enter(Channel2, ChannelsTree0),
+
+    Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
+    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
+    {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_close_mutual_tx{initiator   = InitiatorPubKey,
@@ -138,6 +169,12 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+check_peer_has_funds(InitiatorPubkey, ParticipantPubKey, ChannelId, Amount, Trees) ->
+    case Amount > 0 of
+        true  -> aesc_utils:check_peer_has_funds(InitiatorPubkey, ChannelId, Amount, Trees);
+        false -> aesc_utils:check_peer_has_funds(ParticipantPubKey, ChannelId, Amount, Trees)
+    end.
 
 -spec version() -> non_neg_integer().
 version() ->

@@ -10,7 +10,8 @@
 
 %% API
 -export([check_active_channel_exists/4,
-         check_are_peers/2]).
+         check_are_peers/2,
+         check_peer_has_funds/4]).
 
 %%%===================================================================
 %%% API
@@ -41,4 +42,24 @@ check_are_peers([PubKey | Rest], Peers) ->
     case lists:member(PubKey, Peers) of
         true  -> check_are_peers(Rest, Peers);
         false -> {error, accounts_not_peers}
+    end.
+
+-spec check_peer_has_funds(pubkey(), aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
+                                  ok | {error, insufficient_channel_peer_amount} .
+check_peer_has_funds(PeerPubKey, ChannelId, Amount, Trees) ->
+    ChannelsTree = aec_trees:channels(Trees),
+    Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),
+    case PeerPubKey =:= aesc_channels:initiator(Channel) of
+        true  -> check_sufficient_funds(aesc_channels:initiator_amount(Channel), Amount);
+        false -> check_sufficient_funds(aesc_channels:participant_amount(Channel), Amount)
+    end.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+check_sufficient_funds(Funds, Amount) ->
+    case Funds >= Amount of
+        true  -> ok;
+        false -> {error, insufficient_channel_peer_amount}
     end.
