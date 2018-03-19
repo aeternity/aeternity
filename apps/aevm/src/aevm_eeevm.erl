@@ -1317,7 +1317,8 @@ inc_cp(Amount, State) ->
 %% ------------------------------------------------------------------------
 
 spend_call_gas(State, OP) when OP =:= ?CALL;
-                               OP =:= ?CALLCODE ->
+                               OP =:= ?CALLCODE;
+                               OP =:= ?DELEGATECALL ->
     spend_gas_common(aevm_gas:op_cost(?CALL, State), State).
 
 spend_op_gas(?CALL, State) ->
