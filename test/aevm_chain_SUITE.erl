@@ -106,7 +106,7 @@ spend(_Cfg) ->
 contracts(_Cfg) ->
     {[_Acc, _Acc2, _Contract1, Contract2], S} = setup_chain(),
     _S1 = lists:foldl(fun({Value, Arg}, S0) -> make_call(Contract2, Value, Arg, S0) end,
-                      S, [{I * 100, I + 100} || I <- lists:seq(1, 10)]),
+                      S, [{(I - 3) * 100, I + 100} || I <- lists:seq(1, 10)]),
     ok.
 
 make_call(To, Value, Arg, S) ->
@@ -116,6 +116,9 @@ make_call(To, Value, Arg, S) ->
     Gas      = 10000,
     CallRes  = aevm_chain:call_contract(To, Gas, Value, CallData, S),
     case C1Bal1 >= Value of
+        _ when Value < 0 ->
+            {error, negative_amount} = CallRes,
+            S;
         true ->
             {ok, Res, S1} = CallRes,
             GasUsed  = aevm_chain_api:gas_spent(Res),
