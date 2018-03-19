@@ -38,6 +38,7 @@
 	, mem/1
         , no_recursion/1
 	, number/1
+	, return_data/1
 	, set_code/2
 	, set_cp/2
 	, set_gas/2
@@ -134,11 +135,11 @@ init_storage(Address, #{} = Pre) ->
         #{storage := S} -> S
     end.
 
-get_code(Address, #{} = Pre) ->
-    case maps:get(Address, Pre, undefined) of
-        undefined -> <<>>;
-        #{code := Code} -> Code
-    end.
+%%get_code(Address, #{} = Pre) ->
+%%    case maps:get(Address, Pre, undefined) of
+%%        undefined -> <<>>;
+%%        #{code := Code} -> Code
+%%    end.
 
 
 get_ext_code_sizes(#{} = Pre) ->

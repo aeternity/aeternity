@@ -1286,12 +1286,14 @@ code_get_op(CP, Code) -> binary:at(Code, CP).
 %% extend past the limits.
 %% The byte is right-aligned (takes the lowest significant
 %% place in big endian).
+-spec code_get_arg(integer(), integer(), binary()) -> integer().
 code_get_arg(CP,_Size, Code) when CP >= byte_size(Code) -> 0;
 code_get_arg(CP, Size, Code) when Size < 33 ->
     BitSize = Size * 8,
     <<Arg:BitSize>> = aevm_eeevm_utils:bin_copy(CP, Size, Code),
     Arg.
 
+-spec code_get_area(integer(), integer(), binary()) -> binary().
 code_get_area(From, Size, Code) ->
     aevm_eeevm_utils:bin_copy(From, Size, Code).
 
@@ -1474,7 +1476,7 @@ recursive_call(CallDepth, StateIn, Op) ->
             {OutGas, OutState, R} =
                 case eval(CallState1) of
                     {ok, OutState2} -> {aevm_eeevm_state:gas(OutState2), OutState2, 1};
-                    {error, {out_of_gas,_RState2}} -> {0, CallState1, 1}
+                    {error, out_of_gas,_RState2} -> {0, CallState1, 1}
                 end,
             CallTrace = aevm_eeevm_state:trace(OutState),
             %% Go back to the caller state.

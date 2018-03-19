@@ -45,7 +45,7 @@ call(Code, CallData) ->
     end.
 
 
--spec execute_call(map(), boolean()) -> map() | {error, term()}.
+-spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
 execute_call(#{ code := CodeAsHexBinString
               , address := Address
               , caller := Caller
