@@ -117,10 +117,14 @@ call_contract(_Cfg) ->
     %% Now call check that we can call it.
     Fee           = 107,
     GasPrice      = 2,
+    Value         = 52,
     Arg           = <<"42">>,
     CallData = aect_ring:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
-                                     #{call_data => CallData, gas_price => GasPrice, fee => Fee}, S3),
+                                     #{call_data => CallData,
+                                       gas_price => GasPrice,
+                                       amount    => Value,
+                                       fee       => Fee}, S3),
     {SignedTx1, [SignedTx1], S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
@@ -130,7 +134,7 @@ call_contract(_Cfg) ->
 
     %% ...and that we got charged the right amount for gas and fee.
     NewCallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
-    NewCallerBalance = CallerBalance - Fee - GasPrice * aect_call:gas_used(Call),
+    NewCallerBalance = CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value,
 
     {ok, S4}.
 

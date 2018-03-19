@@ -86,14 +86,19 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 %% Contract should exist and its vm_version should match the one in the call.
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
-                        fee = Fee,
+                        fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice
-                       } = CallTx, _Context, Trees, Height) ->
-    RequiredAmount = Fee + GasLimit * GasPrice,
+                       } = CallTx, Context, Trees, Height) ->
     Checks =
-        [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
-         fun() -> check_call(CallTx, Trees, Height) end
-        ],
+        case Context of
+            aetx_transaction ->
+                RequiredAmount = Fee + GasLimit * GasPrice + Value,
+                [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
+                 fun() -> check_call(CallTx, Trees, Height) end];
+            aetx_contract ->
+                [fun() -> aect_utils:check_balance(CallerPubKey, Trees, Value) end,
+                 fun() -> check_call(CallTx, Trees, Height) end]
+        end,
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -109,14 +114,13 @@ signers(Tx) ->
     [caller(Tx)].
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
-                          gas_price = GasPrice
+process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
+                          fee = Fee, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees0, Height) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Create the call.
-    %% gas used.
     Call0 = aect_call:new(CallTx, Height),
 
     %% Run the contract code. Also computes the amount of gas left and updates
@@ -125,23 +129,33 @@ process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
     Call = run_contract(CallTx, Call0, Height, Trees0),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
-    AccountsTree1 =
+    {AccountsTree1, ContractsTree1} =
         case Context of
-            aetx_contract    -> AccountsTree0;
+            aetx_contract    ->
+                %% When calling from another contract we only charge the 'amount'
+                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree0),
+                Caller1 = aect_contracts:spend(Value, Caller0),
+                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree0)};
             aetx_transaction ->
-                Amount        = Fee + aect_call:gas_used(Call) * GasPrice,
+                %% When calling from the top-level we charge Fee and Gas as well.
+                Amount        = Fee + aect_call:gas_used(Call) * GasPrice + Value,
                 Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
                 {ok, Caller1} = aec_accounts:spend(Caller0, Amount, Nonce, Height),
-                aec_accounts_trees:enter(Caller1, AccountsTree0)
+                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree0}
         end,
+
+    %% Credit the attached funds to the callee
+    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree1),
+    Callee1 = aect_contracts:earn(Value, Callee0),
+    ContractsTree2 = aect_state_tree:enter_contract(Callee1, ContractsTree1),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
-    ContractsTree1 = aect_state_tree:insert_call(Call, ContractsTree0),
+    ContractsTree3 = aect_state_tree:insert_call(Call, ContractsTree2),
 
     %% Update the state tree
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree3),
 
     {ok, Trees2}.
 
