@@ -264,10 +264,18 @@ call_data(C) -> C#contract_call_tx.call_data.
 
 %% Check that the contract exists and has the right VM version.
 check_call(#contract_call_tx{ contract   = ContractPubKey,
-                              vm_version = VmVersion },
+                              vm_version = VmVersion,
+                              amount     = Value},
                Trees, _Height) ->
     ContractsTree = aec_trees:contracts(Trees),
+    %% Dialyzer, in its infinite wisdom, complains if it thinks we're checking
+    %% that something of type non_neg_integer() is negative. Since Dialyzer
+    %% doesn't _actually_ guarantee that this isn't the case, we do need the
+    %% check and this is the least convoluted way of writing it that Dialyzer's
+    %% static analysis cannot see through.
+    NegativeAmount = -Value > 0,
     case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
+        _ when NegativeAmount -> {error, negative_amount};
         {value, C} ->
             case aect_contracts:vm_version(C) == VmVersion of
                 true  -> ok;
