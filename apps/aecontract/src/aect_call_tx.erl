@@ -124,11 +124,16 @@ process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
     %% TODO: handle transactions performed by the contract code
     Call = run_contract(CallTx, Call0, Height, Trees0),
 
-    %% Charge the fee and the used gas to the caller
-    Amount         = Fee + aect_call:gas_used(Call) * GasPrice,
-    Caller0        = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
-    {ok, Caller1}  = aec_accounts:spend(Caller0, Amount, Nonce, Height),
-    AccountsTree1  = aec_accounts_trees:enter(Caller1, AccountsTree0),
+    %% Charge the fee and the used gas to the caller (not if called from another contract!)
+    AccountsTree1 =
+        case Context of
+            aetx_contract    -> AccountsTree0;
+            aetx_transaction ->
+                Amount        = Fee + aect_call:gas_used(Call) * GasPrice,
+                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
+                {ok, Caller1} = aec_accounts:spend(Caller0, Amount, Nonce, Height),
+                aec_accounts_trees:enter(Caller1, AccountsTree0)
+        end,
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
