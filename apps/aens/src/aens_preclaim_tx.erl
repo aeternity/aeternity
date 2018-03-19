@@ -18,8 +18,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/3,
-         process/3,
+         check/4,
+         process/4,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -74,9 +74,9 @@ nonce(#ns_preclaim_tx{nonce = Nonce}) ->
 origin(#ns_preclaim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
-                      fee = Fee, commitment = Commitment}, Trees, Height) ->
+                      fee = Fee, commitment = Commitment}, _Context, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
          fun() -> check_not_commitment(Commitment, Trees) end],
@@ -86,9 +86,9 @@ check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
-                        nonce = Nonce} = PreclaimTx, Trees0, Height) ->
+                        nonce = Nonce} = PreclaimTx, _Context, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 
