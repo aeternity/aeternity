@@ -28,6 +28,8 @@
         , referers/1
         , deposit/1
           %% Setters
+        , spend/2
+        , earn/2
         , set_pubkey/2
         , set_balance/2
         , set_height/2
@@ -231,6 +233,14 @@ deposit(C) -> C#contract.deposit.
 
 %%%===================================================================
 %%% Setters
+
+-spec spend(amount(), contract()) -> contract().
+spend(Amount, C) ->
+    C#contract{balance = assert_field(balance, C#contract.balance - Amount)}.
+
+-spec earn(amount(), contract()) -> contract().
+earn(Amount, C) ->
+    C#contract{balance = assert_field(balance, C#contract.balance + Amount)}.
 
 -spec set_pubkey(pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
