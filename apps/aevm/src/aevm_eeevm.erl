@@ -29,7 +29,30 @@
 %%
 %%
 eval(State) ->
-    loop(valid_jumpdests(State)).
+    NewState = loop(valid_jumpdests(State)),
+    Metaop = check_eval_state(NewState),
+    case Metaop of
+	{call, Data} ->
+	    io:format("Call function ~p~n", [Data]),
+	    %% TODO: check call stack depth
+	    %% TODO: handle returndata
+	    eval(aevm_eeevm_state:init_call(NewState));
+	{return, Data} ->
+	    io:format("Return ~p~n", [Data]),
+	    NewState;
+	{error, Data}  ->
+	    io:format("error ~p~n", [Data]),
+	    NewState
+    end.
+
+check_eval_state(State) ->
+    case aevm_eeevm_state:call(State) of
+	#{to := _To } = Call ->
+	    {call, Call};
+	_ -> {return,  aevm_eeevm_state:out(State)}
+    end.
+	
+       
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
@@ -495,17 +518,26 @@ loop(StateIn) ->
 		    State5 = aevm_eeevm_memory:write_area(Us1, CodeArea, State4),
 		    next_instruction(OP, State, State5);
 		?RETURNDATASIZE ->
-		    %% 0x3d RETURNDATASIZE
-		    %% Not in yellow paper
-		    error({opcode_not_implemented,
-			   lists:flatten(
-			     io_lib:format("~2.16.0B",[OP]))});
+		    %% 0x3d RETURNDATASIZE  δ=0 α=1
+		    %% Get size of output data from the previous call from the current
+		    %% environment.
+		    %% µ's[0] ≡ |µo|
+		    Val = byte_size(aevm_eeevm_state:return_data(State0)),
+		    State1 = push(Val, State0),
+		    next_instruction(OP, State, State1);
 		?RETURNDATACOPY ->
-		    %% 0x3e RETURNDATACOPY
-		    %% Not in yellow paper
-		    error({opcode_not_implemented,
-			   lists:flatten(
-			     io_lib:format("~2.16.0B",[OP]))});
+		    %% 0x3e RETURNDATACOPY δ=3 α=0
+		    %% Copy output data from the previous call to memory.
+		    %% ∀i∈{0...µs[2]−1}µ'm[µs[0] + i] ≡  µo[µs[1] + i] if µs[1] + i < |µo|
+		    %%                                   0                otherwise
+		    %% The additions in µs[1] + i are not subject to the 2^256 modulo.
+		    %% µ'i ≡ M(µi, µs[0], µs[2])
+		    {Us0, State1} = pop(State0), %% memOffset
+		    {Us1, State2} = pop(State1), %% dataOffset
+		    {Us2, State3} = pop(State2), %% length
+		    ReturnData = return_data_get_bytes(Us1, Us2, State3),
+		    State4 = aevm_eeevm_memory:write_area(Us0, ReturnData, State3),
+		    next_instruction(OP, State, State4);
 		%% No opcode 0x3f
 		16#3f -> throw({illegal_instruction, OP, State0});
 		%% 40s Block Information
@@ -1300,6 +1332,14 @@ data_get_val(Address, State) ->
 %% Get a binary of size Size bytes from input data.
 data_get_bytes(Address, Size, State) ->
     Data = aevm_eeevm_state:data(State),
+    try aevm_eeevm_utils:bin_copy(Address, Size, Data)
+    catch error:system_limit ->
+	    throw({out_of_memory, State})
+    end.
+
+%% Get a binary of size Size bytes from return data.
+return_data_get_bytes(Address, Size, State) ->
+    Data = aevm_eeevm_state:return_data(State),
     try aevm_eeevm_utils:bin_copy(Address, Size, Data)
     catch error:system_limit ->
 	    throw({out_of_memory, State})

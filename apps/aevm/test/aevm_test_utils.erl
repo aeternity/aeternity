@@ -270,7 +270,7 @@ config_structure() ->
                          }
            , callcreates => [#{ data => data_array
                               , destination => bin_int
-                              , gaslimit => bin_int
+                              , gasLimit => bin_int
                               , value => bin_int
                               }
                             ]
