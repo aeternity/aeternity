@@ -36,6 +36,7 @@
          gas_price/1,
          call_data/1]).
 
+-define(PUB_SIZE, 65).
 
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
@@ -305,9 +306,10 @@ run_contract(#contract_call_tx
     %% TODO: Move init and execution to a separate moidule to be re used by
     %% both on chain and off chain calls.
     ChainState    = aevm_chain:new_state(Trees, Height, ContractPubKey),
+    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code     => Code,
-			address  => 0,        %% We start executing at address 0
+			address  => Address,
 			caller   => Caller,
 			data     => CallData,
 			gas      => Gas,
@@ -340,7 +342,7 @@ run_contract(#contract_call_tx
 		{error,_Error, #{ gas :=_GasLeft}} ->
 		    aect_call:set_gas_used(Gas,
 					   aect_call:set_return_value(<<>>, Call))
-		    
+
 	    catch _:_ -> Call
 	    end
     catch _:_ ->
