@@ -17,7 +17,7 @@ tags:
     description: Gossip protocol API
   - name: name_service
     description: Name resolution API
-  - name: chain 
+  - name: chain
     description: Chain state inspection endpoints
   - name: transactions
     description: Transactions inspection endpoints
@@ -25,7 +25,7 @@ tags:
     description: Node operator endpoints
   - name: dev
     description: Development only API - for validation of client implementations. Should not be used in real life scenrios
-  - name: debug 
+  - name: debug
     description: Debug endpoints
   - name: obsolete
     description: Old endpoints that will be removed
@@ -143,7 +143,7 @@ paths:
         '200':
           description: The headers found
           schema:
-            type: array 
+            type: array
             items:
               $ref: '#/definitions/Header'
         '400':
@@ -296,7 +296,7 @@ paths:
       produces:
         - application/json
       parameters:
-        - in: path 
+        - in: path
           name: tx_hash
           description: Hash of the transaction to get
           required: true
@@ -1663,6 +1663,10 @@ paths:
               count:
                 type: integer
                 description: Count
+        '404':
+          description: Pending block not found
+          schema:
+            $ref: '#/definitions/Error'
       security:
   /block/tx/height/{height}/{tx_index}:
     get:

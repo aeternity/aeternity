@@ -1938,6 +1938,12 @@
             "schema" : {
               "$ref" : "#/definitions/inline_response_200"
             }
+          },
+          "404" : {
+            "description" : "Pending block not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
           }
         }
       }

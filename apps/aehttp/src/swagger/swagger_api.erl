@@ -2561,6 +2561,8 @@ validate_response('GetLatestBlockTxsCount', 200, Body, ValidatorState) ->
 
 validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->
     validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetPendingBlockTxsCount', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetTransactionFromBlockHash', 200, Body, ValidatorState) ->
     validate_response_body('SingleTxObject', 'SingleTxObject', Body, ValidatorState);
@@ -3041,6 +3043,8 @@ validate_response('GetPeers', 403, Body, ValidatorState) ->
 
 validate_response('GetPendingBlockTxsCount', 200, Body, ValidatorState) ->
     validate_response_body('inline_response_200', 'inline_response_200', Body, ValidatorState);
+validate_response('GetPendingBlockTxsCount', 404, Body, ValidatorState) ->
+    validate_response_body('Error', 'Error', Body, ValidatorState);
 
 validate_response('GetPubKey', 200, Body, ValidatorState) ->
     validate_response_body('PubKey', 'PubKey', Body, ValidatorState);
