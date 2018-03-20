@@ -783,17 +783,10 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
     end.
 
 get_account_balance_at_hash(AccountPubkey, Hash) ->
-    case aec_db:find_block_state(Hash) of
-        none ->
-            {error, not_on_main_chain};
-        {value, Trees} ->
-            AccountsMPTree = aec_trees:accounts(Trees),
-            case aec_accounts_trees:lookup(AccountPubkey, AccountsMPTree) of
-                none ->
-                    {error, account_not_found};
-                {value, Account} ->
-                    {ok, aec_accounts:balance(Account)}
-            end
+    case aec_chain:get_account_at_hash(AccountPubkey, Hash) of
+        {error, no_state_trees} -> {error, not_on_main_chain};
+        none                    -> {error, account_not_found};
+        {value, Account}        -> {ok, aec_accounts:balance(Account)}
     end.
 
 -spec get_block_hash_optionally_by_hash_or_height(map()) ->
@@ -907,20 +900,22 @@ get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
                   orelse lists:member(TxType, KeepTxTypes),
               Keep andalso not Drop
         end,
-    Txs = aec_db:transactions_by_account(Account, Filter),
-    lists:map(
-        fun(SignedTx) ->
-            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
-            Header =
-                case aec_db:read_tx(TxHash) of
-                    [{mempool, _}] -> mempool;
-                    [{BlockHash, _}] ->
-                        {ok, H} = aec_chain:get_header(BlockHash),
-                        H
-                end,
-            {Header, SignedTx}
+    Fun =
+        fun() ->
+                Txs = aec_db:transactions_by_account(Account, Filter),
+                TxHashes = lists:usort([aetx:hash(aetx_sign:tx(SignedTx))
+                                        || SignedTx <- Txs]),
+                [case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+                     {mempool, SignedTx} -> {mempool, SignedTx};
+                     {BlockHash, SignedTx} ->
+                         {ok, H} = aec_chain:get_header(BlockHash),
+                         {H, SignedTx}
+                 end
+                 || TxHash <- TxHashes]
         end,
-        Txs).
+    %% Put this in a transaction to avoid multiple transaction and to
+    %% get a snapshot of the chain state.
+    aec_db:ensure_transaction(Fun).
 
 
 offset_and_limit(Req, ResultList) ->
