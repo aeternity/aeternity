@@ -47,7 +47,10 @@
                  | channel_create_tx
                  | channel_deposit_tx
                  | channel_withdraw_tx
-                 | channel_close_mutual_tx.
+                 | channel_close_mutual_tx
+                 | channel_close_solo_tx
+                 | channel_slash_tx
+                 | channel_settle_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -65,7 +68,10 @@
                      | aesc_create_tx:tx()
                      | aesc_deposit_tx:tx()
                      | aesc_withdraw_tx:tx()
-                     | aesc_close_mutual_tx:tx().
+                     | aesc_close_mutual_tx:tx()
+                     | aesc_close_solo_tx:tx()
+                     | aesc_slash_tx:tx()
+                     | aesc_settle_tx:tx().
 
 -export_type([ tx/0
              , tx_instance/0
@@ -150,6 +156,7 @@ signers(#aetx{ cb = CB, tx = Tx }) ->
     CB:signers(Tx).
 
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+<<<<<<< HEAD
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 check(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
     CB:check(Tx, Trees, Height).
@@ -158,6 +165,20 @@ check(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
     {ok, NewTrees :: aec_trees:trees()}.
 process(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
     CB:process(Tx, Trees, Height).
+=======
+                   {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
+check(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
+    Type:check(Tx, Trees, Height).
+
+-spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+                     {ok, NewTrees :: aec_trees:trees()}.
+process(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
+    Type:process(Tx, Trees, Height).
+
+-spec serialize(Tx :: tx()) -> list(map()).
+serialize(#aetx{ type = Type, tx = Tx }) ->
+    [#{ <<"type">> => erlang:atom_to_binary(Type, utf8) } | Type:serialize(Tx)].
+>>>>>>> Implement solo close, slash and settle
 
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->
@@ -206,6 +227,7 @@ specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
 
 -spec tx_types() -> list(tx_type()).
 tx_types() ->
+<<<<<<< HEAD
     [ spend_tx
     , coinbase_tx
     , oracle_register_tx
@@ -220,6 +242,28 @@ tx_types() ->
     , name_create_tx
     , contract_call_tx
     , contract_create_tx
+=======
+    [ aec_spend_tx
+    , aec_coinbase_tx
+    , aesc_create_tx
+    , aesc_deposit_tx
+    , aesc_withdraw_tx
+    , aesc_close_mutual_tx
+    , aesc_close_solo_tx
+    , aesc_slash_tx
+    , aesc_settle_tx
+    , aeo_register_tx
+    , aeo_extend_tx
+    , aeo_query_tx
+    , aeo_response_tx
+    , aens_preclaim_tx
+    , aens_claim_tx
+    , aens_transfer_tx
+    , aens_update_tx
+    , aens_revoke_tx
+    , aect_create_tx
+    , aect_call_tx
+>>>>>>> Implement solo close, slash and settle
     ].
 
 -spec is_tx_type(MaybeTxType :: binary() | atom()) -> boolean().
@@ -227,8 +271,7 @@ is_tx_type(X) when is_binary(X) ->
     try
         is_tx_type(erlang:binary_to_existing_atom(X, utf8))
     catch _:_ ->
-        false
+            false
     end;
 is_tx_type(X) when is_atom(X) ->
     lists:member(X, tx_types()).
-

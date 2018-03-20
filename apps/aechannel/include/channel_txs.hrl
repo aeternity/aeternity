@@ -46,3 +46,27 @@
           fee          :: non_neg_integer(),
           nonce        :: non_neg_integer()
          }).
+
+-record(channel_close_solo_tx, {
+          channel_id :: binary(),
+          account    :: pubkey(),
+          payload    :: binary(),
+          fee        :: non_neg_integer(),
+          nonce      :: non_neg_integer()
+         }).
+
+-record(channel_slash_tx, {
+          channel_id :: binary(),
+          account    :: pubkey(),
+          payload    :: binary(),
+          fee        :: non_neg_integer(),
+          nonce      :: non_neg_integer()
+         }).
+
+-record(channel_settle_tx, {
+          channel_id :: binary(),
+          account    :: pubkey(),
+          party      :: pubkey(),
+          fee        :: non_neg_integer(),
+          nonce      :: non_neg_integer()
+         }).
