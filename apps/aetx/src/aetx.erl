@@ -28,7 +28,7 @@
 
 %% -- Types ------------------------------------------------------------------
 -record(aetx, { type :: tx_type()
-              , tx   :: tx_instance() }).
+                        , tx   :: tx_instance() }).
 
 -opaque tx() :: #aetx{}.
 
@@ -48,7 +48,10 @@
                  | aesc_create_tx
                  | aesc_deposit_tx
                  | aesc_withdraw_tx
-                 | aesc_close_mutual_tx.
+                 | aesc_close_mutual_tx
+                 | aesc_close_solo_tx
+                 | aesc_slash_tx
+                 | aesc_settle_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -66,7 +69,10 @@
                      | aesc_create_tx:tx()
                      | aesc_deposit_tx:tx()
                      | aesc_withdraw_tx:tx()
-                     | aesc_close_mutual_tx:tx().
+                     | aesc_close_mutual_tx:tx()
+                     | aesc_close_solo_tx:tx()
+                     | aesc_slash_tx:tx()
+                     | aesc_settle_tx:tx().
 
 -export_type([ tx/0
              , tx_instance/0
@@ -110,7 +116,7 @@
 %% -- ADT Implementation -----------------------------------------------------
 
 -spec new(Type :: tx_type(),  Tx :: tx_instance()) ->
-    Tx :: tx().
+                 Tx :: tx().
 new(Type, Tx) ->
     #aetx{ type = Type, tx = Tx }.
 
@@ -145,12 +151,12 @@ signers(#aetx{ type = Type, tx = Tx }) ->
     Type:signers(Tx).
 
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
+                   {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 check(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
     Type:check(Tx, Trees, Height).
 
 -spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
-    {ok, NewTrees :: aec_trees:trees()}.
+                     {ok, NewTrees :: aec_trees:trees()}.
 process(#aetx{ type = Type, tx = Tx }, Trees, Height) ->
     Type:process(Tx, Trees, Height).
 
@@ -189,6 +195,13 @@ specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
 tx_types() ->
     [ aec_spend_tx
     , aec_coinbase_tx
+    , aesc_create_tx
+    , aesc_deposit_tx
+    , aesc_withdraw_tx
+    , aesc_close_mutual_tx
+    , aesc_close_solo_tx
+    , aesc_slash_tx
+    , aesc_settle_tx
     , aeo_register_tx
     , aeo_extend_tx
     , aeo_query_tx
@@ -207,8 +220,7 @@ is_tx_type(X) when is_binary(X) ->
     try
         is_tx_type(erlang:binary_to_existing_atom(X, utf8))
     catch _:_ ->
-        false
+            false
     end;
 is_tx_type(X) when is_atom(X) ->
     lists:member(X, tx_types()).
-

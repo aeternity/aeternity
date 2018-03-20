@@ -21,7 +21,7 @@
                                   aec_trees:trees()) -> {error, term()} | ok.
 check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
-    %% It assumes aesc_state_tree:lookup/2 does not return closed/expired channels
+    %% It assumes aesc_state_tree:lookup/2 does not return closed channels
     case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
         none ->
             {error, channel_does_not_exist};

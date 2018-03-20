@@ -28,7 +28,7 @@
 %%% Types
 %%%===================================================================
 
--define(CHANNEL_CLOSE_MUTUAL_TX, 1).
+-define(CHANNEL_CLOSE_MUTUAL_TX_VSN, 1).
 
 -opaque tx() :: #channel_close_mutual_tx{}.
 
@@ -96,12 +96,15 @@ process(#channel_close_mutual_tx{channel_id  = ChannelId,
 
     InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
     {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
-    AccountsTree1           = aec_trees:enter(InitiatorAccount1, AccountsTree0, Height),
+    AccountsTree1           = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
     Channel1      = aesc_channels:withdraw(Channel0, Amount, InitiatorPubKey),
     Channel2      = aesc_channels:deposit(Channel1, Amount, ParticipantPubKey),
     ChannelsTree1 = aesc_state_tree:enter(Channel2, ChannelsTree0),
+
+    %% TODO: After discussion with Sasha - close mutual should redistribute funds
+    %% and does not need settle tx. Then close the channel.
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
@@ -133,7 +136,7 @@ serialize(#channel_close_mutual_tx{channel_id  = ChannelId,
      #{<<"nonce">>       => Nonce}].
 
 -spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>         := ?CHANNEL_CLOSE_MUTUAL_TX},
+deserialize([#{<<"vsn">>         := ?CHANNEL_CLOSE_MUTUAL_TX_VSN},
              #{<<"channel_id">>  := ChannelId},
              #{<<"amount">>      := Amount},
              #{<<"initiator">>   := InitiatorPubKey},
@@ -154,6 +157,7 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
                                     participant = ParticipantPubKey,
                                     fee         = Fee,
                                     nonce       = Nonce}) ->
+    %% TODO: add swagger schema name
     #{<<"vsn">>         => version(),
       <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
       <<"amount">>      => Amount,
@@ -161,10 +165,6 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
       <<"participant">> => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>         => Fee,
       <<"nonce">>       => Nonce}.
-
-%%%===================================================================
-%%% Getters
-%%%===================================================================
 
 %%%===================================================================
 %%% Internal functions
@@ -178,4 +178,4 @@ check_peer_has_funds(InitiatorPubkey, ParticipantPubKey, ChannelId, Amount, Tree
 
 -spec version() -> non_neg_integer().
 version() ->
-    ?CHANNEL_CLOSE_MUTUAL_TX.
+    ?CHANNEL_CLOSE_MUTUAL_TX_VSN.
