@@ -120,6 +120,10 @@ accounts(#channel_deposit_tx{from_account = FromPubKey,
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_deposit_tx{initiator   = InitiatorPubKey,
                             participant = ParticipantPubKey}) ->
+    %% TODO: remove initiator and participant from tx payload and verify signatures based on MPT
+    %% This compilicates not only aetx:signers/1 callback, but also aetx:accounts/1,
+    %% which is used for APIs to get transaction for an accounts.
+    %% Does changing that make sense?
     [InitiatorPubKey, ParticipantPubKey].
 
 -spec serialize(tx()) -> list(map()).
@@ -169,6 +173,7 @@ for_client(#channel_deposit_tx{channel_id   = ChannelId,
                                participant  = ParticipantPubKey,
                                fee          = Fee,
                                nonce        = Nonce}) ->
+    %% TODO: add swagger schema name
     #{<<"vsn">>          => version(),
       <<"channel">>      => aec_base58c:encode(channel, ChannelId),
       <<"from_account">> => aec_base58c:encode(account_pubkey, FromPubKey),
@@ -178,10 +183,6 @@ for_client(#channel_deposit_tx{channel_id   = ChannelId,
       <<"participant">>  => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
-
-%%%===================================================================
-%%% Getters
-%%%===================================================================
 
 %%%===================================================================
 %%% Internal functions

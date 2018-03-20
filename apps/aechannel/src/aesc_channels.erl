@@ -9,11 +9,16 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([deposit/3,
+-export([close/1,
+         deposit/3,
          deserialize/1,
+         is_closed_solo/1,
+         is_solo_closing/1,
          new/1,
          peers/1,
          serialize/1,
+         slash/2,
+         close_solo/2,
          withdraw/3]).
 
 %% Getters
@@ -22,7 +27,8 @@
          initiator/1,
          initiator_amount/1,
          participant/1,
-         participant_amount/1]).
+         participant_amount/1,
+         sequence_number/1]).
 
 %%%===================================================================
 %%% Types
@@ -36,6 +42,8 @@
                   participant        :: pubkey(),
                   initiator_amount   :: amount(),
                   participant_amount :: amount(),
+                  sequence_number    :: non_neg_integer(),
+                  status             :: 'active' | 'solo_closed' | 'closed',
                   lock_period        :: non_neg_integer(),
                   closes_at          :: 'undefined' | height()}).
 
@@ -57,6 +65,15 @@
 %%% API
 %%%===================================================================
 
+-spec close(channel()) -> channel().
+close(#channel{} = Ch) ->
+    Ch#channel{status = 'closed'}.
+
+-spec close_solo(channel(), aesc_state:state()) -> channel().
+close_solo(#channel{} = Ch, _State) ->
+    %% TODO: IMPLEMENT ME
+    Ch.
+
 -spec deposit(channel(), amount(), pubkey()) -> channel().
 deposit(#channel{} = Channel, Amount, ToPubKey) ->
     case initiator(Channel) =:= ToPubKey of
@@ -77,6 +94,8 @@ deserialize(Bin) ->
      #{<<"initiator_amount">>   := InitiatorAmount},
      #{<<"participant">>        := ParticipantPubKey},
      #{<<"participant_amount">> := ParticipantAmount},
+     #{<<"sequence_number">>    := SequenceNumber},
+     #{<<"status">>             := Status},
      #{<<"lock_period">>        := LockPeriod},
      #{<<"closes_at">>          := ClosesAt0}] = List,
     ClosesAt = case ClosesAt0 of
@@ -88,8 +107,21 @@ deserialize(Bin) ->
              initiator_amount   = InitiatorAmount,
              participant        = ParticipantPubKey,
              participant_amount = ParticipantAmount,
+             sequence_number    = SequenceNumber,
+             status             = binary_to_atom(Status, utf8),
              lock_period        = LockPeriod,
              closes_at          = ClosesAt}.
+
+-spec is_closed_solo(channel()) -> boolean().
+is_closed_solo(#channel{status = Status}) ->
+    Status =:= 'closed'.
+
+-spec is_solo_closing(channel()) -> boolean().
+is_solo_closing(#channel{} = Channel) ->
+    case closes_at(Channel) of
+        undefined -> false;
+        _         -> true
+    end.
 
 -spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
 id(InitiatorPubKey, Nonce, ParticipantPubKey) ->
@@ -108,6 +140,8 @@ new(ChCTx) ->
              initiator_amount   = aesc_create_tx:initiator_amount(ChCTx),
              participant        = aesc_create_tx:participant(ChCTx),
              participant_amount = aesc_create_tx:participant_amount(ChCTx),
+             sequence_number    = 0,
+             status             = active,
              lock_period        = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(pubkey()).
@@ -127,9 +161,17 @@ serialize(#channel{} = Ch) ->
                   #{<<"initiator_amount">>   => initiator_amount(Ch)},
                   #{<<"participant">>        => participant(Ch)},
                   #{<<"participant_amount">> => participant_amount(Ch)},
+                  #{<<"sequence_number">>    => sequence_number(Ch)},
+                  #{<<"status">>             => status(Ch)},
                   #{<<"lock_period">>        => lock_period(Ch)},
                   #{<<"closes_at">>          => ClosesAt}
                  ]).
+
+-spec slash(channel(), aesc_state:state()) -> channel().
+slash(#channel{} = Ch, _State) ->
+    %% TODO: IMPLEMENT ME
+    Ch.
+
 -spec withdraw(channel(), amount(), pubkey()) -> channel().
 withdraw(#channel{} = Channel, Amount, FromPubKey) ->
     case initiator(Channel) =:= FromPubKey of
@@ -172,9 +214,13 @@ participant(#channel{participant = ParticipantPubKey}) ->
 participant_amount(#channel{participant_amount = ParticipantAmount}) ->
     ParticipantAmount.
 
-%%%===================================================================
-%%% Getters
-%%%===================================================================
+-spec sequence_number(channel()) -> non_neg_integer().
+sequence_number(#channel{sequence_number = SeqNumber}) ->
+    SeqNumber.
+
+-spec status(channel()) -> atom().
+status(#channel{status = Status}) ->
+    Status.
 
 %%%===================================================================
 %%% Internal functions

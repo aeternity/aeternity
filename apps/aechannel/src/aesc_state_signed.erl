@@ -12,6 +12,9 @@
          sign_state/2,
          verify/1]).
 
+%% Getters
+-export([state/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -56,6 +59,14 @@ verify(#signed_state{state = State, signatures = Sigs}) ->
     Signers = aesc_state:pubkeys(State),
     Bin     = aesc_state:serialize_to_bin(State),
     lists:all(fun(Signer) -> verify(Signer, Sigs, Bin) end, Signers).
+
+%%%===================================================================
+%%% Getters
+%%%===================================================================
+
+-spec state(signed_state()) -> aesc_state:state().
+state(#signed_state{state = State}) ->
+    State.
 
 %%%===================================================================
 %%% Internal functions

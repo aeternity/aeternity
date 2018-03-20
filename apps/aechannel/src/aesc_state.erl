@@ -14,6 +14,11 @@
          serialize/1,
          serialize_to_bin/1]).
 
+%% Getters
+-export([initiator/1,
+         responder/1,
+         sequence_number/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -44,6 +49,8 @@
 %%%===================================================================
 -spec deserialize(binary()) -> state().
 deserialize(Bin) ->
+    %% Why is that serialized by msgpack?
+    %% Why list of maps? Isn't one map sufficient?
     {ok, List} = msgpack:unpack(Bin),
     [#{<<"vsn">>              := ?LOCAL_STATE_VSN},
      #{<<"chain_hash">>       := ChainHash},
@@ -94,5 +101,17 @@ serialize_to_bin(State) ->
     msgpack:pack(StateMap).
 
 %%%===================================================================
-%%% Internal functions
+%%% Getters
 %%%===================================================================
+
+-spec initiator(state()) -> pubkey().
+initiator(#state{initiator_pubkey = InitiatorPubKey}) ->
+    InitiatorPubKey.
+
+-spec responder(state()) -> pubkey().
+responder(#state{responder_pubkey = ResponderPubKey}) ->
+    ResponderPubKey.
+
+-spec sequence_number(state()) -> seq_number().
+sequence_number(#state{sequence_number = SeqNumber}) ->
+    SeqNumber.
