@@ -7,7 +7,7 @@
 
 -module(aect_utils).
 
--export([hex_bytes/1, hex_byte/1, check_balance/3]).
+-export([hex_bytes/1, hex_byte/1, check_balance/3, check/2]).
 
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -24,9 +24,10 @@ check_balance(ContractKey, Trees, Amount) ->
     ContractsTree = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(ContractKey, ContractsTree) of
         {value, Contract} ->
-            case aect_contracts:balance(Contract) >= Amount of
-                true  -> ok;
-                false -> {error, insufficient_funds}
-            end;
+            check(aect_contracts:balance(Contract) >= Amount, insufficient_funds);
         none -> {error, contract_not_found}
     end.
+
+check(true, _) -> ok;
+check(false, Err) -> {error, Err}.
+

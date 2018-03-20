@@ -14,6 +14,7 @@
         , address/1
         , blockhash/3
         , calldepth/1
+        , call_stack/1
         , caller/1
         , callcreates/1
         , code/1
@@ -34,7 +35,7 @@
         , logs/1
         , origin/1
         , out/1
-        , prepare_for_call/7
+        , prepare_for_call/6
         , mem/1
         , no_recursion/1
         , number/1
@@ -80,7 +81,7 @@ init(#{ env  := Env
          , gas_price   => maps:get(gasPrice, Exec)
          , origin      => maps:get(origin, Exec)
          , value       => maps:get(value, Exec)
-         , calldepth   => 0
+         , call_stack  => maps:get(call_stack, Exec, 0)
 
          , coinbase   => maps:get(currentCoinbase, Env)
          , difficulty => maps:get(currentDifficulty, Env)
@@ -124,15 +125,15 @@ init_vm(State, Code, Store) ->
           , storage   => Store
           }.
 
-prepare_for_call(Caller, Dest, CallGas, Value, Code, CallDepth, State) ->
-    #{ environment := #{ spec := #{ pre := Pre}}} = State,
+prepare_for_call(Caller, Dest, CallGas, Value, Code, State) ->
+    #{ environment := #{ spec := #{ pre := Pre}}, call_stack := CallStack} = State,
     Store = init_storage(Dest, Pre),
     State1 = init_vm(State, Code, Store),
     State1#{ address => Dest
            , gas => CallGas
            , value => Value
            , caller    => Caller
-           , calldepth => CallDepth + 1
+           , call_stack => [Caller | CallStack]
            }.
 
 init_storage(Address, #{} = Pre) ->
@@ -193,7 +194,8 @@ accountbalance(Address, State) ->
     maps:get(Address band ?MASK160, maps:get(balances, State), 0).
 address(State)     -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
-calldepth(State) -> maps:get(calldepth, State).
+calldepth(State) -> length(call_stack(State)).
+call_stack(State) -> maps:get(call_stack, State).
 caller(State)    -> maps:get(caller, State).
 callcreates(State) -> maps:get(callcreates, State).
 code(State)      -> maps:get(code, State).

@@ -110,11 +110,12 @@ contracts(_Cfg) ->
     ok.
 
 make_call(To, Value, Arg, S) ->
-    C1Bal1   = aevm_chain:get_balance(S),
-    C2Bal1   = get_contract_balance(To, S),
-    CallData = call_data(integer_to_binary(Arg)),
-    Gas      = 10000,
-    CallRes  = aevm_chain:call_contract(To, Gas, Value, CallData, S),
+    C1Bal1    = aevm_chain:get_balance(S),
+    C2Bal1    = get_contract_balance(To, S),
+    CallData  = call_data(integer_to_binary(Arg)),
+    Gas       = 10000,
+    CallStack = [],
+    CallRes   = aevm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
     case C1Bal1 >= Value of
         _ when Value < 0 ->
             {error, negative_amount} = CallRes,
