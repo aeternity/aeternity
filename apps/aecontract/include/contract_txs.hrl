@@ -21,6 +21,9 @@
           amount     :: aect_contracts:amount(),
           gas        :: aect_contracts:amount(),
           gas_price  :: aect_contracts:amount(),
-          call_data  :: binary()
+          call_data  :: binary(),
+          call_stack = [] :: [non_neg_integer()]
+            %% addresses (the pubkey as an integer) of contracts on the call
+            %% stack
           }).
 

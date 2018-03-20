@@ -41,7 +41,7 @@ valid_jumpdests(State) ->
     JumpDests = jumpdests(0,Code, #{}),
     aevm_eeevm_state:set_jumpdests(JumpDests, State).
 
-%% Jump Destination Validity. 
+%% Jump Destination Validity.
 %% DJ (c, i) ≡ {} if i > |c|
 %%             {i} ∪ DJ (c, N(i, c[i])) if c[i] = JUMPDEST
 %%             DJ (c, N(i, c[i])) otherwise
@@ -470,7 +470,7 @@ loop(StateIn) ->
 		    %% Get price of gas in current environment.
 		    %% µ's[0] ≡ Ip
 		    %%  This is gas price specified by the
-		    %% originating transaction.   
+		    %% originating transaction.
 		    Arg = aevm_eeevm_state:gasprice(State0),
 		    State1 = push(Arg, State0),
 		    next_instruction(OP, State, State1);
@@ -643,7 +643,7 @@ loop(StateIn) ->
 		    %%                   Gsset if µs[1] =/= 0
 		    %% CSSTORE(σ, µ)) ≡           ∧ σ[Ia]s[µs[0]] = 0
 		    %%                   Gsreset otherwise
-		    %% A'r ≡ Ar + Rsclear if µs[1] = 0 
+		    %% A'r ≡ Ar + Rsclear if µs[1] = 0
 		    %%                      ∧ σ[Ia]s[µs[0]] =/= 0
 		    %%       0 otherwise
 		    {Address, State1} = pop(State0),
@@ -675,9 +675,9 @@ loop(StateIn) ->
 			if Us1 =/= 0 ->
 				JumpDests =  aevm_eeevm_state:jumpdests(State1),
 				case maps:get(Us0, JumpDests, false) of
-				    true -> 
+				    true ->
 					set_cp(Us0-1, State2);
-				    false -> 
+				    false ->
 					eval_error({{invalid_jumpdest, Us0}}, State1)
 				end;
 			   true      -> State2
@@ -950,7 +950,7 @@ loop(StateIn) ->
 		    State4 = log({Us2}, Us0, Us1, State3),
 		    next_instruction(OP, State, State4);
 		?LOG2 ->
-		    %% 0xa2 LOG2 δ=4 α=0 
+		    %% 0xa2 LOG2 δ=4 α=0
 		    %% Append log record with one topic.
 		    %% t ≡ (µs[2],(µs[3])
 		    {Us0, State1} = pop(State0),
@@ -987,7 +987,7 @@ loop(StateIn) ->
 		    eval_error({illegal_instruction, OP}, State0);
 		%% F0s: System operations
 		?CREATE->
-		    %% 0xf0 CREATE δ=3 α=1 
+		    %% 0xf0 CREATE δ=3 α=1
 		    %% Create a new account with associated code.
 		    %% i ≡ µm[µs[1] . . .(µs[1] + µs[2] − 1)]
 		    %% (σ', µ'g, A+) ≡ (Λ(σ∗, Ia, Io, L(µg), Ip, µs[0], i, Ie + 1)
@@ -1126,8 +1126,8 @@ loop(StateIn) ->
 		16#fb -> eval_error({illegal_instruction, OP}, State0);
 		16#fc -> eval_error({illegal_instruction, OP}, State0);
 		16#fd -> eval_error({illegal_instruction, OP}, State0);
-		?INVALID -> 
-		    %% 0xfe INVALID δ=∅ α=∅ 
+		?INVALID ->
+		    %% 0xfe INVALID δ=∅ α=∅
 		    %% Designated invalid instruction.
 		    eval_error({the_invalid_instruction, OP}, State0);
 		?SUICIDE ->
@@ -1418,10 +1418,10 @@ recursive_call(State, Op) ->
     CallDepth = aevm_eeevm_state:calldepth(State),
     case CallDepth < 1024 of
         false -> {0, State}; %% TODO: Should this consume gas?
-        true  -> recursive_call(CallDepth, State, Op)
+        true  -> recursive_call1(State, Op)
     end.
 
-recursive_call(CallDepth, StateIn, Op) ->
+recursive_call1(StateIn, Op) ->
     %% Message-call into an account.
     %% i ≡ µm[µs[3] . . .(µs[3] + µs[4] − 1)]
     State0            = spend_call_gas(StateIn, Op),
@@ -1469,8 +1469,7 @@ recursive_call(CallDepth, StateIn, Op) ->
                  ?DELEGATECALL -> aevm_eeevm_state:caller(State8)
              end,
     CallState = aevm_eeevm_state:prepare_for_call(Caller, Dest, CallGas, Value,
-                                                  Code, CallDepth,
-                                                  State8),
+                                                  Code, State8),
     case aevm_eeevm_state:no_recursion(State8) of
         true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,
