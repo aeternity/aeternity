@@ -4,6 +4,7 @@
 It:
 * Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
 * Enable user configuration of HTTP API acceptors pool
+* Improves the stability of the node.
 * Does this. This impacts consensus;
 * Does that. This impacts the persisted DB;
 * Does that;
