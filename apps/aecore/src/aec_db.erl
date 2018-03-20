@@ -133,9 +133,19 @@ persisted_valid_genesis_block() ->
         false ->
             true;
         true ->
-            LoadedGH = aec_db:get_genesis_hash(),
             {ok, ExpectedGH} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
-            LoadedGH =:= undefined orelse LoadedGH =:= ExpectedGH
+            case aec_db:get_genesis_hash() of
+                undefined ->
+                    lager:info("Loaded empty persisted chain"),
+                    true;
+                ExpectedGH ->
+                    true;
+                LoadedGH ->
+                    lager:warning("Expected genesis block hash ~p, persisted genesis block hash ~p",
+                                  [ExpectedGH, LoadedGH]),
+                    false
+            end
+              
     end.
 
 transaction(Fun) when is_function(Fun, 0) ->
