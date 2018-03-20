@@ -170,6 +170,7 @@ for_client(#channel_create_tx{initiator          = Initiator,
                               lock_period        = LockPeriod,
                               nonce              = Nonce,
                               fee                = Fee}) ->
+    %% TODO: add swagger schema name
     #{<<"vsn">>                => version(),
       <<"initiator">>          => aec_base58c:encode(account_pubkey, Initiator),
       <<"initiator_amount">>   => InitiatorAmount,

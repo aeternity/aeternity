@@ -126,6 +126,7 @@ accounts(#channel_withdraw_tx{from_account = FromPubKey,
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_withdraw_tx{initiator   = InitiatorPubKey,
                              participant = ParticipantPubKey}) ->
+    %% TODO: remove initiator and participant from tx payload and verify signatures based on MPT
     [InitiatorPubKey, ParticipantPubKey].
 
 -spec serialize(tx()) -> list(map()).
@@ -175,8 +176,9 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
                                 participant  = ParticipantPubKey,
                                 fee          = Fee,
                                 nonce        = Nonce}) ->
+    %% TODO: add swagger schema name
     #{<<"vsn">>          => version(),
-      <<"channel">>      => aec_base58c:encode(channel, ChannelId),
+      <<"channel_id">>   => aec_base58c:encode(channel, ChannelId),
       <<"from_account">> => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"to_account">>   => aec_base58c:encode(account_pubkey, ToPubKey),
       <<"amount">>       => Amount,
