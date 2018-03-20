@@ -18,9 +18,8 @@ on_exit() {
 }
 
 restore_vsnd_files() {
-    rm -rf "${SJ:?}" "${ES:?}" "${PC:?}"
+    rm -rf "${SJ:?}" "${PC:?}"
     cp -p  "${TmpSJ:?}" "${SJ:?}"
-    cp -pR "${TmpES:?}" "${ES:?}"
     cp -pR "${TmpPC:?}" "${PC:?}"
 }
 
@@ -38,8 +37,7 @@ MT="${2:?}"
 
 ## Generated Swagger-related files under version control.
 SJ="${3:?}" ## Swagger schema JSON file - generated
-ES="${4:?}" ## Erlang server code directory - generated
-PC="${5:?}" ## Python client code directory - generated
+PC="${4:?}" ## Python client code directory - generated
 
 ## Create temporary directory.
 TmpDir="$(mktemp -d)"
@@ -48,14 +46,11 @@ TmpDir="$(mktemp -d)"
 ## directory.  Ensure that on exit the files under version control are
 ## restored.
 TmpSJ="${TmpDir:?}"/sj.backup
-TmpES="${TmpDir:?}"/es.backup
 TmpPC="${TmpDir:?}"/pc.backup
 cp -p  "${SJ:?}" "${TmpSJ:?}"
-cp -pR "${ES:?}" "${TmpES:?}"
 cp -pR "${PC:?}" "${TmpPC:?}"
 trap on_exit EXIT
 rm    "${SJ:?}"
-rm -r "${ES:?}"
 rm -r "${PC:?}"
 
 ## Re-generate files.
@@ -64,5 +59,4 @@ make "${MT:?}"
 ## Check that re-generating JSON from YAML led to same generated JSON.
 diff -u "${SJ:?}" "${TmpSJ:?}"
 ## Check that re-generating code from YAML led to same generated code.
-diff -ru -NB "${ES:?}" "${TmpES:?}"
 diff -ru -NB "${PC:?}" "${TmpPC:?}"

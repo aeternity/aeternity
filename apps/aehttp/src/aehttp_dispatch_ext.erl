@@ -32,7 +32,7 @@
 -include_lib("aecore/include/common.hrl").
 
 -spec handle_request(
-        OperationID :: swagger_api:operation_id(),
+        OperationID :: atom(),
         Req :: cowboy_req:req(),
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
@@ -111,16 +111,16 @@ handle_request('GetHeadersByHash', Req, _Context) ->
         {_, N, _} when not is_integer(N) orelse N < 1 ->
             {400, [], #{reason => <<"Invalid number">>}};
         {{ok, Hash}, N, Direction} ->
-            Result = 
+            Result =
                 case Direction of
                     <<"backward">> ->
                        aec_chain:get_n_headers_backwards_from_hash(Hash, N);
                     <<"forward">> ->
                        aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N);
-                    _ -> 
+                    _ ->
                        %% validation should ensure this does not happen
                        %% but if no direction or name is provided, undefined is the value!
-                       error 
+                       error
                 end,
             case Result of
                 {ok, Headers} ->

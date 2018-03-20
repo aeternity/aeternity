@@ -5,7 +5,7 @@
 -import(aeu_debug, [pp/1]).
 
 -spec handle_request(
-        OperationID :: swagger_api:operation_id(),
+        OperationID :: atom(),
         Req :: map(),
         Context :: #{}
                    ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: map()}.
