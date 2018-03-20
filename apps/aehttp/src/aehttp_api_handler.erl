@@ -12,18 +12,20 @@
     operation_id :: atom(),
     operation_params :: #{},
     allowed_methods :: [binary()],
-    logic_handler :: atom()
+    logic_handler :: atom(),
+    validator :: jesse_state:state()
 }).
 
 init(_Transport, Req, Opts) ->
     {upgrade, protocol, cowboy_rest, Req, Opts}.
 
-rest_init(Req, {OperationId, AllowedMethods, LogicHandler, Params}) ->
+rest_init(Req, {OperationId, AllowedMethods, LogicHandler, Params, Validator}) ->
     State = #state{
         operation_id = OperationId,
         operation_params = Params,
         allowed_methods = AllowedMethods,
-        logic_handler = LogicHandler
+        logic_handler = LogicHandler,
+        validator = Validator
     },
     {ok, Req, State}.
 
@@ -42,9 +44,14 @@ delete_resource(Req, State) ->
 handle_request_json(Req0, State = #state{
         operation_id = OperationId,
         operation_params = Params,
-        logic_handler = LogicHandler
+        logic_handler = LogicHandler,
+        validator = Validator
     }) ->
     Context = #{},
     {Code, Headers, Body} = LogicHandler:handle_request(OperationId, Params, Context),
-    {ok, Req} = cowboy_req:reply(Code, Headers, jsx:encode(Body), Req0),
+
+    {Method, Req1} = cowboy_req:method(Req0),
+    _ = aehttp_api_validate:response(OperationId, Method, Code, Body, Validator),
+
+    {ok, Req} = cowboy_req:reply(Code, Headers, jsx:encode(Body), Req1),
     {halt, Req, State}.

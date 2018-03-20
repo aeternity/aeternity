@@ -17,14 +17,10 @@
 
 get_paths(Target, LogicHandler) ->
     {ok, EnabledGroups} = application:get_env(aehttp, enabled_endpoint_groups),
-    % Swagger validation will be replaced
-    % we're using it as a intermediate step
-    [{'_', [
-            {_, _, {_, _, SwaggerValidator}}
-            | _ ]}] = swagger_router:get_paths(LogicHandler),
+    Validator = aehttp_api_validate:validator(),
 
     Paths = [{path(Path), aehttp_api_handler,
-        {OperationId, method(Method), LogicHandler, SwaggerValidator}}
+        {OperationId, method(Method), LogicHandler, Validator}}
         || {OperationId, Spec} <- maps:to_list(endpoints:operations()),
             {Method, #{path := Path, tags := Tags}} <- maps:to_list(Spec),
             is_enabled(Target, Tags, EnabledGroups)
