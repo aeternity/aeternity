@@ -354,7 +354,7 @@ jobs:
           name: Snapshot of UAT blockchain
           command: |
             cd deployment/ansible
-            ansible-playbook --limit="epoch:&uat" \
+            ansible-playbook --limit="tag_role_epoch:&tag_env_uat" \
               --extra-vars "download_dir=/tmp/chain_snapshots backup_suffix=db_backup_$(date +%s)" \
               mnesia_backup.yml
       - store_artifacts:
