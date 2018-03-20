@@ -35,11 +35,12 @@
 -callback get_balance(State :: chain_state()) -> non_neg_integer().
 
 %% Make a call to another contract.
--callback call_contract(Contract :: pubkey(),
-                        Gas      :: non_neg_integer(),
-                        Value    :: non_neg_integer(),
-                        CallData :: binary(),
-                        State    :: chain_state()) ->
+-callback call_contract(Contract  :: pubkey(),
+                        Gas       :: non_neg_integer(),
+                        Value     :: non_neg_integer(),
+                        CallData  :: binary(),
+                        CallStack :: [non_neg_integer()],
+                        State     :: chain_state()) ->
                     {ok, call_result(), chain_state()} | {error, term()}.
 
 %% -- Call results -----------------------------------------------------------

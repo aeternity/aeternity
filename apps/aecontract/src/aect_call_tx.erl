@@ -34,7 +34,8 @@
          amount/1,
          gas/1,
          gas_price/1,
-         call_data/1]).
+         call_data/1,
+         call_stack/1]).
 
 -define(PUB_SIZE, 65).
 
@@ -55,7 +56,8 @@ new(#{caller     := CallerPubKey,
       amount     := Amount,
       gas        := Gas,
       gas_price  := GasPrice,
-      call_data  := CallData}) ->
+      call_data  := CallData} = Args) ->
+    CallStack = maps:get(call_stack, Args, []),
     Tx = #contract_call_tx{caller     = CallerPubKey,
                            nonce      = Nonce,
                            contract   = Contract,
@@ -64,7 +66,8 @@ new(#{caller     := CallerPubKey,
                            amount     = Amount,
                            gas        = Gas,
                            gas_price  = GasPrice,
-                           call_data  = CallData},
+                           call_data  = CallData,
+                           call_stack = CallStack},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -88,14 +91,16 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee, amount = Value,
-                        gas = GasLimit, gas_price = GasPrice
+                        gas = GasLimit, gas_price = GasPrice,
+                        call_stack = CallStack
                        } = CallTx, Context, Trees, Height) ->
     Checks =
         case Context of
             aetx_transaction ->
                 RequiredAmount = Fee + GasLimit * GasPrice + Value,
                 [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
-                 fun() -> check_call(CallTx, Trees, Height) end];
+                 fun() -> check_call(CallTx, Trees, Height) end,
+                 fun() -> aect_utils:check(CallStack == [], nonempty_call_stack) end];
             aetx_contract ->
                 [fun() -> aect_utils:check_balance(CallerPubKey, Trees, Value) end,
                  fun() -> check_call(CallTx, Trees, Height) end]
@@ -169,6 +174,9 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
                             gas        = Gas,
                             gas_price  = GasPrice,
                             call_data  = CallData}) ->
+    %% Note that the call_stack is not serialized. This is ok since we don't
+    %% serialize transactions originating from contract execution, and for
+    %% top-level transactions the call_stack is always empty.
     {version(),
      [ {caller, CallerPubKey}
      , {nonce, Nonce}
@@ -261,6 +269,9 @@ gas_price(C) -> C#contract_call_tx.gas_price.
 -spec call_data(tx()) -> binary().
 call_data(C) -> C#contract_call_tx.call_data.
 
+-spec call_stack(tx()) -> [non_neg_integer()].
+call_stack(C) -> C#contract_call_tx.call_stack.
+
 %% -- Local functions  -------------------------------------------------------
 
 %% Check that the contract exists and has the right VM version.
@@ -291,12 +302,13 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 %% used.
 -spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
 run_contract(#contract_call_tx
-             { caller    = Caller
-             , contract  = ContractPubKey
-             , gas       = Gas
-             , gas_price = GasPrice
-             , call_data = CallData
-             , amount    = Value
+             { caller     = Caller
+             , contract   = ContractPubKey
+             , gas        = Gas
+             , gas_price  = GasPrice
+             , call_data  = CallData
+             , amount     = Value
+             , call_stack = CallStack
              } = _Tx, Call, Height, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
@@ -308,14 +320,15 @@ run_contract(#contract_call_tx
     ChainState    = aevm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
     try aevm_eeevm_state:init(
-	  #{ exec => #{ code     => Code,
-			address  => Address,
-			caller   => Caller,
-			data     => CallData,
-			gas      => Gas,
-			gasPrice => GasPrice,
-			origin   => Caller,
-			value    => Value },
+	  #{ exec => #{ code       => Code,
+			address    => Address,
+			caller     => Caller,
+			data       => CallData,
+			gas        => Gas,
+			gasPrice   => GasPrice,
+			origin     => Caller,
+			value      => Value,
+                        call_stack => CallStack },
              %% TODO: set up the env properly
              env => #{currentCoinbase   => 0,
                       currentDifficulty => 0,

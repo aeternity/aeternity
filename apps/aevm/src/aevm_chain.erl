@@ -15,7 +15,7 @@
 %% aevm_chain_api callbacks
 -export([get_balance/1,
          spend/3,
-         call_contract/5]).
+         call_contract/6]).
 
 -record(state, {trees   :: aec_trees:trees(),
                 height  :: height(),
@@ -66,9 +66,10 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
     end.
 
 %% @doc Call another contract.
--spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(), chain_state()) ->
+-spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
+                    [non_neg_integer()], chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
-call_contract(Target, Gas, Value, CallData,
+call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
                               height  = Height,
                               account = ContractKey,
@@ -83,7 +84,8 @@ call_contract(Target, Gas, Value, CallData,
                             amount     => Value,
                             gas        => Gas,
                             gas_price  => 0,
-                            call_data  => CallData }),
+                            call_data  => CallData,
+                            call_stack => CallStack }),
     case aetx:check_from_contract(CallTx, Trees, Height) of
         Err = {error, _} -> Err;
         {ok, Trees1} ->
