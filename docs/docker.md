@@ -10,19 +10,19 @@ You must have [docker installed](https://docs.docker.com/engine/installation/) o
 
 ### Docker Image
 
-Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aetrnty/epoch/). All tagged source code versions have their own docker image tag as well. Latest tagged ("stable") version is tagged with `latest`.
+Docker image is automatically build and published on [DockerHub](https://hub.docker.com/r/aeternity/epoch/). All tagged source code versions have their own docker image tag as well. Latest tagged ("stable") version is tagged with `latest`.
 Master branch of the source code is tagged as `dev`.
 
 To pull the latest "stable" image run:
 ```bash
-docker pull aetrnty/epoch
+docker pull aeternity/epoch
 ```
 
 ### Start a Node
 
 To start a docker node and join the testnet run:
 ```bash
-docker run -d --name epoch_node0 -p 3013:3013 aetrnty/epoch
+docker run -d --name epoch_node0 -p 3013:3013 aeternity/epoch
 ```
 
 Verify the node is running:
@@ -34,7 +34,7 @@ curl localhost:3013/v2/top
 
 Arguments can also be passed to epoch node, for example to enable API debug endpoints:
 ```bash
-docker run -d --name epoch_node0 -p 3013:3013 aetrnty/epoch -aehttp enable_debug_endpoints true
+docker run -d --name epoch_node0 -p 3013:3013 aeternity/epoch -aehttp enable_debug_endpoints true
 ```
 
 ### Stop a Node
@@ -66,7 +66,7 @@ Make sure you have a working port forwarding setup on your firewall to be able t
 Docker environment variable `EXTERNAL_PEER_ADDRESS` may be used in case external peer address shall be changed e.g. different port mapping or different inbound IP:
 
 ```bash
-docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aetrnty/epoch
+docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aeternity/epoch
 ```
 
 #### Peer addresses
@@ -74,7 +74,7 @@ docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aetrnty
 Docker image has packaged the address of one of the testnet nodes in the configuration. This can be changed by setting `PEERS_ADDRESS_0` Docker environment variable:
 
 ```bash
-docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.249.0:3013/ aetrnty/epoch
+docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.249.0:3013/ aeternity/epoch
 ```
 
 #### Changing the configuration file
@@ -85,7 +85,7 @@ Assuming the new configuration file location is `~/.aeternity/myepoch.yaml`:
 docker run -d -p 3013:3013 \
     -v ~/.aeternity/myepoch.yaml:/home/epoch/myepoch.yaml \
     -e EPOCH_CONFIG=/home/epoch/myepoch.yaml \
-    aetrnty/epoch
+    aeternity/epoch
 ```
 
 ### Persisting Data
@@ -97,7 +97,7 @@ To persist blockchain data and node keys between container runs, use [Docker vol
 docker run -d -p 3013:3013 --hostname node0 \
     -v ~/.aeternity/db:/home/epoch/node/data/mnesia \
     -v ~/.aeternity/keys:/home/epoch/node/keys \
-    aetrnty/epoch
+    aeternity/epoch
 ```
 
 **Note: make sure `hostname` option is set when reusing the mnesia data directory**
@@ -144,7 +144,7 @@ More details can be found in [`docker-compose` documentation](https://docs.docke
 
 ### Image Version
 
-Docker compose uses the `aetrnty/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aetrnty/epoch/) if it's not found locally.
+Docker compose uses the `aeternity/epoch:latest` image, it will be pulled from [docker hub](https://hub.docker.com/r/aeternity/epoch/) if it's not found locally.
 To create a network with the source code in this repository, one should build a local image beforehand:
 
 ```bash
