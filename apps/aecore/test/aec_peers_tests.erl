@@ -11,25 +11,26 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(A_KEY, <<32,85,25,13,96,60,236,26,225,111,56,107,78,47,70,220,104,39,95,162,186,6,196,171,235,241,179,126,68,226,208,123>>).
+-define(ANOTHER_KEY, <<33,85,25,13,96,60,236,26,225,111,56,107,78,47,70,220,104,39,95,162,186,6,196,171,235,241,179,126,68,226,208,123>>).
 
 someone() ->
     #{ host => <<"someone.somewhere">>, port => 1337, pubkey => ?A_KEY }.
 
 someoneelse() ->
-    #{ host => <<"someoneelse.somewhereelse">>, port => 1337, pubkey => ?A_KEY }.
+    #{ host => <<"someoneelse.somewhereelse">>, port => 1337, pubkey => ?ANOTHER_KEY }.
 
 localhost() ->
     localhost(800).
 
 localhost(Port) ->
-    #{ host => <<"localhost">>, port => Port, pubkey => ?A_KEY }.
+    #{ host => <<"localhost">>, port => Port, pubkey => <<Port:16, 0:(30*8)>> }.
 
 
 all_test_() ->
     {setup,
      fun setup/0,
      fun teardown/1,
-     [{"Add a peer by Uri",
+     [{"Add a peer",
        fun() ->
                ?assertEqual(ok, aec_peers:add(someone()))
        end},
@@ -38,7 +39,7 @@ all_test_() ->
                [Peer] = aec_peers:get_random(1),
                ?assertEqual(someone(), Peer)
        end},
-      {"Add a peer by object",
+      {"Add a second peer",
        fun() ->
                ?assertEqual(ok, aec_peers:add(someoneelse()))
        end},
@@ -51,7 +52,6 @@ all_test_() ->
        end},
       {"Remove a peer",
        fun() ->
-               %% Note that v1 is unimportant and ignored
                ?assertEqual(ok, aec_peers:remove(someone())),
                ?assertEqual(1, length(aec_peers:all()))
        end},
@@ -64,7 +64,7 @@ all_test_() ->
       {"Add peer",
        fun() ->
                ok = aec_peers:add(localhost()),
-               ?assertEqual([{localhost(), 0}], aec_peers:all())
+               ?assertEqual([localhost()], aec_peers:all())
        end},
       {"Get random N",
        fun() ->
@@ -78,7 +78,7 @@ all_test_() ->
     }.
 
 do_remove_all() ->
-    [aec_peers:remove(P) || {P, _} <- aec_peers:all()],
+    [aec_peers:remove(P) || P <- aec_peers:all()],
     [] = aec_peers:all(),
     ok.
 

@@ -38,7 +38,7 @@ pc_listener(LSock, Opts) ->
             lager:error("accept failed with reason ~p", [Err]),
             pc_listener(LSock, Opts);
         stop ->
-            gen_tcp:close(LSock, Opts)
+            gen_tcp:close(LSock)
     end.
 
 acceptor(Parent, LSock) ->
