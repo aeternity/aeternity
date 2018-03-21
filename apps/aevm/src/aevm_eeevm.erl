@@ -1462,7 +1462,7 @@ recursive_call(CallDepth, StateIn, Op) ->
                                                   Code, CallDepth,
                                                   State8),
     case aevm_eeevm_state:no_recursion(State8) of
-        true  -> %% TODO: Set callcreates
+        true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,
             State9 = aevm_eeevm_state:set_gas(GasOut, State8),
             State10 = aevm_eeevm_state:add_callcreates(#{ data => I
@@ -1473,7 +1473,12 @@ recursive_call(CallDepth, StateIn, Op) ->
             {1, State10};
         false ->
             %% TODO: Should this not count towards mem gas?
-            CallState1 = aevm_eeevm_memory:write_area(0, I, CallState),
+            CallState1 =
+		aevm_eeevm_state:add_callcreates(#{ data => I
+						  , destination => Dest
+						  , gasLimit => CallGas
+						  , value => Value
+						  }, CallState),
             {OutGas, OutState, R} =
                 case eval(CallState1) of
                     {ok, OutState2} -> {aevm_eeevm_state:gas(OutState2), OutState2, 1};
