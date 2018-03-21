@@ -43,43 +43,6 @@
   } ],
   "schemes" : [ "http" ],
   "paths" : {
-    "/ping" : {
-      "post" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "",
-        "operationId" : "Ping",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "in" : "body",
-          "name" : "body",
-          "description" : "Ping a peer",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/Ping"
-          }
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "Sample response",
-            "schema" : {
-              "$ref" : "#/definitions/Ping"
-            }
-          },
-          "403" : {
-            "description" : "Not allowed (node is blocked)",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "409" : {
-            "description" : "Different genesis blocks",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/top" : {
       "get" : {
         "tags" : [ "external", "gossip" ],
@@ -125,57 +88,6 @@
           },
           "404" : {
             "description" : "Header not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/headers-by-hash" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get N headers from hash",
-        "operationId" : "GetHeadersByHash",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "query",
-          "description" : "Hash of first block header to fetch",
-          "required" : true,
-          "type" : "string"
-        }, {
-          "name" : "number",
-          "in" : "query",
-          "description" : "Number of hashes to fetch",
-          "required" : false,
-          "type" : "integer",
-          "default" : 1
-        }, {
-          "name" : "direction",
-          "in" : "query",
-          "description" : "Towards top = forward, towards genesis = backward",
-          "required" : false,
-          "default" : "backward"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The headers found",
-            "schema" : {
-              "type" : "array",
-              "items" : {
-                "$ref" : "#/definitions/Header"
-              }
-            }
-          },
-          "400" : {
-            "description" : "Invalid hash or number",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Header(s) not found",
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
@@ -2498,14 +2410,6 @@
             "$ref" : "#/definitions/Uri"
           }
         }
-      },
-      "example" : {
-        "difficulty" : 0.80082819046101150206595775671303272247314453125,
-        "genesis_hash" : "genesis_hash",
-        "peers" : [ { }, { } ],
-        "best_hash" : "best_hash",
-        "share" : 19,
-        "source" : "source"
       }
     },
     "Balance" : {
