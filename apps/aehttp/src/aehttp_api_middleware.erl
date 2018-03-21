@@ -16,7 +16,8 @@ execute(Req0, Env0) ->
                     {ok, Req1, [{handler_opts, HandlerOpts} | Env1]};
                 {error, Reason, Req1} ->
                     error_logger:error_msg("Unable to process params for ~p: ~p", [OperationId, Reason]),
-                    {error, 400, Req1}
+                    {ok, Req2} = cowboy_req:reply(400, Req1),
+                    {halt, Req2}
             end;
         _ ->
             {error, 405, Req0}
