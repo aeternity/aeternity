@@ -1568,17 +1568,24 @@ account_transactions(_Config) ->
         get_account_transactions(EncodedPubKey, #{tx_types => [<<"hejsan">>,
                                                                <<"svejsan">>]}),
     add_spend_txs(), % in mempool
-    acc_txs_test(EncodedPubKey, 0, 2),
-    acc_txs_test(EncodedPubKey, 0, 20),
+    lists:map(
+        fun(ShowPending) ->
+            acc_txs_test(EncodedPubKey, 0, 2, ShowPending),
+            acc_txs_test(EncodedPubKey, 0, 20, ShowPending)
+        end,
+        [default, true, false]),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     ok.
 
 acc_txs_test(Pubkey, Offset, Limit) ->
+    acc_txs_test(Pubkey, Offset, Limit, default).
+  
+acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
     {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
     TxEncodings = [default, message_pack, json],
     AllTestedTxTypes = [[<<"coinbase_tx">>], [<<"coinbase_tx">>, <<"spend_tx">>]],
     {ok, 200, #{<<"height">> := ToHeight}} = get_block_number(),
-    ct:log("Offset: ~p, Limit: ~p", [Offset, Limit]),
+    ct:log("Offset: ~p, Limit: ~p, Pending: ~p", [Offset, Limit, ShowPending]),
     lists:foreach(
         fun({TxEncoding, TxTypes}) ->
             lists:foreach(
@@ -1588,29 +1595,39 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                             Tx = aetx_sign:tx(SignedTx),
                             lists:member(PKDecoded, aetx:accounts(Tx))
                         end,
-                    {ok, AllPendingTxs} = rpc(aec_tx_pool, peek, [infinity]),
-                    FilteredPendingTxs =
-                        lists:filter(
-                            fun(Tx) ->
-                                PubkeyInTx(Tx) andalso
-                                apply_tx_type_filter(TT, [Tx]) =/= []
-                            end,
-                            AllPendingTxs),
-                    AccountPendingTx = encode_pending_tx(
-                                         lists:sort(fun(A, B) ->
-                                                        aetx:nonce(aetx_sign:tx(A)) >=
-                                                        aetx:nonce(aetx_sign:tx(B))
-                                                    end,
-                                                    FilteredPendingTxs),
-                                        TxEncoding),
+                    AccountPendingTx =
+                        case ShowPending of
+                            false -> [];
+                            _ ->
+                                {ok, AllPendingTxs} = rpc(aec_tx_pool, peek, [infinity]),
+                                FilteredPendingTxs =
+                                    lists:filter(
+                                        fun(Tx) ->
+                                            PubkeyInTx(Tx) andalso
+                                            apply_tx_type_filter(TT, [Tx]) =/= []
+                                        end,
+                                        AllPendingTxs),
+                                encode_pending_tx(
+                                    lists:sort(fun(A, B) ->
+                                                    aetx:nonce(aetx_sign:tx(A)) >=
+                                                    aetx:nonce(aetx_sign:tx(B))
+                                                end,
+                                                FilteredPendingTxs),
+                                    TxEncoding)
+                        end,
                     #{<<"data_schema">> := ExpectedDS,
                       <<"transactions">> := AllTxs} =
                         expected_range_result(0, ToHeight, TxEncoding, TT,
                                               PubkeyInTx, true),
-                    Params = maps:merge(
-                               maps:merge(tx_encoding_param(TxEncoding),
-                                          make_tx_types_filter(Filter)),
-                               #{offset => Offset, limit => Limit}),
+                    ParamsL0 = [tx_encoding_param(TxEncoding),
+                                make_tx_types_filter(Filter),
+                                #{offset => Offset, limit => Limit}],
+                    ParamsL =
+                        case ShowPending of
+                            default -> ParamsL0;
+                            _ -> [{pending, atom_to_binary(ShowPending, utf8)} | ParamsL0]
+                        end,
+                    Params = make_params(ParamsL),
                     {ok, 200, #{<<"data_schema">> := DS,
                                 <<"transactions">> := Txs}} =
                         get_account_transactions(Pubkey, Params),
@@ -1623,6 +1640,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
                                 false -> lists:sublist(List, Start, Len)
                             end
                         end,
+
                     ExpectedTxs = Sublist(AccountPendingTx ++ AllTxs, Offset + 1, Limit),
                     ct:log("Transactions:~nExpected ~p,~nActual: ~p",
                            [ExpectedTxs, Txs]),
@@ -3818,3 +3836,13 @@ sign_and_post_tx(EncodedUnsignedTx) ->
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
+make_params(L) ->
+    make_params(L, []).
+
+make_params([], Accum) ->
+    maps:from_list(Accum);
+make_params([H | T], Accum) when is_map(H) ->
+    make_params(T, maps:to_list(H) ++ Accum);
+make_params([{K, V} | T], Accum) ->
+    make_params(T, [{K, V} | Accum]).
+    

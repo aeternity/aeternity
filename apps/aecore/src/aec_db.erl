@@ -65,7 +65,7 @@
 
 %% API for finding transactions related to account key
 -export([transactions_by_account/1,
-         transactions_by_account/2]).
+         transactions_by_account/3]).
 
 %% indexing callbacks
 -export([ix_acct2tx/3]).
@@ -411,10 +411,11 @@ transactions_by_account(AcctPubKey) ->
     ?t([T || #aec_tx{tx = T}
                  <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx})]).
 
--dialyzer({nowarn_function, transactions_by_account/2}). %% For mnesia patches.
-transactions_by_account(AcctPubKey, Filter) ->
-    ?t([T || #aec_tx{tx = T}
-        <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx}), Filter(T)]).
+-dialyzer({nowarn_function, transactions_by_account/3}). %% For mnesia patches.
+transactions_by_account(AcctPubKey, Filter, ShowPending) ->
+    ?t([T || #aec_tx{tx = T, key={_, Where}}
+        <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx}), Filter(T) 
+              andalso not (ShowPending =:= false andalso Where =:= [])]).
 
 %% start phase hook to load the database
 

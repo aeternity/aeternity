@@ -866,8 +866,10 @@ get_account_transactions(Account, Req) ->
         {_, {error, unknown_type} = Err} ->
             Err;
         {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
+            ShowPending = read_optional_param(pending, Req, true),
             FilteredTxs = get_txs_and_headers(KeepTxTypes,
                                               DropTxTypes,
+                                              ShowPending,
                                               Account),
             Res =
               lists:sort(
@@ -890,7 +892,7 @@ get_account_transactions(Account, Req) ->
             {ok, offset_and_limit(Req, Res)}
       end.
 
-get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
+get_txs_and_headers(KeepTxTypes, DropTxTypes, ShowPending, Account) ->
     Filter =
         fun(SignedTx) ->
               Tx = aetx_sign:tx(SignedTx),
@@ -902,7 +904,8 @@ get_txs_and_headers(KeepTxTypes, DropTxTypes, Account) ->
         end,
     Fun =
         fun() ->
-                Txs = aec_db:transactions_by_account(Account, Filter),
+                Txs = aec_db:transactions_by_account(Account, Filter,
+                                                     ShowPending),
                 TxHashes = lists:usort([aetx:hash(aetx_sign:tx(SignedTx))
                                         || SignedTx <- Txs]),
                 [case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of

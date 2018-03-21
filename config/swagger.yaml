@@ -1248,6 +1248,11 @@ paths:
           type: string
           enum: [message_pack, json]
           default: message_pack
+        - in: query
+          name: pending
+          description: 'Include currently pending transactions'
+          type: boolean
+          default: true
       responses:
         '200':
           description: successful operation
