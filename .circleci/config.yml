@@ -222,6 +222,7 @@ jobs:
       - run: make dialyzer
       - run: make swagger-check
       - run: make rebar-lock-check
+      - run: ./rebar3 xref || true
 
   linux_package:
     <<: *container_config
