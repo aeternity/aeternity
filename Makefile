@@ -161,7 +161,7 @@ python-uats:
 python-single-uat:
 	( cd $(PYTHON_DIR) && TEST_NAME=$(TEST_NAME) $(MAKE) single-uat; )
 
-python-release-test:
+python-release-test: swagger
 	( cd $(PYTHON_DIR) && WORKDIR="$(WORKDIR)" TARBALL=$(TARBALL) VER=$(VER) $(MAKE) release-test; )
 
 SWAGGER_CODEGEN_CLI_V = 2.3.1

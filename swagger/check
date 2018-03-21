@@ -18,9 +18,8 @@ on_exit() {
 }
 
 restore_vsnd_files() {
-    rm -rf "${SJ:?}" "${PC:?}"
+    rm -rf "${SJ:?}"
     cp -p  "${TmpSJ:?}" "${SJ:?}"
-    cp -pR "${TmpPC:?}" "${PC:?}"
 }
 
 set -e
@@ -37,7 +36,6 @@ MT="${2:?}"
 
 ## Generated Swagger-related files under version control.
 SJ="${3:?}" ## Swagger schema JSON file - generated
-PC="${4:?}" ## Python client code directory - generated
 
 ## Create temporary directory.
 TmpDir="$(mktemp -d)"
@@ -48,15 +46,11 @@ TmpDir="$(mktemp -d)"
 TmpSJ="${TmpDir:?}"/sj.backup
 TmpPC="${TmpDir:?}"/pc.backup
 cp -p  "${SJ:?}" "${TmpSJ:?}"
-cp -pR "${PC:?}" "${TmpPC:?}"
 trap on_exit EXIT
 rm    "${SJ:?}"
-rm -r "${PC:?}"
 
 ## Re-generate files.
 make "${MT:?}"
 
 ## Check that re-generating JSON from YAML led to same generated JSON.
 diff -u "${SJ:?}" "${TmpSJ:?}"
-## Check that re-generating code from YAML led to same generated code.
-diff -ru -NB "${PC:?}" "${TmpPC:?}"
