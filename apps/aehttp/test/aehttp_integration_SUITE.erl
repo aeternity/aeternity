@@ -16,13 +16,6 @@
 %% external endpoints
 -export(
    [
-    % pings
-    %% broken_pings/1,
-    %% blocked_ping/1,
-    %% not_blocked_ping/1,
-    %% auto_unblocked_peer/1,
-    %% correct_ping/1,
-
     % get block-s
     get_top_empty_chain/1,
     get_top_non_empty_chain/1,
@@ -144,7 +137,6 @@
     wrong_http_method_name_update/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
-    %% wrong_http_method_ping/1,
     wrong_http_method_block_by_height/1,
     wrong_http_method_block_by_hash/1,
     wrong_http_method_header_by_hash/1,
@@ -220,13 +212,6 @@ groups() ->
                                   ]},
      {external_endpoints, [sequence],
       [
-        % pings
-        %% broken_pings,
-        %% blocked_ping,
-        %% not_blocked_ping,
-        %% auto_unblocked_peer,
-        %% correct_ping,
-
         % get block-s
         get_top_empty_chain,
         get_top_non_empty_chain,
@@ -335,7 +320,6 @@ groups() ->
         wrong_http_method_name_update,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
-        %% wrong_http_method_ping,
         wrong_http_method_block_by_height,
         wrong_http_method_block_by_hash,
         wrong_http_method_header_by_hash,
@@ -440,88 +424,6 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-correct_ping(_Config) ->
-    #{<<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
-     } = PingObj = rpc(aec_sync, local_ping_object, []),
-    EncGHash = aec_base58c:encode(block_hash, GHash),
-    EncTopHash = aec_base58c:encode(block_hash, TopHash),
-    Peer = unique_peer(),
-    {ok, 200, _} =
-        post_ping(
-          maps:put(<<"source">>, Peer,
-                   PingObj#{<<"genesis_hash">> => EncGHash,
-                            <<"best_hash">> => EncTopHash})),
-    rpc(aec_peers, remove, [Peer]),
-    ok.
-
-broken_pings(_Config) ->
-    % no 'source'
-    {ok, 400, _} = post_ping(#{}),
-    % no ping obj data
-    Peer = unique_peer(),
-    {ok, 400, _} = post_ping(#{<<"source">> => Peer}),
-    PingObj = rpc(aec_sync, local_ping_object, []),
-    % wrong genesis hash
-    Peer1 = unique_peer(),
-    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer1,
-                                             <<"genesis_hash">> => <<"foo">>}),
-    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
-        post_ping(WrongGenHashPing),
-    rpc(aec_peers, remove, [Peer]),
-    rpc(aec_peers, remove, [Peer1]),
-    ok.
-
-blocked_ping(_Config) ->
-    Peer = unique_peer(),
-    PingObj = rpc(aec_sync, local_ping_object, []),
-    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
-                                             <<"genesis_hash">> => <<"foo">>}),
-    {ok, 409, _} = post_ping(WrongGenHashPing),
-    % node is blocked now
-    {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
-        post_ping(maps:put(<<"source">>, Peer, PingObj)),
-    rpc(aec_peers, remove, [Peer]),
-    ok.
-
-not_blocked_ping(_Config) ->
-    %% Use one of the "trusted" peers, it shouldn't get blocked!
-    Peer = <<"http://localhost:3023">>,
-    PingObj = rpc(aec_sync, local_ping_object, []),
-    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
-                                             <<"genesis_hash">> => <<"foo">>}),
-    {ok, 409, _} = post_ping(WrongGenHashPing),
-    % node shouldn't be blocked despite sending garbage...
-    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
-        post_ping(WrongGenHashPing),
-    rpc(aec_peers, remove, [Peer]),
-    ok.
-
-auto_unblocked_peer(_Config) ->
-    rpc(application, set_env, [aecore, peer_unblock_interval, 3000]),
-    Peer = unique_peer(),
-    PingObj = rpc(aec_sync, local_ping_object, []),
-    WrongGenHashPing = maps:merge(PingObj, #{<<"source">> => Peer,
-                                             <<"genesis_hash">> => <<"foo">>}),
-    %% Reset the blocking
-    rpc(aec_peers, unblock_all, []),
-    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
-        post_ping(WrongGenHashPing),
-
-    % After 1s the peer should still be blocked.
-    timer:sleep(1000),
-    {ok, 403, #{<<"reason">> := <<"Not allowed">>}} =
-        post_ping(WrongGenHashPing),
-
-    %% Nodes should be unblocked after 3s
-    timer:sleep(2000),
-    {ok, 409, #{<<"reason">> := <<"Different genesis blocks">>}} =
-        post_ping(WrongGenHashPing),
-
-    rpc(aec_peers, remove, [Peer]),
-    rpc(application, unset_env, [aecore, peer_unblock_interval]),
-    ok.
-
 get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
@@ -2851,58 +2753,6 @@ peers(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 
-%% TODO: This API is no longer available...
-    %% post some pings
-%%     #{<<"genesis_hash">> := GHash,
-%%       <<"best_hash">> := TopHash
-%%     } = PingObj0 = rpc(aec_sync, local_ping_object, []),
-%%     EncGHash = aec_base58c:encode(block_hash, GHash),
-%%     EncTopHash = aec_base58c:encode(block_hash, TopHash),
-%%     PingObj = PingObj0#{<<"genesis_hash">> => EncGHash,
-%%                         <<"best_hash">> => EncTopHash},
-%%     PostPing =
-%%         fun(Peer) ->
-%%             {ok, 200, _} =
-%%                 post_ping(maps:put(<<"source">>, Peer, PingObj))
-%%           end,
-%%     Peers = [<<"http://someone.somewhere:1337">>,
-%%              <<"http://someonelse.somewhereelse:1337">>],
-%%     lists:foreach(PostPing, Peers),
-
-%%     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-%%     {ok, 200, #{<<"blocked">> := [], <<"peers">> := ReturnedPeers}} = get_peers(),
-%%     ct:log("ReturnedPeers ~p", [ReturnedPeers]),
-%%     lists:foreach(
-%%         fun(#{<<"uri">> := Uri, <<"last_seen">> := LastSeen}) ->
-%%             true = lists:member(Uri, Peers),
-%%             true = LastSeen > BeforePingTime
-%%         end,
-%%         ReturnedPeers),
-
-%%     %% cleanup
-%%     lists:foreach(
-%%         fun(PeerUri) -> rpc(aec_peers, remove, [PeerUri]) end,
-%%         Peers),
-
-%%     %% get some blocked peers
-%%     BlockedPeers = [<<"http://blocked.peer:1337">>,
-%%                     <<"http://otherblocked.peer:1337">>],
-
-%%     BrokenPingObj = PingObj#{<<"genesis_hash">> => <<"not a valid hash">>},
-%%     lists:foreach(
-%%         fun(Peer) ->
-%%             {ok, 409, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj)),
-%%             %% ensure blocked
-%%             {ok, 403, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj))
-%%         end,
-%%         BlockedPeers),
-%%     %% verify them
-%%     {ok, 200, #{<<"blocked">> := ReturnedBlocked, <<"peers">> := []}} = get_peers(),
-%%     [] = BlockedPeers -- ReturnedBlocked,
-
-%%     %% clenaup
-%%     lists:foreach(fun(BlockedPeer) -> rpc(aec_peers, unblock, [BlockedPeer]) end,
-%%                   BlockedPeers),
     ok.
 
 %% ============================================================
@@ -3001,10 +2851,6 @@ get_name_transfer(Data) ->
 get_name_revoke(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/name/revoke", Data).
-
-post_ping(Body) ->
-    Host = external_address(),
-    http_request(Host, post, "ping", Body).
 
 get_block_by_height(Height) ->
     Host = external_address(),
@@ -3391,10 +3237,6 @@ wrong_http_method_name_transfer(_Config) ->
 wrong_http_method_name_revoke(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
-
-wrong_http_method_ping(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, get, "ping", []).
 
 wrong_http_method_block_by_height(_Config) ->
     Host = external_address(),

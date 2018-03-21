@@ -19,8 +19,7 @@
 -export([schedule_ping/1]).
 
 %% API called from both aehttp_dispatch_ext and aeu_requests
--export([local_ping_object/0,
-         compare_ping_objects/3]).
+-export([local_ping_object/0]).
 
 -export([server_get_missing_blocks/1, start_sync/3, fetch_mempool/1]).
 
@@ -30,10 +29,6 @@
 
 %% Callback for jobs producer queue
 -export([sync_worker/0]).
-
--type http_uri_uri() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L72
-
--type ping_obj() :: map().
 
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
@@ -77,47 +72,6 @@ local_ping_object() ->
       <<"difficulty">>   => Difficulty,
       <<"share">>        => 32,  % TODO: make this configurable
       <<"peers">>        => []}.
-
-%% Compare local and remote 'Ping' objects.
-%% 1. Compare genesis blocks. If they differ, return error
-%% 2. Compare best_hash. If they are the same, we're in sync
-%% 3. Compare difficulty: if ours is greater, we don't initiate sync
-%%    - Otherwise, trigger a sync, return 'ok'.
-%% Note that the caller ensures the Uri to be a valid Uri
--spec compare_ping_objects(http_uri_uri(), ping_obj(), ping_obj()) -> ok | {error, any()}.
-compare_ping_objects(RemoteUri, Local, Remote) ->
-    lager:debug("Compare (~p): Local: ~p; Remote: ~p", [RemoteUri, Local, Remote]),
-    %% ok = aec_peers:add(RemoteUri, false),  %% in case aec_peers has restarted inbetween
-    case {maps:get(<<"genesis_hash">>, Local),
-          maps:get(<<"genesis_hash">>, Remote)} of
-        {G, G} ->
-            lager:debug("genesis blocks match", []),
-            %% same genesis block - continue
-            case {maps:get(<<"best_hash">>, Local),
-                  maps:get(<<"best_hash">>, Remote)} of
-                {T, T} ->
-                    lager:debug("same top blocks", []),
-                    %% headers in sync; check missing blocks
-                    %% Note that in this case, both will publish
-                    %% events as if they're the server (basically
-                    %% meaning that they were tied for server position).
-                    server_get_missing_blocks(RemoteUri);
-                _ ->
-                    Dl = maps:get(<<"difficulty">>, Local),
-                    Dr = maps:get(<<"difficulty">>, Remote),
-                    if Dl > Dr ->
-                         lager:debug("Our difficulty is higher", []),
-                         server_get_missing_blocks(RemoteUri);
-                       true ->
-                         start_sync(RemoteUri, maps:get(<<"best_hash">>, Remote), Dr)
-                    end
-            end,
-            fetch_mempool(RemoteUri),
-            ok;
-        _ ->
-            {error, different_genesis_blocks}
-    end.
-
 
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).

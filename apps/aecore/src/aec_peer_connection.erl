@@ -381,7 +381,7 @@ handle_ping(S, none, RemotePingObj) ->
                         LocalPingObj = local_ping_obj(S1),
                         ping_obj(LocalPingObj#{ <<"pong">> => <<"pong">>,
                                                 <<"share">> => Share },
-                                [PeerId | TheirPeers]);
+                                [PeerId | [aec_peers:peer_id(P) || P <- TheirPeers]]);
                     {error, Reason} ->
                         #{ <<"pong">> => <<"pang">>, <<"reason">> => Reason }
                 end;
