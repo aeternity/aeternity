@@ -26,6 +26,9 @@
 
 -import(aeu_debug, [pp/1]).
 
+-include("common.hrl").
+-include("blocks.hrl").
+
 -define(MSG_PING, 1).
 -define(MSG_PING_RSP, 2).
 -define(MSG_GET_HEADER_BY_HASH, 3).
@@ -116,8 +119,8 @@ call(PeerId, Call) when is_binary(PeerId) ->
 
 %% -- gen_server callbacks ---------------------------------------------------
 init([Opts]) ->
-    Version = <<"1.2.3">>,
-    Genesis = <<1,2,3,4>>,
+    Version = <<?PROTOCOL_VERSION:16>>,
+    Genesis = aec_chain:genesis_hash(),
     {ok, Opts#{ version => Version, genesis => Genesis }, 0}.
 
 handle_call(ping, From, State) ->
