@@ -42,8 +42,9 @@ groups() ->
     [
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
-                              {group, semantically_invalid_tx},
-                              {group, one_blocked}]},
+                              {group, semantically_invalid_tx}
+                              %% {group, one_blocked}
+                             ]},
      {two_nodes, [sequence],
       [start_first_node,
        test_subscription,
@@ -136,7 +137,7 @@ stop_devs(Config) ->
     Devs = proplists:get_value(devs, Config, []),
     lists:foreach(
         fun(Node) ->
-            {ok, DbCfg} = node_db_cfg(Node), 
+            {ok, DbCfg} = node_db_cfg(Node),
             aecore_suite_utils:stop_node(Node, Config),
             aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
         end,
@@ -388,7 +389,7 @@ restart_third(Config) ->
 
 restart_node(Nr, Config) ->
     Dev = lists:nth(Nr, proplists:get_value(devs, Config)),
-    {ok, DbCfg} = node_db_cfg(Dev), 
+    {ok, DbCfg} = node_db_cfg(Dev),
     aecore_suite_utils:stop_node(Dev, Config),
     aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     T0 = os:timestamp(),

@@ -17,11 +17,11 @@
 -export(
    [
     % pings
-    broken_pings/1,
-    blocked_ping/1,
-    not_blocked_ping/1,
-    auto_unblocked_peer/1,
-    correct_ping/1,
+    %% broken_pings/1,
+    %% blocked_ping/1,
+    %% not_blocked_ping/1,
+    %% auto_unblocked_peer/1,
+    %% correct_ping/1,
 
     % get block-s
     get_top_empty_chain/1,
@@ -144,7 +144,7 @@
     wrong_http_method_name_update/1,
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
-    wrong_http_method_ping/1,
+    %% wrong_http_method_ping/1,
     wrong_http_method_block_by_height/1,
     wrong_http_method_block_by_hash/1,
     wrong_http_method_header_by_hash/1,
@@ -221,11 +221,11 @@ groups() ->
      {external_endpoints, [sequence],
       [
         % pings
-        broken_pings,
-        blocked_ping,
-        not_blocked_ping,
-        auto_unblocked_peer,
-        correct_ping,
+        %% broken_pings,
+        %% blocked_ping,
+        %% not_blocked_ping,
+        %% auto_unblocked_peer,
+        %% correct_ping,
 
         % get block-s
         get_top_empty_chain,
@@ -335,7 +335,7 @@ groups() ->
         wrong_http_method_name_update,
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
-        wrong_http_method_ping,
+        %% wrong_http_method_ping,
         wrong_http_method_block_by_height,
         wrong_http_method_block_by_hash,
         wrong_http_method_header_by_hash,
@@ -2840,68 +2840,69 @@ peers(_Config) ->
 
     %% ensure no peers
     lists:foreach(
-        fun({PeerUri, _}) -> rpc(aec_peers, remove, [PeerUri]) end,
+        fun(Peer) -> rpc(aec_peers, remove, [Peer]) end,
         rpc(aec_peers, all, [])),
 
     %% ensure no blocked
     lists:foreach(
-        fun(BlockedUri) -> rpc(aec_peers, unblock, [BlockedUri]) end,
+        fun(Blocked) -> rpc(aec_peers, unblock, [Blocked]) end,
         rpc(aec_peers, blocked, [])),
 
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 
+%% TODO: This API is no longer available...
     %% post some pings
-    #{<<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
-    } = PingObj0 = rpc(aec_sync, local_ping_object, []),
-    EncGHash = aec_base58c:encode(block_hash, GHash),
-    EncTopHash = aec_base58c:encode(block_hash, TopHash),
-    PingObj = PingObj0#{<<"genesis_hash">> => EncGHash,
-                        <<"best_hash">> => EncTopHash},
-    PostPing =
-        fun(Peer) ->
-            {ok, 200, _} =
-                post_ping(maps:put(<<"source">>, Peer, PingObj))
-          end,
-    Peers = [<<"http://someone.somewhere:1337">>,
-             <<"http://someonelse.somewhereelse:1337">>],
-    lists:foreach(PostPing, Peers),
+%%     #{<<"genesis_hash">> := GHash,
+%%       <<"best_hash">> := TopHash
+%%     } = PingObj0 = rpc(aec_sync, local_ping_object, []),
+%%     EncGHash = aec_base58c:encode(block_hash, GHash),
+%%     EncTopHash = aec_base58c:encode(block_hash, TopHash),
+%%     PingObj = PingObj0#{<<"genesis_hash">> => EncGHash,
+%%                         <<"best_hash">> => EncTopHash},
+%%     PostPing =
+%%         fun(Peer) ->
+%%             {ok, 200, _} =
+%%                 post_ping(maps:put(<<"source">>, Peer, PingObj))
+%%           end,
+%%     Peers = [<<"http://someone.somewhere:1337">>,
+%%              <<"http://someonelse.somewhereelse:1337">>],
+%%     lists:foreach(PostPing, Peers),
 
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    {ok, 200, #{<<"blocked">> := [], <<"peers">> := ReturnedPeers}} = get_peers(),
-    ct:log("ReturnedPeers ~p", [ReturnedPeers]),
-    lists:foreach(
-        fun(#{<<"uri">> := Uri, <<"last_seen">> := LastSeen}) ->
-            true = lists:member(Uri, Peers),
-            true = LastSeen > BeforePingTime
-        end,
-        ReturnedPeers),
+%%     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
+%%     {ok, 200, #{<<"blocked">> := [], <<"peers">> := ReturnedPeers}} = get_peers(),
+%%     ct:log("ReturnedPeers ~p", [ReturnedPeers]),
+%%     lists:foreach(
+%%         fun(#{<<"uri">> := Uri, <<"last_seen">> := LastSeen}) ->
+%%             true = lists:member(Uri, Peers),
+%%             true = LastSeen > BeforePingTime
+%%         end,
+%%         ReturnedPeers),
 
-    %% cleanup
-    lists:foreach(
-        fun(PeerUri) -> rpc(aec_peers, remove, [PeerUri]) end,
-        Peers),
+%%     %% cleanup
+%%     lists:foreach(
+%%         fun(PeerUri) -> rpc(aec_peers, remove, [PeerUri]) end,
+%%         Peers),
 
-    %% get some blocked peers
-    BlockedPeers = [<<"http://blocked.peer:1337">>,
-                    <<"http://otherblocked.peer:1337">>],
+%%     %% get some blocked peers
+%%     BlockedPeers = [<<"http://blocked.peer:1337">>,
+%%                     <<"http://otherblocked.peer:1337">>],
 
-    BrokenPingObj = PingObj#{<<"genesis_hash">> => <<"not a valid hash">>},
-    lists:foreach(
-        fun(Peer) ->
-            {ok, 409, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj)),
-            %% ensure blocked
-            {ok, 403, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj))
-        end,
-        BlockedPeers),
-    %% verify them
-    {ok, 200, #{<<"blocked">> := ReturnedBlocked, <<"peers">> := []}} = get_peers(),
-    [] = BlockedPeers -- ReturnedBlocked,
+%%     BrokenPingObj = PingObj#{<<"genesis_hash">> => <<"not a valid hash">>},
+%%     lists:foreach(
+%%         fun(Peer) ->
+%%             {ok, 409, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj)),
+%%             %% ensure blocked
+%%             {ok, 403, _} = post_ping(maps:put(<<"source">>, Peer, BrokenPingObj))
+%%         end,
+%%         BlockedPeers),
+%%     %% verify them
+%%     {ok, 200, #{<<"blocked">> := ReturnedBlocked, <<"peers">> := []}} = get_peers(),
+%%     [] = BlockedPeers -- ReturnedBlocked,
 
-    %% clenaup
-    lists:foreach(fun(BlockedPeer) -> rpc(aec_peers, unblock, [BlockedPeer]) end,
-                  BlockedPeers),
+%%     %% clenaup
+%%     lists:foreach(fun(BlockedPeer) -> rpc(aec_peers, unblock, [BlockedPeer]) end,
+%%                   BlockedPeers),
     ok.
 
 %% ============================================================

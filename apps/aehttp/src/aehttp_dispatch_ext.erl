@@ -593,7 +593,7 @@ handle_ping_(Source, PingObj) ->
                     case aec_sync:compare_ping_objects(
                            Source, LocalPingObj, RemoteObj) of
                         ok ->
-                            aec_peers:update_last_seen(Source),
+                            %% aec_peers:update_last_seen(Source),
                             TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
                             aec_peers:add_and_ping_peers(TheirPeers),
                             LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
