@@ -1,10 +1,11 @@
 -module(aec_db).
 
--export([check_db/0,           % called from setup hook
-         initialize_db/1,      % assumes mnesia started
-         load_database/0,      % called in aecore app start phase
-         tables/1,             % for e.g. test database setup
-         clear_db/0            % mostly for test purposes
+-export([check_db/0,                    % called from setup hook
+         initialize_db/1,               % assumes mnesia started
+         load_database/0,               % called in aecore app start phase
+         tables/1,                      % for e.g. test database setup
+         clear_db/0,                    % mostly for test purposes
+         persisted_valid_genesis_block/0
         ]).
 
 -export([transaction/1,
@@ -126,6 +127,26 @@ clear_table(Tab) ->
            [delete(Tab, K) || K <- Keys],
            ok
        end).
+
+persisted_valid_genesis_block() ->
+    case application:get_env(aecore, persist, false) of
+        false ->
+            true;
+        true ->
+            {ok, ExpectedGH} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+            case aec_db:get_genesis_hash() of
+                undefined ->
+                    lager:info("Loaded empty persisted chain"),
+                    true;
+                ExpectedGH ->
+                    true;
+                LoadedGH ->
+                    lager:warning("Expected genesis block hash ~p, persisted genesis block hash ~p",
+                                  [ExpectedGH, LoadedGH]),
+                    false
+            end
+              
+    end.
 
 transaction(Fun) when is_function(Fun, 0) ->
     mnesia:activity(transaction, Fun).

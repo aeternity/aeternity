@@ -17,7 +17,14 @@ start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     ok = application:ensure_started(mnesia),
     aec_db:load_database(),
-    aecore_sup:start_link().
+    case aec_db:persisted_valid_genesis_block() of
+        true ->
+            aecore_sup:start_link();
+        false ->
+            lager:error("Persisted chain has a different genesis block than "
+                        ++ "the one being expected. Aborting", []),
+            {error, inconsistent_database}
+    end.
 
 start_phase(create_metrics_probes, _StartType, _PhaseArgs) ->
     lager:debug("start_phase(create_metrics_probes, _, _)", []),
