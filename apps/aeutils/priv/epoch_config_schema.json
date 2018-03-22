@@ -212,7 +212,8 @@
                 "expected_mine_rate" : {
                     "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
                     "type" : "integer",
-                    "default": 300000
+                    "default": 300000,
+                    "minimum" : 1
                 },
                 "cuckoo" : {
                     "type" : "object",
