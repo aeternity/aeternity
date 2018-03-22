@@ -22,12 +22,8 @@ blocks_to_check_difficulty_count() ->
     ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.
 
 expected_block_mine_rate() ->
-    case aeu_env:user_config([<<"mining">>, <<"expected_mine_rate">>]) of
-        {ok, MineRate} ->
-            MineRate;
-        undefined ->
-            application:get_env(aecore, expected_mine_rate, ?EXPECTED_BLOCK_MINE_RATE)
-    end.
+    aeu_env:user_config_or_env([<<"mining">>, <<"expected_mine_rate">>],
+                               aecore, expected_mine_rate, ?EXPECTED_BLOCK_MINE_RATE).
 
 block_mine_reward() ->
     ?BLOCK_MINE_REWARD.
