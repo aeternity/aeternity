@@ -92,11 +92,7 @@ call_dynamic_cost(State) ->
                   true  -> min(all_but_one_64th(Gas - CExtra), Us0);
                   false -> Us0
               end,
-    CCallgas = case Us2 =/= 0 of
-                   true  -> CGascap + ?GCALLSTIPEND;
-                   false -> CGascap
-               end,
-    CCallgas + CExtra.
+    CGascap + CExtra.
 
 all_but_one_64th(X) ->
     X - round(floor(X/64)).

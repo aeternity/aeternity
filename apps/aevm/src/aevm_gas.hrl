@@ -67,7 +67,7 @@
 -define(GCODEDEPOSIT, 200).
 
 %% Paid for a CALL operation.
--define(GCALL, 700). %% 40 from the go implementation
+-define(GCALL, 40). %% From the go implementation. 700 from the yellowpaper
 
 %% Paid for a non-zero value transfer as part of the CALL operation.
 -define(GCALLVALUE, 9000).

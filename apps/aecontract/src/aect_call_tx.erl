@@ -253,6 +253,10 @@ run_contract(#contract_call_tx
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
     Code          = aect_contracts:code(Contract),
+
+    %% TODO: Handle different VMs and ABIs.
+    %% TODO: Move init and execution to a separate moidule to be re used by
+    %% both on chain and off chain calls.
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code     => Code,
 			address  => 0,        %% We start executing at address 0
@@ -272,12 +276,21 @@ run_contract(#contract_call_tx
           #{trace => false})
     of
 	InitState ->
+	    %% TODO: Nicer error handling - do more in check.
+	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
-		#{ gas := GasLeft, out := ReturnValue } ->
+		%% Succesful execution
+		{ok, #{ gas := GasLeft, out := ReturnValue }} ->
 		    aect_call:set_gas_used(Gas - GasLeft,
-					   aect_call:set_return_value(ReturnValue, Call))
-		    %% TODO: Nicer error handling - do more in check.
-		    %% Update gas_used depending on exit type.x
+					   aect_call:set_return_value(ReturnValue, Call));
+		%% Executinon reulting in VM exeception.
+		%% Gas used, but other state not affected.
+		%% TODO: Use up the right amount of gas depending on error
+		%% TODO: Store errorcode in state tree
+		{error,_Error, #{ gas :=_GasLeft}} ->
+		    aect_call:set_gas_used(Gas,
+					   aect_call:set_return_value(<<>>, Call))
+		    
 	    catch _:_ -> Call
 	    end
     catch _:_ ->

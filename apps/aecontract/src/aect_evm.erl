@@ -38,14 +38,14 @@ call(Code, CallData) ->
             , currentTimestamp => 1
             },
     try execute_call(Spec, true) of
-        #{ out := Out } -> {ok, aeu_hex:hexstring_encode(Out)};
+        {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};
         E -> {error, list_to_binary(io_lib:format("~p", [E]))}
     catch _T:E ->
 	{error, list_to_binary(io_lib:format("~p", [E]))}
     end.
 
 
--spec execute_call(map(), boolean()) -> map() | {error, term()}.
+-spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
 execute_call(#{ code := CodeAsHexBinString
               , address := Address
               , caller := Caller

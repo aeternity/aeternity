@@ -158,7 +158,7 @@ set_height(X, I) ->
 set_contract_address(X, I) ->
     I#call{contract_address = assert_field(contract_address, X)}.
 
--spec set_return_value(integer(), call()) -> call().
+-spec set_return_value(binary(), call()) -> call().
 set_return_value(X, I) ->
     I#call{return_value = assert_field(return_value, X)}.
 

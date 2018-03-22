@@ -22,7 +22,7 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     {ok, ContractBin} = file:read_file(FileName),
     {ok, Code} = aect_ring:compile(ContractBin, <<>>),
     CallData = aect_ring:create_call(Code, <<"main">>, <<"42">>),
-    #{ out := RetVal} =
+    {ok, #{ out := RetVal}} =
         aect_evm:execute_call(
           #{ code => Code,
              address => 0,

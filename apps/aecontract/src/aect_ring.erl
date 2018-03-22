@@ -67,7 +67,7 @@ simple_call(Code, Function, Argument) ->
                     , currentTimestamp => 1
                     },
             case aect_evm:execute_call(Spec, false) of
-                #{ out := Out } ->
+                {ok, #{ out := Out }} ->
                     {ok, aeu_hex:hexstring_encode(Out)};
                 E -> {error, list_to_binary(io_lib:format("~p", [E]))}
             end
