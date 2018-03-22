@@ -240,8 +240,8 @@ connect(N, _) ->
     ct:log("exhausted retries (~p)", [N]),
     erlang:error({could_not_connect, N}).
 
-report_node_config(_N) ->
-    [ct:log("~w env: ~p", [A, application:get_all_env(A)]) ||
+report_node_config(N) ->
+    [ct:log("~w env: ~p", [A, rpc:call(N, application, get_all_env, [A], 2000)]) ||
         A <- [aeutil, aecore, aehttp]].
 
 await_aehttp(N) ->
