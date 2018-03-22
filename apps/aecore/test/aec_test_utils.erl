@@ -303,8 +303,8 @@ aec_keys_bare_cleanup(TmpKeysDir) ->
 
 remove_temp_key_dir(TmpKeysDir) ->
     {ok, KeyFiles} = file:list_dir(TmpKeysDir),
-    %% Expect two filenames - private and public keys.
-    [_KF1, _KF2] = KeyFiles,
+    %% Expect four filenames - private and public keys x2.
+    [_KF1, _KF2, _KF3, _KF4] = KeyFiles,
     lists:foreach(
       fun(F) ->
               AbsF = filename:absname_join(TmpKeysDir, F),

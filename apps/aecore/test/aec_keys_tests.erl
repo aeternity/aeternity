@@ -60,6 +60,21 @@ all_test_() ->
                                                          ecdsa, sha256,
                                                          secp256k1),
                         ?assertEqual(false, ValidPair)
+                end},
+                {"Peer key validation (positive case)",
+                fun() ->
+                        KeyPair = enoise_keypair:new(dh25519),
+                        Pubkey  = enoise_keypair:pubkey(KeyPair),
+                        Privkey = enoise_keypair:seckey(KeyPair),
+                        ValidPair = aec_keys:check_peer_keys(Pubkey, Privkey),
+                        ?assertEqual(true, ValidPair)
+                end},
+               {"Peer key validation (negative case)",
+                fun() ->
+                        Pubkey = <<0:(32*8)>>,
+                        Privkey = <<0:(32*8)>>,
+                        ValidPair = aec_keys:check_peer_keys(Pubkey, Privkey),
+                        ?assertEqual(false, ValidPair)
                 end}]
       end]}.
 

@@ -25,6 +25,9 @@
 
 -export([sign/1, pubkey/0, delete/0,
          wait_for_pubkey/0]).
+
+-export([peer_pubkey/0, peer_privkey/0, check_peer_keys/2]).
+
 -export([verify/2]).
 -export([check_key_pair/0]).
 
@@ -38,6 +41,9 @@
 -define(FILENAME_PUB, "key.pub").
 -define(FILENAME_PRIV, "key").
 
+-define(FILENAME_PEERPUB, "peer_key.pub").
+-define(FILENAME_PEERPRIV, "peer_key").
+
 -record(crypto, {type   :: atom(),
                  algo   :: atom(),
                  digest :: atom(),
@@ -46,10 +52,14 @@
 -record(state, {
           pub       :: undefined | binary(),
           priv      :: undefined | binary(),
+          peer_pub  :: undefined | binary(),
+          peer_priv :: undefined | binary(),
           pass      :: password(),
           keys_dir  :: undefined | binary(),
           pub_file  :: undefined | binary(),
           priv_file :: undefined | binary(),
+          peer_pub_file  :: undefined | binary(),
+          peer_priv_file :: undefined | binary(),
           crypto    :: #crypto{}}).
           %% type   :: atom(),
           %% algo   :: atom(),
@@ -95,6 +105,14 @@ verify(Signatures, Tx) ->
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
     gen_server:call(?MODULE, pubkey).
+
+-spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
+peer_pubkey() ->
+    gen_server:call(?MODULE, peer_pubkey).
+
+-spec peer_privkey() -> {ok, binary()} | {error, key_not_found}.
+peer_privkey() ->
+    gen_server:call(?MODULE, peer_privkey).
 
 -spec wait_for_pubkey() -> {ok, binary()}.
 wait_for_pubkey() ->
@@ -164,11 +182,29 @@ init([Password, KeysDir]) when is_binary(Password) ->
                 end
         end,
 
+    %% Setup Peer keys
+    {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
+    {PeerPub, PeerPriv} =
+        case {from_local_dir(PeerPubFile), from_local_dir(PeerPrivFile)} of
+            {{ok, EPeerPub}, {ok, EPeerPriv}} ->
+                PeerPub0  = decrypt_peerkey(Password, EPeerPub),
+                PeerPriv0 = decrypt_peerkey(Password, EPeerPriv),
+                case check_peer_keys(PeerPub0, PeerPriv0) of
+                    true  -> {PeerPub0, PeerPriv0};
+                    false -> erlang:error({invalid_peer_key_pair_from_local,
+                                           [PeerPubFile, PeerPrivFile]})
+                end;
+            _ ->
+                p_gen_new_peer(Password, PeerPubFile, PeerPrivFile)
+        end,
+
     %% For sake of simplicity, if the initialization fails the
     %% initialization above crashes - rather than collecting failure
     %% reason and returning `{stop, Reason::term()}`.
     {ok, #state{priv=Priv1, pub=Pub1,
                 priv_file=PrivFile, pub_file=PubFile,
+                peer_priv=PeerPriv, peer_pub=PeerPub,
+                peer_priv_file=PeerPrivFile, peer_pub_file=PeerPubFile,
                 crypto = C,
                 pass=Password,
                 keys_dir=KeysDir}}.
@@ -214,6 +250,14 @@ handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
+handle_call(peer_pubkey, _From, #state{peer_pub=undefined} = State) ->
+    {reply, {error, key_not_found}, State};
+handle_call(peer_pubkey, _From, #state{peer_pub=PubKey} = State) ->
+    {reply, {ok, PubKey}, State};
+handle_call(peer_privkey, _From, #state{peer_priv=undefined} = State) ->
+    {reply, {error, key_not_found}, State};
+handle_call(peer_privkey, _From, #state{peer_priv=PrivKey} = State) ->
+    {reply, {ok, PrivKey}, State};
 handle_call(check_key_pair, _From, #state{pub = PubKey, priv = PrivKey,
                                           crypto = C} = State) ->
     {reply, check_keys_pair(PubKey, PrivKey, C), State};
@@ -335,23 +379,50 @@ check_keys_pair(PubKey, PrivKey, Algo, Digest, Curve) ->
     crypto:verify(Algo, Digest, SampleMsg, Signature,
                   [PubKey, crypto:ec_curve(Curve)]).
 
-
 check_env() ->
-    KeysDir =
-        case aeu_env:user_config([<<"keys">>, <<"dir">>]) of
-            undefined ->
-                application:get_env(
-                  aecore, keys_dir,
-                  filename:join(aeu_env:data_dir(aecore), "keys"));
-            {ok, Dir} ->
-                binary_to_list(Dir)
-        end,
-    Pwd =
-        case aeu_env:user_config([<<"keys">>, <<"password">>]) of
-            undefined ->
-                {ok, P} = application:get_env(aecore, password),
-                P;
-            {ok, P} ->
-                P
-        end,
+    DefaultFile =  filename:join(aeu_env:data_dir(aecore), "keys"),
+    KeysDir = aeu_env:user_config_or_env([<<"keys">>, <<"dir">>],
+                                         aecore, keys_dir, DefaultFile),
+    Pwd = aeu_env:user_config_or_env([<<"keys">>, <<"password">>],
+                                     aecore, password, <<>>),
     #{keys_dir => KeysDir, password => Pwd}.
+
+%%% --- PEER KEYS ---
+%%% Basically a copy of node keys, once we drop the original node keys - we can
+%%% promote these functions...
+
+p_gen_peer_filename(KeysDir) ->
+    %% TODO: consider checking whats in the dir and genrerating file with suffix
+    PubFile = filename:join(KeysDir, ?FILENAME_PEERPUB),
+    PrivFile = filename:join(KeysDir, ?FILENAME_PEERPRIV),
+    {PubFile, PrivFile}.
+
+encrypt_peerkey(Password, Bin) ->
+    crypto:block_encrypt(aes_ecb, hash(Password),  pad_peerkey(Bin)).
+
+decrypt_peerkey(Password, Bin) ->
+    crypto:block_decrypt(aes_ecb, hash(Password), Bin).
+
+pad_peerkey(Bin) ->
+    Pad = 32 - size(Bin),
+    <<0:(Pad*8), Bin/binary>>.
+
+p_gen_new_peer(Password, PeerPubFile, PeerPrivFile) ->
+    KeyPair = enoise_keypair:new(dh25519),
+    PubKey  = enoise_keypair:pubkey(KeyPair),
+    PrivKey = enoise_keypair:seckey(KeyPair),
+    case check_peer_keys(PubKey, PrivKey) of
+        true ->
+            EncPub = encrypt_peerkey(Password, PubKey),
+            lager:debug("New PubKey: ~p", [EncPub]),
+            EncPriv = encrypt_peerkey(Password, PrivKey),
+            lager:debug("New PrivKey: ~p", [EncPriv]),
+            ok = to_local_dir(PeerPubFile, EncPub),
+            ok = to_local_dir(PeerPrivFile, EncPriv),
+            {PubKey, PrivKey};
+        false ->
+            error({generated_key_pair_check_failed, [PubKey, PrivKey]})
+    end.
+
+check_peer_keys(PubKey, PrivKey) ->
+    PubKey == enacl:curve25519_scalarmult_base(PrivKey).
