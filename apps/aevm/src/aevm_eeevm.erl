@@ -1445,11 +1445,21 @@ recursive_call(CallDepth, StateIn, Op) ->
     {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
     Code              = aevm_eeevm_state:extcode(To, State8),
-    CallGas = case Value =/= 0 of
-                  true -> ?GCALLSTIPEND + Gas;
-                  false -> Gas
+
+    %% "The child message of a nonzero-value CALL operation (NOT the
+    %% top-level message arising from a transaction!) gains an
+    %% additional 2300 gas on top of the gas supplied by the calling
+    %% account; this stipend can be considered to be paid out of the
+    %% 9000 mandatory additional fee for nonzero-value calls. This
+    %% ensures that a call recipient will always have enough gas to
+    %% log that it received funds."
+    %%  -- https://github.com/ethereum/wiki/wiki/Subtleties
+    Stipend = case Value =/= 0 of
+                  true -> ?GCALLSTIPEND;
+                  false -> 0
               end,
-    case GasAfterSpend >= CallGas of
+    CallGas = Stipend + Gas,
+    case GasAfterSpend >= 0 of
         true  -> ok;
         false -> eval_error(out_of_gas, State7)
     end,
@@ -1465,14 +1475,13 @@ recursive_call(CallDepth, StateIn, Op) ->
         true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,
             State9 = aevm_eeevm_state:set_gas(GasOut, State8),
-            State10 = aevm_eeevm_state:add_callcreates(#{ data => I
-                                                        , destination => Dest
-                                                        , gasLimit => CallGas
-                                                        , value => Value
-                                                        }, State9),
+	    State10 = aevm_eeevm_state:add_callcreates(#{ data => I
+							, destination => Dest
+							, gasLimit => CallGas
+							, value => Value
+							}, State9),
             {1, State10};
         false ->
-            %% TODO: Should this not count towards mem gas?
             CallState1 =
 		aevm_eeevm_state:add_callcreates(#{ data => I
 						  , destination => Dest
@@ -1487,7 +1496,7 @@ recursive_call(CallDepth, StateIn, Op) ->
             CallTrace = aevm_eeevm_state:trace(OutState),
             %% Go back to the caller state.
             ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State8),
-            GasAfterCall = GasAfterSpend + OutGas,
+            GasAfterCall = GasAfterSpend  + max(0, OutGas - Stipend),
             ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState1),
             {Message,_}  = aevm_eeevm_memory:get_area(0, OSize, OutState),
             ReturnState3 = aevm_eeevm_memory:write_area(OOffset, Message,

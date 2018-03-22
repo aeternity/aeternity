@@ -28,16 +28,34 @@ default_opts() ->
 
 %% To turn on tracing for a test case return a map with trace => true
 %% e.g. extra_opts_tc(mulmod4) -> #{trace => true};
+
 extra_opts_tc(Name) ->
-    case gas_exception(Name) of
-        true  -> #{validate_gas => false};
-        false -> #{}
-    end.
+    GasOpts =
+	case gas_exception(Name) of
+	    true  -> #{validate_gas => false};
+	    false -> #{}
+	end,
+    CallOpts =
+	case call_exception(Name) of
+	    true  -> GasOpts#{no_recursion => false};
+	    false -> GasOpts
+	end,
+    CallOpts.
 
 gas_exception(Name) ->
     lists:member(Name,
                  [ suicide
                  , push32AndSuicide
+                 ]).
+
+call_exception(Name) ->
+    lists:member(Name,
+                 [ arith
+		 , boolean
+		 , mktx
+		 , 'ABAcalls1'
+		 , 'ABAcalls2'
+		 , 'ABAcalls3'
                  ]).
 
 %%====================================================================
