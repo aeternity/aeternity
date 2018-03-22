@@ -140,9 +140,11 @@ def test_contract_call():
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
 
-    # assert contract created:
-    assert_equals(alice_balance0, alice_balance + test_settings["contract_call"]["fee"])
-    print("Fee was consumed, transaction is part of the chain")
+    # The call runs out of gas and all gas is consumed
+    # assert contract called:
+    assert_equals(alice_balance0, alice_balance + test_settings["contract_call"]["fee"]
+                  + test_settings["contract_call"]["gas"])
+    print("Fee and gas was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
 
