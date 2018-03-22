@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -32,6 +34,7 @@
          ttl/1]).
 
 -define(ORACLE_REGISTER_TX_VSN, 1).
+-define(ORACLE_REGISTER_TX_TYPE, oracle_register_tx).
 -define(ORACLE_REGISTER_TX_FEE, 4).
 
 -opaque tx() :: #oracle_register_tx{}.
@@ -78,6 +81,10 @@ new(#{account       := AccountPubKey,
                              ttl           = TTL,
                              fee           = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?ORACLE_REGISTER_TX_TYPE.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_register_tx{nonce = Nonce}) ->
@@ -133,35 +140,54 @@ serialize(#oracle_register_tx{account       = AccountPubKey,
                               query_spec    = QuerySpec,
                               response_spec = ResponseSpec,
                               query_fee     = QueryFee,
-                              ttl           = {TTLType, TTLValue},
+                              ttl           = {TTLType0, TTLValue},
                               fee           = Fee}) ->
-    [#{<<"vsn">> => version()},
-     #{<<"account">> => AccountPubKey},
-     #{<<"nonce">> => Nonce},
-     #{<<"query_spec">> => QuerySpec},
-     #{<<"response_spec">> => ResponseSpec},
-     #{<<"query_fee">> => QueryFee},
-     #{<<"ttl">> =>
-           #{<<"type">> => TTLType,
-             <<"value">> => TTLValue}},
-     #{<<"fee">> => Fee}].
+    TTLType = case TTLType0 of
+                  ?ttl_delta_atom -> ?ttl_delta_int;
+                  ?ttl_block_atom -> ?ttl_block_int
+              end,
+    {version(),
+    [ {account, AccountPubKey}
+    , {nonce, Nonce}
+    , {query_spec, QuerySpec}
+    , {response_spec, ResponseSpec}
+    , {query_fee, QueryFee}
+    , {ttl_type, TTLType}
+    , {ttl_value, TTLValue}
+    , {fee, Fee}
+    ]}.
 
-deserialize([#{<<"vsn">>           := ?ORACLE_REGISTER_TX_VSN},
-             #{<<"account">>       := AccountPubKey},
-             #{<<"nonce">>         := Nonce},
-             #{<<"query_spec">>    := QuerySpec},
-             #{<<"response_spec">> := ResponseSpec},
-             #{<<"query_fee">>     := QueryFee},
-             #{<<"ttl">>           := #{<<"type">>  := TTLType,
-                                        <<"value">> := TTLValue}},
-             #{<<"fee">>           := Fee}]) ->
+deserialize(?ORACLE_REGISTER_TX_VSN,
+           [ {account, AccountPubKey}
+           , {nonce, Nonce}
+           , {query_spec, QuerySpec}
+           , {response_spec, ResponseSpec}
+           , {query_fee, QueryFee}
+           , {ttl_type, TTLType0}
+           , {ttl_value, TTLValue}
+           , {fee, Fee}]) ->
+    TTLType = case TTLType0 of
+                  ?ttl_delta_int -> ?ttl_delta_atom;
+                  ?ttl_block_int -> ?ttl_block_atom
+              end,
     #oracle_register_tx{account       = AccountPubKey,
                         nonce         = Nonce,
                         query_spec    = QuerySpec,
                         response_spec = ResponseSpec,
                         query_fee     = QueryFee,
-                        ttl           = {binary_to_existing_atom(TTLType, utf8), TTLValue},
+                        ttl           = {TTLType, TTLValue},
                         fee           = Fee}.
+
+serialization_template(?ORACLE_REGISTER_TX_VSN) ->
+    [ {account, binary}
+    , {nonce, int}
+    , {query_spec, binary}
+    , {response_spec, binary}
+    , {query_fee, int}
+    , {ttl_type, int}
+    , {ttl_value, int}
+    , {fee, int}
+    ].
 
 -spec version() -> non_neg_integer().
 version() ->

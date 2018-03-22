@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -31,6 +33,7 @@
 
 
 -define(ORACLE_RESPONSE_TX_VSN, 1).
+-define(ORACLE_RESPONSE_TX_TYPE, oracle_response_tx).
 -define(ORACLE_RESPONSE_TX_FEE, 2).
 
 -opaque tx() :: #oracle_response_tx{}.
@@ -61,6 +64,10 @@ new(#{oracle   := Oracle,
                              response = Response,
                              fee      = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?ORACLE_RESPONSE_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#oracle_response_tx{fee = F}) ->
@@ -133,24 +140,33 @@ serialize(#oracle_response_tx{oracle   = OraclePubKey,
                               query_id = QId,
                               response = Response,
                               fee      = Fee}) ->
-    [#{<<"vsn">>      => version()},
-     #{<<"oracle">>   => OraclePubKey},
-     #{<<"nonce">>    => Nonce},
-     #{<<"query_id">> => QId},
-     #{<<"response">> => Response},
-     #{<<"fee">>      => Fee}].
+    {version(),
+    [ {oracle, OraclePubKey}
+    , {nonce, Nonce}
+    , {query_id, QId}
+    , {response, Response}
+    , {fee, Fee}
+    ]}.
 
-deserialize([#{<<"vsn">>      := ?ORACLE_RESPONSE_TX_VSN},
-             #{<<"oracle">>   := OraclePubKey},
-             #{<<"nonce">>    := Nonce},
-             #{<<"query_id">> := QId},
-             #{<<"response">> := Response},
-             #{<<"fee">>      := Fee}]) ->
+deserialize(?ORACLE_RESPONSE_TX_VSN,
+            [ {oracle, OraclePubKey}
+            , {nonce, Nonce}
+            , {query_id, QId}
+            , {response, Response}
+            , {fee, Fee}]) ->
     #oracle_response_tx{oracle   = OraclePubKey,
                         nonce    = Nonce,
                         query_id = QId,
                         response = Response,
                         fee      = Fee}.
+
+serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
+    [ {oracle, binary}
+    , {nonce, int}
+    , {query_id, binary}
+    , {response, binary}
+    , {fee, int}
+    ].
 
 -spec version() -> non_neg_integer().
 version() ->

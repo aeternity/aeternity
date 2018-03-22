@@ -6,6 +6,7 @@
 
 %% API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -14,7 +15,8 @@
          accounts/1,
          signers/1,
          serialize/1,
-         deserialize/1,
+         serialization_template/1,
+         deserialize/2,
          for_client/1,
          reward/1]).
 
@@ -30,11 +32,19 @@
 
 -export_type([tx/0]).
 
+-define(CB_TX_VSN, 1).
+-define(CB_TX_TYPE, coinbase_tx).
+
+
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{account := AccountPubkey, block_height := Height}) ->
     {ok, aetx:new(?MODULE, #coinbase_tx{account = AccountPubkey,
                                         reward = aec_governance:block_mine_reward(),
                                         block_height = Height })}.
+
+-spec type() -> atom().
+type() ->
+    ?CB_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#coinbase_tx{}) ->
@@ -82,21 +92,26 @@ accounts(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 -spec signers(tx()) -> [pubkey()].
 signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 
--define(CB_TX_VSN, 1).
-
--spec serialize(tx()) -> [map()].
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#coinbase_tx{account = Account, block_height = Height, reward = Reward}) ->
-    [#{<<"vsn">> => version()},
-     #{<<"acct">> => Account},
-     #{<<"h">> => Height},
-     #{<<"r">> => Reward}].
+    {?CB_TX_VSN,
+    [ {account, Account}
+    , {height, Height}
+    , {reward, Reward}
+    ]}.
 
--spec deserialize([map()]) -> tx().
-deserialize([#{<<"vsn">>  := ?CB_TX_VSN},
-             #{<<"acct">> := Account},
-             #{<<"h">> := Height},
-             #{<<"r">> := Reward}]) ->
+-spec deserialize(Vsn :: integer(), [{atom(), term()}]) -> tx().
+deserialize(?CB_TX_VSN,
+            [ {account, Account}
+            , {height, Height}
+            , {reward, Reward}]) ->
     #coinbase_tx{account = Account, block_height = Height, reward = Reward}.
+
+serialization_template(?CB_TX_VSN) ->
+    [ {account, binary}
+    , {height, int}
+    , {reward, int}
+    ].
 
 for_client(#coinbase_tx{account = Account, block_height = Height, reward = Reward}) ->
     #{<<"account">> => aec_base58c:encode(account_pubkey,Account),

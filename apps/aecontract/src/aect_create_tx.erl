@@ -13,6 +13,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -20,8 +21,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -36,6 +38,7 @@
          call_data/1]).
 
 -define(CONTRACT_CREATE_TX_VSN, 1).
+-define(CONTRACT_CREATE_TX_TYPE, contract_create_tx).
 -define(CONTRACT_CREATE_TX_FEE, 4).
 
 %% Should this be in a header file somewhere?
@@ -112,6 +115,10 @@ new(#{owner      := OwnerPubKey,
                              fee        = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
 
+-spec type() -> atom().
+type() ->
+    ?CONTRACT_CREATE_TX_TYPE.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#contract_create_tx{nonce = Nonce}) ->
     Nonce.
@@ -176,29 +183,30 @@ serialize(#contract_create_tx{owner      = OwnerPubKey,
                               gas        = Gas,
                               gas_price  = GasPrice,
                               call_data  = CallData}) ->
-    [#{<<"vsn">>        => version()},
-     #{<<"owner">>      => OwnerPubKey},
-     #{<<"nonce">>      => Nonce},
-     #{<<"code">>       => Code},
-     #{<<"vm_version">> => VmVersion},
-     #{<<"fee">>        => Fee},
-     #{<<"deposit">>    => Deposit},
-     #{<<"amount">>     => Amount},
-     #{<<"gas">>        => Gas},
-     #{<<"gas_price">>  => GasPrice},
-     #{<<"call_data">>  => CallData}].
+    {version(),
+     [ {owner, OwnerPubKey}
+     , {nonce, Nonce}
+     , {code, Code}
+     , {vm_version, VmVersion}
+     , {fee, Fee}
+     , {deposit, Deposit}
+     , {amount, Amount}
+     , {gas, Gas}
+     , {gas_price, GasPrice}
+     , {call_data, CallData}
+     ]}.
 
-deserialize([#{<<"vsn">>        := ?CONTRACT_CREATE_TX_VSN},
-             #{<<"owner">>      := OwnerPubKey},
-             #{<<"nonce">>      := Nonce},
-             #{<<"code">>       := Code},
-             #{<<"vm_version">> := VmVersion},
-             #{<<"fee">>        := Fee},
-             #{<<"deposit">>    := Deposit},
-             #{<<"amount">>     := Amount},
-             #{<<"gas">>        := Gas},
-             #{<<"gas_price">>  := GasPrice},
-             #{<<"call_data">>  := CallData}]) ->
+deserialize(?CONTRACT_CREATE_TX_VSN,
+            [ {owner, OwnerPubKey}
+            , {nonce, Nonce}
+            , {code, Code}
+            , {vm_version, VmVersion}
+            , {fee, Fee}
+            , {deposit, Deposit}
+            , {amount, Amount}
+            , {gas, Gas}
+            , {gas_price, GasPrice}
+            , {call_data, CallData}]) ->
     #contract_create_tx{owner      = OwnerPubKey,
                         nonce      = Nonce,
                         code       = Code,
@@ -209,6 +217,19 @@ deserialize([#{<<"vsn">>        := ?CONTRACT_CREATE_TX_VSN},
                         gas        = Gas,
                         gas_price  = GasPrice,
                         call_data  = CallData}.
+
+serialization_template(?CONTRACT_CREATE_TX_VSN) ->
+    [ {owner, binary}
+    , {nonce, int}
+    , {code, binary}
+    , {vm_version, int}
+    , {fee, int}
+    , {deposit, int}
+    , {amount, int}
+    , {gas, int}
+    , {gas_price, int}
+    , {call_data, binary}
+    ].
 
 for_client(#contract_create_tx{ owner      = OwnerPubKey,
                                 nonce      = Nonce,

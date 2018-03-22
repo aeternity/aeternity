@@ -6,6 +6,7 @@
 
 %% API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -14,9 +15,11 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
-         for_client/1]).
+         deserialize/2,
+         for_client/1
+        ]).
 
 -behavior(aetx).
 
@@ -32,18 +35,30 @@
 
 -export_type([tx/0]).
 
+-define(SPEND_TX_VSN, 1).
+-define(SPEND_TX_TYPE, spend_tx).
+
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
       fee := Fee,
-      nonce := Nonce}) ->
+      nonce := Nonce}) when is_integer(Amount), Amount >= 0,
+                            is_integer(Nonce), Nonce >= 0,
+                            is_integer(Fee), Fee >= 0,
+                            is_binary(SenderPubkey),
+                            is_binary(RecipientPubkey)
+                            ->
     Tx = #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
                    fee = Fee,
                    nonce = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?SPEND_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#spend_tx{fee = F}) ->
@@ -103,31 +118,38 @@ process(#spend_tx{sender = SenderPubkey,
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees2),
     {ok, Trees}.
 
--define(SPEND_TX_VSN, 1).
-
 serialize(#spend_tx{sender = Sender,
                     recipient = Recipient,
                     amount = Amount,
                     fee = Fee,
                     nonce = Nonce}) ->
-    [#{<<"vsn">> => version()},
-     #{<<"sender">> => Sender},
-     #{<<"recipient">> => Recipient},
-     #{<<"amount">> => Amount},
-     #{<<"fee">> => Fee},
-     #{<<"nonce">> => Nonce}].
+    {version(),
+     [ {sender, Sender}
+     , {recipient, Recipient}
+     , {amount, Amount}
+     , {fee, Fee}
+     , {nonce, Nonce}
+     ]}.
 
-deserialize([#{<<"vsn">>  := ?SPEND_TX_VSN},
-             #{<<"sender">> := Sender},
-             #{<<"recipient">> := Recipient},
-             #{<<"amount">> := Amount},
-             #{<<"fee">> := Fee},
-             #{<<"nonce">> := Nonce}]) ->
+deserialize(?SPEND_TX_VSN,
+            [ {sender, Sender}
+            , {recipient, Recipient}
+            , {amount, Amount}
+            , {fee, Fee}
+            , {nonce, Nonce}]) ->
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,
               fee = Fee,
               nonce = Nonce}.
+
+serialization_template(?SPEND_TX_VSN) ->
+    [ {sender, binary}
+    , {recipient, binary}
+    , {amount, int}
+    , {fee, int}
+    , {nonce, int}
+    ].
 
 for_client(#spend_tx{sender = Sender,
                      recipient = Recipient,

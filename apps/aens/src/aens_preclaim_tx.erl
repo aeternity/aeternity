@@ -14,6 +14,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -21,8 +22,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -35,6 +37,7 @@
 %%%===================================================================
 
 -define(NAME_PRECLAIM_TX_VSN, 1).
+-define(NAME_PRECLAIM_TX_TYPE, name_preclaim_tx).
 
 -opaque tx() :: #ns_preclaim_tx{}.
 
@@ -54,6 +57,10 @@ new(#{account    := AccountPubKey,
                          commitment = Commitment,
                          fee        = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?NAME_PRECLAIM_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#ns_preclaim_tx{fee = Fee}) ->
@@ -111,22 +118,30 @@ serialize(#ns_preclaim_tx{account    = AccountPubKey,
                           nonce      = Nonce,
                           commitment = Commitment,
                           fee        = Fee}) ->
-    [#{<<"vsn">>        => version()},
-     #{<<"account">>    => AccountPubKey},
-     #{<<"nonce">>      => Nonce},
-     #{<<"commitment">> => Commitment},
-     #{<<"fee">>        => Fee}].
+    {version(),
+     [ {account, AccountPubKey}
+     , {nonce, Nonce}
+     , {commitment, Commitment}
+     , {fee, Fee}
+     ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>        := ?NAME_PRECLAIM_TX_VSN},
-             #{<<"account">>    := AccountPubKey},
-             #{<<"nonce">>      := Nonce},
-             #{<<"commitment">> := Commitment},
-             #{<<"fee">>        := Fee}]) ->
+-spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
+deserialize(?NAME_PRECLAIM_TX_VSN,
+            [ {account, AccountPubKey}
+            , {nonce, Nonce}
+            , {commitment, Commitment}
+            , {fee, Fee}]) ->
     #ns_preclaim_tx{account    = AccountPubKey,
                     nonce      = Nonce,
                     commitment = Commitment,
                     fee        = Fee}.
+
+serialization_template(?NAME_PRECLAIM_TX_VSN) ->
+    [ {account, binary}
+    , {nonce, int}
+    , {commitment, binary}
+    , {fee, int}
+    ].
 
 -spec for_client(tx()) -> map().
 for_client(#ns_preclaim_tx{account    = AccountPubKey,

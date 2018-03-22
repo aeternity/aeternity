@@ -28,12 +28,10 @@
 
 %% API that should be avoided to be used
 -export([verify/1,
-         serialize/1,
          serialize_for_client/3,
          serialize_for_client_pending/2,
          meta_data_from_client_serialized/2,
          serialize_to_binary/1,
-         deserialize/1,
          deserialize_from_binary/1]).
 
 -export_type([signed_tx/0,
@@ -72,7 +70,7 @@ sign(Tx, PrivKeys, CryptoMap) when is_list(PrivKeys) ->
        [ crypto:sign(Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]) ||
          PrivKey <- PrivKeys ],
     #signed_tx{tx = Tx,
-               signatures = Signatures}.
+               signatures = lists:sort(Signatures)}.
 
 
 -spec tx(signed_tx()) -> tx().
@@ -121,32 +119,39 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}) ->
 filter_invalid_signatures(SignedTxs) ->
     lists:filter(fun(SignedTx) -> ok == verify(SignedTx) end, SignedTxs).
 
--define(SIG_TX_TYPE, <<"sig_tx">>).
+-define(SIG_TX_TYPE, signed_tx).
 -define(SIG_TX_VSN, 1).
-
-version() -> ?SIG_TX_VSN.
-type()    -> ?SIG_TX_TYPE.
-
--spec serialize(signed_tx()) -> list().
-serialize(#signed_tx{tx = Tx, signatures = Sigs}) ->
-    TxSer = aetx:serialize(Tx),
-    [type(), version(), TxSer, Sigs].
-
--spec deserialize(list()) -> signed_tx().
-deserialize([?SIG_TX_TYPE, ?SIG_TX_VSN, TxSer, Sigs]) ->
-    Tx = aetx:deserialize(TxSer),
-    #signed_tx{tx = Tx, signatures = Sigs}.
 
 %% deterministic canonical serialization.
 -spec serialize_to_binary(signed_tx()) -> binary_signed_tx().
-serialize_to_binary(#signed_tx{} = SignedTx) ->
-    msgpack:pack(serialize(SignedTx)).
+serialize_to_binary(#signed_tx{tx = Tx, signatures = Sigs}) ->
+    %% TODO: The original binary should be kept
+    %%       around since that is what was signed
+    aec_object_serialization:serialize(
+      ?SIG_TX_TYPE,
+      ?SIG_TX_VSN,
+      serialization_template(?SIG_TX_VSN),
+      [ {signatures, lists:sort(Sigs)}
+      , {transaction, aetx:serialize_to_binary(Tx)}
+      ]).
 
 -spec deserialize_from_binary(binary()) -> signed_tx().
 deserialize_from_binary(SignedTxBin) when is_binary(SignedTxBin) ->
-    {ok, Unpacked} = msgpack:unpack(SignedTxBin),
-    lager:debug("unpacked Tx: ~p", [Unpacked]),
-    deserialize(Unpacked).
+    [ {signatures, Sigs}
+    , {transaction, TxBin}
+    ] = aec_object_serialization:deserialize(
+          ?SIG_TX_TYPE,
+          ?SIG_TX_VSN,
+          serialization_template(?SIG_TX_VSN),
+          SignedTxBin),
+    #signed_tx{ tx = aetx:deserialize_from_binary(TxBin)
+              , signatures = Sigs
+              }.
+
+serialization_template(?SIG_TX_VSN) ->
+    [ {signatures, [binary]}
+    , {transaction, binary}
+    ].
 
 -spec serialize_for_client(json|message_pack, #header{}, aetx_sign:signed_tx()) ->
                               binary() | map().
@@ -170,9 +175,14 @@ serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash0,
                 end,
     MetaData = [#{<<"block_height">> => BlockHeight},
                 #{<<"block_hash">> => BlockHash},
-                #{<<"hash">> => aec_base58c:encode(tx_hash, TxHash)}
-               ],
-    aec_base58c:encode(transaction, msgpack:pack(serialize(S) ++ [MetaData]));
+                #{<<"hash">> => aec_base58c:encode(tx_hash, TxHash)}],
+    TxBin = serialize_to_binary(S),
+    Payload = [?SIG_TX_TYPE,
+               ?SIG_TX_VSN,
+               #{<<"tx">> => aec_base58c:encode(transaction, TxBin)},
+               MetaData
+              ],
+    aec_base58c:encode(transaction, msgpack:pack(Payload));
 serialize_for_client(json, #signed_tx{tx = Tx, signatures = Sigs},
                      BlockHeight, BlockHash0, TxHash) ->
     BlockHash = case BlockHash0 of
@@ -187,7 +197,7 @@ serialize_for_client(json, #signed_tx{tx = Tx, signatures = Sigs},
 
 meta_data_from_client_serialized(message_pack, Bin) ->
     {transaction, MsgPackBin} = aec_base58c:decode(Bin),
-    {ok, [_Type, _Version, _TxSer, _Sigs, GenericData]} = msgpack:unpack(MsgPackBin),
+    {ok, [_Type, _Version, _TxSer, GenericData]} = msgpack:unpack(MsgPackBin),
     [#{<<"block_height">> := BlockHeight},
      #{<<"block_hash">> := BlockHashEncoded},
      #{<<"hash">> := TxHashEncoded}] = GenericData,

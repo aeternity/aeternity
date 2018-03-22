@@ -38,7 +38,7 @@
               name/0,
               serialized/0]).
 
--define(NAME_TYPE, <<"name">>).
+-define(NAME_TYPE, name).
 -define(NAME_VSN, 1).
 
 %%%===================================================================
@@ -79,32 +79,45 @@ transfer(TransferTx, Name) ->
 
 -spec serialize(name()) -> binary().
 serialize(#name{} = N) ->
-    msgpack:pack([#{<<"type">>     => ?NAME_TYPE},
-                  #{<<"vsn">>      => ?NAME_VSN},
-                  #{<<"hash">>     => hash(N)},
-                  #{<<"owner">>    => owner(N)},
-                  #{<<"expires">>  => expires(N)},
-                  #{<<"status">>   => status(N)},
-                  #{<<"ttl">>      => ttl(N)},
-                  #{<<"pointers">> => jsx:encode(pointers(N))}]).
+    aec_object_serialization:serialize(
+      ?NAME_TYPE,
+      ?NAME_VSN,
+      serialization_template(?NAME_VSN),
+      [ {hash, hash(N)}
+      , {owner, owner(N)}
+      , {expires, expires(N)}
+      , {status, atom_to_binary(status(N), utf8)}
+      , {ttl, ttl(N)}
+      , {pointers, jsx:encode(pointers(N))}]). %% TODO: This might be ambigous
 
 -spec deserialize(binary()) -> name().
 deserialize(Bin) ->
-    {ok, List} = msgpack:unpack(Bin),
-    [#{<<"type">>     := ?NAME_TYPE},
-     #{<<"vsn">>      := ?NAME_VSN},
-     #{<<"hash">>     := Hash},
-     #{<<"owner">>    := Owner},
-     #{<<"expires">>  := Expires},
-     #{<<"status">>   := Status},
-     #{<<"ttl">>      := TTL},
-     #{<<"pointers">> := Pointers}] = List,
+    [ {hash, Hash}
+    , {owner, Owner}
+    , {expires, Expires}
+    , {status, Status}
+    , {ttl, TTL}
+    , {pointers, Pointers}
+    ] = aec_object_serialization:deserialize(
+          ?NAME_TYPE,
+          ?NAME_VSN,
+          serialization_template(?NAME_VSN),
+          Bin),
     #name{hash     = Hash,
           owner    = Owner,
           expires  = Expires,
           status   = binary_to_existing_atom(Status, utf8),
           ttl      = TTL,
-          pointers = jsx:decode(Pointers)}.
+          pointers = jsx:decode(Pointers)}. %% TODO: This might be ambigous
+
+serialization_template(?NAME_VSN) ->
+    [ {hash, binary}
+    , {owner, binary}
+    , {expires, int}
+    , {status, binary}
+    , {ttl, int}
+    , {pointers, binary} %% TODO: This needs to be stricter
+    ].
 
 %%%===================================================================
 %%% Getters

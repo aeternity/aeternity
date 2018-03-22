@@ -67,9 +67,9 @@ coinbase_tx_existing_account_test_() ->
                        Reward = aec_governance:block_mine_reward(),
                        Height = 42,
                        %% no other way of setting a erronous reward
-                       CoinbaseTxBiggerReward = {aetx, aec_coinbase_tx,
+                       CoinbaseTxBiggerReward = {aetx, coinbase_tx, aec_coinbase_tx,
                                       {coinbase_tx, PubKey, Height, Reward + 1}},
-                       CoinbaseTxSmallerReward = {aetx, aec_coinbase_tx,
+                       CoinbaseTxSmallerReward = {aetx, coinbase_tx, aec_coinbase_tx,
                                       {coinbase_tx, PubKey, Height, Reward - 1}},
                        ?assertEqual({error, wrong_reward},
                                     aetx:check(CoinbaseTxBiggerReward, Trees0, Height)),
@@ -88,7 +88,7 @@ coinbase_tx_existing_account_test_() ->
                        {value, Account} = aec_accounts_trees:lookup(PubKey, AccountsTree),
                        ?assertEqual(PubKey, aec_accounts:pubkey(Account)),
 
-                       {_, CbTx} = aetx:specialize_type(CoinbaseTx),
+                       {coinbase_tx, CbTx} = aetx:specialize_type(CoinbaseTx),
                        Reward = aec_coinbase_tx:reward(CbTx),
                        ?assertEqual(Reward, aec_governance:block_mine_reward()),
                        ?assertEqual(23 + Reward, aec_accounts:balance(Account)),

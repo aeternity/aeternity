@@ -85,5 +85,5 @@ query_tx(Override) ->
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aeo_query_tx:new(Map1),
-    {aeo_query_tx, QTx} = aetx:specialize_type(Tx),
+    {oracle_query_tx, QTx} = aetx:specialize_type(Tx),
     QTx.

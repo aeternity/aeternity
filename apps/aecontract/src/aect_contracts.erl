@@ -79,7 +79,7 @@
 
 -define(PUB_SIZE, 65).
 -define(HASH_SIZE, 32).
--define(CONTRACT_TYPE, <<"contract">>).
+-define(CONTRACT_TYPE, contract).
 -define(CONTRACT_VSN, 0).
 
 %%%===================================================================
@@ -111,38 +111,42 @@ new(ContractPubKey, RTx, BlockHeight) ->
 
 -spec serialize(contract()) -> serialized().
 serialize(#contract{} = C) ->
-    msgpack:pack([ #{<<"type">>       => ?CONTRACT_TYPE}
-                 , #{<<"vsn">>        => ?CONTRACT_VSN}
-                 , #{<<"pubkey">>     => pubkey(C)}
-                 , #{<<"balance">>    => balance(C)}
-                 , #{<<"height">>     => height(C)}
-                 , #{<<"owner">>      => owner(C)}
-                 , #{<<"vm_version">> => vm_version(C)}
-                 , #{<<"code">>       => code(C)}
-                 , #{<<"state">>      => state(C)}
-                 , #{<<"log">>        => log(C)}
-                 , #{<<"active">>     => active(C)}
-                 , #{<<"referers">>   => referers(C)}
-                 , #{<<"deposit">>    => deposit(C)}
-                 ]).
+    aec_object_serialization:serialize(
+      ?CONTRACT_TYPE,
+      ?CONTRACT_VSN,
+      serialization_template(?CONTRACT_VSN),
+      [ {pubkey, pubkey(C)}
+      , {balance, balance(C)}
+      , {height, height(C)}
+      , {owner, owner(C)}
+      , {vm_version, vm_version(C)}
+      , {code, code(C)}
+      , {state, state(C)}
+      , {log, log(C)}
+      , {active, active(C)}
+      , {referers, referers(C)}
+      , {deposit, deposit(C)}
+      ]).
 
 -spec deserialize(serialized()) -> contract().
 deserialize(Bin) ->
-    {ok, List} = msgpack:unpack(Bin),
-    [ #{<<"type">>       := ?CONTRACT_TYPE}
-    , #{<<"vsn">>        := ?CONTRACT_VSN}
-    , #{<<"pubkey">>     := Pubkey}
-    , #{<<"balance">>    := Balance}
-    , #{<<"height">>     := Height}
-    , #{<<"owner">>      := Owner}
-    , #{<<"vm_version">> := VmVersion}
-    , #{<<"code">>       := Code}
-    , #{<<"state">>      := Store}
-    , #{<<"log">>        := Log}
-    , #{<<"active">>     := Active}
-    , #{<<"referers">>   := Referers}
-    , #{<<"deposit">>    := Deposit}
-    ] = List,
+    [ {pubkey, Pubkey}
+    , {balance, Balance}
+    , {height, Height}
+    , {owner, Owner}
+    , {vm_version, VmVersion}
+    , {code, Code}
+    , {state, Store}
+    , {log, Log}
+    , {active, Active}
+    , {referers, Referers}
+    , {deposit, Deposit}
+    ] = aec_object_serialization:deserialize(
+          ?CONTRACT_TYPE,
+          ?CONTRACT_VSN,
+          serialization_template(?CONTRACT_VSN),
+          Bin
+          ),
     #contract{ pubkey     = Pubkey
              , balance    = Balance
              , height     = Height
@@ -155,6 +159,20 @@ deserialize(Bin) ->
              , referers   = Referers
              , deposit    = Deposit
              }.
+
+serialization_template(?CONTRACT_VSN) ->
+    [ {pubkey, binary}
+    , {balance, int}
+    , {height, int}
+    , {owner, binary}
+    , {vm_version, int}
+    , {code, binary}
+    , {state, binary}
+    , {log, binary}
+    , {active, bool}
+    , {referers, [binary]}
+    , {deposit, int}
+    ].
 
 -spec compute_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
 compute_contract_pubkey(Owner, Nonce) ->

@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -34,6 +36,7 @@
 
 
 -define(ORACLE_QUERY_TX_VSN, 1).
+-define(ORACLE_QUERY_TX_TYPE, oracle_query_tx).
 -define(ORACLE_QUERY_TX_FEE, 2).
 
 -opaque tx() :: #oracle_query_tx{}.
@@ -82,6 +85,10 @@ new(#{sender        := SenderPubKey,
                           response_ttl  = ResponseTTL,
                           fee           = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?ORACLE_QUERY_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#oracle_query_tx{fee = F}) ->
@@ -146,43 +153,62 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
                            oracle        = OraclePubKey,
                            query         = Query,
                            query_fee     = QueryFee,
-                           query_ttl     = {QueryTTLType, QueryTTLValue},
-                           response_ttl  = {delta, ResponseTTLValue},
+                           query_ttl     = {QueryTTLType0, QueryTTLValue},
+                           response_ttl  = {?ttl_delta_atom, ResponseTTLValue},
                            fee           = Fee}) ->
-    [#{<<"vsn">>          => version()},
-     #{<<"sender">>       => SenderPubKey},
-     #{<<"nonce">>        => Nonce},
-     #{<<"oracle">>       => OraclePubKey},
-     #{<<"query">>        => Query},
-     #{<<"query_fee">>    => QueryFee},
-     #{<<"query_ttl">>    =>
-           #{<<"type">>   => QueryTTLType,
-             <<"value">>  => QueryTTLValue}},
-     #{<<"response_ttl">> =>
-           #{<<"type">>   => <<"delta">>,
-             <<"value">>  => ResponseTTLValue}},
-     #{<<"fee">>          => Fee}].
+    QueryTTLType = case QueryTTLType0 of
+                       ?ttl_delta_atom -> ?ttl_delta_int;
+                       ?ttl_block_atom -> ?ttl_block_int
+                   end,
+    {version(),
+     [ {sender, SenderPubKey}
+     , {nonce, Nonce}
+     , {oracle, OraclePubKey}
+     , {query, Query}
+     , {query_fee, QueryFee}
+     , {query_ttl_type, QueryTTLType}
+     , {query_ttl_value, QueryTTLValue}
+     , {response_ttl_type, ?ttl_delta_int}
+     , {response_ttl_value, ResponseTTLValue}
+     , {fee, Fee}
+     ]}.
 
-deserialize([#{<<"vsn">>          := ?ORACLE_QUERY_TX_VSN},
-             #{<<"sender">>       := SenderPubKey},
-             #{<<"nonce">>        := Nonce},
-             #{<<"oracle">>       := OraclePubKey},
-             #{<<"query">>        := Query},
-             #{<<"query_fee">>    := QueryFee},
-             #{<<"query_ttl">>    := #{<<"type">>  := QueryTTLType,
-                                       <<"value">> := QueryTTLValue}},
-             #{<<"response_ttl">> := #{<<"type">>  := <<"delta">>,
-                                       <<"value">> := ResponseTTLValue}},
-             #{<<"fee">>          := Fee}]) ->
+deserialize(?ORACLE_QUERY_TX_VSN,
+            [ {sender, SenderPubKey}
+            , {nonce, Nonce}
+            , {oracle, OraclePubKey}
+            , {query, Query}
+            , {query_fee, QueryFee}
+            , {query_ttl_type, QueryTTLType0}
+            , {query_ttl_type, QueryTTLValue}
+            , {response_ttl_type, ?ttl_delta_int}
+            , {response_ttl_type, ResponseTTLValue}
+            , {fee, Fee}]) ->
+    QueryTTLType = case QueryTTLType0 of
+                       ?ttl_delta_int -> ?ttl_delta_atom;
+                       ?ttl_block_int -> ?ttl_block_atom
+                   end,
     #oracle_query_tx{sender        = SenderPubKey,
                      nonce         = Nonce,
                      oracle        = OraclePubKey,
                      query         = Query,
                      query_fee     = QueryFee,
-                     query_ttl     = {binary_to_existing_atom(QueryTTLType, utf8),
-                                      QueryTTLValue},
-                     response_ttl  = {delta, ResponseTTLValue},
+                     query_ttl     = {QueryTTLType, QueryTTLValue},
+                     response_ttl  = {?ttl_delta_atom, ResponseTTLValue},
                      fee           = Fee}.
+
+serialization_template(?ORACLE_QUERY_TX_VSN) ->
+    [ {sender, binary}
+    , {nonce, int}
+    , {oracle, binary}
+    , {query, binary}
+    , {query_fee, int}
+    , {query_ttl_type, int}
+    , {query_ttl_value, int}
+    , {response_ttl_type, int}
+    , {response_ttl_value, int}
+    , {fee, int}
+    ].
 
 -spec version() -> non_neg_integer().
 version() ->

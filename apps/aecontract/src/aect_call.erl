@@ -29,7 +29,7 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--define(CONTRACT_INTERACTION_TYPE, <<"contract_i">>).
+-define(CONTRACT_INTERACTION_TYPE, contract_call).
 -define(CONTRACT_INTERACTION_VSN, 1).
 
 %%%===================================================================
@@ -87,28 +87,31 @@ id(Caller, Nonce, Contract) ->
 
 -spec serialize(call()) -> binary().
 serialize(#call{} = I) ->
-    msgpack:pack([ #{<<"type">>             => ?CONTRACT_INTERACTION_TYPE}
-                 , #{<<"vsn">>              => ?CONTRACT_INTERACTION_VSN}
-                 , #{<<"caller_address">>   => caller_address(I)}
-                 , #{<<"caller_nonce">>     => caller_nonce(I)}
-                 , #{<<"height">>           => height(I)}
-                 , #{<<"contract_address">> => contract_address(I)}
-                 , #{<<"gas_used">>         => gas_used(I)}
-                 , #{<<"return_value">>     => return_value(I)}
-                 ]).
+    aec_object_serialization:serialize(
+      ?CONTRACT_INTERACTION_TYPE,
+      ?CONTRACT_INTERACTION_VSN,
+      serialization_template(?CONTRACT_INTERACTION_VSN),
+      [ {caller_address, caller_address(I)}
+      , {caller_nonce, caller_nonce(I)}
+      , {height, height(I)}
+      , {contract_address, contract_address(I)}
+      , {gas_used, gas_used(I)}
+      , {return_value, return_value(I)}
+     ]).
 
 -spec deserialize(binary()) -> call().
 deserialize(B) ->
-    {ok, List} = msgpack:unpack(B),
-    [ #{<<"type">>             := ?CONTRACT_INTERACTION_TYPE}
-    , #{<<"vsn">>              := ?CONTRACT_INTERACTION_VSN}
-    , #{<<"caller_address">>   := CallerAddress}
-    , #{<<"caller_nonce">>     := CallerNonce}
-    , #{<<"height">>           := Height}
-    , #{<<"contract_address">> := ContractAddress}
-    , #{<<"gas_used">>         := GasUsed}
-    , #{<<"return_value">>     := ReturnValue}
-    ] = List,
+    [ {caller_address, CallerAddress}
+    , {caller_nonce, CallerNonce}
+    , {height, Height}
+    , {contract_address, ContractAddress}
+    , {gas_used, GasUsed}
+    , {return_value, ReturnValue}
+    ] = aec_object_serialization:deserialize(
+          ?CONTRACT_INTERACTION_TYPE,
+          ?CONTRACT_INTERACTION_VSN,
+          serialization_template(?CONTRACT_INTERACTION_VSN),
+          B),
     #call{ caller_address   = CallerAddress
          , caller_nonce     = CallerNonce
          , height           = Height
@@ -116,6 +119,15 @@ deserialize(B) ->
          , gas_used         = GasUsed
          , return_value     = ReturnValue
          }.
+
+serialization_template(?CONTRACT_INTERACTION_VSN) ->
+    [ {caller_address, binary}
+    , {caller_nonce, int}
+    , {height, int}
+    , {contract_address, binary}
+    , {gas_used, int}
+    , {return_value, binary}
+    ].
 
 
 %%%===================================================================
