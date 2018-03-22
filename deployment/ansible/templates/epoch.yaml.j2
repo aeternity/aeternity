@@ -15,6 +15,7 @@ http:
 
 mining:
     autostart: true
+    expected_mine_rate: {{ config.mining.expected_mine_rate }}
 
 chain:
     persist: {{ config.chain.persist | bool | lower }}

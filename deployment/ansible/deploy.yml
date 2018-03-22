@@ -49,6 +49,8 @@
         password: "{{ vault_keys_password|default('secret') }}"
       logging:
         level: "{{ log_level|default('error') }}"
+      mining:
+        expected_mine_rate: "{{ expected_mine_rate|default(300000) }}"
     api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
   tasks:
