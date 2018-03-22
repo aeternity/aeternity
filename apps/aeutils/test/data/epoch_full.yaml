@@ -57,6 +57,8 @@ mining:
     autostart: true
     # Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
     attempt_timeout: 3600000
+    # Expected mine rate (milliseconds) between blocks. Used in governance.
+    expected_mine_rate: 300000
     cuckoo:
         miner:
             # Executable binary of the miner.
