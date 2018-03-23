@@ -27,9 +27,22 @@ SETUP = {
             "name": "epoch1",
             "user_config": '''
 ---
+keys:
+    dir: "keys"
+    password: "top secret"
+
+sync:
+    port: 9815
+
 peers:
-    - "http://localhost:9823/"
-    - "http://localhost:9833/"
+    - peer:
+        port: 9825
+        host: "localhost"
+        pubkey: "pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8"
+    - peer:
+        port: 9835
+        host: "localhost"
+        pubkey: "pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq"
 
 http:
     external:
@@ -73,6 +86,13 @@ chain:
             "name": "epoch2",
             "user_config": '''
 ---
+keys:
+    dir: "keys"
+    password: "top secret"
+
+sync:
+    port: 9825
+
 http:
     external:
         port: 9823
@@ -115,6 +135,13 @@ chain:
             "name": "epoch3",
             "user_config": '''
 ---
+keys:
+    dir: "keys"
+    password: "top secret"
+
+sync:
+    port: 9835
+
 http:
     external:
         port: 9833
@@ -176,7 +203,7 @@ def stop_node(temp_dir):
     os.system(executable(temp_dir) + " stop")
 
 def start_node(temp_dir):
-    binary = executable(temp_dir) 
+    binary = executable(temp_dir)
     assert os.path.isfile(binary)
     assert os.access(binary, os.X_OK)
     print("Starting " + binary)
@@ -215,10 +242,10 @@ def read_argv(argv):
                         help='Working directory for testing. It must exist and be empty.')
     parser.add_argument('--blocks', type=int, default=10,
                         help='Number of blocks to mine')
-    parser.add_argument('--tarball', required=True, 
+    parser.add_argument('--tarball', required=True,
                         help='Release package tarball')
 
-    parser.add_argument('--version', required=True, 
+    parser.add_argument('--version', required=True,
                         help='Release package version')
 
     args = parser.parse_args()
@@ -236,9 +263,13 @@ def tail_logs(temp_dir, log_name):
     return lines
 
 
-def setup_node(node, path, version):
+def setup_node(node, path, test_dir, version):
     os.chdir(path)
-    for command in NODE_SETUP_COMMANDS: 
+    os.makedirs("keys")
+    shutil.copy(os.path.join(test_dir, "tests", "peer_keys", node, "peer_key"), "keys")
+    shutil.copy(os.path.join(test_dir, "tests", "peer_keys", node, "peer_key.pub"), "keys")
+
+    for command in NODE_SETUP_COMMANDS:
         os.system(pystache.render(command, {"version": version, \
                                             "name": SETUP[node]["name"]}))
     ucfg = open(os.path.join(path, "epoch.yaml"), "w")
@@ -251,11 +282,12 @@ def setup_node(node, path, version):
 def main(argv):
     logging.getLogger("urllib3").setLevel(logging.ERROR)
     root_dir, tar_file_name, blocks_to_mine, version = read_argv(argv)
-    temp_dir_dev1 = os.path.join(root_dir, "node1") 
+    curr_dir = os.getcwd()
+    temp_dir_dev1 = os.path.join(root_dir, "node1")
     os.makedirs(temp_dir_dev1)
 
-    temp_dir_dev2 = os.path.join(root_dir, "node2") 
-    temp_dir_dev3 = os.path.join(root_dir, "node3") 
+    temp_dir_dev2 = os.path.join(root_dir, "node2")
+    temp_dir_dev3 = os.path.join(root_dir, "node3")
 
 
     print("Tar name: " + tar_file_name)
@@ -265,7 +297,7 @@ def main(argv):
 
     node_names = ["node1", "node2", "node3"]
     node_dirs = [temp_dir_dev1, temp_dir_dev2, temp_dir_dev3]
-    [setup_node(n, d, version) for n, d in zip(node_names, node_dirs)]
+    [setup_node(n, d, curr_dir, version) for n, d in zip(node_names, node_dirs)]
     [start_node(d) for d in node_dirs]
 
 
@@ -311,7 +343,7 @@ def main(argv):
         if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>).'"):
             test_failed = True
             print("Check on `mnesia:index_read` failed")
-            [stop_node(d) for d in node_dirs]
+        [stop_node(d) for d in node_dirs]
 
     if test_failed:
         for name, node_dir in zip(node_names, node_dirs):
@@ -319,7 +351,7 @@ def main(argv):
             print(tail_logs(node_dir, "epoch.log"))
             print("\n")
     if test_failed:
-        sys.exit("FAILED")      
+        sys.exit("FAILED")
 
 if __name__ == "__main__":
     main(sys.argv)
