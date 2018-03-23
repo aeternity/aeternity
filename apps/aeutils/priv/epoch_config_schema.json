@@ -209,6 +209,12 @@
                     "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
                     "type" : "integer"
                 },
+                "expected_mine_rate" : {
+                    "description" : "Expected mine rate (milliseconds) between blocks. Used in governance.",
+                    "type" : "integer",
+                    "default": 300000,
+                    "minimum" : 1
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
