@@ -323,7 +323,7 @@ crash_syncing_worker(Config) ->
     {ok, DbCfg} = node_db_cfg(Dev2),
     aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
     aecore_suite_utils:stop_node(Dev2, Config),
-    
+
     Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
     ct:log("top at Dev1 = ~p", [Top1]),
     ExtraBlocks = 5,  %% Might need more if CPU is really fast!
@@ -331,13 +331,10 @@ crash_syncing_worker(Config) ->
     H1 = aec_blocks:height(Top1) + ExtraBlocks,
 
     %% Ensure compatible notation of uri:
-    Uri = 
-       aec_peers:uri_of_peer(
-         aec_peers:parse_uri(
-           aecore_suite_utils:peer_uri(Dev1))),
-    ct:log("Uri of Dev1 ~p", [Uri]),
+    PeerId = aec_peers:peer_id(aecore_suite_utils:peer_info(Dev1)),
+    ct:log("PeerId of Dev1 ~p", [PeerId]),
 
-    spawn_link(fun() -> kill_sync_worker(N2, Uri) end),
+    spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),
 
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
@@ -345,7 +342,7 @@ crash_syncing_worker(Config) ->
 
     %% Set the same mining_rate to validate target
     %% Only needed when chain more than 10 blocks
-    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000), 
+    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000),
 
     %% Takes re-ping + fetching blocks to get in sync with Dev1
     %% Configuration changed to have re-ping after 700ms.
@@ -358,14 +355,14 @@ crash_syncing_worker(Config) ->
     {ok, B2} = rpc:call(N1, aec_chain, get_block_by_height, [H1], 5000),
     ok.
 
-kill_sync_worker(N, Uri) ->
-    case rpc:call(N, aec_sync, sync_in_progress, [Uri], 5000) of
+kill_sync_worker(N, PeerId) ->
+    case rpc:call(N, aec_sync, sync_in_progress, [PeerId], 5000) of
         false ->
             timer:sleep(10),
-            kill_sync_worker(N, Uri);
-        {badrpc, _} -> 
+            kill_sync_worker(N, PeerId);
+        {badrpc, _} ->
             timer:sleep(20),
-            kill_sync_worker(N, Uri);
+            kill_sync_worker(N, PeerId);
         SyncPeer ->
             Pid = element(7, SyncPeer),
             exit(Pid, kill),

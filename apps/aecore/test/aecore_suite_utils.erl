@@ -23,7 +23,7 @@
 
 -export([node_tuple/1,
          node_name/1,
-         peer_uri/1,
+         peer_info/1,
          connect/1,
          subscribe/2,
          unsubscribe/2,

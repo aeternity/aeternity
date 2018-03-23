@@ -5,12 +5,10 @@
 -include_lib("eunit/include/eunit.hrl").
 
 operation_method_test() ->
-   ?assertEqual([get], maps:keys(endpoints:operation('GetTop'))),
-   ?assertEqual([post], maps:keys(endpoints:operation('Ping'))).
+   ?assertEqual([get], maps:keys(endpoints:operation('GetTop'))).
 
 path_without_test() ->
-   ?assertEqual(<<"/v2/top">>, endpoints:path(get, 'GetTop', #{})),
-   ?assertEqual(<<"/v2/ping">>, endpoints:path(post, 'Ping', #{})).
+   ?assertEqual(<<"/v2/top">>, endpoints:path(get, 'GetTop', #{})).
 
 path_with_params_test() ->
    ?assertEqual(<<"/v2/block/height/3">>,
