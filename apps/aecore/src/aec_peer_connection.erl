@@ -504,7 +504,7 @@ handle_get_header_by_hash_rsp(S, none, MsgObj) ->
 handle_get_header_by_hash_rsp(S, {get_header_by_hash, From}, MsgObj) ->
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
-            case aec_headers:deserialize_from_map(maps:get(<<"header">>, MsgObj)) of
+            case aehttp_api_parser:decode(header, maps:get(<<"header">>, MsgObj)) of
                 {ok, Header} ->
                     gen_server:reply(From, {ok, Header});
                 Err = {error, _} ->
@@ -541,7 +541,7 @@ get_header(height, N) ->
 get_header(Fun, Arg) ->
     case Fun(Arg) of
         {ok, Header} ->
-            {ok, HH} = aec_headers:serialize_to_map(Header),
+            HH = aehttp_api_parser:encode(header, Header),
             #{result => ok, header => HH};
         error ->
             #{result => error, reason => <<"Block not found">>}
@@ -568,7 +568,7 @@ handle_get_header_by_height_rsp(S, none, MsgObj) ->
 handle_get_header_by_height_rsp(S, {get_header_by_height, From}, MsgObj) ->
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
-            case aec_headers:deserialize_from_map(maps:get(<<"header">>, MsgObj)) of
+            case aehttp_api_parser:decode(header, maps:get(<<"header">>, MsgObj)) of
                 {ok, Header} ->
                     gen_server:reply(From, {ok, Header});
                 Err = {error, _} ->
@@ -649,7 +649,8 @@ handle_get_block(S, MsgObj) ->
                     {ok, Hash} ->
                         case aec_chain:get_block(Hash) of
                             {ok, Block} ->
-                                #{result => ok, block => aec_blocks:serialize_to_map(Block)};
+                                BlockMap = aehttp_api_parser:encode(block, Block),
+                                #{result => ok, block => BlockMap};
                             error ->
                                 #{result => error, reason => <<"Block not found">>}
                         end;
@@ -670,7 +671,7 @@ handle_get_block_rsp(S, {get_block, From}, MsgObj) ->
         <<"ok">> ->
             case maps:get(<<"block">>, MsgObj, undefined) of
                 Block0 when is_map(Block0) ->
-                    {ok, Block} = aec_blocks:deserialize_from_map(Block0),
+                    {ok, Block} = aehttp_api_parser:decode(block, Block0),
                     gen_server:reply(From, {ok, Block});
                 _ ->
                     gen_server:reply(From, {error, no_block_in_response})
@@ -718,13 +719,13 @@ handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
 send_send_block(S = #{ status := error }, _From, _Block) ->
     {reply, {error, disconnected}, S};
 send_send_block(S = #{ status := {connected, _ESock} }, From, Block) ->
-    BlockMap = aec_blocks:serialize_to_map(Block),
+    BlockMap = aehttp_api_parser:encode(block, Block),
     send_msg(S, ?MSG_SEND_BLOCK, BlockMap),
     {noreply, set_request(S, send_block, From)}.
 
 handle_send_block(S, MsgObj) ->
     Msg =
-        case aec_blocks:deserialize_from_map(MsgObj) of
+        case aehttp_api_parser:decode(block, MsgObj) of
             {ok, Block} ->
                 Header = aec_blocks:to_header(Block),
                 {ok, HH} = aec_headers:hash_header(Header),

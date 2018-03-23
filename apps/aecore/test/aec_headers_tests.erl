@@ -17,7 +17,7 @@ getters_test() ->
 network_serialization_test() ->
     Header = #header{},
     {ok, SerializedHeader} = ?TEST_MODULE:serialize_to_map(Header),
-    {ok, DeserializedHeader} =
+    DeserializedHeader =
         ?TEST_MODULE:deserialize_from_map(SerializedHeader),
     ?assertEqual(Header, DeserializedHeader),
     ?assertEqual({ok, SerializedHeader},
