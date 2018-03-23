@@ -258,11 +258,12 @@ internal-clean: $$(KIND)
 .PHONY: \
 	all console \
 	local-build local-start local-stop local-attach \
-	prod-build prod-start prod-stop prod-attach prod-package \
-	multi-build, multi-start, multi-stop, multi-clean \
-	dev1-start, dev1-stop, dev1-attach, dev1-clean \
-	dev2-start, dev2-stop, dev2-attach, dev2-clean \
-	dev3-start, dev3-stop, dev3-attach, dev3-clean \
+	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
+	multi-build multi-start multi-stop multi-clean \
+	dev1-start dev1-stop dev1-attach dev1-clean \
+	dev2-start dev2-stop dev2-attach dev2-clean \
+	dev3-start dev3-stop dev3-attach dev3-clean \
+	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
 	test aevm-test-deps\
 	kill killall \
