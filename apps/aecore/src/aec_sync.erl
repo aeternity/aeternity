@@ -40,7 +40,7 @@
 -define(MAX_HEADERS_PER_CHUNK, 100).
 -define(MAX_DIFF_FOR_SYNC, 50).
 
--record(sync_peer, {difficulty, from, to, hash, uri}).
+-record(sync_peer, {difficulty, from, to, hash, uri, pid}).
 
 %%%=============================================================================
 %%% API
@@ -139,7 +139,7 @@ delete_from_pool(Uri) ->
 
 %% Check whether this header is better than previous best
 new_header(Uri, Header, AgreedHeight, Hash) ->
-    gen_server:call(?MODULE, {new_header, Uri, Header, AgreedHeight, Hash}).
+    gen_server:call(?MODULE, {new_header, self(), Uri, Header, AgreedHeight, Hash}).
 
 update_hash_pool(Hashes) ->
   gen_server:call(?MODULE, {update_hash_pool, Hashes}).
@@ -185,7 +185,7 @@ init([]) ->
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
-handle_call({new_header, Uri, Header, AgreedHeight, AgreedHash}, _, State) ->
+handle_call({new_header, Pid, Uri, Header, AgreedHeight, AgreedHash}, _, State) ->
     Height = aec_headers:height(Header),
     Difficulty = aec_headers:difficulty(Header),
     %% We have talked to the Uri, so Uri can be trusted
@@ -193,8 +193,13 @@ handle_call({new_header, Uri, Header, AgreedHeight, AgreedHash}, _, State) ->
                                          from = AgreedHeight, 
                                          to = Height, 
                                          hash = AgreedHash, 
-                                         uri = Uri}, 
+                                         uri = Uri,
+                                         pid = Pid}, 
                               State#state.sync_pool),
+    case IsNew of
+        true -> erlang:monitor(process, Pid);
+        false -> ok
+    end,
     {reply, IsNew, State#state{sync_pool = NewPool}};
 handle_call({update_hash_pool, Hashes}, _From, State) ->
     HashPool = merge(State#state.hash_pool, Hashes),
@@ -273,6 +278,7 @@ handle_cast({schedule_ping, Uri}, State) ->
 handle_cast({delete_from_pool, Uri}, State) ->
     %% This Uri misbehaved, even if we got a new Ping in-between asking for deletion and
     %% actual deletion, we remove it. A new ping will arrive in the future.
+    %% If the reference was kept, demonitor could be used here... but just ignore DOWN for these
     {noreply, State#state{sync_pool = lists:keydelete(Uri, #sync_peer.uri, State#state.sync_pool)}}; 
 handle_cast(_, State) ->
     {noreply, State}.
@@ -290,6 +296,12 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
         _ -> ignore
     end,
     {noreply, State};
+handle_info({'DOWN', _Ref, process, Pid, Reason}, State) ->
+    %% It might be one of our syncing workers that crashed
+    if Reason =/= normal -> lager:info("worker stopped with reason: ~p", [Reason]);
+       true -> ok
+    end,
+    {noreply, State#state{sync_pool = lists:keydelete(Pid, #sync_peer.pid, State#state.sync_pool)}};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -408,7 +420,7 @@ process_job([{_T, Job}]) ->
         {start_sync, Uri, RemoteHash} ->
             case sync_in_progress(Uri) of
               false -> do_start_sync(Uri, RemoteHash);
-              _ -> ok   %% tuple returned
+              _     -> lager:info("sync already in progress ~p", [Uri])
             end;
         {server_get_missing, Uri} ->
             do_server_get_missing(Uri);
@@ -513,7 +525,6 @@ do_start_sync(Uri, RemoteHash) ->
             case new_header(Uri, Hdr, AgreedHeight, AgreedHash) of
                 false ->
                     lager:debug("Already syncing with peer ~p", [Uri]),
-                    %% Already a sync in progress with this peer
                     ok;
                 true ->
                     PoolResult = fill_pool(Uri, AgreedHash),

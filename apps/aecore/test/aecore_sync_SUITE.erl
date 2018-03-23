@@ -29,7 +29,8 @@
     ensure_tx_pools_empty/1,
     ensure_tx_pools_one_tx/1,
     report_metrics/1,
-    check_metrics_logged/1
+    check_metrics_logged/1,
+    crash_syncing_worker/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -56,7 +57,8 @@ groups() ->
        restart_second,
        restart_first,
        report_metrics,
-       check_metrics_logged]},
+       check_metrics_logged,
+       crash_syncing_worker]},
      {three_nodes, [sequence],
       [start_first_node,
        test_subscription,
@@ -309,6 +311,65 @@ check_no_system_metrics_sent() ->
               [] = [Line || {_,L} = Line <- Data,
                             nomatch =/= re:run(L, "^ae\\.epoch\\.system", [])]
       end, aec_metrics_test_utils:fetch_data()).
+
+%% It takes about 300 ms to fetch the blocks from the other chain.
+%% In that interval we need to have the sync process crash
+%% We agressively look whether sync has started and kill a.s.a.p.
+crash_syncing_worker(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    N2 = aecore_suite_utils:node_name(Dev2),
+    {ok, DbCfg} = node_db_cfg(Dev2),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+    aecore_suite_utils:stop_node(Dev2, Config),
+    
+    Top1 = rpc:call(N1, aec_chain, top_block, [], 5000),
+    ct:log("top at Dev1 = ~p", [Top1]),
+    ExtraBlocks = 5,  %% Might need more if CPU is really fast!
+    aecore_suite_utils:mine_blocks(N1, ExtraBlocks),
+    H1 = aec_blocks:height(Top1) + ExtraBlocks,
+
+    %% Ensure compatible notation of uri:
+    Uri = 
+       aec_peers:uri_of_peer(
+         aec_peers:parse_uri(
+           aecore_suite_utils:peer_uri(Dev1))),
+    ct:log("Uri of Dev1 ~p", [Uri]),
+
+    spawn_link(fun() -> kill_sync_worker(N2, Uri) end),
+
+    aecore_suite_utils:start_node(Dev2, Config),
+    aecore_suite_utils:connect(N2),
+    ct:log("node connected ~p", [N2]),
+
+    %% Set the same mining_rate to validate target
+    %% Only needed when chain more than 10 blocks
+    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000), 
+
+    %% Takes re-ping + fetching blocks to get in sync with Dev1
+    %% Configuration changed to have re-ping after 700ms.
+    timer:sleep(2000),
+    Top2 = rpc:call(N2, aec_chain, top_block, [], 5000),
+    ct:log("top at Dev2 = ~p", [Top2]),
+    {ok, B2} = rpc:call(N2, aec_chain, get_block_by_height, [H1], 5000),
+    ct:log("Block @ ~p on Dev2 = ~p", [ H1, B2]),
+
+    {ok, B2} = rpc:call(N1, aec_chain, get_block_by_height, [H1], 5000),
+    ok.
+
+kill_sync_worker(N, Uri) ->
+    case rpc:call(N, aec_sync, sync_in_progress, [Uri], 5000) of
+        false ->
+            timer:sleep(10),
+            kill_sync_worker(N, Uri);
+        {badrpc, _} -> 
+            timer:sleep(20),
+            kill_sync_worker(N, Uri);
+        SyncPeer ->
+            Pid = element(7, SyncPeer),
+            exit(Pid, kill),
+            ct:log("killed worker ~p", [SyncPeer])
+    end.
 
 mine_again_on_first(Config) ->
     mine_and_compare(aecore_suite_utils:node_name(dev1), Config).
