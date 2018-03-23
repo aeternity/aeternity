@@ -21,7 +21,8 @@ stop() ->
 
 pc_listener() ->
     {_Scheme, Host, _Port} = aeu_env:local_peer(),
-    {SecKey, PubKey} = aeu_env:user_config_or_env(<<"sync_keys">>, aecore, sync_keys, {<<>>, <<>>}),
+    {ok, SecKey} = aec_keys:peer_privkey(),
+    {ok, PubKey} = aec_keys:peer_pubkey(),
     Port = aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT),
     lager:info("Starting peer_connection_listener at port ~p", [Port]),
     {ok, LSock} = gen_tcp:listen(Port, [{active, false}, binary, {reuseaddr, true}]),

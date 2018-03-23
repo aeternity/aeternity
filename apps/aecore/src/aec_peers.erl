@@ -247,8 +247,9 @@ start_link() ->
 
 init(ok) ->
     {_Scheme, Host, _Port} = aeu_env:local_peer(),
-    Port = aeu_env:user_config_or_env(<<"sync_port">>, aecore, sync_port, 1234),
-    {SecKey, PubKey} =  aeu_env:user_config_or_env(<<"sync_keys">>, aecore, sync_keys, {<<>>, <<0:(32*8)>>}),
+    Port = aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, 1234),
+    {ok, SecKey} = aec_keys:peer_privkey(),
+    {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{host => Host, port => Port, seckey => SecKey, pubkey => PubKey},
     lager:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{peers = gb_trees:empty(),
