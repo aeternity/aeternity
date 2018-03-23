@@ -145,9 +145,9 @@ handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
     lager:debug("ZZPC: connecting to ~p", [{Host, Port}]),
     Pid = spawn(fun() -> try_connect(Self, Host, Port, 1000) end),
     {noreply, S#{ status => {connecting, Pid} }};
-handle_cast(owns_tcp_socket, S = #{ role := responder, tcp_sock := TcpSock }) ->
-    #{ version := Version, genesis := Genesis,
-       seckey := SecKey, pubkey := PubKey } = S,
+handle_cast(owns_tcp_socket, S0 = #{ role := responder, tcp_sock := TcpSock }) ->
+    S = #{ version := Version, genesis := Genesis,
+           seckey := SecKey, pubkey := PubKey } = ensure_genesis(S0),
     NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                 , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
                 , {prologue, <<Version/binary, Genesis/binary>>}
@@ -204,9 +204,9 @@ handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pi
         close ->
             {stop, normal, S}
     end;
-handle_info({connected, Pid, {ok, TcpSock}}, S = #{ status := {connecting, Pid} }) ->
-    #{ version := Version, genesis := Genesis,
-       seckey := SecKey, pubkey := PubKey, r_pubkey := RemotePub } = S,
+handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
+    S = #{ version := Version, genesis := Genesis,
+       seckey := SecKey, pubkey := PubKey, r_pubkey := RemotePub } = ensure_genesis(S0),
     lager:debug("ZZPC: connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
     NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                 , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
@@ -276,13 +276,31 @@ drop_request(S, Kind) ->
     Rs = maps:get(requests, S, #{}),
     S#{ requests => maps:remove(Kind, Rs) }.
 
+try_connect(Parent, Host, Port, Timeout) when is_binary(Host) ->
+    try_connect(Parent, binary_to_list(Host), Port, Timeout);
 try_connect(Parent, Host, Port, Timeout) ->
-    Res = gen_tcp:connect(Host, Port, [binary, {reuseaddr, true}, {active, true}], Timeout),
+    Res =
+        try
+            gen_tcp:connect(Host, Port, [binary, {reuseaddr, true}, {active, true}], Timeout)
+        catch _E:R ->
+            {error, R}
+        end,
     case Res of
         {ok, Sock} -> gen_tcp:controlling_process(Sock, Parent);
         {error, _} -> ok
     end,
     Parent ! {connected, self(), Res}.
+
+ensure_genesis(S = #{ genesis := G }) when is_binary(G) ->
+    S;
+ensure_genesis(S) ->
+    case aec_chain:genesis_hash() of
+        undefined ->
+            timer:sleep(500),
+            ensure_genesis(S);
+        GHash ->
+            S#{ genesis => GHash }
+    end.
 
 is_non_registered_accept(State) ->
     maps:get(role, State, no_role) == responder
