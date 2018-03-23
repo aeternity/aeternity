@@ -187,24 +187,22 @@ prepare_param_(R = {"maximum", Max}, Value, Name, _) ->
     end.
 
 get_param_value("body", _, Req0) ->
-    {ok, Body, Req} = cowboy_req:body(Req0),
+    {ok, Body, Req} = cowboy_req:read_body(Req0),
     case prepare_body(Body) of
         {error, Reason} ->
             {error, Reason, Req};
         Value ->
             {ok, Value, Req}
     end;
-get_param_value("query", Name, Req0) ->
-    {QS, Req} = cowboy_req:qs_vals(Req0),
+get_param_value("query", Name, Req) ->
+    QS = cowboy_req:parse_qs(Req),
     Value = get_opt(to_qs(Name), QS),
     {ok, Value, Req};
-get_param_value("header", Name, Req0) ->
-    {Headers, Req} = cowboy_req:headers(Req0),
-    Value = get_opt(to_header(Name), Headers),
+get_param_value("header", Name, Req) ->
+    Value = cowboy_req:header(to_header(Name), Req),
     {ok, Value, Req};
-get_param_value("path", Name, Req0) ->
-    {Bindings, Req} = cowboy_req:bindings(Req0),
-    Value = get_opt(to_binding(Name), Bindings),
+get_param_value("path", Name, Req) ->
+    Value = cowboy_req:binding(to_binding(Name), Req),
     {ok, Value, Req}.
 
 prepare_body(Body) ->

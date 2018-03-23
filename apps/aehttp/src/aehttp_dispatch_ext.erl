@@ -35,7 +35,7 @@
         OperationID :: atom(),
         Req :: cowboy_req:req(),
         Context :: #{}
-       ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: #{}}.
+       ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
     handle_ping(PingObj);

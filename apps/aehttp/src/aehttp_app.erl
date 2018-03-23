@@ -96,10 +96,12 @@ start_http_api(Target, LogicHandler) ->
     Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),
 
-    {ok, _} = cowboy:start_http(Target, PoolSize, [{port, Port}, {ip, ListenAddress}], [
-            {env, [ {dispatch, Dispatch} ]},
-            {middlewares, [cowboy_router, aehttp_api_middleware, cowboy_handler]}
-        ]),
+    {ok, _} = cowboy:start_clear(Target,
+            [{port, Port},
+             {ip, ListenAddress},
+             {num_acceptors, PoolSize}],
+            #{env => #{dispatch => Dispatch}}
+        ),
     ok.
 
 start_websocket_internal() ->
@@ -111,9 +113,12 @@ start_websocket_internal() ->
             {"/websocket", ws_handler, []}
         ]}
     ]),
-    {ok, _} = cowboy:start_http(http, PoolSize,
-                                 [{port, Port}, {ip, ListenAddress}],
-                                 [{env, [{dispatch, Dispatch}]}]),
+    {ok, _} = cowboy:start_clear(http,
+            [{port, Port},
+             {ip, ListenAddress},
+             {num_acceptors, PoolSize}],
+            #{env => #{dispatch => Dispatch}}
+        ),
     ok.
 
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->

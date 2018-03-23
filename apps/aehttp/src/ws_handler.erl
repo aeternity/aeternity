@@ -6,13 +6,13 @@
 %%%-------------------------------------------------------------------
 -module(ws_handler).
 
--behaviour(cowboy_websocket_handler).
+-behaviour(cowboy_websocket).
 
--export([init/3]).
--export([websocket_init/3]).
--export([websocket_handle/3]).
--export([websocket_info/3]).
--export([websocket_terminate/3]).
+-export([init/2]).
+-export([websocket_init/1]).
+-export([websocket_handle/2]).
+-export([websocket_info/2]).
+-export([terminate/3]).
 -export([send_msg/5, broadcast/2, broadcast/3]).
 
 -define(GPROC_KEY, {p, l, {?MODULE, broadcast}}).
@@ -20,42 +20,42 @@
 -type id() :: pid().
 -export_type([id/0]).
 
-init({tcp, http}, _Req, _Opts) ->
-    {upgrade, protocol, cowboy_websocket}.
+init(Req, Opts) ->
+    {cowboy_websocket, Req, Opts}.
 
-websocket_init(_TransportName, Req, _Opts) ->
+websocket_init(_Opts) ->
     case jobs:ask(ws_handlers_queue) of
         {ok, JobId} ->
             gproc:reg(?GPROC_KEY),
-            {ok, Req, JobId};
+            {ok, JobId};
         {error, _} ->
-            {shutdown, Req}
+            {stop, undefined}
     end.
 
-websocket_handle({text, MsgBin}, Req, State) ->
+websocket_handle({text, MsgBin}, State) ->
     ws_task_worker:execute(MsgBin), %% async, pool
-    {ok, Req, State};
-websocket_handle(_Data, Req, State) ->
-    {ok, Req, State}.
+    {ok, State};
+websocket_handle(_Data, State) ->
+    {ok, State}.
 
-websocket_info({send, SenderName, Action, Payload}, Req, State) ->
+websocket_info({send, SenderName, Action, Payload}, State) ->
     Msg = create_message(SenderName, Action, Payload),
-    {reply, {text, jsx:encode(Msg)}, Req, State};
-websocket_info({send, SenderName, Action, Tag, Payload}, Req, State) ->
+    {reply, {text, jsx:encode(Msg)}, State};
+websocket_info({send, SenderName, Action, Tag, Payload}, State) ->
     Msg = create_message(SenderName, Action, Tag, Payload),
-    {reply, {text, jsx:encode(Msg)}, Req, State};
-websocket_info({event, Event, EventData}, Req, State) ->
+    {reply, {text, jsx:encode(Msg)}, State};
+websocket_info({event, Event, EventData}, State) ->
     case create_message_from_event(Event, EventData) of
         {ok, Msg} ->
-            {reply, {text, jsx:encode(Msg)}, Req, State};
+            {reply, {text, jsx:encode(Msg)}, State};
         {error, bad_event} ->
-            {ok, Req, State}
+            {ok, State}
     end;
-websocket_info(Info, Req, State) ->
+websocket_info(Info, State) ->
     lager:info("Unhandled message ~p", [Info]),
-    {ok, Req, State}.
+    {ok, State}.
 
-websocket_terminate(_Reason, _Req, JobId) ->
+terminate(_Reason, _PartialReq, JobId) ->
     WsPid = self(),
     aec_subscribe:unsubscribe_all({ws, WsPid}),
     jobs:done(JobId),
