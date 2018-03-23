@@ -430,7 +430,7 @@ handle_cast({log_ping, Ok, PeerId, _Time}, State) ->
             lager:debug("Reported ping event for unknown peer (~p)", [PeerId]),
             {noreply, State};
         {value, _Hash, Peer = #peer{ connection = {connected, _PeerCon} }} ->
-            Peer1 = set_ping_timeout(Peer, ?PING_INTERVAL),
+            Peer1 = set_ping_timeout(Peer, ping_interval()),
             {noreply, State#state{ peers = enter_peer(Peer1, State#state.peers) }};
         {value, _Hash, _Peer} ->
             lager:debug("Log ping event for ~p - no new ping", [PeerId]),
@@ -680,3 +680,6 @@ backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
             stop
     end.
 
+ping_interval() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
+                               aecore, ping_interval, ?PING_INTERVAL).
