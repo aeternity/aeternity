@@ -5,12 +5,12 @@ references:
     setup_remote_docker:
       docker_layer_caching: true
     docker:
-      - image: aetrnty/builder
+      - image: aeternity/builder
         user: builder
     working_directory: ~/epoch
     environment:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
-      DOCKERHUB_REPO: aetrnty/epoch
+      DOCKERHUB_REPO: aeternity/epoch
 
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:

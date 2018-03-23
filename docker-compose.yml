@@ -3,7 +3,7 @@ version: '3'
 services:
   node1:
     build: .
-    image: aetrnty/epoch
+    image: aeternity/epoch
     hostname: node1
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
@@ -14,7 +14,7 @@ services:
       - node1_keys:/home/epoch/node/keys
 
   node2:
-    image: aetrnty/epoch
+    image: aeternity/epoch
     hostname: node2
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
@@ -25,7 +25,7 @@ services:
       - node2_keys:/home/epoch/node/keys
 
   node3:
-    image: aetrnty/epoch
+    image: aeternity/epoch
     hostname: node3
     environment:
       EPOCH_CONFIG: /home/epoch/epoch.yaml
