@@ -57,13 +57,10 @@
 -compile([export_all, nowarn_export_all]).
 -endif.
 
--define(PING_INTERVAL, 120 * 1000).
+-define(DEFAULT_PING_INTERVAL, 120 * 1000).
 -define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
--define(MIN_PING_INTERVAL,   3000).
--define(MAX_PING_INTERVAL, 120000).
 
 -define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000).
--define(PEER_ERROR_EXPIRY, 60 * 60 * 1000).
 
 
 -record(peer, {
@@ -211,20 +208,7 @@ log_ping(Peer, Result) ->
 %% Check user-provided environment
 %%------------------------------------------------------------------------------
 check_env() ->
-    check_ping_interval_env(),
     ok.
-
-check_ping_interval_env() ->
-    {DefMin, DefMax} = ping_interval_limits(),
-    Min = case aeu_env:user_config([<<"sync">>,<<"ping_interval">>,<<"min">>]) of
-              {ok, UserMin} -> UserMin;
-              undefined -> DefMin
-          end,
-    Max = case aeu_env:user_config([<<"sync">>,<<"ping_interval">>,<<"max">>]) of
-              {ok, UserMax} -> UserMax;
-              undefined -> DefMax
-          end,
-    application:set_env(aecore, ping_interval_limits, {Min, Max}).
 
 -ifdef(TEST).
 unblock_all() ->
@@ -595,19 +579,6 @@ stop_connection(_) ->
     ok.
 
 
-ping_interval_limits() ->
-    Default = {?MIN_PING_INTERVAL, ?MAX_PING_INTERVAL},
-    case aeu_env:get_env(aecore, ping_interval_limits, Default) of
-        {Min, Max} when is_integer(Min),
-                        is_integer(Max),
-                        Max >= Min ->
-            {Min, Max};
-        Other ->
-            lager:debug("invalid ping limits: ~p; using default (~p)",
-                        [Other, Default]),
-            Default
-    end.
-
 maybe_ping_peer(PeerId, State) ->
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         false ->
@@ -682,4 +653,4 @@ backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
 
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
-                               aecore, ping_interval, ?PING_INTERVAL).
+                               aecore, ping_interval, ?DEFAULT_PING_INTERVAL).
