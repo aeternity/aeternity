@@ -58,7 +58,7 @@
 -endif.
 
 -define(PING_INTERVAL, 120 * 1000).
--define(MAX_RETRIES, 7).
+-define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
 -define(MIN_PING_INTERVAL,   3000).
 -define(MAX_PING_INTERVAL, 120000).
 
@@ -672,8 +672,8 @@ set_timeout(Peer = #peer{ timer_tref = Prev }, Timeout, Msg) ->
 
 backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
     case Retries of
-        N when N < ?MAX_RETRIES ->
-            lists:nth(N+1, [5, 15, 30, 60, 120, 300, 600]) * 1000;
+        N when N < length(?BACKOFF_TIMES) ->
+            lists:nth(N+1, ?BACKOFF_TIMES) * 1000;
         _ when Trusted ->
             600 * 1000;
         _ ->
