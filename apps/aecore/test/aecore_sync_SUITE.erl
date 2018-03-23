@@ -312,8 +312,9 @@ check_no_system_metrics_sent() ->
                             nomatch =/= re:run(L, "^ae\\.epoch\\.system", [])]
       end, aec_metrics_test_utils:fetch_data()).
 
-%% It takes about 320 ms to fetch the blocks from the other chain.
+%% It takes about 300 ms to fetch the blocks from the other chain.
 %% In that interval we need to have the sync process crash
+%% We agressively look whether sync has started and kill a.s.a.p.
 crash_syncing_worker(Config) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
     N1 = aecore_suite_utils:node_name(Dev1),
@@ -328,18 +329,25 @@ crash_syncing_worker(Config) ->
     aecore_suite_utils:mine_blocks(N1, ExtraBlocks),
     H1 = aec_blocks:height(Top1) + ExtraBlocks,
 
-    %% Set the same mining_rate to validate target
-    application:set_env(aecore, expected_mine_rate, 10), 
+    %% Ensure compatible notation of uri:
+    Uri = 
+       aec_peers:uri_of_peer(
+         aec_peers:parse_uri(
+           aecore_suite_utils:peer_uri(Dev1))),
+    ct:log("Uri of Dev1 ~p", [Uri]),
+
+    spawn_link(fun() -> kill_sync_worker(N2, Uri) end),
 
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     ct:log("node connected ~p", [N2]),
-    ok = rpc:call(N2, application, set_env, [aecore, ping_interval_limits, {500, 1000}], 5000),
 
-    spawn_link(fun() -> kill_sync_worker(N2, <<"http://ThomasComputer:3013">>) end),
+    %% Set the same mining_rate to validate target
+    %% Only needed when chain more than 10 blocks
+    ok = rpc:call(N2, application, set_env, [aecore, expected_mine_rate, 10], 5000), 
 
-
-    %% Takes 500ms re-ping + 400ms seconds on MacBook pro to read the blocks from Dev1
+    %% Takes re-ping + fetching blocks to get in sync with Dev1
+    %% Configuration changed to have re-ping after 700ms.
     timer:sleep(2000),
     Top2 = rpc:call(N2, aec_chain, top_block, [], 5000),
     ct:log("top at Dev2 = ~p", [Top2]),
@@ -350,15 +358,18 @@ crash_syncing_worker(Config) ->
     ok.
 
 kill_sync_worker(N, Uri) ->
-   case rpc:call(N, aec_sync, sync_in_progress, [Uri], 5000) of
-       false ->
-           timer:sleep(10),
-           kill_sync_worker(N, Uri);
+    case rpc:call(N, aec_sync, sync_in_progress, [Uri], 5000) of
+        false ->
+            timer:sleep(10),
+            kill_sync_worker(N, Uri);
+        {badrpc, _} -> 
+            timer:sleep(20),
+            kill_sync_worker(N, Uri);
         SyncPeer ->
-           Pid = element(7, SyncPeer),
-           exit(Pid, kill),
-           ct:log("killed worker ~p", [SyncPeer])
-   end.
+            Pid = element(7, SyncPeer),
+            exit(Pid, kill),
+            ct:log("killed worker ~p", [SyncPeer])
+    end.
 
 mine_again_on_first(Config) ->
     mine_and_compare(aecore_suite_utils:node_name(dev1), Config).

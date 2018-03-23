@@ -420,7 +420,7 @@ process_job([{_T, Job}]) ->
         {start_sync, Uri, RemoteHash} ->
             case sync_in_progress(Uri) of
               false -> do_start_sync(Uri, RemoteHash);
-              _ -> ok   %% tuple returned
+              _     -> lager:info("sync already in progress ~p", [Uri])
             end;
         {server_get_missing, Uri} ->
             do_server_get_missing(Uri);
