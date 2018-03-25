@@ -21,17 +21,21 @@
                                   aec_trees:trees()) -> {error, term()} | ok.
 check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
-    %% It assumes aesc_state_tree:lookup/2 does not return closed channels
     case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
         none ->
             {error, channel_does_not_exist};
         {value, Ch} ->
-            ChInitiatorPubKey   = aesc_channels:initiator(Ch),
-            ChParticipantPubKey = aesc_channels:participant(Ch),
-            case {ChInitiatorPubKey   =:= InitiatorPubKey,
-                  ChParticipantPubKey =:= ParticipantPubKey} of
-                {true, true} -> ok;
-                {_, _}       -> {error, wrong_channel_peers}
+            case aesc_channels:is_active(Ch) of
+                true ->
+                    ChInitiatorPubKey   = aesc_channels:initiator(Ch),
+                    ChParticipantPubKey = aesc_channels:participant(Ch),
+                    case {ChInitiatorPubKey   =:= InitiatorPubKey,
+                          ChParticipantPubKey =:= ParticipantPubKey} of
+                        {true, true} -> ok;
+                        {_   , _}    -> {error, wrong_channel_peers}
+                    end;
+                false ->
+                    {error, channel_not_active}
             end
     end.
 
@@ -45,7 +49,7 @@ check_are_peers([PubKey | Rest], Peers) ->
     end.
 
 -spec check_peer_has_funds(pubkey(), aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
-                                  ok | {error, insufficient_channel_peer_amount} .
+                                  ok | {error, insufficient_channel_peer_amount}.
 check_peer_has_funds(PeerPubKey, ChannelId, Amount, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),

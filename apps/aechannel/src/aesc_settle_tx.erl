@@ -72,7 +72,7 @@ check(#channel_settle_tx{channel_id = ChannelId,
                          nonce      = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
-         fun() -> check_channel(ChannelId, AccountPubKey, PartyPubKey, Trees) end],
+         fun() -> check_channel(ChannelId, AccountPubKey, PartyPubKey, Height, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -112,9 +112,7 @@ process(#channel_settle_tx{channel_id = ChannelId,
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount3, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount3, AccountsTree1),
 
-    Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:close(Channel0),
-    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
+    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:id(Channel0), ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
@@ -173,7 +171,7 @@ for_client(#channel_settle_tx{channel_id = ChannelId,
 %%% Internal functions
 %%%===================================================================
 
-check_channel(ChannelId, AccountPubKey, PartyPubKey, Trees) ->
+check_channel(ChannelId, AccountPubKey, PartyPubKey, Height, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
         none ->
@@ -181,14 +179,14 @@ check_channel(ChannelId, AccountPubKey, PartyPubKey, Trees) ->
         {value, Channel} ->
             Checks =
                 [fun() -> aesc_utils:check_are_peers([AccountPubKey, PartyPubKey], aesc_channels:peers(Channel)) end,
-                 fun() -> check_solo_closed(Channel) end],
+                 fun() -> check_solo_closed(Channel, Height) end],
             aeu_validation:run(Checks)
     end.
 
-check_solo_closed(Channel) ->
-    case aesc_channels:is_closed_solo(Channel) of
+check_solo_closed(Channel, Height) ->
+    case aesc_channels:is_solo_closed(Channel, Height) of
         true  -> ok;
-        false -> {error, channel_not_closing}
+        false -> {error, channel_not_closed}
     end.
 
 -spec version() -> non_neg_integer().

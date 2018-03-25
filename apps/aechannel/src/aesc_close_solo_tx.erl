@@ -95,7 +95,7 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
 
     State         = aesc_state_signed:state(aesc_state_signed:deserialize(Payload)),
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:close_solo(Channel0, State),
+    Channel1      = aesc_channels:close_solo(Channel0, State, Height),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -156,6 +156,8 @@ for_client(#channel_close_solo_tx{channel_id = ChannelId,
 %%% Internal functions
 %%%===================================================================
 
+-spec check_payload(aesc_channels:id(), pubkey(), binary(), aec_trees:trees()) ->
+                           ok | {error, term()}.
 check_payload(ChannelId, AccountPubKey, Payload, Trees) ->
     %% TODO: Catch errors in deserialization in case someone sends borked payload
     SignedState = aesc_state_signed:deserialize(Payload),
@@ -180,31 +182,9 @@ verify_signatures(SignedState) ->
     end.
 
 check_channel(ChannelId, State, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Channel} ->
-            Checks =
-                [fun() -> check_peers_equal(State, Channel) end,
-                 fun() -> check_not_closing(Channel) end],
-            aeu_validation:run(Checks)
-    end.
-
-check_peers_equal(State, Channel) ->
-    case aesc_channels:initiator(Channel) =:= aesc_state:initiator(State)
-        andalso aesc_channels:participant(Channel) =:= aesc_state:responder(State) of
-        true ->
-            ok;
-        false ->
-            {error, wrong_channel_peers}
-    end.
-
-check_not_closing(Channel) ->
-    case aesc_channels:is_solo_closing(Channel) of
-        true  -> {error, already_closing};
-        false -> ok
-    end.
+    StateInitiator   = aesc_state:initiator(State),
+    StateParticipant = aesc_state:responder(State),
+    aesc_utils:check_active_channel_exists(ChannelId, StateInitiator, StateParticipant, Trees).
 
 -spec version() -> non_neg_integer().
 version() ->

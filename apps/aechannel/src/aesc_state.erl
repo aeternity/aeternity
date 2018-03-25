@@ -16,7 +16,9 @@
 
 %% Getters
 -export([initiator/1,
+         initiator_amount/1,
          responder/1,
+         responder_amount/1,
          sequence_number/1]).
 
 %%%===================================================================
@@ -108,9 +110,17 @@ serialize_to_bin(State) ->
 initiator(#state{initiator_pubkey = InitiatorPubKey}) ->
     InitiatorPubKey.
 
+-spec initiator_amount(state()) -> amount().
+initiator_amount(#state{initiator_amount = Amount}) ->
+    Amount.
+
 -spec responder(state()) -> pubkey().
 responder(#state{responder_pubkey = ResponderPubKey}) ->
     ResponderPubKey.
+
+-spec responder_amount(state()) -> amount().
+responder_amount(#state{responder_amount = Amount}) ->
+    Amount.
 
 -spec sequence_number(state()) -> seq_number().
 sequence_number(#state{sequence_number = SeqNumber}) ->
