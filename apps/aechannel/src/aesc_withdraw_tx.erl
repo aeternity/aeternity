@@ -111,7 +111,7 @@ process(#channel_withdraw_tx{channel_id   = ChannelId,
     AccountsTree2 = aec_accounts_trees:enter(ToAccount1, AccountsTree1),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:withdraw(Channel0, Amount, FromPubKey),
+    Channel1      = aesc_channels:subtract_funds(Channel0, Amount, FromPubKey),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
@@ -119,9 +119,11 @@ process(#channel_withdraw_tx{channel_id   = ChannelId,
     {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
-accounts(#channel_withdraw_tx{from_account = FromPubKey,
-                              to_account   = ToPubKey}) ->
-    lists:usort([FromPubKey, ToPubKey]).
+accounts(#channel_withdraw_tx{to_account   = ToPubKey}) ->
+    %% Is `to_account` here enough?
+    %% Technically funds are taken from `from_account` channel balance, and they land in `to_account` balance.
+    %% So `from_account`'s channel balance is impacted only.
+    [ToPubKey].
 
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_withdraw_tx{initiator   = InitiatorPubKey,
@@ -186,10 +188,6 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
       <<"participant">>  => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
-
-%%%===================================================================
-%%% Getters
-%%%===================================================================
 
 %%%===================================================================
 %%% Internal functions
