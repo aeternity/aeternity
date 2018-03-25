@@ -40,7 +40,6 @@
 %% MP trees backend
 -export([ find_accounts_node/1
         , find_channels_node/1
-        , find_channels_cache_node/1
         , find_contracts_node/1
         , find_ns_node/1
         , find_ns_cache_node/1
@@ -48,7 +47,6 @@
         , find_oracles_cache_node/1
         , write_accounts_node/2
         , write_channels_node/2
-        , write_channels_cache_node/2
         , write_contracts_node/2
         , write_ns_node/2
         , write_ns_cache_node/2
@@ -84,7 +82,6 @@
 %% - oracle_cache
 %% - account_state
 %% - channel_state
-%% - channel_cache
 %% - name_service_state
 %% - name_service_cache
 %% - one per state tree
@@ -98,7 +95,6 @@
 -record(aec_oracle_cache       , {key, value}).
 -record(aec_oracle_state       , {key, value}).
 -record(aec_account_state      , {key, value}).
--record(aec_channel_cache      , {key, value}).
 -record(aec_channel_state      , {key, value}).
 -record(aec_name_service_cache , {key, value}).
 -record(aec_name_service_state , {key, value}).
@@ -122,7 +118,6 @@ tables(Mode) ->
    , ?TAB(aec_oracle_cache)
    , ?TAB(aec_oracle_state)
    , ?TAB(aec_account_state)
-   , ?TAB(aec_channel_cache)
    , ?TAB(aec_channel_state)
    , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
@@ -278,9 +273,6 @@ write_accounts_node(Hash, Node) ->
 write_channels_node(Hash, Node) ->
     ?t(mnesia:write(#aec_channel_state{key = Hash, value = Node})).
 
-write_channels_cache_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_channel_cache{key = Hash, value = Node})).
-
 write_contracts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_contract_state{key = Hash, value = Node})).
 
@@ -364,12 +356,6 @@ find_oracles_cache_node(Hash) ->
 find_channels_node(Hash) ->
     case ?t(mnesia:read(aec_channel_state, Hash)) of
         [#aec_channel_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-find_channels_cache_node(Hash) ->
-    case ?t(mnesia:read(aec_channel_cache, Hash)) of
-        [#aec_channel_cache{value = Node}] -> {value, Node};
         [] -> none
     end.
 

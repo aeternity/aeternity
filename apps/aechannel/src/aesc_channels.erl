@@ -9,17 +9,17 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([close/1,
-         deposit/3,
+-export([add_funds/3,
          deserialize/1,
-         is_closed_solo/1,
-         is_solo_closing/1,
+         is_active/1,
+         is_solo_closed/2,
+         is_solo_closing/2,
          new/1,
          peers/1,
          serialize/1,
-         slash/2,
-         close_solo/2,
-         withdraw/3]).
+         slash/3,
+         close_solo/3,
+         subtract_funds/3]).
 
 %% Getters
 -export([id/1,
@@ -34,24 +34,27 @@
 %%% Types
 %%%===================================================================
 
--type id()     :: binary().
--type amount() :: integer().
+-type id()         :: binary().
+-type amount()     :: integer().
+-type status()     :: 'active' | 'solo_closing'.
+-type seq_number() :: aesc_state:seq_number().
 
--record(channel, {id                 :: id(),
-                  initiator          :: pubkey(),
-                  participant        :: pubkey(),
-                  initiator_amount   :: amount(),
-                  participant_amount :: amount(),
-                  sequence_number    :: non_neg_integer(),
-                  status             :: 'active' | 'solo_closed' | 'closed',
-                  lock_period        :: non_neg_integer(),
-                  closes_at          :: 'undefined' | height()}).
+-record(channel, {id                       :: id(),
+                  initiator                :: pubkey(),
+                  participant              :: pubkey(),
+                  initiator_amount         :: amount(),
+                  participant_amount       :: amount(),
+                  sequence_number          :: seq_number(),
+                  status                   :: status(),
+                  lock_period              :: non_neg_integer(),
+                  closes_at                :: 'undefined' | height()}).
 
 -opaque channel() :: #channel{}.
 
 -type serialized() :: binary().
 
 -export_type([id/0,
+              amount/0,
               channel/0,
               serialized/0]).
 
@@ -65,24 +68,23 @@
 %%% API
 %%%===================================================================
 
--spec close(channel()) -> channel().
-close(#channel{} = Ch) ->
-    Ch#channel{status = 'closed'}.
-
--spec close_solo(channel(), aesc_state:state()) -> channel().
-close_solo(#channel{} = Ch, _State) ->
-    %% TODO: IMPLEMENT ME
-    Ch.
-
--spec deposit(channel(), amount(), pubkey()) -> channel().
-deposit(#channel{} = Channel, Amount, ToPubKey) ->
-    case initiator(Channel) =:= ToPubKey of
+-spec add_funds(channel(), amount(), pubkey()) -> channel().
+add_funds(#channel{} = Channel, Amount, PubKey) ->
+    case initiator(Channel) =:= PubKey of
         true ->
             update_initiator_amount(Channel, Amount);
         false ->
-            ToPubKey = participant(Channel),
+            PubKey = participant(Channel),
             update_participant_amount(Channel, Amount)
     end.
+
+-spec close_solo(channel(), aesc_state:state(), height()) -> channel().
+close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
+    ClosesAt = Height + LockPeriod,
+    Ch#channel{initiator_amount   = aesc_state:initiator_amount(State),
+               participant_amount = aesc_state:responder_amount(State),
+               sequence_number    = aesc_state:sequence_number(State),
+               closes_at          = ClosesAt}.
 
 -spec deserialize(binary()) -> channel().
 deserialize(Bin) ->
@@ -112,16 +114,17 @@ deserialize(Bin) ->
              lock_period        = LockPeriod,
              closes_at          = ClosesAt}.
 
--spec is_closed_solo(channel()) -> boolean().
-is_closed_solo(#channel{status = Status}) ->
-    Status =:= 'closed'.
+-spec is_active(channel()) -> boolean().
+is_active(#channel{status = Status}) ->
+    Status =:= active.
 
--spec is_solo_closing(channel()) -> boolean().
-is_solo_closing(#channel{} = Channel) ->
-    case closes_at(Channel) of
-        undefined -> false;
-        _         -> true
-    end.
+-spec is_solo_closed(channel(), height()) -> boolean().
+is_solo_closed(#channel{status = Status, closes_at = ClosesAt}, Height) ->
+    Status =:= solo_closing andalso ClosesAt =< Height.
+
+-spec is_solo_closing(channel(), height()) -> boolean().
+is_solo_closing(#channel{status = Status, closes_at = ClosesAt}, Height) ->
+    Status =:= solo_closing andalso ClosesAt > Height.
 
 -spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
 id(InitiatorPubKey, Nonce, ParticipantPubKey) ->
@@ -135,14 +138,14 @@ new(ChCTx) ->
     Id = id(aesc_create_tx:initiator(ChCTx),
             aesc_create_tx:nonce(ChCTx),
             aesc_create_tx:participant(ChCTx)),
-    #channel{id                 = Id,
-             initiator          = aesc_create_tx:initiator(ChCTx),
-             initiator_amount   = aesc_create_tx:initiator_amount(ChCTx),
-             participant        = aesc_create_tx:participant(ChCTx),
-             participant_amount = aesc_create_tx:participant_amount(ChCTx),
-             sequence_number    = 0,
-             status             = active,
-             lock_period        = aesc_create_tx:lock_period(ChCTx)}.
+    #channel{id                       = Id,
+             initiator                = aesc_create_tx:initiator(ChCTx),
+             initiator_amount         = aesc_create_tx:initiator_amount(ChCTx),
+             participant              = aesc_create_tx:participant(ChCTx),
+             participant_amount       = aesc_create_tx:participant_amount(ChCTx),
+             sequence_number          = 0,
+             status                   = active,
+             lock_period              = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(pubkey()).
 peers(#channel{} = Ch) ->
@@ -167,18 +170,21 @@ serialize(#channel{} = Ch) ->
                   #{<<"closes_at">>          => ClosesAt}
                  ]).
 
--spec slash(channel(), aesc_state:state()) -> channel().
-slash(#channel{} = Ch, _State) ->
-    %% TODO: IMPLEMENT ME
-    Ch.
+-spec slash(channel(), aesc_state:state(), height()) -> channel().
+slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
+    ClosesAt = Height + LockPeriod,
+    Ch#channel{initiator_amount   = aesc_state:initiator_amount(State),
+               participant_amount = aesc_state:responder_amount(State),
+               sequence_number    = aesc_state:sequence_number(State),
+               closes_at          = ClosesAt}.
 
--spec withdraw(channel(), amount(), pubkey()) -> channel().
-withdraw(#channel{} = Channel, Amount, FromPubKey) ->
-    case initiator(Channel) =:= FromPubKey of
+-spec subtract_funds(channel(), amount(), pubkey()) -> channel().
+subtract_funds(#channel{} = Channel, Amount, PubKey) ->
+    case initiator(Channel) =:= PubKey of
         true ->
             update_initiator_amount(Channel, -Amount);
         false ->
-            FromPubKey = participant(Channel),
+            PubKey = participant(Channel),
             update_participant_amount(Channel, -Amount)
     end.
 

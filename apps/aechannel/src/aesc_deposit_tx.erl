@@ -105,7 +105,7 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:deposit(Channel0, Amount, ToPubKey),
+    Channel1      = aesc_channels:add_funds(Channel0, Amount, ToPubKey),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -113,14 +113,16 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
     {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
-accounts(#channel_deposit_tx{from_account = FromPubKey,
-                             to_account   = ToPubKey}) ->
-    lists:usort([FromPubKey, ToPubKey]).
+accounts(#channel_deposit_tx{from_account = FromPubKey}) ->
+    %% Is `from_account` here enough?
+    %% Technically funds are taken from `from_account` balance, and they land in `to_account` channel balance.
+    %% So `to_account`'s channel balance is impacted only.
+    [FromPubKey].
 
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_deposit_tx{initiator   = InitiatorPubKey,
                             participant = ParticipantPubKey}) ->
-    %% TODO: remove initiator and participant from tx payload and verify signatures based on MPT
+    %% TODO: Maybe remove initiator and participant from tx payload and verify signatures based on MPT
     %% This compilicates not only aetx:signers/1 callback, but also aetx:accounts/1,
     %% which is used for APIs to get transaction for an accounts.
     %% Does changing that make sense?

@@ -209,12 +209,12 @@ participant_amount(#channel_create_tx{participant_amount = ParticipantAmount}) -
 %%%===================================================================
 
 -spec check_not_channel(pubkey(),non_neg_integer(), pubkey(), aec_trees:trees()) ->
-                               ok | {error, channel_already_exists}.
+                               ok | {error, channel_exists}.
 check_not_channel(InitiatorPubKey, Nonce, ParticipantPubKey, Trees) ->
-    ChannelID = aesc_channels:id(InitiatorPubKey, Nonce, ParticipantPubKey),
+    ChannelID     = aesc_channels:id(InitiatorPubKey, Nonce, ParticipantPubKey),
     ChannelsTrees = aec_trees:channels(Trees),
     case aesc_state_tree:lookup(ChannelID, ChannelsTrees) of
-        {value, _Channel} -> {error, channel_already_exists};
+        {value, _Channel} -> {error, channel_exists};
         none              -> ok
     end.
 
