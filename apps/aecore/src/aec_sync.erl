@@ -115,8 +115,8 @@ sync_in_progress(PeerId) ->
 %% the following possibilities:
 %% 1. It has worst top hash than our node, do not include in sync
 %% 2. It has better top hash than our node
-%%    We binary search for a node that we agree upon (could be genesis)
-%% We add new node to sync pool to sync agreed node upto top of new
+%%    We binary search for a block that we agree upon (could be genesis)
+%% We add new node to sync pool to sync agreed block upto top of new
 %% 1. If we are already synchronizing, we ignore it,
 %%    the ongoing sync will pick that up later
 %% 2. If we are not already synchronizing, we start doing so.

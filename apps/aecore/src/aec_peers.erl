@@ -369,7 +369,7 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
             lager:debug("Will not add peer ~p", [PeerId]),
-            {noreply, {error, blocked}, State};
+            {reply, {error, blocked}, State};
         false ->
             {Res, NewPeer} =
                 case lookup_peer(PeerId, State) of
