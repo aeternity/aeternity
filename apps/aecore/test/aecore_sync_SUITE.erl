@@ -42,8 +42,8 @@ groups() ->
     [
      {all_nodes, [sequence], [{group, two_nodes},
                               {group, three_nodes},
-                              {group, semantically_invalid_tx}
-                              %% {group, one_blocked}
+                              {group, semantically_invalid_tx},
+                              {group, one_blocked}
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -219,14 +219,26 @@ start_blocked_second(Config) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
-    T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev2, Config),
     aecore_suite_utils:connect(N2),
     timer:sleep(2000),
-    ct:log("Peers on dev1: ~p", [rpc:call(N1, aec_peers, all, [], 5000)]),
-    ct:log("Unblocked peers on dev1: ~p",
-           [rpc:call(N1, aec_peers, get_random, [10], 5000)]),
-    await_sync_abort(T0, [N1, N2]).
+
+    %% Check that there is only one non-blocked peer (dev3) and no connected peers
+    NonBlocked = rpc:call(N1, aec_peers, all, [], 5000),
+    Connected  = rpc:call(N1, aec_peers, get_random, [10], 5000),
+    ct:log("Non-blocked peers on dev1: ~p", [NonBlocked]),
+    ct:log("Connected peers on dev1: ~p", [Connected]),
+    [] = Connected,
+    [_] = NonBlocked,
+
+    %% Also check that they have different top blocks
+    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
+    B2 = rpc:call(N2, aec_chain, top_block, [], 5000),
+    true = (B1 /= B2),
+
+    %% Unblock dev2 at dev1 and check that peers sync
+    rpc:call(N1, aec_peers, unblock_all, [], 5000),
+    expect_same_top([N1, N2], 5).
 
 tx_first_pays_second(Config) ->
     tx_first_pays_second_(Config, fun(_) -> 1 end).
@@ -443,38 +455,6 @@ collect_sync_events(Nodes) ->
 check_sync_event(#{sender := From, info := Info}, Nodes) ->
     case Info of
         {E, _} when E =:= server_done; E =:= client_done ->
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
-
-await_sync_abort(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_abort_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    await_sync_abort_(Nodes1).
-
-await_sync_abort_([]) ->
-    ok;
-await_sync_abort_(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            await_sync_abort_(check_sync_abort_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in await_sync_abort: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_abort_event(#{sender := From, info := Info}, Nodes) ->
-    case Info of
-        {sync_aborted, _} ->
             lists:delete(node(From), Nodes);
         _ ->
             Nodes

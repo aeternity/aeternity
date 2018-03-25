@@ -135,7 +135,7 @@ init([]) ->
     aec_events:subscribe(tx_created),
     Peers = parse_peer_configs(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
     BlockedPeers = parse_peer_configs(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
-    [aec_peers:block_peer(P) || P <- BlockedPeers],
+    [aec_peers:block_peer(aec_peers:peer_id(P)) || P <- BlockedPeers],
     lager:debug("SYNC: add_and_ping ~p", [Peers]),
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
