@@ -94,19 +94,22 @@ process(#channel_close_mutual_tx{channel_id  = ChannelId,
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
-    InitiatorAccount0       = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
-    {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
-    AccountsTree1           = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
-
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:withdraw(Channel0, Amount, InitiatorPubKey),
-    Channel2      = aesc_channels:deposit(Channel1, Amount, ParticipantPubKey),
-    ChannelsTree1 = aesc_state_tree:enter(Channel2, ChannelsTree0),
+    Channel1      = aesc_channels:subtract_funds(Channel0, Amount, InitiatorPubKey),
+    Channel2      = aesc_channels:add_funds(Channel1, Amount, ParticipantPubKey),
 
-    %% TODO: After discussion with Sasha - close mutual should redistribute funds
-    %% and does not need settle tx. Then close the channel.
+    InitiatorAccount0         = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
+    {ok, InitiatorAccount1}   = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
+    {ok, InitiatorAccount2}   = aec_accounts:earn(InitiatorAccount1, aesc_channels:initiator_amount(Channel2), Height),
+    ParticipantAccount0       = aec_accounts_trees:get(ParticipantPubKey, AccountsTree0),
+    {ok, ParticipantAccount1} = aec_accounts:earn(ParticipantAccount0, aesc_channels:participant_amount(Channel2), Height),
 
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
+    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount2, AccountsTree0),
+    AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount1, AccountsTree1),
+
+    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:id(Channel2), ChannelsTree0),
+
+    Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
@@ -170,6 +173,8 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
 %%% Internal functions
 %%%===================================================================
 
+-spec check_peer_has_funds(pubkey(), pubkey(), aesc_channels:id(), aesc_channels:amount(), aec_trees:trees()) ->
+                                  ok | {error, insufficient_channel_peer_amount}.
 check_peer_has_funds(InitiatorPubkey, ParticipantPubKey, ChannelId, Amount, Trees) ->
     case Amount > 0 of
         true  -> aesc_utils:check_peer_has_funds(InitiatorPubkey, ChannelId, Amount, Trees);

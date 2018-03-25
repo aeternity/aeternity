@@ -8,6 +8,7 @@
 
 %% API
 -export([commit_to_db/1,
+         delete/2,
          empty/0,
          empty_with_backend/0,
          enter/2,
@@ -23,16 +24,8 @@
 
 -type chkey() :: aesc_channels:id().
 -type chvalue() :: aesc_channels:serialized().
--type chtree() :: aeu_mtrees:mtree(chkey(), chvalue()).
 
--type cache_key() :: binary(). %% Sext encoded
--type cache_value() :: binary().
--type cache() :: aeu_mtrees:mtree(cache_key(), cache_value()).
-
--record(channel_tree, {chtree = aeu_mtrees:empty() :: chtree(),
-                       cache  = aeu_mtrees:empty() :: cache()}).
-
--opaque tree() :: #channel_tree{}.
+-opaque tree() :: aeu_mtrees:mtree(chkey(), chvalue()).
 
 -export_type([tree/0]).
 
@@ -41,41 +34,38 @@
 %%%===================================================================
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#channel_tree{chtree = ChTree, cache = Cache} = Tree) ->
-    Tree#channel_tree{chtree = aeu_mtrees:commit_to_db(ChTree),
-                      cache  = aeu_mtrees:commit_to_db(Cache)}.
+commit_to_db(Tree) ->
+    aeu_mtrees:commit_to_db(Tree).
+
+-spec delete(aesc_channels:id(), tree()) -> tree().
+delete(Id, Tree) ->
+    aeu_mtrees:delete(Id, Tree).
 
 -spec empty() -> tree().
 empty() ->
-    #channel_tree{chtree = aeu_mtrees:empty(),
-                  cache  = aeu_mtrees:empty()}.
+    aeu_mtrees:empty().
 
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
-    ChTree = aeu_mtrees:empty_with_backend(aec_db_backends:channels_backend()),
-    Cache  = aeu_mtrees:empty_with_backend(aec_db_backends:channels_cache_backend()),
-    #channel_tree{chtree = ChTree,
-                  cache  = Cache}.
+    aeu_mtrees:empty_with_backend(aec_db_backends:channels_backend()).
 
 -spec enter(channel(), tree()) -> tree().
 enter(Channel, Tree) ->
     Id         = aesc_channels:id(Channel),
     Serialized = aesc_channels:serialize(Channel),
-    ChTree     = aeu_mtrees:enter(Id, Serialized, Tree#channel_tree.chtree),
-    %% TODO: update cache as well
-    Tree#channel_tree{chtree = ChTree}.
+    aeu_mtrees:enter(Id, Serialized, Tree).
 
 -spec get(aesc_channels:id(), tree()) -> aesc_channels:channel().
 get(Id, Tree) ->
-    aesc_channels:deserialize(aeu_mtrees:get(Id, Tree#channel_tree.chtree)).
+    aesc_channels:deserialize(aeu_mtrees:get(Id, Tree)).
 
 -spec lookup(aesc_channels:id(), tree()) -> {value, channel()} | none.
 lookup(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#channel_tree.chtree) of
+    case aeu_mtrees:lookup(Id, Tree) of
         {value, Val} -> {value, aesc_channels:deserialize(Val)};
         none         -> none
     end.
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-root_hash(#channel_tree{chtree = ChTree}) ->
-    aeu_mtrees:root_hash(ChTree).
+root_hash(Tree) ->
+    aeu_mtrees:root_hash(Tree).

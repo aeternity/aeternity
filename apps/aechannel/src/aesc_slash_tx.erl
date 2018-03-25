@@ -72,7 +72,7 @@ check(#channel_slash_tx{channel_id = ChannelId,
                         nonce      = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
-         fun() -> check_payload(ChannelId, AccountPubKey, Payload, Trees) end],
+         fun() -> check_payload(ChannelId, AccountPubKey, Payload, Height, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -95,7 +95,7 @@ process(#channel_slash_tx{channel_id = ChannelId,
 
     State         = aesc_state_signed:state(aesc_state_signed:deserialize(Payload)),
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:slash(Channel0, State),
+    Channel1      = aesc_channels:slash(Channel0, State, Height),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -155,7 +155,9 @@ for_client(#channel_slash_tx{channel_id = ChannelId,
 %%% Internal functions
 %%%===================================================================
 
-check_payload(ChannelId, AccountPubKey, Payload, Trees) ->
+-spec check_payload(aesc_channels:id(), pubkey(), binary(), height(), aec_trees:trees()) ->
+                           ok | {error, term()}.
+check_payload(ChannelId, AccountPubKey, Payload, Height, Trees) ->
     %% TODO: Catch errors in deserialization in case someone sends borked payload
     SignedState = aesc_state_signed:deserialize(Payload),
     State       = aesc_state_signed:state(SignedState),
@@ -163,7 +165,7 @@ check_payload(ChannelId, AccountPubKey, Payload, Trees) ->
     Checks =
         [fun() -> is_peer(AccountPubKey, Peers) end,
          fun() -> verify_signatures(SignedState) end,
-         fun() -> check_channel(ChannelId, State, Trees) end],
+         fun() -> check_channel(ChannelId, State, Height, Trees) end],
     aeu_validation:run(Checks).
 
 is_peer(AccountPubKey, Peers) ->
@@ -178,7 +180,7 @@ verify_signatures(SignedState) ->
         false -> {error, wrong_payload_signatures}
     end.
 
-check_channel(ChannelId, State, Trees) ->
+check_channel(ChannelId, State, Height, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
         none ->
@@ -186,7 +188,7 @@ check_channel(ChannelId, State, Trees) ->
         {value, Channel} ->
             Checks =
                 [fun() -> check_peers_equal(State, Channel) end,
-                 fun() -> check_closing(Channel) end,
+                 fun() -> check_solo_closing(Channel, Height) end,
                  fun() -> check_seq_number(State, Channel) end],
             aeu_validation:run(Checks)
     end.
@@ -200,8 +202,8 @@ check_peers_equal(State, Channel) ->
             {error, wrong_channel_peers}
     end.
 
-check_closing(Channel) ->
-    case aesc_channels:is_solo_closing(Channel) of
+check_solo_closing(Channel, Height) ->
+    case aesc_channels:is_solo_closing(Channel, Height) of
         true  -> ok;
         false -> {error, channel_not_closing}
     end.
