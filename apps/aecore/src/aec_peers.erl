@@ -3,18 +3,13 @@
 %%% @doc
 %%%    Module storing peers list and providing functions for peers interaction.
 %%%
-%%% API
-%%% TODO: Update the doc...
-%%% The external API takes a http_uri:uri() as input. We first check
-%%% the validity of this input by parsing it (into a peer()). Only
-%%% valid peer() data types are send to the gen_server.
+%%% The external API takes PeerInfo-map:s or PeerId:s as input. They contain,
+%%% host, port and public key either in a map or in a single binary.
 %%%
-%%% Internally, the peer() data structure is known and the gen_server is
-%%% called directly with the peer as argument.
+%%% The module keep track of all discovered peers, and their associated
+%%% peer_connections. It handles connects, disconnects, pings and newly
+%%% discovered peers.
 %%%
-%%% The parsing is performed with continuation style success and
-%%% error result continuations. The function valid_uri should only be
-%%% used internally.
 %%% @end
 %%%=============================================================================
 -module(aec_peers).
@@ -424,14 +419,15 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
             {reply, Res, metrics(State1)}
     end.
 
-handle_cast({log_ping, Ok, PeerId, _Time}, State) ->
+handle_cast({log_ping, Result, PeerId, _Time}, State) ->
     %% Log the ping and schedule another as long as we have a connection
-    update_ping_metrics(Ok),
+    update_ping_metrics(Result),
     case lookup_peer(PeerId, State) of
         none ->
             lager:debug("Reported ping event for unknown peer - ~p", [ppp(PeerId)]),
             {noreply, State};
         {value, _Hash, Peer = #peer{ connection = {connected, _PeerCon} }} ->
+            %% TODO: if a ping keeps failing we should do something?!
             Peer1 = set_ping_timeout(Peer, ping_interval()),
             {noreply, State#state{ peers = enter_peer(Peer1, State#state.peers) }};
         {value, _Hash, _Peer} ->
