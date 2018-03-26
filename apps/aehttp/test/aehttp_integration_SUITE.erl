@@ -45,7 +45,7 @@
     post_correct_blocks/1,
     post_broken_blocks/1,
     post_correct_tx/1,
-    %%post_broken_tx/1,
+    post_broken_tx/1,
     post_broken_base58_tx/1,
 
     % balances
@@ -237,7 +237,7 @@ groups() ->
         post_correct_blocks,
         post_broken_blocks,
         post_correct_tx,
-        %%post_broken_tx,
+        post_broken_tx,
         post_broken_base58_tx,
 
         % balances
@@ -1319,41 +1319,28 @@ post_correct_tx(_Config) ->
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
-%% post_broken_tx(_Config) ->
-%%     Amount = 1,
-%%     FieldsToTest =
-%%         [<<"type">>,
-%%          <<"vsn">>,
-%%          <<"sender">>,
-%%          <<"recipient">>,
-%%          <<"amount">>,
-%%          <<"fee">>,
-%%          <<"nonce">>],
-%%     {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, length(FieldsToTest)),
-%%     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
-%%     {ok, SpendTx} =
-%%         aec_spend_tx:new(
-%%           #{sender => PubKey,
-%%             recipient => random_hash(),
-%%             amount => Amount,
-%%             fee => Fee,
-%%             nonce => Nonce}),
-%%     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-%%     [T, V, SerializedTx, Sigs] = aetx_sign:serialize(SignedTx),
-%%     lists:foreach(
-%%         fun(Key) ->
-%%             BrokenTx = lists:filter(
-%%                 fun(#{Key := _}) -> true;
-%%                 (_) -> false
-%%                 end,
-%%                 SerializedTx),
-%%             EncodedBrokenTx = aec_base58c:encode(
-%%                                 transaction,
-%%                                 msgpack:pack([T, V, BrokenTx, Sigs])),
-%%             {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx)
-%%         end,
-%%         FieldsToTest),
-%%     ok.
+post_broken_tx(_Config) ->
+    Amount = 1,
+    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(Amount, 1),
+    {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender => PubKey,
+            recipient => random_hash(),
+            amount => Amount,
+            fee => Fee,
+            nonce => Nonce}),
+    {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
+    SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
+    BrokenTxBin = case SignedTxBin of
+                    <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
+                    <<0:1, Rest/bits>> -> <<1:1, Rest/bits>>
+                  end,
+    EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
+    EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx),
+    {ok, 200, _} = post_tx(EncodedSignedTx),
+    ok.
 
 post_broken_base58_tx(_Config) ->
     Amount = 1,
