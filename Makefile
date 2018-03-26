@@ -78,6 +78,11 @@ multi-clean:
 	@$(MAKE) dev2-clean
 	@$(MAKE) dev3-clean
 
+multi-distclean:
+	@$(MAKE) dev1-distclean
+	@$(MAKE) dev2-distclean
+	@$(MAKE) dev3-distclean
+
 dev1-build: KIND=dev1
 dev1-build: internal-build
 
@@ -93,6 +98,9 @@ dev1-attach: internal-attach
 dev1-clean: KIND=dev1
 dev1-clean: internal-clean
 
+dev1-distclean: KIND=dev1
+dev1-distclean: internal-distclean
+
 dev2-start: KIND=dev2
 dev2-start: internal-start
 
@@ -105,6 +113,9 @@ dev2-attach: internal-attach
 dev2-clean: KIND=dev2
 dev2-clean: internal-clean
 
+dev2-distclean: KIND=dev2
+dev2-distclean: internal-distclean
+
 dev3-start: KIND=dev3
 dev3-start: internal-start
 
@@ -116,6 +127,9 @@ dev3-attach: internal-attach
 
 dev3-clean: KIND=dev3
 dev3-clean: internal-clean
+
+dev3-distclean: KIND=dev3
+dev3-distclean: internal-distclean
 
 dialyzer-install:
 	@./rebar3 tree
@@ -210,15 +224,20 @@ clean:
 	@./rebar3 clean
 	( cd apps/aering/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
-	@rm -rf _build/
+	@$(MAKE) multi-distclean
+	@rm -rf _build/test _build/prod _build/local
+	@rm -rf _build/default/plugins
+	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
 	( cd otp_patches && $(MAKE) distclean; )
 	( cd $(HTTP_APP) && $(MAKE) distclean; )
+	@rm -rf _build/
 
 multi-build: dev1-build
-	@rm -rf _build/dev2 _build/dev3
+	@$(MAKE) dev2-distclean
+	@$(MAKE) dev3-distclean
 	@for x in dev2 dev3; do \
 		cp -R _build/dev1 _build/$$x; \
 		cp config/$$x/sys.config _build/$$x/rel/epoch/releases/$(VER)/sys.config; \
@@ -253,16 +272,18 @@ internal-clean: $$(KIND)
 	@rm -rf ./_build/$(KIND)/rel/epoch/data/mnesia
 	@rm -rf ./_build/$(KIND)/rel/*/log/*
 
+internal-distclean: $$(KIND)
+	@rm -rf ./_build/$(KIND)
 
 
 .PHONY: \
 	all console \
 	local-build local-start local-stop local-attach \
 	prod-build prod-start prod-stop prod-attach prod-package prod-compile-deps \
-	multi-build multi-start multi-stop multi-clean \
-	dev1-start dev1-stop dev1-attach dev1-clean \
-	dev2-start dev2-stop dev2-attach dev2-clean \
-	dev3-start dev3-stop dev3-attach dev3-clean \
+	multi-build multi-start multi-stop multi-clean multi-distclean \
+	dev1-start dev1-stop dev1-attach dev1-clean dev1-distclean \
+	dev2-start dev2-stop dev2-attach dev2-clean dev2-distclean \
+	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
 	test aevm-test-deps\
