@@ -151,8 +151,17 @@ eunit:
 
 all-tests: eunit test
 
-system-test:
+system-test: | system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup.tar
 	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs $(CT_TEST_FLAGS)
+
+system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup.tar: system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup
+	tar -c -C $(<D) -f $@ $(<F)
+
+system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup: system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup.gz
+	zcat <$< >$@
+
+system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup.gz:
+	curl -fsS --create-dirs -o $@ https://5196-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/ae-uat-epoch-n2/tmp/mnesia_ae-uat-epoch-n2_db_backup_1521936102.gz
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm

@@ -47,3 +47,4 @@ swagger/swagger-codegen-cli-*.jar
 .virtualenv/
 *.retry
 system_test/logs
+system_test/aest_fork_SUITE_data/mnesia_ae-uat-epoch_backup*
