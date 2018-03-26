@@ -7,8 +7,6 @@
          symbol_name/1
         ]).
 
--include("aeso_ast.hrl").
-
 symbol(Line, Chars) -> {symbol, Line, Chars}.
 int(Line, Int) -> {'Int', Line, Int}.
 
@@ -19,5 +17,4 @@ symbol_name({symbol, _, Name}) -> Name.
 pp(Ast) ->
     %% TODO: Actually do *Pretty* printing.
     io:format("~p~n", [Ast]).
-    
-    
+
