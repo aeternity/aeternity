@@ -180,9 +180,9 @@ deserialize(?ORACLE_QUERY_TX_VSN,
             , {query, Query}
             , {query_fee, QueryFee}
             , {query_ttl_type, QueryTTLType0}
-            , {query_ttl_type, QueryTTLValue}
+            , {query_ttl_value, QueryTTLValue}
             , {response_ttl_type, ?ttl_delta_int}
-            , {response_ttl_type, ResponseTTLValue}
+            , {response_ttl_value, ResponseTTLValue}
             , {fee, Fee}]) ->
     QueryTTLType = case QueryTTLType0 of
                        ?ttl_delta_int -> ?ttl_delta_atom;
