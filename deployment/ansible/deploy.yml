@@ -41,6 +41,13 @@
         external:
           peer_address: http://{{ ansible_default_ipv4.address }}:3013/
           port: 3013
+        internal:
+          listen_address: "{{ api_internal_listen_address|default('127.0.0.1') }}"
+          port: 3113
+      websocket:
+        internal:
+          listen_address: "{{ ws_internal_listen_address|default('127.0.0.1') }}"
+          port: 3114
       chain:
         persist: true
         db_path: "./db41"
@@ -51,6 +58,10 @@
         level: "{{ log_level|default('error') }}"
       mining:
         expected_mine_rate: "{{ expected_mine_rate|default(300000) }}"
+        cuckoo:
+          miner:
+            executable: "{{ miner_executable|default('lean28') }}"
+            node_bits: "{{ miner_node_bits|default(28) }}"
     api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
   tasks:

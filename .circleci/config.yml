@@ -386,6 +386,12 @@ jobs:
       - DEPLOY_ENV: uat
     steps: *deploy_steps
 
+  deploy_fast_integration:
+    <<: *container_config
+    environment:
+      - DEPLOY_ENV: fast_integration
+    steps: *deploy_steps
+
   github_release_osx:
     <<: *container_config
     steps:
@@ -603,3 +609,23 @@ workflows:
                 - master
     jobs:
       - uat_chain_snapshot
+
+  nightly_fast_integration_deploy:
+    triggers:
+      - schedule:
+          cron: "0 23 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - deploy_fast_integration:
+          requires:
+            - test
+            - eunit
+            - uat_tests
+            - static_analysis
+            - linux_package
+          filters:
+            branches:
+              only: master
