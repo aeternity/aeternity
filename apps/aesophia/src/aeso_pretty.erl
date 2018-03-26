@@ -213,6 +213,9 @@ type({app_t, _, Type, Args}) ->
 type({tuple_t, _, Args}) ->
     tuple_type(Args);
 type(T = {id, _, _})   -> name(T);
+type(T = {qid, _, _})  -> name(T);
+type(T = {con, _, _})  -> name(T);
+type(T = {qcon, _, _}) -> name(T);
 type(T = {tvar, _, _}) -> name(T).
 
 -spec tuple_type([aeso_syntax:type()]) -> doc().

@@ -56,7 +56,9 @@
 -type type() :: {fun_t, ann(), [type()], type()}
               | {app_t, ann(), type(), [type()]}
               | {tuple_t, ann(), [type()]}
-              | id() | tvar().
+              | id()  | qid()
+              | con() | qcon()  %% contracts
+              | tvar().
 
 -type constant()
     :: {int, ann(), integer()}
