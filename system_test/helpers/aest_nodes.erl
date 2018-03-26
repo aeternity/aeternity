@@ -17,6 +17,8 @@
 -export([start_node/2]).
 -export([stop_node/3]).
 -export([kill_node/2]).
+-export([extract_archive/4]).
+-export([run_cmd_in_node_dir/3]).
 -export([get_service_address/3]).
 -export([http_get/5]).
 
@@ -143,6 +145,12 @@ stop_node(NodeName, Timeout, Ctx) ->
 kill_node(NodeName, Ctx) ->
     call(ctx2pid(Ctx), {kill_node, NodeName}).
 
+extract_archive(NodeName, Path, Archive, Ctx) ->
+    call(ctx2pid(Ctx), {extract_archive, NodeName, Path, Archive}).
+
+run_cmd_in_node_dir(NodeName, Cmd, Ctx) ->
+    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd}).
+
 %% @doc Retrieves the address of a given node's service.
 -spec get_service_address(atom(), node_service(), test_ctx()) -> binary().
 get_service_address(NodeName, Service, Ctx) ->
@@ -223,6 +231,11 @@ handlex({stop_node, NodeName, Timeout}, _From, State) ->
     {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
 handlex({kill_node, NodeName}, _From, State) ->
     {reply, ok, mgr_kill_node(NodeName, State)};
+handlex({extract_archive, NodeName, Path, Archive}, _From, State) ->
+    {reply, ok, mgr_extract_archive(NodeName, Path, Archive, State)};
+handlex({run_cmd_in_node_dir, NodeName, Cmd}, _From, State) ->
+    {ok, Reply, NewState} = mgr_run_cmd_in_node_dir(NodeName, Cmd, State),
+    {reply, Reply, NewState};
 handlex(dump_logs, _From, State) ->
     ok = mgr_dump_logs(State),
     {reply, ok, State};
@@ -323,6 +336,7 @@ url(Base, Item, QS) ->
     url(Base, [Item], QS).
 
 to_binary(Term) when is_atom(Term) -> atom_to_binary(Term, utf8);
+to_binary(Term) when is_integer(Term) -> integer_to_binary(Term);
 to_binary(Term)                    -> Term.
 
 hackney_json_body(ClientRef) ->
@@ -411,6 +425,16 @@ mgr_kill_node(NodeName, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     NodeState2 = Mod:kill_node(NodeState),
     State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
+
+mgr_extract_archive(NodeName, Path, Archive, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    NodeState2 = Mod:extract_archive(NodeState, Path, Archive),
+    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
+
+mgr_run_cmd_in_node_dir(NodeName, Cmd, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    {ok, Result, NodeState2} = Mod:run_cmd_in_node_dir(NodeState, Cmd),
+    {ok, Result, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}}.
 
 mgr_safe_stop_backends(#{backends := Backends} = State) ->
     maps:map(fun(Mod, BackendState) ->

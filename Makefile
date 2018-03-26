@@ -152,7 +152,18 @@ eunit:
 all-tests: eunit test
 
 system-test:
-	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs $(CT_TEST_FLAGS)
+	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg $(CT_TEST_FLAGS)
+
+system-test-deps: | system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar ;
+
+system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup
+	tar -c -C $(<D) -f $@ $(<F)
+
+system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz
+	zcat <$< >$@
+
+system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz:
+	curl -fsS --create-dirs -o $@ https://6798-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp/mnesia_ip-172-31-36-149_db_backup_1523145687.gz
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
@@ -228,7 +239,7 @@ clean:
 	( cd apps/aering/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
-	@rm -rf _build/system_test+test _build/system_test system_test/logs _build/test _build/prod _build/local
+	@rm -rf _build/system_test+test _build/system_test system_test/aest_hard_fork_SUITE_data/db system_test/logs _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
@@ -289,7 +300,7 @@ internal-distclean: $$(KIND)
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
-	test system-test aevm-test-deps\
+	test system-test system-test-deps aevm-test-deps\
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check \

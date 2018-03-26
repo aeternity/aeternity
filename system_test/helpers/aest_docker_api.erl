@@ -18,6 +18,7 @@
 -export([kill_container/1]).
 -export([inspect/1]).
 -export([exec/3]).
+-export([extract_archive/3]).
 -export([container_logs/1]).
 
 %=== MACROS ====================================================================
@@ -150,6 +151,17 @@ exec(ID, Cmd, Opts) ->
             end
     end.
 
+extract_archive(ID, Path, Archive) ->
+    Query = #{<<"path">> => list_to_binary(Path)},
+    case docker_put([containers, ID, archive], Query, Archive) of
+        {ok, 200, _} -> ok;
+        {ok, Status, Response} when is_integer(Status),
+                                    400 =< Status, Status < 500 ->
+            throw({client_error, Status, maps:get(message, Response)});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
+    end.
+
 container_logs(ID) ->
     Query = #{<<"stderr">> => <<"true">>, <<"stdout">> => <<"true">>},
     case docker_get([containers, ID, logs], Query, #{result_type => raw}) of
@@ -263,6 +275,20 @@ docker_post(Path, Query, BodyObj, Opts) ->
     ReqRes = hackney:request(post, url(Path, Query), Headers, BodyJSON,
                              [{recv_timeout, Timeout}]),
     case ReqRes of
+        {error, _Reason} = Error -> Error;
+        {ok, Status, _RespHeaders, ClientRef} ->
+            case docker_fetch_json_body(ClientRef, ResultType) of
+                {error, _Reason} = Error -> Error;
+                {ok, Response} -> {ok, Status, Response}
+            end
+    end.
+
+docker_put(Path, Query, Body) -> docker_put(Path, Query, Body, #{}).
+
+docker_put(Path, Query, Body, Opts) ->
+    ResultType = maps:get(result_type, Opts, json),
+    %% Content type?
+    case hackney:request(put, url(Path, Query), [], Body, []) of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
             case docker_fetch_json_body(ClientRef, ResultType) of
