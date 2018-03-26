@@ -2678,26 +2678,30 @@ definitions:
     properties:
       calldata:
         type: string
+  Peer:
+    type: object
+    properties:
+      host:
+        type: string
+        description: 'Peer''s hostname/IP'
+      port:
+        type: integer
+      pubkey:
+        type: string
+        description: 'Base58 check encoded public key of the peer'
   Peers:
     type: object
     properties:
       peers:
         type: array
-        description: All connected peers
+        description: All discovered peers
         items:
-          type: object
-          properties:
-            uri:
-              type: string
-              description: 'Peer''s URI'
-            last_seen:
-              type: integer
-              description: 'Timestamp of last message. If none - 0'
+            $ref: '#/definitions/Peer'
       blocked:
         type: array
         description: All blocked peers
         items:
-          type: string
+            $ref: '#/definitions/Peer'
   ContractCreateData:
     type: object
     properties:

@@ -3307,32 +3307,63 @@
         "calldata" : "calldata"
       }
     },
+    "Peer" : {
+      "type" : "object",
+      "properties" : {
+        "host" : {
+          "type" : "string",
+          "description" : "Peer's hostname/IP"
+        },
+        "port" : {
+          "type" : "integer"
+        },
+        "pubkey" : {
+          "type" : "string",
+          "description" : "Base58 check encoded public key of the peer"
+        }
+      },
+      "example" : {
+        "port" : 0,
+        "host" : "host",
+        "pubkey" : "pubkey"
+      }
+    },
     "Peers" : {
       "type" : "object",
       "properties" : {
         "peers" : {
           "type" : "array",
-          "description" : "All connected peers",
+          "description" : "All discovered peers",
           "items" : {
-            "$ref" : "#/definitions/Peers_peers"
+            "$ref" : "#/definitions/Peer"
           }
         },
         "blocked" : {
           "type" : "array",
           "description" : "All blocked peers",
           "items" : {
-            "type" : "string"
+            "$ref" : "#/definitions/Peer"
           }
         }
       },
       "example" : {
-        "blocked" : [ "blocked", "blocked" ],
-        "peers" : [ {
-          "last_seen" : 0,
-          "uri" : "uri"
+        "blocked" : [ {
+          "port" : 0,
+          "host" : "host",
+          "pubkey" : "pubkey"
         }, {
-          "last_seen" : 0,
-          "uri" : "uri"
+          "port" : 0,
+          "host" : "host",
+          "pubkey" : "pubkey"
+        } ],
+        "peers" : [ {
+          "port" : 0,
+          "host" : "host",
+          "pubkey" : "pubkey"
+        }, {
+          "port" : 0,
+          "host" : "host",
+          "pubkey" : "pubkey"
         } ]
       }
     },
@@ -3602,22 +3633,6 @@
           "type" : "integer",
           "format" : "int64"
         }
-      }
-    },
-    "Peers_peers" : {
-      "properties" : {
-        "uri" : {
-          "type" : "string",
-          "description" : "Peer's URI"
-        },
-        "last_seen" : {
-          "type" : "integer",
-          "description" : "Timestamp of last message. If none - 0"
-        }
-      },
-      "example" : {
-        "last_seen" : 0,
-        "uri" : "uri"
       }
     }
   },

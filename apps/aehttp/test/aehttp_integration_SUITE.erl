@@ -2740,17 +2740,17 @@ peers(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
     {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
 
+    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
+    {ok, 200, #{<<"blocked">> := [], <<"peers">> := Peers}} = get_peers(),
+
+    [<<"host">>, <<"port">>, <<"pubkey">>] =
+      lists:sort(maps:keys(hd(Peers))),
+
     %% ensure no peers
     lists:foreach(
         fun(Peer) -> rpc(aec_peers, remove, [Peer]) end,
         rpc(aec_peers, all, [])),
 
-    %% ensure no blocked
-    lists:foreach(
-        fun(Blocked) -> rpc(aec_peers, unblock, [Blocked]) end,
-        rpc(aec_peers, blocked, [])),
-
-    rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := []}} = get_peers(),
 
     ok.

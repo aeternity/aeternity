@@ -7,8 +7,7 @@ import time
 from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
 import common
 from waiting import wait
-from swagger_client.models.ping import Ping 
-from swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.peers import Peers
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -174,21 +173,13 @@ def test_node_discovery():
     common.wait_until_height(carol_api, alice_top.height)
     assert_equals(carol_api.get_block_by_hash(alice_top.hash).height, alice_top.height)
 
-    # TODO: Replace this with a call to Peers instead?!
     # Check that Carol discovers Alice as a peer
-    # gen_hash = common.genesis_hash(carol_api)
-    # ping_obj = Ping(source="http://localhost:1234",
-    #                 genesis_hash=gen_hash,
-    #                 best_hash=gen_hash,
-    #                 difficulty=1,
-    #                 share=32, # expected peer list is small
-    #                 peers=[])
-    # def carol_peers():
-    #     ps = [p.encode('utf-8') for p in carol_api.ping(ping_obj).peers]
-    #     print("Carol now has peers " + str(ps))
-    #     return ps
-    # wait(lambda: common.is_among_peers(alice_peer_url, carol_peers()),
-    #      timeout_seconds=120, sleep_seconds=0.25)
+    carol_int_api = common.internal_api(carol_node)
+    def carol_peer_ports():
+        ports = [p.port for p in carol_int_api.get_peers().peers]
+        print("Ports: " + str(ports))
+        return ports
+    wait(lambda: 3015 in carol_peer_ports(), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -222,7 +213,7 @@ def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, min
                       ' {keys_dir, "' + key_dir + '"}, ' + \
                       ' {password, <<"top secret">>}, ' + \
                       mining_str + ']},' +\
-          '{aehttp, [{local_peer_address, "' + node_url + '"}]}].'
+          '{aehttp, [{enable_debug_endpoints, true}, {local_peer_address, "' + node_url + '"}]}].'
     f.write(conf)
     f.close()
     return sys_config
