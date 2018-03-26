@@ -29,6 +29,7 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
+-define(MSG_FRAGMENT, 0).
 -define(MSG_PING, 1).
 -define(MSG_PING_RSP, 2).
 -define(MSG_GET_HEADER_BY_HASH, 3).
@@ -198,12 +199,7 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
     end;
 handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid}}) ->
     lager:debug("ZZPC: failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
-    case aec_peers:connect_fail(peer_id(S), self()) of
-        keep ->
-            {noreply, S#{ status := error }};
-        close ->
-            {stop, normal, S}
-    end;
+    connect_fail(S);
 handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
     S = #{ version := Version, genesis := Genesis,
        seckey := SecKey, pubkey := PubKey, r_pubkey := RemotePub } = ensure_genesis(S0),
@@ -230,12 +226,11 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
             %% Maybe instead report permanent fail + block?!
             lager:debug("ZZPC: eniose:connect() failed", []),
             gen_tcp:close(TcpSock),
-            case aec_peers:connect_fail(peer_id(S), self()) of
-                keep  -> {noreply, S#{ status := error }};
-                close -> {stop, normal, S}
-            end
+            connect_fail(S)
     end;
 
+handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
+    handle_fragment(S, N, M, Fragment);
 handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     {ok, Msg} = msgpack:unpack(Payload),
     S1 = handle_msg(S, Type, Msg),
@@ -246,12 +241,7 @@ handle_info({tcp_closed, _}, S) ->
         true ->
             {stop, normal, S};
         false ->
-            case aec_peers:connect_fail(peer_id(S), self()) of
-                keep ->
-                    {noreply, S#{ status := error }};
-                close ->
-                    {stop, normal, S}
-            end
+            connect_fail(S)
     end;
 handle_info(Msg, S) ->
     lager:debug("ZZPC: unexpected message ~p", [Msg]),
@@ -315,6 +305,28 @@ close_connection(State) ->
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
         _                         -> ok
     end.
+
+connect_fail(S) ->
+    case aec_peers:connect_fail(peer_id(S), self()) of
+        keep ->
+            {noreply, S#{ status := error }};
+        close ->
+            {stop, normal, S}
+    end.
+
+handle_fragment(S, 1, M, Fragment) ->
+    lager:debug("ZZPC: first fragment of (~p)", [M]),
+    {noreply, S#{ fragments => [Fragment] }};
+handle_fragment(S = #{ fragments := Fragments }, M, M, Fragment) ->
+    Msg = list_to_binary(lists:reverse([Fragment | Fragments])),
+    self() ! {noise, unused, Msg},
+    {noreply, maps:remove(fragments, S)};
+handle_fragment(S = #{ fragments := Fragments }, N, _M, Fragment) when N == length(Fragments) + 1 ->
+    {noreply, S#{ fragments := [Fragment | Fragments] }};
+handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
+    lager:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
+    close_connection(S),
+    connect_fail(maps:remove(fragments, S)).
 
 handle_msg(S, ?MSG_PING, PingObj) ->
     handle_ping(S, get_request(S, ping), PingObj);
@@ -812,13 +824,39 @@ handle_send_tx_rsp(S, {send_tx, From}, MsgObj) ->
     end,
     drop_request(S, send_tx).
 
-
+%% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
-    enoise:send(ESock, <<Type:16, Msg/binary>>);
+    do_send(ESock, <<Type:16, Msg/binary>>);
 send_msg(#{ status := {connected, ESock} }, Type, Msg0) ->
     Msg = <<Type:16, (msgpack:pack(Msg0))/binary>>,
-    enoise:send(ESock, Msg).
+    do_send(ESock, Msg).
 
+%% If the message is more than 65533 bytes it won't fit in a single Noise
+%% message and we need to fragment it.
+%%
+%% Fragments have the format <<?MSG_FRAGMENT:16, N:16, M:16,
+%% PayLoad:65529/binary>> (where the last fragment has a smaller Payload),
+%% saying that this is fragment N out of M fragments.
+%%
+%% For testing purpose - set the max packet size to 16#FF while testing
+
+-ifndef(TEST).
+-define(MAX_PACKET_SIZE, 16#FFFF).
+-else.
+-define(MAX_PACKET_SIZE, 16#1FF).
+-endif.
+-define(FRAGMENT_SIZE, (?MAX_PACKET_SIZE - 6)).
+do_send(ESock, Msg) when byte_size(Msg) < ?MAX_PACKET_SIZE - 2 ->
+    enoise:send(ESock, Msg);
+do_send(ESock, Msg) ->
+    NChunks = (?FRAGMENT_SIZE + byte_size(Msg) - 1) div ?FRAGMENT_SIZE,
+    send_chunks(ESock, 1, NChunks, Msg).
+
+send_chunks(ESock, M, M, Msg) ->
+    enoise:send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
+send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
+    enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
+    send_chunks(ESock, N + 1, M, Rest).
 
 peer_id(#{ r_pubkey := PK, host := H, port := P }) when is_binary(H) ->
     <<PK/binary, P:16, H/binary>>;
