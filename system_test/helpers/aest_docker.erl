@@ -11,6 +11,8 @@
 -export([stop_node/1, stop_node/2]).
 -export([kill_node/1]).
 -export([node_logs/1]).
+-export([extract_archive/3]).
+-export([run_cmd_in_node_dir/2]).
 -export([get_service_address/2]).
 
 %=== MACROS ====================================================================
@@ -200,6 +202,18 @@ kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
 
 node_logs(#{container_id := ID} = _NodeState) ->
     aest_docker_api:container_logs(ID).
+
+extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archive) ->
+    ok = aest_docker_api:extract_archive(ID, Path, Archive),
+    log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
+    NodeState.
+
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
+    log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
+    Cmd1 = lists:flatten(io_lib:format("docker exec ~s ~s", [ID, lists:join($ , Cmd)])),
+    Result = lib:nonl(os:cmd(Cmd1)),
+    log(NodeState, "Run command ~p on container ~p [~s] with result ~p", [Cmd, Name, ID, Result]),
+    {ok, Result, NodeState}.
 
 -spec get_service_address(node_state(), service_label()) -> binary().
 get_service_address(Service, NodeState) ->

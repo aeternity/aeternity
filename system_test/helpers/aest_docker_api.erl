@@ -17,6 +17,7 @@
 -export([stop_container/2]).
 -export([kill_container/1]).
 -export([inspect/1]).
+-export([extract_archive/3]).
 -export([container_logs/1]).
 
 %=== MACROS ====================================================================
@@ -111,6 +112,17 @@ kill_container(ID) ->
 inspect(ID) ->
     {ok, 200, Info} = docker_get([containers, ID, json]),
     Info.
+
+extract_archive(ID, Path, Archive) ->
+    Query = #{<<"path">> => list_to_binary(Path)},
+    case docker_put_raw([containers, ID, archive], Query, Archive) of
+        {ok, 200, _} -> ok;
+        {ok, Status, Response} when is_integer(Status),
+                                    400 =< Status, Status < 500 ->
+            throw({client_error, Status, maps:get(message, Response)});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
+    end.
 
 container_logs(ID) ->
     Query = #{<<"stderr">> => <<"true">>, <<"stdout">> => <<"true">>},
@@ -213,6 +225,16 @@ docker_post(Path, Query, BodyObj, Timeout) ->
     BodyJSON = encode(BodyObj),
     Headers = [{<<"Content-Type">>, <<"application/json">>}],
     case hackney:request(post, url(Path, Query), Headers, BodyJSON, [{recv_timeout, Timeout}]) of
+        {error, _Reason} = Error -> Error;
+        {ok, Status, _RespHeaders, ClientRef} ->
+            case docker_fetch_json_body(ClientRef) of
+                {error, _Reason} = Error -> Error;
+                {ok, Response} -> {ok, Status, Response}
+            end
+    end.
+
+docker_put_raw(Path, Query, Body) -> %% TODO Content type?
+    case hackney:request(put, url(Path, Query), [], Body, []) of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
             case docker_fetch_json_body(ClientRef) of
