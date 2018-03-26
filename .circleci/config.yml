@@ -311,6 +311,7 @@ jobs:
     <<: *container_config
     steps:
       - checkout
+      - *merge_checkout
       - *setup_remote_docker
       - *install_docker_client
       - run:
