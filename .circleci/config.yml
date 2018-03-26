@@ -378,6 +378,10 @@ jobs:
       - *setup_remote_docker
       - *install_docker_client
       - *docker_system_tests
+      - store_test_results:
+          path: system_test/logs
+      - store_artifacts:
+          path: system_test/logs
 
   docker_system_tests_dev:
     <<: *container_config
@@ -386,6 +390,10 @@ jobs:
       - *setup_remote_docker
       - *install_docker_client
       - *docker_system_tests
+      - store_test_results:
+          path: system_test/logs
+      - store_artifacts:
+          path: system_test/logs
 
   docker_system_tests_tag:
     <<: *container_config
@@ -394,6 +402,10 @@ jobs:
       - *setup_remote_docker
       - *install_docker_client
       - *docker_system_tests
+      - store_test_results:
+          path: system_test/logs
+      - store_artifacts:
+          path: system_test/logs
 
   uat_chain_snapshot:
     <<: *container_config
