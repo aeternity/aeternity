@@ -137,6 +137,12 @@ references:
           owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
           tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
+  docker_system_tests: &docker_system_tests
+    run:
+      name: System Tests
+      command: |
+        make system-test
+
 jobs:
   build:
     <<: *container_config
@@ -307,7 +313,7 @@ jobs:
           path: _build/dev3/rel/epoch/log
           destination: node3/
 
-  docker_image_build:
+  docker_image_build_local:
     <<: *container_config
     steps:
       - checkout
@@ -315,36 +321,79 @@ jobs:
       - *setup_remote_docker
       - *install_docker_client
       - run:
-          name: Build Docker image
+          name: Build and tag Docker image
           command: |
-            ~/bin/docker build .
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:local .
 
-  docker_push_tag:
+  docker_image_build_dev:
     <<: *container_config
     steps:
       - checkout
       - *setup_remote_docker
       - *install_docker_client
       - run:
-          name: Build and push Docker image to DockerHub
+          name: Build and tag Docker image
+          command: |
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev ${DOCKERHUB_REPO:?}:local .
+
+  docker_image_build_tag:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - run:
+          name: Build and tag Docker image
+          command: |
+            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest ${DOCKERHUB_REPO:?}:local .
+
+  docker_push_tag:
+    <<: *container_config
+    steps:
+      - *setup_remote_docker
+      - *install_docker_client
+      - run:
+          name: Push Docker image to DockerHub
           command: |
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} -t ${DOCKERHUB_REPO:?}:latest .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
             ~/bin/docker push ${DOCKERHUB_REPO:?}:latest
 
   docker_push_dev:
     <<: *container_config
     steps:
-      - checkout
       - *setup_remote_docker
       - *install_docker_client
       - run:
-          name: Build and push Docker image to DockerHub
+          name: Push Docker image to DockerHub
           command: |
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
-            ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
+
+  docker_system_tests_local:
+    <<: *container_config
+    steps:
+      - checkout
+      - *merge_checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - *docker_system_tests
+
+  docker_system_tests_dev:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - *docker_system_tests
+
+  docker_system_tests_tag:
+    <<: *container_config
+    steps:
+      - checkout
+      - *setup_remote_docker
+      - *install_docker_client
+      - *docker_system_tests
 
   uat_chain_snapshot:
     <<: *container_config
@@ -419,7 +468,17 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - docker_image_build:
+      - docker_image_build_local:
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+                - master
+
+      - docker_system_tests_local:
+          requires:
+            - docker_image_build_local
           filters:
             branches:
               ignore:
@@ -499,12 +558,25 @@ workflows:
             branches:
               only: master
 
+      - docker_image_build_dev:
+          filters:
+            branches:
+              only: master
+
+      - docker_system_tests_dev:
+          requires:
+            - docker_image_build_dev
+          filters:
+            branches:
+              only: master
+
       - docker_push_dev:
           requires:
             - test
             - eunit
             - uat_tests
             - static_analysis
+            - docker_system_tests_dev
           filters:
             branches:
               only: master
@@ -570,11 +642,28 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - docker_image_build_tag:
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
+      - docker_system_tests_tag:
+          requires:
+            - docker_image_build_tag
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*$/
+
       - docker_push_tag:
           requires:
             - test
             - eunit
             - static_analysis
+            - docker_system_tests_tag
             - hodl
           filters:
             branches:
