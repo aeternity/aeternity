@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aec_peer_connection_listener).
 
--define(DEFAULT_SYNC_PORT, 3099).
-
 -export([start_link/0, stop/0]).
 
 start_link() ->
@@ -23,7 +21,7 @@ pc_listener() ->
     {_Scheme, Host, _Port} = aeu_env:local_peer(),
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
-    Port = aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT),
+    Port = aec_peers:sync_port(),
     lager:info("Starting peer_connection_listener at port ~p", [Port]),
     {ok, LSock} = gen_tcp:listen(Port, [{active, false}, binary, {reuseaddr, true}]),
     pc_listener(LSock, #{ seckey => SecKey, pubkey => PubKey, local_host => Host, local_port => Port }).
@@ -46,9 +44,6 @@ acceptor(Parent, LSock) ->
     Res = gen_tcp:accept(LSock),
     case Res of
         {ok, Sock} ->
-            LPort = aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT),
-            {ok, {Host, Port}} = inet:peername(Sock),
-            lager:debug("ZZPC: port ~p got tcp_connect ~p from ~p", [LPort, Sock, {Host, Port}]),
             ok = gen_tcp:controlling_process(Sock, Parent);
         {error, _} -> ok
     end,

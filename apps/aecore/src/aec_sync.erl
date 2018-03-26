@@ -9,6 +9,7 @@
 -behaviour(gen_server).
 
 -import(aeu_debug, [pp/1]).
+-import(aec_peers, [ppp/1]).
 
 %% API
 -export([connect_peer/1,
@@ -133,10 +134,11 @@ init([]) ->
     aec_events:subscribe(block_created),
     aec_events:subscribe(top_changed),
     aec_events:subscribe(tx_created),
+
     Peers = parse_peer_configs(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
     BlockedPeers = parse_peer_configs(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
+
     [aec_peers:block_peer(aec_peers:peer_id(P)) || P <- BlockedPeers],
-    lager:debug("SYNC: add_and_ping ~p", [Peers]),
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
@@ -196,7 +198,7 @@ handle_call({fetch_next, PeerId, HeightIn, HashIn, Result}, _, State) ->
             case [ {H, Hash} || {{H, Hash}, Map} <- NewHashPool, not maps:is_key(block, Map) ] of
                 [] ->
                     %% The peer is behaving weird
-                    lager:info("weird peer behaviour ~p at height ~p", [ PeerId, NewHeight ]),
+                    lager:info("weird peer behaviour ~p at height ~p", [ppp(PeerId), NewHeight]),
                     NewSyncPool = lists:keydelete(PeerId, #sync_peer.peer, State#state.sync_pool),
                     {reply, {error, sync_stopped},
                      State#state{hash_pool = NewHashPool, sync_pool = NewSyncPool}};
@@ -219,14 +221,14 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% opens up for an attack in which someone fakes to have higher difficulty
     jobs:enqueue(sync_jobs, {start_sync, PeerId, RemoteHash}),
     {noreply, State};
-handle_cast({server_get_missing, Uri}, State) ->
-    jobs:enqueue(sync_jobs, {server_get_missing, Uri}),
+handle_cast({server_get_missing, PeerId}, State) ->
+    jobs:enqueue(sync_jobs, {server_get_missing, PeerId}),
     {noreply, State};
-handle_cast({fetch_mempool, Uri}, State) ->
-    jobs:enqueue(sync_jobs, {fetch_mempool, Uri}),
+handle_cast({fetch_mempool, PeerId}, State) ->
+    jobs:enqueue(sync_jobs, {fetch_mempool, PeerId}),
     {noreply, State};
-handle_cast({schedule_ping, Uri}, State) ->
-    jobs:enqueue(sync_jobs, {ping, Uri}),
+handle_cast({schedule_ping, PeerId}, State) ->
+    jobs:enqueue(sync_jobs, {ping, PeerId}),
     {noreply, State};
 handle_cast({delete_from_pool, PeerId}, State) ->
     %% This PeerId misbehaved, even if we got a new Ping in-between asking for deletion and
@@ -368,47 +370,29 @@ process_job([{_T, Job}]) ->
             do_forward_block(Block, PeerId);
         {forward, #{tx := Tx}, PeerId} ->
             do_forward_tx(Tx, PeerId);
-        {start_sync, Uri, RemoteHash} ->
-            case sync_in_progress(Uri) of
-              false -> do_start_sync(Uri, RemoteHash);
-              _     -> lager:info("sync already in progress ~p", [Uri])
+        {start_sync, PeerId, RemoteHash} ->
+            case sync_in_progress(PeerId) of
+              false -> do_start_sync(PeerId, RemoteHash);
+              _     -> lager:info("sync already in progress ~p", [ppp(PeerId)])
             end;
-        {server_get_missing, Uri} ->
-            do_server_get_missing(Uri);
-        {fetch_mempool, Uri} ->
-            do_fetch_mempool(Uri);
+        {server_get_missing, PeerId} ->
+            do_server_get_missing(PeerId);
+        {fetch_mempool, PeerId} ->
+            do_fetch_mempool(PeerId);
         {ping, PeerId} ->
-            %% ping_peer(PeerId);
-            await_aehttp_and_ping_peer(PeerId);
+            ping_peer(PeerId);
         _Other ->
             lager:debug("unknown job", [])
     end.
 
 enqueue(Op, Msg) ->
     Peers = aec_peers:get_random(all),
-    lager:debug("ZZPC: enqueue ~p to ~p", [Op, Peers]),
     [ jobs:enqueue(sync_jobs, {Op, Msg, aec_peers:peer_id(PeerInfo)})
       || PeerInfo <- Peers ].
 
-await_aehttp_and_ping_peer(PeerId) ->
-    %% Don't ping until our own HTTP endpoint is up. This is not strictly
-    %% needed for the ping itself, but given that a ping can quickly
-    %% lead to a greater discovery, we should be prepared to handle pings
-    %% ourselves at this point.
-    %% The URI comes from aec_peers and is a valid http url.
-    case await_aehttp() of
-        ok ->
-            ping_peer(PeerId);
-        {error, timeout} ->
-            lager:debug("timeout waiting for aehttp - no ping (~p) will retry", [PeerId]),
-            await_aehttp_and_ping_peer(PeerId)
-    end.
-
-
 ping_peer(PeerId) ->
-    lager:debug("ZZPC: ping peer ~p", [PeerId]),
     Res = aec_peer_connection:ping(PeerId),
-    lager:debug("ping result (~p): ~p", [PeerId, Res]),
+    lager:debug("Ping (~p): ~p", [ppp(PeerId), Res]),
     case Res of
         ok ->
             aec_peers:log_ping(PeerId, ok);
@@ -416,38 +400,26 @@ ping_peer(PeerId) ->
             aec_peers:log_ping(PeerId, error)
   end.
 
-%% The gproc name below is registered in the start function of
-%% aehttp_app, and serves as a synch point. The timeout is hopefully
-%% large enough to reflect only error conditions. Expected wait time
-%% should be a fraction of a second, if any.
-await_aehttp() ->
-    try
-        gproc:await({n,l,{epoch,app,aehttp}}, 10000), % should (almost) never timeout
-        ok
-    catch error:{_Reason, _Args} ->
-        {error, timeout}
-    end.
-
 do_forward_block(Block, PeerId) ->
     %% If we sync against the PeerId and it has far more blocks, ignore sending this one
     H = aec_blocks:height(Block),
     case sync_in_progress(PeerId) of
         #sync_peer{to = To} when To > H + ?MAX_DIFF_FOR_SYNC ->
-            lager:debug("not forwarding to (~p): too far ahead", [PeerId]);
+            lager:debug("not forwarding to (~p): too far ahead", [ppp(PeerId)]);
          _ ->
             Res = aec_peer_connection:send_block(PeerId, Block),
-            lager:debug("send_block Res (~p): ~p", [PeerId, Res])
+            lager:debug("send_block Res (~p): ~p", [ppp(PeerId), Res])
     end.
 
 do_forward_tx(Tx, PeerId) ->
     Res = aec_peer_connection:send_tx(PeerId, Tx),
-    lager:debug("send_tx Res (~p): ~p", [PeerId, Res]).
+    lager:debug("send_tx (~p): ~p", [ppp(PeerId), Res]).
 
 do_start_sync(PeerId, RemoteHash) ->
     aec_events:publish(chain_sync, {client_start, PeerId}),
     case aec_peer_connection:get_header_by_hash(PeerId, RemoteHash) of
         {ok, Hdr} ->
-            lager:debug("New header received (~p): ~p", [PeerId, pp(Hdr)]),
+            lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(Hdr)]),
             %% We assume that the top of the chain is a moving target
             %% Get a hash first and work with that.
             LocalHeader = aec_chain:top_header(),
@@ -460,13 +432,13 @@ do_start_sync(PeerId, RemoteHash) ->
                       agree_on_height(PeerId, Hdr, RemoteHeight,
                                       LocalHeader, LocalHeight, LocalHeight, 0)
                end,
-            lager:debug("Agreed upon height (~p): ~p", [PeerId, AgreedHeight]),
+            lager:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AgreedHeight]),
             {ok, LocalAtHeight} = aec_chain:get_header_by_height(AgreedHeight),
             {ok, AgreedHash} = aec_headers:hash_header(LocalAtHeight),
             %% The prev_hash of next block should be AgreedHash
             case new_header(PeerId, Hdr, AgreedHeight, AgreedHash) of
                 false ->
-                    lager:debug("Already syncing with peer ~p", [PeerId]),
+                    lager:debug("Already syncing with peer ~p", [ppp(PeerId)]),
                     %% Already a sync in progress with this peer
                     ok;
                 true ->
@@ -474,7 +446,7 @@ do_start_sync(PeerId, RemoteHash) ->
                     fetch_more(PeerId, AgreedHeight, AgreedHash, PoolResult)
             end;
         {error, Reason} ->
-            lager:debug("fetching top block (~p) failed: ~p", [PeerId, Reason])
+            lager:debug("fetching top block (~p) failed: ~p", [ppp(PeerId), Reason])
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
@@ -504,10 +476,10 @@ agree_on_height(PeerId, RHeader, RH, LHeader, LH, Max, Min) when RH == LH ->
 agree_on_height(PeerId, _, RH, LHeader, LH, Max, Min) when RH =/= LH ->
     case aec_peer_connection:get_header_by_height(PeerId, LH) of
          {ok, RemoteAtHeight} ->
-             lager:debug("New header received (~p): ~p", [PeerId, pp(RemoteAtHeight)]),
+             lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
              agree_on_height(PeerId, RemoteAtHeight, LH, LHeader, LH, Max, Min);
          {error, Reason} ->
-             lager:debug("Fetching header ~p from ~p failed: ~p", [LH, PeerId, Reason]),
+             lager:debug("Fetching header ~p from ~p failed: ~p", [LH, ppp(PeerId), Reason]),
              Min
     end.
 
@@ -528,53 +500,53 @@ fill_pool(PeerId, AgreedHash) ->
             update_hash_pool(HashPool),
             {filled_pool, length(ChunkHashes)-1};
         {error, _} = Error ->
-            lager:info("Abort sync with ~p (~p) ", [PeerId, Error]),
+            lager:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
             delete_from_pool(PeerId),
             {error, sync_abort}
     end.
 
-fetch_more(Uri, _, _, done) ->
-    delete_from_pool(Uri),
-    aec_events:publish(chain_sync, {client_done, Uri});
-fetch_more(Uri, LastHeight, _, {error, Error}) ->
+fetch_more(PeerId, _, _, done) ->
+    delete_from_pool(PeerId),
+    aec_events:publish(chain_sync, {client_done, PeerId});
+fetch_more(PeerId, LastHeight, _, {error, Error}) ->
     lager:info("Abort sync at height ~p Error ~p ", [LastHeight, Error]),
-    delete_from_pool(Uri);
-fetch_more(Uri, LastHeight, HeaderHash, Result) ->
+    delete_from_pool(PeerId);
+fetch_more(PeerId, LastHeight, HeaderHash, Result) ->
     %% We need to supply the Hash, because locally we might have a shorter,
     %% but locally more difficult fork
-    case fetch_next(Uri, LastHeight, HeaderHash, Result) of
+    case fetch_next(PeerId, LastHeight, HeaderHash, Result) of
         {fetch, NewHeight, NewHash, Hash} ->
-            case do_fetch_block(Hash, Uri) of
+            case do_fetch_block(Hash, PeerId) of
                 {ok, _, NewBlock} ->
-                    fetch_more(Uri, NewHeight, NewHash, {ok, NewBlock});
+                    fetch_more(PeerId, NewHeight, NewHash, {ok, NewBlock});
                 {error, _} = Error ->
-                    fetch_more(Uri, NewHeight, NewHash, Error)
+                    fetch_more(PeerId, NewHeight, NewHash, Error)
             end;
         {fill_pool, AgreedHeight, AgreedHash} ->
-            PoolResult = fill_pool(Uri, AgreedHash),
-            fetch_more(Uri, AgreedHeight, AgreedHash, PoolResult);
+            PoolResult = fill_pool(PeerId, AgreedHash),
+            fetch_more(PeerId, AgreedHeight, AgreedHash, PoolResult);
         Other ->
-            fetch_more(Uri, LastHeight, HeaderHash, Other)
+            fetch_more(PeerId, LastHeight, HeaderHash, Other)
   end.
 
-fetch_block(Hash, Uri) ->
-    case do_fetch_block_ext(Hash, Uri) of
+fetch_block(Hash, PeerId) ->
+    case do_fetch_block_ext(Hash, PeerId) of
         {ok, _, Block} ->
-            lager:debug("Block (~p) fetched from ~p", [pp(Hash), Uri]),
+            lager:debug("Block (~p) fetched from ~p", [pp(Hash), ppp(PeerId)]),
             [{Hash, Block}];
         {error, _} = Err ->
             lager:error("Error fetching block (~p) from ~p: ~p",
-                        [pp(Hash), Uri, Err]),
+                        [pp(Hash), ppp(PeerId), Err]),
             []
     end.
 
-do_fetch_block(Hash, Uri) ->
+do_fetch_block(Hash, PeerId) ->
     case aec_chain:get_block(Hash) of
         {ok, Block} ->
             lager:debug("block ~p already fetched, using local copy", [pp(Hash)]),
             {ok, false, Block};
         error ->
-            do_fetch_block_ext(Hash, Uri)
+            do_fetch_block_ext(Hash, PeerId)
     end.
 
 do_fetch_block_ext(Hash, PeerId) ->
@@ -584,14 +556,14 @@ do_fetch_block_ext(Hash, PeerId) ->
             case header_hash(Block) =:= Hash of
                 true ->
                     lager:debug("block fetched from ~p (~p); ~p",
-                                [PeerId, pp(Hash), pp(Block)]),
+                                [ppp(PeerId), pp(Hash), pp(Block)]),
                     {ok, true, Block};
                 false ->
                     {error, hash_mismatch}
             end;
         {error, _} = Error ->
             lager:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
-                        [PeerId, pp(Hash), Error]),
+                        [ppp(PeerId), pp(Hash), Error]),
             Error
     end.
 
@@ -620,12 +592,12 @@ do_fetch_mempool(PeerId) ->
     case aec_peer_connection:get_mempool(PeerId) of
         {ok, Txs} ->
             lager:debug("Mempool (~p) received, size: ~p",
-                        [PeerId, length(Txs)]),
+                        [ppp(PeerId), length(Txs)]),
             aec_tx_pool:push(Txs),
             aec_events:publish(mempool_sync, {fetched, PeerId});
         Other ->
             lager:debug("Error fetching mempool from ~p: ~p",
-                        [PeerId, Other]),
+                        [ppp(PeerId), Other]),
             Other
     end.
 

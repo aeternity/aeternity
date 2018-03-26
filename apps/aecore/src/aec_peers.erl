@@ -45,7 +45,11 @@
 -export([ add/1
         , log_ping/2
         , peer_id/1
+        , ppp/1
         ]).
+
+%% API used by aec_peer_connection_listener
+-export([sync_port/0]).
 
 -export([check_env/0]).
 
@@ -56,6 +60,8 @@
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
+
+-define(DEFAULT_SYNC_PORT, 3015).
 
 -define(DEFAULT_PING_INTERVAL, 120 * 1000).
 -define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
@@ -231,7 +237,7 @@ start_link() ->
 
 init(ok) ->
     {_Scheme, Host, _Port} = aeu_env:local_peer(),
-    Port = aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, 1234),
+    Port = sync_port(),
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{host => Host, port => Port, seckey => SecKey, pubkey => PubKey},
@@ -298,29 +304,34 @@ handle_call({get_random, N, Exclude}, _From, #state{peers = Peers} = State) ->
 handle_call({connect_fail, PeerId, PeerCon}, _From, State = #state{ peers = Peers }) ->
     case lookup_peer(PeerId, State) of
         none ->
-            lager:info("Got connect_fail from unknown Peer - ~p", [PeerId]),
+            lager:info("Got connect_fail from unknown Peer - ~p", [ppp(PeerId)]),
             {reply, close, State};
         {value, _Key, Peer = #peer{ connection = Con, retries = Rs }} ->
             {Res, NewPeers} =
                 case Con of
                     {connected, PeerCon} ->
-                        lager:debug("ZZPC: FAIL - {connected, ~p}", [PeerCon]),
+                        lager:debug("Connection to ~p failed - {connected, ~p} -> error",
+                                    [ppp(PeerId), PeerCon]),
                         Peer1 = Peer#peer{ connection = {error, PeerCon}, retries = 0 },
                         Timeout = backoff_timeout(Peer1),
                         Peer2 = set_retry_timeout(Peer1, Timeout),
                         {keep, enter_peer(Peer2, Peers)};
                     {pending, PeerCon} ->
-                        lager:debug("ZZPC: FAIL - {pending, ~p}", [PeerCon]),
+                        lager:debug("Connection to ~p failed - {pending, ~p} -> error",
+                                    [ppp(PeerId), PeerCon]),
                         Peer1 = Peer#peer{ connection = {error, PeerCon}, retries = Rs + 1 },
                         case backoff_timeout(Peer1) of
                             stop ->
+                                lager:info("Connection failed - remove peer: ~p",
+                                           [ppp(PeerId)]),
                                 {close, remove_peer(PeerId, Peers)};
                             Timeout ->
                                 Peer2 = set_retry_timeout(Peer1, Timeout),
                                 {keep, enter_peer(Peer2, Peers)}
                         end;
                     _PeerCon ->
-                        lager:debug("ZZPC: FAIL - ~p", [_PeerCon]),
+                        lager:debug("Stale connection to ~p attempt failed - ~p",
+                                    [ppp(PeerId), _PeerCon]),
                         {close, Peers}
                 end,
             State1 = State#state{peers = NewPeers},
@@ -330,27 +341,30 @@ handle_call({connect_fail, PeerId, PeerCon}, _From, State = #state{ peers = Peer
 handle_call({connect_peer, PeerId, PeerCon}, _From, State) ->
     case lookup_peer(PeerId, State) of
         none ->
-            lager:info("Got connected_peer from unknown Peer - ~p", [PeerId]),
+            lager:info("Got connected_peer from unknown Peer - ~p", [ppp(PeerId)]),
             {reply, {error, invalid}, State};
         {value, _Key, Peer = #peer{ connection = Con }} ->
             {Res, NewPeer} =
                 case Con of
                     {connected, PeerCon1} when PeerCon1 /= PeerCon->
                         %% Someone beat us to it...
-                        lager:debug("ZZPC: PICKBEST - {connected, ~p} - keep using it", [PeerCon1]),
+                        lager:debug("Connection to ~p up - {connected, ~p} - keep using it",
+                                    [ppp(PeerId), PeerCon1]),
                         {{error, already_connected}, Peer};
                     {ConState, PeerCon} ->
-                        lager:debug("ZZPC: PICKBEST - {~p, ~p} -> {connected, ~p}", [ConState, PeerCon, PeerCon]),
+                        lager:debug("Connection to ~p up - {~p, ~p} -> connected",
+                                    [ppp(PeerId), ConState, PeerCon]),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }};
                     {ConState, PeerCon1} ->
-                        lager:debug("ZZPC: PICKBEST - {~p, ~p} - use ~p", [ConState, PeerCon1, PeerCon]),
+                        lager:debug("Connection to ~p up - {~p, ~p} - use ~p",
+                                    [ppp(PeerId), ConState, PeerCon1, PeerCon]),
                         lager:debug("Closing ~p ", [PeerCon1]),
                         aec_peer_connection:stop(PeerCon1),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }}
                 end,
             case Res of
                 ok ->
-                    lager:debug("will ping peer ~p", [PeerId]),
+                    lager:debug("Will ping peer ~p", [ppp(PeerId)]),
                     aec_sync:schedule_ping(PeerId);
                 {error, _} ->
                     ok
@@ -365,38 +379,42 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
                      port = maps:get(port, PeerInfo),
                      pubkey = maps:get(pubkey, PeerInfo) },
     PeerId  = peer_id(Peer),
-    lager:debug("ZZPC: accepted_peer (PC: ~p) ~p", [PeerCon, PeerInfo]),
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
-            lager:debug("Will not add peer ~p", [PeerId]),
+            lager:debug("Will not add peer ~p", [ppp(PeerId)]),
             {reply, {error, blocked}, State};
         false ->
             {Res, NewPeer} =
                 case lookup_peer(PeerId, State) of
                     none ->
-                        lager:debug("ZZPC: new peer from accept ~p", [PeerInfo]),
+                        lager:debug("New peer from accept ~p", [PeerInfo]),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }};
                     {value, _Key, FoundPeer = #peer{ connection = Con, pubkey = PKey }} ->
                         #{ pubkey := LPKey } = State#state.local_peer,
                         case Con of
                             undefined ->
-                                lager:debug("ZZPC: PICKBEST - undefined - use ~p", [PeerCon]),
+                                lager:debug("Peer ~p accepted - undefined - use ~p",
+                                            [ppp(PeerId), PeerCon]),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {pending, PeerCon1} ->
-                                lager:debug("ZZPC: PICKBEST - {pending, ~p} - use ~p", [PeerCon1, PeerCon]),
+                                lager:debug("Peer ~p accepted - {pending, ~p} - use ~p",
+                                            [ppp(PeerId), PeerCon1, PeerCon]),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {error, PeerCon1} ->
-                                lager:debug("ZZPC: PICKBEST - {error, ~p} - use ~p", [PeerCon1, PeerCon]),
+                                lager:debug("Peer ~p accepted - {error, ~p} - use ~p",
+                                            [ppp(PeerId), PeerCon1, PeerCon]),
                                 lager:debug("Closing ~p ", [PeerCon1]),
                                 aec_peer_connection:stop(PeerCon1),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {connected, PeerCon1} when LPKey > PKey ->
                                 %% We slash the accepted connection and use PeerCon1
-                                lager:debug("ZZPC: PICKBEST - {connected, ~p} when LPK > PK - use ~p", [PeerCon1, PeerCon1]),
+                                lager:debug("Peer ~p accepted - {connected, ~p} when LPK > PK - use ~p",
+                                            [ppp(PeerId), PeerCon1, PeerCon1]),
                                 {{error, already_connected}, FoundPeer};
                             {connected, PeerCon1} ->
                                 %% Stop using PeerCon1 - use PeerCon
-                                lager:debug("ZZPC: PICKBEST - {connected, ~p} when PK > LPK - use ~p", [PeerCon1, PeerCon]),
+                                lager:debug("Peer ~p accepted - {connected, ~p} when PK > LPK - use ~p",
+                                            [ppp(PeerId), PeerCon1, PeerCon]),
                                 lager:debug("Closing ~p ", [PeerCon1]),
                                 aec_peer_connection:stop(PeerCon1),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }}
@@ -411,13 +429,13 @@ handle_cast({log_ping, Ok, PeerId, _Time}, State) ->
     update_ping_metrics(Ok),
     case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("Reported ping event for unknown peer (~p)", [PeerId]),
+            lager:debug("Reported ping event for unknown peer - ~p", [ppp(PeerId)]),
             {noreply, State};
         {value, _Hash, Peer = #peer{ connection = {connected, _PeerCon} }} ->
             Peer1 = set_ping_timeout(Peer, ping_interval()),
             {noreply, State#state{ peers = enter_peer(Peer1, State#state.peers) }};
         {value, _Hash, _Peer} ->
-            lager:debug("Log ping event for ~p - no new ping", [PeerId]),
+            lager:debug("Log ping event for ~p - no new ping", [ppp(PeerId)]),
             {noreply, State}
     end;
 
@@ -426,12 +444,12 @@ handle_cast({add, PeerInfo}, State0) ->
                      port = maps:get(port, PeerInfo),
                      pubkey = maps:get(pubkey, PeerInfo) },
     PeerId  = peer_id(Peer),
-    lager:debug("ZZPC: add ~p", [PeerInfo]),
     case is_local(PeerId, State0) orelse is_blocked(PeerId, State0) of
         false ->
             NewPeer =
                 case lookup_peer(PeerId, State0) of
                     none ->
+                        lager:debug("Adding peer ~p", [PeerInfo]),
                         case maps:get(ping, PeerInfo, false) of
                             true ->
                                 #{ seckey := SKey, pubkey := PKey,
@@ -442,8 +460,6 @@ handle_cast({add, PeerInfo}, State0) ->
                                 {ok, Pid} = aec_peer_connection:connect(ConnInfo),
                                 Peer#peer{ connection = {pending, Pid} };
                             false ->
-                                lager:debug("ZZPC: new peer no ping ~p", [PeerId]),
-                                lager:debug("ZZPC: new peer no ping ~p", [State0#state.peers]),
                                 Peer#peer{ connection = undefined }
                         end;
                     {value, _Key, FoundPeer} ->
@@ -452,7 +468,7 @@ handle_cast({add, PeerInfo}, State0) ->
             State1 = State0#state{peers = enter_peer(NewPeer, State0#state.peers)},
             {noreply, metrics(State1)};
         true ->
-            lager:debug("Will not add peer ~p", [PeerId]),
+            lager:debug("Will not add peer ~p", [ppp(PeerId)]),
             {noreply, State0}
     end;
 handle_cast({remove, PeerIdOrInfo}, State = #state{peers = Peers, blocked = Blocked}) ->
@@ -461,16 +477,15 @@ handle_cast({remove, PeerIdOrInfo}, State = #state{peers = Peers, blocked = Bloc
         none -> ok;
         {value, _Key, Peer} -> stop_connection(Peer)
     end,
-    lager:debug("ZZPC: remove_peer ~p", [PeerId]),
+    lager:debug("Will remove peer ~p", [ppp(PeerId)]),
     NewState = State#state{peers   = remove_peer(PeerId, Peers),
                            blocked = del_blocked(PeerId, Blocked)},
     {noreply, metrics(NewState)}.
 
 handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
-    lager:debug("got timer msg ~p for ~p", [Msg, PeerId]),
     case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("timer msg for unknown peer (~p)", [PeerId]),
+            lager:debug("timer msg for unknown peer (~p)", [ppp(PeerId)]),
             {noreply, State};
         {value, _Hash, #peer{timer_tref = Ref} = Peer} when Msg == ping ->
             maybe_ping_peer(PeerId, State),
@@ -483,7 +498,7 @@ handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
                                State#state.peers),
             {noreply, State#state{peers = Peers}};
         {value, _, #peer{}} ->
-            lager:debug("stale ping_peer timer msg (~p) - ignore", [PeerId]),
+            lager:debug("stale ping_peer timer msg (~p) - ignore", [ppp(PeerId)]),
             {noreply, State}
     end;
 handle_info(_Info, State) ->
@@ -554,8 +569,7 @@ lookup_peer(PeerId, #state{peers = Peers}) when is_binary(PeerId) ->
             {value, Key, P}
     end.
 
-is_blocked(PeerId = <<PubKey:32/binary, _/binary>>, #state{blocked = Blocked}) ->
-    lager:debug("Check for blocked ~p in ~p\n", [PeerId, Blocked]),
+is_blocked(<<PubKey:32/binary, _/binary>>, #state{blocked = Blocked}) ->
     gb_sets:is_element(PubKey, Blocked).
 
 
@@ -573,7 +587,6 @@ del_blocked(_PeerId = <<PubKey:32/binary, _/binary>>, Blocked) ->
     gb_sets:delete_any(PubKey, Blocked).
 
 stop_connection(#peer{ connection = Pid }) when is_pid(Pid) ->
-    lager:debug("ZZPC: stopping connection ~p", [Pid]),
     aec_peer_connection:stop(Pid);
 stop_connection(_) ->
     ok.
@@ -582,26 +595,24 @@ stop_connection(_) ->
 maybe_ping_peer(PeerId, State) ->
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         false ->
-            lager:debug("will ping peer ~p", [PeerId]),
+            lager:debug("Will ping peer ~p", [ppp(PeerId)]),
             aec_sync:schedule_ping(PeerId);
         true ->
-            lager:debug("will not ping ~p", [PeerId]),
+            lager:debug("Will not ping ~p", [ppp(PeerId)]),
             ignore
     end.
 
 maybe_retry_peer(P = #peer{ connection = {error, PeerCon} }) ->
-    lager:debug("will retry peer ~p", [peer_info(P)]),
+    lager:debug("Will retry peer ~p", [peer_info(P)]),
     aec_peer_connection:retry(PeerCon);
 maybe_retry_peer(P) ->
-    lager:debug("will not retry peer ~p", [peer_info(P)]),
+    lager:debug("Will not retry peer ~p", [peer_info(P)]),
     ok.
 
 is_local(Peer, #state{local_peer = LocalPeer}) ->
     #{ pubkey := PubKey1 } = peer_info(Peer),
     #{ pubkey := PubKey2 } = peer_info(LocalPeer),
-    R = PubKey1 == PubKey2,
-    lager:debug("is_local_uri(~p) -> ~p (~p)", [Peer, R, LocalPeer]),
-    R.
+    PubKey1 == PubKey2.
 
 peer_id(PeerId) when is_binary(PeerId) ->
     PeerId;
@@ -625,6 +636,17 @@ peer_id(PubKey, Host, Port) when is_list(Host) ->
 split_peer_id(<<PubKey:32/binary, Port:16, Host/binary>>) ->
     #{ pubkey => PubKey, host => Host, port => Port }.
 
+
+ppp(PeerId) when is_binary(PeerId) ->
+    #{ pubkey := PK } = split_peer_id(PeerId),
+    Str = lists:flatten(io_lib:format("~p", [aec_base58c:encode(peer_pubkey, PK)])),
+    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, 48, 8);
+ppp(#{ pubkey := PK }) ->
+    Str = lists:flatten(io_lib:format("~p", [aec_base58c:encode(peer_pubkey, PK)])),
+    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, 48, 8);
+ppp(X) ->
+    X.
+
 set_retry_timeout(Peer, Timeout) ->
     set_timeout(Peer, Timeout, retry).
 
@@ -632,7 +654,7 @@ set_ping_timeout(Peer, Timeout) ->
     set_timeout(Peer, Timeout, ping).
 
 set_timeout(Peer = #peer{ timer_tref = Prev }, Timeout, Msg) ->
-    lager:debug("Starting ~p timer for ~p: ~p", [Msg, peer_info(Peer), Timeout]),
+    lager:debug("Starting ~p timer for ~p: ~p", [Msg, ppp(peer_id(Peer)), Timeout]),
     TRef = erlang:start_timer(Timeout, self(), {Msg, peer_id(Peer)}),
     case Prev of
         undefined -> ok;
@@ -654,3 +676,6 @@ backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
                                aecore, ping_interval, ?DEFAULT_PING_INTERVAL).
+
+sync_port() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).

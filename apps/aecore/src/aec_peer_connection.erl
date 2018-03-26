@@ -57,17 +57,16 @@
 %% -- API --------------------------------------------------------------------
 
 connect(Options) ->
-    lager:debug("ZZPC: connect to ~p", [Options]),
+    lager:debug("New peer connection to ~p", [Options]),
     gen_server:start_link(?MODULE, [Options#{ role => initiator }], []).
 
 accept(TcpSock, Options) ->
-    {ok, {Host, Port}} = inet:peername(TcpSock),
-    lager:debug("ZZPC: got incoming ~p from ~p", [TcpSock, {Host, Port}]),
+    {ok, {Host, _Port}} = inet:peername(TcpSock),
     case gen_server:start_link(?MODULE, [Options#{ tcp_sock => TcpSock, role => responder,
                                                    host => inet_parse:ntoa(Host)}], []) of
         {ok, Pid} ->
             gen_tcp:controlling_process(TcpSock, Pid),
-            gen_server:cast(Pid, owns_tcp_socket),
+            gen_server:cast(Pid, give_tcp_socket_ownership),
             {ok, Pid};
         Res ->
             Res
@@ -143,32 +142,30 @@ handle_call({send_block, Hash}, From, State) ->
 
 handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
     Self = self(),
-    lager:debug("ZZPC: connecting to ~p", [{Host, Port}]),
     Pid = spawn(fun() -> try_connect(Self, Host, Port, 1000) end),
     {noreply, S#{ status => {connecting, Pid} }};
-handle_cast(owns_tcp_socket, S0 = #{ role := responder, tcp_sock := TcpSock }) ->
+handle_cast(give_tcp_socket_ownership, S0 = #{ role := responder, tcp_sock := TcpSock }) ->
     S = #{ version := Version, genesis := Genesis,
            seckey := SecKey, pubkey := PubKey } = ensure_genesis(S0),
     NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                 , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
                 , {prologue, <<Version/binary, Genesis/binary>>}
                 , {timeout, ?NOISE_HS_TIMEOUT} ],
-    lager:debug("ZZPC: initiating responder", []),
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
     inet:setopts(TcpSock, [{active, true}]),
     case enoise:accept(TcpSock, NoiseOpts) of
         {ok, ESock, FinalState} ->
             RemotePub = enoise_keypair:pubkey(enoise_hs_state:remote_keys(FinalState)),
-            lager:debug("ZZPC: eniose:accept() successful remotepub ~p", [RemotePub]),
+            lager:debug("Connection accepted from ~p", [RemotePub]),
             %% Report this to aec_peers!? And possibly fail?
             %% Or, we can't do this yet we don't know the port?!
             TRef = erlang:start_timer(?FIRST_PING_TIMEOUT, self(), first_ping_timeout),
             {noreply, S#{ status => {connected, ESock}, r_pubkey => RemotePub,
                           first_ping_tref => TRef }};
-        {error, _Reason} ->
+        {error, Reason} ->
             %% What to do here? Close the socket and stop?
-            lager:debug("ZZPC: eniose:accept() failed - ~p", [_Reason]),
+            lager:info("Connection accept failed - ~p was from ~p", [Reason, maps:get(host, S)]),
             gen_tcp:close(TcpSock),
             {stop, normal, S}
     end;
@@ -180,7 +177,6 @@ handle_cast(_Msg, State) ->
 
 handle_info(timeout, S = #{ role := initiator, host := Host, port := Port }) ->
     Self = self(),
-    lager:debug("ZZPC: connecting to ~p", [{Host, Port}]),
     Pid = spawn(fun() -> try_connect(Self, Host, Port, 1000) end),
     {noreply, S#{ status => {connecting, Pid} }};
 handle_info(timeout, S) ->
@@ -198,12 +194,11 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
             {noreply, S}
     end;
 handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid}}) ->
-    lager:debug("ZZPC: failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
+    lager:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
     connect_fail(S);
 handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
     S = #{ version := Version, genesis := Genesis,
        seckey := SecKey, pubkey := PubKey, r_pubkey := RemotePub } = ensure_genesis(S0),
-    lager:debug("ZZPC: connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
     NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
                 , {s, enoise_keypair:new(dh25519, SecKey, PubKey)}
                 , {prologue, <<Version/binary, Genesis/binary>>}
@@ -211,20 +206,20 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 , {timeout, ?NOISE_HS_TIMEOUT} ],
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
-            lager:debug("ZZPC: eniose:connect() successful", []),
+            lager:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
             case aec_peers:connect_peer(peer_id(S), self()) of
                 ok ->
-                    lager:debug("ZZPC: eniose:connect() successful - use it", []),
                     {noreply, S#{ status => {connected, ESock} }};
                 {error, _} ->
-                    lager:debug("ZZPC: drop unnecessary connection", []),
+                    lager:debug("Dropping unnecessary connection to ", [maps:get(host, S)]),
                     enoise:close(ESock),
                     {stop, normal, S}
             end;
-        {error, _Reason} ->
+        {error, Reason} ->
             %% For now lets report connect_fail
             %% Maybe instead report permanent fail + block?!
-            lager:debug("ZZPC: eniose:connect() failed", []),
+            lager:info("Connection handshake failed - ~p was from ~p",
+                       [Reason, maps:get(host, S)]),
             gen_tcp:close(TcpSock),
             connect_fail(S)
     end;
@@ -236,19 +231,17 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     S1 = handle_msg(S, Type, Msg),
     {noreply, S1};
 handle_info({tcp_closed, _}, S) ->
-    lager:debug("ZZPC: got tcp_closed", []),
+    lager:debug("Peer connection got tcp_closed", []),
     case is_non_registered_accept(S) of
         true ->
             {stop, normal, S};
         false ->
             connect_fail(S)
     end;
-handle_info(Msg, S) ->
-    lager:debug("ZZPC: unexpected message ~p", [Msg]),
+handle_info(_Msg, S) ->
     {noreply, S}.
 
 terminate(_Reason, _State) ->
-    lager:debug("ZZPC: PC terminating ~p", [_Reason]),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -314,8 +307,7 @@ connect_fail(S) ->
             {stop, normal, S}
     end.
 
-handle_fragment(S, 1, M, Fragment) ->
-    lager:debug("ZZPC: first fragment of (~p)", [M]),
+handle_fragment(S, 1, _M, Fragment) ->
     {noreply, S#{ fragments => [Fragment] }};
 handle_fragment(S = #{ fragments := Fragments }, M, M, Fragment) ->
     Msg = list_to_binary(lists:reverse([Fragment | Fragments])),
@@ -361,7 +353,6 @@ handle_msg(S, ?MSG_SEND_BLOCK, MsgObj) ->
 handle_msg(S, ?MSG_SEND_BLOCK_RSP, MsgObj) ->
     handle_send_block_rsp(S, get_request(S, send_block), MsgObj);
 handle_msg(S, MsgType, MsgObj) ->
-    lager:info("ZZPC: Peer got unexpected message of type ~p (~p).", [MsgType, MsgObj]),
     lager:info("Peer got unexpected message of type ~p (~p).", [MsgType, MsgObj]),
     S.
 
@@ -431,12 +422,10 @@ handle_ping(S, {ping, _From}, RemotePingObj) ->
     S.
 
 handle_ping_msg(S, RemotePingObj) ->
-    lager:debug("ZZPC: GOT PING: ~p", [RemotePingObj]),
     #{ <<"genesis_hash">> := LGHash,
        <<"best_hash">>    := LTHash,
        <<"difficulty">>   := LDiff } = local_ping_obj(S),
     PeerId = peer_id(S),
-    lager:debug("ZZPC: CMP PING: ~p", [local_ping_obj(S)]),
     case decode_remote_ping(RemotePingObj) of
         {ok, RGHash, RTHash, RDiff, RPeers} when RGHash == LGHash ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
@@ -453,8 +442,6 @@ handle_ping_msg(S, RemotePingObj) ->
             aec_sync:fetch_mempool(PeerId),
             {ok, RPeers};
         _Err ->
-            lager:debug("ZZPC: CMP Fail: ~p", [_Err]),
-            %% aec_peers:block_peer(PeerId),
             {error, <<"wrong genesis_hash">>}
     end.
 
@@ -485,7 +472,6 @@ decode_remote_peers(Ps) ->
 send_ping(S = #{ status := error }, _From, _PingObj) ->
     {reply, {error, disconnected}, S};
 send_ping(S = #{ status := {connected, _ESock} }, From, PingObj) ->
-    lager:debug("ZZPC: ping ~p", [PingObj]),
     send_msg(S, ?MSG_PING, ping_obj(PingObj, [peer_id(S)])),
     {noreply, set_request(S, ping, From)}.
 
@@ -506,7 +492,6 @@ local_ping_obj(S) ->
 
 %% -- Get Header by Hash -----------------------------------------------------
 handle_get_header_by_hash(S, MsgObj) ->
-    lager:debug("ZZPC: got header_by_hash ~p", [MsgObj]),
     Msg =
         case maps:get(<<"hash">>, MsgObj, undefined) of
             EncHash when is_binary(EncHash) ->
@@ -514,7 +499,6 @@ handle_get_header_by_hash(S, MsgObj) ->
                     {ok, Hash} ->
                         case aec_chain:get_header(Hash) of
                             {ok, Header} ->
-                                lager:debug("Header = ~p", [pp(Header)]),
                                 {ok, HH} = aec_headers:serialize_to_map(Header),
                                 #{result => ok, header => HH};
                             error ->
@@ -533,7 +517,6 @@ handle_get_header_by_hash_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected GET_HEADER_BY_HASH_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_get_header_by_hash_rsp(S, {get_header_by_hash, From}, MsgObj) ->
-    lager:debug("ZZPC: got header_by_hash_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             case aec_headers:deserialize_from_map(maps:get(<<"header">>, MsgObj)) of
@@ -550,7 +533,6 @@ handle_get_header_by_hash_rsp(S, {get_header_by_hash, From}, MsgObj) ->
 send_get_header_by_hash(S = #{ status := error }, _From, _Hash) ->
     {reply, {error, disconnected}, S};
 send_get_header_by_hash(S = #{ status := {connected, _ESock} }, From, Hash) ->
-    lager:debug("ZZPC: get_header_by_hash ~p", [Hash]),
     Msg = #{ <<"hash">> => aec_base58c:encode(block_hash, Hash) },
     send_msg(S, ?MSG_GET_HEADER_BY_HASH, Msg),
     {noreply, set_request(S, get_header_by_hash, From)}.
@@ -560,19 +542,16 @@ send_get_header_by_hash(S = #{ status := {connected, _ESock} }, From, Hash) ->
 send_get_header_by_height(S = #{ status := error }, _From, _Hash) ->
     {reply, {error, disconnected}, S};
 send_get_header_by_height(S = #{ status := {connected, _ESock} }, From, Height) ->
-    lager:debug("ZZPC: get_header_by_height ~p", [Height]),
     Msg = #{ <<"height">> => Height },
     send_msg(S, ?MSG_GET_HEADER_BY_HEIGHT, Msg),
     {noreply, set_request(S, get_header_by_height, From)}.
 
 handle_get_header_by_height(S, MsgObj) ->
-    lager:debug("ZZPC: got header_by_height ~p", [MsgObj]),
     Msg =
         case maps:get(<<"height">>, MsgObj, undefined) of
             N when is_integer(N), N > 0 ->
                 case aec_chain:get_header_by_height(N) of
                     {ok, Header} ->
-                        lager:debug("Header = ~p", [pp(Header)]),
                         {ok, HH} = aec_headers:serialize_to_map(Header),
                         #{result => ok, header => HH};
                     {error, _} ->
@@ -588,7 +567,6 @@ handle_get_header_by_height_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected GET_HEADER_BY_HEIGHT_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_get_header_by_height_rsp(S, {get_header_by_height, From}, MsgObj) ->
-    lager:debug("ZZPC: got header_by_height_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             case aec_headers:deserialize_from_map(maps:get(<<"header">>, MsgObj)) of
@@ -607,13 +585,11 @@ handle_get_header_by_height_rsp(S, {get_header_by_height, From}, MsgObj) ->
 send_get_n_successors(S = #{ status := error }, _From, _Hash, _N) ->
     {reply, {error, disconnected}, S};
 send_get_n_successors(S = #{ status := {connected, _ESock} }, From, Hash, N) ->
-    lager:debug("ZZPC: get_n_successors ~p", [Hash]),
     Msg = #{ <<"hash">> => aec_base58c:encode(block_hash, Hash), <<"n">> => N },
     send_msg(S, ?MSG_GET_N_SUCCESSORS, Msg),
     {noreply, set_request(S, get_n_successors, From)}.
 
 handle_get_n_successors(S, MsgObj) ->
-    lager:debug("ZZPC: got n_successors ~p", [MsgObj]),
     Msg =
         case {maps:get(<<"hash">>, MsgObj, undefined),
               maps:get(<<"n">>, MsgObj, undefined)} of
@@ -626,7 +602,6 @@ handle_get_n_successors(S, MsgObj) ->
                                                 {ok, HHash} = aec_headers:hash_header(H),
                                                 #{ height => aec_headers:height(H), hash => HHash}
                                             end || H <- Headers ],
-                                lager:debug("Headers = ~p", [HHashes]),
                                 #{result => ok, headers => HHashes};
                             error ->
                                 #{result => error, reason => <<"Block not found">>}
@@ -644,7 +619,6 @@ handle_get_n_successors_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected GET_N_SUCCESSORS_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_get_n_successors_rsp(S, {get_n_successors, From}, MsgObj) ->
-    lager:debug("ZZPC: got n_successors_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             case maps:get(<<"headers">>, MsgObj, undefined) of
@@ -664,13 +638,11 @@ handle_get_n_successors_rsp(S, {get_n_successors, From}, MsgObj) ->
 send_get_block(S = #{ status := error }, _From, _Hash) ->
     {reply, {error, disconnected}, S};
 send_get_block(S = #{ status := {connected, _ESock} }, From, Hash) ->
-    lager:debug("ZZPC: get_block ~p", [Hash]),
     Msg = #{ <<"hash">> => aec_base58c:encode(block_hash, Hash) },
     send_msg(S, ?MSG_GET_BLOCK, Msg),
     {noreply, set_request(S, get_block, From)}.
 
 handle_get_block(S, MsgObj) ->
-    lager:debug("ZZPC: got block ~p", [MsgObj]),
     Msg =
         case maps:get(<<"hash">>, MsgObj, undefined) of
             EncHash when is_binary(EncHash) ->
@@ -678,7 +650,6 @@ handle_get_block(S, MsgObj) ->
                     {ok, Hash} ->
                         case aec_chain:get_block(Hash) of
                             {ok, Block} ->
-                                lager:debug("Block = ~p", [pp(Block)]),
                                 #{result => ok, block => aec_blocks:serialize_to_map(Block)};
                             error ->
                                 #{result => error, reason => <<"Block not found">>}
@@ -696,7 +667,6 @@ handle_get_block_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected GET_BLOCK_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_get_block_rsp(S, {get_block, From}, MsgObj) ->
-    lager:debug("ZZPC: got block_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             case maps:get(<<"block">>, MsgObj, undefined) of
@@ -716,12 +686,10 @@ handle_get_block_rsp(S, {get_block, From}, MsgObj) ->
 send_get_mempool(S = #{ status := error }, _From) ->
     {reply, {error, disconnected}, S};
 send_get_mempool(S = #{ status := {connected, _ESock} }, From) ->
-    lager:debug("ZZPC: get_mempool", []),
     send_msg(S, ?MSG_GET_MEMPOOL, []),
     {noreply, set_request(S, get_mempool, From)}.
 
 handle_get_mempool(S, _MsgObj) ->
-    lager:debug("ZZPC: got get_mempool ~p", [_MsgObj]),
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     Txs = [ aetx_sign:serialize_to_binary(T) || T <- Txs0 ],
     Msg = #{result => ok, txs => Txs},
@@ -732,7 +700,6 @@ handle_get_mempool_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected GET_MEMPOOL_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
-    lager:debug("ZZPC: got mempool_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             case maps:get(<<"txs">>, MsgObj, undefined) of
@@ -752,19 +719,17 @@ handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
 send_send_block(S = #{ status := error }, _From, _Block) ->
     {reply, {error, disconnected}, S};
 send_send_block(S = #{ status := {connected, _ESock} }, From, Block) ->
-    lager:debug("ZZPC: send_block ~p", [Block]),
     BlockMap = aec_blocks:serialize_to_map(Block),
     send_msg(S, ?MSG_SEND_BLOCK, BlockMap),
     {noreply, set_request(S, send_block, From)}.
 
 handle_send_block(S, MsgObj) ->
-    lager:debug("ZZPC: got block ~p", [MsgObj]),
     Msg =
         case aec_blocks:deserialize_from_map(MsgObj) of
             {ok, Block} ->
                 Header = aec_blocks:to_header(Block),
                 {ok, HH} = aec_headers:hash_header(Header),
-                lager:debug("'PostBlock'; header hash: ~p", [HH]),
+                lager:debug("'PostBlock'; header hash: ~s", [pp(HH)]),
                 aec_conductor:post_block(Block),
                 #{ <<"result">> => ok };
             _ ->
@@ -777,7 +742,6 @@ handle_send_block_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected SEND_BLOCK_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_send_block_rsp(S, {send_block, From}, MsgObj) ->
-    lager:debug("ZZPC: got send_block_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             gen_server:reply(From, ok);
@@ -791,18 +755,15 @@ handle_send_block_rsp(S, {send_block, From}, MsgObj) ->
 send_send_tx(S = #{ status := error }, _From, _Tx) ->
     {reply, {error, disconnected}, S};
 send_send_tx(S = #{ status := {connected, _ESock} }, From, Tx) ->
-    lager:debug("ZZPC: send_tx ~p", [Tx]),
     TxSerialized = aetx_sign:serialize_to_binary(Tx),
     send_msg(S, ?MSG_SEND_TX, TxSerialized),
     {noreply, set_request(S, send_tx, From)}.
 
 handle_send_tx(S, MsgObj) ->
-    lager:debug("ZZPC: got tx ~p", [MsgObj]),
     Msg =
         %% Top level function has already msgpack:unpack:ed
         try
             SignedTx = aetx_sign:deserialize(MsgObj),
-            lager:debug("deserialized: ~p", [pp(SignedTx)]),
             aec_tx_pool:push(SignedTx, tx_received),
             #{ <<"result">> => ok }
         catch _:_ ->
@@ -815,7 +776,6 @@ handle_send_tx_rsp(S, none, MsgObj) ->
     lager:info("Peer ~p got unexpected SEND_TX_RSP - ~p", [peer_id(S), MsgObj]),
     S;
 handle_send_tx_rsp(S, {send_tx, From}, MsgObj) ->
-    lager:debug("ZZPC: got send_tx_rsp ~p", [MsgObj]),
     case maps:get(<<"result">>, MsgObj, <<"error">>) of
         <<"ok">> ->
             gen_server:reply(From, ok);
