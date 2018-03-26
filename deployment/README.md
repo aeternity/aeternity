@@ -46,7 +46,7 @@ cd ansible && ansible-playbook -i inventory/openstack.yml --limit="epoch:&integr
 ### Secrets
 
 Secrets are managed with [Ansible Vault](docs.ansible.com/ansible/2.4/vault.html).
-There is a tiny bridge vault file `vault-env` that bridges the `ANSIBLE_VAULT_PASSWORD` environment variable as Ansible vault password.
+There is a tiny bridge vault file `vault-env` that bridges the `EPOCH_ANSIBLE_VAULT_PASSWORD` environment variable as Ansible vault password.
 
 ```
 export EPOCH_ANSIBLE_VAULT_PASSWORD="top secret"
