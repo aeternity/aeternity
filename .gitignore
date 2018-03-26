@@ -46,3 +46,4 @@ swagger/swagger-codegen-cli-*.jar
 *.aer~
 .virtualenv/
 *.retry
+system_test/logs
