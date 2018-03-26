@@ -11,7 +11,6 @@
         , deserialize/4
         , deserialize_type_and_vsn/1
         , decode_fields/2
-        , type/1
         ]).
 
 %%%===================================================================
@@ -22,10 +21,6 @@ serialize(Type, Vsn, Template, Fields) ->
     List = encode_fields([{tag, int}      , {vsn, int}|Template],
                           [{tag, tag(Type)}, {vsn, Vsn}|Fields]),
     aeu_rlp:encode(List).
-
-type(Binary) ->
-    [Tag|_] = aeu_rlp:decode(Binary),
-    rev_tag(Tag).
 
 deserialize_type_and_vsn(Binary) ->
     [TagBin, VsnBin|Fields] = aeu_rlp:decode(Binary),

@@ -113,7 +113,7 @@ accounts(#ns_preclaim_tx{account = AccountPubKey}) ->
 signers(#ns_preclaim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_preclaim_tx{account    = AccountPubKey,
                           nonce      = Nonce,
                           commitment = Commitment,

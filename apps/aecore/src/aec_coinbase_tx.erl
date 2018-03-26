@@ -120,9 +120,6 @@ for_client(#coinbase_tx{account = Account, block_height = Height, reward = Rewar
       <<"reward">> => Reward,
       <<"vsn">> => ?CB_TX_VSN}.
 
-version() ->
-    ?CB_TX_VSN.
-
 reward(#coinbase_tx{reward = Reward}) ->
     Reward.
 

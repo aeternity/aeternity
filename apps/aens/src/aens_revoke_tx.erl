@@ -109,7 +109,7 @@ accounts(#ns_revoke_tx{account = AccountPubKey}) ->
 signers(#ns_revoke_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_revoke_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name_hash = NameHash,

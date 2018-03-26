@@ -31,19 +31,19 @@
 
 -opaque tx() :: #aetx{}.
 
--type tx_type() :: aec_spend_tx
-                 | aec_coinbase_tx
-                 | aeo_register_tx
-                 | aeo_extend_tx
-                 | aeo_query_tx
-                 | aeo_response_tx
-                 | aens_preclaim_tx
-                 | aens_claim_tx
-                 | aens_transfer_tx
-                 | aens_update_tx
-                 | aens_revoke_tx
-                 | aect_create_tx
-                 | aect_call_tx.
+-type tx_type() :: spend_tx
+                 | coinbase_tx
+                 | oracle_register_tx
+                 | oracle_extend_tx
+                 | oracle_query_tx
+                 | oracle_response_tx
+                 | name_preclaim_tx
+                 | name_claim_tx
+                 | name_transfer_tx
+                 | name_update_tx
+                 | name_revoke_tx
+                 | contract_create_tx
+                 | contract_call_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -105,7 +105,7 @@
 
 %% -- ADT Implementation -----------------------------------------------------
 
--spec new(Type :: tx_type(),  Tx :: tx_instance()) ->
+-spec new(CallbackModule :: module(),  Tx :: tx_instance()) ->
     Tx :: tx().
 new(Callback, Tx) ->
     Type = Callback:type(),
