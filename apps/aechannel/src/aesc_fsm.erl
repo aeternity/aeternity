@@ -4,6 +4,8 @@
 -export([start_link/1]).
 
 %% API
+-export([initiate/2,
+         participate/2,
 -export([message/2]).
 
 -export([init/1,
@@ -20,7 +22,9 @@
          closing/3,
          disconnected/3]).
 
--record(data, {}).
+-record(data, {role :: initiator | participant,
+               session :: pid(),
+               channel :: aesc_channels:channel()}).
 
 callback_mode() -> [state_functions, state_enter].
 
@@ -68,7 +72,15 @@ callback_mode() -> [state_functions, state_enter].
 %%   |                                                                          |
 %%   +--------------------------------------------------------------------------+
 
-message(Fsm, Msg) ->
+message(Fsm, {T, _} = Msg) when T =:= channel_accept
+                              ; T =:= funding_created
+                              ; T =:= funding_signed
+                              ; T =:= funding_locked
+                              ; T =:= update_deposit
+                              ; T =:= update_withdrawal
+                              ; T =:= disconnect
+                              ; T =:= shutdown
+                              ; T =:= channel_reestablish ->
     gen_statem:cast(Fsm, Msg).
 
 %% ======================================================================
@@ -86,12 +98,32 @@ timeout(idle)           -> 10000.
 %%
 %% ======================================================================
 
-start_link(Args) ->
-    gen_statem:start_link(?MODULE, Args, [{debug, [trace]}]).
+initiate(Channel, Port) ->
+    start_link(#{role => initiator
+               , port => Port
+               , channel => Channel}).
+
+participate(Channel, Host, Port) ->
+    start_link(#{role => participant
+               , host => Host, port => Port
+               , channel => Channel}).
+
+start_link(Arg) ->
+    gen_statem:start_link(?MODULE, Arg, [{debug, [trace]}]).
 
 
-init(_Args) ->
-    {ok, initialized, #data{}}.
+init(#{role := Role, channel := Channel} = Arg) ->
+    Opts = maps:get(opts, Arg, []),
+    Session = start_session(Arg, Opts),
+    Data = #data{role = Role, session = Session, channel = Channel},
+    {ok, initialized, Data}.
+
+start_session(#{role := initiator, port := Port}, Opts) ->
+    ok(aesc_session_noise:accept(Port, Opts));
+start_session(#{role := participant, host := Host, port := Port}, Opts) ->
+    ok(aesc_session_noise:connect(Host, Port, Opts)).
+
+ok({ok, X}) -> X.
 
 
 initialized(enter, _OldSt, D) ->
@@ -100,14 +132,14 @@ initialized(cast, {channel_accept, _Msg}, D) ->
     {next_state, accepted, D};
 initialized({timeout, accept} = T, _Msg, D) ->
     close(T, D);
-initialized(cast, disconnect, D) ->
+initialized(cast, {disconnect, _Msg}, D) ->
     close(disconnect, D).
 
 accepted(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_create)]};
 accepted(cast, {funding_created, _Msg}, D) ->
     {next_state, half_signed, D};
-accepted(cast, disconnect, D) ->
+accepted(cast, {disconnect, _Msg}, D) ->
     close(disconnect, D);
 accepted({timeout, funding_create} = T, _Msg, D) ->
     close(T, D).
@@ -118,7 +150,7 @@ half_signed(cast, {funding_signed, _Msg}, D) ->
     {next_state, signed, D};
 half_signed({timeout, funding_sign} = T, _Msg, D) ->
     close(T, D);
-half_signed(cast, disconnect, D) ->
+half_signed(cast, {disconnect, _Msg}, D) ->
     close(disconnect, D).
 
 signed(enter, _OldSt, D) ->
@@ -129,26 +161,24 @@ signed({timeout, funding_lock} = T, _Msg, D) ->
     close(T, D);
 signed(cast, {shutdown, _Msg}, D) ->
     {next_state, closing, D};
-signed(cast, disconnect, D) ->
+signed(cast, {disconnect, _Msg}, D) ->
     {next_state, disconnected, D}.
 
 open(enter, _OldSt, D) ->
     {keep_state, D, [timer(idle)]};
-open(cast, update, D) ->
-    {keep_state, D};
 open(cast, {Upd, _Msg}, D) when Upd =:= update_deposit;
                                 Upd =:= update_withdrawal ->
     {keep_state, D};
 open(cast, {shutdown, _Msg}, D) ->
     {next_state, closing, D};
-open(cast, disconnect, D) ->
+open(cast, {disconnect, _Msg}, D) ->
     {next_state, disconnected, D};
 open({timeout, idle} = T, _Msg, D) ->
     close(T, D).
 
-closing(cast, disconnect, D) ->
+closing(cast, {disconnect, _Msg}, D) ->
     {next_state, disconnected, D};
-closing(cast, closing_signed, D) ->
+closing(cast, {closing_signed, _Msg}, D) ->
     close(closing_signed, D).
 
 disconnected(cast, {channel_reestablish, _Msg}, D) ->

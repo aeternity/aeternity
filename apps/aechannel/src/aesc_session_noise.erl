@@ -61,10 +61,12 @@ establish({accept, Port, Opts}, St) ->
     {ok, LSock} = gen_tcp:listen(Port, tcp_opts(listen, Opts)),
     {ok, TcpSock} = gen_tcp:accept(LSock, tcp_opts(accept, Opts)),
     {ok, EConn} = enoise:accept(TcpSock, enoise_opts(accept, Opts)),
+    tell_fsm({accept, EConn}, St),
     St#st{econn = EConn};
 establish({connect, Host, Port, Opts}, St) ->
     {ok, TcpSock} = connect_tcp(Host, Port, tcp_opts(connect, Opts)),
     {ok, EConn} = enoise:connect(TcpSock, enoise_opts(connect, Opts)),
+    tell_fsm({accept, EConn}, St),
     St#st{econn = EConn}.
 
 connect_tcp(Host, Port, Opts) ->
@@ -99,9 +101,9 @@ handle_cast(_Msg, St) ->
     {noreply, St}.
 
 
-handle_info({noise, EConn, Data}, #st{econn = EConn, parent = Parent} = St) ->
+handle_info({noise, EConn, Data}, #st{econn = EConn} = St) ->
     {_Type, _Info} = Msg = aesc_codec:dec(Data),
-    aesc_fsm:message(Parent, Msg),
+    tell_fsm(Msg, St),
     enoise:set_active(EConn, once),
     {noreply, St};
 handle_info(_Msg, St) ->
@@ -116,6 +118,8 @@ code_change(_FromVsn, St, _Extra) ->
 cast(P, Msg) ->
     gen_server:cast(P, Msg).
 
+tell_fsm({_, _} = Msg, #st{parent = Parent}) ->
+    aesc_fsm:message(Parent, Msg).
 
 tcp_opts(_Op, Opts) ->
     case lists:keyfind(tcp, 1, Opts) of
