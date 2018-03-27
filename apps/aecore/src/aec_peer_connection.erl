@@ -204,6 +204,9 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 , {prologue, <<Version/binary, Genesis/binary>>}
                 , {rs, enoise_keypair:new(dh25519, RemotePub)}
                 , {timeout, ?NOISE_HS_TIMEOUT} ],
+    %% Keep the socket passive until here to avoid premature message
+    %% receiving...
+    inet:setopts(TcpSock, [{active, true}]),
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
             lager:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
@@ -255,7 +258,7 @@ set_request(S, Kind, From) ->
     Rs = maps:get(requests, S, #{}),
     S#{ requests => Rs#{ Kind => {Kind, From} } }.
 
-drop_request(S, Kind) ->
+remove_request_fld(S, Kind) ->
     Rs = maps:get(requests, S, #{}),
     S#{ requests => maps:remove(Kind, Rs) }.
 
@@ -264,7 +267,7 @@ try_connect(Parent, Host, Port, Timeout) when is_binary(Host) ->
 try_connect(Parent, Host, Port, Timeout) ->
     Res =
         try
-            gen_tcp:connect(Host, Port, [binary, {reuseaddr, true}, {active, true}], Timeout)
+            gen_tcp:connect(Host, Port, [binary, {reuseaddr, true}, {active, false}], Timeout)
         catch _E:R ->
             {error, R}
         end,
@@ -364,7 +367,7 @@ handle_ping_rsp(S, {ping, From}, RemotePingObj) ->
         {ok, _}          -> gen_server:reply(From, ok);
         Err = {error, _} -> gen_server:reply(From, Err)
     end,
-    drop_request(S, ping).
+    remove_request_fld(S, ping).
 
 handle_ping(S, none, RemotePingObj) ->
     {PeerOk, S1} =
@@ -438,8 +441,8 @@ handle_ping_msg(S, RemotePingObj) ->
                 {{_, _}, {_, DR}} ->
                     aec_sync:start_sync(PeerId, RTHash, DR)
             end,
-            aec_peers:add_and_ping_peers(RPeers),
-            aec_sync:fetch_mempool(PeerId),
+            ok = aec_peers:add_and_ping_peers(RPeers),
+            ok = aec_sync:fetch_mempool(PeerId),
             {ok, RPeers};
         _Err ->
             {error, <<"wrong genesis_hash">>}
@@ -492,24 +495,7 @@ local_ping_obj(S) ->
 
 %% -- Get Header by Hash -----------------------------------------------------
 handle_get_header_by_hash(S, MsgObj) ->
-    Msg =
-        case maps:get(<<"hash">>, MsgObj, undefined) of
-            EncHash when is_binary(EncHash) ->
-                case aec_base58c:safe_decode(block_hash, EncHash) of
-                    {ok, Hash} ->
-                        case aec_chain:get_header(Hash) of
-                            {ok, Header} ->
-                                {ok, HH} = aec_headers:serialize_to_map(Header),
-                                #{result => ok, header => HH};
-                            error ->
-                                #{result => error, reason => <<"Block not found">>}
-                        end;
-                    {error, Reason} ->
-                        #{ <<"result">> => error, <<"reason">> => Reason }
-                end;
-            _ ->
-                #{ <<"result">> => error, <<"reason">> => <<"bad request">> }
-        end,
+    Msg = get_header(maps:get(<<"hash">>, MsgObj, undefined)),
     send_msg(S, ?MSG_GET_HEADER_BY_HASH_RSP, Msg),
     S.
 
@@ -528,7 +514,7 @@ handle_get_header_by_hash_rsp(S, {get_header_by_hash, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, get_header_by_hash).
+    remove_request_fld(S, get_header_by_hash).
 
 send_get_header_by_hash(S = #{ status := error }, _From, _Hash) ->
     {reply, {error, disconnected}, S};
@@ -536,6 +522,32 @@ send_get_header_by_hash(S = #{ status := {connected, _ESock} }, From, Hash) ->
     Msg = #{ <<"hash">> => aec_base58c:encode(block_hash, Hash) },
     send_msg(S, ?MSG_GET_HEADER_BY_HASH, Msg),
     {noreply, set_request(S, get_header_by_hash, From)}.
+
+get_header(EncHash) when is_binary(EncHash) ->
+    case aec_base58c:safe_decode(block_hash, EncHash) of
+        {ok, Hash} ->
+            get_header(hash, Hash);
+        {error, Reason} ->
+            #{ <<"result">> => error, <<"reason">> => Reason }
+    end;
+get_header(N) when N >= 0 ->
+    get_header(height, N);
+get_header(_) ->
+    #{ <<"result">> => error, <<"reason">> => <<"bad request">> }.
+
+get_header(hash, Hash) ->
+    get_header(fun aec_chain:get_header/1, Hash);
+get_header(height, N) ->
+    get_header(fun aec_chain:get_header_by_height/1, N);
+get_header(Fun, Arg) ->
+    case Fun(Arg) of
+        {ok, Header} ->
+            {ok, HH} = aec_headers:serialize_to_map(Header),
+            #{result => ok, header => HH};
+        error ->
+            #{result => error, reason => <<"Block not found">>}
+    end.
+
 
 %% -- Get Header by Height -----------------------------------------------------
 
@@ -547,19 +559,7 @@ send_get_header_by_height(S = #{ status := {connected, _ESock} }, From, Height) 
     {noreply, set_request(S, get_header_by_height, From)}.
 
 handle_get_header_by_height(S, MsgObj) ->
-    Msg =
-        case maps:get(<<"height">>, MsgObj, undefined) of
-            N when is_integer(N), N > 0 ->
-                case aec_chain:get_header_by_height(N) of
-                    {ok, Header} ->
-                        {ok, HH} = aec_headers:serialize_to_map(Header),
-                        #{result => ok, header => HH};
-                    {error, _} ->
-                        #{result => error, reason => <<"Block not found">>}
-                end;
-            _ ->
-                #{ <<"result">> => error, <<"reason">> => <<"bad request">> }
-        end,
+    Msg = get_header(maps:get(<<"height">>, MsgObj, undefined)),
     send_msg(S, ?MSG_GET_HEADER_BY_HEIGHT_RSP, Msg),
     S.
 
@@ -578,7 +578,7 @@ handle_get_header_by_height_rsp(S, {get_header_by_height, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, get_header_by_height).
+    remove_request_fld(S, get_header_by_height).
 
 %% -- Get N Successors -------------------------------------------------------
 
@@ -631,7 +631,7 @@ handle_get_n_successors_rsp(S, {get_n_successors, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, get_n_successors).
+    remove_request_fld(S, get_n_successors).
 
 %% -- Get Block --------------------------------------------------------------
 
@@ -679,7 +679,7 @@ handle_get_block_rsp(S, {get_block, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, get_block).
+    remove_request_fld(S, get_block).
 
 %% -- Get Mempool --------------------------------------------------------------
 
@@ -712,7 +712,7 @@ handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, get_mempool).
+    remove_request_fld(S, get_mempool).
 
 %% -- Send Block --------------------------------------------------------------
 
@@ -748,7 +748,7 @@ handle_send_block_rsp(S, {send_block, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, send_block).
+    remove_request_fld(S, send_block).
 
 %% -- Send TX --------------------------------------------------------------
 
@@ -756,14 +756,15 @@ send_send_tx(S = #{ status := error }, _From, _Tx) ->
     {reply, {error, disconnected}, S};
 send_send_tx(S = #{ status := {connected, _ESock} }, From, Tx) ->
     TxSerialized = aetx_sign:serialize_to_binary(Tx),
-    send_msg(S, ?MSG_SEND_TX, TxSerialized),
+    send_msg(S, ?MSG_SEND_TX, #{tx => TxSerialized}),
     {noreply, set_request(S, send_tx, From)}.
 
 handle_send_tx(S, MsgObj) ->
     Msg =
         %% Top level function has already msgpack:unpack:ed
         try
-            SignedTx = aetx_sign:deserialize(MsgObj),
+            #{ <<"tx">> := EncSignedTx } = MsgObj,
+            SignedTx = aetx_sign:deserialize_from_binary(EncSignedTx),
             aec_tx_pool:push(SignedTx, tx_received),
             #{ <<"result">> => ok }
         catch _:_ ->
@@ -782,7 +783,7 @@ handle_send_tx_rsp(S, {send_tx, From}, MsgObj) ->
         <<"error">> ->
             gen_server:reply(From, {error, maps:get(<<"reason">>, MsgObj)})
     end,
-    drop_request(S, send_tx).
+    remove_request_fld(S, send_tx).
 
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
