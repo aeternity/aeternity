@@ -16,7 +16,7 @@ from swagger_client.api.external_api import ExternalApi
 from swagger_client.api.internal_api import InternalApi
 from swagger_client.api_client import ApiClient
 from swagger_client.models.block import Block
-from swagger_client.models.balance import Balance 
+from swagger_client.models.balance import Balance
 from swagger_client.models.pub_key import PubKey
 from swagger_client.configuration import Configuration
 
@@ -26,6 +26,7 @@ from waiting import wait
 
 import msgpack
 import base58
+import rlp
 
 EXT_API = {}
 for node, node_config in config['nodes'].iteritems():
@@ -130,8 +131,31 @@ def base58_decode(encoded):
     return base58.b58decode_check(encoded[3:])
 
 def encode_signed_tx(encoded_tx, signatures):
-    str = base58.b58encode_check(msgpack.packb(["sig_tx", 1, encoded_tx, signatures], use_bin_type=True))
-    return "tx$" + str
+    tag = bytearray([11])
+    vsn = bytearray([1])
+    payload = rlp.encode([tag, vsn, signatures, encoded_tx])
+    return "tx$" + base58.b58encode_check(payload)
+
+def decode_unsigned_tx(encoded_tx):
+    decoded = rlp.decode(encoded_tx)
+    tag, vsn, fields = decoded[0], decoded[1], decoded[2:]
+    # This is minimally what we need for now
+    if (tag == bytes(bytearray([42])) and vsn == bytes(bytearray([1]))):
+        return {'type': 'contract_create_tx',
+                'owner': fields[0],
+                'nonce': bytes_to_int(fields[1]),
+                'code': fields[2],
+                'vm_version': bytes_to_int(fields[3]),
+                'fee': bytes_to_int(fields[4]),
+                'deposit': bytes_to_int(fields[5]),
+                'amount': bytes_to_int(fields[6]),
+                'gas': bytes_to_int(fields[7]),
+                'gas_price': bytes_to_int(fields[8]),
+                'call_data': fields[9]
+        }
+
+def bytes_to_int(x):
+    return int(x.encode('hex'), 16)
 
 def encode_pubkey(pubkey):
     str = base58.b58encode_check(pubkey)
@@ -140,15 +164,6 @@ def encode_pubkey(pubkey):
 def encode_name(name):
     str = base58.b58encode_check(name)
     return "nm$" + str
-
-def unpack_tx(tx):
-    return msgpack.unpackb(tx)
-
-def parse_tx(unpacked_tx):
-    tx = {}
-    for elem in unpacked_tx:
-        tx.update(elem)
-    return tx
 
 def is_among_peers(peer, peers):
     def url_netloc(url):

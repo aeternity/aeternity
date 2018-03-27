@@ -24,16 +24,15 @@ def address(public_key):
 def sign(message, private_key):
     return private_key.sign(message, sigencode=ecdsa.util.sigencode_der)
 
-def sign_encode_tx(msgpacked_tx, private_key):
-    unpacked_tx = common.unpack_tx(msgpacked_tx)
-    signature = sign(msgpacked_tx, private_key)
-    signed_encoded = common.encode_signed_tx(unpacked_tx, [bytearray(signature)]) 
+def sign_encode_tx(packed_tx, private_key):
+    signature = sign(packed_tx, private_key)
+    signed_encoded = common.encode_signed_tx(packed_tx, [bytearray(signature)])
     return signed_encoded
 
-def sign_verify_encode_tx(msgpacked_tx, unpacked_tx, private_key, public_key):
-    signature = sign(msgpacked_tx, private_key)
-    assert verify(signature, msgpacked_tx, public_key)
-    signed_encoded = common.encode_signed_tx(unpacked_tx, [bytearray(signature)]) 
+def sign_verify_encode_tx(packed_tx, private_key, public_key):
+    signature = sign(packed_tx, private_key)
+    assert verify(signature, packed_tx, public_key)
+    signed_encoded = common.encode_signed_tx(packed_tx, [bytearray(signature)])
     return signed_encoded
 
 def verify(signature, message, public_key):

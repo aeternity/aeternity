@@ -19,7 +19,7 @@ import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
 
-def turned_off_contract_create():
+def test_contract_create():
     test_settings = settings["test_contract_create"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
@@ -36,12 +36,11 @@ def turned_off_contract_create():
     print("Unsigned encoded transaction: " + encoded_tx)
     print("Contract address: " + contract_address)
     unsigned_tx = common.base58_decode(encoded_tx)
-    unpacked_tx = common.unpack_tx(unsigned_tx)
-    tx = common.parse_tx(unpacked_tx)
+    tx = common.decode_unsigned_tx(unsigned_tx)
     print("Unsigned decoded transaction: " + str(tx))
 
     # make sure same tx
-    assert_equals(tx['type'], 'aect_create_tx')
+    assert_equals(tx['type'], 'contract_create_tx')
     assert_equals(tx['owner'], common.base58_decode(test_settings["alice"]["pubkey"]))
     assert_equals(tx['vm_version'], test_settings["create_contract"]["vm_version"])
     assert_equals(tx['deposit'], test_settings["create_contract"]["deposit"])
@@ -56,7 +55,7 @@ def turned_off_contract_create():
     call_data = bytearray.fromhex(test_settings["create_contract"]["call_data"][2:]) # without 0x
     assert_equals(tx['call_data'], call_data)
 
-    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     print("Signed transaction " + signed)
 
     alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
@@ -72,7 +71,7 @@ def turned_off_contract_create():
 
     cleanup(node, root_dir)
 
-def turned_off_contract_call():
+def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
@@ -89,9 +88,8 @@ def turned_off_contract_call():
     ## create contract
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
-    unpacked_tx = common.unpack_tx(unsigned_tx)
 
-    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
     alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
@@ -125,11 +123,8 @@ def turned_off_contract_call():
 
     print("Unsigned encoded transaction: " + encoded_call_tx)
     unsigned_call_tx = common.base58_decode(encoded_call_tx)
-    unpacked_call_tx = common.unpack_tx(unsigned_call_tx)
-    tx = common.parse_tx(unpacked_call_tx)
-    print("Unsigned decoded transaction: " + str(tx))
 
-    signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, unpacked_call_tx, private_key, public_key)
+    signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, private_key, public_key)
 
     print("Signed transaction: " + signed_call)
     alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
@@ -149,7 +144,7 @@ def turned_off_contract_call():
     cleanup(node, root_dir)
 
 
-def turned_off_spend():
+def test_spend():
     # Alice should be able to create a spend transaction to send tokens to
     # Bob. In a controlled environment, Alice should see her transaction
     # appear in the next block or two that are added to the blockchain.
@@ -187,12 +182,10 @@ def turned_off_spend():
     unsigned_spend_enc = unsigned_spend_obj.tx
     tx_hash = unsigned_spend_obj.tx_hash
     unsigned_tx = common.base58_decode(unsigned_spend_enc)
-    unpacked_tx = common.unpack_tx(unsigned_tx)
-    print("Tx " + str(common.parse_tx(unpacked_tx)))
     print("Tx hash " + tx_hash)
 
     # Alice signs spend tx
-    signed = keys.sign_verify_encode_tx(unsigned_tx, unpacked_tx, private_key, public_key)
+    signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     print("Signed transaction " + signed)
 
     # Alice posts spend tx
