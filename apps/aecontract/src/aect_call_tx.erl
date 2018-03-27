@@ -317,7 +317,7 @@ run_contract(#contract_call_tx
     %% TODO: Handle different VMs and ABIs.
     %% TODO: Move init and execution to a separate moidule to be re used by
     %% both on chain and off chain calls.
-    ChainState    = aevm_chain:new_state(Trees, Height, ContractPubKey),
+    ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code       => Code,
@@ -336,7 +336,7 @@ run_contract(#contract_call_tx
                       currentNumber     => Height,
                       currentTimestamp  => 0,
                       chainState        => ChainState,
-                      chainAPI          => aevm_chain},
+                      chainAPI          => aec_vm_chain},
              pre => #{}},
           #{trace => false})
     of

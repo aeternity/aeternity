@@ -41,7 +41,7 @@ groups() ->
 %%%===================================================================
 
 %% Uses aect_test_utils to set up the chain, but after the setup everything is
-%% done through the aevm_chain_api.
+%% done through the aec_vm_chain_api.
 setup_chain() ->
     S0              = aect_test_utils:new_state(),
     {Account1, S1}  = aect_test_utils:setup_new_account(S0),
@@ -49,7 +49,7 @@ setup_chain() ->
     {Contract1, S3} = create_contract(Account1, S2),
     {Contract2, S4} = create_contract(Account2, S3),
     Trees = aect_test_utils:trees(S4),
-    InitS = aevm_chain:new_state(Trees, 1, Contract1),
+    InitS = aec_vm_chain:new_state(Trees, 1, Contract1),
     {[Account1, Account2, Contract1, Contract2], InitS}.
 
 create_contract(Owner, S) ->
@@ -68,12 +68,12 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     {SignedTx, AcceptedTxs, S2}.
 
 get_account_balance(Acc, S) ->
-    Trees    = aevm_chain:get_trees(S),
+    Trees    = aec_vm_chain:get_trees(S),
     Accounts = aec_trees:accounts(Trees),
     aec_accounts:balance(aec_accounts_trees:get(Acc, Accounts)).
 
 get_contract_balance(Contract, S) ->
-    Trees     = aevm_chain:get_trees(S),
+    Trees     = aec_vm_chain:get_trees(S),
     Contracts = aec_trees:contracts(Trees),
     aect_contracts:balance(aect_state_tree:get_contract(Contract, Contracts)).
 
@@ -88,15 +88,15 @@ call_data(Arg) ->
 spend(_Cfg) ->
     {[Acc, _Acc2, _Contract1, _Contract2], S} = setup_chain(),
     AccBal1  = get_account_balance(Acc, S),
-    Bal1     = aevm_chain:get_balance(S),
+    Bal1     = aec_vm_chain:get_balance(S),
     Amount   = 50,
-    {ok, S1} = aevm_chain:spend(Acc, Amount, S),
-    Bal2     = aevm_chain:get_balance(S1),
+    {ok, S1} = aec_vm_chain:spend(Acc, Amount, S),
+    Bal2     = aec_vm_chain:get_balance(S1),
     Bal2     = Bal1 - Amount,
     AccBal2  = get_account_balance(Acc, S1),
     AccBal2  = AccBal1 + Amount,
     {error, insufficient_funds}
-             = aevm_chain:spend(Acc, 1000000, S1),
+             = aec_vm_chain:spend(Acc, 1000000, S1),
     ok.
 
 %%%===================================================================
@@ -110,23 +110,23 @@ contracts(_Cfg) ->
     ok.
 
 make_call(To, Value, Arg, S) ->
-    C1Bal1    = aevm_chain:get_balance(S),
+    C1Bal1    = aec_vm_chain:get_balance(S),
     C2Bal1    = get_contract_balance(To, S),
     CallData  = call_data(integer_to_binary(Arg)),
     Gas       = 10000,
     CallStack = [],
-    CallRes   = aevm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
+    CallRes   = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
     case C1Bal1 >= Value of
         _ when Value < 0 ->
             {error, negative_amount} = CallRes,
             S;
         true ->
             {ok, Res, S1} = CallRes,
-            GasUsed  = aevm_chain_api:gas_spent(Res),
-            {ok, <<Arg:256>>} = aevm_chain_api:return_value(Res),
+            GasUsed  = aec_vm_chain_api:gas_spent(Res),
+            {ok, <<Arg:256>>} = aec_vm_chain_api:return_value(Res),
             true     = GasUsed > 0,
             true     = GasUsed =< Gas,
-            C1Bal2   = aevm_chain:get_balance(S1),
+            C1Bal2   = aec_vm_chain:get_balance(S1),
             C1Bal2   = C1Bal1 - Value,
             C2Bal2   = get_contract_balance(To, S1),
             C2Bal2   = C2Bal1 + Value,
