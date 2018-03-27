@@ -785,8 +785,6 @@ handle_send_tx_rsp(S, {send_tx, From}, MsgObj) ->
     remove_request_fld(S, send_tx).
 
 %% -- Send message -----------------------------------------------------------
-send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
-    do_send(ESock, <<Type:16, Msg/binary>>);
 send_msg(#{ status := {connected, ESock} }, Type, Msg0) ->
     Msg = <<Type:16, (msgpack:pack(Msg0))/binary>>,
     do_send(ESock, Msg).
