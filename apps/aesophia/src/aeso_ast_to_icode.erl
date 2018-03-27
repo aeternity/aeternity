@@ -110,7 +110,7 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
-			[{line,Line}] = Attrs,
+			Line = aeso_syntax:get_ann(line, Attrs),
 			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
 				       args = [Name,Line]};
 		    E ->
@@ -164,13 +164,6 @@ ast_typerep({fun_t,_,_,_}) ->
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
     set_functions(NewFuns, Icode).
-
-%% -------------------------------------------------------------------
-%% AST
-%% -------------------------------------------------------------------
-%% get_line(Attribs) -> %% TODO: use AST primitives.
-%%      proplists:get_value(line, Attribs).
-
 
 %% -------------------------------------------------------------------
 %% Icode

@@ -114,7 +114,8 @@
              | con()
              | id().
 
-get_ann(Node) -> element(2, Node).
+get_ann(Node) when is_tuple(Node) -> element(2, Node);
+get_ann(Ann)  when is_list(Ann)   -> Ann.
 
 get_ann(Key, Node) ->
     proplists:get_value(Key, get_ann(Node)).

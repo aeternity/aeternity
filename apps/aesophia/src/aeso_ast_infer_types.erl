@@ -177,7 +177,8 @@ infer_expr(Env,{lam,Attrs,Args,Body}) ->
     NewArgs = [{arg,As,NewPat,NewT} || {typed,As,NewPat,NewT} <- NewArgPatterns],
     {typed,Attrs,{lam,Attrs,NewArgs,NewBody},{fun_t,Attrs,ArgTypes,ResultType}}.
 
-infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
+infer_case(Env,Attrs,Pattern,ExprType,Branch,SwitchType) ->
+    Line = line_number(Attrs),
     Vars = free_vars(Pattern),
     Names = [N || {id,_,N} <- Vars,
 		  N /= "_"],
@@ -203,7 +204,7 @@ infer_case(Env,Attrs=[{line,Line}],Pattern,ExprType,Branch,SwitchType) ->
     {'case',Attrs,NewPattern,NewBranch}.
 
 %% NewStmts = infer_block(Env,Attrs,Stmts,BlockType)
-infer_block(Env,Attrs,[],BlockType) ->
+infer_block(_Env,Attrs,[],BlockType) ->
     %% DANG! A block with no value. Interpret it as unit.
     unify({tuple_t,Attrs,[]},BlockType),
     [];
@@ -291,7 +292,7 @@ solve_field_constraints(Constraints) ->
     %% First look for record fields that appear in only one type definition
     [case ets:lookup(record_fields,FieldName) of
 	 [] ->
-	     [{line,Line}] = Attrs,
+	     Line = line_number(Attrs),
 	     io:format("Undefined record field ~s on line ~p\n",[FieldName,Line]),
 	     error({undefined_field,FieldName});
 	 [{FieldName,FldType,RecType}] ->
@@ -358,7 +359,8 @@ solve_known_record_types(Constraints) ->
 		     error({undefined_record_type,RecName});
 		 [{RecName,Formals,Fields}] ->
 		     FieldTypes = [{Name,Type} || {field_t,_,_,{id,_,Name},Type} <- Fields],
-		     {id,[{line,Line}],FieldString} = FieldName,
+		     {id, _, FieldString} = FieldName,
+                     Line = line_number(FieldName),
 		     case proplists:get_value(FieldString,FieldTypes) of
 			 undefined ->
 			     io:format("Field ~s of record ~s does not exist (line ~p)\n",
@@ -402,7 +404,7 @@ solve_for_uvar(UVar,Fields) ->
 				|| {RecName,RecFields} <- TypesAndFields,
 			       UniqueFields--RecFields==[]]),
     {uvar,Attrs,_} = UVar,
-    Line = proplists:get_value(line,Attrs),
+    Line = line_number(UVar),
     case lowest_scores(SortByMissing) of
 	[] ->
 	    {no_records_with_all_fields,Line,UniqueFields};
@@ -423,7 +425,7 @@ lowest_scores([{M,X},{N,Y}|More]) ->
        M==N ->
 	    [X|lowest_scores([{N,Y}|More])]
     end;
-lowest_scores([{M,X}]) ->
+lowest_scores([{_M,X}]) ->
     [X];
 lowest_scores([]) ->
     [].
@@ -480,7 +482,7 @@ subst_tvars1(Env,[H|T]) ->
     [subst_tvars1(Env,H)|subst_tvars1(Env,T)];
 subst_tvars1(Env,Type) when is_tuple(Type) ->
     list_to_tuple(subst_tvars1(Env,tuple_to_list(Type)));
-subst_tvars1(Env,X) ->
+subst_tvars1(_Env,X) ->
     X.
 
 %% Unification
@@ -494,7 +496,7 @@ unify(T1,T2) ->
 
 unify1({uvar,_,R},{uvar,_,R}) ->
     true;
-unify1({uvar,A,R},T) ->
+unify1({uvar,_A,R},T) ->
     case occurs_check(R,T) of
         %% TODO:
 	%% true ->
@@ -541,7 +543,7 @@ dereference(T = {uvar,_,R}) ->
 dereference(T) ->
     T.
 
-occurs_check(R,T) ->
+occurs_check(_R,_T) ->
     %% TODO
     false.
 
@@ -597,8 +599,8 @@ destroy_and_report_unification_errors() ->
      || {A,B} <- ets:tab2list(unification_errors)],
     ets:delete(unification_errors).
 
-line_number(T) when is_tuple(T) ->
-    proplists:get_value(line,element(2,T)).
+line_number(T) ->
+    aeso_syntax:get_ann(line, T, 0).
 
 pp({type_sig,As,B}) ->
     ["(",pp(As),") => ",pp(B)];
