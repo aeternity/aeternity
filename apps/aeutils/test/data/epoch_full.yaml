@@ -15,6 +15,7 @@ blocked_peers:
         pubkey: "pp$2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R"
 
 sync:
+    port: 3015
     # Ping retry configuration in milliseconds
     ping_interval: 30000
 
