@@ -1,18 +1,18 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Dummy implementation of the aevm_chain_api. Doesn't keep any state. To
+%%%    Dummy implementation of the aec_vm_chain_api. Doesn't keep any state. To
 %%%    use when testing contracts that don't interact with the chain.
 %%% @end
 %%%=============================================================================
 
 -module(aevm_dummy_chain).
 
--behaviour(aevm_chain_api).
+-behaviour(aec_vm_chain_api).
 
 -export([new_state/0]).
 
-%% aevm_chain_api callbacks
+%% aec_vm_chain_api callbacks
 -export([get_balance/1,
          spend/3,
          call_contract/6]).
