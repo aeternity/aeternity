@@ -151,6 +151,9 @@ eunit:
 
 all-tests: eunit test
 
+system-test:
+	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs $(CT_TEST_FLAGS)
+
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
 
@@ -286,7 +289,7 @@ internal-distclean: $$(KIND)
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
-	test aevm-test-deps\
+	test system-test aevm-test-deps\
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check \
