@@ -3,3 +3,5 @@ python-openstackclient ~= 3.12
 shade ~= 1.24
 pyyaml ~= 3.12
 datadog ~= 0.17
+boto
+boto3
