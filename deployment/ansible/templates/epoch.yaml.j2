@@ -1,7 +1,14 @@
 ---
+sync:
+    port: {{ config.sync.port }}
+
 peers:
     {% for host in groups[hosts_group] | difference([inventory_hostname]) %}
-- "http://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:3013/"
+    {% if hostvars[host]['sync_public_key'] is defined %}
+- peer: {host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}, port: 3015, pubkey: {{ hostvars[host]['sync_public_key'] }}}
+    {% else %}
+- peer: {host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}, port: 3015, pubkey: "no-key-found-peer-will-be-ignored"}
+    {% endif %}
     {% endfor %}
 
 keys:

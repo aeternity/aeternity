@@ -18,6 +18,14 @@
       delegate_to: "{{ item }}"
       delegate_facts: yes
       with_items: "{{ groups[hosts_group] }}"
+    - name: Fetch node sync public key
+      command: "{{ ansible_env.HOME }}/node/bin/epoch peer_key"
+      ignore_errors: yes
+      register: key_command
+    - name: Register sync public key as fact
+      set_fact:
+        sync_public_key: "{{ key_command.stdout }}"
+      when: key_command.rc == 0
 
 - name: Deploy epoch package
   hosts: all
@@ -37,6 +45,8 @@
     # Group of the hosts used to configure node peers
     hosts_group: unknown
     config:
+      sync:
+        port: 3015
       http:
         external:
           peer_address: http://{{ ansible_default_ipv4.address }}:3013/

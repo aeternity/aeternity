@@ -615,8 +615,11 @@ parse_peer_configs(Ps) ->
 
 parse_peer_config(P) ->
     try
-        #{ <<"host">> := Host, <<"port">> := Port,
-           <<"pubkey">> := EPK } = P,
+        case P of
+            #{ <<"host">> := Host, <<"port">> := Port, <<"pubkey">> := EPK } -> ok;
+            #{ <<"peer">> := #{ <<"host">> := Host, <<"port">> := Port, <<"pubkey">> := EPK } } -> ok
+        end,
+
         {ok, PK} = aec_base58c:safe_decode(peer_pubkey, EPK),
         [#{ host => Host, port => Port, pubkey => PK}]
     catch _:_ ->
