@@ -2,6 +2,19 @@
 
 -export([infer/1]).
 
+%% Environment containing language primitives
+-spec global_env() -> [{string(), aeso_syntax:type()}].
+global_env() ->
+    Ann = [{origin, system}],
+     %% Placeholder for inter-contract calls until we get proper type checking
+     %% of contracts.
+    [{"raw_call", {fun_t, Ann, [{id, Ann, "address"},
+                                {id, Ann, "string"},
+                                {id, Ann, "int"},
+                                {id, Ann, "int"},
+                                {id, Ann, "_"}],
+                    {id, Ann, "_"}}}].
+
 infer([{contract,Attribs,ConName,Code}|Rest]) ->
     %% do type inference on each contract independently.
     [{contract,Attribs,ConName,infer_contract(Code)}|infer(Rest)];
@@ -10,7 +23,7 @@ infer([]) ->
 
 infer_contract(Defs) ->
     create_record_types(Defs),
-    C = unfold_record_types(infer_contract([],Defs)),
+    C = unfold_record_types(infer_contract(global_env(),Defs)),
     destroy_record_types(),
     C.
 

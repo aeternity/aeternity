@@ -209,7 +209,7 @@ assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
      %% addresses, whose first word is the value (perhaps a relative
      %% pointer into the heap fragment). Compute the address of the
      %% heap fragment--the "base" to which other addresses are
-     %% relative. 
+     %% relative.
      push(32), aeb_opcodes:mnemonic(?ADD),
      %% Write zero here, to ensure that ?MSIZE is increased.
      push(0), dup(2), aeb_opcodes:mnemonic(?MSTORE),
@@ -220,7 +220,7 @@ assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
      %% Stack: value-to-encode, base address, encoded result
      %% Store the encoded result in the first word of the heap fragment
      dup(2), aeb_opcodes:mnemonic(?MSTORE),
-     
+
      %% Stack: value-to-encode, base address
      %% Compute the size of the binary we just constructed
      dup(1), aeb_opcodes:mnemonic(?MSIZE), aeb_opcodes:mnemonic(?SUB),
@@ -244,7 +244,7 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     %% while the arguments are computed, which is unnecessary. To
     %% avoid that, we compute the last argument FIRST, and replace it
     %% with the return address using a SWAP.
-    %% 
+    %%
     %% assemble_function leaves the code pointer of the function to
     %% call on top of the stack, and--if the function is not a
     %% top-level name--a pointer to its tuple of free variables. In
@@ -309,7 +309,123 @@ assemble_expr(Funs,Stack,Tail,{switch,A,Cases}) ->
     Close = make_ref(),
     [assemble_expr(Funs,Stack,nontail,A),
      assemble_cases(Funs,Stack,Tail,Close,Cases),
-     {'JUMPDEST',Close}].
+     {'JUMPDEST',Close}];
+assemble_expr(Funs, Stack, _Tail,
+              #prim_call_contract{ gas      = Gas
+                                 , address  = To
+                                 , value    = Value
+                                 , arg      = Arg
+                                 , arg_type = ArgT
+                                 , out_type = OutT }) ->
+    %% ?CALL takes (from the top)
+    %%   Gas, To, Value, IOffset, ISize, OOffset, OSize
+    %% So we need to
+    %%  - write the argument to the heap
+    %%  - push the arguments to ?CALL
+    %%  - ?CALL
+    %%  - decode the return value
+    OSize = size_of(OutT),  %% Need to know this statically (EVM quirk?)
+    %% Note: assemble expressions first, since this may allocate memory.
+    Exprs = [Value, Gas, To, Arg],          %% Stack
+    [ assemble_exprs(Funs, Stack, Exprs)    %%  Arg To Gas Value
+    , abi_encode(ArgT)                      %%  IOffset ISize To Gas Value
+    , dup(2), dup(2)                        %%  IOffset ISize IOffset ISize To Gas Value
+    , aeb_opcodes:mnemonic(?ADD)            %%  OOffset IOffset ISize To Gas Value
+    , push(OSize)                           %%  OSize OOffset IOffset ISize To Gas Value
+    , dup(2)                                %%  OOffset OSize OOffset IOffset ISize To Gas Value
+    , swap(7)                               %%  Value OSize OOffset IOffset ISize To Gas OOffset
+    , swap(2)                               %%  OOffset OSize Value IOffset ISize To Gas OOffset
+    , swap(5)                               %%  To OSize Value IOffset ISize OOffset Gas OOffset
+    , swap(1)                               %%  OSize To Value IOffset ISize OOffset Gas OOffset
+    , swap(6)                               %%  Gas To Value IOffset ISize OOffset OSize OOffset
+    , aeb_opcodes:mnemonic(?CALL)           %%  Result OOffset
+    , pop(1)                                %%  OOffset         -- ignoring result for now
+    , abi_decode(OutT)                      %%  ResultPtr
+    ].
+
+%% Stack in:  ArgPtr
+%% Stack out: MemPtr Size
+%% Encodes the ArgPtr as a chunk of memory according to the ABI (TODO:
+%% different ABIs). Pushes the pointer to the encoded chunk and its size.
+abi_encode(Type) ->                 %% Stack
+    [ aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr ArgPtr
+    , swap(1)                       %% ArgPtr MemPtr
+    , abi_encode1(Type)             %% MemPtr
+    , dup(1)                        %% MemPtr MemPtr
+    , aeb_opcodes:mnemonic(?MSIZE)  %% EndPtr MemPtr MemPtr
+    , aeb_opcodes:mnemonic(?SUB)    %% Size MemPtr
+    , swap(1)                       %% MemPtr Size
+    ].
+
+%% Stack in:  ArgPtr
+%% Stack out: (empty)
+%% Encodes the argument value at ?MSIZE.
+abi_encode1(word) ->
+    %% Words are unboxed.           %% N
+    [ aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr N
+    , aeb_opcodes:mnemonic(?MSTORE) %% (empty)
+    ];
+abi_encode1(string) ->
+    %% VM representation:  tuple(Len, Word1, .., WordN)
+    %% ABI representation: Len Word1 .. WordN
+    Done = make_ref(),
+    Loop = make_ref(),              %% StrPtr
+    [ dup(1)                        %% StrPtr StrPtr
+    , aeb_opcodes:mnemonic(?MLOAD)  %% Len StrPtr
+    , dup(1)                        %% Len Len StrPtr
+    , aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr Len Len StrPtr
+    , aeb_opcodes:mnemonic(?MSTORE) %% Len StrPtr               Mem[0] := Len
+    , {'JUMPDEST', Loop}            %% Len-i StrPtr+32i
+    , dup(1)                        %% Len-i Len-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?ISZERO) %% i==Len Len-i StrPtr+32i
+    , {push_label, Done}            %% :Done i==Len Len-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?JUMPI)  %% Len-i StrPtr+32i
+    , dup(2)                        %% StrPtr+32i Len-i StrPtr+i
+    , aeb_opcodes:mnemonic(?MLOAD)  %% Str[i] Len-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr Str[i] Len-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?MSTORE) %% Len-i StrPtr+32i           Mem[i] := Str[i]
+    , push(1), swap(1)              %% Len-i 1 StrPtr+32i
+    , aeb_opcodes:mnemonic(?SUB)    %% Len-i-1 StrPtr+32i
+    , swap(1), push(32)             %% 32 StrPtr+32i Len-i-1
+    , aeb_opcodes:mnemonic(?ADD)    %% StrPtr+32(i+1) Len-i-1
+    , swap(1)                       %% Len-i-1 StrPtr+32(i+1)
+    , {push_label, Loop}            %% :Loop Len-i-1 StrPtr+32(i+1)
+    , aeb_opcodes:mnemonic(?JUMP)
+    , {'JUMPDEST', Done}            %% Len StrPtr
+    , pop(2)                        %% (empty)
+    ];
+abi_encode1({tuple, []}) ->
+    [pop(1)];
+abi_encode1({tuple, [T]}) -> %% Singleton tuples are unboxed
+    abi_encode1(T);
+abi_encode1({tuple, Ts}) ->
+    abi_encode_tuple(Ts).
+
+abi_encode_tuple([T]) ->            %% TuplePtr
+    [ aeb_opcodes:mnemonic(?MLOAD)  %% Tuple[0]
+    , abi_encode1(T)                %% (empty)
+    ];
+abi_encode_tuple([T | Ts]) ->       %% TuplePtr
+    [ dup(1)                        %% TuplePtr TuplePtr
+    , aeb_opcodes:mnemonic(?MLOAD)  %% Tuple[0] TuplePtr
+    , abi_encode1(T)                %% TuplePtr
+    , push(32)                      %% 32 TuplePtr
+    , aeb_opcodes:mnemonic(?ADD)    %% TuplePtr+32
+    , abi_encode_tuple(Ts)
+    ].
+
+%% Gets a pointer to an ABI encoded chunk of memory on top of the stack (TODO:
+%% different ABIs) and decodes it, replacing the top of the stack with the
+%% pointer to the decoded heap object.
+abi_decode(word) ->                 %% MemPtr
+    [ aeb_opcodes:mnemonic(?MLOAD)  %% N
+    ];
+abi_decode(Type) ->
+    error({todo, abi_decode, Type}).
+
+size_of(word) -> 32;
+size_of({tuple, Ts}) -> lists:sum(lists:map(fun size_of/1, Ts));
+size_of(T) -> error({size_not_statically_known, T}).
 
 assemble_exprs(_Funs,_Stack,[]) ->
     [];

@@ -58,10 +58,19 @@ ast_args([{arg, _, Name, Type}|Rest], Acc) ->
     ast_args(Rest, [{ast_id(Name), ast_type(Type)}| Acc]);
 ast_args([], Acc) -> lists:reverse(Acc).
 
-%% ICode is untyped, surely?
 ast_type(T) ->
-    T.
+    ast_typerep(T).
 
+ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, Value, {typed, _, Arg, ArgT}]}, OutT}) ->
+    %% TODO: temp hack before we have contract calls properly in the type checker
+    #prim_call_contract{ gas      = ast_body(Gas),
+                         address  = ast_body(To),
+                         value    = ast_body(Value),
+                         arg      = #tuple{cpts = [ast_body(Fun), ast_body(Arg)]},
+                         arg_type = {tuple, [string, ast_typerep(ArgT)]},
+                         out_type = ast_typerep(OutT) };
+ast_body({id, _, "raw_call"}) ->
+    error(bad_raw_call);
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -147,6 +156,8 @@ ast_typerep({id,_,"int"}) ->
     word;
 ast_typerep({id,_,"string"}) ->
     string;
+ast_typerep({id,_,"address"}) ->
+    word;   %% except addresses are 65 bytes..?
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
