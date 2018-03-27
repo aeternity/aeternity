@@ -19,7 +19,7 @@ import keys
 
 settings = common.test_settings(__name__.split(".")[-1])
 
-def test_contract_create():
+def turned_off_contract_create():
     test_settings = settings["test_contract_create"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
     internal_api = common.internal_api(node)
@@ -72,7 +72,7 @@ def test_contract_create():
 
     cleanup(node, root_dir)
 
-def test_contract_call():
+def turned_off_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
     (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
@@ -149,7 +149,7 @@ def test_contract_call():
     cleanup(node, root_dir)
 
 
-def test_spend():
+def turned_off_spend():
     # Alice should be able to create a spend transaction to send tokens to
     # Bob. In a controlled environment, Alice should see her transaction
     # appear in the next block or two that are added to the blockchain.
