@@ -621,31 +621,7 @@ workflows:
     jobs:
       - deploy_fast_integration:
           requires:
-            - test
-            - eunit
-            - uat_tests
-            - static_analysis
             - linux_package
           filters:
             branches:
               only: master
-
-  mock_fast_integration_deploy:
-    triggers:
-      - schedule:
-          cron: "00 10 * * *"
-          filters:
-            branches:
-              only:
-                - PT-154634483_fast_integration
-    jobs:
-      - linux_package:
-          filters:
-            branches:
-              only: PT-154634483_fast_integration
-      - deploy_fast_integration:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: PT-154634483_fast_integration
