@@ -44,7 +44,7 @@
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
 -define(DEFAULT_STOP_TIMEOUT, 30).
 
-%=== TYPRES ====================================================================
+%=== TYPES ====================================================================
 
 -type test_ctx() :: pid() | proplists:proplist().
 -type node_service() :: ext_http | int_http | int_ws.
