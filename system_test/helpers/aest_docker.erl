@@ -10,6 +10,7 @@
 -export([start_node/1]).
 -export([stop_node/1, stop_node/2]).
 -export([kill_node/1]).
+-export([node_logs/1]).
 -export([get_service_address/2]).
 
 %=== MACROS ====================================================================
@@ -196,6 +197,9 @@ kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
     aest_docker_api:kill_container(ID),
     log(NodeState, "Container ~p [~s] killed", [Name, ID]),
     NodeState.
+
+node_logs(#{container_id := ID} = _NodeState) ->
+    aest_docker_api:container_logs(ID).
 
 -spec get_service_address(node_state(), service_label()) -> binary().
 get_service_address(Service, NodeState) ->

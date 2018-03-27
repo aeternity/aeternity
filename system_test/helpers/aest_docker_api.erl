@@ -17,6 +17,7 @@
 -export([stop_container/2]).
 -export([kill_container/1]).
 -export([inspect/1]).
+-export([container_logs/1]).
 
 %=== MACROS ====================================================================
 
@@ -111,6 +112,13 @@ inspect(ID) ->
     {ok, 200, Info} = docker_get([containers, ID, json]),
     Info.
 
+container_logs(ID) ->
+    Query = #{<<"stderr">> => <<"true">>, <<"stdout">> => <<"true">>},
+    {ok, 200, _RespHeaders, ClientRef} =
+        docker_get_raw([containers, ID, logs], Query),
+    {ok, Body} = hackney:body(ClientRef),
+    Body.
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 create_network_object(name, Name, Body) ->
@@ -170,7 +178,10 @@ format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
 docker_get(Path) ->
-    case hackney:request(get, url(Path), [], <<>>, []) of
+    docker_get(Path, #{}).
+
+docker_get(Path, Query) ->
+    case docker_get_raw(Path, Query) of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
             case docker_fetch_json_body(ClientRef) of
@@ -178,6 +189,9 @@ docker_get(Path) ->
                 {ok, Response} -> {ok, Status, Response}
             end
     end.
+
+docker_get_raw(Path, Query) ->
+    hackney:request(get, url(Path, Query), [], <<>>, []).
 
 docker_delete(Path) ->
     case hackney:request(delete, url(Path), [], <<>>, []) of
