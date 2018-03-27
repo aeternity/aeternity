@@ -1,7 +1,9 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on an encrypted Peer-to-Peer protocol and consistent serialization of chain objects.
 It:
+* Moves Peer-to-Peer communication from HTTP to encrypted channels (Noise is used to negoitiate cryptographic material).
+* Introduces a consistent and deterministic serialization using RLP, moving away from MessagePack and internal format.
 * Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
 * Enable user configuration of HTTP API acceptors pool
 * Restructure the transaction root hash in the block header for stricter validation. This impacts consensus and the persisted DB.
