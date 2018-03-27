@@ -93,6 +93,7 @@ ct_setup(Config) ->
 -spec ct_cleanup(test_ctx()) -> ok.
 ct_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
+    call(Pid, dump_logs),
     call(Pid, cleanup),
     call(Pid, stop),
     wait_for_exit(Pid, 120000),
@@ -222,6 +223,9 @@ handlex({stop_node, NodeName, Timeout}, _From, State) ->
     {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
 handlex({kill_node, NodeName}, _From, State) ->
     {reply, ok, mgr_kill_node(NodeName, State)};
+handlex(dump_logs, _From, State) ->
+    ok = mgr_dump_logs(State),
+    {reply, ok, State};
 handlex(cleanup, _From, State) ->
     {reply, ok, mgr_cleanup(State)};
 handlex(stop, _From, State) ->
@@ -341,6 +345,18 @@ mgr_setup(DataDir, TempDir, LogFun) ->
 mgr_setup_backends(BackendMods, Opts) ->
     lists:foldl(fun(Mod, Acc) -> Acc#{Mod => Mod:start(Opts)} end,
                 #{}, BackendMods).
+
+mgr_dump_logs(#{nodes := Nodes1} = State) ->
+    maps:map(fun(Name, {Backend, NodeState}) ->
+        try
+            log(State, "Logs of node ~p:~n~s", [Name, Backend:node_logs(NodeState)])
+        catch
+            _:E ->
+                ST = erlang:get_stacktrace(),
+                log(State, "Error while dumping logs of node ~p: ~p~n~p", [Name, E, ST])
+        end
+    end, Nodes1),
+    ok.
 
 mgr_cleanup(State) ->
     %% So node cleanup can be disabled for debugging without commenting

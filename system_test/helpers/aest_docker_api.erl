@@ -18,6 +18,7 @@
 -export([kill_container/1]).
 -export([inspect/1]).
 -export([exec/3]).
+-export([container_logs/1]).
 
 %=== MACROS ====================================================================
 
@@ -152,6 +153,15 @@ exec(ID, Cmd, Opts) ->
             end
     end.
 
+container_logs(ID) ->
+    Query = #{<<"stderr">> => <<"true">>, <<"stdout">> => <<"true">>},
+    case docker_get([containers, ID, logs], Query, #{result_type => raw}) of
+        {ok, 200, Response} -> Response;
+        {ok, 404, _} -> throw({container_not_found, ID});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, decode_json(Response))})
+    end.
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 create_network_object(name, Name, Body) ->
@@ -272,7 +282,9 @@ docker_fetch_json_body(ClientRef, Type) ->
 
 decode(<<>>, _) -> {ok, undefined};
 decode(Data, raw) -> {ok, Data};
-decode(Data, json) ->
+decode(Data, json) -> decode_json(Data).
+
+decode_json(Data) ->
     try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}
     catch
