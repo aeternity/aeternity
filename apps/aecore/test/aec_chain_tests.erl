@@ -437,9 +437,12 @@ broken_chain_invalid_transaction() ->
     %% Insert up to last block.
     ok = write_blocks_to_chain([B0, B1]),
 
-    %% Add invalid transaction with negative nonce to last block
+    %% Add invalid transaction with too high nonce to last block
     Txs = B2#block.txs,
-    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>, amount => 0, fee => 0, nonce => -1}),
+    BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>,
+                                                    amount => 0,
+                                                    fee => 0,
+                                                    nonce => 10}),
     BogusTxs = [BogusSpendTx | Txs],
 
     ?assertNotEqual(Txs, BogusTxs),

@@ -14,6 +14,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -21,8 +22,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -36,6 +38,7 @@
 %%%===================================================================
 
 -define(NAME_UPDATE_TX_VSN, 1).
+-define(NAME_UPDATE_TX_TYPE, name_update_tx).
 
 -opaque tx() :: #ns_update_tx{}.
 
@@ -61,6 +64,10 @@ new(#{account   := AccountPubKey,
                        ttl       = TTL,
                        fee       = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?NAME_UPDATE_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#ns_update_tx{fee = Fee}) ->
@@ -114,7 +121,7 @@ accounts(#ns_update_tx{account = AccountPubKey}) ->
 signers(#ns_update_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_update_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name_hash = NameHash,
@@ -122,24 +129,25 @@ serialize(#ns_update_tx{account   = AccountPubKey,
                         pointers  = Pointers,
                         ttl       = TTL,
                         fee       = Fee}) ->
-    [#{<<"vsn">>      => version()},
-     #{<<"account">>  => AccountPubKey},
-     #{<<"nonce">>    => Nonce},
-     #{<<"hash">>     => NameHash},
-     #{<<"name_ttl">> => NameTTL},
-     #{<<"pointers">> => jsx:encode(Pointers)},
-     #{<<"ttl">>      => TTL},
-     #{<<"fee">>      => Fee}].
+    {version(),
+     [ {account, AccountPubKey}
+     , {nonce, Nonce}
+     , {hash, NameHash}
+     , {name_ttl, NameTTL}
+     , {pointers, jsx:encode(Pointers)} %% TODO: This might be ambigous
+     , {ttl, TTL}
+     , {fee, Fee}
+     ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>      := ?NAME_UPDATE_TX_VSN},
-             #{<<"account">>  := AccountPubKey},
-             #{<<"nonce">>    := Nonce},
-             #{<<"hash">>     := NameHash},
-             #{<<"name_ttl">> := NameTTL},
-             #{<<"pointers">> := Pointers},
-             #{<<"ttl">>      := TTL},
-             #{<<"fee">>      := Fee}]) ->
+-spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
+deserialize(?NAME_UPDATE_TX_VSN,
+            [ {account, AccountPubKey}
+            , {nonce, Nonce}
+            , {hash, NameHash}
+            , {name_ttl, NameTTL}
+            , {pointers, Pointers}
+            , {ttl, TTL}
+            , {fee, Fee}]) ->
     #ns_update_tx{account   = AccountPubKey,
                   nonce     = Nonce,
                   name_hash = NameHash,
@@ -147,6 +155,17 @@ deserialize([#{<<"vsn">>      := ?NAME_UPDATE_TX_VSN},
                   pointers  = jsx:decode(Pointers),
                   ttl       = TTL,
                   fee       = Fee}.
+
+serialization_template(?NAME_UPDATE_TX_VSN) ->
+    [ {account, binary}
+    , {nonce, int}
+    , {hash, binary}
+    , {name_ttl, int}
+    , {pointers, binary} %% TODO: This might be ambigous
+    , {ttl, int}
+    , {fee, int}
+    ].
+
 
 -spec for_client(tx()) -> map().
 for_client(#ns_update_tx{account   = AccountPubKey,

@@ -67,7 +67,7 @@
 
 -define(PUB_SIZE, 65).
 -define(HASH_SIZE, 32).
--define(ORACLE_TYPE, <<"oracle">>).
+-define(ORACLE_TYPE, oracle).
 -define(ORACLE_VSN, 1).
 
 %%%===================================================================
@@ -91,32 +91,46 @@ new(RTx, BlockHeight) ->
 
 -spec serialize(oracle()) -> binary().
 serialize(#oracle{} = O) ->
-    msgpack:pack([ #{<<"type">>            => ?ORACLE_TYPE}
-                 , #{<<"vsn">>             => ?ORACLE_VSN}
-                 , #{<<"owner">>           => owner(O)}
-                 , #{<<"query_format">>    => query_format(O)}
-                 , #{<<"response_format">> => response_format(O)}
-                 , #{<<"query_fee">>       => query_fee(O)}
-                 , #{<<"expires">>         => expires(O)}
-                 ]).
+    aec_object_serialization:serialize(
+      ?ORACLE_TYPE,
+      ?ORACLE_VSN,
+      serialization_template(?ORACLE_VSN),
+      [ {owner, owner(O)}
+      , {query_format, query_format(O)}
+      , {response_format, response_format(O)}
+      , {query_fee, query_fee(O)}
+      , {expires, expires(O)}
+      ]).
 
 -spec deserialize(binary()) -> oracle().
 deserialize(Bin) ->
-    {ok, List} = msgpack:unpack(Bin),
-    [ #{<<"type">>            := ?ORACLE_TYPE}
-    , #{<<"vsn">>             := ?ORACLE_VSN}
-    , #{<<"owner">>           := Owner}
-    , #{<<"query_format">>    := QueryFormat}
-    , #{<<"response_format">> := ResponseFormat}
-    , #{<<"query_fee">>       := QueryFee}
-    , #{<<"expires">>         := Expires}
-    ] = List,
+      [ {owner, Owner}
+      , {query_format, QueryFormat}
+      , {response_format, ResponseFormat}
+      , {query_fee, QueryFee}
+      , {expires, Expires}
+      ] =
+        aec_object_serialization:deserialize(
+          ?ORACLE_TYPE,
+          ?ORACLE_VSN,
+          serialization_template(?ORACLE_VSN),
+          Bin
+         ),
     #oracle{ owner           = Owner
            , query_format    = QueryFormat
            , response_format = ResponseFormat
            , query_fee       = QueryFee
            , expires         = Expires
            }.
+
+serialization_template(?ORACLE_VSN) ->
+    [ {owner, binary}
+    , {query_format, binary}
+    , {response_format, binary}
+    , {query_fee, int}
+    , {expires, int}
+    ].
+
 
 %%%===================================================================
 %%% Getters

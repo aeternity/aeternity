@@ -81,5 +81,5 @@ call_tx(Override) ->
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aect_call_tx:new(Map1),
-    {aect_call_tx, CTx} = aetx:specialize_type(Tx),
+    {contract_call_tx, CTx} = aetx:specialize_type(Tx),
     CTx.

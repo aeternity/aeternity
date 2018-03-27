@@ -34,8 +34,8 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--define(ORACLE_INTERACTION_TYPE, <<"oracle_i">>).
--define(ORACLE_INTERACTION_VSN, 1).
+-define(ORACLE_QUERY_TYPE, oracle_query).
+-define(ORACLE_QUERY_VSN, 1).
 
 %%%===================================================================
 %%% Types
@@ -108,39 +108,43 @@ is_closed(#query{}) -> true.
 -spec serialize(query()) -> binary().
 serialize(#query{} = I) ->
     {delta, RespTTLValue} = response_ttl(I),
-    Response = case response(I) of
-                   undefined -> 0;
-                   Bin when is_binary(Bin) -> Bin
-               end,
-    msgpack:pack([ #{<<"type">>            => ?ORACLE_INTERACTION_TYPE}
-                 , #{<<"vsn">>             => ?ORACLE_INTERACTION_VSN}
-                 , #{<<"sender_address">>  => sender_address(I)}
-                 , #{<<"sender_nonce">>    => sender_nonce(I)}
-                 , #{<<"oracle_address">>  => oracle_address(I)}
-                 , #{<<"query">>           => query(I)}
-                 , #{<<"response">>        => Response}
-                 , #{<<"expires">>         => expires(I)}
-                 , #{<<"response_ttl">>    => RespTTLValue}
-                 , #{<<"fee">>             => fee(I)}
-                 ]).
+    {Response, HasRresponse}
+        = case response(I) of
+              undefined -> {<<>>, false};
+              Bin when is_binary(Bin) -> {Bin, true}
+          end,
+    aec_object_serialization:serialize(
+      ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
+      serialization_template(?ORACLE_QUERY_VSN),
+      [ {sender_address, sender_address(I)}
+      , {sender_nonce, sender_nonce(I)}
+      , {oracle_address, oracle_address(I)}
+      , {query, query(I)}
+      , {has_response, HasRresponse}
+      , {response, Response}
+      , {expires, expires(I)}
+      , {response_ttl, RespTTLValue}
+      , {fee, fee(I)}
+      ]).
 
 -spec deserialize(binary()) -> query().
 deserialize(B) ->
-    {ok, List} = msgpack:unpack(B),
-    [ #{<<"type">>            := ?ORACLE_INTERACTION_TYPE}
-    , #{<<"vsn">>             := ?ORACLE_INTERACTION_VSN}
-    , #{<<"sender_address">>  := SenderAddress}
-    , #{<<"sender_nonce">>    := SenderNonce}
-    , #{<<"oracle_address">>  := OracleAddress}
-    , #{<<"query">>           := Query}
-    , #{<<"response">>        := Response0}
-    , #{<<"expires">>         := Expires}
-    , #{<<"response_ttl">>    := RespTTLValue}
-    , #{<<"fee">>             := Fee}
-    ] = List,
-    Response = case Response0 of
-                   0 -> undefined;
-                   Bin when is_binary(Bin) -> Bin
+    [ {sender_address, SenderAddress}
+    , {sender_nonce, SenderNonce}
+    , {oracle_address, OracleAddress}
+    , {query, Query}
+    , {has_response, HasResponse}
+    , {response, Response0}
+    , {expires, Expires}
+    , {response_ttl, RespTTLValue}
+    , {fee, Fee}
+    ] = aec_object_serialization:deserialize(
+          ?ORACLE_QUERY_TYPE, ?ORACLE_QUERY_VSN,
+          serialization_template(?ORACLE_QUERY_VSN), B),
+
+    Response = case HasResponse of
+                   false -> undefined;
+                   true -> Response0
                end,
     #query{ sender_address = SenderAddress
           , sender_nonce   = SenderNonce
@@ -152,6 +156,17 @@ deserialize(B) ->
           , fee            = Fee
           }.
 
+serialization_template(?ORACLE_QUERY_VSN) ->
+    [ {sender_address , binary}
+    , {sender_nonce   , int}
+    , {oracle_address , binary}
+    , {query          , binary}
+    , {has_response   , bool}
+    , {response       , binary}
+    , {expires        , int}
+    , {response_ttl   , int}
+    , {fee            , int}
+    ].
 
 %%%===================================================================
 %%% Getters

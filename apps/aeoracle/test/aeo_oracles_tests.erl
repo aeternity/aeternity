@@ -75,5 +75,5 @@ register_tx(Override) ->
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aeo_register_tx:new(Map1),
-    {aeo_register_tx, RTx} = aetx:specialize_type(Tx),
+    {oracle_register_tx, RTx} = aetx:specialize_type(Tx),
     RTx.

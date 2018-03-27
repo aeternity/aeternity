@@ -370,7 +370,7 @@ test_get_block_candidate() ->
             fun(SignedTx) ->
                 Tx = aetx_sign:tx(SignedTx),
                 case aetx:tx_type(Tx) of
-                    <<"aec_coinbase_tx">> -> true;
+                    <<"coinbase_tx">> -> true;
                     _ ->
                         lists:member(Tx, AllTxsInPool)
                 end

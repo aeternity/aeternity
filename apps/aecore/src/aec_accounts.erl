@@ -20,6 +20,9 @@
 
 -include("common.hrl").
 
+-define(ACCOUNT_VSN, 1).
+-define(ACCOUNT_TYPE, account).
+
 -record(account, {
           pubkey = <<>>  :: pubkey(),
           balance = 0    :: non_neg_integer(),
@@ -69,8 +72,35 @@ spend(#account{balance = Balance0} = Account0, Amount, Nonce, Height) ->
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(Account) ->
-    term_to_binary(Account).
+    aec_object_serialization:serialize(
+      ?ACCOUNT_TYPE, ?ACCOUNT_VSN,
+      serialization_template(?ACCOUNT_VSN),
+      [ {pubkey, pubkey(Account)}
+      , {nonce, nonce(Account)}
+      , {height, height(Account)}
+      , {balance, balance(Account)}
+      ]).
 
 -spec deserialize(binary()) -> account().
 deserialize(SerializedAccount) ->
-    binary_to_term(SerializedAccount).
+    [ {pubkey, Pubkey}
+    , {nonce, Nonce}
+    , {height, Height}
+    , {balance, Balance}
+    ] = aec_object_serialization:deserialize(
+          ?ACCOUNT_TYPE,
+          ?ACCOUNT_VSN,
+          serialization_template(?ACCOUNT_VSN),
+          SerializedAccount),
+    #account{ pubkey = Pubkey
+            , balance = Balance
+            , nonce = Nonce
+            , height = Height
+            }.
+
+serialization_template(?ACCOUNT_VSN) ->
+    [ {pubkey, binary}
+    , {nonce, int}
+    , {height, int}
+    , {balance, int}
+    ].

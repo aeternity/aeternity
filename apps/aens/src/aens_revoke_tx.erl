@@ -13,6 +13,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -20,8 +21,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -30,6 +32,7 @@
 %%%===================================================================
 
 -define(NAME_REVOKE_TX_VSN, 1).
+-define(NAME_REVOKE_TX_TYPE, name_revoke_tx).
 
 -opaque tx() :: #ns_revoke_tx{}.
 
@@ -50,6 +53,9 @@ new(#{account   := AccountPubKey,
                        fee       = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
 
+-spec type() -> atom().
+type() ->
+    ?NAME_REVOKE_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#ns_revoke_tx{fee = Fee}) ->
@@ -103,27 +109,35 @@ accounts(#ns_revoke_tx{account = AccountPubKey}) ->
 signers(#ns_revoke_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_revoke_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name_hash = NameHash,
                         fee       = Fee}) ->
-    [#{<<"vsn">>     => version()},
-     #{<<"account">> => AccountPubKey},
-     #{<<"nonce">>   => Nonce},
-     #{<<"hash">>    => NameHash},
-     #{<<"fee">>     => Fee}].
+    {version(),
+     [ {account, AccountPubKey}
+     , {nonce, Nonce}
+     , {hash, NameHash}
+     , {fee, Fee}
+     ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>     := ?NAME_REVOKE_TX_VSN},
-             #{<<"account">> := AccountPubKey},
-             #{<<"nonce">>   := Nonce},
-             #{<<"hash">>    := NameHash},
-             #{<<"fee">>     := Fee}]) ->
+-spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
+deserialize(?NAME_REVOKE_TX_VSN,
+            [ {account, AccountPubKey}
+            , {nonce, Nonce}
+            , {hash, NameHash}
+            , {fee, Fee}]) ->
     #ns_revoke_tx{account   = AccountPubKey,
                   nonce     = Nonce,
                   name_hash = NameHash,
                   fee       = Fee}.
+
+serialization_template(?NAME_REVOKE_TX_VSN) ->
+    [ {account, binary}
+    , {nonce, int}
+    , {hash, binary}
+    , {fee, int}
+    ].
 
 -spec for_client(tx()) -> map().
 for_client(#ns_revoke_tx{account   = AccountPubKey,

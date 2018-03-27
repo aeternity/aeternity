@@ -14,6 +14,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -21,8 +22,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -34,6 +36,7 @@
 %%%===================================================================
 
 -define(NAME_TRANSFER_TX_VSN, 1).
+-define(NAME_TRANSFER_TX_TYPE, name_transfer_tx).
 
 -opaque tx() :: #ns_transfer_tx{}.
 
@@ -55,6 +58,10 @@ new(#{account           := AccountPubKey,
                          recipient_account = RecipientAccountPubKey,
                          fee               = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?NAME_TRANSFER_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#ns_transfer_tx{fee = Fee}) ->
@@ -108,31 +115,40 @@ accounts(#ns_transfer_tx{account = AccountPubKey,
 signers(#ns_transfer_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_transfer_tx{account           = AccountPubKey,
                           nonce             = Nonce,
                           name_hash         = NameHash,
                           recipient_account = RecipientAccountPubKey,
                           fee               = Fee}) ->
-    [#{<<"vsn">>       => version()},
-     #{<<"account">>   => AccountPubKey},
-     #{<<"nonce">>     => Nonce},
-     #{<<"hash">>      => NameHash},
-     #{<<"recipient">> => RecipientAccountPubKey},
-     #{<<"fee">>       => Fee}].
+    {version(),
+     [ {account, AccountPubKey}
+     , {nonce, Nonce}
+     , {hash, NameHash}
+     , {recipient, RecipientAccountPubKey}
+     , {fee, Fee}
+     ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>       := ?NAME_TRANSFER_TX_VSN},
-             #{<<"account">>   := AccountPubKey},
-             #{<<"nonce">>     := Nonce},
-             #{<<"hash">>      := NameHash},
-             #{<<"recipient">> := RecipientAccountPubKey},
-             #{<<"fee">>       := Fee}]) ->
+-spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
+deserialize(?NAME_TRANSFER_TX_VSN,
+            [ {account, AccountPubKey}
+            , {nonce, Nonce}
+            , {hash, NameHash}
+            , {recipient, RecipientAccountPubKey}
+            , {fee, Fee}]) ->
     #ns_transfer_tx{account           = AccountPubKey,
                     nonce             = Nonce,
                     name_hash         = NameHash,
                     recipient_account = RecipientAccountPubKey,
                     fee               = Fee}.
+
+serialization_template(?NAME_TRANSFER_TX_VSN) ->
+    [ {account, binary}
+    , {nonce, int}
+    , {hash, binary}
+    , {recipient, binary}
+    , {fee, int}
+    ].
 
 -spec for_client(tx()) -> map().
 for_client(#ns_transfer_tx{account           = AccountPubKey,

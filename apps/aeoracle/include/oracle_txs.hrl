@@ -1,5 +1,10 @@
 -include_lib("apps/aecore/include/common.hrl").
 
+-define(ttl_delta_int, 0).
+-define(ttl_delta_atom, delta).
+-define(ttl_block_int, 1).
+-define(ttl_block_atom, block).
+
 -record(oracle_register_tx, {
           account                                     :: pubkey(),
           nonce                                       :: integer(),

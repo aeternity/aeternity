@@ -13,6 +13,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -20,8 +21,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -36,6 +38,7 @@
 
 
 -define(CONTRACT_CALL_TX_VSN, 1).
+-define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
 -define(CONTRACT_CALL_TX_FEE, 2).
 
 -opaque tx() :: #contract_call_tx{}.
@@ -62,6 +65,10 @@ new(#{caller     := CallerPubKey,
                            gas_price  = GasPrice,
                            call_data  = CallData},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?CONTRACT_CALL_TX_TYPE.
 
 -spec fee(tx()) -> integer().
 fee(#contract_call_tx{fee = F}) ->
@@ -142,27 +149,28 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
                             gas        = Gas,
                             gas_price  = GasPrice,
                             call_data  = CallData}) ->
-    [#{<<"vsn">>        => version()},
-     #{<<"caller">>     => CallerPubKey},
-     #{<<"nonce">>      => Nonce},
-     #{<<"contract">>   => ContractPubKey},
-     #{<<"vm_version">> => VmVersion},
-     #{<<"fee">>        => Fee},
-     #{<<"amount">>     => Amount},
-     #{<<"gas">>        => Gas},
-     #{<<"gas_price">>  => GasPrice},
-     #{<<"call_data">>  => CallData}].
+    {version(),
+     [ {caller, CallerPubKey}
+     , {nonce, Nonce}
+     , {contract, ContractPubKey}
+     , {vm_version, VmVersion}
+     , {fee, Fee}
+     , {amount, Amount}
+     , {gas, Gas}
+     , {gas_price, GasPrice}
+     , {call_data, CallData}
+     ]}.
 
-deserialize([#{<<"vsn">>        := ?CONTRACT_CALL_TX_VSN},
-             #{<<"caller">>     := CallerPubKey},
-             #{<<"nonce">>      := Nonce},
-             #{<<"contract">>   := ContractPubKey},
-             #{<<"vm_version">> := VmVersion},
-             #{<<"fee">>        := Fee},
-             #{<<"amount">>     := Amount},
-             #{<<"gas">>        := Gas},
-             #{<<"gas_price">>  := GasPrice},
-             #{<<"call_data">>  := CallData}]) ->
+deserialize(?CONTRACT_CALL_TX_VSN,
+            [ {caller, CallerPubKey}
+            , {nonce, Nonce}
+            , {contract, ContractPubKey}
+            , {vm_version, VmVersion}
+            , {fee, Fee}
+            , {amount, Amount}
+            , {gas, Gas}
+            , {gas_price, GasPrice}
+            , {call_data, CallData}]) ->
     #contract_call_tx{caller     = CallerPubKey,
                       nonce      = Nonce,
                       contract   = ContractPubKey,
@@ -172,6 +180,18 @@ deserialize([#{<<"vsn">>        := ?CONTRACT_CALL_TX_VSN},
                       gas        = Gas,
                       gas_price  = GasPrice,
                       call_data  = CallData}.
+
+serialization_template(?CONTRACT_CALL_TX_VSN) ->
+    [ {caller, binary}
+    , {nonce, int}
+    , {contract, binary}
+    , {vm_version, int}
+    , {fee, int}
+    , {amount, int}
+    , {gas, int}
+    , {gas_price, int}
+    , {call_data, binary}
+    ].
 
 -spec version() -> non_neg_integer().
 version() ->

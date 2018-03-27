@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -20,7 +21,8 @@
          accounts/1,
          signers/1,
          serialize/1,
-         deserialize/1,
+         serialization_template/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -29,6 +31,7 @@
          ttl/1]).
 
 -define(ORACLE_EXTEND_TX_VSN, 1).
+-define(ORACLE_EXTEND_TX_TYPE, oracle_extend_tx).
 -define(ORACLE_EXTEND_TX_FEE, 1).
 
 -opaque tx() :: #oracle_extend_tx{}.
@@ -57,6 +60,10 @@ new(#{oracle := OraclePK,
                            ttl    = TTL,
                            fee    = Fee},
     {ok, aetx:new(?MODULE, Tx)}.
+
+-spec type() -> atom().
+type() ->
+    ?ORACLE_EXTEND_TX_TYPE.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_extend_tx{nonce = Nonce}) ->
@@ -111,23 +118,34 @@ process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL
 
 serialize(#oracle_extend_tx{oracle = OraclePK,
                             nonce  = Nonce,
-                            ttl    = {delta, TTLValue},
+                            ttl    = {?ttl_delta_atom, TTLValue},
                             fee    = Fee}) ->
-    [#{<<"vsn">> => version()},
-     #{<<"oracle">> => OraclePK},
-     #{<<"nonce">> => Nonce},
-     #{<<"ttl">> => #{<<"type">> => <<"delta">>, <<"value">> => TTLValue}},
-     #{<<"fee">> => Fee}].
+    {version(),
+    [ {oracle, OraclePK}
+    , {nonce, Nonce}
+    , {ttl_type, ?ttl_delta_int}
+    , {ttl_value, TTLValue}
+    , {fee, Fee}
+    ]}.
 
-deserialize([#{<<"vsn">>    := ?ORACLE_EXTEND_TX_VSN},
-             #{<<"oracle">> := OraclePK},
-             #{<<"nonce">>  := Nonce},
-             #{<<"ttl">>    := #{<<"type">>  := <<"delta">>, <<"value">> := TTLValue}},
-             #{<<"fee">>    := Fee}]) ->
+deserialize(?ORACLE_EXTEND_TX_VSN,
+           [ {oracle, OraclePK}
+           , {nonce, Nonce}
+           , {ttl_type, ?ttl_delta_int}
+           , {ttl_value, TTLValue}
+           , {fee, Fee}]) ->
     #oracle_extend_tx{oracle = OraclePK,
                       nonce  = Nonce,
-                      ttl    = {delta, TTLValue},
+                      ttl    = {?ttl_delta_atom, TTLValue},
                       fee    = Fee}.
+
+serialization_template(?ORACLE_EXTEND_TX_VSN) ->
+    [ {oracle, binary}
+    , {nonce, int}
+    , {ttl_type, int}
+    , {ttl_value, int}
+    , {fee, int}
+    ].
 
 -spec version() -> non_neg_integer().
 version() ->

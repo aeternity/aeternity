@@ -34,7 +34,7 @@
               commitment/0,
               serialized/0]).
 
--define(COMMITMENT_TYPE, <<"commitment">>).
+-define(COMMITMENT_TYPE, name_commitment).
 -define(COMMITMENT_VSN, 1).
 
 %%%===================================================================
@@ -56,26 +56,37 @@ new(PreclaimTx, Expiration, BlockHeight) ->
 
 -spec serialize(commitment()) -> binary().
 serialize(#commitment{} = C) ->
-    msgpack:pack([#{<<"type">>    => ?COMMITMENT_TYPE},
-                  #{<<"vsn">>     => ?COMMITMENT_VSN},
-                  #{<<"hash">>    => hash(C)},
-                  #{<<"owner">>   => owner(C)},
-                  #{<<"created">> => created(C)},
-                  #{<<"expires">> => expires(C)}]).
+    aec_object_serialization:serialize(
+      ?COMMITMENT_TYPE,
+      ?COMMITMENT_VSN,
+      serialization_template(?COMMITMENT_VSN),
+      [ {hash, hash(C)}
+      , {owner, owner(C)}
+      , {created, created(C)}
+      , {expires, expires(C)}]).
 
 -spec deserialize(binary()) -> commitment().
 deserialize(Bin) ->
-    {ok, List} = msgpack:unpack(Bin),
-    [#{<<"type">>    := ?COMMITMENT_TYPE},
-     #{<<"vsn">>     := ?COMMITMENT_VSN},
-     #{<<"hash">>    := Hash},
-     #{<<"owner">>   := Owner},
-     #{<<"created">> := Created},
-     #{<<"expires">> := Expires}] = List,
+    [ {hash, Hash}
+    , {owner, Owner}
+    , {created, Created}
+    , {expires, Expires}
+    ] = aec_object_serialization:deserialize(
+          ?COMMITMENT_TYPE,
+          ?COMMITMENT_VSN,
+          serialization_template(?COMMITMENT_VSN),
+          Bin),
     #commitment{hash    = Hash,
                 owner   = Owner,
                 created = Created,
                 expires = Expires}.
+
+serialization_template(?COMMITMENT_VSN) ->
+    [ {hash, binary}
+    , {owner, binary}
+    , {created, int}
+    , {expires, int}
+    ].
 
 %%%===================================================================
 %%% Getters
