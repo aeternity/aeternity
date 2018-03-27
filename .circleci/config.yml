@@ -629,3 +629,22 @@ workflows:
           filters:
             branches:
               only: master
+
+  mock_fast_integration_deploy:
+    triggers:
+      - schedule:
+          cron: "30 9 * * *"
+          filters:
+            branches:
+              only:
+                - PT-154634483_fast_integration
+    jobs:
+      - deploy_fast_integration:
+          requires:
+            - test
+            - eunit
+            - static_analysis
+            - linux_package
+          filters:
+            branches:
+              only: PT-154634483_fast_integration
