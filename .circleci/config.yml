@@ -633,17 +633,18 @@ workflows:
   mock_fast_integration_deploy:
     triggers:
       - schedule:
-          cron: "30 9 * * *"
+          cron: "00 10 * * *"
           filters:
             branches:
               only:
                 - PT-154634483_fast_integration
     jobs:
+      - linux_package:
+          filters:
+            branches:
+              only: PT-154634483_fast_integration
       - deploy_fast_integration:
           requires:
-            - test
-            - eunit
-            - static_analysis
             - linux_package
           filters:
             branches:
