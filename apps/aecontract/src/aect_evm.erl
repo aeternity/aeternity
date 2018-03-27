@@ -25,7 +25,7 @@ call(Code, CallData) ->
 
     %% TODO: proper setup of chain state!
     DummyPubKey = aect_contracts:compute_contract_pubkey(<<"TODO!!!">>, 1),
-    ChainState  = aevm_chain:new_state(aec_trees:new(), 1, DummyPubKey),
+    ChainState  = aec_vm_chain:new_state(aec_trees:new(), 1, DummyPubKey),
     Spec = #{ code => Code
             , address => 0
             , caller => 0
@@ -40,7 +40,7 @@ call(Code, CallData) ->
             , currentNumber => 1
             , currentTimestamp => 1
             , chainState => ChainState
-            , chainAPI => aevm_chain
+            , chainAPI => aec_vm_chain
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};

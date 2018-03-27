@@ -5,7 +5,7 @@
 %%%    chain.
 %%% @end
 %%%=============================================================================
--module(aevm_chain_api).
+-module(aec_vm_chain_api).
 
 -include_lib("apps/aecore/include/common.hrl").
 

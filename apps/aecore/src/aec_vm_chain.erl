@@ -1,18 +1,18 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Implementation of the aevm_chain_api.
+%%%    Implementation of the aec_vm_chain_api.
 %%% @end
 %%%=============================================================================
--module(aevm_chain).
+-module(aec_vm_chain).
 
 -include_lib("apps/aecore/include/common.hrl").
 
--behaviour(aevm_chain_api).
+-behaviour(aec_vm_chain_api).
 
 -export([new_state/3, get_trees/1]).
 
-%% aevm_chain_api callbacks
+%% aec_vm_chain_api callbacks
 -export([get_balance/1,
          spend/3,
          call_contract/6]).
@@ -68,7 +68,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 %% @doc Call another contract.
 -spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
-        {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
+        {ok, aec_vm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
                               height  = Height,
@@ -95,9 +95,9 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             GasUsed = aect_call:gas_used(Call),
             Result  = case aect_call:return_value(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
-                          <<>> -> aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                          <<>> -> aec_vm_chain_api:call_exception(out_of_gas, GasUsed);
                           Bin when is_binary(Bin) ->
-                            aevm_chain_api:call_result(Bin, GasUsed)
+                            aec_vm_chain_api:call_result(Bin, GasUsed)
                       end,
             {ok, Result, State#state{ trees = Trees2, nonce = Nonce + 1 }}
     end.
