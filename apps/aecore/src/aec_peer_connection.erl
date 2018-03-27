@@ -26,8 +26,7 @@
 
 -import(aeu_debug, [pp/1]).
 
--include("common.hrl").
--include("blocks.hrl").
+-define(P2P_PROTOCOL_VSN, 1).
 
 -define(MSG_FRAGMENT, 0).
 -define(MSG_PING, 1).
@@ -119,7 +118,7 @@ call(PeerId, Call) when is_binary(PeerId) ->
 
 %% -- gen_server callbacks ---------------------------------------------------
 init([Opts]) ->
-    Version = <<?PROTOCOL_VERSION:16>>,
+    Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
     {ok, Opts#{ version => Version, genesis => Genesis }, 0}.
 
