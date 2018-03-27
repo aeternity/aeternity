@@ -38,8 +38,16 @@ infer_contract(Env,[Fun={letfun,_,_,_,_,_}|Rest]) ->
 infer_contract(Env,[Rec={letrec,_,_}|Rest]) ->
     {TypeSigs,NewRec} = infer_letrec(Env,Rec),
     [NewRec|infer_contract(TypeSigs++Env,Rest)];
+infer_contract(Env, [Fun={fun_decl, _, _, _} | Rest]) ->
+    TypeSig = check_fundecl(Env, Fun),
+    infer_contract([TypeSig | Env], Rest);
 infer_contract(_,[]) ->
     [].
+
+check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
+    {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
+check_fundecl(_, {fundecl, _Attrib, {id, _, Name}, Type}) ->
+    error({fundecl_must_have_funtype, Name, Type}).
 
 infer_nonrec(Env,LetFun) ->
     ets:new(type_vars,[set,named_table,public]),
