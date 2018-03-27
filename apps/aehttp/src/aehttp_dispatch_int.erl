@@ -8,7 +8,7 @@
         OperationID :: atom(),
         Req :: map(),
         Context :: #{}
-                   ) -> {Status :: cowboy:http_status(), Headers :: cowboy:http_headers(), Body :: map()}.
+                   ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     case get_local_pubkey_with_next_nonce() of

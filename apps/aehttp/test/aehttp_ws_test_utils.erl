@@ -120,20 +120,27 @@ init(WaitingPid) ->
 
 onconnect(_WSReq, Regs) ->
     ct:log("Ws connected"),
-    [WaitingPid] = get_registered(waiting_connected, Regs),
-    Regs1 = delete_registered(WaitingPid, waiting_connected, Regs),
-    inform_registered(WaitingPid, websocket, connected),
-    {ok, Regs1}.
+    self() ! ping,
+    {ok, Regs}.
 
 
 ondisconnect({error, {400, <<"Bad Request">>}}, Regs) ->
     {close, normal, Regs};
 ondisconnect({remote, closed}, Regs) ->
     ct:log("Connection closed, closing"),
-    {close, "closed", Regs}.
+    {close, normal, Regs}.
 
-websocket_handle({pong, _}, _ConnState, Regs) ->
-    {ok, Regs};
+websocket_handle({pong, Nonce}, _ConnState, Regs) ->
+    case get_registered(waiting_nonce, Regs) of
+        [Nonce] ->
+            Regs1 = delete_registered(Nonce, waiting_nonce, Regs),
+            [WaitingPid] = get_registered(waiting_connected, Regs1),
+            inform_registered(WaitingPid, websocket, connected),
+            Regs2 = delete_registered(WaitingPid, waiting_connected, Regs1),
+            {ok, Regs2};
+        [] ->
+            {ok, Regs}
+    end;
 websocket_handle({text, MsgBin}, _ConnState, Regs) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
     ct:log("Received msg ~p~n", [Msg]),
@@ -153,6 +160,10 @@ websocket_handle({text, MsgBin}, _ConnState, Regs) ->
     end,
     {ok, Regs}.
 
+websocket_info(ping, _ConnState, Regs) ->
+    Nonce = list_to_binary(ref_to_list(make_ref())),
+    Regs1 = put_registration(Nonce, waiting_nonce, Regs),
+    {reply, {ping, Nonce}, Regs1};
 websocket_info(stop, _ConnState, _Regs) ->
     {close, <<>>, "stopped"};
 websocket_info({register_test, RegisteredPid, Event}, _ConnState, Regs0) ->
