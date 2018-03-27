@@ -34,6 +34,7 @@ references:
           git fetch git@github.com:aeternity/epoch.git +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
           git checkout -qf FETCH_HEAD
           git rev-parse HEAD
+          git merge-base --is-ancestor "$CIRCLE_SHA1" HEAD || exit 1
         fi
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
