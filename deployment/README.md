@@ -28,13 +28,13 @@ source ~/my/secrets/openstack.rc
 ansible-inventory -i inventory/openstack.yml --list
 ```
 ### Amazon Web Services
-Yous should make sure [AWS CommandLine interface credentials are set](http://docs.ansible.com/ansible/latest/intro_dynamic_inventory.html#example-aws-ec2-external-inventory-script) either by environment vairbales or ~/.aws/credentials file
+Yous should make sure [AWS CommandLine interface credentials are set](http://docs.ansible.com/ansible/latest/intro_dynamic_inventory.html#example-aws-ec2-external-inventory-script) either by environment variables or ~/.aws/credentials file
 
 ```bash
 ansible-inventory -i inventory/ec2.py --list
 ```
 
-If you hace configured multiple AWS credentials you can pass AWS_PROFILE variable before command
+If you have configured multiple AWS credentials you can pass AWS_PROFILE variable before command
 ```bash
 AWS_PROFILE=aeternity ansible-inventory -i inventory/ec2.py --list
 ```
