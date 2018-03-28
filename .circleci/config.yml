@@ -619,6 +619,11 @@ workflows:
               only:
                 - master
     jobs:
+      - linux_package:
+          filters:
+            branches:
+              only: master
+
       - deploy_fast_integration:
           requires:
             - linux_package
