@@ -2,10 +2,7 @@
 # Minimal configuration file to join the TestNet with enabled chain persisting and mining
 peers:
     # TestNet Addresses
-    - peer:
-        host: "31.13.249.1"
-        port: 3013
-        pubkey: "pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk"
+    - peer: {host: 31.13.249.1, port: 3015, pubkey: pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177}
 
 http:
     external:

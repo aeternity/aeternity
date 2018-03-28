@@ -36,7 +36,12 @@ You shall not share the private key (or the password) with anyone.
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
-* The initial network peer to join is "http://31.13.249.1:3013/".
+* The initial network peers to join are located at "31.13.249.1",
+"31.13.248.97", and "31.13.249.118". These nodes have the public keys
+(Base58Check encoded) "pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177",
+"pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p" and
+"pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy"; and they all listen to
+the standard sync port 3015.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
@@ -44,7 +49,18 @@ Create the file `/tmp/node/epoch.yaml` with the following content (amend the `ht
 ```yaml
 ---
 peers:
-    - "http://31.13.249.1:3013/"
+    - peer:
+        host: "31.13.249.1"
+        port: 3015
+        pubkey: "pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177"
+    - peer:
+        host: "31.13.248.97"
+        port: 3015
+        pubkey: "pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p"
+    - peer:
+        host: "31.13.249.118"
+        port: 3015
+        pubkey: "pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy"
 
 keys:
     dir: keys
