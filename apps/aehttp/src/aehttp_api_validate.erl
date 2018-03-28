@@ -91,108 +91,104 @@ prepare_param_({"in", _}, _, _, _) -> ok;
 prepare_param_({"name", _}, _, _, _) -> ok;
 prepare_param_({"description", _}, _, _, _) -> ok;
 prepare_param_({"default", _}, _, _, _) -> ok;
-% requred
-prepare_param_(R = {"required",true}, undefined, Name, _) -> param_error(R, Name);
+% required
+prepare_param_({"required",true}, undefined, Name, _) -> param_error(required, Name);
 prepare_param_({"required",_}, _, _, _) -> ok;
 prepare_param_(_, undefined, _, _) -> ok;
 % {type, _}
-prepare_param_(R = {"type", "binary"}, Value, Name, _) ->
+prepare_param_({"type", "binary"}, Value, Name, _) ->
     case is_binary(Value) of
         true -> ok;
-        false -> param_error(R, Name)
+        false -> param_error({type, Value}, Name)
     end;
 prepare_param_({"type", "boolean"}, Value, _, _) when is_boolean(Value) ->
     ok;
-prepare_param_(R = {"type", "boolean"}, Value, Name, _) ->
+prepare_param_({"type", "boolean"}, Value, Name, _) ->
     V = list_to_binary(string:to_lower(to_list(Value))),
     try
         case binary_to_existing_atom(V, utf8) of
             B when is_boolean(B) -> {ok, B};
-            _ -> param_error(R, Name)
+            _ -> param_error({type, Value}, Name)
         end
     catch
         error:badarg ->
-            param_error(R, Name)
+            param_error({type, Value}, Name)
     end;
-prepare_param_(R = {"type", "date"}, Value, Name, _) ->
+prepare_param_({"type", "date"}, Value, Name, _) ->
     case is_binary(Value) of
         true -> ok;
-        false -> param_error(R, Name)
+        false -> param_error({type, Value}, Name)
     end;
-prepare_param_(R = {"type", "datetime"}, Value, Name, _) ->
+prepare_param_({"type", "datetime"}, Value, Name, _) ->
     case is_binary(Value) of
         true -> ok;
-        false -> param_error(R, Name)
+        false -> param_error({type, Value}, Name)
     end;
-prepare_param_(R = {"type", "float"}, Value, Name, _) ->
+prepare_param_({"type", "float"}, Value, Name, _) ->
     try {ok, to_float(Value)}
     catch
         error:badarg ->
-            param_error(R, Name)
+            param_error({type, Value}, Name)
     end;
-prepare_param_(R = {"type", "integer"}, Value, Name, _) ->
+prepare_param_({"type", "integer"}, Value, Name, _) ->
     try {ok, to_int(Value)}
     catch
         error:badarg ->
-            param_error(R, Name)
+            param_error({type, Value}, Name)
     end;
 prepare_param_({"type", "string"}, _, _, _) -> ok;
 % schema
-prepare_param_(R = {"schema", #{<<"$ref">> := <<"/definitions/", Ref/binary>>}},
+prepare_param_({"schema", #{<<"$ref">> := <<"/definitions/", Ref/binary>>}},
                Value, Name, Validator) ->
     try
         Schema = #{<<"$ref">> => <<"#/definitions/", Ref/binary>>},
         jesse_schema_validator:validate_with_state(Schema, Value, Validator),
         {ok, Value, Ref}
     catch
-        throw:[{schema_invalid, _, Error} | _] ->
-            Info = #{
-                type => schema_invalid,
-                error => Error
-            },
-            param_error(R, Name, Info);
-        throw:[{data_invalid, S, Error, _, Path} | _] ->
-            Info = #{
-                type => data_invalid,
-                error => Error,
-                schema => S,
-                path => Path
-            },
-            param_error(R, Name, Info)
+        throw:[ Reason | _] ->
+            Info0 = jesse_error:reason_to_jsx(Reason),
+            Info1 = proplists:delete(schema, Info0),
+            Info2 = proplists:delete(invalid, Info1),
+            param_error({schema, Info2}, Name)
     end;
 prepare_param_({"schema",#{<<"type">> := _}}, _, _, _) -> ok;
 % enum
-prepare_param_(R = {"enum", Values0}, Value0, Name, _) ->
+prepare_param_({"enum", Values0}, Value0, Name, _) ->
     try
         Values = [ to_atom(Acc) || Acc <- Values0 ],
         Value = to_existing_atom(Value0),
         case lists:member(Value, Values) of
             true -> {ok, Value};
-            false -> param_error(R, Name)
+            false -> param_error({enum, Value0}, Name)
         end
     catch
         error:badarg ->
-            param_error(R, Name)
+            param_error({enum, Value0}, Name)
     end;
 % arythmetic
-prepare_param_(R = {"minimum", Min}, Value, Name, _) ->
+prepare_param_({"minimum", Min}, Value, Name, _) ->
     case Value >= Min of
         true -> ok;
-        false -> param_error(R, Name)
+        false -> param_error({not_in_range, Value}, Name)
     end;
-prepare_param_(R = {"maximum", Max}, Value, Name, _) ->
+prepare_param_({"maximum", Max}, Value, Name, _) ->
     case Value =< Max of
         true -> ok;
-        false -> param_error(R, Name)
+        false -> param_error({not_in_range, Value}, Name)
     end.
 
 get_param_value("body", _, Req0) ->
-    {ok, Body, Req} = cowboy_req:read_body(Req0),
-    case prepare_body(Body) of
-        {error, Reason} ->
-            {error, Reason, Req};
-        Value ->
-            {ok, Value, Req}
+    case cowboy_req:read_body(Req0) of
+        {ok, <<>>, Req} -> {ok, <<>>, Req};
+        {ok, Body, Req} ->
+            try
+                Value = jsx:decode(Body, [return_maps]),
+                {ok, Value, Req}
+            catch
+              error:_ ->
+                {error, Reason} = param_error({body, Body}, <<>>),
+                {error, Reason, Req}
+            end
     end;
 get_param_value("query", Name, Req) ->
     QS = cowboy_req:parse_qs(Req),
@@ -205,23 +201,23 @@ get_param_value("path", Name, Req) ->
     Value = cowboy_req:binding(to_binding(Name), Req),
     {ok, Value, Req}.
 
-prepare_body(Body) ->
-    case Body of
-        <<"">> -> <<"">>;
-        _ ->
-            try
-                jsx:decode(Body, [return_maps])
-            catch
-              error:_ ->
-                {error, {invalid_body, not_json, Body}}
-            end
-    end.
 
-param_error(Rule, Name) ->
-    param_error(Rule, Name, #{}).
+param_error({enum, Value}, Name) ->
+    param_error_(Name, #{error => not_in_enum, data => Value});
+param_error({not_in_range, Value}, Name) ->
+    param_error_(Name, #{error => not_in_range, data => Value});
+param_error(required, Name) ->
+    param_error_(Name, #{error => missing_required_property});
+param_error({schema, Info}, Name) ->
+    param_error_(Name, Info);
+param_error({type, Value}, Name) ->
+    param_error_(Name, #{error => wrong_type, data => Value});
+param_error({body, Value}, Name) ->
+    param_error_(Name, #{error => invalid_body, data => Value}).
 
-param_error(Rule, Name, Info) ->
-    {error, {wrong_param, Name, Rule, Info}}.
+param_error_(Name, Info) ->
+    {error, {validation_error, to_binary(Name), Info}}.
+
 
 %%====================================================================
 %% Utils
