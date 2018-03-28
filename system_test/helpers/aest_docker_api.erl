@@ -262,7 +262,7 @@ docker_fetch_json_body(ClientRef, Type) ->
     end.
 
 decode(<<>>, _) -> {ok, undefined};
-decode(Data, raw) -> Data;
+decode(Data, raw) -> {ok, Data};
 decode(Data, json) ->
     try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}
