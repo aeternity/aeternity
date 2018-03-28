@@ -1598,7 +1598,8 @@ acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
                     AccountPendingTx =
                         case ShowPending of
                             false -> [];
-                            _ ->
+                            _ when ShowPending =:= true orelse
+                                   ShowPending =:= default ->
                                 {ok, AllPendingTxs} = rpc(aec_tx_pool, peek, [infinity]),
                                 FilteredPendingTxs =
                                     lists:filter(
@@ -1625,7 +1626,9 @@ acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
                     ParamsL =
                         case ShowPending of
                             default -> ParamsL0;
-                            _ -> [{pending, atom_to_binary(ShowPending, utf8)} | ParamsL0]
+                            _ when ShowPending =:= true orelse
+                                   ShowPending =:= false ->
+                                [{pending, atom_to_binary(ShowPending, utf8)} | ParamsL0]
                         end,
                     Params = make_params(ParamsL),
                     {ok, 200, #{<<"data_schema">> := DS,

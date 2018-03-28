@@ -104,6 +104,8 @@
                      _ -> Expr
                  end).
 
+-define(TX_IN_MEMPOOL, []).
+
 tables(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers, [{index, [height]}])
@@ -384,7 +386,7 @@ write_txs(Txs, Hash) ->
     ok.
 
 write_tx(Hash, mempool, Tx) ->
-    write_tx_(Hash, [], Tx);
+    write_tx_(Hash, ?TX_IN_MEMPOOL, Tx);
 write_tx(Hash, Where, Tx) when is_binary(Where) ->
     write_tx_(Hash, Where, Tx).
 
@@ -393,7 +395,7 @@ write_tx_(Hash, Where, Tx) ->
 
 read_tx(Hash) ->
     ?t(mnesia:select(
-         aec_tx, [{ #aec_tx{key = {Hash,[]}, tx = '$1', _ = '_'},
+         aec_tx, [{ #aec_tx{key = {Hash, ?TX_IN_MEMPOOL}, tx = '$1', _ = '_'},
                     [], [{{mempool, '$1'}}] },
                   { #aec_tx{key = {Hash,'$1'}, tx = '$2', _ = '_'},
                     [{is_binary, '$1'}], [{{'$1', '$2'}}] }])).
@@ -415,7 +417,8 @@ transactions_by_account(AcctPubKey) ->
 transactions_by_account(AcctPubKey, Filter, ShowPending) ->
     ?t([T || #aec_tx{tx = T, key={_, Where}}
         <- mnesia:index_read(aec_tx, AcctPubKey, {acct2tx}), Filter(T) 
-              andalso not (ShowPending =:= false andalso Where =:= [])]).
+              andalso not (ShowPending =:= false
+                           andalso Where =:= ?TX_IN_MEMPOOL)]).
 
 %% start phase hook to load the database
 
