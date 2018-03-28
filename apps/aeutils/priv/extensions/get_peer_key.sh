@@ -1,7 +1,7 @@
 #!/bin/bash
 
 KEYSDIR=${1:-"$HOME/node/keys"}
-PASS=${2:-"top secret"}
+PASS=${2:-"secret"}
 
 # get the peer pubkey
 CODE="{ok, PK} = aec_keys:peer_pubkey(),
