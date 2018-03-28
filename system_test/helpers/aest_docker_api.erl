@@ -91,7 +91,8 @@ stop_container(ID, Opts) ->
         infinity -> infinity;
         HTSecs -> HTSecs * 1000
     end,
-    case docker_post([containers, ID, stop], Query, undefined, ReqTimeout) of
+    PostOpts = #{timeout => ReqTimeout},
+    case docker_post([containers, ID, stop], Query, undefined, PostOpts) of
         {ok, 204, _} -> ok;
         {ok, 304, _} -> throw({container_not_started, ID});
         {ok, 404, _} -> throw({container_not_found, ID});
