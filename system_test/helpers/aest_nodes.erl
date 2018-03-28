@@ -395,7 +395,8 @@ mgr_safe_stop_backends(#{backends := Backends} = State) ->
             Mod:stop(BackendState)
         catch
             _:E ->
-                log(State, "Error while stopping backend ~p: ~p", [Mod, E])
+                ST = erlang:get_stacktrace(),
+                log(State, "Error while stopping backend ~p: ~p~n~p", [Mod, E, ST])
         end
     end, Backends),
     State#{backends := #{}}.
@@ -408,7 +409,8 @@ mgr_safe_stop_all(Timeout, #{nodes := Nodes1} = State) ->
             {Backend, Backend:stop_node(NodeState, Opts)}
         catch
             _:E ->
-                log(State, "Error while stopping node ~p: ~p", [Name, E]),
+                ST = erlang:get_stacktrace(),
+                log(State, "Error while stopping node ~p: ~p~n~p", [Name, E, ST]),
                 {Backend, NodeState}
         end
     end, Nodes1),
@@ -420,7 +422,8 @@ mgr_safe_delete_all(#{nodes := Nodes1} = State) ->
             {Backend, Backend:delete_node(NodeState)}
         catch
             _:E ->
-                log(State, "Error while stopping node ~p: ~p", [Name, E]),
+                ST = erlang:get_stacktrace(),
+                log(State, "Error while stopping node ~p: ~p~n~p", [Name, E, ST]),
                 {Backend, NodeState}
         end
     end, Nodes1),
