@@ -28,13 +28,16 @@ references:
 
   merge_checkout: &merge_checkout
     run:
-      name: Checkout merged master
+      name: Best-effort attempt to check out merged master
       command: |
         if [ -n "$CIRCLE_PULL_REQUEST" ]; then
           git fetch git@github.com:aeternity/epoch.git +refs/pull/${CIRCLE_PULL_REQUEST##*/}/merge
           git checkout -qf FETCH_HEAD
           git rev-parse HEAD
-          git merge-base --is-ancestor "$CIRCLE_SHA1" HEAD || exit 1
+          git log --oneline --parents -n 1 HEAD
+          git log --oneline --graph -n 20 HEAD
+          git merge-base --is-ancestor "$CIRCLE_SHA1" HEAD || git checkout -qf "$CIRCLE_SHA1"
+          git rev-parse HEAD
         fi
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
