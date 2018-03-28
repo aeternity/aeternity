@@ -317,7 +317,10 @@ http_addr_get(Addr, Path, Query, Opts) ->
     case hackney:request(get, url(Addr, Path, Query), [], <<>>, HttpOpts) of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
-            {ok, Status, hackney_json_body(ClientRef)}
+            case hackney_json_body(ClientRef) of
+                {error, _Reason} = Error -> Error;
+                {ok, Response} -> {ok, Status, Response}
+            end
     end.
 
 url(Base, Path, QS) when is_list(Path) ->
@@ -331,8 +334,17 @@ to_binary(Term)                    -> Term.
 hackney_json_body(ClientRef) ->
     case hackney:body(ClientRef) of
         {error, _Reason} = Error -> Error;
-        {ok, BodyJson} ->
-            jsx:decode(BodyJson, [{labels, attempt_atom}, return_maps])
+        {ok, BodyJson} -> decode(BodyJson)
+    end.
+
+decode(<<>>) -> {ok, undefined};
+decode(Data) -> decode_json(Data).
+
+decode_json(Data) ->
+    try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
+        JsonObj -> {ok, JsonObj}
+    catch
+        error:badarg -> {error, {bad_json, Data}}
     end.
 
 %--- NODE MANAGER PROCESS FUNCTION ---------------------------------------------
