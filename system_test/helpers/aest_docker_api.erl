@@ -285,7 +285,7 @@ decode_json(Data) ->
     try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}
     catch
-        error:badarg -> {error, bad_json}
+        error:badarg -> {error, {bad_json, Data}}
     end.
 
 encode(undefined) -> <<>>;
