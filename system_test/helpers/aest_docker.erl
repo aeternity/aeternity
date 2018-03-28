@@ -17,8 +17,10 @@
 -define(CONFIG_FILE_TEMPLATE, "epoch.yaml.mustache").
 -define(EPOCH_CONFIG_FILE, "/home/epoch/epoch.yaml").
 -define(EPOCH_LOG_FOLDER, "/home/epoch/node/log").
+-define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
 -define(EPOCH_MINE_RATE, 1000).
 -define(EXT_HTTP_PORT, 3013).
+-define(EXT_SYNC_PORT, 3015).
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
 
@@ -107,11 +109,12 @@ setup_node(Spec, BackendState) ->
 
     Hostname = format("~s~s", [Name, Postfix]),
     ExposedPorts = #{
+        sync => ?EXT_SYNC_PORT,
         ext_http => ?EXT_HTTP_PORT,
         int_http => ?INT_HTTP_PORT,
         int_ws => ?INT_WS_PORT
     },
-    LocalPorts = allocate_ports([ext_http, int_http, int_ws]),
+    LocalPorts = allocate_ports([sync, ext_http, int_http, int_ws]),
     NodeState = #{
         spec => spec,
         log_fun => LogFun,
@@ -127,16 +130,17 @@ setup_node(Spec, BackendState) ->
     PeerVars = lists:map(fun
         (PeerName) when is_atom(PeerName) ->
             PeerHostname = format("~s~s", [PeerName, Postfix]),
-            PeerUrl = format("http://~s:~w/", [PeerHostname, ?EXT_HTTP_PORT]),
-            #{ext_addr => PeerUrl};
-        (PeerUrl) when is_binary(PeerUrl) ->
-            #{ext_addr => PeerUrl}
+            PeerInfo = format("peer: {host: ~s, port: ~w, pubkey: ~s}",
+                              [PeerHostname, ?EXT_SYNC_PORT, pubkey(PeerName)]),
+            #{peer => PeerInfo}
     end, Peers),
+    ct:log("PeerVars: ~p", [PeerVars]),
     RootVars = #{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
         services => #{
+            sync => #{port => ?EXT_SYNC_PORT},
             ext_http => #{port => ?EXT_HTTP_PORT},
             int_http => #{port => ?INT_HTTP_PORT},
             int_ws => #{port => ?INT_WS_PORT}
@@ -146,6 +150,7 @@ setup_node(Spec, BackendState) ->
     ok = write_template(TemplateFile, ConfigFilePath, Context),
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
+    KeysDir = filename:join([DataDir, "keys", Name]),
     PortMapping = maps:fold(fun(Label, Port, Acc) ->
         [{tcp, maps:get(Label, LocalPorts), Port} | Acc]
     end, [], ExposedPorts),
@@ -157,6 +162,7 @@ setup_node(Spec, BackendState) ->
         command => ["-aecore", "expected_mine_rate", ?EPOCH_MINE_RATE],
         env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE},
         volumes => [
+            {ro, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
             {rw, LogPath, ?EPOCH_LOG_FOLDER}
         ],
@@ -233,3 +239,10 @@ write_template(TemplateFile, OutputFile, Context) ->
     Data = bbmustache:render(TemplateBin, Context, [{key_type, atom}]),
     ok = filelib:ensure_dir(OutputFile),
     file:write_file(OutputFile, Data).
+
+pubkey(node1) ->
+    "pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X";
+pubkey(node2) ->
+    "pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8";
+pubkey(node3) ->
+    "pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq".

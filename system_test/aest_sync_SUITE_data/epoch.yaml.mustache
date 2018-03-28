@@ -2,8 +2,11 @@
 ---
 peers:
 {{#peers}}
-    - {{ext_addr}}
+    - {{peer}}
 {{/peers}}
+
+sync:
+    port: {{services.sync.port}}
 
 http:
     external:
@@ -18,6 +21,7 @@ websocket:
         port: {{services.int_ws.port}}
 
 keys:
+    password: "top secret"
     dir: ./keys
 
 chain:
