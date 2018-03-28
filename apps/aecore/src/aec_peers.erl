@@ -602,7 +602,7 @@ maybe_retry_peer(P = #peer{ connection = {error, PeerCon} }) ->
     lager:debug("Will retry peer ~p", [peer_info(P)]),
     aec_peer_connection:retry(PeerCon);
 maybe_retry_peer(P) ->
-    lager:debug("Will not retry peer ~p", [peer_info(P)]),
+    lager:debug("No need to retry peer ~p", [ppp(peer_id(P))]),
     ok.
 
 is_local(Peer, #state{local_peer = LocalPeer}) ->

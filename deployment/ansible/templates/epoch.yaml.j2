@@ -3,13 +3,19 @@ sync:
     port: {{ config.sync.port }}
 
 peers:
-    {% for host in groups[hosts_group] | difference([inventory_hostname]) %}
-    {% if hostvars[host]['sync_public_key'] is defined %}
-- peer: {host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}, port: 3015, pubkey: {{ hostvars[host]['sync_public_key'] }}}
-    {% else %}
-- peer: {host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}, port: 3015, pubkey: "no-key-found-peer-will-be-ignored"}
-    {% endif %}
-    {% endfor %}
+{% for host in groups[hosts_group] | difference([inventory_hostname]) %}
+{% if hostvars[host]['sync_public_key'] is defined %}
+    - peer:
+        host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}
+        port: {{ config.sync.port }}
+        pubkey: {{ hostvars[host]['sync_public_key'] }}
+{% else %}
+    - peer:
+        host: {{ hostvars[host]['ansible_default_ipv4']['address'] }}
+        port: {{ config.sync.port }}
+        pubkey: "no-key-found-peer-will-be-ignored"
+{% endif %}
+{% endfor %}
 
 keys:
     dir: {{ config.keypair.dir }}
