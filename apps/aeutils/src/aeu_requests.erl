@@ -34,10 +34,8 @@
 -module(aeu_requests).
 
 %% API
--export([ping/2,
-         top/1,
+-export([top/1,
          get_header_by_hash/2,
-         get_n_successors/3,
          get_header_by_height/2,
          get_block_by_height/2,
          get_block/2,
@@ -54,62 +52,6 @@
 -type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
 
 -type response(Type) :: {ok, Type} | {error, string()}.
-
--spec ping(http_uri_uri(), map()) -> {ok, map(), list(http_uri_uri())} | {error, any()}.
-ping(Uri, LocalPingObj) ->
-    #{<<"share">> := Share,
-      <<"genesis_hash">> := GHash,
-      <<"best_hash">> := TopHash
-     } = LocalPingObj,
-    Peers = aec_peers:get_random(Share, [Uri]),
-    lager:debug("ping(~p); Peers = ~p", [Uri, Peers]),
-    PingObj = LocalPingObj#{<<"peers">> => Peers,
-                            <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
-                            <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash)
-                           },
-    Response = process_request(Uri, 'Ping', PingObj),
-    case Response of
-        {ok, _, #{<<"reason">> := Reason}} ->
-            lager:debug("Got an error return: Reason = ~p", [Reason]),
-            aec_events:publish(chain_sync,
-                               {sync_aborted, #{uri => Uri,
-                                                reason => Reason}}),
-            {error, case Reason of
-                      <<"Different genesis", _/binary>> ->
-                          protocol_violation;
-                      <<"Not allowed", _/binary>> ->
-                          protocol_violation;
-                      _ -> Reason
-                    end};
-        {ok, 200, #{ <<"genesis_hash">> := EncRemoteGHash,
-                <<"best_hash">> := EncRemoteTopHash} = Map} ->
-            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
-                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
-              {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
-                  RemoteObj = Map#{<<"genesis_hash">> => RemoteGHash,
-                                   <<"best_hash">>  => RemoteTopHash},
-                  RemotePeers = maps:get(<<"peers">>, Map, []),
-                  case maps:get(<<"peers">>, Map, []) of
-                      RemotePeers when is_list(RemotePeers), length(RemotePeers) =< Share ->
-                          lager:debug("ping response (~p): ~p", [Uri, pp(RemoteObj)]),
-                          {ok, RemoteObj, RemotePeers};
-                      _ ->
-                          lager:debug("ping response with too many peers ~p", [Uri]),
-                          %% Do not print the object, that in itself opens a DoS attack
-                          {error, protocol_violation}
-                 end;
-              _ ->
-                %% Something is wrong, block the peer later on
-                lager:debug("Erroneous ping response (~p): ~p", [Uri, Map]),
-                {error, protocol_violation}
-            end;
-        {error, _Reason} = Error ->
-            Error;
-        _ ->
-            %% Should have been turned to {error, _} by swagger validation
-            lager:debug("unexpected response (~p): ~p", [Uri, Response]),
-            {error, protocol_violation}
-    end.
 
 -spec top(http_uri_uri()) -> response(aec_headers:header()).
 top(Uri) ->
@@ -143,34 +85,6 @@ get_header_by_hash(Uri, Hash) ->
             {error, unexpected_response}
     end.
 
-%% Get the next n hashes and their heights
--spec get_n_successors(http_uri_uri(),  binary(), non_neg_integer()) -> response([{integer(), binary()}]).
-get_n_successors(Uri, Hash, N) when is_integer(N) ->
-    EncHash = aec_base58c:encode(block_hash, Hash),
-    Response = process_request(Uri, 'GetHeadersByHash', [{"hash", EncHash}, 
-                                                         {"number", integer_to_list(N+1)}, 
-                                                         {"direction", "forward"}]),
-    case Response of
-        {ok, 200, [_|Data]} ->
-            %% Keep them in order, oldest block is first!
-            {ok, lists:foldr(fun(Header, Acc) ->
-                            case aec_headers:deserialize_from_map(Header) of
-                                {ok, H} ->
-                                    {ok, HH} = aec_headers:hash_header(H),
-                                    [ {aec_headers:height(H), HH} | Acc ];
-                                 {error, deserialize} ->
-                                    lager:info("Got bad block hash from ~p", [Uri]),
-                                    Acc
-                            end
-                        end, [], Data)};
-        {error, _Reason} = Error ->
-            Error;
-        _ ->
-            %% Should have been turned to {error, _} by swagger validation
-            lager:debug("unexpected response (~p): ~p", [Uri, Response]),
-            {error, unexpected_response}
-    end.
-
 %% Add API for header later... now use block
 -spec get_header_by_height(http_uri_uri(), non_neg_integer()) -> response(aec_headers:header()).
 get_header_by_height(Uri, Height) when is_integer(Height) ->
@@ -186,8 +100,6 @@ get_header_by_height(Uri, Height) when is_integer(Height) ->
             lager:debug("unexpected response (~p): ~p", [Uri, Response]),
             {error, unexpected_response}
     end.
-
-
 
 -spec get_block_by_height(http_uri_uri(), non_neg_integer()) -> response(aec_headers:header()).
 get_block_by_height(Uri, Height) when is_integer(Height) ->

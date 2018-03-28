@@ -37,9 +37,6 @@
         Context :: #{}
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
-handle_request('Ping', #{'Ping' := PingObj}, _Context) ->
-    handle_ping(PingObj);
-
 handle_request('GetTop', _, _Context) ->
     Header = aec_chain:top_header(),
     {ok, HH} = aec_headers:hash_header(Header),
@@ -97,38 +94,6 @@ handle_request('GetHeaderByHash', Req, _Context) ->
                     {ok, HH} = aec_headers:serialize_to_map(Header),
                     Resp = cleanup_genesis(HH),
                     lager:debug("Resp = ~p", [pp(Resp)]),
-                    {200, [], Resp};
-                error ->
-                    {404, [], #{reason => <<"Header not found">>}}
-            end
-    end;
-
-handle_request('GetHeadersByHash', Req, _Context) ->
-    case {aec_base58c:safe_decode(block_hash, maps:get(hash, Req)),
-          maps:get(number, Req, 1), maps:get(direction, Req, <<"backward">>)} of
-        {{error, _}, _, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {_, N, _} when not is_integer(N) orelse N < 1 ->
-            {400, [], #{reason => <<"Invalid number">>}};
-        {{ok, Hash}, N, Direction} ->
-            Result =
-                case Direction of
-                    <<"backward">> ->
-                       aec_chain:get_n_headers_backwards_from_hash(Hash, N);
-                    <<"forward">> ->
-                       aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N);
-                    _ ->
-                       %% validation should ensure this does not happen
-                       %% but if no direction or name is provided, undefined is the value!
-                       error
-                end,
-            case Result of
-                {ok, Headers} ->
-                    Resp = [ begin
-                               {ok, HH} = aec_headers:serialize_to_map(Header),
-                               HH
-                             end || Header <- Headers ],
-                    lager:debug("Resp ~p headers = ~p", [N, pp(Resp)]),
                     {200, [], Resp};
                 error ->
                     {404, [], #{reason => <<"Header not found">>}}
@@ -525,18 +490,6 @@ handle_request(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
-
-mk_num(undefined) ->
-    undefined;
-mk_num(I) when is_integer(I) ->
-    I;
-mk_num(B) when is_binary(B) ->
-    try binary_to_integer(B)
-    catch
-	error:_ ->
-	    undefined
-    end.
-
 empty_fields_in_genesis() ->
     [ <<"prev_hash">>,
       <<"pow">>,
@@ -565,72 +518,4 @@ add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
     maps:merge(Block, values_for_empty_fields_in_genesis());
 add_missing_to_genesis_block(Val) ->
     Val.
-
-handle_ping(#{<<"source">> := Src} = PingObj) ->
-    %% Source only contains host and port
-    %% If the http API version differs, then response ping will go
-    %% to wrong endpoint and eventually timeout.
-    IsBlocked = aec_peers:is_blocked(Src),
-    case IsBlocked of
-        false -> handle_ping_(Src, PingObj);
-        true  ->
-            %% invalid Source URIs are by definition blocked
-            abort_sync(Src, 403, <<"Not allowed">>)
-    end.
-
-handle_ping_(Source, PingObj) ->
-    LocalPingObj = aec_sync:local_ping_object(),
-    case PingObj of
-      #{<<"genesis_hash">> := EncRemoteGHash,
-        <<"best_hash">> := EncRemoteTopHash,
-        <<"share">> := Share} ->
-            case {aec_base58c:safe_decode(block_hash, EncRemoteGHash),
-                  aec_base58c:safe_decode(block_hash, EncRemoteTopHash)} of
-                {{ok, RemoteGHash}, {ok, RemoteTopHash}} ->
-                    RemoteObj = PingObj#{<<"genesis_hash">> => RemoteGHash,
-                                         <<"best_hash">>  => RemoteTopHash},
-                    lager:debug("ping received (~p): ~p", [Source, RemoteObj]),
-                    case aec_sync:compare_ping_objects(
-                           Source, LocalPingObj, RemoteObj) of
-                        ok ->
-                            aec_peers:update_last_seen(Source),
-                            TheirPeers = maps:get(<<"peers">>, RemoteObj, []),
-                            aec_peers:add_and_ping_peers(TheirPeers),
-                            LocalGHash =  maps:get(<<"genesis_hash">>, LocalPingObj),
-                            LocalTopHash =  maps:get(<<"best_hash">>, LocalPingObj),
-                            Map = LocalPingObj#{<<"pong">> => <<"pong">>,
-                                                <<"genesis_hash">> => aec_base58c:encode(block_hash,LocalGHash),
-                                                <<"best_hash">> => aec_base58c:encode(block_hash,LocalTopHash)
-                                               },
-                            Res =
-                                case mk_num(Share) of
-                                    N when is_integer(N), N > 0 ->
-                                        Peers = aec_peers:get_random(N, [Source|TheirPeers]),
-                                        lager:debug("PeerUris = ~p~n", [Peers]),
-                                        Map#{<<"peers">> => Peers};
-                                    _ ->
-                                        Map
-                                end,
-                            {200, [], Res};
-                        {error, different_genesis_blocks} ->
-                            abort_ping(Source)
-                    end;
-                _ ->
-                    abort_ping(Source)
-            end;
-        _ ->
-          %% violation of protocol
-          abort_ping(Source)
-    end.
-
-abort_ping(Source) ->
-    aec_peers:block_peer(Source),
-    abort_sync(Source, 409, <<"Different genesis blocks">>).
-
-abort_sync(Uri, Code, Reason) ->
-    aec_events:publish(
-      chain_sync,
-      {sync_aborted, #{uri => Uri,
-                       reason => Reason}}),
-      {Code, [], #{reason => Reason}}.
 

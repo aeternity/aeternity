@@ -7,8 +7,7 @@ import time
 from nose.tools import assert_equals, assert_not_equals, assert_true, with_setup
 import common
 from waiting import wait
-from swagger_client.models.ping import Ping 
-from swagger_client.models.spend_tx import SpendTx
+from swagger_client.models.peers import Peers
 
 settings = common.test_settings(__name__.split(".")[-1])
 
@@ -69,7 +68,7 @@ def test_persistence():
     """
     test_settings = settings["test_persistence"]
 
-    # prepare a dir to hold the config and DB files 
+    # prepare a dir to hold the config and DB files
     root_dir = tempfile.mkdtemp()
     persistance_mining_sys_config = os.path.join(root_dir, "p_m_sys.config")
     only_persistance_sys_config = os.path.join(root_dir, "p_sys.config")
@@ -137,17 +136,21 @@ def test_node_discovery():
     # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
-    # Alice's config: no peers 
+    # Alice's config: no peers
     alice_sys_config = make_peers_config(root_dir, "alice.config",
-                            alice_peer_url, [], mining=True)
+                            alice_peer_url, "node1", "3015", '{peers, []},', mining=True)
     print("\nAlice has address " + alice_peer_url + " and no peers")
     # Bob's config: only peer is Alice
+    bob_peers = ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3015, ' + \
+                '            <<"pubkey">> => <<"pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X">> }]},'
     bob_sys_config = make_peers_config(root_dir, "bob.config",
-                            bob_peer_url, [alice_peer_url], mining=False)
+                            bob_peer_url, "node2", "3025", bob_peers, mining=False)
     print("Bob has address " + bob_peer_url + " and peers [" + alice_peer_url + "]")
     # Carol's config: only peer is Bob
+    carol_peers = ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3025, ' + \
+                  '            <<"pubkey">> => <<"pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8">> }]},'
     carol_sys_config = make_peers_config(root_dir, "carol.config",
-                            carol_peer_url, [bob_peer_url], mining=False)
+                            carol_peer_url, "node3", "3035", carol_peers, mining=False)
     print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
 
     # start Alice's node
@@ -171,19 +174,12 @@ def test_node_discovery():
     assert_equals(carol_api.get_block_by_hash(alice_top.hash).height, alice_top.height)
 
     # Check that Carol discovers Alice as a peer
-    gen_hash = common.genesis_hash(carol_api)
-    ping_obj = Ping(source="http://localhost:1234",
-                    genesis_hash=gen_hash,
-                    best_hash=gen_hash,
-                    difficulty=1,
-                    share=32, # expected peer list is small
-                    peers=[])
-    def carol_peers():
-        ps = [p.encode('utf-8') for p in carol_api.ping(ping_obj).peers]
-        print("Carol now has peers " + str(ps))
-        return ps
-    wait(lambda: common.is_among_peers(alice_peer_url, carol_peers()),
-         timeout_seconds=120, sleep_seconds=0.25)
+    carol_int_api = common.internal_api(carol_node)
+    def carol_peer_ports():
+        ports = [p.port for p in carol_int_api.get_peers().peers]
+        print("Ports: " + str(ports))
+        return ports
+    wait(lambda: 3015 in carol_peer_ports(), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -192,20 +188,32 @@ def test_node_discovery():
 
     shutil.rmtree(root_dir)
 
-def make_peers_config(root_dir, file_name, node_url, peers0, mining=False):
+def copy_peer_keys(root_dir, keys):
+    # Copy the right keys
+    curr_dir = os.getcwd()
+    key_dir  = os.path.join(root_dir, keys)
+    os.makedirs(key_dir)
+    shutil.copy(os.path.join(curr_dir, "tests", "peer_keys", keys, "peer_key"), key_dir)
+    shutil.copy(os.path.join(curr_dir, "tests", "peer_keys", keys, "peer_key.pub"), key_dir)
+    return key_dir
+
+def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, mining=False):
+    key_dir = copy_peer_keys(root_dir, keys)
+
     sys_config = os.path.join(root_dir, file_name)
     mining_str = ""
     if mining:
         mining_str = ' {autostart, true},' + \
                      ' {expected_mine_rate, 100},' + \
                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}'
-    else: 
+    else:
         mining_str = ' {autostart, false}'
     f = open(sys_config, "w")
-    peers = map(lambda url: '"' + url + '"', peers0)
-    conf ='[{aecore, [{peers, [' + (", ").join(peers) + ']},' +\
-                        mining_str + ']},' +\
-          '{aehttp, [{local_peer_address, "' + node_url + '"}]}].'
+    conf ='[{aecore, [' + peers + '{sync_port, ' + sync_port + '}, ' + \
+                      ' {keys_dir, "' + key_dir + '"}, ' + \
+                      ' {password, <<"top secret">>}, ' + \
+                      mining_str + ']},' +\
+          '{aehttp, [{enable_debug_endpoints, true}, {local_peer_address, "' + node_url + '"}]}].'
     f.write(conf)
     f.close()
     return sys_config
@@ -219,7 +227,16 @@ def make_fast_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{autostart, true},' + \
+
+    key_dir = copy_peer_keys(root_dir, "node1")
+
+    conf ='[{aecore, [' + \
+                    ' {sync_port, 3015},' + \
+                    ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3025, ' + \
+                    '            <<"pubkey">> => <<"pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8">> }]}, ' + \
+                    ' {keys_dir, "' + key_dir + '"}, ' + \
+                    ' {password, <<"top secret">>}, ' + \
+                    ' {autostart, true},' + \
                     ' {expected_mine_rate, 100},' + \
                     ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
     f.write(conf)
@@ -230,7 +247,14 @@ def make_no_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
     f = open(sys_config, "w")
     # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{autostart, false},' + \
+    key_dir = copy_peer_keys(root_dir, "node2")
+    conf ='[{aecore, [' + \
+                    ' {sync_port, 3025},' + \
+                    ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3015, ' + \
+                    '            <<"pubkey">> => <<"pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X">> }]}, ' + \
+                    ' {keys_dir, "' + key_dir + '"}, ' + \
+                    ' {password, <<"top secret">>}, ' + \
+                    ' {autostart, false},' + \
                     ' {expected_mine_rate, 100},' + \
                     ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
     f.write(conf)

@@ -23,7 +23,7 @@
 
 -export([node_tuple/1,
          node_name/1,
-         peer_uri/1,
+         peer_info/1,
          connect/1,
          subscribe/2,
          unsubscribe/2,
@@ -39,6 +39,17 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
+
+%% Keys for P2P communication
+peer_keys() ->
+    [{dev1, {<<120,30,108,92,13,32,45,162,66,181,135,13,102,186,226,7,134,64,127,57,44,122,62,198,148,18,128,51,162,218,180,97>>,
+             <<128,38,224,217,226,249,89,153,69,120,34,192,93,224,163,234,105,76,186,215,58,166,69,75,31,103,31,243,148,225,253,127>>}},
+     {dev2, {<<112,66,119,236,84,180,214,104,63,254,231,93,110,189,200,155,126,48,77,78,163,89,198,71,59,16,145,112,73,249,93,91>>,
+             <<137,121,210,193,164,178,71,99,63,76,25,128,199,153,210,37,125,233,17,162,151,39,188,155,185,197,70,250,93,44,83,52>>}},
+     {dev3, {<<192,145,22,50,217,175,73,12,42,218,16,92,216,240,151,252,189,80,190,47,62,203,178,89,230,75,253,78,114,65,96,78>>,
+             <<177,115,250,203,226,39,102,92,8,182,166,254,125,117,140,134,199,149,211,182,184,107,119,43,218,70,251,60,10,56,12,53>>}}
+    ].
+
 
 %%%=============================================================================
 %%% API
@@ -65,8 +76,9 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     MergedCfg = maps:merge(default_config(Node, CTConfig), CustomConfig),
     MergedCfg1 = aec_metrics_test_utils:set_statsd_port_config(
                    Node, MergedCfg, CTConfig),
-    write_config(EpochCfgPath, config_apply_options(Node, MergedCfg1, Options)).
-
+    Config =  config_apply_options(Node, MergedCfg1, Options),
+    write_peer_keys(Node, Config),
+    write_config(EpochCfgPath, Config).
 
 make_multi(Config) ->
     make_multi(Config, [dev1, dev2, dev3]).
@@ -90,11 +102,10 @@ make_shortcut(Config) ->
     ct:log("Made symlink ~s to ~s", [PrivDir, Shortcut]),
     ok.
 
-
 start_node(N, Config) ->
     %TestModule = ?config(test_module, Config),
     MyDir = filename:dirname(code:which(?MODULE)),
-    ConfigFilename = proplists:get_value(config_name, Config, "default"), 
+    ConfigFilename = proplists:get_value(config_name, Config, "default"),
     Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
     cmd(["(cd ", node_shortcut(N, Config),
          " && ERL_FLAGS=\"", Flags, "\"",
@@ -286,9 +297,9 @@ setup_node(N, Top, Epoch, Config) ->
             filename:join(RelD, "vm.args")),
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
-    TestsDir = filename:dirname(code:which(?MODULE)), 
+    TestsDir = filename:dirname(code:which(?MODULE)),
     TestD = filename:join(TestsDir, "data"),
-    ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config", 
+    ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config",
     cp_file(filename:join(TestD, ConfigFilename),
             filename:join(DDir , ConfigFilename)),
     aec_test_utils:copy_genesis_dir(Epoch, DDir).
@@ -377,12 +388,21 @@ take(K, L, Def) ->
 config_apply_options(_Node, Cfg, []) ->
     Cfg;
 config_apply_options(Node, Cfg, [{block_peers, BlockedPeers}| T]) ->
-    Cfg1 = Cfg#{<<"blocked_peers">> => [peer_uri(P) || P <- BlockedPeers]},
+    Cfg1 = Cfg#{<<"blocked_peers">> => [peer_info(P) || P <- BlockedPeers]},
     config_apply_options(Node, Cfg1, T);
 config_apply_options(Node, Cfg, [{add_peers, true}| T]) ->
     Cfg1 = Cfg#{<<"peers">> =>
-              [peer_uri(N1) || N1 <- [dev1, dev2, dev3] -- [Node]]},
+              [peer_info(N1) || N1 <- [dev1, dev2, dev3] -- [Node]]},
     config_apply_options(Node, Cfg1, T).
+
+write_peer_keys(Node, Config) ->
+    #{ <<"keys">> := #{ <<"dir">> := Path, <<"password">> := Pwd } } = Config,
+    {Node, {PrivKey, PubKey}} = lists:keyfind(Node, 1, peer_keys()),
+    ok = filelib:ensure_dir(filename:join(Path, "foo")),
+    ct:log("Writing peer keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
+    ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_peerkey(Pwd, PubKey)),
+    ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_peerkey(Pwd, PrivKey)),
+    ok.
 
 write_config(F, Config) ->
     JSON = jsx:prettify(jsx:encode(Config)),
@@ -416,7 +436,7 @@ default_config(N, Config) ->
 epoch_config_dir(N, Config) ->
     filename:join(data_dir(N, Config), "epoch.json").
 
-%% dirs 
+%% dirs
 node_shortcut(N, Config) ->
     filename:join(shortcut_dir(Config), N).
 
@@ -450,14 +470,17 @@ hostname() ->
     {ok, H} = inet:gethostname(),
     H.
 
-peer_uri(N) ->
-    iolist_to_binary(
-      ["http://", hostname(), ":", integer_to_list(port_number(N)), "/"]).
+peer_info(N) ->
+    #{ host => iolist_to_binary(hostname()), port => port_number(N),
+       pubkey => aec_base58c:encode(peer_pubkey, pubkey(N)) }.
 
-port_number(dev1) -> 3013;
-port_number(dev2) -> 3023;
-port_number(dev3) -> 3033.
+port_number(dev1) -> 3015;
+port_number(dev2) -> 3025;
+port_number(dev3) -> 3035.
 
+pubkey(N) ->
+    {N, {_, PubKey}} = lists:keyfind(N, 1, peer_keys()),
+    PubKey.
 
 backup_config(EpochConfig) ->
     Dir = filename:dirname(EpochConfig),

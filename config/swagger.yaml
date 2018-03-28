@@ -37,36 +37,6 @@ paths:
 ## External APIs definitions
 ###
 
-  /ping:
-    post:
-      tags:
-        - external
-        - gossip
-      operationId: Ping
-      description: ''
-      produces:
-        - application/json
-      parameters:
-        - in: body
-          name: body
-          description: Ping a peer
-          required: true
-          schema:
-            $ref: '#/definitions/Ping'
-      responses:
-        '200':
-          description: Sample response
-          schema:
-            $ref: '#/definitions/Ping'
-        '403':
-          description: Not allowed (node is blocked)
-          schema:
-            $ref: '#/definitions/Error'
-        '409':
-          description: Different genesis blocks
-          schema:
-            $ref: '#/definitions/Error'
-      security:
   /top:
     get:
       tags:
@@ -109,49 +79,6 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Header not found
-          schema:
-            $ref: '#/definitions/Error'
-      security:
-  /headers-by-hash:
-    get:
-      tags:
-        - external
-        - gossip
-      operationId: GetHeadersByHash
-      description: 'Get N headers from hash'
-      produces:
-        - application/json
-      parameters:
-        - in: query
-          name: hash
-          description: 'Hash of first block header to fetch'
-          required: true
-          type: string
-        - in: query
-          name: number
-          description: 'Number of hashes to fetch'
-          type: integer
-          default: 1
-        - in: query
-          name: direction
-          description: 'Towards top = forward, towards genesis = backward'
-          schema:
-            type: string
-            enum: [forward, backward]
-          default: backward
-      responses:
-        '200':
-          description: The headers found
-          schema:
-            type: array
-            items:
-              $ref: '#/definitions/Header'
-        '400':
-          description: Invalid hash or number
-          schema:
-            $ref: '#/definitions/Error'
-        '404':
-          description: Header(s) not found
           schema:
             $ref: '#/definitions/Error'
       security:
@@ -2751,26 +2678,30 @@ definitions:
     properties:
       calldata:
         type: string
+  Peer:
+    type: object
+    properties:
+      host:
+        type: string
+        description: 'Peer''s hostname/IP'
+      port:
+        type: integer
+      pubkey:
+        type: string
+        description: 'Base58 check encoded public key of the peer'
   Peers:
     type: object
     properties:
       peers:
         type: array
-        description: All connected peers
+        description: All discovered peers
         items:
-          type: object
-          properties:
-            uri:
-              type: string
-              description: 'Peer''s URI'
-            last_seen:
-              type: integer
-              description: 'Timestamp of last message. If none - 0'
+            $ref: '#/definitions/Peer'
       blocked:
         type: array
         description: All blocked peers
         items:
-          type: string
+            $ref: '#/definitions/Peer'
   ContractCreateData:
     type: object
     properties:

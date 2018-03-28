@@ -1,7 +1,7 @@
 ---
 peers:
-    - "http://node1:3013/"
-    - "http://node2:3013/"
+    - peer: {host: node1, port: 3015, pubkey: "pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X"}
+    - peer: {host: node2, port: 3015, pubkey: "pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8"}
 
 http:
     external:
@@ -14,6 +14,7 @@ websocket:
         listen_address: 0.0.0.0
 
 keys:
+    password: "top secret"
     dir: ./keys
 
 chain:

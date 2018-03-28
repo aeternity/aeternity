@@ -5,8 +5,7 @@
          init_per_group/2, end_per_group/2,
          init_per_testcase/2, end_per_testcase/2
         ]).
--export([application_test/1,
-         aec_sync_test/1]).
+-export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
@@ -22,9 +21,9 @@
         ]).
 
 -ifdef(EUNIT_INCLUDED).
-all() -> [ {group, eunit}, application_test, aec_sync_test].
+all() -> [ {group, eunit}, application_test ]. %%, aec_sync_test ].
 -else.
-all() -> [ application_test, aec_sync_test ].
+all() -> [ application_test ]. %%, aec_sync_test ].
 -endif.
 
 groups() ->
@@ -95,7 +94,7 @@ iolist_to_s(L) ->
 %% depends upon are started.
 application_test(Config) ->
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-    
+
     meck:new(aec_genesis_block_settings, []),
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, []),
     ok = application:start(aecore),
@@ -105,37 +104,37 @@ application_test(Config) ->
 
     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
-aec_sync_test(Config) ->
-    application:set_env(jobs, queues,
-                        [{sync_jobs, [passive]},
-                         {sync_workers, [{regulators, [{counter, [{limit, 4}]}]},
-                                         {producer, {aec_sync, sync_worker, []}}
-                                        ]}]),
-    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-    ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
-    aec_test_utils:fake_start_aehttp(),
+%% aec_sync_test(Config) ->
+%%     application:set_env(jobs, queues,
+%%                         [{sync_jobs, [passive]},
+%%                          {sync_workers, [{regulators, [{counter, [{limit, 4}]}]},
+%%                                          {producer, {aec_sync, sync_worker, []}}
+%%                                         ]}]),
+%%     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
+%%     ct:log("jobs running with env: ~p", [application:get_env(jobs, queues)]),
+%%     aec_test_utils:fake_start_aehttp(),
 
-    ok = application:start(aecore),
-    SyncPid = whereis(aec_sync),
-    ct:log("Running aec_sync ~p", [SyncPid]),
+%%     ok = application:start(aecore),
+%%     SyncPid = whereis(aec_sync),
+%%     ct:log("Running aec_sync ~p", [SyncPid]),
 
-    ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-    ct:log("trying to connect --> job scheduled"),
-    %% give it some time to execute the scheduled job
-    timer:sleep(50),   
-    false = aec_peers:is_blocked("http://my.evil_machine:3012/"),
-    ct:log("as expected not blocked"),
+%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
+%%     ct:log("trying to connect --> job scheduled"),
+%%     %% give it some time to execute the scheduled job
+%%     timer:sleep(50),
+%%     false = aec_peers:is_blocked("http://my.evil_machine:3012/"),
+%%     ct:log("as expected not blocked"),
 
-    ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
-    ct:log("trying to connect again --> job scheduled"),
-    timer:sleep(50),
-    SyncPid = whereis(aec_sync), %% Sync has not been restarted!
-    Peers = aec_peers:all(),
-    ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
-    1 = length(Peers),
+%%     ok = aec_sync:connect_peer("http://my.evil_machine:3012/"),
+%%     ct:log("trying to connect again --> job scheduled"),
+%%     timer:sleep(50),
+%%     SyncPid = whereis(aec_sync), %% Sync has not been restarted!
+%%     Peers = aec_peers:all(),
+%%     ct:log("tried twice and although it failed, it is a peer: ~p", [Peers]),
+%%     1 = length(Peers),
 
-    ok = application:stop(aecore),
-    app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
+%%     ok = application:stop(aecore),
+%%     app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
 
 
 prepare_app_start(App, Config) ->
