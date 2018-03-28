@@ -228,7 +228,7 @@ clean:
 	( cd apps/aering/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
-	@rm -rf _build/system_test _build/test _build/prod _build/local
+	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
