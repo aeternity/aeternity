@@ -1,0 +1,6 @@
+log_level: debug
+expected_mine_rate: 15000
+miner_executable: mean16s-generic
+miner_node_bits: 16
+api_internal_listen_address: 0.0.0.0
+ws_internal_listen_address: 0.0.0.0

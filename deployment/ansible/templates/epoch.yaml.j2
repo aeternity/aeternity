@@ -12,10 +12,23 @@ http:
     external:
         peer_address: {{ config.http.external.peer_address }}
         port: {{ config.http.external.port }}
+    internal:
+        listen_address: {{ config.http.internal.listen_address }}
+        port: {{ config.http.internal.port }}
+
+websocket:
+    internal:
+        listen_address: {{ config.websocket.internal.listen_address }}
+        port: {{ config.websocket.internal.port }}
 
 mining:
     autostart: true
     expected_mine_rate: {{ config.mining.expected_mine_rate }}
+    cuckoo:
+        miner:
+            executable: {{ config.mining.cuckoo.miner.executable }}
+            extra_args: ""
+            node_bits: {{ config.mining.cuckoo.miner.node_bits }}
 
 chain:
     persist: {{ config.chain.persist | bool | lower }}
