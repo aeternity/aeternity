@@ -115,6 +115,17 @@
     peers/1
    ]).
 
+%% test case exports
+%% for swagger validation errors
+-export([
+    swagger_validation_body/1,
+    swagger_validation_enum/1,
+    swagger_validation_max_min/1,
+    swagger_validation_required/1,
+    swagger_validation_schema/1,
+    swagger_validation_types/1
+    ]).
+
 %%
 %% test case exports
 %% wrong http method for all endpoints
@@ -202,6 +213,7 @@ groups() ->
     [
      {all_endpoints, [sequence], [{group, external_endpoints},
                                   {group, internal_endpoints},
+                                  {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
                                   {group, websocket},
                                   {group, naming}
@@ -299,6 +311,14 @@ groups() ->
         list_oracle_queries,
 
         peers
+      ]},
+     {swagger_validation, [], [
+        swagger_validation_body,
+        swagger_validation_enum,
+        swagger_validation_max_min,
+        swagger_validation_required,
+        swagger_validation_schema,
+        swagger_validation_types
       ]},
      {wrong_http_method_endpoints, [], [
         wrong_http_method_top,
@@ -3206,6 +3226,110 @@ get_list_oracle_queries(Oracle, From, Max) ->
 get_peers() ->
     Host = internal_address(),
     http_request(Host, get, "debug/peers", []).
+
+%% ============================================================
+%% Test swagger validation errors
+%% ============================================================
+
+swagger_validation_body(_Config) ->
+    Host = internal_address(),
+    URL = binary_to_list(iolist_to_binary([Host, "/v2/spend-tx"])),
+    Type = "application/json",
+    Body = <<"{broken_json">>,
+
+    R = httpc:request(post, {URL, [], Type, Body}, [], []),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"">>,
+            <<"info">> := #{
+                <<"data">> := <<"{broken_json">>,
+                <<"error">> := <<"invalid_body">>
+        }}} = process_http_return(R).
+
+swagger_validation_enum(_Config) ->
+    Host = internal_address(),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"tx_encoding">>,
+            <<"info">> := #{
+                <<"data">> := <<"default">>,
+                <<"error">> := <<"not_in_enum">>
+        }}} = http_request(Host, get, "block/genesis", #{tx_encoding => <<"default">>}).
+
+swagger_validation_max_min(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"limit">>,
+            <<"info">> :=  #{
+                        <<"data">> := 101,
+                        <<"error">> := <<"not_in_range">>
+        }}} = get_account_transactions(EncodedPubKey, #{limit => 101}),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"limit">>,
+            <<"info">> :=  #{
+                        <<"data">> := 0,
+                        <<"error">> := <<"not_in_range">>
+        }}} = get_account_transactions(EncodedPubKey, #{limit => 0}),
+    ok.
+
+swagger_validation_required(_Config) ->
+    Host = external_address(),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"name">>,
+            <<"info">> := #{
+                <<"error">> := <<"missing_required_property">>
+            }
+        }} = http_request(Host, get, "name", []),
+    ok.
+
+swagger_validation_schema(_Config) ->
+    Host = internal_address(),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"body">>,
+            <<"info">> :=  #{
+                        <<"data">> := <<"wrong_fee_data">>,
+                        <<"error">> := <<"wrong_type">>,
+                        <<"path">> := [<<"fee">>]
+        }}} = http_request(Host, post, "spend-tx", #{
+                   recipient_pubkey => <<"">>,
+                   amount => 0,
+                   fee => <<"wrong_fee_data">>}),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"body">>,
+            <<"info">> :=  #{
+                        <<"data">> := <<"recipient_pubkey">>,
+                        <<"error">> := <<"missing_required_property">>,
+                        <<"path">> := []
+        }}} = http_request(Host, post, "spend-tx", #{
+                   amount => 0,
+                   fee => <<"fee">>}),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"body">>,
+            <<"info">> :=  #{
+                        <<"data">> := -1,
+                        <<"error">> := <<"not_in_range">>,
+                        <<"path">> := [<<"amount">>]
+        }}} = http_request(Host, post, "spend-tx", #{
+                   recipient_pubkey => <<"">>,
+                   amount => -1,
+                   fee => <<"fee">>}).
+
+swagger_validation_types(_Config) ->
+    Host = internal_address(),
+    {ok, 400, #{
+            <<"reason">> := <<"validation_error">>,
+            <<"parameter">> := <<"height">>,
+            <<"info">> :=  #{
+                        <<"data">> := <<"not_integer">>,
+                        <<"error">> := <<"wrong_type">>
+        }}} = http_request(Host, get, "block/txs/count/height/not_integer", []).
 
 %% ============================================================
 %% HTTP Requests with wrong method
