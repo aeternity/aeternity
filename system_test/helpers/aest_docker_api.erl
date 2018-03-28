@@ -17,12 +17,14 @@
 -export([stop_container/2]).
 -export([kill_container/1]).
 -export([inspect/1]).
+-export([exec/2]).
 
 %=== MACROS ====================================================================
 
 -define(BASE_URL, <<"http+unix://%2Fvar%2Frun%2Fdocker.sock/">>).
 -define(CONTAINER_STOP_TIMEOUT, 30).
 -define(CONTAINER_KILL_TIMEOUT_EXTRA, 5).
+-define(DEFAULT_TIMEOUT, 5000).
 %% It seems there is no way to disable the killing timout,
 %% it just default to 10 seconds. So we just set a big one...
 -define(CONTAINER_STOP_INFINTY, 24*60*60).
@@ -108,8 +110,38 @@ kill_container(ID) ->
     end.
 
 inspect(ID) ->
-    {ok, 200, Info} = docker_get([containers, ID, json]),
-    Info.
+    case docker_get([containers, ID, json]) of
+        {ok, 200, Info} -> Info;
+        _ -> undefined
+    end.
+
+%% Returning stdout is not working because hackney doesn't support results
+%% without content length. Should be fixed by:
+%%   https://github.com/benoitc/hackney/pull/481
+exec(ID, Cmd) ->
+    ExecCreateBody = #{
+        'AttachStdout' => true,
+        'AttachStderr' => true,
+        'Tty' => true,
+        'Cmd' => [json_string(C) || C <- Cmd]
+    },
+    case docker_post([containers, ID, exec], #{}, ExecCreateBody) of
+        {ok, 404, _} -> throw({container_not_found, ID});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)});
+        {ok, 201, #{'Id' := ExecId}} ->
+            ExecStartBody = #{
+                'Detach' => false,
+                'Tty' => true
+            },
+            Opts = #{result_type => raw},
+            case docker_post([exec, ExecId, start], #{}, ExecStartBody, Opts) of
+                {ok, 200, Result} -> {ok, Result};
+                {ok, 404, _} -> throw({exec_not_found, ExecId});
+                {ok, 500, Response} ->
+                    throw({docker_error, maps:get(message, Response)})
+            end
+    end.
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -169,21 +201,33 @@ put_in([Key | Keys], Val, Map) ->
 format(Fmt, Args) ->
     iolist_to_binary(io_lib:format(Fmt, Args)).
 
-docker_get(Path) ->
-    case hackney:request(get, url(Path), [], <<>>, []) of
+docker_get(Path) -> docker_get(Path, #{}, #{}).
+
+docker_get(Path, Query, Opts) ->
+    ResultType = maps:get(result_type, Opts, json),
+    Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
+    ReqRes = hackney:request(get, url(Path, Query), [], <<>>,
+                             [{recv_timeout, Timeout}]),
+    case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
-            case docker_fetch_json_body(ClientRef) of
+            case docker_fetch_json_body(ClientRef, ResultType) of
                 {error, _Reason} = Error -> Error;
                 {ok, Response} -> {ok, Status, Response}
             end
     end.
 
-docker_delete(Path) ->
-    case hackney:request(delete, url(Path), [], <<>>, []) of
+docker_delete(Path) -> docker_delete(Path, #{}).
+
+docker_delete(Path, Opts) ->
+    ResultType = maps:get(result_type, Opts, json),
+    Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
+    ReqRes = hackney:request(delete, url(Path), [], <<>>,
+                             [{recv_timeout, Timeout}]),
+    case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
-            case docker_fetch_json_body(ClientRef) of
+            case docker_fetch_json_body(ClientRef, ResultType) of
                 {error, _Reason} = Error -> Error;
                 {ok, Response} -> {ok, Status, Response}
             end
@@ -193,29 +237,34 @@ docker_post(Path) -> docker_post(Path, #{}).
 
 docker_post(Path, Query) -> docker_post(Path, Query, undefined).
 
-docker_post(Path, Query, BodyObj) -> docker_post(Path, Query, BodyObj, 5000).
+docker_post(Path, Query, BodyObj) -> docker_post(Path, Query, BodyObj, #{}).
 
-docker_post(Path, Query, BodyObj, Timeout) ->
+docker_post(Path, Query, BodyObj, Opts) ->
+    ResultType = maps:get(result_type, Opts, json),
+    Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
     BodyJSON = encode(BodyObj),
     Headers = [{<<"Content-Type">>, <<"application/json">>}],
-    case hackney:request(post, url(Path, Query), Headers, BodyJSON, [{recv_timeout, Timeout}]) of
+    ReqRes = hackney:request(post, url(Path, Query), Headers, BodyJSON,
+                             [{recv_timeout, Timeout}]),
+    case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
-            case docker_fetch_json_body(ClientRef) of
+            case docker_fetch_json_body(ClientRef, ResultType) of
                 {error, _Reason} = Error -> Error;
                 {ok, Response} -> {ok, Status, Response}
             end
     end.
 
-docker_fetch_json_body(ClientRef) ->
+docker_fetch_json_body(ClientRef, Type) ->
     case hackney:body(ClientRef) of
         {error, _Reason} = Error -> Error;
-        {ok, BodyJson} -> decode(BodyJson)
+        {ok, Body} -> decode(Body, Type)
     end.
 
-decode(<<>>) -> {ok, undefined};
-decode(JsonStr) ->
-    try jsx:decode(JsonStr, [{labels, attempt_atom}, return_maps]) of
+decode(<<>>, _) -> {ok, undefined};
+decode(Data, raw) -> Data;
+decode(Data, json) ->
+    try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}
     catch
         error:badarg -> {error, bad_json}

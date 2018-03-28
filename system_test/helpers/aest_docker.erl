@@ -21,6 +21,7 @@
 -define(EXT_HTTP_PORT, 3013).
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
+-define(EPOCH_STOP_TIMEOUT, 30).
 
 %=== TYPES =====================================================================
 
@@ -187,7 +188,12 @@ stop_node(NodeState) -> stop_node(NodeState, #{}).
 
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
-    aest_docker_api:stop_container(ID, Opts),
+    Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+    aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
+    case wait_stopped(ID, Timeout) of
+        timeout -> aest_docker_api:stop_container(ID, Opts);
+        ok -> ok
+    end,
     log(NodeState, "Container ~p [~s] stopped", [Name, ID]),
     NodeState.
 
@@ -233,3 +239,28 @@ write_template(TemplateFile, OutputFile, Context) ->
     Data = bbmustache:render(TemplateBin, Context, [{key_type, atom}]),
     ok = filelib:ensure_dir(OutputFile),
     file:write_file(OutputFile, Data).
+
+
+wait_stopped(Id, Timeout) -> wait_stopped(Id, Timeout, os:timestamp()).
+
+
+wait_stopped(Id, Timeout, StartTime) ->
+    case aest_docker_api:inspect(Id) of
+        undefined -> maybe_continue_waiting(Id, Timeout, StartTime);
+        #{'State' := State} ->
+            case maps:get('Running', State) of
+                false -> ok;
+                _ -> maybe_continue_waiting(Id, Timeout, StartTime)
+            end
+    end.
+
+maybe_continue_waiting(Id, infinity, StartTime) ->
+    timer:sleep(100),
+    wait_stopped(Id, infinity, StartTime);
+maybe_continue_waiting(Id, Timeout, StartTime) ->
+    case timer:now_diff(os:timestamp(), StartTime) > (1000 * Timeout) of
+        true -> timeout;
+        false ->
+            timer:sleep(100),
+            wait_stopped(Id, Timeout, StartTime)
+    end.
