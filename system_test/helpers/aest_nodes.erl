@@ -54,13 +54,14 @@
 -type milliseconds() :: non_neg_integer().
 -type seconds() :: non_neg_integer().
 -type path() :: binary() | string().
+-type peer_spec() :: atom() | binary().
 
 -type node_spec() :: #{
     % The unique name of the node
     name    := atom(),
     % If peer is given as an atom it is expected to be a node name,
     % if given as a binary it is expected to be the external URL of the peer.
-    peers   := [atom() | binary()],
+    peers   := [peer_spec()],
     backend := aest_docker,
 
 %% When `backend` is `aest_docker`:
@@ -365,7 +366,8 @@ mgr_get_service_address(NodeName, Service, #{nodes := Nodes}) ->
     Mod:get_service_address(Service, NodeState).
 
 mgr_setup_nodes(NodeSpecs, State) ->
-    lists:foldl(fun mgr_setup_node/2, State, NodeSpecs).
+    NodeSpecs2 = mgr_prepare_specs(NodeSpecs, State),
+    lists:foldl(fun mgr_setup_node/2, State, NodeSpecs2).
 
 mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, State) ->
     #{backends := Backends, nodes := Nodes} = State,
@@ -425,3 +427,22 @@ mgr_safe_delete_all(#{nodes := Nodes1} = State) ->
         end
     end, Nodes1),
     State#{nodes := #{}}.
+
+mgr_prepare_specs(NodeSpecs, State) ->
+    #{backends := Backends, nodes := Nodes} = State,
+    CurrAddrs = maps:map(fun(_, {M, S}) -> M:get_peer_address(S) end, Nodes),
+    AllAddrs = lists:foldl(fun(#{backend := Mod, name := Name} = S, Acc) ->
+        #{Mod := BackendState} = Backends,
+        Acc#{Name => Mod:peer_from_spec(S, BackendState)}
+    end, CurrAddrs, NodeSpecs),
+    lists:map(fun(#{peers := Peers} = Spec) ->
+        NewPeers = lists:map(fun
+            (Addr) when is_binary(Addr) -> Addr;
+            (Name) when is_atom(Name) ->
+                case maps:find(Name, AllAddrs) of
+                    {ok, Addr} -> Addr;
+                    _ -> error({peer_not_found, Name})
+                end
+        end, Peers),
+        Spec#{peers := NewPeers}
+    end, NodeSpecs).
