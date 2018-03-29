@@ -3,14 +3,13 @@
 [This release][this-release] is focused on an encrypted Peer-to-Peer protocol and consistent serialization of chain objects.
 It:
 * Moves Peer-to-Peer communication from HTTP to encrypted TCP channels (Noise is used to negoitiate cryptographic material).
-* Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
-* Enable user configuration of HTTP API acceptors pool
 * Restructure the transaction root hash in the block header for stricter validation. This impacts consensus and the persisted DB.
 * Changes the binary serialization format of most of the chain objects (e.g., transactions, accounts) to make them stricter and more portable. This impacts consensus and the persisted DB.
-* Improves the stability of the node.
-* Improves the stability of the testnet.
-* Changes the DockerHub organization to `aeternity`
+* Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
+* Enable user configuration of HTTP API acceptors pool
 * Enriches HTTP API with optional filtering out account's pending transactions
+* Changes the DockerHub organization to `aeternity`
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.0
 
