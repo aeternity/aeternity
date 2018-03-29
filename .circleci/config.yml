@@ -306,11 +306,7 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Build Docker image
-          command: |
-            docker build .
-      - run:
-          name: Smoke test the nodes
+          name: Build image and smoke test the nodes
           command: |
             docker-compose build node1
             docker-compose up -d
