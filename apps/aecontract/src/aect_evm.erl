@@ -24,8 +24,17 @@ call(Code, CallData) ->
     Data = aeu_hex:hexstring_decode(CallData),
 
     %% TODO: proper setup of chain state!
-    DummyPubKey = aect_contracts:compute_contract_pubkey(<<"TODO!!!">>, 1),
-    ChainState  = aec_vm_chain:new_state(aec_trees:new(), 1, DummyPubKey),
+    Owner = <<123456:65/unit:8>>,
+    DummyPubKey = aect_contracts:compute_contract_pubkey(Owner, 1),
+    {Block, Trees} = aec_chain:top_block_with_state(),
+    BlockHeight = aec_blocks:height(Block) + 1,
+    Amount = 0,
+    VmVersion = 1,
+    Deposit = 0,
+    Contract = aect_contracts:new(DummyPubKey, BlockHeight, Amount,
+                                  Owner, VmVersion, Code, Deposit),
+    Trees1 = insert_contract(Contract, Trees),
+    ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
     Spec = #{ code => Code
             , address => 0
             , caller => 0
@@ -33,7 +42,7 @@ call(Code, CallData) ->
             , gas => 1000000000000000000000000
             , gasPrice => 1
             , origin => 0
-            , value => 0
+            , value => Amount
             , currentCoinbase => 1
             , currentDifficulty => 1
             , currentGasLimit => 10000000000000000000000
@@ -46,8 +55,14 @@ call(Code, CallData) ->
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};
         E -> {error, list_to_binary(io_lib:format("~p", [E]))}
     catch _T:E ->
-	{error, list_to_binary(io_lib:format("~p", [E]))}
+	{error, list_to_binary(io_lib:format("~p",
+                                             [{E, erlang:get_stacktrace()}]))}
     end.
+
+insert_contract(Contract, Trees) ->
+    CTrees = aec_trees:contracts(Trees),
+    CTrees1 = aect_state_tree:insert_contract(Contract, CTrees),
+    aec_trees:set_contracts(Trees, CTrees1).
 
 
 -spec execute_call(map(), boolean()) -> {ok, map()} | {error, term()}.
