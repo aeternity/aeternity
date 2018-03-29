@@ -13,6 +13,7 @@
 -export([ deserialize/1
         , id/1
         , new/3
+        , new/7 %% For use without transaction
         , serialize/1
         , compute_contract_pubkey/2
           %% Getters
@@ -97,19 +98,27 @@ id(C) ->
 
 -spec new(pubkey(), aect_create_tx:tx(), height()) -> contract().
 new(ContractPubKey, RTx, BlockHeight) ->
+    new(ContractPubKey, BlockHeight,
+        aect_create_tx:amount(RTx),
+        aect_create_tx:owner(RTx),
+        aect_create_tx:vm_version(RTx),
+        aect_create_tx:code(RTx),
+        aect_create_tx:deposit(RTx)).
+
+new(ContractPubKey, BlockHeight, Amount, Owner, VmVersion, Code, Deposit) ->
     C = #contract{ pubkey     = ContractPubKey,
-                   balance    = aect_create_tx:amount(RTx),
+                   balance    = Amount,
                    height     = BlockHeight,
                    nonce      = 0,
                    %% Contract-specific fields
-                   owner      = aect_create_tx:owner(RTx),
-                   vm_version = aect_create_tx:vm_version(RTx),
-                   code       = aect_create_tx:code(RTx),
+                   owner      = Owner,
+                   vm_version = VmVersion,
+                   code       = Code,
                    state      = <<>>,
                    log        = <<>>,
                    active     = true,
                    referers   = [],
-                   deposit    = aect_create_tx:deposit(RTx)
+                   deposit    = Deposit
                  },
     C = assert_fields(C),
     %% TODO: call the init function to initialise the state
