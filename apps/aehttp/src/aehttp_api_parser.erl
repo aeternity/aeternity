@@ -12,9 +12,7 @@
                                         {ok, aec_headers:deserialize_pow_evidence(Pow)}
                                     end}},
                      {<<"txs_hash">>, block_tx_hash}]).
--define(OBJECTS, #{ping => [{<<"genesis_hash">>, block_hash},
-                            {<<"best_hash">>, block_hash}],
-                   header_map => ?HEADER_OBJ,
+-define(OBJECTS, #{header_map => ?HEADER_OBJ,
                    block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
                    block => {fun(Block) ->
                                 BMap = aehttp_logic:cleanup_genesis(
