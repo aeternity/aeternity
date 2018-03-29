@@ -43,7 +43,7 @@ The instructions below assume that:
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-Create the file `/tmp/node/epoch.yaml` with the following content (amend the `http` > `external` > `peer_address` parameter and `http` > `external` > `port` parameter with your actual values):
+Create the file `/tmp/node/epoch.yaml` with the following content (amend the `sync` > `port` parameter with your actual value):
 ```yaml
 ---
 peers:
@@ -60,7 +60,6 @@ keys:
 
 http:
     external:
-        peer_address: http://1.2.3.4:8080/
         port: 3003
     internal:
         port: 3103
