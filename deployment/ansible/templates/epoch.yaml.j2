@@ -7,7 +7,7 @@ peers:
 {% if hostvars[host]['sync_public_key'] is defined %}
     - "aenode://{{ hostvars[host]['sync_public_key'] }}@{{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ config.sync.port }}"
 {% else %}
-    - "aenode://no-key-found-peer-will-be-ignored@{{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ config.sync.port }}"
+    - "aenode://pp$nokeyfoundpeerwillbeignored@{{ hostvars[host]['ansible_default_ipv4']['address'] }}:{{ config.sync.port }}"
 {% endif %}
 {% endfor %}
 
