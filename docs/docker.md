@@ -58,16 +58,11 @@ docker exec epoch_node0 tail log/epoch.log
 
 ### Configuration
 
+The container will use the default configuration unless other configuration file is specified (see below).
+
 #### External Peer Address
 
-Your public IP address will be automatically determined and used in `peer_address` configuration option.
-Make sure you have a working port forwarding setup on your firewall to be able to fully participate in the testnet.
-
-Docker environment variable `EXTERNAL_PEER_ADDRESS` may be used in case external peer address shall be changed e.g. different port mapping or different inbound IP:
-
-```bash
-docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aeternity/epoch
-```
+Please note that, if your node is behind a firewall, you need to open and map a TCP port `3015` (default sync > port parameter) in your firewall to the container port `3015`.
 
 #### Peer addresses
 
