@@ -105,6 +105,8 @@ new(ContractPubKey, RTx, BlockHeight) ->
         aect_create_tx:code(RTx),
         aect_create_tx:deposit(RTx)).
 
+-spec new(pubkey(), height(), amount(), pubkey(), integer(), binary(), amount()) -> contract().
+%% NOTE: Should only be used for contract execution without transaction
 new(ContractPubKey, BlockHeight, Amount, Owner, VmVersion, Code, Deposit) ->
     C = #contract{ pubkey     = ContractPubKey,
                    balance    = Amount,
