@@ -14,6 +14,7 @@ It:
 * Does that;
 * Improves the stability of the testnet.
 * Changes the DockerHub organization to `aeternity`
+* Enriches HTTP API with optional filtering out account's pending transactions
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.0
 

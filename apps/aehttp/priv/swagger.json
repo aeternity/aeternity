@@ -1392,6 +1392,13 @@
           "type" : "string",
           "default" : "message_pack",
           "enum" : [ "message_pack", "json" ]
+        }, {
+          "name" : "pending",
+          "in" : "query",
+          "description" : "Include currently pending transactions",
+          "required" : false,
+          "type" : "boolean",
+          "default" : true
         } ],
         "responses" : {
           "200" : {
