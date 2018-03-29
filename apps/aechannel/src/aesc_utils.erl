@@ -9,13 +9,42 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([check_active_channel_exists/4,
+-export([check_active_channel_exists/6,
+         check_active_channel_exists/4,
          check_are_peers/2,
          check_peer_has_funds/4]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+-spec check_active_channel_exists(aesc_channels:id(), pubkey(), pubkey(),
+                                  aesc_channels:amount(), aesc_channels:amount(), aec_trees:trees()) ->
+                                         {error, term()} | ok.
+check_active_channel_exists(ChannelId, InitiatorPubKey, InitiatorAmount,
+                            ParticipantPubKey, ParticipantAmount, Trees) ->
+    ChannelsTree = aec_trees:channels(Trees),
+    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
+        none ->
+            {error, channel_does_not_exist};
+        {value, Ch} ->
+            case aesc_channels:is_active(Ch) of
+                true ->
+                    ChInitiatorPubKey   = aesc_channels:initiator(Ch),
+                    ChParticipantPubKey = aesc_channels:participant(Ch),
+                    ChInitiatorAmount   = aesc_channels:initiator_amount(Ch),
+                    ChParticipantAmount = aesc_channels:participant_amount(Ch),
+                    case {ChInitiatorPubKey   =:= InitiatorPubKey,
+                          ChParticipantPubKey =:= ParticipantPubKey,
+                          ChInitiatorAmount + ChParticipantAmount =:= InitiatorAmount + ParticipantAmount} of
+                        {true, true, true} -> ok;
+                        {true, true, _   }    -> {error, payload_amounts_change_channel_funds};
+                        {_   , _   , _   }    -> {error, wrong_channel_peers}
+                    end;
+                false ->
+                    {error, channel_not_active}
+            end
+    end.
 
 -spec check_active_channel_exists(aesc_channels:id(), pubkey(), pubkey(),
                                   aec_trees:trees()) -> {error, term()} | ok.
