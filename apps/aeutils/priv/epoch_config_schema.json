@@ -8,31 +8,10 @@
             "Pre-configured addresses of epoch nodes to contact",
             "type"  : "array",
             "items" : {
-                "type" : "object",
-                "properties" : {
-                    "peer" : {
-                        "type" : "object",
-                        "additionalProperties" : false,
-                        "properties" : {
-                            "host" : {
-                                "type"    : "string",
-                                "pattern" : "^[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*",
-                               "example" : "somehost.somedomain:123"
-                            },
-
-                            "port" : {
-                                "type" : "integer",
-                                "minimum" : 1,
-                                "maximum" : 65535
-                            },
-
-                           "pubkey" : {
-                               "type" : "string",
-                               "description" : "base58c encoded public key"
-                          }
-                        }
-                    }
-                }
+                "type" : "string",
+                "description" : "Aeternity Node address",
+                "example" : "aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp\$[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
         "blocked_peers" : {
@@ -40,31 +19,10 @@
             "Pre-configured addresses of epoch nodes NOT to contact",
             "type"  : "array",
             "items" : {
-                "type" : "object",
-                "properties" : {
-                    "peer" : {
-                        "type" : "object",
-                        "additionalProperties" : false,
-                        "properties" : {
-                            "host" : {
-                                "type"    : "string",
-                                "pattern" : "^[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*",
-                               "example" : "somehost.somedomain:123"
-                            },
-
-                            "port" : {
-                                "type" : "integer",
-                                "minimum" : 1,
-                                "maximum" : 65535
-                            },
-
-                           "pubkey" : {
-                               "type" : "string",
-                               "description" : "base58c encoded public key"
-                          }
-                        }
-                    }
-                }
+                "type" : "string",
+                "description" : "Aeternity Node address",
+                "example" : "aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
+                "pattern": "^aenode://pp\$[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
             }
         },
         "sync" : {

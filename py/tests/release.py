@@ -35,14 +35,8 @@ sync:
     port: 9815
 
 peers:
-    - peer:
-        port: 9825
-        host: "localhost"
-        pubkey: "pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8"
-    - peer:
-        port: 9835
-        host: "localhost"
-        pubkey: "pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq"
+    - aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
+    - aenode://pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
 
 http:
     external:

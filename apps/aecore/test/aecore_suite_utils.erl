@@ -471,8 +471,8 @@ hostname() ->
     H.
 
 peer_info(N) ->
-    #{ host => iolist_to_binary(hostname()), port => port_number(N),
-       pubkey => aec_base58c:encode(peer_pubkey, pubkey(N)) }.
+    list_to_binary(["aenode://", aec_base58c:encode(peer_pubkey, pubkey(N)),
+                  "@", hostname(), ":", integer_to_list(port_number(N))]).
 
 port_number(dev1) -> 3015;
 port_number(dev2) -> 3025;

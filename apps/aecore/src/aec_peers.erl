@@ -33,6 +33,8 @@
          get_connection/1,
          get_random/1,
          get_random/2,
+         parse_peer_address/1,
+         encode_peer_address/1,
          set_local_peer_info/1,
          get_local_peer_info/0]).
 
@@ -675,3 +677,23 @@ ping_interval() ->
 
 sync_port() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
+
+parse_peer_address(PeerAddress) ->
+    case http_uri:parse(PeerAddress) of
+        {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
+            case aec_base58c:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
+                {ok, PubKey} ->
+                    {ok, #{ host => to_binary(Host), port => Port, pubkey => PubKey }};
+                Err = {error, _} ->
+                    Err
+            end;
+        Err = {error, _Reason} ->
+            Err
+    end.
+
+encode_peer_address(#{ host := Host, port := Port, pubkey := PubKey }) ->
+    list_to_binary(["aenode://", aec_base58c:encode(peer_pubkey, PubKey), "@",
+                    Host, ":", integer_to_list(Port)]).
+
+to_binary(Bin) when is_binary(Bin) -> Bin;
+to_binary(List) when is_list(List) -> list_to_binary(List).

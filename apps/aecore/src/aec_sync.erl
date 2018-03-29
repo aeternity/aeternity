@@ -135,8 +135,8 @@ init([]) ->
     aec_events:subscribe(top_changed),
     aec_events:subscribe(tx_created),
 
-    Peers = parse_peer_configs(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
-    BlockedPeers = parse_peer_configs(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
+    Peers = parse_peers(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
+    BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
 
     [aec_peers:block_peer(aec_peers:peer_id(P)) || P <- BlockedPeers],
     aec_peers:add_and_ping_peers(Peers, true),
@@ -610,18 +610,13 @@ header_hash(Block) ->
     {ok, HeaderHash} = aec_headers:hash_header(Header),
     HeaderHash.
 
-parse_peer_configs(Ps) ->
-    lists:append([ parse_peer_config(P) || P <- Ps ]).
+parse_peers(Ps) ->
+    lists:append([ parse_peer(P) || P <- Ps ]).
 
-parse_peer_config(P) ->
-    try
-        case P of
-            #{ <<"host">> := Host, <<"port">> := Port, <<"pubkey">> := EPK } -> ok;
-            #{ <<"peer">> := #{ <<"host">> := Host, <<"port">> := Port, <<"pubkey">> := EPK } } -> ok
-        end,
-
-        {ok, PK} = aec_base58c:safe_decode(peer_pubkey, EPK),
-        [#{ host => Host, port => Port, pubkey => PK}]
-    catch _:_ ->
-        []
+parse_peer(P) ->
+    case aec_peers:parse_peer_address(P) of
+        {ok, PInfo} ->
+            [PInfo];
+        {error, _} ->
+            []
     end.

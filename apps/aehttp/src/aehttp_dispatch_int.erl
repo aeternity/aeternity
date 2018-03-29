@@ -373,10 +373,9 @@ handle_request('GetPeers', _Req, _Context) ->
         true ->
             Peers = aehttp_logic:all_peers(),
             Blocked = aehttp_logic:blocked_peers(),
-            Enc = fun(Xs) -> [ X#{ pubkey := aec_base58c:encode(peer_pubkey, PK) }
-                               || X = #{ pubkey := PK } <- Xs ] end,
-            {200, [], #{peers => Enc(Peers),
-                        blocked => Enc(Blocked)}};
+
+            {200, [], #{peers => lists:map(fun aec_peers:encode_peer_address/1, Peers),
+                        blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
         false ->
             {403, [], #{reason => <<"Call not enabled">>}}
     end;

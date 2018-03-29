@@ -1,7 +1,7 @@
 ---
 peers:
-    - peer: {host: node1, port: 3015, pubkey: "pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X"}
-    - peer: {host: node3, port: 3015, pubkey: "pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq"}
+    - aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@node1:3015
+    - aenode://pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@node3:3015
 
 http:
     external:
