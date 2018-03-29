@@ -188,6 +188,7 @@ check_channel(ChannelId, State, Height, Trees) ->
         {value, Channel} ->
             Checks =
                 [fun() -> check_peers_equal(State, Channel) end,
+                 fun() -> check_amounts_equal(State, Channel) end,
                  fun() -> check_solo_closing(Channel, Height) end,
                  fun() -> check_seq_number(State, Channel) end],
             aeu_validation:run(Checks)
@@ -200,6 +201,14 @@ check_peers_equal(State, Channel) ->
             ok;
         false ->
             {error, wrong_channel_peers}
+    end.
+
+check_amounts_equal(State, Channel) ->
+    ChannelAmount = aesc_channels:initiator_amount(Channel) + aesc_channels:participant_amount(Channel),
+    StateAmount   = aesc_state:initiator_amount(State) + aesc_state:responder_amount(State),
+    case ChannelAmount =:= StateAmount of
+        true  -> ok;
+        false -> {error, wrong_state_amounts}
     end.
 
 check_solo_closing(Channel, Height) ->

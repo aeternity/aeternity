@@ -182,9 +182,12 @@ verify_signatures(SignedState) ->
     end.
 
 check_channel(ChannelId, State, Trees) ->
-    StateInitiator   = aesc_state:initiator(State),
-    StateParticipant = aesc_state:responder(State),
-    aesc_utils:check_active_channel_exists(ChannelId, StateInitiator, StateParticipant, Trees).
+    StateInitiator         = aesc_state:initiator(State),
+    StateParticipant       = aesc_state:responder(State),
+    StateInitiatorAmount   = aesc_state:initiator_amount(State),
+    StateParticipantAmount = aesc_state:responder_amount(State),
+    aesc_utils:check_active_channel_exists(ChannelId, StateInitiator, StateInitiatorAmount,
+                                           StateParticipant, StateParticipantAmount, Trees).
 
 -spec version() -> non_neg_integer().
 version() ->
