@@ -7,9 +7,10 @@ PASS=${2:-"secret"}
 CODE="{ok, PK} = aec_keys:peer_pubkey(),
       binary_to_list(aec_base58c:encode(peer_pubkey, PK))."
 
-! relx_nodetool eval $CODE
+! PK=$(relx_nodetool eval $CODE)
 
 if [ $? -eq 1 ]; then
+    echo -n $PK | tr -d '"'
     exit 0
 fi
 
@@ -17,10 +18,11 @@ CODE="{ok, Bin} = file:read_file(filename:join(\"$KEYSDIR\", \"peer_key.pub\")),
       PwdHash = crypto:hash(sha256, \"$PASS\"),
       PK = crypto:block_decrypt(aes_ecb, PwdHash, Bin),
       PKStr = binary_to_list(aec_base58c:encode(peer_pubkey, PK)),
-      io:format(\"~p\\n\", [PKStr]),
+      io:format(\"~s\", [PKStr]),
       init:stop(). "
 
 
+PATH=$BINDIR:$PATH
 LIBPATH1=$PWD/lib/aecore-0.1.0/ebin
 LIBPATH2=$PWD/lib/base58-0.0.1/ebin
 
