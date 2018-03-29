@@ -58,8 +58,11 @@ docker exec epoch_node0 tail log/epoch.log
 
 ### Configuration
 
-The container will use [Minimal testnet config](docs/examples/epoch_testnet.yaml) unless other configuration file is specified (see below), it mostly relies on configuration defaults.
-To see full configuration reference and the defaults please refer to [User Provided Configuration](https://github.com/aeternity/epoch/wiki/User-provided-configuration) Wiki page.
+The container will use the default configuration unless other configuration file is specified (see below).
+
+#### External Peer Address
+
+Please note that, if your node is behind a firewall, you need to open and map a TCP port `3015` (default sync > port parameter) in your firewall to the container port `3015`.
 
 #### Peer addresses
 
