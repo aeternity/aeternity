@@ -6,7 +6,12 @@ This document describes how to start your epoch node installed using a release b
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
-* The configured initial network peer to join is "http://31.13.249.1:3013/";
+* The configured initial network peers to join are located at "31.13.249.1",
+"31.13.248.97", and "31.13.249.118". These nodes have the public keys
+(Base58Check encoded) "pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177",
+"pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p" and
+"pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy"; and they all listen to
+the standard sync port 3015;
 * The HTTP external API of the node can be contacted at 127.0.0.1 port 3003;
 * The HTTP internal API of the node can be contacted at 127.0.0.1 port 3103.
 

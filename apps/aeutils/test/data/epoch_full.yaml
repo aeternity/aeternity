@@ -4,14 +4,14 @@ peers:
     # TestNet Addresses
     - peer:
         host: "31.13.249.1"
-        port: 3013
-        pubkey: "pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk"
+        port: 3015
+        pubkey: "pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177"
 
 # Pre-configured addresses of epoch nodes NOT to contact
 blocked_peers:
     - peer:
         host: "some-really-bad-peer-address"
-        port: 3013
+        port: 3015
         pubkey: "pp$2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R"
 
 sync:

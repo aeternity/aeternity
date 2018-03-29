@@ -74,7 +74,7 @@ docker run -d -p 3013:3013 -e EXTERNAL_PEER_ADDRESS=http://1.2.3.4:3013/ aeterni
 Docker image has packaged the address of one of the testnet nodes in the configuration. This can be changed by setting `PEERS_ADDRESS_0` Docker environment variable:
 
 ```bash
-docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=http://31.13.249.0:3013/ aeternity/epoch
+docker run -d -p 3013:3013 -e PEERS_ADDRESS_0='peer: {host: 31.13.249.1, port: 3015, pubkey: pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177}' aeternity/epoch
 ```
 
 #### Changing the configuration file
