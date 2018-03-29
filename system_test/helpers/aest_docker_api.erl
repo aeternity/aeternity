@@ -91,7 +91,8 @@ stop_container(ID, Opts) ->
         infinity -> infinity;
         HTSecs -> HTSecs * 1000
     end,
-    case docker_post([containers, ID, stop], Query, undefined, ReqTimeout) of
+    PostOpts = #{timeout => ReqTimeout},
+    case docker_post([containers, ID, stop], Query, undefined, PostOpts) of
         {ok, 204, _} -> ok;
         {ok, 304, _} -> throw({container_not_started, ID});
         {ok, 404, _} -> throw({container_not_found, ID});
@@ -112,7 +113,9 @@ kill_container(ID) ->
 inspect(ID) ->
     case docker_get([containers, ID, json]) of
         {ok, 200, Info} -> Info;
-        _ -> undefined
+        {ok, 404, _} -> throw({container_not_found, ID});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
     end.
 
 %% Returning stdout is not working because hackney doesn't support results
@@ -262,7 +265,7 @@ docker_fetch_json_body(ClientRef, Type) ->
     end.
 
 decode(<<>>, _) -> {ok, undefined};
-decode(Data, raw) -> Data;
+decode(Data, raw) -> {ok, Data};
 decode(Data, json) ->
     try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}

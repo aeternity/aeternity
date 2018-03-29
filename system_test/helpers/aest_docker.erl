@@ -204,12 +204,17 @@ stop_node(NodeState) -> stop_node(NodeState, #{}).
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
     Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
-    aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
-    case wait_stopped(ID, Timeout) of
-        timeout -> aest_docker_api:stop_container(ID, Opts);
-        ok -> ok
+    case is_running(ID) of
+        false ->
+            log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
+        true ->
+            aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
+            case wait_stopped(ID, Timeout) of
+                timeout -> aest_docker_api:stop_container(ID, Opts);
+                ok -> ok
+            end,
+            log(NodeState, "Container ~p [~s] stopped", [Name, ID])
     end,
-    log(NodeState, "Container ~p [~s] stopped", [Name, ID]),
     NodeState.
 
 -spec kill_node(node_state()) -> node_state().
@@ -275,16 +280,14 @@ write_template(TemplateFile, OutputFile, Context) ->
 
 wait_stopped(Id, Timeout) -> wait_stopped(Id, Timeout, os:timestamp()).
 
-
 wait_stopped(Id, Timeout, StartTime) ->
-    case aest_docker_api:inspect(Id) of
-        undefined -> maybe_continue_waiting(Id, Timeout, StartTime);
-        #{'State' := State} ->
-            case maps:get('Running', State) of
-                false -> ok;
-                _ -> maybe_continue_waiting(Id, Timeout, StartTime)
-            end
+    case is_running(Id) of
+        false -> ok;
+        true -> maybe_continue_waiting(Id, Timeout, StartTime)
     end.
+
+is_running(Id) ->
+    maps:get('Running', maps:get('State', aest_docker_api:inspect(Id))).
 
 maybe_continue_waiting(Id, infinity, StartTime) ->
     timer:sleep(100),
