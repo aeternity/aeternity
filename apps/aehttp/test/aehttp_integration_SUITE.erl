@@ -429,8 +429,7 @@ get_top_empty_chain(_Config) ->
     {ok, 200, HeaderMap} = get_top(),
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
     {ok, 200, GenBlockMap} = get_block_by_height(0),
-    {ok, GenBlock} = aec_blocks:deserialize_from_map(
-                      aehttp_dispatch_ext:add_missing_to_genesis_block(GenBlockMap)),
+    {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     HeaderMap = ExpectedMap,
@@ -1194,7 +1193,8 @@ post_broken_blocks(Config) ->
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
     GH = rpc(aec_chain, top_header, []),
     0 = aec_headers:height(GH), %chain is empty
-    CorrectBlockMap = aec_blocks:serialize_to_map(CorrectBlock),
+    CorrectBlockMap =
+        aehttp_api_parser:encode(block, CorrectBlock),
     BrokenBlocks =
         lists:map(
             fun({Key, Value}) ->
@@ -1215,7 +1215,7 @@ post_broken_blocks(Config) ->
     lists:foreach(
         fun({BrokenField, BlockMap}) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
-            {ok, Block} = aec_blocks:deserialize_from_map(BlockMap),
+            {ok, Block} = aehttp_api_parser:decode(block, BlockMap),
             {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
             H = rpc(aec_chain, top_header, []),
             0 = aec_headers:height(H) %chain is still empty
@@ -1260,7 +1260,7 @@ post_broken_tx(_Config) ->
                   end,
     EncodedBrokenTx = aec_base58c:encode(transaction, BrokenTxBin),
     EncodedSignedTx = aec_base58c:encode(transaction, SignedTxBin),
-    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_tx(EncodedBrokenTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid base58Check encoding">>}} = post_tx(EncodedBrokenTx),
     {ok, 200, _} = post_tx(EncodedSignedTx),
     ok.
 
@@ -2964,7 +2964,8 @@ get_account_transactions(EncodedPubKey, Params) ->
 
 post_block(Block) ->
     Host = external_address(),
-    BlockMap = aec_blocks:serialize_to_map(Block),
+    BlockMap =
+        aehttp_api_parser:encode(block, Block),
     http_request(Host, post, "block", BlockMap).
 
 post_tx(TxSerialized) ->
@@ -3510,21 +3511,19 @@ process_http_return(R) ->
 
 header_to_endpoint_top(Header) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    {ok, HMap} = aec_headers:serialize_to_map(Header),
-    CleanedH = aehttp_dispatch_ext:cleanup_genesis(HMap),
-    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash), CleanedH).
+    maps:put(<<"hash">>, aec_base58c:encode(block_hash, Hash),
+             aehttp_api_parser:encode(header, Header)).
 
 block_to_endpoint_gossip_map(Block) ->
-    BMap = aec_blocks:serialize_to_map(Block),
-    aehttp_dispatch_ext:cleanup_genesis(BMap).
+    aehttp_api_parser:encode(block, Block).
 
 block_to_endpoint_map(Block) ->
     block_to_endpoint_map(Block, #{tx_encoding => message_pack}).
 
 block_to_endpoint_map(Block, Options) ->
     Encoding = maps:get(tx_encoding, Options, message_pack),
-    BMap = aec_blocks:serialize_client_readable(Encoding, Block),
-    Expected = aehttp_dispatch_ext:cleanup_genesis(BMap),
+    BMap = aehttp_api_parser:encode_client_readable_block(Block, Encoding),
+    Expected = aehttp_logic:cleanup_genesis(BMap),
 
     %% Validate that all transactions have the correct block height and hash
     ExpectedTxs = maps:get(<<"transactions">>, Expected, []),

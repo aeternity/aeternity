@@ -794,8 +794,8 @@ paths:
           description: Active oracle questions
           schema:
             $ref: '#/definitions/OracleQuestions'
-        '404':
-          description: Oracle not found
+        '400':
+          description: Invalid parameters
           schema:
             $ref: '#/definitions/Error'
       security:

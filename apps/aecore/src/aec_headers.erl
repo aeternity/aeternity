@@ -60,47 +60,39 @@ time_in_msecs(Header) ->
 serialize_to_map(H = #header{}) ->
     Serialized =
       #{<<"height">> =>  height(H),
-        <<"prev_hash">> => aec_base58c:encode(block_hash, prev_hash(H)),
-        <<"state_hash">> => aec_base58c:encode(block_state_hash, H#header.root_hash),
+        <<"prev_hash">> => prev_hash(H),
+        <<"state_hash">> => H#header.root_hash,
         <<"target">> => H#header.target,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
-        <<"pow">> => serialize_pow_evidence(H#header.pow_evidence),
+        <<"pow">> => H#header.pow_evidence,
         <<"version">> => H#header.version,
-        <<"txs_hash">> => aec_base58c:encode(block_tx_hash, H#header.txs_hash)
+        <<"txs_hash">> => H#header.txs_hash
       },
     {ok, Serialized}.
 
 
--spec deserialize_from_map(map()) -> {ok, header()} | {error, deserialize}.
+-spec deserialize_from_map(map()) -> header().
 deserialize_from_map(H = #{}) ->
-      #{<<"height">> := Height,
-        <<"prev_hash">> := PrevHash,
-        <<"state_hash">> := RootHash,
-        <<"target">> := Target,
-        <<"nonce">> := Nonce,
-        <<"time">> := Time,
-        <<"version">> := Version,
-        <<"pow">> := PowEvidence,
-        <<"txs_hash">> := TxsHash
-      } = H,
-    try
-        {block_hash, DecPrevHash} = aec_base58c:decode(PrevHash),
-        {block_state_hash, DecRootHash} = aec_base58c:decode(RootHash),
-        {block_tx_hash, DecTxsHash} = aec_base58c:decode(TxsHash),
-        {ok, #header{height = Height,
-                     prev_hash = DecPrevHash,
-                     root_hash = DecRootHash,
-                     target = Target,
-                     nonce = Nonce,
-                     time = Time,
-                     version = Version,
-                     pow_evidence = deserialize_pow_evidence(PowEvidence),
-                     txs_hash = DecTxsHash}}
-    catch
-        error:_ ->
-            {error, deserialize}
-    end.
+    #{<<"height">> := Height,
+      <<"prev_hash">> := PrevHash,
+      <<"state_hash">> := RootHash,
+      <<"target">> := Target,
+      <<"nonce">> := Nonce,
+      <<"time">> := Time,
+      <<"version">> := Version,
+      <<"pow">> := PowEvidence,
+      <<"txs_hash">> := TxsHash
+    } = H,
+    #header{height = Height,
+                 prev_hash = PrevHash,
+                 root_hash = RootHash,
+                 target = Target,
+                 nonce = Nonce,
+                 time = Time,
+                 version = Version,
+                 pow_evidence = PowEvidence,
+                 txs_hash = TxsHash}.
 
 -spec serialize_for_hash(header()) -> deterministic_header_binary().
 serialize_for_hash(H) ->

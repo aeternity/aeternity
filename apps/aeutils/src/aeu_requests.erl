@@ -58,8 +58,7 @@ top(Uri) ->
     Response = process_request(Uri, 'GetTop', []),
     case Response of
         {ok, 200, Data} ->
-            {ok, Header} = aec_headers:deserialize_from_map(Data),
-            {ok, Header};
+            {ok, _Header} = aehttp_api_parser:decode(header, Data);
         {error, _Reason} = Error ->
             Error;
         _ ->
@@ -75,8 +74,7 @@ get_header_by_hash(Uri, Hash) ->
     Response = process_request(Uri, 'GetHeaderByHash', [{"hash", EncHash}]),
     case Response of
         {ok, 200, Data} ->
-            {ok, Header} = aec_headers:deserialize_from_map(Data),
-            {ok, Header};
+            {ok, _Header} = aehttp_api_parser:decode(header, Data);
         {error, _Reason} = Error ->
             Error;
         _ ->
@@ -91,7 +89,7 @@ get_header_by_height(Uri, Height) when is_integer(Height) ->
     Response = process_request(Uri, 'GetHeaderByHeight', [{"height", integer_to_list(Height)}]),
     case Response of
         {ok, 200, Data} ->
-            {ok, _Header} = aec_headers:deserialize_from_map(Data);
+            {ok, _Header} = aehttp_api_parser:decode(header, Data);
         {ok, 400, Reason} ->
             lager:debug("Header not found ~p", [Reason]),
             {error, chain_too_short};
@@ -106,7 +104,7 @@ get_block_by_height(Uri, Height) when is_integer(Height) ->
     Response = process_request(Uri, 'GetBlockByHeight', [{"height", integer_to_list(Height)}]),
     case Response of
         {ok, 200, Data} ->
-            {ok, _Block} = aec_blocks:deserialize_from_map(Data);
+            {ok, _Block} = aehttp_api_parser:decode(block, Data);
         {ok, 404, #{reason := <<"Chain too short">>}} ->
             {error, chain_too_short};
         {error, _Reason} = Error ->
@@ -125,8 +123,7 @@ get_block(Uri, Hash) ->
     Response = process_request(Uri,'GetBlockByHash', [{"hash", EncHash}]),
     case Response of
         {ok, 200, Data} ->
-            {ok, Block} = aec_blocks:deserialize_from_map(Data),
-            {ok, Block};
+            {ok, _Block} = aehttp_api_parser:decode(block, Data);
         {error, _Reason} = Error ->
             Error;
         _ ->
@@ -165,7 +162,8 @@ tx_response(_Other) -> bad_result.
 
 -spec send_block(http_uri_uri(), aec_blocks:block()) -> response(ok).
 send_block(Uri, Block) ->
-    BlockSerialized = aec_blocks:serialize_to_map(Block),
+    BlockSerialized =
+        aehttp_api_parser:encode(block, Block),
     lager:debug("send_block; serialized: ~p", [pp(BlockSerialized)]),
     Response = process_request(Uri, 'PostBlock', BlockSerialized),
     case Response of

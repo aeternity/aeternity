@@ -42,16 +42,13 @@ do_execute(chain, get, QueryPayload) ->
         {error, ErrMsg} ->
             {error, ErrMsg};
         {ok, Block} ->
-            Val0 =
+            Val =
                   case Type of
                       <<"header">> ->
-                          {ok, HH} = aec_headers:serialize_to_map(
-                              aec_blocks:to_header(Block)),
-                          HH;
+                          aehttp_api_parser:encode(header, aec_blocks:to_header(Block));
                       <<"block">> ->
-                          aec_blocks:serialize_to_map(Block)
+                          aehttp_api_parser:encode(block, Block)
                   end,
-            Val = aehttp_dispatch_ext:cleanup_genesis(Val0),
             {ok, chain, requested_data, [{type, Type}, Query, {Type, Val}]}
     end;
 do_execute(chain, unsubscribe_all, Data) ->

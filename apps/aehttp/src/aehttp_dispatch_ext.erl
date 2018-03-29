@@ -1,8 +1,6 @@
 -module(aehttp_dispatch_ext).
 
 -export([handle_request/3]).
--export([cleanup_genesis/1,
-         add_missing_to_genesis_block/1]).
 
 -import(aeu_debug, [pp/1]).
 -import(aehttp_helpers, [ process_request/2
@@ -38,23 +36,17 @@
        ) -> {Status :: cowboy:http_status(), Headers :: list(), Body :: map()}.
 
 handle_request('GetTop', _, _Context) ->
-    Header = aec_chain:top_header(),
-    {ok, HH} = aec_headers:hash_header(Header),
-    {ok, Top} = aec_headers:serialize_to_map(Header),
-    Resp = cleanup_genesis(Top),
-    {200, [], maps:put(hash, aec_base58c:encode(block_hash, HH), Resp)};
+    {ok, TopHeader} = aehttp_logic:get_top(),
+    {ok, Hash} = aec_headers:hash_header(TopHeader),
+    EncodedHash = aec_base58c:encode(block_hash, Hash),
+    EncodedHeader = aehttp_api_parser:encode(header, TopHeader),
+    {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
 handle_request('GetBlockByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aec_chain:get_block_by_height(Height) of
+    case aehttp_logic:get_block_by_height(Height) of
         {ok, Block} ->
-            %% swagger generated code expects the Resp to be proplist or map
-            %% and always runs jsx:encode/1 on it - even if it is already
-            %% encoded to a binary; that's why we use
-            %% aec_blocks:serialize_to_map/1
-            Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
-            lager:debug("Resp = ~p", [pp(Resp)]),
-            {200, [], Resp};
+            {200, [], aehttp_api_parser:encode(block, Block)};
         {error, block_not_found} ->
             {404, [], #{reason => <<"Block not found">>}};
         {error, chain_too_short} ->
@@ -66,17 +58,10 @@ handle_request('GetBlockByHash' = _Method, Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aec_chain:get_block(Hash) of
+            case aehttp_logic:get_block_by_hash(Hash) of
                 {ok, Block} ->
-                    %% swagger generated code expects the Resp to be proplist
-                    %% or map and always runs jsx:encode/1 on it - even if it
-                    %% is already encoded to a binary; that's why we use
-                    %% aec_blocks:serialize_to_map/1
-                    lager:debug("Block = ~p", [pp(Block)]),
-                    Resp = cleanup_genesis(aec_blocks:serialize_to_map(Block)),
-                    lager:debug("Resp = ~p", [pp(Resp)]),
-                    {200, [], Resp};
-                error ->
+                    {200, [], aehttp_api_parser:encode(block, Block)};
+                {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end
     end;
@@ -86,26 +71,19 @@ handle_request('GetHeaderByHash', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
-            case aec_chain:get_header(Hash) of
+            case aehttp_logic:get_header_by_hash(Hash) of
                 {ok, Header} ->
-                    %% We serialize to a map because the client expects a
-                    %% decoded JSON object as response.
-                    lager:debug("Header = ~p", [pp(Header)]),
-                    {ok, HH} = aec_headers:serialize_to_map(Header),
-                    Resp = cleanup_genesis(HH),
-                    lager:debug("Resp = ~p", [pp(Resp)]),
-                    {200, [], Resp};
-                error ->
+                    {200, [], aehttp_api_parser:encode(header, Header)};
+                {error, header_not_found} ->
                     {404, [], #{reason => <<"Header not found">>}}
             end
     end;
 
 handle_request('GetHeaderByHeight', Req, _Context) ->
     Height = maps:get('height', Req),
-    case aec_chain:get_header_by_height(Height) of
-        {ok, Header} ->
-            {ok, HH} = aec_headers:serialize_to_map(Header),
-            Resp = cleanup_genesis(HH),
+    case aehttp_logic:get_header_by_height(Height) of
+        {ok, H} ->
+            Resp = aehttp_api_parser:encode(header, H),
             lager:debug("Resp = ~p", [pp(Resp)]),
             {200, [], Resp};
         {error, chain_too_short} ->
@@ -115,15 +93,12 @@ handle_request('GetHeaderByHeight', Req, _Context) ->
 handle_request('GetTxs', _Req, _Context) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     lager:debug("GetTxs : ~p", [pp(Txs0)]),
-    Txs = [#{<<"tx">> => aec_base58c:encode(
-                           transaction,
-                           aetx_sign:serialize_to_binary(T))}
-           || T <- Txs0],
+    Txs = [aehttp_api_parser:encode(tx, T) || T <- Txs0],
     {200, [], Txs};
 
 handle_request('PostBlock', Req, _Context) ->
-    SerializedBlock = add_missing_to_genesis_block(maps:get('Block', Req)),
-    {ok, Block} = aec_blocks:deserialize_from_map(SerializedBlock),
+    %TODO: possibly return an error on a broken block intead of crashing?
+    {ok, Block} = aehttp_api_parser:decode(block, maps:get('Block', Req)),
 
     %% Only for logging
     Header = aec_blocks:to_header(Block),
@@ -138,23 +113,16 @@ handle_request('PostBlock', Req, _Context) ->
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
     lager:debug("Got PostTx; Req = ~p", [pp(Req)]),
-    case aec_base58c:safe_decode(transaction, maps:get(<<"tx">>, Tx)) of
+    case aehttp_api_parser:decode(tx, maps:get(<<"tx">>, Tx)) of
+        {error, #{<<"tx">> := broken_tx}} ->
+            {400, [], #{reason => <<"Invalid tx">>}};
         {error, _} ->
             {400, [], #{reason => <<"Invalid base58Check encoding">>}};
-        {ok, DecodedTx} ->
-            DeserializedTx =
-                try {ok, aetx_sign:deserialize_from_binary(DecodedTx)}
-                catch _:_ -> {error, broken_tx}
-                end,
-            case DeserializedTx of
-                {error, broken_tx} ->
-                    {400, [], #{reason => <<"Invalid tx">>}};
-                {ok, SignedTx} ->
-                    lager:debug("deserialized: ~p", [pp(SignedTx)]),
-                    PushRes = aec_tx_pool:push(SignedTx, tx_received),
-                    lager:debug("PushRes = ~p", [pp(PushRes)]),
-                    {200, [], #{}}
-            end
+        {ok, SignedTx} ->
+            lager:debug("deserialized: ~p", [pp(SignedTx)]),
+            PushRes = aec_tx_pool:push(SignedTx, tx_received),
+            lager:debug("PushRes = ~p", [pp(PushRes)]),
+            {200, [], #{}}
     end;
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
@@ -333,10 +301,10 @@ handle_request('GetAccountBalance', Req, _Context) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid address">>}};
         {ok, Pubkey} when is_binary(Pubkey) ->
-            case aec_chain:get_account(Pubkey) of
-                {value, A} ->
-                    {200, [], #{balance => aec_accounts:balance(A)}};
-                none ->
+            case aehttp_logic:get_account_balance(Pubkey) of
+                {ok, Balance} ->
+                    {200, [], #{balance => Balance}};
+                {error, account_not_found} ->
                     {404, [], #{reason => <<"Account not found">>}}
             end
     end;
@@ -377,45 +345,28 @@ handle_request('GetName', Req, _Context) ->
 handle_request('GetAccountsBalances', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
-            {ok, AccountsBalances} =
-                aec_chain:all_accounts_balances_at_hash(
-                  aec_chain:top_block_hash()),
-            FormattedAccountsBalances =
-                lists:foldl(
-                  fun({Pubkey, Balance}, Acc) ->
-                          [#{pub_key => aec_base58c:encode(
-                                          account_pubkey, Pubkey),
-                             balance => Balance} | Acc]
-                  end, [], AccountsBalances),
-            {200, [], #{accounts_balances => FormattedAccountsBalances}};
+            {ok, AccountsBalances} = aehttp_logic:get_all_accounts_balances(),
+            {200, [], #{accounts_balances =>
+                        aehttp_api_parser:encode(account_balances,
+                                                 AccountsBalances)}};
         false ->
             {403, [], #{reason => <<"Balances not enabled">>}}
     end;
 
 handle_request('GetVersion', _Req, _Context) ->
-    {200, [], #{version => aeu_info:get_version(),
-                revision => aeu_info:get_revision(),
-                genesis_hash => aec_base58c:encode(
-                                  block_hash,
-                                  aec_chain:genesis_hash())}};
+    {ok, Version} = aehttp_logic:version(),
+    {ok, Revision} = aehttp_logic:revision(),
+    {ok, GenHash} = aehttp_logic:get_genesis_hash(),
+    Resp = #{<<"version">> => Version,
+             <<"revision">> => Revision,
+             <<"genesis_hash">> => GenHash},
+    {200, [], aehttp_api_parser:encode(node_version, Resp)};
 
 handle_request('GetInfo', _Req, _Context) ->
     case application:get_env(aehttp, enable_debug_endpoints, false) of
         true ->
-            TimeSummary0 = aec_chain:get_top_N_blocks_time_summary(30),
-            TimeSummary =
-                lists:foldl(
-                  fun({Height, Ts, Delta, Difficulty}, Acc) ->
-                          [#{height => Height,
-                            time => Ts,
-                            difficulty => Difficulty,
-                            time_delta_to_parent => Delta} | Acc];
-                    ({Height, Ts, Difficulty}, Acc) ->
-                          [#{height => Height,
-                            time => Ts,
-                            difficulty => Difficulty} | Acc]
-                  end, [], TimeSummary0),
-            {200, [], #{last_30_blocks_time => lists:reverse(TimeSummary)}};
+            {ok, TimeSummary} = aehttp_logic:get_top_blocks_time_summary(30),
+            {200, [], #{last_30_blocks_time => TimeSummary}};
         false ->
             {403, [], #{reason => <<"Info not enabled">>}}
     end;
@@ -426,7 +377,7 @@ handle_request('CompileContract', Req, _Context) ->
               #{ <<"code">> := Code
                , <<"options">> := Options }} ->
             %% TODO: Handle other languages
-            case aect_ring:compile(Code, Options) of
+            case aehttp_logic:contract_compile(Code, Options) of
                  {ok, ByteCode} ->
                      {200, [], #{ bytecode => ByteCode}};
                  {error, ErrorMsg} ->
@@ -442,7 +393,7 @@ handle_request('CallContract', Req, _Context) ->
                , <<"code">> := Code
                , <<"function">> := Function
                , <<"arg">> := Argument }}  ->
-            case aect_dispatch:call(ABI, Code, Function, Argument) of
+            case aehttp_logic:contract_call(ABI, Code, Function, Argument) of
                 {ok, Result} ->
                     {200, [], #{ out => Result}};
                 {error, ErrorMsg} ->
@@ -459,7 +410,7 @@ handle_request('EncodeCalldata', Req, _Context) ->
                , <<"function">> := Function
                , <<"arg">> := Argument }} ->
             %% TODO: Handle other languages
-            case aect_dispatch:encode_call_data(ABI, Code, Function, Argument) of
+            case aehttp_logic:contract_encode_call_data(ABI, Code, Function, Argument) of
                 {ok, Result} ->
                     {200, [], #{ calldata => Result}};
                 {error, ErrorMsg} ->
@@ -489,33 +440,4 @@ handle_request(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
-
-empty_fields_in_genesis() ->
-    [ <<"prev_hash">>,
-      <<"pow">>,
-      <<"txs_hash">>,
-      <<"transactions">>].
-
-% assuming no transactions in genesis block
-% if this changes - both functions should be changes:
-% empty_fields_in_genesis/0 and values_for_empty_fields_in_genesis/0
-values_for_empty_fields_in_genesis() ->
-    true = lists:member(<<"transactions">>, empty_fields_in_genesis()),
-    #{<<"prev_hash">> => aec_base58c:encode(
-                           block_hash, aec_block_genesis:prev_hash()),
-      <<"pow">> => aec_headers:serialize_pow_evidence(aec_block_genesis:pow()),
-      <<"txs_hash">> => aec_base58c:encode(
-                          block_tx_hash, aec_block_genesis:txs_hash()),
-      <<"transactions">> => aec_block_genesis:transactions()}.
-
-%% to be used for both headers and blocks
-cleanup_genesis(#{<<"height">> := 0} = Genesis) ->
-    maps:without(empty_fields_in_genesis(), Genesis);
-cleanup_genesis(Val) ->
-    Val.
-
-add_missing_to_genesis_block(#{<<"height">> := 0} = Block) ->
-    maps:merge(Block, values_for_empty_fields_in_genesis());
-add_missing_to_genesis_block(Val) ->
-    Val.
 
