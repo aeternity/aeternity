@@ -2764,8 +2764,9 @@ peers(_Config) ->
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     {ok, 200, #{<<"blocked">> := [], <<"peers">> := Peers}} = get_peers(),
 
-    [<<"host">>, <<"port">>, <<"pubkey">>] =
-      lists:sort(maps:keys(hd(Peers))),
+    OkPeers = [ ok || P <- Peers, {ok, _} <- [aec_peers:parse_peer_address(P)] ],
+
+    length(OkPeers) == length(Peers),
 
     %% ensure no peers
     lists:foreach(

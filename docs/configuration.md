@@ -36,7 +36,9 @@ You shall not share the private key (or the password) with anyone.
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
-* The initial network peer to join is "http://31.13.249.1:3013/".
+* The initial network peers to join are "aenode://pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177@31.13.249.1:3015",
+"aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015" and
+"aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015".
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
@@ -44,7 +46,9 @@ Create the file `/tmp/node/epoch.yaml` with the following content (amend the `ht
 ```yaml
 ---
 peers:
-    - "http://31.13.249.1:3013/"
+    - "aenode://pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177@31.13.249.1:3015"
+    - "aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015"
+    - "aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015"
 
 keys:
     dir: keys

@@ -141,14 +141,12 @@ def test_node_discovery():
                             alice_peer_url, "node1", "3015", '{peers, []},', mining=True)
     print("\nAlice has address " + alice_peer_url + " and no peers")
     # Bob's config: only peer is Alice
-    bob_peers = ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3015, ' + \
-                '            <<"pubkey">> => <<"pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X">> }]},'
+    bob_peers = ' {peers, [<<"aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015">>]}, '
     bob_sys_config = make_peers_config(root_dir, "bob.config",
                             bob_peer_url, "node2", "3025", bob_peers, mining=False)
     print("Bob has address " + bob_peer_url + " and peers [" + alice_peer_url + "]")
     # Carol's config: only peer is Bob
-    carol_peers = ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3025, ' + \
-                  '            <<"pubkey">> => <<"pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8">> }]},'
+    carol_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     carol_sys_config = make_peers_config(root_dir, "carol.config",
                             carol_peer_url, "node3", "3035", carol_peers, mining=False)
     print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
@@ -175,11 +173,11 @@ def test_node_discovery():
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
-    def carol_peer_ports():
-        ports = [p.port for p in carol_int_api.get_peers().peers]
-        print("Ports: " + str(ports))
-        return ports
-    wait(lambda: 3015 in carol_peer_ports(), timeout_seconds=20, sleep_seconds=1)
+    def carol_peers():
+        peers = carol_int_api.get_peers().peers
+        print("Peers: " + str(peers))
+        return peers
+    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in carol_peers(), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -232,8 +230,7 @@ def make_fast_mining_config(root_dir, file_name):
 
     conf ='[{aecore, [' + \
                     ' {sync_port, 3015},' + \
-                    ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3025, ' + \
-                    '            <<"pubkey">> => <<"pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8">> }]}, ' + \
+                    ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, ' + \
                     ' {keys_dir, "' + key_dir + '"}, ' + \
                     ' {password, <<"top secret">>}, ' + \
                     ' {autostart, true},' + \
@@ -250,8 +247,7 @@ def make_no_mining_config(root_dir, file_name):
     key_dir = copy_peer_keys(root_dir, "node2")
     conf ='[{aecore, [' + \
                     ' {sync_port, 3025},' + \
-                    ' {peers, [#{<<"host">> => <<"localhost">>, <<"port">> => 3015, ' + \
-                    '            <<"pubkey">> => <<"pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X">> }]}, ' + \
+                    ' {peers, [<<"aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015">>]}, ' + \
                     ' {keys_dir, "' + key_dir + '"}, ' + \
                     ' {password, <<"top secret">>}, ' + \
                     ' {autostart, false},' + \

@@ -2,8 +2,7 @@
 
 [This release][this-release] is focused on an encrypted Peer-to-Peer protocol and consistent serialization of chain objects.
 It:
-* Moves Peer-to-Peer communication from HTTP to encrypted channels (Noise is used to negoitiate cryptographic material).
-* Introduces a consistent and deterministic serialization using RLP, moving away from MessagePack and internal format.
+* Moves Peer-to-Peer communication from HTTP to encrypted TCP channels (Noise is used to negoitiate cryptographic material).
 * Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
 * Enable user configuration of HTTP API acceptors pool
 * Restructure the transaction root hash in the block header for stricter validation. This impacts consensus and the persisted DB.
@@ -41,7 +40,7 @@ You can run a node by using either:
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
 
-The node API - i.e. peer-to-peer network API and user API - is documented:
+The node user API is documented:
 * HTTP API endpoints are specified [online in swagger.yaml][swagger-yaml];
   * A JSON version of same specification is located in the node at path `lib/aehttp-0.1.0/priv/swagger.json`;
   * An interactive visualization of the same specification is available [online][swagger-ui].

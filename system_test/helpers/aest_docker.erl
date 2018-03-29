@@ -130,8 +130,9 @@ setup_node(Spec, BackendState) ->
     PeerVars = lists:map(fun
         (PeerName) when is_atom(PeerName) ->
             PeerHostname = format("~s~s", [PeerName, Postfix]),
-            PeerInfo = format("peer: {host: ~s, port: ~w, pubkey: ~s}",
-                              [PeerHostname, ?EXT_SYNC_PORT, pubkey(PeerName)]),
+            PeerInfo = aec_peers:encode_peer_address(
+                          #{ host => PeerHostname, port => ?EXT_SYNC_PORT,
+                             pubkey => pubkey(PeerName)}),
             #{peer => PeerInfo}
     end, Peers),
     ct:log("PeerVars: ~p", [PeerVars]),
@@ -241,8 +242,8 @@ write_template(TemplateFile, OutputFile, Context) ->
     file:write_file(OutputFile, Data).
 
 pubkey(node1) ->
-    "pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X";
+    <<37,195,115,246,90,69,150,234,253,209,246,49,199,88,5,116,191,57,106,189,48,134,209,227,116,85,44,59,51,41,245,55>>;
 pubkey(node2) ->
-    "pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8";
+    <<149,164,91,254,32,218,238,174,159,207,156,5,246,182,63,10,57,70,109,226,193,2,33,168,116,32,244,228,169,122,154,94>>;
 pubkey(node3) ->
-    "pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq".
+    <<29,110,222,56,140,83,227,182,7,100,207,18,240,52,200,151,221,151,247,213,94,191,198,219,184,33,139,118,35,95,157,120>>.
