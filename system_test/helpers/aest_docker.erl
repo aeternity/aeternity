@@ -286,8 +286,17 @@ wait_stopped(Id, Timeout, StartTime) ->
         true -> maybe_continue_waiting(Id, Timeout, StartTime)
     end.
 
-is_running(Id) ->
-    maps:get('Running', maps:get('State', aest_docker_api:inspect(Id))).
+is_running(Id) -> is_running(Id, 5).
+
+is_running(_Id, 0) -> error(retry_exausted);
+is_running(Id, Retries) ->
+    case aest_docker_api:inspect(Id) of
+        #{'State' := State} -> maps:get('Running', State, false);
+        _ ->
+            % Inspect may fail sometime when stopping a node, just retry
+            timer:sleep(100),
+            is_running(Id, Retries - 1)
+    end.
 
 maybe_continue_waiting(Id, infinity, StartTime) ->
     timer:sleep(100),
@@ -296,6 +305,6 @@ maybe_continue_waiting(Id, Timeout, StartTime) ->
     case timer:now_diff(os:timestamp(), StartTime) > (1000 * Timeout) of
         true -> timeout;
         false ->
-            timer:sleep(100),
+            timer:sleep(200),
             wait_stopped(Id, Timeout, StartTime)
     end.

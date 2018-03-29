@@ -113,9 +113,7 @@ kill_container(ID) ->
 inspect(ID) ->
     case docker_get([containers, ID, json]) of
         {ok, 200, Info} -> Info;
-        {ok, 404, _} -> throw({container_not_found, ID});
-        {ok, 500, Response} ->
-            throw({docker_error, maps:get(message, Response)})
+        _ -> undefined
     end.
 
 %% Returning stdout is not working because hackney doesn't support results
