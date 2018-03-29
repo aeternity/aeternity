@@ -273,7 +273,7 @@ expect(Expected, Info, Other) ->
 
 init_statsd() ->
     %% copied from exometer_report_statsd
-    DefaultHost = default_host(),
+    DefaultHost = binary_to_list(default_host()),
     {{ok, Host},_} = {inet:gethostbyname(DefaultHost), DefaultHost},
     [IP|_]     = Host#hostent.h_addr_list,
     AddrType   = Host#hostent.h_addrtype,
@@ -340,7 +340,7 @@ default_host() ->
 
 gethostname() ->
     {ok, H} = inet:gethostname(),
-    H.
+    list_to_binary(H).
 
 default_port() ->
     aeu_env:user_config_or_env(
