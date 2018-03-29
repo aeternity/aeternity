@@ -8,9 +8,6 @@ It:
 * Restructure the transaction root hash in the block header for stricter validation. This impacts consensus and the persisted DB.
 * Changes the binary serialization format of most of the chain objects (e.g., transactions, accounts) to make them stricter and more portable. This impacts consensus and the persisted DB.
 * Improves the stability of the node.
-* Does this. This impacts consensus;
-* Does that. This impacts the persisted DB;
-* Does that;
 * Improves the stability of the testnet.
 * Changes the DockerHub organization to `aeternity`
 * Enriches HTTP API with optional filtering out account's pending transactions
