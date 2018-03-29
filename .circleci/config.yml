@@ -426,7 +426,6 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
-                - master
 
       - deploy_api_docs:
           requires:
