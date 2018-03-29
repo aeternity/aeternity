@@ -31,7 +31,8 @@
         , contract_encode_call_data/4
         ]).
 
--export([miner_key/0]).
+-export([ miner_key/0
+        , peer_pubkey/0]).
 
 -export([ all_peers/0
         , blocked_peers/0
@@ -195,6 +196,12 @@ contract_encode_call_data(ABI, Code, Function, Argument) ->
 
 miner_key() ->
     case aec_keys:pubkey() of
+        {ok, _Pubkey} = OK -> OK;
+        {error, key_not_found} = Err -> Err
+    end.
+
+peer_pubkey() ->
+    case aec_keys:peer_pubkey() of
         {ok, _Pubkey} = OK -> OK;
         {error, key_not_found} = Err -> Err
     end.

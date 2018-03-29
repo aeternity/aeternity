@@ -51,7 +51,9 @@
     info_disabled/1,
     info_empty/1,
     info_more_than_30/1,
-    info_less_than_30/1
+    info_less_than_30/1,
+
+    peer_pub_key/1
    ]).
 
 %%
@@ -247,7 +249,9 @@ groups() ->
         info_disabled,
         info_empty,
         info_more_than_30,
-        info_less_than_30
+        info_less_than_30,
+
+        peer_pub_key
       ]},
      {internal_endpoints, [sequence],
       [
@@ -1427,6 +1431,14 @@ miner_pub_key(_Config) ->
     ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
                                                     EncodedPubKey]),
     {account_pubkey, MinerPubKey} = aec_base58c:decode(EncodedPubKey),
+    ok.
+
+peer_pub_key(_Config) ->
+    {ok, PeerPubKey} = rpc(aec_keys, peer_pubkey, []),
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_peer_pub_key(),
+    ct:log("PeerPubkey = ~p~nEncodedPubKey = ~p", [PeerPubKey,
+                                                    EncodedPubKey]),
+    {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
 account_transactions(_Config) ->
@@ -2757,7 +2769,6 @@ balance_negative_cases(_Config) ->
     ok.
 
 peers(_Config) ->
-    BeforePingTime = rpc(erlang, system_time, [millisecond]),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, false]),
     {ok, 403, #{<<"reason">> := <<"Call not enabled">>}} = get_peers(),
 
@@ -2979,6 +2990,10 @@ get_all_accounts_balances() ->
 get_miner_pub_key() ->
     Host = internal_address(),
     http_request(Host, get, "account/pub-key", []).
+
+get_peer_pub_key() ->
+    Host = external_address(),
+    http_request(Host, get, "peer/key", []).
 
 get_version() ->
     Host = external_address(),
@@ -3546,25 +3561,6 @@ block_to_endpoint_map(Block, Options) ->
         end,
         lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
     Expected.
-
-%% misbehaving peers get blocked so we need unique ones
-%% the function bellow is not perfect: there is a slight possibility of having a
-%% duplicate
-%% P = NumberOfPeersRequested / AllCombinations.
-%% AllCombinations = 254 * 255 * 255 * 255 * 65535  = 276 011 744 298 750
-unique_peer() ->
-    IPsegments =
-        lists:map(
-            fun(1) ->
-                integer_to_list(rand:uniform(254) + 1);
-            (_) ->
-                integer_to_list(rand:uniform(255))
-            end,
-            lists:seq(1, 4)),
-    IP = string:join(IPsegments, "."),
-    Port = integer_to_list(rand:uniform(65535)),
-    Unique = list_to_binary(IP ++ ":" ++ Port),
-    <<"http://", Unique/binary >>.
 
 random_hash() ->
     HList =
