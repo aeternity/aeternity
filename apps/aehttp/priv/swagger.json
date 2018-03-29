@@ -2,7 +2,7 @@
   "swagger" : "2.0",
   "info" : {
     "description" : "This is the [Aeternity](https://www.aeternity.com/) Epoch API.",
-    "version" : "0.9.0",
+    "version" : "0.10.0",
     "title" : "Aeternity Epoch",
     "termsOfService" : "https://www.aeternity.com/terms/",
     "contact" : {

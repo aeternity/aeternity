@@ -2,18 +2,14 @@
 
 [This release][this-release] is focused on an encrypted Peer-to-Peer protocol and consistent serialization of chain objects.
 It:
-* Moves Peer-to-Peer communication from HTTP to encrypted TCP channels (Noise is used to negoitiate cryptographic material).
-* Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
-* Enable user configuration of HTTP API acceptors pool
+* Moves Peer-to-Peer communication from HTTP to encrypted TCP channels (Noise is used to negotiate cryptographic material).
 * Restructure the transaction root hash in the block header for stricter validation. This impacts consensus and the persisted DB.
 * Changes the binary serialization format of most of the chain objects (e.g., transactions, accounts) to make them stricter and more portable. This impacts consensus and the persisted DB.
-* Improves the stability of the node.
-* Does this. This impacts consensus;
-* Does that. This impacts the persisted DB;
-* Does that;
-* Improves the stability of the testnet.
-* Changes the DockerHub organization to `aeternity`
+* Improves chain handling by storing accumulated difficulty in the db rather than recomputing it. This impacts the persisted DB.
+* Enable user configuration of HTTP API acceptors pool
 * Enriches HTTP API with optional filtering out account's pending transactions
+* Changes the DockerHub organization to `aeternity`
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.0
 
@@ -68,9 +64,9 @@ For running a node as part of the testnet by using the Docker image, please cons
 The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
-* http://31.13.249.0:3013/v2/top
 * http://31.13.249.1:3013/v2/top
-* http://31.13.249.120:3013/v2/top
+* http://31.13.248.97:3013/v2/top
+* http://31.13.249.118:3013/v2/top
 
 ### Setup your node
 
