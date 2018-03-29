@@ -115,26 +115,29 @@ do_get_balance(ContractKey, Trees) ->
 %% contract account and not a proper account.
 do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
     try
-        ContractsTree = aec_trees:contracts(Trees),
-        AccountsTree  = aec_trees:accounts(Trees),
-        Contract      = aect_state_tree:get_contract(ContractKey, ContractsTree),
-        Balance       = aect_contracts:balance(Contract),
+        ContractsTree   = aec_trees:contracts(Trees),
+        Contract        = aect_state_tree:get_contract(ContractKey, ContractsTree),
+        Balance         = aect_contracts:balance(Contract),
         [ throw(no_funds) || Balance < Amount ],
-        RecipAccount  =
-            case aec_accounts_trees:lookup(Recipient, AccountsTree) of
-                none          ->
-                    io:format("~p\n", [AccountsTree]),
-                    throw(bad_recip);
-                {value, Acct} -> Acct
-            end,
-        {ok, RecipAccount1} = aec_accounts:earn(RecipAccount, Amount, Height),
-        AccountsTree1       = aec_accounts_trees:enter(RecipAccount1, AccountsTree),
-        Contract1           = aect_contracts:spend(Amount, Contract),
-        ContractsTree1      = aect_state_tree:enter_contract(Contract1, ContractsTree),
-        Trees1              = aec_trees:set_contracts(aec_trees:set_accounts(Trees, AccountsTree1),
-                                                      ContractsTree1),
-        {ok, Trees1}
-    catch _:bad_recip -> {error, {bad_recipient_account, Recipient}};
-          _:no_funds  -> {error, insufficient_funds}
+        Trees1          = ensure_recipient_account(Recipient, Trees, Height),
+        AccountsTree    = aec_trees:accounts(Trees1),
+        {value, RecipAcc} = aec_accounts_trees:lookup(Recipient, AccountsTree),
+        {ok, RecipAcc1} = aec_accounts:earn(RecipAcc, Amount, Height),
+        AccountsTree1   = aec_accounts_trees:enter(RecipAcc1, AccountsTree),
+        Contract1       = aect_contracts:spend(Amount, Contract),
+        ContractsTree1  = aect_state_tree:enter_contract(Contract1, ContractsTree),
+        Trees2          = aec_trees:set_accounts(Trees1, AccountsTree1),
+        {ok, aec_trees:set_contracts(Trees2, ContractsTree1)}
+    catch throw:bad_recip  -> {error, {bad_recipient_account, Recipient}};
+          throw:bad_height -> {error, {account_height_too_big, Recipient}};
+          throw:no_funds   -> {error, insufficient_funds}
     end.
+
+ensure_recipient_account(Recipient, Trees, Height) when byte_size(Recipient) =:= 65 ->
+    case aec_trees:ensure_account_at_height(Recipient, Trees, Height) of
+        {ok, Trees1} -> Trees1;
+        {error, account_height_too_big} -> throw(bad_height)
+    end;
+ensure_recipient_account(_,_Trees,_Height) ->
+    throw(bad_recip).
 
