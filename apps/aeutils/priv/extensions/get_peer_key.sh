@@ -10,7 +10,7 @@ CODE="{ok, PK} = aec_keys:peer_pubkey(),
 ! PK=$(relx_nodetool eval $CODE)
 
 if [ $? -eq 1 ]; then
-    echo -n $PK | tr -d '"'
+    /bin/echo -n $PK | tr -d '"'
     exit 0
 fi
 
