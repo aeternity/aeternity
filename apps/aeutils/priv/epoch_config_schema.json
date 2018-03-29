@@ -30,7 +30,7 @@
             "additionalProperties" : false,
             "properties" : {
                 "port" : {
-                    "description" : "Port used for (incoming) sync connections",
+                    "description" : "Port used for (incoming) sync connections, must be reachable from the public facing IP",
                     "type" : "integer"
                 },
 
