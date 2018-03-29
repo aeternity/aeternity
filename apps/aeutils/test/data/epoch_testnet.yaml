@@ -4,10 +4,10 @@ peers:
     # TestNet Addresses
     - aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@31.13.249.1:3015
 
-http:
-    external:
-        # Make sure to change this address to your public facing IP to be able participate
-        peer_address: http://127.0.0.1:3013/
+sync:
+    # Port used for P2P communication
+    # Make sure this port is reachable from you public facing IP.
+    port: 3015
 
 keys:
     password: "top secret"

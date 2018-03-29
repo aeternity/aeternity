@@ -9,14 +9,15 @@ blocked_peers:
     - aenode://pp$2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
 
 sync:
+    # Port used for P2P communication
+    # Make sure this port is reachable from you public facing IP.
     port: 3015
     # Ping retry configuration in milliseconds
     ping_interval: 30000
 
 http:
     external:
-        # Make sure to change this address to your public facing IP to be able participate
-        peer_address: http://127.0.0.1:3013/
+        # Port used for external HTTP API
         port: 3013
         # The external listen address should be publicly accessible
         listen_address: 0.0.0.0
