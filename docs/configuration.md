@@ -8,15 +8,16 @@ This document describes how to configure your epoch node installed using a relea
 
 In order for your node to join the testnet, you need to specify in the configuration file:
 * The initial network peers to join (`peers` parameter);
-* How peers (on the Internet) can contact your node (`http` > `external` > `peer_address` parameter).
+* How peers (on the Internet) can contact your node - specifically the TCP port (`sync` > `port` parameter).
 
-Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (`http` > `external` > `peer_address` parameter) and map that port to the one the node actually listens on (`http` > `external` > `port` parameter).
-The two port numbers can be distinct.
+(You do not need to specify the host at which your node can be contacted from the Internet, as each peer you ping will infer that from the address of the inbound TCP connection.)
+
+Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (`sync` > `port` parameter) and map that port to the one the node actually listens on (`sync` > `port` parameter - the same).
+As of release 0.10.0 the two port numbers *cannot* be distinct - this capability will be reinstated in a future release.
 
 The following example configuration assumes that:
-* Your public IP address is `1.2.3.4`;
-* The listening TCP port on that public IP address is `8080`;
-* The listening TCP port on your node is `3003`.
+* The listening TCP port on your public IP address is `3015`;
+* The listening TCP port on your node is the same - so `3015`.
 
 ### Keys management
 
@@ -42,7 +43,7 @@ The instructions below assume that:
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
-Create the file `/tmp/node/epoch.yaml` with the following content (amend the `http` > `external` > `peer_address` parameter and `http` > `external` > `port` parameter with your actual values):
+Create the file `/tmp/node/epoch.yaml` with the following content (amend the `sync` > `port` parameter with your actual value):
 ```yaml
 ---
 peers:
@@ -50,13 +51,15 @@ peers:
     - "aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015"
     - "aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015"
 
+sync:
+    port: 3015
+
 keys:
     dir: keys
     password: "secret"
 
 http:
     external:
-        peer_address: http://1.2.3.4:8080/
         port: 3003
     internal:
         port: 3103
