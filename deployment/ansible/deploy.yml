@@ -70,7 +70,8 @@
         expected_mine_rate: "{{ expected_mine_rate|default(300000) }}"
         cuckoo:
           miner:
-            executable: "{{ miner_executable|default('lean28') }}"
+            executable: "{{ miner_executable|default('mean28s-generic') }}"
+            extra_args: "{{ miner_extra_args|default('-t 5') }}"
             node_bits: "{{ miner_node_bits|default(28) }}"
     api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
 
