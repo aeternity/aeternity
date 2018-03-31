@@ -26,6 +26,9 @@
       set_fact:
         sync_public_key: "{{ key_command.stdout }}"
       when: key_command.rc == 0
+    - name: Register public IP address
+      set_fact:
+        public_ip: "{{ ansible_ssh_host|default(ansible_host) }}"
 
 - name: Deploy epoch package
   hosts: all
@@ -49,7 +52,7 @@
         port: 3015
       http:
         external:
-          peer_address: http://{{ ansible_default_ipv4.address }}:3013/
+          peer_address: http://{{ public_ip }}:3013/
           port: 3013
         internal:
           listen_address: "{{ api_internal_listen_address|default('127.0.0.1') }}"
@@ -72,7 +75,7 @@
           miner:
             executable: "{{ miner_executable|default('lean28') }}"
             node_bits: "{{ miner_node_bits|default(28) }}"
-    api_base_uri: http://{{ ansible_ssh_host }}:{{ config.http.external.port }}/v2
+    api_base_uri: http://{{ public_ip }}:{{ config.http.external.port }}/v2
 
   tasks:
     - block:
@@ -171,7 +174,7 @@
       - name: Wait epoch node API to boot
         wait_for:
           port: "{{ config.http.external.port }}"
-          host: "{{ ansible_ssh_host }}"
+          host: "{{ public_ip }}"
           timeout: 300
         connection: local
         tags: [health-check]
