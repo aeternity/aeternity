@@ -4,8 +4,6 @@
 -export([start_link/1]).
 
 %% API
--export([initiate/2,
-         participate/2,
 -export([message/2]).
 
 -export([init/1,
