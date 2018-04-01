@@ -263,7 +263,7 @@ internal_insert(Node, Original, State0) ->
     maps:remove(currently_adding, StateOut).
 
 internal_insert_1(Node, Original, State) ->
-    case db_find_node(Node) of
+    case db_find_node(hash(Node)) of
         error ->
             assert_calculated_target(Node),
             ok = db_put_node(Original, hash(Node)),
@@ -587,27 +587,27 @@ persist_state(State) ->
 %%% Internal interface for the db
 %%%-------------------------------------------------------------------
 
-db_put_node(#block{} = Block, Hash) ->
+db_put_node(#block{} = Block, Hash) when is_binary(Hash) ->
     aec_db:ensure_transaction(
       fun() ->
               ok = aec_db:write_block(Block),
               #block{txs = Transactions} = Block,
               aec_db:write_txs(Transactions, Hash)
       end);
-db_put_node(#header{} = Header,_Hash) ->
+db_put_node(#header{} = Header, Hash) when is_binary(Hash) ->
     ok = aec_db:write_header(Header).
 
-db_find_node(Hash) ->
+db_find_node(Hash) when is_binary(Hash) ->
     case aec_db:find_chain_node(Hash) of
         {Type, Header} -> {ok, wrap_node(Type, Header)};
         none -> error
     end.
 
-db_get_node(Hash) ->
+db_get_node(Hash) when is_binary(Hash) ->
     {ok, Node} = db_find_node(Hash),
     Node.
 
-db_find_nodes_at_height(Height) ->
+db_find_nodes_at_height(Height) when is_integer(Height) ->
     case aec_db:find_chain_nodes_at_height(Height) of
         [_|_] = Nodes ->
             {ok, lists:map(fun({Type, Header}) -> wrap_node(Type, Header) end,
@@ -616,36 +616,36 @@ db_find_nodes_at_height(Height) ->
     end.
 
 
-db_put_state(Hash, Trees, Difficulty) ->
+db_put_state(Hash, Trees, Difficulty) when is_binary(Hash) ->
     Trees1 = aec_trees:commit_to_db(Trees),
     ok = aec_db:write_block_state(Hash, Trees1, Difficulty).
 
-db_find_state_and_difficulty(Hash) ->
+db_find_state_and_difficulty(Hash) when is_binary(Hash) ->
     case aec_db:find_block_state_and_difficulty(Hash) of
         {value, Trees, Difficulty} -> {ok, Trees, Difficulty};
         none -> error
     end.
 
-db_find_difficulty(Hash) ->
+db_find_difficulty(Hash) when is_binary(Hash) ->
     case aec_db:find_block_difficulty(Hash) of
         {value, Difficulty} -> {ok, Difficulty};
         none -> error
     end.
 
-db_get_txs(Hash) ->
+db_get_txs(Hash) when is_binary(Hash) ->
     aec_blocks:txs(aec_db:get_block(Hash)).
 
-db_get_prev_hash(Hash) ->
+db_get_prev_hash(Hash) when is_binary(Hash) ->
     {value, PrevHash} = db_find_prev_hash(Hash),
     PrevHash.
 
-db_find_prev_hash(Hash) ->
+db_find_prev_hash(Hash) when is_binary(Hash) ->
     case db_find_node(Hash) of
         {ok, Node} -> {value, prev_hash(Node)};
         error -> none
     end.
 
-db_children(Node) ->
+db_children(#node{} = Node) ->
     Height = node_height(Node),
     Hash   = hash(Node),
     [wrap_node(Type, Header)
