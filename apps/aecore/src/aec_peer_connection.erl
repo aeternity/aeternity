@@ -547,7 +547,7 @@ get_header(Fun, Arg) ->
         {ok, Header} ->
             HH = aehttp_api_parser:encode(header, Header),
             #{result => ok, header => HH};
-        error ->
+        Err when Err == error orelse Err == {error, chain_too_short} ->
             #{result => error, reason => <<"Block not found">>}
     end.
 
