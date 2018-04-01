@@ -87,7 +87,7 @@ schedule_ping(PeerId) ->
     gen_server:cast(?MODULE, {schedule_ping, PeerId}).
 
 fetch_next(PeerId, HeightIn, HashIn, Result) ->
-    gen_server:call(?MODULE, {fetch_next, PeerId, HeightIn, HashIn, Result}).
+    gen_server:call(?MODULE, {fetch_next, PeerId, HeightIn, HashIn, Result}, 30000).
 
 delete_from_pool(PeerId) ->
     gen_server:cast(?MODULE, {delete_from_pool, PeerId}).
@@ -197,11 +197,9 @@ handle_call({fetch_next, PeerId, HeightIn, HashIn, Result}, _, State) ->
             lager:debug("Updated Hashpool ~p", [ [ {H, maps:is_key(block, Map)} || {{H,_}, Map} <- NewHashPool] ]),
             case [ {H, Hash} || {{H, Hash}, Map} <- NewHashPool, not maps:is_key(block, Map) ] of
                 [] ->
-                    %% The peer is behaving weird
-                    lager:info("weird peer behaviour ~p at height ~p", [ppp(PeerId), NewHeight]),
-                    NewSyncPool = lists:keydelete(PeerId, #sync_peer.peer, State#state.sync_pool),
-                    {reply, {error, sync_stopped},
-                     State#state{hash_pool = NewHashPool, sync_pool = NewSyncPool}};
+                    %% We have all blocks, just insertion left
+                    lager:info("Got all blocks insertion to be done from height ~p", [NewHeight]),
+                    {reply, {insert, NewHeight, NewHash}, State#state{hash_pool = NewHashPool}};
                 PickAHash ->
                     {PickH, PickHash} = lists:nth(rand:uniform(length(PickAHash)), PickAHash),
                     lager:debug("Get block at height ~p", [PickH]),
@@ -317,23 +315,28 @@ pick_same({{H, Hash2}, Map2}, [{{H, Hash1}, Map1} | OldHashes], NewHashes) ->
 pick_same(_, OldHashes, NewHashes) ->
   merge(OldHashes, NewHashes).
 
+
+%% TODO: This design is sub-par... We should split the concept of adding blocks to the chain from
+%% the fetching logic loop. For now don't add more that 20 blocks in one step here as a temporary
+%% workaround, since adding blocks is done on the gen_server-loop.
+-define(MAX_ADDS, 20).
 update_chain_from_pool(AgreedHeight, AgreedHash, HashPool) ->
     lager:debug("splitting at height ~p with prev hash ~p", [AgreedHeight + 1 , AgreedHash]),
-    case split_hash_pool(AgreedHeight + 1, AgreedHash, HashPool, []) of
-      {_, _, [], Rest} when Rest =/= [] ->
+    case split_hash_pool(AgreedHeight + 1, AgreedHash, HashPool, [], 0) of
+      {_, _, [], Rest, NAdded} when Rest =/= [] andalso NAdded < ?MAX_ADDS ->
          lager:error("Cannot split hash pool ~p at ~p: ~p", [Rest, AgreedHeight, AgreedHash]),
          %% This is weird, we cannot get our next block
         {error, {stuck_at, AgreedHeight + 1}};
-      {NewAgreedHeight, NewAgreedHash, Same, Rest} ->
+      {NewAgreedHeight, NewAgreedHash, Same, Rest, _} ->
         {ok, NewAgreedHeight, NewAgreedHash, Same ++ Rest}
     end.
 
-split_hash_pool(Height, PrevHash, [{{H, _},_} | HashPool], Same) when H < Height ->
-    split_hash_pool(Height, PrevHash, HashPool, Same);
-split_hash_pool(Height, PrevHash, [{{H, Hash}, Map} = Item | HashPool], Same) when H == Height ->
+split_hash_pool(Height, PrevHash, [{{H, _},_} | HashPool], Same, NAdded) when H < Height ->
+    split_hash_pool(Height, PrevHash, HashPool, Same, NAdded);
+split_hash_pool(Height, PrevHash, [{{H, Hash}, Map} = Item | HashPool], Same, NAdded) when H == Height, NAdded < ?MAX_ADDS ->
     case maps:get(block, Map, undefined) of
         undefined ->
-            split_hash_pool(Height, PrevHash, HashPool, [Item | Same]);
+            split_hash_pool(Height, PrevHash, HashPool, [Item | Same], NAdded);
         Block ->
             %% We are guaranteed that hash and height of block are correct
             Hash = header_hash(Block),
@@ -342,17 +345,17 @@ split_hash_pool(Height, PrevHash, [{{H, Hash}, Map} = Item | HashPool], Same) wh
                   lager:debug("Calling post_block(~p) --> hash of header ~p", [pp(Block), Hash]),
                   case aec_conductor:add_synced_block(Block) of
                     ok ->
-                      split_hash_pool(H + 1, Hash, HashPool, []);
+                      split_hash_pool(H + 1, Hash, HashPool, [], NAdded + 1);
                     {error, _} = Error ->
                       lager:error("Could not insert ~p: ~p", [Block, Error]),
-                      split_hash_pool(Height, PrevHash, HashPool, Same)
+                      split_hash_pool(Height, PrevHash, HashPool, Same, NAdded)
                   end;
               _ ->
-                split_hash_pool(Height, PrevHash, HashPool, [Item | Same])
+                split_hash_pool(Height, PrevHash, HashPool, [Item | Same], NAdded)
             end
     end;
-split_hash_pool(Height, PrevHash, HashPool, Same) ->
-    {Height - 1, PrevHash, Same, HashPool}.
+split_hash_pool(Height, PrevHash, HashPool, Same, NAdded) ->
+    {Height - 1, PrevHash, Same, HashPool, NAdded}.
 
 %%%=============================================================================
 %%% Jobs worker
@@ -522,6 +525,8 @@ fetch_more(PeerId, LastHeight, HeaderHash, Result) ->
                 {error, _} = Error ->
                     fetch_more(PeerId, NewHeight, NewHash, Error)
             end;
+        {insert, NewHeight, NewHash} ->
+            fetch_more(PeerId, NewHeight, NewHash, no_result);
         {fill_pool, AgreedHeight, AgreedHash} ->
             PoolResult = fill_pool(PeerId, AgreedHash),
             fetch_more(PeerId, AgreedHeight, AgreedHash, PoolResult);
