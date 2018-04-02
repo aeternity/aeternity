@@ -2211,6 +2211,30 @@
           }
         }
       }
+    },
+    "/peer/key" : {
+      "get" : {
+        "tags" : [ "external", "gossip" ],
+        "description" : "Get node's public peer key",
+        "operationId" : "GetPeerKey",
+        "consumes" : [ "application/json" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [ ],
+        "responses" : {
+          "200" : {
+            "description" : "Node's peer public key",
+            "schema" : {
+              "$ref" : "#/definitions/inline_response_200_1"
+            }
+          },
+          "404" : {
+            "description" : "No key pair",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
     }
   },
   "definitions" : {
@@ -2390,34 +2414,6 @@
           }
         }
       } ]
-    },
-    "Ping" : {
-      "type" : "object",
-      "required" : [ "best_hash", "difficulty", "genesis_hash", "share", "source" ],
-      "properties" : {
-        "source" : {
-          "type" : "string"
-        },
-        "genesis_hash" : {
-          "type" : "string"
-        },
-        "best_hash" : {
-          "type" : "string"
-        },
-        "difficulty" : {
-          "type" : "number"
-        },
-        "share" : {
-          "type" : "integer",
-          "maximum" : 32
-        },
-        "peers" : {
-          "type" : "array",
-          "items" : {
-            "$ref" : "#/definitions/Uri"
-          }
-        }
-      }
     },
     "Balance" : {
       "type" : "object",
@@ -3570,6 +3566,16 @@
       },
       "example" : {
         "count" : 0
+      }
+    },
+    "inline_response_200_1" : {
+      "properties" : {
+        "pubkey" : {
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "pubkey" : { }
       }
     },
     "RegisteredOracles_inner" : {

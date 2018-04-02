@@ -434,6 +434,14 @@ handle_request('GetTx', Req, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
+handle_request('GetPeerKey', _Req, _Context) ->
+    case aehttp_logic:peer_pubkey() of
+        {ok, PeerKey} ->
+            {200, [], #{pub_key => aec_base58c:encode(peer_pubkey, PeerKey)}};
+        {error, key_not_found} ->
+            {404, [], #{reason => <<"Keys not configured">>}}
+    end;
+
 handle_request(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
