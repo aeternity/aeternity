@@ -18,8 +18,10 @@
 %%% API
 %%%===================================================================
 
--spec check_active_channel_exists(aesc_channels:id(), pubkey(), pubkey(),
-                                  aesc_channels:amount(), aesc_channels:amount(), aec_trees:trees()) ->
+-spec check_active_channel_exists(aesc_channels:id(),
+                                  pubkey(), aesc_channels:amount(),
+                                  pubkey(), aesc_channels:amount(),
+                                  aec_trees:trees()) ->
                                          {error, term()} | ok.
 check_active_channel_exists(ChannelId, InitiatorPubKey, InitiatorAmount,
                             ParticipantPubKey, ParticipantAmount, Trees) ->
