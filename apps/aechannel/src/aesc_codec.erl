@@ -21,7 +21,7 @@
 
 -include("aesc_codec.hrl").
 
--type bin32() :: <<_:256>>.
+-type bin32()   :: <<_:256>>.
 -type i2bytes() :: 0 .. 16#FFFF.
 -type i4bytes() :: 0 .. 16#FFFFffff.
 -type i8bytes() :: 0 .. 16#FFFFffffFFFFffff.
@@ -62,27 +62,27 @@ dec(<<?id(?ID_SHUTDOWN)    , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)}.
                        , lock_period          := lock_period()
                        , push_amount          := amount()
                        , initiator_amount     := amount()
-                       , responder_amount     := amount()
+                       , participant_amount   := amount()
                        , channel_reserve      := amount()
-                       , initiator_pubkey     := pubkey()}.
+                       , initiator            := pubkey()}.
 
 -spec enc_ch_open(ch_open_msg()) -> binary().
 enc_ch_open(#{chain_hash := ChainHash
             , temporary_channel_id := ChanId
-            , lock_period := LockPeriod
-            , push_amount := PushAmt
-            , initiator_amount := InitiatorAmt
-            , responder_amount := ResponderAmt
-            , channel_reserve  := ChanReserve
-            , initiator_pubkey := InitiatorPubkey}) ->
-    << ?ID_CH_OPEN   :1 /unit:8
-     , ChainHash     :32/binary
-     , ChanId        :32/binary
-     , LockPeriod    :2 /unit:8
-     , PushAmt       :8 /unit:8
-     , InitiatorAmt  :8 /unit:8
-     , ResponderAmt  :8 /unit:8
-     , ChanReserve   :8 /unit:8
+            , lock_period          := LockPeriod
+            , push_amount          := PushAmt
+            , initiator_amount     := InitiatorAmt
+            , participant_amount   := ParticipantAmt
+            , channel_reserve      := ChanReserve
+            , initiator            := InitiatorPubkey}) ->
+    << ?ID_CH_OPEN    :1 /unit:8
+     , ChainHash      :32/binary
+     , ChanId         :32/binary
+     , LockPeriod     :2 /unit:8
+     , PushAmt        :8 /unit:8
+     , InitiatorAmt   :8 /unit:8
+     , ParticipantAmt :8 /unit:8
+     , ChanReserve    :8 /unit:8
      , InitiatorPubkey:32/binary >>.
 
 -spec dec_ch_open(binary()) -> ch_open_msg().
@@ -91,7 +91,7 @@ dec_ch_open(<< ChainHash      :32/binary
              , LockPeriod     :2 /unit:8
              , PushAmt        :8 /unit:8
              , InitiatorAmt   :8 /unit:8
-             , ResponderAmt   :8 /unit:8
+             , ParticipantAmt :8 /unit:8
              , ChanReserve    :8 /unit:8
              , InitiatorPubkey:32/binary >>) ->
     #{chain_hash           => ChainHash
@@ -99,33 +99,33 @@ dec_ch_open(<< ChainHash      :32/binary
     , lock_period          => LockPeriod
     , push_amount          => PushAmt
     , initiator_amount     => InitiatorAmt
-    , responder_amount     => ResponderAmt
+    , participant_amount   => ParticipantAmt
     , channel_reserve      => ChanReserve
-    , initiator_pubkey     => InitiatorPubkey}.
+    , initiator            => InitiatorPubkey}.
 
 
 -type ch_accept_msg() :: #{temporary_channel_id := chan_id()
-                         , chain_hash            := hash()
-                         , minimum_depth         := depth()
-                         , initiator_amount      := amount()
-                         , responder_amount      := amount()
-                         , channel_reserve       := amount()
-                         , initiator_pubkey      := pubkey()}.
+                         , chain_hash           := hash()
+                         , minimum_depth        := depth()
+                         , initiator_amount     := amount()
+                         , participant_amount   := amount()
+                         , channel_reserve      := amount()
+                         , initiator            := pubkey()}.
 
 -spec enc_ch_accept(ch_accept_msg()) -> binary().
 enc_ch_accept(#{temporary_channel_id := ChanId
               , chain_hash           := ChainHash
               , minimum_depth        := MinDepth
               , initiator_amount     := InitiatorAmt
-              , responder_amount     := ResponderAmt
+              , participant_amount   := ParticipantAmt
               , channel_reserve      := ChanReserve
-              , initiator_pubkey     := InitiatorPubkey}) ->
+              , initiator            := InitiatorPubkey}) ->
     << ?ID_CH_ACCEPT  :1 /unit:8
      , ChanId         :32/binary
      , ChainHash      :32/binary
      , MinDepth       :4 /unit:8
      , InitiatorAmt   :8 /unit:8
-     , ResponderAmt   :8 /unit:8
+     , ParticipantAmt :8 /unit:8
      , ChanReserve    :8 /unit:8
      , InitiatorPubkey:32/binary >>.
 
@@ -134,16 +134,16 @@ dec_ch_accept(<< ChanId         :32/binary
                , ChainHash      :32/binary
                , MinDepth       :4/unit:8
                , InitiatorAmt   :8 /unit:8
-               , ResponderAmt   :8 /unit:8
+               , ParticipantAmt :8 /unit:8
                , ChanReserve    :8 /unit:8
                , InitiatorPubkey:32/binary >>) ->
     #{temporary_channel_id => ChanId
     , chain_hash           => ChainHash
     , minimum_depth        => MinDepth
     , initiator_amount     => InitiatorAmt
-    , responder_amount     => ResponderAmt
+    , participant_amount   => ParticipantAmt
     , channel_reserve      => ChanReserve
-    , initiator_pubkey     => InitiatorPubkey}.
+    , initiator            => InitiatorPubkey}.
 
 
 -type ch_reestabl_msg() :: #{temporary_channel_id := chan_id()}.
@@ -158,28 +158,45 @@ dec_ch_reestabl(<< ChanId:32/binary >>) ->
     #{temporary_channel_id => ChanId}.
 
 
--type fnd_created_msg() :: #{temporary_channel_id := chan_id()}.
+-type fnd_created_msg() :: #{ temporary_channel_id := chan_id()
+                            , data                 := binary()}.
 
 -spec enc_fnd_created(fnd_created_msg()) -> binary().
-enc_fnd_created(#{temporary_channel_id := ChanId}) ->
+enc_fnd_created(#{temporary_channel_id := ChanId,
+                  data                 := Data}) ->
+    Length = byte_size(Data),
     << ?ID_FND_CREATED:1 /unit:8
-     , ChanId         :32/binary >>.
+     , ChanId         :32/binary
+     , Length         :2 /unit:8
+     , Data           :Length/bytes >>.
 
 -spec dec_fnd_created(binary()) -> fnd_created_msg().
-dec_fnd_created(<< ChanId:32/binary >>) ->
-    #{temporary_channel_id => ChanId}.
+dec_fnd_created(<< ChanId:32/binary
+                 , Length:2/unit:8
+                 , Data/binary >>) ->
+    Length = byte_size(Data),
+    #{ temporary_channel_id => ChanId
+     , data                 => Data}.
 
--type fnd_signed_msg() :: #{temporary_channel_id := chan_id()}.
+-type fnd_signed_msg() :: #{ temporary_channel_id := chan_id()
+                           , data                 := binary()}.
 
 -spec enc_fnd_signed(fnd_signed_msg()) -> binary().
-enc_fnd_signed(#{temporary_channel_id := ChanId}) ->
+enc_fnd_signed(#{temporary_channel_id := ChanId,
+                 data                 := Data}) ->
+    Length = byte_size(Data),
     << ?ID_FND_SIGNED:1 /unit:8
-     , ChanId        :32/binary >>.
+     , ChanId        :32/binary
+     , Length        :2 /unit:8
+     , Data          :Length/bytes >>.
 
 -spec dec_fnd_signed(binary()) -> fnd_signed_msg().
-dec_fnd_signed(<< ChanId:32/binary >>) ->
-    #{temporary_channel_id => ChanId}.
-
+dec_fnd_signed(<< ChanId:32/binary
+                , Length:2/unit:8
+                , Data/binary >>) ->
+    Length = byte_size(Data),
+    #{ temporary_channel_id => ChanId
+     , data                 => Data}.
 
 -type fnd_locked_msg() :: #{temporary_channel_id := chan_id()}.
 
