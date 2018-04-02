@@ -15,7 +15,8 @@
                     | account_pubkey
                     | signature
                     | name
-                    | commitment.
+                    | commitment
+                    | state.
 
 -type payload() :: binary().
 -type encoded() :: binary().
@@ -80,7 +81,8 @@ type2pfx(oracle_query_id)  -> <<"oq">>;
 type2pfx(account_pubkey)   -> <<"ak">>;
 type2pfx(signature)        -> <<"sg">>;
 type2pfx(commitment)       -> <<"cm">>;
-type2pfx(name)             -> <<"nm">>.
+type2pfx(name)             -> <<"nm">>;
+type2pfx(state)            -> <<"st">>.
 
 pfx2type(<<"bh">>) -> block_hash;
 pfx2type(<<"bx">>) -> block_tx_hash;
@@ -93,7 +95,8 @@ pfx2type(<<"oq">>) -> oracle_query_id;
 pfx2type(<<"ak">>) -> account_pubkey;
 pfx2type(<<"sg">>) -> signature;
 pfx2type(<<"cm">>) -> commitment;
-pfx2type(<<"nm">>) -> name.
+pfx2type(<<"nm">>) -> name;
+pfx2type(<<"st">>) -> state.
 
 %% TODO: Fix the base58 module so that it consistently uses binaries instead
 %%
