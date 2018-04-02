@@ -60,8 +60,7 @@
 -export_type([id/0,
               amount/0,
               channel/0,
-              serialized/0,
-              amount/0]).
+              serialized/0]).
 
 -define(CHANNEL_TYPE, <<"channel">>).
 -define(CHANNEL_VSN, 1).
