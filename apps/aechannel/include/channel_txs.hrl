@@ -11,6 +11,8 @@
           initiator_amount   :: non_neg_integer(),
           participant        :: pubkey(),
           participant_amount :: non_neg_integer(),
+          push_amount        :: non_neg_integer(),
+          channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
           fee                :: non_neg_integer(),
           nonce              :: non_neg_integer()
@@ -70,3 +72,14 @@
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
+
+-record(channel_offchain_tx, {
+          channel_id         :: binary(),
+          initiator          :: pubkey(),
+          participant        :: pubkey(),
+          initiator_amount   :: aesc_channels:amount(),
+          participant_amount :: aesc_channels:amount(),
+          state              :: binary(),
+          sequence_number    :: non_neg_integer()
+         }).
+
