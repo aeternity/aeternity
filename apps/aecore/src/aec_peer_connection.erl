@@ -243,7 +243,11 @@ handle_info({tcp_closed, _}, S) ->
 handle_info(_Msg, S) ->
     {noreply, S}.
 
-terminate(_Reason, _State) ->
+terminate(normal, _State) ->
+    ok;
+terminate(NonNormal, State) ->
+    lager:info("Non-normal terminate, reason: ~p", [NonNormal]),
+    close_connection(State),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -543,7 +547,7 @@ get_header(Fun, Arg) ->
         {ok, Header} ->
             HH = aehttp_api_parser:encode(header, Header),
             #{result => ok, header => HH};
-        error ->
+        Err when Err == error orelse Err == {error, chain_too_short} ->
             #{result => error, reason => <<"Block not found">>}
     end.
 

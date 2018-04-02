@@ -2777,7 +2777,7 @@ peers(_Config) ->
 
     OkPeers = [ ok || P <- Peers, {ok, _} <- [aec_peers:parse_peer_address(P)] ],
 
-    length(OkPeers) == length(Peers),
+    true = (length(OkPeers) == length(Peers)),
 
     %% ensure no peers
     lists:foreach(
