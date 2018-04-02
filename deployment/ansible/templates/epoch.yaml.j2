@@ -34,7 +34,7 @@ mining:
     cuckoo:
         miner:
             executable: {{ config.mining.cuckoo.miner.executable }}
-            extra_args: ""
+            extra_args: "{{ config.mining.cuckoo.miner.extra_args }}"
             node_bits: {{ config.mining.cuckoo.miner.node_bits }}
 
 chain:
