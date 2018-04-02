@@ -26,28 +26,32 @@
          id/3,
          initiator/1,
          initiator_amount/1,
+         push_amount/1,
          participant/1,
          participant_amount/1,
+         channel_reserve/1,
          sequence_number/1]).
 
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
--type id()         :: binary().
--type amount()     :: integer().
+-type id()     :: binary().
+-type amount() :: integer().
 -type status()     :: 'active' | 'solo_closing'.
 -type seq_number() :: aesc_state:seq_number().
 
--record(channel, {id                       :: id(),
-                  initiator                :: pubkey(),
-                  participant              :: pubkey(),
-                  initiator_amount         :: amount(),
-                  participant_amount       :: amount(),
-                  sequence_number          :: seq_number(),
-                  status                   :: status(),
-                  lock_period              :: non_neg_integer(),
-                  closes_at                :: 'undefined' | height()}).
+-record(channel, {id                 :: id(),
+                  initiator          :: pubkey(),
+                  participant        :: pubkey(),
+                  push_amount        :: amount(),
+                  initiator_amount   :: amount(),
+                  participant_amount :: amount(),
+                  channel_reserve    :: amount(),
+                  sequence_number    :: seq_number(),
+                  status             :: status(),
+                  lock_period        :: non_neg_integer(),
+                  closes_at          :: 'undefined' | height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -93,9 +97,11 @@ deserialize(Bin) ->
      #{<<"vsn">>                := ?CHANNEL_VSN},
      #{<<"id">>                 := Id},
      #{<<"initiator">>          := InitiatorPubKey},
+     #{<<"push_amount">>        := PushAmount},
      #{<<"initiator_amount">>   := InitiatorAmount},
      #{<<"participant">>        := ParticipantPubKey},
      #{<<"participant_amount">> := ParticipantAmount},
+     #{<<"channel_reserve">>    := ChannelReserve},
      #{<<"sequence_number">>    := SequenceNumber},
      #{<<"status">>             := Status},
      #{<<"lock_period">>        := LockPeriod},
@@ -106,9 +112,11 @@ deserialize(Bin) ->
                end,
     #channel{id                 = Id,
              initiator          = InitiatorPubKey,
+             push_amount        = PushAmount,
              initiator_amount   = InitiatorAmount,
              participant        = ParticipantPubKey,
              participant_amount = ParticipantAmount,
+             channel_reserve    = ChannelReserve,
              sequence_number    = SequenceNumber,
              status             = binary_to_atom(Status, utf8),
              lock_period        = LockPeriod,
@@ -138,14 +146,16 @@ new(ChCTx) ->
     Id = id(aesc_create_tx:initiator(ChCTx),
             aesc_create_tx:nonce(ChCTx),
             aesc_create_tx:participant(ChCTx)),
-    #channel{id                       = Id,
-             initiator                = aesc_create_tx:initiator(ChCTx),
-             initiator_amount         = aesc_create_tx:initiator_amount(ChCTx),
-             participant              = aesc_create_tx:participant(ChCTx),
-             participant_amount       = aesc_create_tx:participant_amount(ChCTx),
-             sequence_number          = 0,
-             status                   = active,
-             lock_period              = aesc_create_tx:lock_period(ChCTx)}.
+    #channel{id                 = Id,
+             initiator          = aesc_create_tx:initiator(ChCTx),
+             push_amount        = aesc_create_tx:push_amount(ChCTx),
+             initiator_amount   = aesc_create_tx:initiator_amount(ChCTx),
+             participant        = aesc_create_tx:participant(ChCTx),
+             participant_amount = aesc_create_tx:participant_amount(ChCTx),
+             channel_reserve    = aesc_create_tx:channel_reserve(ChCTx),
+             sequence_number    = 0,
+             status             = active,
+             lock_period        = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(pubkey()).
 peers(#channel{} = Ch) ->
@@ -161,9 +171,11 @@ serialize(#channel{} = Ch) ->
                   #{<<"vsn">>                => ?CHANNEL_VSN},
                   #{<<"id">>                 => id(Ch)},
                   #{<<"initiator">>          => initiator(Ch)},
+                  #{<<"push_amount">>        => push_amount(Ch)},
                   #{<<"initiator_amount">>   => initiator_amount(Ch)},
                   #{<<"participant">>        => participant(Ch)},
                   #{<<"participant_amount">> => participant_amount(Ch)},
+                  #{<<"channel_reserve">>    => channel_reserve(Ch)},
                   #{<<"sequence_number">>    => sequence_number(Ch)},
                   #{<<"status">>             => status(Ch)},
                   #{<<"lock_period">>        => lock_period(Ch)},
@@ -204,9 +216,17 @@ id(#channel{id = Id}) ->
 initiator(#channel{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
+-spec push_amount(channel()) -> non_neg_integer().
+push_amount(#channel{push_amount = PushAmount}) ->
+    PushAmount.
+
 -spec initiator_amount(channel()) -> amount().
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
+
+-spec channel_reserve(channel()) -> amount().
+channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
+    ChannelReserve.
 
 -spec lock_period(channel()) -> non_neg_integer().
 lock_period(#channel{lock_period = LockPeriod}) ->

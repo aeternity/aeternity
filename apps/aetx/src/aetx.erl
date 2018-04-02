@@ -51,7 +51,8 @@
                  | aesc_close_mutual_tx
                  | aesc_close_solo_tx
                  | aesc_slash_tx
-                 | aesc_settle_tx.
+                 | aesc_settle_tx
+                 | aesc_offchain_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
                      | aec_coinbase_tx:tx()
@@ -72,7 +73,8 @@
                      | aesc_close_mutual_tx:tx()
                      | aesc_close_solo_tx:tx()
                      | aesc_slash_tx:tx()
-                     | aesc_settle_tx:tx().
+                     | aesc_settle_tx:tx()
+                     | aesc_offchain_tx:tx().
 
 -export_type([ tx/0
              , tx_instance/0
@@ -202,6 +204,7 @@ tx_types() ->
     , aesc_close_solo_tx
     , aesc_slash_tx
     , aesc_settle_tx
+    , aesc_offchain_tx
     , aeo_register_tx
     , aeo_extend_tx
     , aeo_query_tx
