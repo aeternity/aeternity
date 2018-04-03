@@ -7,8 +7,14 @@
 -export([initiate/2,        %% (host(), port(), Opts :: #{})
          participate/3]).   %% (port(), Opts :: #{})
 
--export([message/2,
-         signing_response/3]).
+%% Used by noise session
+-export([message/2]).
+
+%% Used by client
+-export([signing_response/3]).    %% (Fsm, Tag, Obj)
+
+%% Used by min-depth watcher
+-export([own_funding_locked/2]).  %% (Fsm, OnChainId)
 
 -export([init/1,
          callback_mode/0,
@@ -22,6 +28,7 @@
          accepted/3,
          awaiting_open/3,
          awaiting_signature/3,
+         awaiting_locked/3,
          half_signed/3,
          signed/3,
          open/3,
@@ -49,6 +56,8 @@
               , client                 :: pid()
               , opts                   :: map()
               , channel_id             :: undefined | binary()
+              , on_chain_id            :: undefined | binary()
+              , create_tx              :: undefined | any()
               , latest = undefined     :: undefined | any()
               }).
 
@@ -123,6 +132,9 @@ message(Fsm, {T, _} = Msg) when T =:= channel_accept
 -spec signing_response(pid(), sign_tag(), any()) -> ok.
 signing_response(Fsm, Tag, Obj) ->
     gen_statem:cast(Fsm, {signed, Tag, Obj}).
+
+own_funding_locked(Fsm, ChanId) ->
+    gen_statem:cast(Fsm, {own_funding_locked, ChanId}).
 
 where(ChanId) ->
     gproc:where(gproc_name(ChanId)).
@@ -256,8 +268,10 @@ half_signed(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_sign)]};
 half_signed(cast, {funding_signed, Msg}, D) ->
     case check_funding_signed_msg(Msg, D) of
-        {ok, _Tx, D1} ->
-            {next_state, signed, D1}
+        {ok, Tx, D1} ->
+            D2 = D1#data{create_tx = Tx},
+            {ok, Watcher} = start_min_depth_watcher(D2),
+            {next_state, awaiting_locked, D2#data{latest = {watcher, Watcher}}}
         %% {error, _} = Error ->
         %%     close(Error, D)
     end;
@@ -266,10 +280,26 @@ half_signed({timeout, funding_sign} = T, _Msg, D) ->
 half_signed(cast, {disconnect, _Msg}, D) ->
     close(disconnect, D).
 
+awaiting_locked(enter, _OldSt, D) ->
+    {keep_state, D, [timer(funding_lock)]};
+awaiting_locked(cast, {own_funding_locked, ChainId}, D) ->
+    {next_state, signed,
+     send_funding_locked_msg(D#data{on_chain_id = ChainId,
+                                    latest = undefined})};
+awaiting_locked(cast, {disconnect, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_locked({timeout, funding_lock} = T, _Msg, D) ->
+    close(T, D).
+
 signed(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_lock)]};
-signed(cast, {funding_locked, _Msg}, D) ->
-    {next_state, signed, D};
+signed(cast, {funding_locked, Msg}, D) ->
+    case check_funding_locked_msg(Msg, D) of
+        {ok, D1} ->
+            {next_state, open, D1};
+        {error, _} = Error ->
+            close(Error, D)
+    end;
 signed({timeout, funding_lock} = T, _Msg, D) ->
     close(T, D);
 signed(cast, {shutdown, _Msg}, D) ->
@@ -431,6 +461,31 @@ check_funding_signed_msg(#{ temporary_channel_id := ChanId
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
     {ok, SignedTx, Data}.
 
+send_funding_locked_msg(#data{channel_id  = TmpChanId,
+                              on_chain_id = OnChainId,
+                              session     = Sn} = Data) ->
+    Msg = #{ temporary_channel_id => TmpChanId
+           , channel_id           => OnChainId },
+    aesc_session_noise:funding_locked(Sn, Msg),
+    Data.
+
+check_funding_locked_msg(#{ temporary_channel_id := TmpChanId
+                          , channel_id           := OnChainId },
+                         #data{channel_id  = MyTmpChanId,
+                               on_chain_id = MyOnChainId} = Data) ->
+    case TmpChanId == MyTmpChanId of
+        true ->
+            case OnChainId == MyOnChainId of
+                true ->
+                    {ok, Data};
+                false ->
+                    {error, channel_id_mismatch}
+            end;
+        false ->
+            {error, temporary_channel_id_mismatch}
+    end.
+
+
 request_signing(Tag, Obj, #data{client    = Client,
                                channel_id = ChanId} = Data) ->
     Msg = {sign, Tag, Obj},
@@ -439,6 +494,17 @@ request_signing(Tag, Obj, #data{client    = Client,
 
 default_minimum_depth(initiator  ) -> undefined;
 default_minimum_depth(participant) -> ?MINIMUM_DEPTH.
+
+start_min_depth_watcher(#data{create_tx = SignedTx,
+                              opts = #{initiator     := Initiator,
+                                       participant   := Participant,
+                                       minimum_depth := MinDepth}} = Data) ->
+    Tx = aetx_sign:tx(SignedTx),
+    {_Type, CTx} = aetx:specialize_type(Tx),
+    Nonce = aesc_create_tx:nonce(CTx),
+    OnChainId = aesc_channels:id(Initiator, Nonce, Participant),
+    {ok, _Watcher} = aesc_fsm_min_depth_watcher:start_link(OnChainId, MinDepth),
+    {ok, Data#data{on_chain_id = OnChainId}}.
 
 gproc_register(#data{channel_id = ChanId}) ->
     gproc:reg(gproc_name(ChanId)).

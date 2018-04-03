@@ -198,16 +198,21 @@ dec_fnd_signed(<< ChanId:32/binary
     #{ temporary_channel_id => ChanId
      , data                 => Data}.
 
--type fnd_locked_msg() :: #{temporary_channel_id := chan_id()}.
+-type fnd_locked_msg() :: #{ temporary_channel_id := chan_id()
+                           , channel_id           := chan_id()}.
 
 -spec enc_fnd_locked(fnd_locked_msg()) -> binary().
-enc_fnd_locked(#{temporary_channel_id := ChanId}) ->
+enc_fnd_locked(#{ temporary_channel_id := ChanId
+                , channel_id           := OnChainId }) ->
     << ?ID_FND_LOCKED:1 /unit:8
-     , ChanId        :32/binary >>.
+     , ChanId        :32/binary
+     , OnChainId     :32/binary >>.
 
 -spec dec_fnd_locked(binary()) -> fnd_locked_msg().
-dec_fnd_locked(<< ChanId:32/binary >>) ->
-    #{temporary_channel_id => ChanId}.
+dec_fnd_locked(<< ChanId:32/binary
+                , OnChainId:32/binary >>) ->
+    #{temporary_channel_id => ChanId,
+      channel_id           => OnChainId }.
 
 
 -type upd_deposit_msg() :: #{temporary_channel_id := chan_id()
