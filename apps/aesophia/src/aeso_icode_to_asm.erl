@@ -310,6 +310,15 @@ assemble_expr(Funs,Stack,Tail,{switch,A,Cases}) ->
     [assemble_expr(Funs,Stack,nontail,A),
      assemble_cases(Funs,Stack,Tail,Close,Cases),
      {'JUMPDEST',Close}];
+assemble_expr(_Funs, _Stack, _Tail, prim_contract_address) ->
+    [aeb_opcodes:mnemonic(?ADDRESS)];
+assemble_expr(_Funs, _Stack, _Tail, prim_contract_balance) ->
+    [aeb_opcodes:mnemonic(?ADDRESS),
+     aeb_opcodes:mnemonic(?BALANCE)];
+assemble_expr(_Funs, _Stack, _Tail, prim_call_caller) ->
+    [aeb_opcodes:mnemonic(?CALLER)];
+assemble_expr(_Funs, _Stack, _Tail, prim_call_value) ->
+    [aeb_opcodes:mnemonic(?CALLVALUE)];
 assemble_expr(Funs, Stack, _Tail,
               #prim_call_contract{ gas      = Gas
                                  , address  = To

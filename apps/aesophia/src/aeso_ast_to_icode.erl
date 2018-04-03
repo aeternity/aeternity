@@ -69,8 +69,12 @@ ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, 
                          arg      = #tuple{cpts = [ast_body(Fun), ast_body(Arg)]},
                          arg_type = {tuple, [string, ast_typerep(ArgT)]},
                          out_type = ast_typerep(OutT) };
+ast_body({qid, _, ["Contract", "address"]}) -> prim_contract_address;
+ast_body({qid, _, ["Contract", "balance"]}) -> prim_contract_balance;
+ast_body({qid, _, ["Call", "caller"]})      -> prim_call_caller;
+ast_body({qid, _, ["Call", "value"]})       -> prim_call_value;
 ast_body({id, _, "raw_call"}) ->
-    error(bad_raw_call);
+    error({underapplied_primitive, raw_call});
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -126,7 +130,7 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
 			ast_body(E)
 		end
 		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
-ast_body({typed,_,{record,Attrs,Fields},T}) ->
+ast_body({typed,_,{record,Attrs,_Fields},T}) ->
     error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I

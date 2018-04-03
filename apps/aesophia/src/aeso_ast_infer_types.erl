@@ -5,15 +5,22 @@
 %% Environment containing language primitives
 -spec global_env() -> [{string(), aeso_syntax:type()}].
 global_env() ->
-    Ann = [{origin, system}],
+    Ann     = [{origin, system}],
+    Int     = {id, Ann, "int"},
+    String  = {id, Ann, "string"},
+    Address = {id, Ann, "address"},
+    Unit    = {tuple, Ann, []},
+    TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
-    [{"raw_call", {fun_t, Ann, [{id, Ann, "address"},
-                                {id, Ann, "string"},
-                                {id, Ann, "int"},
-                                {id, Ann, "int"},
-                                {id, Ann, "_"}],
-                    {id, Ann, "_"}}}].
+    [{"raw_call", {type_sig, [Address, String, Int, Int, TVar("a")], TVar("b")}},
+     %% Environment variables
+     %% {["Contract", "owner"],   Int},    %% Not in EVM?
+     {["Contract", "address"], Address},
+     {["Contract", "balance"], Int},
+     {["Call",     "caller"],  Address},
+     {["Call",     "value"],   Int}
+    ].
 
 infer([{contract,Attribs,ConName,Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -99,6 +106,20 @@ arg_type({app_t,Attrs,Name,Args}) ->
 arg_type(T) ->
     T.
 
+lookup_name(Env, As, Name) ->
+    case proplists:get_value(Name, Env) of
+	undefined ->
+	    io:format("Unbound variable: ~p\n", [Name]),
+	    error({unbound_variable, Name});
+	{type_sig, ArgTypes, ReturnType} ->
+	    ets:new(freshen_tvars, [set, public, named_table]),
+	    Type = freshen({fun_t, As, ArgTypes, ReturnType}),
+	    ets:delete(freshen_tvars),
+            Type;
+	Type ->
+            Type
+    end.
+
 infer_expr(_Env,Body={int,As,_}) ->
     {typed,As,Body,{id,As,"int"}};
 infer_expr(_Env,Body={string,As,_}) ->
@@ -106,18 +127,11 @@ infer_expr(_Env,Body={string,As,_}) ->
 infer_expr(_Env,Body={id,As,"_"}) ->
     {typed,As,Body,fresh_uvar(As)};
 infer_expr(Env,Body={id,As,Name}) ->
-    case proplists:get_value(Name,Env) of
-	undefined ->
-	    io:format("Unbound variable: ~p\n",[Name]),
-	    error({unbound_variable,Name});
-	{type_sig,ArgTypes,ReturnType} ->
-	    ets:new(freshen_tvars,[set,public,named_table]),
-	    Type = freshen({fun_t,As,ArgTypes,ReturnType}),
-	    ets:delete(freshen_tvars),
-	    {typed,As,Body,Type};
-	Type ->
-	    {typed,As,Body,Type}
-    end;
+    Type = lookup_name(Env, As, Name),
+    {typed, As, Body, Type};
+infer_expr(Env,Body={qid,As,Name}) ->
+    Type = lookup_name(Env, As, Name),
+    {typed, As, Body, Type};
 infer_expr(Env,{unit,As}) ->
     infer_expr(Env,{tuple,As,[]});
 infer_expr(Env,{tuple,As,Cpts}) ->
