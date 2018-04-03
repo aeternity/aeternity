@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -38,6 +40,8 @@
 %%%===================================================================
 
 -define(CHANNEL_CREATE_TX_VSN, 1).
+-define(CHANNEL_CREATE_TX_TYPE, channel_create_tx).
+-define(CHANNEL_CREATE_TX_FEE, 4).
 
 -opaque tx() :: #channel_create_tx{}.
 
@@ -67,6 +71,9 @@ new(#{initiator          := InitiatorPubKey,
                             fee                = Fee,
                             nonce              = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
+
+type() ->
+    ?CHANNEL_CREATE_TX_TYPE.
 
 -spec fee(tx()) -> non_neg_integer().
 fee(#channel_create_tx{fee = Fee}) ->
@@ -140,7 +147,7 @@ signers(#channel_create_tx{initiator   = InitiatorPubKey,
                            participant = ParticipantPubKey}) ->
     [InitiatorPubKey, ParticipantPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              initiator_amount   = InitiatorAmount,
                              participant        = ParticipantPubKey,
@@ -150,28 +157,29 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              lock_period        = LockPeriod,
                              fee                = Fee,
                              nonce              = Nonce}) ->
-    [#{<<"vsn">>                => version()},
-     #{<<"initiator">>          => InitiatorPubKey},
-     #{<<"push_amount">>        => PushAmount},
-     #{<<"initiator_amount">>   => InitiatorAmount},
-     #{<<"participant">>        => ParticipantPubKey},
-     #{<<"participant_amount">> => ParticipantAmount},
-     #{<<"channel_reserve">>    => ChannelReserve},
-     #{<<"lock_period">>        => LockPeriod},
-     #{<<"fee">>                => Fee},
-     #{<<"nonce">>              => Nonce}].
+    {version(),
+    [ {initiator         , InitiatorPubKey}
+    , {push_amount       , PushAmount}
+    , {initiator_amount  , InitiatorAmount}
+    , {participant       , ParticipantPubKey}
+    , {participant_amount, ParticipantAmount}
+    , {channel_reserve   , ChannelReserve}
+    , {lock_period       , LockPeriod}
+    , {fee               , Fee}
+    , {nonce             , Nonce}
+    ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>                := ?CHANNEL_CREATE_TX_VSN},
-             #{<<"initiator">>          := InitiatorPubKey},
-             #{<<"push_amount">>        := PushAmount},
-             #{<<"initiator_amount">>   := InitiatorAmount},
-             #{<<"participant">>        := ParticipantPubKey},
-             #{<<"participant_amount">> := ParticipantAmount},
-             #{<<"channel_reserve">>    := ChannelReserve},
-             #{<<"lock_period">>        := LockPeriod},
-             #{<<"fee">>                := Fee},
-             #{<<"nonce">>              := Nonce}]) ->
+-spec deserialize(vsn(), list()) -> tx().
+deserialize(?CHANNEL_CREATE_TX_VSN,
+            [ {initiator         , InitiatorPubKey}
+            , {push_amount       , PushAmount}
+            , {initiator_amount  , InitiatorAmount}
+            , {participant       , ParticipantPubKey}
+            , {participant_amount, ParticipantAmount}
+            , {channel_reserve   , ChannelReserve}
+            , {lock_period       , LockPeriod}
+            , {fee               , Fee}
+            , {nonce             , Nonce}]) ->
     #channel_create_tx{initiator          = InitiatorPubKey,
                        initiator_amount   = InitiatorAmount,
                        participant        = ParticipantPubKey,
@@ -203,6 +211,18 @@ for_client(#channel_create_tx{initiator          = Initiator,
       <<"lock_period">>        => LockPeriod,
       <<"nonce">>              => Nonce,
       <<"fee">>                => Fee}.
+
+serialization_template(?CHANNEL_CREATE_TX_VSN) ->
+    [ {initiator         , binary}
+    , {initiator_amount  , int}
+    , {participant       , binary}
+    , {participant_amount, int}
+    , {push_amount       , int}
+    , {channel_reserve   , int}
+    , {lock_period       , int}
+    , {fee               , int}
+    , {nonce             , int}
+    ].
 
 %%%===================================================================
 %%% Getters
