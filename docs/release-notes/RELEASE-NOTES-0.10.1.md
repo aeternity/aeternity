@@ -67,9 +67,10 @@ For running a node as part of the testnet by using the Docker image, please cons
 The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
-* http://31.13.249.1:3013/v2/top
-* http://31.13.248.97:3013/v2/top
-* http://31.13.249.118:3013/v2/top
+* http://52.10.46.160:3013/v2/top
+* http://18.195.109.60:3013/v2/top
+* http://13.250.162.250:3013/v2/top
+* http://31.13.249.70:3013/v2/top
 
 ### Setup your node
 
