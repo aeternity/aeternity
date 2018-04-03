@@ -14,7 +14,7 @@ It:
 * Changes the DockerHub organization to `aeternity`
 * Improves the stability of the testnet.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.0
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.10.1
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
@@ -34,7 +34,7 @@ You can run a node by using either:
 * The published [release binary][this-release] corresponding to your platform; or
 * The published [Docker image `aeternity/epoch`][docker].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.10.0/docs/docker.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.10.1/docs/docker.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -46,9 +46,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.10.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.10.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.10.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.10.1/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.10.1/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.10.1/epoch/api/README.md
 
 ## Install node
 
