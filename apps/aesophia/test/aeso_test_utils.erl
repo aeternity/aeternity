@@ -15,7 +15,7 @@
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
     N   = length(filename:split(Cwd)),
-    Rel = ["..", "apps", "aesophia", "test", "contracts"],
+    Rel = ["apps", "aesophia", "test", "contracts"],
     %% Try the first matching directory (../)*Rel
     Cand = fun(I) -> filename:join(lists:duplicate(I, "..") ++ Rel) end,
     case [ Dir || Dir <- lists:map(Cand, lists:seq(0, N)), filelib:is_dir(Dir) ] of
