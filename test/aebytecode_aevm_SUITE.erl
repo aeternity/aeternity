@@ -25,7 +25,7 @@ execute_identy_fun_from_file(_Cfg) ->
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
-                          address => 0,
+                          address => 90120,
                           caller => 0,
                           data => <<0:256, 42:256>>,
                           gas => 1000000,

@@ -57,6 +57,7 @@
         , timestamp/1
         , trace/1
         , trace_format/3
+        , trace_fun/1
         , value/1
         ]).
 

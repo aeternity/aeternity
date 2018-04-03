@@ -11,6 +11,7 @@
 
 -export([convert/2]).
 
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
 convert(Tree, Options) ->
@@ -69,12 +70,23 @@ ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, 
                          arg      = #tuple{cpts = [ast_body(Fun), ast_body(Arg)]},
                          arg_type = {tuple, [string, ast_typerep(ArgT)]},
                          out_type = ast_typerep(OutT) };
+ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
+    %% Implemented as a contract call to the contract with address 0.
+    #prim_call_contract{ gas      = #integer{ value = 0 },
+                         address  = #integer{ value = 0 },
+                         value    = ast_body(Amount),
+                         arg      = #tuple{cpts = [ast_body({int, [], ?PRIM_CALL_SPEND}),
+                                                   ast_body(To)]},
+                         arg_type = {tuple, [word, word]},
+                         out_type = {tuple, []} };
 ast_body({qid, _, ["Contract", "address"]}) -> prim_contract_address;
 ast_body({qid, _, ["Contract", "balance"]}) -> prim_contract_balance;
 ast_body({qid, _, ["Call", "caller"]})      -> prim_call_caller;
 ast_body({qid, _, ["Call", "value"]})       -> prim_call_value;
 ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
+ast_body({id, _, "raw_spend"}) ->
+    error({underapplied_primitive, raw_spend});
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};

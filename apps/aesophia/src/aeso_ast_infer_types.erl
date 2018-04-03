@@ -14,6 +14,8 @@ global_env() ->
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
     [{"raw_call", {type_sig, [Address, String, Int, Int, TVar("a")], TVar("b")}},
+     %% Spend transaction. Also not the proper version.
+     {"raw_spend", {type_sig, [Address, Int], Unit}},
      %% Environment variables
      %% {["Contract", "owner"],   Int},    %% Not in EVM?
      {["Contract", "address"], Address},

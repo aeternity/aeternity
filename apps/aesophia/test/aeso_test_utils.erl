@@ -53,9 +53,9 @@ dummy_state(Code, Data) ->
      , exec =>
         #{ gas        => 10000,
            code       => Code,
-           address    => 16#add7e55,
+           address    => 91919191,
            value      => 100,
-           caller     => 0,
+           caller     => 47474747,
            origin     => 0,
            call_stack => [],
            gasPrice   => 1,

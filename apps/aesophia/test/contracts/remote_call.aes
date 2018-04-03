@@ -12,3 +12,8 @@ contract MyContract =
         let value = 10
         raw_call(r, "main", gas, value, x)
 
+    function withdraw() : int =
+        // if(Call.caller == Contract.owner)    // TODO: implement '=='. Also the EVM doesn't have OWNER?
+        let amount = Contract.balance
+        raw_spend(Call.caller, amount)
+        amount
