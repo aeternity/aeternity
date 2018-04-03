@@ -6,9 +6,7 @@ This document describes how to configure your epoch node installed using a relea
 
 ### Peer-to-peer network
 
-In order for your node to join the testnet, you need to specify in the configuration file:
-* The initial network peers to join (`peers` parameter);
-* How peers (on the Internet) can contact your node - specifically the TCP port (`sync` > `port` parameter).
+In order for your node to join the testnet, you need to specify in the configuration file, how peers (on the Internet) can contact your node - specifically the TCP port (`sync` > `port` parameter).
 
 (You do not need to specify the host at which your node can be contacted from the Internet, as each peer you ping will infer that from the address of the inbound TCP connection.)
 
@@ -37,20 +35,13 @@ You shall not share the private key (or the password) with anyone.
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
-* The initial network peers to join are "aenode://pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177@31.13.249.1:3015",
-"aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015" and
-"aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015".
+* No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
 Create the file `/tmp/node/epoch.yaml` with the following content (amend the `sync` > `port` parameter with your actual value):
 ```yaml
 ---
-peers:
-    - "aenode://pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177@31.13.249.1:3015"
-    - "aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015"
-    - "aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015"
-
 sync:
     port: 3015
 

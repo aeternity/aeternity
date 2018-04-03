@@ -66,11 +66,7 @@ Please note that, if your node is behind a firewall, you need to open and map a 
 
 #### Peer addresses
 
-Docker image has packaged the address of one of the testnet nodes in the configuration. This can be changed by setting `PEERS_ADDRESS_0` Docker environment variable:
-
-```bash
-docker run -d -p 3013:3013 -e PEERS_ADDRESS_0=aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015 aeternity/epoch
-```
+Docker image has packaged the addresses of testnet seed peers in the configuration. To change the peers configuration (e.g. join other network) change the configuration file (see below).
 
 #### Changing the configuration file
 

@@ -5,7 +5,7 @@
     "properties" : {
         "peers" : {
             "description" :
-            "Pre-configured addresses of epoch nodes to contact",
+            "Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.",
             "type"  : "array",
             "items" : {
                 "type" : "string",
