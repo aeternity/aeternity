@@ -133,8 +133,9 @@ call_contract(_Cfg) ->
     <<42:256>> = aect_call:return_value(Call),
 
     %% ...and that we got charged the right amount for gas and fee.
-    NewCallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
-    NewCallerBalance = CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value,
+    {NewCallerBalance, NewCallerBalance} =
+        {aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
+         CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value},
 
     {ok, S4}.
 
