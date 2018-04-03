@@ -1,6 +1,6 @@
 # About this release
 
-[This release "v0.10.1"](https://github.com/aeternity/epoch/releases/tag/v0.10.1) is a point release that includes a fix for some minor issues with the new sync protocol. This release is backward compaible with release v0.10.0.
+[This release "v0.10.1"](https://github.com/aeternity/epoch/releases/tag/v0.10.1) is a point release that includes a fix for some minor issues with the new sync protocol. This release is backward compatible with release v0.10.0.
 
 
 Release "v0.10.x" is focused on an encrypted Peer-to-Peer protocol and consistent serialization of chain objects.
