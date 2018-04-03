@@ -10,7 +10,7 @@
 
 -export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2]).
 
--export([spend/3, get_balance/1, call_contract/6]).
+-export([spend/3, get_balance/2, call_contract/6]).
 
 contract_path() ->
     {ok, Cwd} = file:get_cwd(),
@@ -140,7 +140,7 @@ spend(Recipient, Amount, S) ->
     io:format("+++ SPEND(~p, ~p)\n", [Recipient, Amount]),
     {ok, S}.
 
-get_balance(_) -> 1000000.
+get_balance(_, _) -> 1000000.
 
 call_contract(Contract, Gas, Value, CallData, CallStack, S) ->
     io:format("+++ CALL(~p, ~p, ~p, ~p, ~p)\n", [Contract, Gas, Value, CallData, CallStack]),

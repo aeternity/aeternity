@@ -13,7 +13,7 @@
 -export([new_state/3, get_trees/1]).
 
 %% aec_vm_chain_api callbacks
--export([get_balance/1,
+-export([get_balance/2,
          spend/3,
          call_contract/6]).
 
@@ -50,8 +50,8 @@ get_trees(#state{ trees = Trees, account = Key, nonce = Nonce }) ->
 
 
 %% @doc Get the balance of the contract account.
--spec get_balance(chain_state()) -> non_neg_integer().
-get_balance(#state{ trees = Trees, account = PubKey }) ->
+-spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
+get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
 %% @doc Spend money from the contract account.
@@ -105,10 +105,17 @@ call_contract(Target, Gas, Value, CallData, CallStack,
 
 %% -- Internal functions -----------------------------------------------------
 
-do_get_balance(ContractKey, Trees) ->
+do_get_balance(PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    aect_contracts:balance(Contract).
+    AccountsTree  = aec_trees:accounts(Trees),
+    case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+        {value, Contract} -> aect_contracts:balance(Contract);
+        none              ->
+            case aec_accounts_trees:lookup(PubKey, AccountsTree) of
+                none             -> 0;
+                {value, Account} -> aec_accounts:balance(Account)
+            end
+    end.
 
 %% TODO: can only spend to proper accounts. Not other contracts.
 %% Note that we cannot use an aec_spend_tx here, since we are spending from a

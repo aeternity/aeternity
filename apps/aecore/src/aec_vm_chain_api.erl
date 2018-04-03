@@ -31,8 +31,9 @@
                 Amount    :: non_neg_integer(),
                 State     :: chain_state()) -> {ok, chain_state()} | {error, term()}.
 
-%% Get the current balance of the contract account.
--callback get_balance(State :: chain_state()) -> non_neg_integer().
+%% Get the current balance of an account.
+-callback get_balance(Account :: pubkey(), State :: chain_state()) ->
+    non_neg_integer().
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),
