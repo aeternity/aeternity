@@ -46,7 +46,7 @@ infer_contract(_,[]) ->
 
 check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
     {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
-check_fundecl(_, {fundecl, _Attrib, {id, _, Name}, Type}) ->
+check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
 infer_nonrec(Env,LetFun) ->
