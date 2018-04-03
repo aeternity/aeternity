@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -29,6 +31,8 @@
 %%%===================================================================
 
 -define(CHANNEL_CLOSE_SOLO_TX_VSN, 1).
+-define(CHANNEL_CLOSE_SOLO_TX_TYPE, channel_close_solo_tx).
+-define(CHANNEL_CLOSE_SOLO_TX_FEE, 4).
 
 -opaque tx() :: #channel_close_solo_tx{}.
 
@@ -51,6 +55,9 @@ new(#{channel_id := ChannelId,
             fee        = Fee,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
+
+type() ->
+    ?CHANNEL_CLOSE_SOLO_TX_TYPE.
 
 -spec fee(tx()) -> non_neg_integer().
 fee(#channel_close_solo_tx{fee = Fee}) ->
@@ -112,26 +119,27 @@ accounts(#channel_close_solo_tx{payload = Payload}) ->
 signers(#channel_close_solo_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  account    = AccountPubKey,
                                  payload    = Payload,
                                  fee        = Fee,
                                  nonce      = Nonce}) ->
-    [#{<<"vsn">>        => version()},
-     #{<<"channel_id">> => ChannelId},
-     #{<<"account">>    => AccountPubKey},
-     #{<<"payload">>    => Payload},
-     #{<<"fee">>        => Fee},
-     #{<<"nonce">>      => Nonce}].
+    {version(),
+    [ {channel_id, ChannelId}
+    , {account   , AccountPubKey}
+    , {payload   , Payload}
+    , {fee       , Fee}
+    , {nonce     , Nonce}
+    ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>        := ?CHANNEL_CLOSE_SOLO_TX_VSN},
-             #{<<"channel_id">> := ChannelId},
-             #{<<"account">>    := AccountPubKey},
-             #{<<"payload">>    := Payload},
-             #{<<"fee">>        := Fee},
-             #{<<"nonce">>      := Nonce}]) ->
+-spec deserialize(vsn(), list()) -> tx().
+deserialize(?CHANNEL_CLOSE_SOLO_TX_VSN,
+            [ {channel_id, ChannelId}
+            , {account   , AccountPubKey}
+            , {payload   , Payload}
+            , {fee       , Fee}
+            , {nonce     , Nonce}]) ->
     #channel_close_solo_tx{channel_id = ChannelId,
                            account    = AccountPubKey,
                            payload    = Payload,
@@ -151,6 +159,14 @@ for_client(#channel_close_solo_tx{channel_id = ChannelId,
       <<"payload">>    => Payload,
       <<"fee">>        => Fee,
       <<"nonce">>      => Nonce}.
+
+serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
+    [ {channel_id, binary}
+    , {account   , binary}
+    , {payload   , binary}
+    , {fee       , int}
+    , {nonce     , int}
+    ].
 
 %%%===================================================================
 %%% Internal functions

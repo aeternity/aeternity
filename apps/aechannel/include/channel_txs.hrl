@@ -6,6 +6,8 @@
 %%%=============================================================================
 -include_lib("apps/aecore/include/common.hrl").
 
+-type vsn() :: non_neg_integer().
+
 -record(channel_create_tx, {
           initiator          :: pubkey(),
           initiator_amount   :: non_neg_integer(),
