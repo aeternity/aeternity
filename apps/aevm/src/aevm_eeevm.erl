@@ -1469,7 +1469,7 @@ recursive_call1(StateIn, Op) ->
                  ?DELEGATECALL -> aevm_eeevm_state:caller(State8)
              end,
     CallState = aevm_eeevm_state:prepare_for_call(Caller, Dest, CallGas, Value,
-                                                  Code, State8),
+                                                  Code, I, State8),
     case aevm_eeevm_state:no_recursion(State8) of
         true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,

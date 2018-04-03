@@ -34,7 +34,7 @@
         , logs/1
         , origin/1
         , out/1
-        , prepare_for_call/6
+        , prepare_for_call/7
         , mem/1
         , no_recursion/1
         , number/1
@@ -123,14 +123,15 @@ init_vm(State, Code, Store) ->
           , storage   => Store
           }.
 
-prepare_for_call(Caller, Dest, CallGas, Value, Code, State) ->
+prepare_for_call(Caller, Dest, CallGas, Value, Code, Data, State) ->
     #{ environment := #{ spec := #{ pre := Pre}}, call_stack := CallStack} = State,
     Store = init_storage(Dest, Pre),
     State1 = init_vm(State, Code, Store),
-    State1#{ address => Dest
-           , gas => CallGas
-           , value => Value
-           , caller    => Caller
+    State1#{ address    => Dest
+           , gas        => CallGas
+           , value      => Value
+           , data       => Data
+           , caller     => Caller
            , call_stack => [Caller | CallStack]
            }.
 
