@@ -377,30 +377,29 @@ abi_encode1(word) ->
 abi_encode1(string) ->
     %% VM representation:  tuple(Len, Word1, .., WordN)
     %% ABI representation: Len Word1 .. WordN
-    Done = make_ref(),
+    %% Problem: N = (Len + 255) / 256
     Loop = make_ref(),              %% StrPtr
     [ dup(1)                        %% StrPtr StrPtr
     , aeb_opcodes:mnemonic(?MLOAD)  %% Len StrPtr
-    , dup(1)                        %% Len Len StrPtr
-    , aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr Len Len StrPtr
-    , aeb_opcodes:mnemonic(?MSTORE) %% Len StrPtr               Mem[0] := Len
-    , {'JUMPDEST', Loop}            %% Len-i StrPtr+32i
-    , dup(1)                        %% Len-i Len-i StrPtr+32i
-    , aeb_opcodes:mnemonic(?ISZERO) %% i==Len Len-i StrPtr+32i
-    , {push_label, Done}            %% :Done i==Len Len-i StrPtr+32i
-    , aeb_opcodes:mnemonic(?JUMPI)  %% Len-i StrPtr+32i
-    , dup(2)                        %% StrPtr+32i Len-i StrPtr+i
-    , aeb_opcodes:mnemonic(?MLOAD)  %% Str[i] Len-i StrPtr+32i
-    , aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr Str[i] Len-i StrPtr+32i
-    , aeb_opcodes:mnemonic(?MSTORE) %% Len-i StrPtr+32i           Mem[i] := Str[i]
-    , push(1), swap(1)              %% Len-i 1 StrPtr+32i
-    , aeb_opcodes:mnemonic(?SUB)    %% Len-i-1 StrPtr+32i
-    , swap(1), push(32)             %% 32 StrPtr+32i Len-i-1
-    , aeb_opcodes:mnemonic(?ADD)    %% StrPtr+32(i+1) Len-i-1
-    , swap(1)                       %% Len-i-1 StrPtr+32(i+1)
-    , {push_label, Loop}            %% :Loop Len-i-1 StrPtr+32(i+1)
-    , aeb_opcodes:mnemonic(?JUMP)
-    , {'JUMPDEST', Done}            %% Len StrPtr
+    , push(255)                     %% 255 Len StrPtr
+    , aeb_opcodes:mnemonic(?ADD)    %% Len+255 StrPtr
+    , push(256)                     %% 256 Len+255 StrPtr
+    , swap(1)                       %% Len+255 256 StrPtr
+    , aeb_opcodes:mnemonic(?DIV)    %% N StrPtr
+    , {'JUMPDEST', Loop}            %% N-i StrPtr+32i
+    , dup(2)                        %% StrPtr+32i N-i StrPtr+i
+    , aeb_opcodes:mnemonic(?MLOAD)  %% Str[i] N-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?MSIZE)  %% MemPtr Str[i] N-i StrPtr+32i
+    , aeb_opcodes:mnemonic(?MSTORE) %% N-i StrPtr+32i           Mem[i] := Str[i]
+    , push(1), swap(1)              %% N-i 1 StrPtr+32i
+    , aeb_opcodes:mnemonic(?SUB)    %% N-i-1 StrPtr+32i
+    , swap(1), push(32)             %% 32 StrPtr+32i N-i-1
+    , aeb_opcodes:mnemonic(?ADD)    %% StrPtr+32(i+1) N-i-1
+    , swap(1)                       %% N-i-1 StrPtr+32(i+1)
+    , dup(1)                        %% N-i-1 N-i-1 StrPtr+32(i+1)
+    , aeb_opcodes:mnemonic(?ISZERO) %% i==N-i-1 N-i-1 StrPtr+32(i+1)
+    , {push_label, Loop}            %% :Loop i==N-i-1 N-i-1 StrPtr+32(i+1)
+    , aeb_opcodes:mnemonic(?JUMPI)  %% N-i-1 StrPtr+32(i+1)
     , pop(2)                        %% (empty)
     ];
 abi_encode1({tuple, []}) ->
@@ -429,6 +428,8 @@ abi_encode_tuple([T | Ts]) ->       %% TuplePtr
 abi_decode(word) ->                 %% MemPtr
     [ aeb_opcodes:mnemonic(?MLOAD)  %% N
     ];
+abi_decode({tuple, []}) ->
+    [];
 abi_decode(Type) ->
     error({todo, abi_decode, Type}).
 
