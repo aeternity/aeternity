@@ -22,7 +22,6 @@
         , cp/1
         , data/1
         , difficulty/1
-        , extbalance/2
         , extcode/2
         , extcode/4
         , extcodesize/2
@@ -89,7 +88,6 @@ init(#{ env  := Env
          , number     => maps:get(currentNumber, Env)
          , timestamp  => maps:get(currentTimestamp, Env)
 
-         , balances        => get_balances(Pre)
          , ext_code_blocks => get_ext_code_blocks(Pre)
          , ext_code_sizes  => get_ext_code_sizes(Pre)
          , block_hash_fun  => BlockHashFun
@@ -157,11 +155,6 @@ get_ext_code_blocks(#{} = Pre) ->
     maps:from_list(
       [{Address, C} || {Address, #{code := C}} <-maps:to_list(Pre)]).
 
-get_balances(#{} = Pre) ->
-    maps:from_list(
-      [{Address, B} || {Address, #{balance := B}}
-                           <- maps:to_list(Pre)]).
-
 get_blockhash_fun(Opts, Env, H) ->
     case maps:get(blockhash, Opts, default) of
         %% default -> fun(N,A) -> aevm_eeevm_env:get_block_hash(H,N,A) end;
@@ -191,7 +184,9 @@ init_trace_fun(Opts) ->
 
 
 accountbalance(Address, State) ->
-    maps:get(Address band ?MASK160, maps:get(balances, State), 0).
+    Chain = chain_api(State),
+    ChainState = chain_state(State),
+    Chain:get_balance(Address band ?MASK160, ChainState).
 address(State)     -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
 calldepth(State) -> length(call_stack(State)).
@@ -212,9 +207,6 @@ extcode(Account, Start, Length, State) ->
 extcode(Account, State) ->
     maps:get(Account band ?MASK160,
              maps:get(ext_code_blocks, State), <<>>).
-extbalance(Account, State) ->
-    maps:get(Account band ?MASK160,
-             maps:get(balances, State), <<>>).
 no_recursion(State) ->
     maps:get(no_recursion, State).
 
