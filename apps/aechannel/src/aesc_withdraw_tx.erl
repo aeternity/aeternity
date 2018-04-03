@@ -12,6 +12,7 @@
 
 %% Behavior API
 -export([new/1,
+         type/0,
          fee/1,
          nonce/1,
          origin/1,
@@ -19,8 +20,9 @@
          process/3,
          accounts/1,
          signers/1,
+         serialization_template/1,
          serialize/1,
-         deserialize/1,
+         deserialize/2,
          for_client/1
         ]).
 
@@ -29,6 +31,8 @@
 %%%===================================================================
 
 -define(CHANNEL_WITHDRAW_TX_VSN, 1).
+-define(CHANNEL_WITHDRAW_TX_TYPE, aesc_withdraw_tx).
+-define(CHANNEL_WITHDRAW_TX_FEE, 4).
 
 -opaque tx() :: #channel_withdraw_tx{}.
 
@@ -57,6 +61,9 @@ new(#{channel_id   := ChannelId,
             fee          = Fee,
             nonce        = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
+
+type() ->
+    ?CHANNEL_WITHDRAW_TX_TYPE.
 
 -spec fee(tx()) -> non_neg_integer().
 fee(#channel_withdraw_tx{fee = Fee}) ->
@@ -131,7 +138,7 @@ signers(#channel_withdraw_tx{initiator   = InitiatorPubKey,
     %% TODO: remove initiator and participant from tx payload and verify signatures based on MPT
     [InitiatorPubKey, ParticipantPubKey].
 
--spec serialize(tx()) -> list(map()).
+-spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_withdraw_tx{channel_id   = ChannelId,
                                from_account = FromPubKey,
                                to_account   = ToPubKey,
@@ -140,26 +147,27 @@ serialize(#channel_withdraw_tx{channel_id   = ChannelId,
                                participant  = ParticipantPubKey,
                                fee          = Fee,
                                nonce        = Nonce}) ->
-    [#{<<"vsn">>          => version()},
-     #{<<"channel_id">>   => ChannelId},
-     #{<<"from_account">> => FromPubKey},
-     #{<<"to_account">>   => ToPubKey},
-     #{<<"amount">>       => Amount},
-     #{<<"initiator">>    => InitiatorPubKey},
-     #{<<"participant">>  => ParticipantPubKey},
-     #{<<"fee">>          => Fee},
-     #{<<"nonce">>        => Nonce}].
+    {version(),
+    [ {channel_id  , ChannelId}
+    , {from_account, FromPubKey}
+    , {to_account  , ToPubKey}
+    , {amount      , Amount}
+    , {initiator   , InitiatorPubKey}
+    , {participant , ParticipantPubKey}
+    , {fee         , Fee}
+    , {nonce       , Nonce}
+    ]}.
 
--spec deserialize(list(map())) -> tx().
-deserialize([#{<<"vsn">>          := ?CHANNEL_WITHDRAW_TX_VSN},
-             #{<<"channel_id">>   := ChannelId},
-             #{<<"from_account">> := FromPubKey},
-             #{<<"to_account">>   := ToPubKey},
-             #{<<"amount">>       := Amount},
-             #{<<"initiator">>    := InitiatorPubKey},
-             #{<<"participant">>  := ParticipantPubKey},
-             #{<<"fee">>          := Fee},
-             #{<<"nonce">>        := Nonce}]) ->
+-spec deserialize(vsn(), list()) -> tx().
+deserialize(?CHANNEL_WITHDRAW_TX_VSN,
+            [ {channel_id  , ChannelId}
+            , {from_account, FromPubKey}
+            , {to_account  , ToPubKey}
+            , {amount      , Amount}
+            , {initiator   , InitiatorPubKey}
+            , {participant , ParticipantPubKey}
+            , {fee         , Fee}
+            , {nonce       , Nonce}]) ->
     #channel_withdraw_tx{channel_id   = ChannelId,
                          from_account = FromPubKey,
                          to_account   = ToPubKey,
@@ -188,6 +196,17 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
       <<"participant">>  => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
+
+serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
+    [ {channel_id  , binary}
+    , {from_account, binary}
+    , {to_account  , binary}
+    , {amount      , int}
+    , {initiator   , binary}
+    , {participant , binary}
+    , {fee         , int}
+    , {nonce       , int}
+    ].
 
 %%%===================================================================
 %%% Internal functions

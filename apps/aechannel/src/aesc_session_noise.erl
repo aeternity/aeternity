@@ -25,7 +25,7 @@
        , code_change/3]).
 
 -record(st, {parent :: pid()
-           , econn  :: enoise:noise_socket()}).
+           , econn }).
 
 channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN     , Msg}).
 channel_accept     (Session, Msg) -> cast(Session, {msg, ?CH_ACCEPT   , Msg}).
@@ -60,13 +60,15 @@ init({Parent, Op}) ->
 establish({accept, Port, Opts}, St) ->
     {ok, LSock} = gen_tcp:listen(Port, tcp_opts(listen, Opts)),
     {ok, TcpSock} = gen_tcp:accept(LSock, tcp_opts(accept, Opts)),
-    {ok, EConn} = enoise:accept(TcpSock, enoise_opts(accept, Opts)),
-    tell_fsm({accept, EConn}, St),
+    %% TODO: extract/check something from FinalState?
+    {ok, EConn, _FinalSt} = enoise:accept(TcpSock, enoise_opts(accept, Opts)),
+    %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn};
 establish({connect, Host, Port, Opts}, St) ->
     {ok, TcpSock} = connect_tcp(Host, Port, tcp_opts(connect, Opts)),
-    {ok, EConn} = enoise:connect(TcpSock, enoise_opts(connect, Opts)),
-    tell_fsm({accept, EConn}, St),
+    %% TODO: extract/check something from FinalState?
+    {ok, EConn, _FinalSt} = enoise:connect(TcpSock, enoise_opts(connect, Opts)),
+    %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn}.
 
 connect_tcp(Host, Port, Opts) ->
