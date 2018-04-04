@@ -1,4 +1,4 @@
-log_level: debug
+log_level: warning
 expected_mine_rate: 15000
 miner_executable: mean16s-generic
 miner_node_bits: 16
