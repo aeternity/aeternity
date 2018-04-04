@@ -1,14 +1,6 @@
 ---
-# Minimal configuration file to join the TestNet with enabled chain persisting and mining
-peers:
-    # TestNet Addresses
-    - aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@31.13.249.1:3015
-
-sync:
-    # Port used for P2P communication
-    # Make sure this port is reachable from you public facing IP.
-    port: 3015
-
+# Minimal configuration file to join the TestNet with enabled chain persisting and mining.
+# Should not contain default values.
 keys:
     password: "top secret"
     dir: ./keys

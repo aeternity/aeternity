@@ -87,6 +87,9 @@ keys:
 sync:
     port: 9825
 
+peers:
+    - aenode://pp$Dxq41rJN33j26MLqryvh7AnhuZywefWKEPBiiYu2Da2vDWLBq@localhost:9835
+
 http:
     external:
         port: 9823
@@ -135,6 +138,9 @@ keys:
 
 sync:
     port: 9835
+
+peers:
+    - aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:9825
 
 http:
     external:

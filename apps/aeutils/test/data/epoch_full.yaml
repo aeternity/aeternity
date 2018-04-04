@@ -1,8 +1,11 @@
 ---
-# Pre-configured addresses of epoch nodes to contact
+# Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.
 peers:
-    # TestNet Addresses
-    - aenode://pp$ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@31.13.249.1:3015
+    # TestNet seed peers
+    - "aenode://pp$QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015" # us-west-2
+    - "aenode://pp$2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015" # eu-central-1
+    - "aenode://pp$27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015" # ap-southeast-1
+    - "aenode://pp$2i8N6XsjCGe1wkdMhDRs7t7xzijrjJDN4xA22RoNGCgt6ay9QB@31.13.249.70:3015" # eu-east
 
 # Pre-configured addresses of epoch nodes NOT to contact
 blocked_peers:

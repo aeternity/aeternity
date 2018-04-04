@@ -6,9 +6,7 @@ This document describes how to start your epoch node installed using a release b
 
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
-* The configured initial network peers to join are "aenode://pp$2eDAWTgveKp1C4dWhy9Hg59NCrg8TPUCKSXeEgvnPdro4ra177@31.13.249.1:3015",
-"aenode://pp$CjHH611sKocFxvrXrWjGJq5nNmbAxUYGhcyNbmvg6CwGEii2p@31.13.248.97:3015" and
-"aenode://pp$2Y6u5bx6pfVAx9B4faBMG1BV7WGGwzf3hvnXkV5MDZGuDGipfy@31.13.249.118:3015";
+* No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
 * The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3003;
 * The internal HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3103.
 
@@ -68,7 +66,7 @@ Verify that your node sees the same longest blockchain as the testnet.
 
 Inspect the current top of the blockchain as seen by the testnet:
 ```bash
-curl http://31.13.249.1:3013/v2/top
+curl http://31.13.249.70:3013/v2/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
@@ -83,7 +81,7 @@ Verify that the height is the same; it may take a few minutes for your node to c
 After the node is successfully connected to the testnet, you could verify that it is mining on the same chain as the rest of the network.
 You can validate it observing the `hash` of the `/top` of the remote nodes:
 ```bash
-$ curl http://31.13.249.1:3013/v2/top
+$ curl http://31.13.249.70:3013/v2/top
 {"hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}
 ```
 
