@@ -207,7 +207,7 @@ awaiting_open(enter, _OldSt, D) ->
 awaiting_open(cast, {channel_open, Msg}, D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
-            gproc_register(D),
+            gproc_register(D1),
             {next_state, accepted, send_channel_accept(D1)};
         {error, _} = Error ->
             close(Error, D)
@@ -222,7 +222,7 @@ initialized(enter, _OldSt, D) ->
 initialized(cast, {channel_accept, Msg}, D) ->
     case check_accept_msg(Msg, D) of
         {ok, D1} ->
-            gproc_register(D),
+            gproc_register(D1),
             {ok, CTx} = create_tx_for_signing(D1),
             D2 = request_signing(create_tx, CTx, D1),
             {next_state, awaiting_signature, D2};
