@@ -7,7 +7,6 @@ import time
 from nose.tools import assert_equals, assert_not_equals, assert_regexp_matches, with_setup
 import common
 from waiting import wait
-from swagger_client.models.ping import Ping 
 from swagger_client.models.contract import Contract
 from swagger_client.models.contract_call_input import ContractCallInput
 from swagger_client.rest import ApiException
