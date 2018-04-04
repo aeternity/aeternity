@@ -291,6 +291,98 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                 ],
     process_request(ParseFuns, Req);
 
+handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([initiator, initiator_amount,
+                                       participant, participant_amount,
+                                       push_amount, channel_reserve,
+                                       lock_period, fee]),
+                 base58_decode([{initiator, initiator, account_pubkey},
+                                {participant, participant, account_pubkey}]),
+                 get_nonce(initiator),
+                 unsigned_tx_response(fun aesc_create_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_account, to_account,
+                                       amount,
+                                       initiator, participant,
+                                       fee, nonce]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {from_account, from_account, account_pubkey},
+                                {to_account, to_account, account_pubkey},
+                                {initiator, initiator, account_pubkey},
+                                {participant, participant, account_pubkey}]),
+                 unsigned_tx_response(fun aesc_deposit_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, from_account, to_account,
+                                       amount,
+                                       initiator, participant,
+                                       fee, nonce]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {from_account, from_account, account_pubkey},
+                                {to_account, to_account, account_pubkey},
+                                {initiator, initiator, account_pubkey},
+                                {participant, participant, account_pubkey}]),
+                 unsigned_tx_response(fun aesc_withdraw_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id,
+                                       amount,
+                                       initiator, participant,
+                                       fee, nonce]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {initiator, initiator, account_pubkey},
+                                {participant, participant, account_pubkey}]),
+                 unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, account,
+                                       payload,
+                                       fee]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {account, account, account_pubkey}]),
+                 get_nonce(account),
+                 unsigned_tx_response(fun aesc_close_solo_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, account,
+                                       payload,
+                                       fee]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {account, account, account_pubkey}]),
+                 get_nonce(account),
+                 unsigned_tx_response(fun aesc_slash_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
+handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
+    ParseFuns = [parse_map_to_atom_keys(),
+                 read_required_params([channel_id, account,
+                                       party,
+                                       fee, nonce]),
+                 base58_decode([{channel_id, channel_id, channel},
+                                {account, account, account_pubkey},
+                                {party, party, account_pubkey}]),
+                 unsigned_tx_response(fun aesc_settle_tx:new/1)
+                ],
+    process_request(ParseFuns, Req);
+
 handle_request('GetAccountBalance', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
