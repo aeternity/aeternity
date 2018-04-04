@@ -765,6 +765,222 @@
         }
       }
     },
+    "/tx/channel/create" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_create transaction",
+        "operationId" : "PostChannelCreate",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelCreateTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Initiator not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/deposit" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_deposit transaction",
+        "operationId" : "PostChannelDeposit",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelDepositTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/withdrawal" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_withdrawal transaction",
+        "operationId" : "PostChannelWithdrawal",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelWithdrawalTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/close/mutual" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_close_mutual transaction",
+        "operationId" : "PostChannelCloseMutual",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelCloseMutualTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/close/solo" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_close_solo transaction",
+        "operationId" : "PostChannelCloseSolo",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelCloseSoloTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/slash" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_slash transaction",
+        "operationId" : "PostChannelSlash",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelSlashTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
+    "/tx/channel/settle" : {
+      "post" : {
+        "tags" : [ "external", "dev" ],
+        "description" : "Get a channel_settle transaction",
+        "operationId" : "PostChannelSettle",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "in" : "body",
+          "name" : "body",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/ChannelSettleTx"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnsignedTx"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/transactions" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
@@ -2903,6 +3119,290 @@
       },
       "example" : {
         "name_hash" : "name_hash"
+      }
+    },
+    "ChannelCreateTx" : {
+      "type" : "object",
+      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "participant", "participant_amount", "push_amount" ],
+      "properties" : {
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "participant" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "participant_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "push_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "channel_reserve" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "lock_period" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "initiator_amount" : 0,
+        "initiator" : { },
+        "fee" : 0,
+        "participant_amount" : 0,
+        "push_amount" : 0,
+        "nonce" : 0,
+        "participant" : null,
+        "lock_period" : 0,
+        "channel_reserve" : 0
+      }
+    },
+    "ChannelDepositTx" : {
+      "type" : "object",
+      "required" : [ "amount", "channel_id", "fee", "from_account", "initiator", "nonce", "participant", "to_account" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "from_account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "to_account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "participant" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "amount" : 0,
+        "from_account" : { },
+        "initiator" : null,
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "participant" : null,
+        "to_account" : null
+      }
+    },
+    "ChannelWithdrawalTx" : {
+      "type" : "object",
+      "required" : [ "amount", "channel_id", "fee", "from_account", "initiator", "nonce", "participant", "to_account" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "from_account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "to_account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "participant" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "amount" : 0,
+        "from_account" : { },
+        "initiator" : null,
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "participant" : null,
+        "to_account" : null
+      }
+    },
+    "ChannelCloseMutualTx" : {
+      "type" : "object",
+      "required" : [ "amount", "channel_id", "fee", "initiator", "nonce", "participant" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "initiator" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "participant" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "amount" : 0,
+        "initiator" : { },
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "participant" : null
+      }
+    },
+    "ChannelCloseSoloTx" : {
+      "type" : "object",
+      "required" : [ "account", "channel_id", "fee", "payload" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "payload" : "payload",
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "account" : { }
+      }
+    },
+    "ChannelSlashTx" : {
+      "type" : "object",
+      "required" : [ "account", "channel_id", "fee", "payload" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "payload" : "payload",
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "account" : { }
+      }
+    },
+    "ChannelSettleTx" : {
+      "type" : "object",
+      "required" : [ "account", "channel_id", "fee", "nonce", "party" ],
+      "properties" : {
+        "channel_id" : {
+          "type" : "string"
+        },
+        "account" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "party" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "nonce" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        }
+      },
+      "example" : {
+        "fee" : 0,
+        "channel_id" : "channel_id",
+        "nonce" : 0,
+        "account" : { },
+        "party" : null
       }
     },
     "PubKey" : {
