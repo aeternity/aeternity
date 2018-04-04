@@ -159,10 +159,10 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              nonce              = Nonce}) ->
     {version(),
     [ {initiator         , InitiatorPubKey}
+    , {push_amount       , PushAmount}
     , {initiator_amount  , InitiatorAmount}
     , {participant       , ParticipantPubKey}
     , {participant_amount, ParticipantAmount}
-    , {push_amount       , PushAmount}
     , {channel_reserve   , ChannelReserve}
     , {lock_period       , LockPeriod}
     , {fee               , Fee}
@@ -172,10 +172,10 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CREATE_TX_VSN,
             [ {initiator         , InitiatorPubKey}
+            , {push_amount       , PushAmount}
             , {initiator_amount  , InitiatorAmount}
             , {participant       , ParticipantPubKey}
             , {participant_amount, ParticipantAmount}
-            , {push_amount       , PushAmount}
             , {channel_reserve   , ChannelReserve}
             , {lock_period       , LockPeriod}
             , {fee               , Fee}
