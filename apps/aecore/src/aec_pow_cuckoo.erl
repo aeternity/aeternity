@@ -191,8 +191,8 @@ generate_int(Header, Target, MinerBin, MinerExtraArgs) ->
     end.
 
 -define(POW_OK, ok).
--define(POW_TOO_BIG, {error, nonce_too_big}).
--define(POW_TOO_SMALL, {error, nonces_not_ascending}).
+-define(POW_TOO_BIG(Nonce), {error, {nonce_too_big, Nonce}}).
+-define(POW_TOO_SMALL(Nonce, PrevNonce), {error, {nonces_not_ascending, Nonce, PrevNonce}}).
 -define(POW_NON_MATCHING, {error, endpoints_do_not_match_up}).
 -define(POW_BRANCH, {error, branch_in_cycle}).
 -define(POW_DEAD_END, {error, cycle_dead_ends}).
@@ -224,9 +224,9 @@ verify_proof(Hash, Nonce, Solution, NodeBits) ->
         {Xor0, Xor1, _, Uvs} =
             lists:foldl(
               fun(N, _) when N > EdgeMask ->
-                      throw({?POW_TOO_BIG, N});
+                      throw(?POW_TOO_BIG(N));
                  (N, {_Xor0, _Xor1, PrevN, _Uvs}) when N =< PrevN ->
-                      throw({?POW_TOO_SMALL, N, PrevN});
+                      throw(?POW_TOO_SMALL(N, PrevN));
                  (N, {Xor0C, Xor1C, _PrevN, UvsC}) ->
                       Uv0 = sipnode(K0, K1, K2, K3, N, 0, EdgeMask),
                       Uv1 = sipnode(K0, K1, K2, K3, N, 1, EdgeMask),
