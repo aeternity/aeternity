@@ -109,4 +109,4 @@ rev_tag(54) -> channel_close_solo_tx;
 rev_tag(55) -> channel_slash_tx;
 rev_tag(56) -> channel_settle_tx;
 rev_tag(57) -> channel_offchain_tx;
-rev_tag(100) -> block;
+rev_tag(100) -> block.

@@ -31,7 +31,7 @@
 %%%===================================================================
 
 -define(CHANNEL_WITHDRAW_TX_VSN, 1).
--define(CHANNEL_WITHDRAW_TX_TYPE, channel_withdraw_tx).
+-define(CHANNEL_WITHDRAW_TX_TYPE, aesc_withdraw_tx).
 -define(CHANNEL_WITHDRAW_TX_FEE, 4).
 
 -opaque tx() :: #channel_withdraw_tx{}.
