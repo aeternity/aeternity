@@ -203,7 +203,15 @@ type_to_cb(name_update_tx)     -> aens_update_tx;
 type_to_cb(name_revoke_tx)     -> aens_revoke_tx;
 type_to_cb(name_create_tx)     -> aens_create_tx;
 type_to_cb(contract_call_tx)   -> aect_call_tx;
-type_to_cb(contract_create_tx) -> aect_create_tx.
+type_to_cb(contract_create_tx) -> aect_create_tx;
+type_to_cb(channel_create_tx)       -> aesc_create_tx;
+type_to_cb(channel_deposit_tx)      -> aesc_deposit_tx;
+type_to_cb(channel_withdraw_tx)     -> aesc_withdraw_tx;
+type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
+type_to_cb(channel_close_solo_tx)   -> aesc_close_solo_tx;
+type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
+type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
+type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
 
 -spec is_coinbase(Tx :: tx()) -> boolean().
 is_coinbase(#aetx{ type = Type }) ->
