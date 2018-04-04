@@ -132,6 +132,10 @@
                         "description" : "Old endpoints that will be removed",
                         "type" : "boolean"
                     }
+                },
+                "debug" : {
+                    "description" : "Whether to enable the debug endpoints",
+                    "type" : "boolean"
                 }
             }
         },
