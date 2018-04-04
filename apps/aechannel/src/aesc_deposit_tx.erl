@@ -148,9 +148,9 @@ serialize(#channel_deposit_tx{channel_id   = ChannelId,
     [ {channel_id  , ChannelId}
     , {from_account, FromPubKey}
     , {to_account  , ToPubKey}
+    , {amount      , Amount}
     , {initiator   , InitiatorPubKey}
     , {participant , ParticipantPubKey}
-    , {amount      , Amount}
     , {fee         , Fee}
     , {nonce       , Nonce}
     ]}.
