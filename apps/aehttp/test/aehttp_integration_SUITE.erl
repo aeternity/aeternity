@@ -30,6 +30,7 @@
     oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
+    state_channels_onchain_transactions/1,
 
     get_transaction/1,
 
@@ -228,6 +229,7 @@ groups() ->
         oracle_transactions,
         nameservice_transactions,
         spend_transaction,
+        state_channels_onchain_transactions,
 
         get_transaction,
 
@@ -997,6 +999,182 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     test_missing_address(account, Encoded, fun get_name_revoke/1),
     ok.
 
+%% tests the following
+%% GET channel_create_tx unsigned transaction
+%% GET channel_deposit_tx unsigned transaction
+%% GET channel_withdraw_tx unsigned transaction
+%% GET channel_close_mutual_tx unsigned transaction
+%% GET channel_close_solo unsigned transaction
+%% GET channel_slash_tx unsigned transaction
+%% GET channel_settle_tx unsigned transaction
+state_channels_onchain_transactions(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    ParticipantPubkey = random_hash(),
+    ok = give_tokens(ParticipantPubkey, 100),
+    {ok, AeTx} = state_channels_create(MinerPubkey, ParticipantPubkey),
+    {ChannelId, NonceCreated} = state_channel_id(AeTx),
+    state_channels_deposit(ChannelId, MinerPubkey, ParticipantPubkey),
+    state_channels_withdrawal(ChannelId, MinerPubkey, ParticipantPubkey),
+    state_channels_close_mutual(ChannelId, MinerPubkey, ParticipantPubkey),
+    state_channels_close_solo(ChannelId, MinerPubkey),
+    state_channels_slash(ChannelId, MinerPubkey),
+    state_channels_settle(ChannelId, MinerPubkey),
+    ok.
+
+state_channel_id(Tx) ->
+    {channel_create_tx, ChCTx} = aetx:specialize_type(Tx),
+    Initiator = aesc_create_tx:initiator(ChCTx),
+    Nonce = aesc_create_tx:nonce(ChCTx),
+    Participant = aesc_create_tx:participant(ChCTx),
+    {aesc_channels:id(Initiator, Nonce, Participant), Nonce}.
+
+state_channels_create(MinerPubkey, ParticipantPubkey) ->
+    Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
+                initiator_amount => 2,
+                participant => aec_base58c:encode(account_pubkey, ParticipantPubkey),
+                participant_amount => 3,
+                push_amount => 5, channel_reserve => 5,
+                lock_period => 20,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{initiator => MinerPubkey,
+                          participant => ParticipantPubkey}),
+    {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_create/1,
+                               fun aesc_create_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, initiator, Encoded, fun get_channel_create/1),
+    test_invalid_hash(ParticipantPubkey, participant, Encoded, fun get_channel_create/1),
+    test_missing_address(initiator, Encoded, fun get_channel_create/1),
+    {ok, Tx}.
+
+state_channels_deposit(ChannelId, MinerPubkey, ParticipantPubkey) ->
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                initiator => MinerAddress, 
+                from_account => MinerAddress,
+                to_account => MinerAddress,
+                participant => aec_base58c:encode(account_pubkey, ParticipantPubkey),
+                amount => 2,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{initiator => MinerPubkey,
+                          participant => ParticipantPubkey,
+                          channel_id => ChannelId,
+                          from_account => MinerPubkey,
+                          to_account => MinerPubkey}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_deposit/1,
+                               fun aesc_deposit_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, initiator, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash(MinerPubkey, from_account, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash(MinerPubkey, to_account, Encoded1, fun get_channel_deposit/1),
+    test_invalid_hash(ParticipantPubkey, participant, Encoded1, fun get_channel_deposit/1),
+    ok.
+
+state_channels_withdrawal(ChannelId, MinerPubkey, ParticipantPubkey) ->
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                initiator => MinerAddress, 
+                from_account => MinerAddress,
+                to_account => MinerAddress,
+                participant => aec_base58c:encode(account_pubkey, ParticipantPubkey),
+                amount => 2,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{initiator => MinerPubkey,
+                          participant => ParticipantPubkey,
+                          channel_id => ChannelId,
+                          from_account => MinerPubkey,
+                          to_account => MinerPubkey}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_withdrawal/1,
+                               fun aesc_withdraw_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, initiator, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash(MinerPubkey, from_account, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash(MinerPubkey, to_account, Encoded1, fun get_channel_withdrawal/1),
+    test_invalid_hash(ParticipantPubkey, participant, Encoded1, fun get_channel_withdrawal/1),
+    ok.
+
+state_channels_close_mutual(ChannelId, MinerPubkey, ParticipantPubkey) ->
+    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                amount => 2,
+                initiator => MinerAddress, 
+                participant => aec_base58c:encode(account_pubkey, ParticipantPubkey),
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{initiator => MinerPubkey,
+                          participant => ParticipantPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_close_mutual/1,
+                               fun aesc_close_mutual_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, initiator, Encoded1, fun get_channel_close_mutual/1),
+    test_invalid_hash(ParticipantPubkey, participant, Encoded1, fun get_channel_close_mutual/1),
+    ok.
+
+state_channels_close_solo(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                payload => <<"hejsan svejsan">>,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_close_solo/1,
+                               fun aesc_close_solo_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_channel_close_solo/1),
+    ok.
+
+state_channels_slash(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                payload => <<"hejsan svejsan">>,
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_slash/1,
+                               fun aesc_slash_tx:new/1, MinerPubkey),
+    test_invalid_hash(MinerPubkey, account, Encoded, fun get_channel_slash/1),
+    ok.
+
+state_channels_settle(ChannelId, MinerPubkey) ->
+    Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
+                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                party => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                fee => 1},
+    Decoded = maps:merge(Encoded,
+                        #{account => MinerPubkey,
+                          party => MinerPubkey,
+                          channel_id => ChannelId}),
+    unsigned_tx_positive_test(Decoded, Encoded,
+                               fun get_channel_settle/1,
+                               fun aesc_settle_tx:new/1, MinerPubkey,
+                               _NonceRequred = true),
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+                            MinerPubkey},
+    Encoded1 = maps:put(nonce, NextNonce, Encoded),
+    test_invalid_hash(MinerPubkey, account, Encoded1, fun get_channel_settle/1),
+    test_invalid_hash(MinerPubkey, party, Encoded1, fun get_channel_settle/1),
+    ok.
 
 %% tests the following
 %% GET spend_tx unsigned transaction
@@ -1021,10 +1199,17 @@ spend_transaction(_Config) ->
     test_missing_address(sender, Encoded, fun get_spend/1),
     ok.
 
-unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
-    {ok, NextNonce} = rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey) ->
+    unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
+                              false).
+
+unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
+                          NonceRequred) ->
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [Pubkey]),
+                            Pubkey},
     Test =
         fun(Nonce, P) ->
+            ct:log("PARAMS ~p", [P]),
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
             {ok, 200, #{<<"tx">> := ActualTx,
                         <<"tx_hash">> := ActualHash}} = HTTPCallFun(P),
@@ -1034,12 +1219,19 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx,
             ct:log("Hashes: Expected ~p~nActual ~p", [TxHash, ActualHash]),
-            ActualHash = TxHash
+            ActualHash = TxHash,
+            Tx
 
         end,
-    Test(NextNonce, Params),
+    Params =
+        case NonceRequred of
+            true -> maps:put(nonce, NextNonce, Params0);
+            false -> Params0
+        end,
+    Tx = Test(NextNonce, Params),
     RandomNonce = rand:uniform(999) + 1,
-    Test(RandomNonce, maps:put(nonce, RandomNonce, Params)).
+    Test(RandomNonce, maps:put(nonce, RandomNonce, Params)),
+    {ok, Tx}.
 
 
 get_transaction(_Config) ->
@@ -2885,6 +3077,34 @@ get_name_revoke(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/name/revoke", Data).
 
+get_channel_create(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/create", Data).
+
+get_channel_deposit(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/deposit", Data).
+
+get_channel_withdrawal(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/withdrawal", Data).
+
+get_channel_close_mutual(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/close/mutual", Data).
+
+get_channel_close_solo(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/close/solo", Data).
+
+get_channel_slash(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/slash", Data).
+
+get_channel_settle(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "tx/channel/settle", Data).
+
 get_block_by_height(Height) ->
     Host = external_address(),
     http_request(Host, get, "block-by-height", [{height, Height}]).
@@ -3567,7 +3787,7 @@ random_hash() ->
     HList =
         lists:map(
             fun(_) -> rand:uniform(255) end,
-            lists:seq(1, 32)),
+            lists:seq(1, 65)),
     list_to_binary(HList).
 
 prepare_for_spending(BlocksToMine) ->
@@ -3632,6 +3852,19 @@ populate_block(Txs) ->
             {ok, 200, _} = post_spend_tx(R, A, F)
         end,
         maps:get(spend_txs, Txs, [])),
+    ok.
+
+give_tokens(RecipientPubkey, Amount) ->
+    MineReward = rpc(aec_governance, block_mine_reward, []),
+    MinFee = rpc(aec_governance, minimum_tx_fee, []),
+    NeededBlocks = ((Amount + MinFee)  div MineReward) + 1,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   NeededBlocks),
+    SpendData = #{recipient => RecipientPubkey,
+                  amount => Amount,
+                  fee => MinFee},
+    populate_block(#{spend_txs => [SpendData]}),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     ok.
 
 %% we don't have any guarantee for the ordering of the txs in the block
