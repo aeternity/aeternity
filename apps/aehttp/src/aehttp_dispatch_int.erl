@@ -369,7 +369,8 @@ handle_request('GetAccountBalance', Req, _Context) ->
     end;
 
 handle_request('GetPeers', _Req, _Context) ->
-    case application:get_env(aehttp, enable_debug_endpoints, false) of
+    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
+                                    aehttp, enable_debug_endpoints, false) of
         true ->
             Peers = aehttp_logic:all_peers(),
             Blocked = aehttp_logic:blocked_peers(),

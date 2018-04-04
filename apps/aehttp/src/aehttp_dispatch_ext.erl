@@ -343,7 +343,8 @@ handle_request('GetName', Req, _Context) ->
     end;
 
 handle_request('GetAccountsBalances', _Req, _Context) ->
-    case application:get_env(aehttp, enable_debug_endpoints, false) of
+    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
+                                    aehttp, enable_debug_endpoints, false) of
         true ->
             {ok, AccountsBalances} = aehttp_logic:get_all_accounts_balances(),
             {200, [], #{accounts_balances =>
@@ -363,7 +364,8 @@ handle_request('GetVersion', _Req, _Context) ->
     {200, [], aehttp_api_parser:encode(node_version, Resp)};
 
 handle_request('GetInfo', _Req, _Context) ->
-    case application:get_env(aehttp, enable_debug_endpoints, false) of
+    case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
+                                    aehttp, enable_debug_endpoints, false) of
         true ->
             {ok, TimeSummary} = aehttp_logic:get_top_blocks_time_summary(30),
             {200, [], #{last_30_blocks_time => TimeSummary}};
