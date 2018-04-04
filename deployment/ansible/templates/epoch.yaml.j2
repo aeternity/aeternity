@@ -22,6 +22,7 @@ http:
     internal:
         listen_address: {{ config.http.internal.listen_address }}
         port: {{ config.http.internal.port }}
+    debug: {{ config.http.debug | bool | lower }}
 
 websocket:
     internal:
