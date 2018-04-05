@@ -13,7 +13,6 @@
           initiator_amount   :: non_neg_integer(),
           participant        :: pubkey(),
           participant_amount :: non_neg_integer(),
-          push_amount        :: non_neg_integer(),
           channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
           fee                :: non_neg_integer(),
