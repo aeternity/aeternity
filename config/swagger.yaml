@@ -2467,181 +2467,51 @@ definitions:
   SpendTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          sender: string
-          recipient: string
-          amount: integer
-          fee: integer
-          nonce: integer
-        required:
-        - sender
-        - recipient
-        - amount
-        - fee
-        - nonce
+      - $ref: '#/definitions/SpendTx'
   OracleRegisterTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          sender: string
-          nonce: integer
-          query_spec: string
-          response_spec: string
-          query_fee: integer
-          ttl:
-            $ref: '#/definitions/TTL'
-          fee: integer
-        required:
-        - account
-        - nonce
-        - query_spec
-        - response_spec
-        - query_fee
-        - ttl
-        - fee
+      - $ref: '#/definitions/OracleRegisterTx'
   OracleExtendTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          oracle: string
-          nonce: integer
-          ttl:
-            $ref: '#/definitions/TTL'
-          fee: integer
-        required:
-        - oracle
-        - nonce
-        - ttl
-        - fee
+      - $ref: '#/definitions/OracleExtendTx'
   OracleQueryTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          sender: string
-          nonce: integer
-          oracle: string
-          query: string
-          query_fee: integer
-          query_ttl:
-            $ref: '#/definitions/TTL'
-          response_ttl:
-            $ref: '#/definitions/TTL'
-          fee: integer
-        required:
-        - sender
-        - nonce
-        - oracle
-        - query
-        - query_fee
-        - query_ttl
-        - response_ttl
-        - fee
+      - $ref: '#/definitions/OracleQueryTx'
   OracleResponseTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          sender: string
-          nonce: integer
-          oracle: string
-          query: string
-          query_fee: integer
-          query_ttl:
-            $ref: '#/definitions/TTL'
-          response_ttl:
-            $ref: '#/definitions/TTL'
-          fee: integer
-        required:
-        - account
-        - nonce
-        - query_spec
-        - response_spec
-        - ttl
-        - fee
+      - $ref: '#/definitions/OracleResponseTx'
   NamePreclaimTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account: string
-          nonce: integer
-          commitment: string
-          fee: integer
-        required:
-        - account
-        - nonce
-        - commitment
-        - fee
+      - $ref: '#/definitions/NamePreClaimTx'
   NameClaimTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account: string
-          nonce: integer
-          name: string
-          name_salt: integer
-          fee: integer
-        required:
-        - account
-        - nonce
-        - name
-        - name_salt
-        - fee
+      - $ref: '#/definitions/NameClaimTx'
   NameUpdateTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account: string
-          nonce: integer
-          name_hash: string
-          name_ttl: integer
-          pointers: string
-          ttl: integer
-          fee: integer
-        required:
-        - account
-        - nonce
-        - name_hash
-        - name_ttl
-        - pointers
-        - ttl
-        - fee
+      - $ref: '#/definitions/NameUpdateTx'
   NameTransferTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account: string
-          nonce: integer
-          name_hash: string
-          recipient_pubkey: string
-          fee: integer
-        required:
-        - account
-        - nonce
-        - name_hash
-        - recipient_pubkey
-        - fee
+      - $ref: '#/definitions/NameTransferTx'
   NameRevokeTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account: string
-          nonce: integer
-          name_hash: string
-          fee: integer
-        required:
-        - account
-        - nonce
-        - name_hash
-        - fee
+      - $ref: '#/definitions/NameRevokeTx'
+  ContractCreateTxObject:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ContractCreateData'
+  ContractCallTxObject:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ContractCallData'
   Error:
     type: object
     properties:

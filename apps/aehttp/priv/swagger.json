@@ -3136,99 +3136,84 @@
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/SpendTx"
       } ]
     },
     "OracleRegisterTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object",
-        "required" : [ "ttl" ],
-        "properties" : {
-          "ttl" : {
-            "$ref" : "#/definitions/TTL"
-          }
-        }
+        "$ref" : "#/definitions/OracleRegisterTx"
       } ]
     },
     "OracleExtendTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object",
-        "required" : [ "ttl" ],
-        "properties" : {
-          "ttl" : {
-            "$ref" : "#/definitions/TTL"
-          }
-        }
+        "$ref" : "#/definitions/OracleExtendTx"
       } ]
     },
     "OracleQueryTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object",
-        "required" : [ "query_ttl", "response_ttl" ],
-        "properties" : {
-          "query_ttl" : {
-            "$ref" : "#/definitions/TTL"
-          },
-          "response_ttl" : {
-            "$ref" : "#/definitions/TTL"
-          }
-        }
+        "$ref" : "#/definitions/OracleQueryTx"
       } ]
     },
     "OracleResponseTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object",
-        "properties" : {
-          "query_ttl" : {
-            "$ref" : "#/definitions/TTL"
-          },
-          "response_ttl" : {
-            "$ref" : "#/definitions/TTL"
-          }
-        }
+        "$ref" : "#/definitions/OracleResponseTx"
       } ]
     },
     "NamePreclaimTxObject" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/NamePreClaimTx"
       } ]
     },
     "NameClaimTxObject" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/NameClaimTx"
       } ]
     },
     "NameUpdateTxObject" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/NameUpdateTx"
       } ]
     },
     "NameTransferTxObject" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/NameTransferTx"
       } ]
     },
     "NameRevokeTxObject" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "type" : "object"
+        "$ref" : "#/definitions/NameRevokeTx"
+      } ]
+    },
+    "ContractCreateTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ContractCreateData"
+      } ]
+    },
+    "ContractCallTxObject" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ContractCallData"
       } ]
     },
     "Error" : {
