@@ -239,12 +239,12 @@ handle_call({sign, Tx}, _From,
             SignedTx = aetx_sign:sign(Tx, PrivKey, CryptoMap),
             {reply, {ok, SignedTx}, State}
     end;
-handle_call({verify, Sigs, Tx}, _From, #state{crypto = C} = State) ->
-    Signers = aetx:signers(Tx),
+handle_call({verify, Signatures, Tx}, _From, #state{crypto = C} = State) ->
+    SignersPubKeys = aetx:signers(Tx),
     Bin = aetx:serialize_to_binary(Tx),
-    Res = lists:any(fun(Sig) ->
-                            try_verify(Bin, Sig, Signers, C)
-                    end, Sigs),
+    Res = lists:all(fun(SignerPubKey) ->
+                            has_signers_signature(Bin, SignerPubKey, Signatures, C)
+                    end, SignersPubKeys),
     {reply, Res, State};
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
@@ -289,14 +289,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-try_verify(Bin, S, Signers, #crypto{algo = Algo,
-                                    digest = Digest,
-                                    curve = Curve}) ->
+has_signers_signature(Bin, SignerPubKey, Signatures,
+                      #crypto{algo = Algo,
+                              digest = Digest,
+                              curve = Curve}) ->
     lists:any(
-      fun(PubKey) ->
+      fun(Signature) ->
               crypto:verify(
-                Algo, Digest, Bin, S, [PubKey, crypto:ec_curve(Curve)])
-      end, Signers).
+                Algo, Digest, Bin, Signature, [SignerPubKey, crypto:ec_curve(Curve)])
+      end, Signatures).
 
 hash(Bin) ->
     crypto:hash(sha256, Bin).

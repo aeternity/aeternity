@@ -26,7 +26,6 @@
          id/3,
          initiator/1,
          initiator_amount/1,
-         push_amount/1,
          participant/1,
          participant_amount/1,
          channel_reserve/1,
@@ -44,7 +43,6 @@
 -record(channel, {id                 :: id(),
                   initiator          :: pubkey(),
                   participant        :: pubkey(),
-                  push_amount        :: amount(),
                   initiator_amount   :: amount(),
                   participant_amount :: amount(),
                   channel_reserve    :: amount(),
@@ -97,7 +95,6 @@ deserialize(Bin) ->
      #{<<"vsn">>                := ?CHANNEL_VSN},
      #{<<"id">>                 := Id},
      #{<<"initiator">>          := InitiatorPubKey},
-     #{<<"push_amount">>        := PushAmount},
      #{<<"initiator_amount">>   := InitiatorAmount},
      #{<<"participant">>        := ParticipantPubKey},
      #{<<"participant_amount">> := ParticipantAmount},
@@ -112,7 +109,6 @@ deserialize(Bin) ->
                end,
     #channel{id                 = Id,
              initiator          = InitiatorPubKey,
-             push_amount        = PushAmount,
              initiator_amount   = InitiatorAmount,
              participant        = ParticipantPubKey,
              participant_amount = ParticipantAmount,
@@ -148,7 +144,6 @@ new(ChCTx) ->
             aesc_create_tx:participant(ChCTx)),
     #channel{id                 = Id,
              initiator          = aesc_create_tx:initiator(ChCTx),
-             push_amount        = aesc_create_tx:push_amount(ChCTx),
              initiator_amount   = aesc_create_tx:initiator_amount(ChCTx),
              participant        = aesc_create_tx:participant(ChCTx),
              participant_amount = aesc_create_tx:participant_amount(ChCTx),
@@ -171,7 +166,6 @@ serialize(#channel{} = Ch) ->
                   #{<<"vsn">>                => ?CHANNEL_VSN},
                   #{<<"id">>                 => id(Ch)},
                   #{<<"initiator">>          => initiator(Ch)},
-                  #{<<"push_amount">>        => push_amount(Ch)},
                   #{<<"initiator_amount">>   => initiator_amount(Ch)},
                   #{<<"participant">>        => participant(Ch)},
                   #{<<"participant_amount">> => participant_amount(Ch)},
@@ -215,10 +209,6 @@ id(#channel{id = Id}) ->
 -spec initiator(channel()) -> pubkey().
 initiator(#channel{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
-
--spec push_amount(channel()) -> non_neg_integer().
-push_amount(#channel{push_amount = PushAmount}) ->
-    PushAmount.
 
 -spec initiator_amount(channel()) -> amount().
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
