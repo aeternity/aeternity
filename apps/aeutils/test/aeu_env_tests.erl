@@ -32,7 +32,8 @@ test_data_config_files() ->
             false -> "../../lib/"
         end,
     [filename:join([Dir, DataDir, "epoch_full.yaml"]),
-       filename:join([Dir, DataDir, "epoch_testnet.yaml"])].
+     filename:join([Dir, DataDir, "epoch_no_peers.yaml"]),
+     filename:join([Dir, DataDir, "epoch_testnet.yaml"])].
 
 setup() ->
     application:ensure_all_started(jesse),

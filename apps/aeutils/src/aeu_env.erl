@@ -325,27 +325,13 @@ interpret_json({K, V}, _) ->
 
 read_yaml(F, Schema, Mode) ->
     validate(
-        normalize_yaml(
-          try_decode(
-            F,
-            fun(F1) ->
-                    yamerl:decode_file(F1, [{str_node_as_binary, true}])
-            end, "YAML", Mode), F),
+      try_decode(
+        F,
+        fun(F1) ->
+                yamerl:decode_file(F1, [{str_node_as_binary, true},
+                                        {map_node_format, map}])
+        end, "YAML", Mode),
       F, Schema, Mode).
-
-normalize_yaml([L|_] = Y, F) when is_list(L) ->
-    %% array
-    [normalize_yaml(Elem, F) || Elem <- Y];
-normalize_yaml(Y, F) when is_list(Y) ->
-    Res = [normalize_yaml(Elem, F) || Elem <- Y],
-    try maps:from_list(Res)
-    catch
-        error:_ -> Res
-    end;
-normalize_yaml({K, V}, F) when is_list(V) ->
-    {K, normalize_yaml(V, F)};
-normalize_yaml(E, _) ->
-    E.
 
 try_decode(F, DecF, Fmt, Mode) ->
     try DecF(F)
