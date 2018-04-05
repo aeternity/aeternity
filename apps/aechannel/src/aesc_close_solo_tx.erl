@@ -100,10 +100,10 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
     {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
     AccountsTree1           = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
 
-    State         = aesc_state_signed:state(aesc_state_signed:deserialize(Payload)),
-    Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:close_solo(Channel0, State, Height),
-    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
+    {ok, _SignedTx, StateTx} = deserialize_from_binary(Payload),
+    Channel0                 = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    Channel1                 = aesc_channels:close_solo(Channel0, StateTx, Height),
+    ChannelsTree1            = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
@@ -111,9 +111,10 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
 
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_close_solo_tx{payload = Payload}) ->
-    %% TODO: Catch errors in deserialization in case someone sends borked payload
-    SignedState = aesc_state_signed:deserialize(Payload),
-    aesc_state:pubkeys(aesc_state_signed:state(SignedState)).
+    case deserialize_from_binary(Payload) of
+        {ok, SignedState, _StateTx} -> aetx:signers(aetx_sign:tx(SignedState));
+        {error, _Reason}            -> []
+    end.
 
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_close_solo_tx{account = AccountPubKey}) ->
@@ -126,12 +127,12 @@ serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  fee        = Fee,
                                  nonce      = Nonce}) ->
     {version(),
-    [ {channel_id, ChannelId}
-    , {account   , AccountPubKey}
-    , {payload   , Payload}
-    , {fee       , Fee}
-    , {nonce     , Nonce}
-    ]}.
+     [ {channel_id, ChannelId}
+     , {account   , AccountPubKey}
+     , {payload   , Payload}
+     , {fee       , Fee}
+     , {nonce     , Nonce}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_SOLO_TX_VSN,
@@ -175,36 +176,51 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
 -spec check_payload(aesc_channels:id(), pubkey(), binary(), aec_trees:trees()) ->
                            ok | {error, term()}.
 check_payload(ChannelId, AccountPubKey, Payload, Trees) ->
-    %% TODO: Catch errors in deserialization in case someone sends borked payload
-    SignedState = aesc_state_signed:deserialize(Payload),
-    State       = aesc_state_signed:state(SignedState),
-    Peers       = aesc_state:pubkeys(State),
-    Checks =
-        [fun() -> is_peer(AccountPubKey, Peers) end,
-         fun() -> verify_signatures(SignedState) end,
-         fun() -> check_channel(ChannelId, State, Trees) end],
-    aeu_validation:run(Checks).
-
-is_peer(AccountPubKey, Peers) ->
-    case lists:member(AccountPubKey, Peers) of
-        true  -> ok;
-        false -> {error, account_not_peers}
+    case deserialize_from_binary(Payload) of
+        {ok, SignedState, StateTx} ->
+            Checks =
+                [fun() -> is_peer(AccountPubKey, SignedState) end,
+                 fun() -> aetx_sign:verify(SignedState) end,
+                 fun() -> check_channel(ChannelId, StateTx, Trees) end],
+            aeu_validation:run(Checks);
+        {error, _Reason} = Error ->
+            Error
     end.
 
-verify_signatures(SignedState) ->
-    case aesc_state_signed:verify(SignedState) of
-        true  -> ok;
-        false -> {error, wrong_payload_signatures}
+deserialize_from_binary(Payload) ->
+    try
+        SignedTx = aetx_sign:deserialize_from_binary(Payload),
+        Tx       = aetx_sign:tx(SignedTx),
+        case aetx:specialize_type(Tx) of
+            {channel_offchain_tx, StateTx} ->
+                {ok, SignedTx, StateTx};
+            {_Type, _TxBody} ->
+                {error, bad_offchain_state_type}
+        end
+    catch _:_ ->
+            {error, payload_deserialization_failed}
     end.
 
-check_channel(ChannelId, State, Trees) ->
-    StateInitiator         = aesc_state:initiator(State),
-    StateParticipant       = aesc_state:responder(State),
-    StateInitiatorAmount   = aesc_state:initiator_amount(State),
-    StateParticipantAmount = aesc_state:responder_amount(State),
-    aesc_utils:check_active_channel_exists(
-      ChannelId, StateInitiator, StateInitiatorAmount,
-      StateParticipant, StateParticipantAmount, Trees).
+is_peer(AccountPubKey, SignedState) ->
+    Tx = aetx_sign:tx(SignedState),
+    case lists:member(AccountPubKey, aetx:signers(Tx)) of
+        true  -> ok;
+        false -> {error, account_not_peer}
+    end.
+
+check_channel(ChannelId, StateTx, Trees) ->
+    case ChannelId =:= aesc_offchain_tx:channel_id(StateTx) of
+        true ->
+            StateInitiator         = aesc_offchain_tx:initiator(StateTx),
+            StateParticipant       = aesc_offchain_tx:participant(StateTx),
+            StateInitiatorAmount   = aesc_offchain_tx:initiator_amount(StateTx),
+            StateParticipantAmount = aesc_offchain_tx:participant_amount(StateTx),
+            aesc_utils:check_active_channel_exists(
+              ChannelId, StateInitiator, StateInitiatorAmount,
+              StateParticipant, StateParticipantAmount, Trees);
+        false ->
+            {error, bad_state_channel_id}
+    end.
 
 -spec version() -> non_neg_integer().
 version() ->

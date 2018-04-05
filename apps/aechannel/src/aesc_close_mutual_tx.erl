@@ -138,13 +138,13 @@ serialize(#channel_close_mutual_tx{channel_id  = ChannelId,
                                    fee         = Fee,
                                    nonce       = Nonce}) ->
     {version(),
-    [ {channel_id , ChannelId}
-    , {amount     , Amount}
-    , {initiator  , InitiatorPubKey}
-    , {participant,  ParticipantPubKey}
-    , {fee        , Fee}
-    , {nonce      , Nonce}
-    ]}.
+     [ {channel_id , ChannelId}
+     , {amount     , Amount}
+     , {initiator  , InitiatorPubKey}
+     , {participant, ParticipantPubKey}
+     , {fee        , Fee}
+     , {nonce      , Nonce}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,

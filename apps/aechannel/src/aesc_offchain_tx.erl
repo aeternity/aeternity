@@ -22,6 +22,14 @@
          for_client/1
         ]).
 
+%% Getters
+-export([channel_id/1,
+         initiator/1,
+         initiator_amount/1,
+         participant/1,
+         participant_amount/1,
+         sequence_number/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -93,8 +101,8 @@ accounts(#channel_offchain_tx{
 
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_offchain_tx{
-            initiator   = InitiatorPubKey,
-            participant = ParticipantPubKey}) ->
+           initiator   = InitiatorPubKey,
+           participant = ParticipantPubKey}) ->
     [InitiatorPubKey, ParticipantPubKey].
 
 -spec serialize(tx()) -> {vsn(), list()}.
@@ -107,14 +115,14 @@ serialize(#channel_offchain_tx{
              state              = State,
              sequence_number    = SequenceNumber}) ->
     {version(),
-    [ {channel_id        , ChannelId}
-    , {sequence_number   , SequenceNumber}
-    , {initiator         , InitiatorPubKey}
-    , {participant       , ParticipantPubKey}
-    , {initiator_amount  , InitiatorAmount}
-    , {participant_amount, ParticipantAmount}
-    , {state             , State}
-    ]}.
+     [ {channel_id        , ChannelId}
+     , {sequence_number   , SequenceNumber}
+     , {initiator         , InitiatorPubKey}
+     , {participant       , ParticipantPubKey}
+     , {initiator_amount  , InitiatorAmount}
+     , {participant_amount, ParticipantAmount}
+     , {state             , State}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
@@ -163,6 +171,38 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     , {participant_amount, int}
     , {state             , binary}
     ].
+
+%%%===================================================================
+%%% Getters
+%%%===================================================================
+
+-spec channel_id(tx()) -> aesc_channels:id().
+channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
+    ChannelId.
+
+-spec initiator(tx()) -> pubkey().
+initiator(#channel_offchain_tx{initiator = InitiatorPubKey}) ->
+    InitiatorPubKey.
+
+-spec initiator_amount(tx()) -> aesc_channels:amount().
+initiator_amount(#channel_offchain_tx{initiator_amount = InitiatorAmount}) ->
+    InitiatorAmount.
+
+-spec participant(tx()) -> pubkey().
+participant(#channel_offchain_tx{participant = ParticipantPubKey}) ->
+    ParticipantPubKey.
+
+-spec participant_amount(tx()) -> aesc_channels:amount().
+participant_amount(#channel_offchain_tx{participant_amount = ParticipantAmount}) ->
+    ParticipantAmount.
+
+-spec sequence_number(tx()) -> aesc_channels:seq_number().
+sequence_number(#channel_offchain_tx{sequence_number = SequenceNumber}) ->
+    SequenceNumber.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
 
 version() ->
     ?CHANNEL_OFFCHAIN_TX_VSN.

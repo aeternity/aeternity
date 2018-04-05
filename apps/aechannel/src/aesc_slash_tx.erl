@@ -100,10 +100,10 @@ process(#channel_slash_tx{channel_id = ChannelId,
     {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
     AccountsTree1           = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
 
-    State         = aesc_state_signed:state(aesc_state_signed:deserialize(Payload)),
-    Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:slash(Channel0, State, Height),
-    ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
+    {ok, _SignedTx, StateTx} = deserialize_from_binary(Payload),
+    Channel0                 = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    Channel1                 = aesc_channels:slash(Channel0, StateTx, Height),
+    ChannelsTree1            = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
@@ -111,8 +111,10 @@ process(#channel_slash_tx{channel_id = ChannelId,
 
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_slash_tx{payload = Payload}) ->
-    SignedState = aesc_state_signed:deserialize(Payload),
-    aesc_state:pubkeys(aesc_state_signed:state(SignedState)).
+    case deserialize_from_binary(Payload) of
+        {ok, SignedState, _StateTx} -> aetx:signers(aetx_sign:tx(SignedState));
+        {error, _Reason}            -> []
+    end.
 
 -spec signers(tx()) -> list(pubkey()).
 signers(#channel_slash_tx{account = AccountPubKey}) ->
@@ -125,12 +127,12 @@ serialize(#channel_slash_tx{channel_id = ChannelId,
                             fee        = Fee,
                             nonce      = Nonce}) ->
     {version(),
-    [ {channel_id, ChannelId}
-    , {account   , AccountPubKey}
-    , {payload   , Payload}
-    , {fee       , Fee}
-    , {nonce     , Nonce}
-    ]}.
+     [ {channel_id, ChannelId}
+     , {account   , AccountPubKey}
+     , {payload   , Payload}
+     , {fee       , Fee}
+     , {nonce     , Nonce}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_SLASH_TX_VSN,
@@ -174,57 +176,72 @@ serialization_template(?CHANNEL_SLASH_TX_VSN) ->
 -spec check_payload(aesc_channels:id(), pubkey(), binary(), height(), aec_trees:trees()) ->
                            ok | {error, term()}.
 check_payload(ChannelId, AccountPubKey, Payload, Height, Trees) ->
-    %% TODO: Catch errors in deserialization in case someone sends borked payload
-    SignedState = aesc_state_signed:deserialize(Payload),
-    State       = aesc_state_signed:state(SignedState),
-    Peers       = aesc_state:pubkeys(State),
-    Checks =
-        [fun() -> is_peer(AccountPubKey, Peers) end,
-         fun() -> verify_signatures(SignedState) end,
-         fun() -> check_channel(ChannelId, State, Height, Trees) end],
-    aeu_validation:run(Checks).
+    case deserialize_from_binary(Payload) of
+        {ok, SignedState, StateTx} ->
+            Checks =
+                [fun() -> is_peer(AccountPubKey, SignedState) end,
+                 fun() -> aetx_sign:verify(SignedState) end,
+                 fun() -> check_channel(ChannelId, StateTx, Height, Trees) end],
+            aeu_validation:run(Checks);
+        {error, _Reason} = Error ->
+            Error
+    end.
 
-is_peer(AccountPubKey, Peers) ->
-    case lists:member(AccountPubKey, Peers) of
+deserialize_from_binary(Payload) ->
+    try
+        SignedTx = aetx_sign:deserialize_from_binary(Payload),
+        Tx       = aetx_sign:tx(SignedTx),
+        case aetx:specialize_type(Tx) of
+            {channel_offchain_tx, StateTx} ->
+                {ok, SignedTx, StateTx};
+            {_Type, _TxBody} ->
+                {error, bad_offchain_state_type}
+        end
+    catch _:_ ->
+            {error, payload_deserialization_failed}
+    end.
+
+is_peer(AccountPubKey, SignedState) ->
+    Tx = aetx_sign:tx(SignedState),
+    case lists:member(AccountPubKey, aetx:signers(Tx)) of
         true  -> ok;
         false -> {error, account_not_peers}
     end.
 
-verify_signatures(SignedState) ->
-    case aesc_state_signed:verify(SignedState) of
-        true  -> ok;
-        false -> {error, wrong_payload_signatures}
-    end.
-
-check_channel(ChannelId, State, Height, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Channel} ->
-            Checks =
-                [fun() -> check_peers_equal(State, Channel) end,
-                 fun() -> check_amounts_equal(State, Channel) end,
-                 fun() -> check_solo_closing(Channel, Height) end,
-                 fun() -> check_seq_number(State, Channel) end],
-            aeu_validation:run(Checks)
+check_channel(ChannelId, StateTx, Height, Trees) ->
+    case ChannelId =:= aesc_offchain_tx:channel_id(StateTx) of
+        true ->
+            ChannelsTree = aec_trees:channels(Trees),
+            case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
+                none ->
+                    {error, channel_does_not_exist};
+                {value, Channel} ->
+                    Checks =
+                        [fun() -> check_peers_equal(StateTx, Channel) end,
+                         fun() -> check_amounts_equal(StateTx, Channel) end,
+                         fun() -> check_solo_closing(Channel, Height) end,
+                         fun() -> check_seq_number(StateTx, Channel) end],
+                    aeu_validation:run(Checks)
+            end;
+        false ->
+            {error, bad_state_channel_id}
     end.
 
 check_peers_equal(State, Channel) ->
-    case aesc_channels:initiator(Channel) =:= aesc_state:initiator(State)
-        andalso aesc_channels:participant(Channel) =:= aesc_state:responder(State) of
+    case aesc_channels:initiator(Channel) =:= aesc_offchain_tx:initiator(State)
+        andalso aesc_channels:participant(Channel) =:= aesc_offchain_tx:participant(State) of
         true ->
             ok;
         false ->
-            {error, wrong_channel_peers}
+            {error, wrong_state_peers}
     end.
 
 check_amounts_equal(State, Channel) ->
     ChannelAmount = aesc_channels:initiator_amount(Channel) + aesc_channels:participant_amount(Channel),
-    StateAmount   = aesc_state:initiator_amount(State) + aesc_state:responder_amount(State),
+    StateAmount   = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
     case ChannelAmount =:= StateAmount of
         true  -> ok;
-        false -> {error, wrong_state_amounts}
+        false -> {error, wrong_state_amount}
     end.
 
 check_solo_closing(Channel, Height) ->
@@ -234,7 +251,7 @@ check_solo_closing(Channel, Height) ->
     end.
 
 check_seq_number(State, Channel) ->
-    case aesc_channels:sequence_number(Channel) < aesc_state:sequence_number(State) of
+    case aesc_channels:sequence_number(Channel) < aesc_offchain_tx:sequence_number(State) of
         true  -> ok;
         false -> {error, state_seq_number_too_small}
     end.
