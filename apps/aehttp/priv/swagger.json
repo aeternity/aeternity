@@ -1298,7 +1298,7 @@
     },
     "/account/balance/{account_pubkey}" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get accounts's balance",
         "operationId" : "GetAccountBalance",
         "produces" : [ "application/json" ],
@@ -1345,7 +1345,7 @@
     },
     "/account/txs/{account_pubkey}" : {
       "get" : {
-        "tags" : [ "internal", "transactions" ],
+        "tags" : [ "external", "transactions" ],
         "description" : "Get accounts's transactions included in blocks in the longest chain",
         "operationId" : "GetAccountTransactions",
         "produces" : [ "application/json" ],

@@ -3,6 +3,7 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
+-import(aehttp_helpers, [read_tx_encoding_param/1, parse_filter_param/2]).
 
 -spec handle_request(
         OperationID :: atom(),
@@ -344,30 +345,6 @@ handle_request('GetTxsListFromBlockRangeByHash', Req, _Context) ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
 
-handle_request('GetAccountBalance', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            case get_block_hash_optionally_by_hash_or_height(Req) of
-                {error, not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}};
-                {error, invalid_hash} ->
-                    {400, [], #{reason => <<"Invalid block hash">>}};
-                {error, blocks_mismatch} ->
-                    {400, [], #{reason => <<"Invalid height and hash combination">>}};
-                {ok, Hash} ->
-                      case aehttp_logic:get_account_balance_at_hash(AccountPubkey, Hash) of
-                          {error, account_not_found} ->
-                              {404, [], #{reason => <<"Account not found">>}};
-                          {error, not_on_main_chain} ->
-                              {400, [], #{reason => <<"Block not on the main chain">>}};
-                          {ok, Balance} ->
-                              {200, [], #{balance => Balance}}
-                      end
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
-    end;
-
 handle_request('GetPeers', _Req, _Context) ->
     case aeu_env:user_config_or_env([<<"http">>, <<"debug">>],
                                     aehttp, enable_debug_endpoints, false) of
@@ -379,31 +356,6 @@ handle_request('GetPeers', _Req, _Context) ->
                         blocked => lists:map(fun aec_peers:encode_peer_address/1, Blocked)}};
         false ->
             {403, [], #{reason => <<"Call not enabled">>}}
-    end;
-
-handle_request('GetAccountTransactions', Req, _Context) ->
-    case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
-        {ok, AccountPubkey} ->
-            {ok, TopBlockHash} = aehttp_logic:get_top_hash(),
-            case aehttp_logic:get_account_balance_at_hash(AccountPubkey, TopBlockHash) of
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}};
-                {ok, _} ->
-                    case get_account_transactions(AccountPubkey, Req) of
-                        {error, unknown_type} ->
-                            {400, [], #{reason => <<"Unknown transaction type">>}};
-                        {ok, HeaderTxs} ->
-                            case encode_txs(HeaderTxs, Req) of
-                                {error, Err} ->
-                                    Err;
-                                {ok, EncodedTxs, DataSchema} ->
-                                    {200, [], #{transactions => EncodedTxs,
-                                                data_schema => DataSchema}}
-                            end
-                    end
-            end;
-        _ ->
-            {400, [], #{reason => <<"Invalid account hash">>}}
     end;
 
 handle_request(OperationID, Req, Context) ->
@@ -487,23 +439,6 @@ filter_transaction_list(Req, TxList) ->
             {ok, Filtered}
     end.
 
--spec parse_filter_param(atom(), map()) -> {ok, list()} | {error, unknown_type}.
-parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
-    Vals = binary:split(
-        read_optional_param(ParamName, Req, <<>>),
-        [<<",">>],
-        [global]),
-    case Vals =:= [<<>>] of
-        false ->
-            KnownTypes = lists:filter(fun aetx:is_tx_type/1, Vals),
-            case length(Vals) =:= length(KnownTypes) of
-                true -> {ok, KnownTypes};
-                false -> {error, unknown_type}
-            end;
-        true ->
-            {ok, []}
-    end.
-
 get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
@@ -551,37 +486,6 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
             {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
         {error, not_mining} ->
             {404, [], #{reason => <<"Not mining, no pending block">>}}
-    end.
-
--spec read_tx_encoding_param(map()) -> {ok, json | message_pack} |
-                                       {error, {integer(), list(), map()}}.
-read_tx_encoding_param(Req) ->
-    case read_optional_enum_param(tx_encoding, Req, message_pack,
-                                  [message_pack, json]) of
-        {error, unexpected_value} ->
-            {error, {404, [], #{reason => <<"Unsupported transaction encoding">>}}};
-        {ok, Encoding} ->
-            {ok, Encoding}
-    end.
-
-
--spec read_optional_enum_param(atom(), map(), term(), list()) -> {ok, term()} |
-                                                                 {error, atom()}.
-read_optional_enum_param(Key, Req, Default, Enums) ->
-    Val = read_optional_param(Key, Req, Default),
-    case lists:member(Val, Enums) of
-        true -> {ok, Val};
-        false -> {error, unexpected_value}
-    end.
-
--spec read_optional_param(atom(), map(), term()) -> term().
-read_optional_param(Key, Req, Default) ->
-    %% swagger does not take into consideration the 'default'
-    %% if a query param is missing, swagger adds it to Req with a value of
-    %% 'undefined'
-    case maps:get(Key, Req) of
-        undefined -> Default;
-        Val -> Val
     end.
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
@@ -636,150 +540,3 @@ get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
               end
 
     end.
-
-
--spec get_block_hash_optionally_by_hash_or_height(map()) ->
-    {ok, binary()} | {error, not_found | invalid_hash | blocks_mismatch}.
-get_block_hash_optionally_by_hash_or_height(Req) ->
-    GetHashByHeight =
-        fun(Height) ->
-            case aehttp_logic:get_header_by_height(Height) of
-                {error, chain_too_short} ->
-                    {error, not_found};
-                {ok, Header} ->
-                    {ok, _Hash} = aec_headers:hash_header(Header)
-            end
-        end,
-    case {maps:get('height', Req), maps:get('hash', Req)} of
-        {undefined, undefined} ->
-            {ok, _} = aehttp_logic:get_top_hash();
-        {undefined, EncodedHash} ->
-            case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                {error, _} ->
-                    {error, invalid_hash};
-                {ok, Hash} ->
-                    case aec_chain:has_header(Hash) of
-                        false ->
-                            {error, not_found};
-                        true ->
-                            {ok, Hash}
-                    end
-            end;
-        {Height, undefined} ->
-            GetHashByHeight(Height);
-        {Height, EncodedHash} ->
-            case GetHashByHeight(Height) of
-                {error, _} = Err ->
-                    Err;
-                {ok, Hash} -> % ensure it is the same hash
-                    case aec_base58c:safe_decode(block_hash, EncodedHash) of
-                        {error, _} ->
-                            {error, invalid_hash};
-                        {ok, Hash} -> % same hash
-                            {ok, Hash};
-                        {ok, _OtherHash} ->
-                            {error, blocks_mismatch}
-                    end
-            end
-    end.
-
-encode_txs(HeaderTxs, Req) ->
-    case read_tx_encoding_param(Req) of
-        {error, _} = Err ->
-            Err;
-        {ok, TxEncoding} ->
-            DataSchema =
-                case TxEncoding of
-                    json ->
-                        <<"JSONTxs">>;
-                    message_pack ->
-                        <<"MsgPackTxs">>
-                end,
-            EncodedTxs =
-                lists:map(
-                    fun({mempool, Tx}) ->
-                        aetx_sign:serialize_for_client_pending(TxEncoding, Tx);
-                    ({BlockHeader, Tx}) ->
-                        aetx_sign:serialize_for_client(TxEncoding,
-                                                       BlockHeader, Tx)
-                    end,
-                    HeaderTxs),
-            {ok, EncodedTxs, DataSchema}
-    end.
-
-get_account_transactions(Account, Req) ->
-    case {parse_filter_param(tx_types, Req),
-          parse_filter_param(exclude_tx_types, Req)} of
-        {{error, unknown_type} = Err, _} ->
-            Err;
-        {_, {error, unknown_type} = Err} ->
-            Err;
-        {{ok, KeepTxTypes}, {ok, DropTxTypes}} ->
-            ShowPending = read_optional_param(pending, Req, true),
-            FilteredTxs = get_txs_and_headers(KeepTxTypes,
-                                              DropTxTypes,
-                                              ShowPending,
-                                              Account),
-            Res =
-              lists:sort(
-                  fun({mempool, SignedTxA}, {mempool, SignedTxB}) ->
-                      TxA = aetx_sign:tx(SignedTxA),
-                      TxB = aetx_sign:tx(SignedTxB),
-                      {aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
-                      {aetx:origin(TxB), aetx:nonce(TxB), TxB};
-                     ({mempool, _}, {_, _}) -> true;
-                     ({_, _}, {mempool, _}) -> false;
-                     ({HeaderA, SignedTxA}, {HeaderB, SignedTxB}) ->
-                      HeightA = aec_headers:height(HeaderA),
-                      HeightB = aec_headers:height(HeaderB),
-                      TxA = aetx_sign:tx(SignedTxA),
-                      TxB = aetx_sign:tx(SignedTxB),
-                      {HeightA, aetx:origin(TxA), aetx:nonce(TxA), TxA} >=
-                      {HeightB, aetx:origin(TxB), aetx:nonce(TxB), TxB}
-                  end,
-                  FilteredTxs),
-            {ok, offset_and_limit(Req, Res)}
-      end.
-
-get_txs_and_headers(KeepTxTypes, DropTxTypes, ShowPending, Account) ->
-    Filter =
-        fun(SignedTx) ->
-              Tx = aetx_sign:tx(SignedTx),
-              TxType = aetx:tx_type(Tx),
-              Drop = lists:member(TxType, DropTxTypes),
-              Keep = KeepTxTypes =:= []
-                  orelse lists:member(TxType, KeepTxTypes),
-              Keep andalso not Drop
-        end,
-    Fun =
-        fun() ->
-                Txs = aec_db:transactions_by_account(Account, Filter,
-                                                     ShowPending),
-                TxHashes = lists:usort([aetx:hash(aetx_sign:tx(SignedTx))
-                                        || SignedTx <- Txs]),
-                [case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
-                     {mempool, SignedTx} -> {mempool, SignedTx};
-                     {BlockHash, SignedTx} ->
-                         {ok, H} = aec_chain:get_header(BlockHash),
-                         {H, SignedTx}
-                 end
-                 || TxHash <- TxHashes]
-        end,
-    %% Put this in a transaction to avoid multiple transaction and to
-    %% get a snapshot of the chain state.
-    aec_db:ensure_transaction(Fun).
-
-
-offset_and_limit(Req, ResultList) ->
-    Limit = read_optional_param(limit, Req, 20),
-    Offset = read_optional_param(offset, Req, 0) + 1, % lists are 1-indexed
-    Sublist =
-        fun Sub([], _, _, _, Accum) -> Accum;
-            Sub(_, _, _, LeftToTake, Accum) when LeftToTake =< 0 -> Accum;
-            Sub([H | T], Idx, StartIdx, LeftToTake, Accum) ->
-                case Idx >= StartIdx of
-                    true -> Sub(T, Idx + 1, StartIdx, LeftToTake - 1, [H | Accum]);
-                    false -> Sub(T, Idx + 1, StartIdx, LeftToTake, Accum)
-                end
-        end,
-    lists:reverse(Sublist(ResultList, 1, Offset, Limit, [])).
