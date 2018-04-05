@@ -28,7 +28,6 @@
 
 %% Getters
 -export([initiator/1,
-         push_amount/1,
          initiator_amount/1,
          channel_reserve/1,
          lock_period/1,
@@ -53,7 +52,6 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{initiator          := InitiatorPubKey,
-      push_amount        := PushAmount,
       initiator_amount   := InitiatorAmount,
       participant        := ParticipantPubKey,
       participant_amount := ParticipantAmount,
@@ -63,7 +61,6 @@ new(#{initiator          := InitiatorPubKey,
       nonce              := Nonce}) ->
     Tx = #channel_create_tx{initiator          = InitiatorPubKey,
                             participant        = ParticipantPubKey,
-                            push_amount        = PushAmount,
                             initiator_amount   = InitiatorAmount,
                             participant_amount = ParticipantAmount,
                             channel_reserve    = ChannelReserve,
@@ -89,7 +86,6 @@ origin(#channel_create_tx{initiator = InitiatorPubKey}) ->
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_create_tx{initiator          = InitiatorPubKey,
-                         push_amount        = PushAmount,
                          initiator_amount   = InitiatorAmount,
                          participant        = ParticipantPubKey,
                          participant_amount = ParticipantAmount,
@@ -99,11 +95,8 @@ check(#channel_create_tx{initiator          = InitiatorPubKey,
     Checks =
         [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, InitiatorAmount + Fee) end,
          fun() -> aetx_utils:check_account(ParticipantPubKey, Trees, Height, ParticipantAmount) end,
-         fun() -> check_not_channel(InitiatorPubKey, Nonce, ParticipantPubKey, Trees) end,
-         fun() -> check_push_amount(PushAmount, InitiatorAmount) end,
-         fun() -> check_reserve_amount(ChannelReserve,
-                                       InitiatorAmount - PushAmount,
-                                       ParticipantAmount + PushAmount) end],
+         fun() -> check_reserve_amount(ChannelReserve, InitiatorAmount, ParticipantAmount) end,
+         fun() -> check_not_channel(InitiatorPubKey, Nonce, ParticipantPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -152,22 +145,20 @@ serialize(#channel_create_tx{initiator          = InitiatorPubKey,
                              initiator_amount   = InitiatorAmount,
                              participant        = ParticipantPubKey,
                              participant_amount = ParticipantAmount,
-                             push_amount        = PushAmount,
                              channel_reserve    = ChannelReserve,
                              lock_period        = LockPeriod,
                              fee                = Fee,
                              nonce              = Nonce}) ->
     {version(),
-    [ {initiator         , InitiatorPubKey}
-    , {initiator_amount  , InitiatorAmount}
-    , {participant       , ParticipantPubKey}
-    , {participant_amount, ParticipantAmount}
-    , {push_amount       , PushAmount}
-    , {channel_reserve   , ChannelReserve}
-    , {lock_period       , LockPeriod}
-    , {fee               , Fee}
-    , {nonce             , Nonce}
-    ]}.
+     [ {initiator         , InitiatorPubKey}
+     , {initiator_amount  , InitiatorAmount}
+     , {participant       , ParticipantPubKey}
+     , {participant_amount, ParticipantAmount}
+     , {channel_reserve   , ChannelReserve}
+     , {lock_period       , LockPeriod}
+     , {fee               , Fee}
+     , {nonce             , Nonce}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CREATE_TX_VSN,
@@ -175,7 +166,6 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
             , {initiator_amount  , InitiatorAmount}
             , {participant       , ParticipantPubKey}
             , {participant_amount, ParticipantAmount}
-            , {push_amount       , PushAmount}
             , {channel_reserve   , ChannelReserve}
             , {lock_period       , LockPeriod}
             , {fee               , Fee}
@@ -184,7 +174,6 @@ deserialize(?CHANNEL_CREATE_TX_VSN,
                        initiator_amount   = InitiatorAmount,
                        participant        = ParticipantPubKey,
                        participant_amount = ParticipantAmount,
-                       push_amount        = PushAmount,
                        channel_reserve    = ChannelReserve,
                        lock_period        = LockPeriod,
                        fee                = Fee,
@@ -195,7 +184,6 @@ for_client(#channel_create_tx{initiator          = Initiator,
                               initiator_amount   = InitiatorAmount,
                               participant        = Participant,
                               participant_amount = ParticipantAmount,
-                              push_amount        = PushAmount,
                               channel_reserve    = ChannelReserve,
                               lock_period        = LockPeriod,
                               nonce              = Nonce,
@@ -203,7 +191,6 @@ for_client(#channel_create_tx{initiator          = Initiator,
     %% TODO: add swagger schema name
     #{<<"vsn">>                => version(),
       <<"initiator">>          => aec_base58c:encode(account_pubkey, Initiator),
-      <<"push_amount">>        => PushAmount,
       <<"initiator_amount">>   => InitiatorAmount,
       <<"participant">>        => aec_base58c:encode(account_pubkey, Participant),
       <<"participant_amount">> => ParticipantAmount,
@@ -217,7 +204,6 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
     , {initiator_amount  , int}
     , {participant       , binary}
     , {participant_amount, int}
-    , {push_amount       , int}
     , {channel_reserve   , int}
     , {lock_period       , int}
     , {fee               , int}
@@ -231,10 +217,6 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
 -spec initiator(tx()) -> pubkey().
 initiator(#channel_create_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
-
--spec push_amount(tx()) -> non_neg_integer().
-push_amount(#channel_create_tx{push_amount = PushAmount}) ->
-    PushAmount.
 
 -spec initiator_amount(tx()) -> non_neg_integer().
 initiator_amount(#channel_create_tx{initiator_amount = InitiatorAmount}) ->
@@ -270,21 +252,16 @@ check_not_channel(InitiatorPubKey, Nonce, ParticipantPubKey, Trees) ->
         none              -> ok
     end.
 
-check_push_amount(PushAmount, InitiatorAmount) ->
-    case PushAmount =< InitiatorAmount of
-        true  -> ok;
-        false -> {error, push_amount_exceeds_initiator_amount}
-    end.
-
-check_reserve_amount(Reserve, IAmount, PAmount) when is_integer(Reserve) ->
-    case (Reserve >= IAmount) of
+check_reserve_amount(Reserve, InitiatorAmount,
+                     ParticipantAmount) when is_integer(Reserve) ->
+    case (Reserve =< InitiatorAmount) of
         true ->
-            case (Reserve >= PAmount) of
+            case (Reserve =< ParticipantAmount) of
                 true  -> ok;
-                false -> {error, reserve_amount_exceeds_participant_amount}
+                false -> {error, insufficient_participant_amount}
             end;
         false ->
-            {error, reserve_amount_exceeds_initiator_amount}
+            {error, insufficient_initiator_amount}
     end.
 
 -spec version() -> non_neg_integer().
