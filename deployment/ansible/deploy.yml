@@ -26,9 +26,6 @@
       set_fact:
         sync_public_key: "{{ key_command.stdout }}"
       when: key_command.rc == 0
-    - name: Register public IP address
-      set_fact:
-        public_ip: "{{ ansible_ssh_host|default(ansible_host) }}"
 
 - name: Deploy epoch package
   hosts: all
@@ -42,6 +39,7 @@
     project_root: "{{ ansible_env.HOME }}/node"
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
     is_remote_package: false
+    public_ip: "{{ ansible_ssh_host|default(ansible_host) }}"
 
     # Label used for datadog tagging and ENV file planting
     env: unknown
