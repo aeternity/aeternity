@@ -2487,7 +2487,7 @@ definitions:
   NamePreclaimTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'
-      - $ref: '#/definitions/NamePreClaimTx'
+      - $ref: '#/definitions/NamePreclaimTx'
   NameClaimTxObject:
     allOf:
       - $ref: '#/definitions/JSONTx'

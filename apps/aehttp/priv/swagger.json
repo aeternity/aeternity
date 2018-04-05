@@ -3171,7 +3171,7 @@
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"
       }, {
-        "$ref" : "#/definitions/NamePreClaimTx"
+        "$ref" : "#/definitions/NamePreclaimTx"
       } ]
     },
     "NameClaimTxObject" : {
