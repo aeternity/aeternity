@@ -168,8 +168,8 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
                                     participant = ParticipantPubKey,
                                     fee         = Fee,
                                     nonce       = Nonce}) ->
-    %% TODO: add swagger schema name
-    #{<<"vsn">>         => version(),
+    #{<<"data_schema">> => <<"ChannelCloseMutualTxJSON">>, % swagger schema name
+      <<"vsn">>         => version(),
       <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
       <<"amount">>      => Amount,
       <<"initiator">>   => aec_base58c:encode(account_pubkey, InitiatorPubKey),

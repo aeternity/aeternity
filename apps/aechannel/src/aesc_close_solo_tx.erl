@@ -153,8 +153,8 @@ for_client(#channel_close_solo_tx{channel_id = ChannelId,
                                   payload    = Payload,
                                   fee        = Fee,
                                   nonce      = Nonce}) ->
-    %% TODO: add swagger schema name
-    #{<<"vsn">>        => version(),
+    #{<<"data_schema">>=> <<"ChannelCloseSoloTxJSON">>, % swagger schema name
+      <<"vsn">>        => version(),
       <<"channel_id">> => aec_base58c:encode(channel, ChannelId),
       <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"payload">>    => Payload,
