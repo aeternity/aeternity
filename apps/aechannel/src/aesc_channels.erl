@@ -38,7 +38,7 @@
 -type id()     :: binary().
 -type amount() :: integer().
 -type status()     :: 'active' | 'solo_closing'.
--type seq_number() :: aesc_state:seq_number().
+-type seq_number() :: non_neg_integer().
 
 -record(channel, {id                 :: id(),
                   initiator          :: pubkey(),
@@ -57,6 +57,7 @@
 
 -export_type([id/0,
               amount/0,
+              seq_number/0,
               channel/0,
               serialized/0]).
 
@@ -80,12 +81,12 @@ add_funds(#channel{} = Channel, Amount, PubKey) ->
             update_participant_amount(Channel, Amount)
     end.
 
--spec close_solo(channel(), aesc_state:state(), height()) -> channel().
+-spec close_solo(channel(), aesc_offchain_tx:tx(), height()) -> channel().
 close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
-    Ch#channel{initiator_amount   = aesc_state:initiator_amount(State),
-               participant_amount = aesc_state:responder_amount(State),
-               sequence_number    = aesc_state:sequence_number(State),
+    Ch#channel{initiator_amount   = aesc_offchain_tx:initiator_amount(State),
+               participant_amount = aesc_offchain_tx:participant_amount(State),
+               sequence_number    = aesc_offchain_tx:sequence_number(State),
                closes_at          = ClosesAt}.
 
 -spec deserialize(binary()) -> channel().
@@ -176,12 +177,12 @@ serialize(#channel{} = Ch) ->
                   #{<<"closes_at">>          => ClosesAt}
                  ]).
 
--spec slash(channel(), aesc_state:state(), height()) -> channel().
+-spec slash(channel(), aesc_offchain_tx:tx(), height()) -> channel().
 slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
-    Ch#channel{initiator_amount   = aesc_state:initiator_amount(State),
-               participant_amount = aesc_state:responder_amount(State),
-               sequence_number    = aesc_state:sequence_number(State),
+    Ch#channel{initiator_amount   = aesc_offchain_tx:initiator_amount(State),
+               participant_amount = aesc_offchain_tx:participant_amount(State),
+               sequence_number    = aesc_offchain_tx:sequence_number(State),
                closes_at          = ClosesAt}.
 
 -spec subtract_funds(channel(), amount(), pubkey()) -> channel().
