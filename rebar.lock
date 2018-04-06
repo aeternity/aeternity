@@ -92,7 +92,7 @@
        {ref,"dbdfd12ace2fc7e530e697fef81e1e72e90740f9"}},
   0},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.3.1">>},1},
- {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.5.0">>},0}]}.
+ {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.
 [
 {pkg_hash,[
  {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
@@ -104,5 +104,5 @@
  {<<"rocksdb">>, <<"C92B48703D4812C8BC571E0FBB7681F0899F35C4E4330F1CF646D79357A6AFE4">>},
  {<<"setup">>, <<"1203F4CDA11306C2E34434244576DED0A7BBFB0908D9A572356C809BD0CDF085">>},
  {<<"unicode_util_compat">>, <<"A1F612A7B512638634A603C8F401892AFBF99B8CE93A45041F8AACA99CADB85E">>},
- {<<"yamerl">>, <<"6EC55A5D830F6F0D65A4030F5C5DB24B0E72B813DFBDE32FEA44B4951ED9417C">>}]}
+ {<<"yamerl">>, <<"E51DBA652DCE74C20A88294130B48051EBBBB0BE7D76F22DE064F0F3CCF0AAF5">>}]}
 ].
