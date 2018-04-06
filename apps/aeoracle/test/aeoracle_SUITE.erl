@@ -264,7 +264,8 @@ query_response(Cfg) ->
 
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
-    SignedTx = aetx_sign:sign(RTx, <<"pkey1">>),
+    PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
+    SignedTx = aetx_sign:sign(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
         aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
     S2 = aeo_test_utils:set_trees(Trees2, S1),

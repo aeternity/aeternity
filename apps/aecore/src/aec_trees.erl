@@ -152,16 +152,25 @@ apply_txs_on_state_trees(SignedTxs, Trees, Height, Strict) ->
 apply_txs_on_state_trees([], FilteredSignedTxs, Trees, _Height,_Strict) ->
     {ok, lists:reverse(FilteredSignedTxs), Trees};
 apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, Strict) ->
-    Tx = aetx_sign:tx(SignedTx),
-    case aetx:check(Tx, Trees0, Height) of
-        {ok, Trees1} ->
-            {ok, Trees2} = aetx:process(Tx, Trees1, Height),
-            apply_txs_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
-        {error, Reason} when Strict ->
-            lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-            {error, Reason};
-        {error, Reason} when not Strict ->
-            lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+    case aetx_sign:verify(SignedTx) of
+        ok ->
+            Tx = aetx_sign:tx(SignedTx),
+            case aetx:check(Tx, Trees0, Height) of
+                {ok, Trees1} ->
+                    {ok, Trees2} = aetx:process(Tx, Trees1, Height),
+                    apply_txs_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
+                {error, Reason} when Strict ->
+                    lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                    {error, Reason};
+                {error, Reason} when not Strict ->
+                    lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                    apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
+            end;
+        {error, signature_check_failed} = E when Strict ->
+            lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
+            E;
+        {error, signature_check_failed} when not Strict ->
+            lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
             apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
     end.
 
