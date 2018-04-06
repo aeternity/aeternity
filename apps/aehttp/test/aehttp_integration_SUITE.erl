@@ -16,6 +16,9 @@
 %% external endpoints
 -export(
    [
+    % transactions
+    account_transactions/1,
+
     % get block-s
     get_top_empty_chain/1,
     get_top_non_empty_chain/1,
@@ -45,6 +48,8 @@
     all_accounts_balances/1,
     all_accounts_balances_empty/1,
     all_accounts_balances_disabled/1,
+    balance/1,
+    balance_negative_cases/1,
 
     % infos
     version/1,
@@ -63,7 +68,6 @@
    [
     broken_spend_tx/1,
     miner_pub_key/1,
-    account_transactions/1,
 
     %% requested Endpoints
     block_number/1,
@@ -100,9 +104,6 @@
 
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
-
-    balance/1,
-    balance_negative_cases/1,
 
     list_oracles/1,
     list_oracle_queries/1,
@@ -243,6 +244,11 @@ groups() ->
         all_accounts_balances,
         all_accounts_balances_empty,
         all_accounts_balances_disabled,
+        balance,
+        balance_negative_cases,
+
+        % transactions
+        account_transactions,
 
         % infos
         version,
@@ -258,7 +264,6 @@ groups() ->
         broken_spend_tx,
         naming_system_broken_txs,
         miner_pub_key,
-        account_transactions,
 
         %% requested Endpoints
         block_number,
@@ -292,9 +297,6 @@ groups() ->
         block_txs_list_by_hash,
         block_txs_list_by_height_invalid_range,
         block_txs_list_by_hash_invalid_range,
-
-        balance,
-        balance_negative_cases,
 
         list_oracles,
         list_oracle_queries,
@@ -2965,12 +2967,12 @@ get_balance_at_top(EncodedPubKey) ->
     get_balance(EncodedPubKey, []).
 
 get_balance(EncodedPubKey, Params) ->
-    Host = internal_address(),
+    Host = external_address(),
     http_request(Host, get, "account/balance/" ++ binary_to_list(EncodedPubKey),
                  Params).
 
 get_account_transactions(EncodedPubKey, Params) ->
-    Host = internal_address(),
+    Host = external_address(),
     http_request(Host, get, "account/txs/" ++ binary_to_list(EncodedPubKey),
                  Params).
 
@@ -3329,11 +3331,11 @@ wrong_http_method_name(_Config) ->
     {ok, 405, _} = http_request(Host, post, "name", []).
 
 wrong_http_method_balance(_Config) ->
-    Host = internal_address(),
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "account/balance/123", []).
 
 wrong_http_method_account_transactions(_Config) ->
-    Host = internal_address(),
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "account/txs/123", []).
 
 wrong_http_method_block(_Config) ->

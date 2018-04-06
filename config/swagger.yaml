@@ -1094,7 +1094,7 @@ paths:
   /account/balance/{account_pubkey}:
     get:
       tags:
-        - internal
+        - external
         - chain
       operationId: GetAccountBalance
       description: 'Get accounts''s balance'
@@ -1132,7 +1132,7 @@ paths:
   /account/txs/{account_pubkey}:
     get:
       tags:
-        - internal
+        - external
         - transactions
       operationId: GetAccountTransactions
       description: 'Get accounts''s transactions included in blocks in the longest chain'

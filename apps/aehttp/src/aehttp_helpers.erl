@@ -17,6 +17,9 @@
         , verify_oracle_query_existence/2
         , verify_name/1
         , compute_contract_call_data/0
+        , read_tx_encoding_param/1
+        , read_optional_param/3
+        , parse_filter_param/2
         ]).
 
 -export([ get_transaction/2
@@ -355,3 +358,49 @@ encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
         {ok, maps:put(EncodedTxKey, #{tx => T, schema => DataSchema}, State)}
     end.
 
+-spec read_tx_encoding_param(map()) -> {ok, json | message_pack} |
+                                       {error, {integer(), list(), map()}}.
+read_tx_encoding_param(Req) ->
+    case read_optional_enum_param(tx_encoding, Req, message_pack,
+                                  [message_pack, json]) of
+        {error, unexpected_value} ->
+            {error, {404, [], #{reason => <<"Unsupported transaction encoding">>}}};
+        {ok, Encoding} ->
+            {ok, Encoding}
+    end.
+
+-spec read_optional_enum_param(atom(), map(), term(), list()) -> {ok, term()} |
+                                                                 {error, atom()}.
+read_optional_enum_param(Key, Req, Default, Enums) ->
+    Val = read_optional_param(Key, Req, Default),
+    case lists:member(Val, Enums) of
+        true -> {ok, Val};
+        false -> {error, unexpected_value}
+    end.
+
+-spec read_optional_param(atom(), map(), term()) -> term().
+read_optional_param(Key, Req, Default) ->
+    %% swagger does not take into consideration the 'default'
+    %% if a query param is missing, swagger adds it to Req with a value of
+    %% 'undefined'
+    case maps:get(Key, Req) of
+        undefined -> Default;
+        Val -> Val
+    end.
+
+-spec parse_filter_param(atom(), map()) -> {ok, list()} | {error, unknown_type}.
+parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
+    Vals = binary:split(
+        read_optional_param(ParamName, Req, <<>>),
+        [<<",">>],
+        [global]),
+    case Vals =:= [<<>>] of
+        false ->
+            KnownTypes = lists:filter(fun aetx:is_tx_type/1, Vals),
+            case length(Vals) =:= length(KnownTypes) of
+                true -> {ok, KnownTypes};
+                false -> {error, unknown_type}
+            end;
+        true ->
+            {ok, []}
+    end.

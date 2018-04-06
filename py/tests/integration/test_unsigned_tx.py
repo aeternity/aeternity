@@ -30,7 +30,7 @@ def test_contract_create():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api)
+    send_tokens_to_user("alice", test_settings, external_api, internal_api)
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, test_settings["create_contract"], external_api)
 
     print("Unsigned encoded transaction: " + encoded_tx)
@@ -58,13 +58,13 @@ def test_contract_create():
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
     print("Signed transaction " + signed)
 
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
     assert_equals(alice_balance0, alice_balance + test_settings["create_contract"]["fee"])
     print("Fee was consumed, transaction is part of the chain")
@@ -83,7 +83,7 @@ def test_contract_call():
     alice_address = keys.address(public_key)
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api)
+    send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
     encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
@@ -91,13 +91,13 @@ def test_contract_call():
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
     # assert contract created:
     call_contract = test_settings["contract_call"]
@@ -127,13 +127,13 @@ def test_contract_call():
     signed_call = keys.sign_verify_encode_tx(unsigned_call_tx, private_key, public_key)
 
     print("Signed transaction: " + signed_call)
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
     tx_object = Tx(tx=signed_call)
     external_api.post_tx(tx_object)
 
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
-    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
+    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
 
     # The call runs out of gas and all gas is consumed
     # assert contract called:
@@ -167,10 +167,10 @@ def test_spend():
     bob_address = test_settings["spend_tx"]["recipient"]
 
     test_settings["alice"]["pubkey"] = alice_address
-    send_tokens_to_user("alice", test_settings, internal_api)
+    send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
-    alice_balance0 = common.get_account_balance(internal_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(internal_api, pub_key=bob_address).balance
+    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(external_api, internal_api, pub_key=bob_address).balance
 
     # Alice creates spend tx
     spend_data_obj = SpendTx(
@@ -194,14 +194,14 @@ def test_spend():
     _ = external_api.get_tx(tx_hash=tx_hash) # it is there - either in mempool or in a block
 
     # Wait until spend tx is mined
-    wait(lambda: common.get_account_balance(internal_api, pub_key=alice_address).balance < alice_balance0,
+    wait(lambda: common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance < alice_balance0,
          timeout_seconds=120, sleep_seconds=0.25)
     _ = external_api.get_tx(tx_hash=tx_hash) # it is there - shall be in a block
     print("Tx in chain ")
 
     # Check that Alice was debited and Bob was credited
-    alice_balance = common.get_account_balance(internal_api, pub_key=alice_address).balance
-    bob_balance = common.get_account_balance(internal_api, pub_key=bob_address).balance
+    alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    bob_balance = common.get_account_balance(external_api, internal_api, pub_key=bob_address).balance
     print("Alice balance now is " + str(alice_balance))
     print("Bob balance now is " + str(bob_balance))
     assert_equals(alice_balance0, alice_balance + test_settings["spend_tx"]["fee"] + test_settings["spend_tx"]["amount"])
@@ -247,15 +247,16 @@ def setup_node_with_tokens(test_settings, node_name):
     return (root_dir, node, api, top)
 
 
-def send_tokens_to_user(user, test_settings, internal_api):
+def send_tokens_to_user(user, test_settings, external_api, internal_api):
     return send_tokens_to_user_(test_settings[user]["pubkey"],
                                 test_settings[user]["amount"],
                                 test_settings[user]["fee"],
+                                external_api,
                                 internal_api)
 
-def send_tokens_to_user_(address, tokens, fee, internal_api):
+def send_tokens_to_user_(address, tokens, fee, external_api, internal_api):
     def get_balance(k):
-        return common.get_account_balance(internal_api, k).balance
+        return common.get_account_balance(external_api, internal_api, k).balance
     bal0 = get_balance(address)
     spend_tx_obj = SpendTx(
         recipient_pubkey=address,
