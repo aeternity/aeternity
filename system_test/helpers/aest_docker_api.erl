@@ -17,7 +17,7 @@
 -export([stop_container/2]).
 -export([kill_container/1]).
 -export([inspect/1]).
--export([exec/2]).
+-export([exec/3]).
 
 %=== MACROS ====================================================================
 
@@ -119,7 +119,7 @@ inspect(ID) ->
 %% Returning stdout is not working because hackney doesn't support results
 %% without content length. Should be fixed by:
 %%   https://github.com/benoitc/hackney/pull/481
-exec(ID, Cmd) ->
+exec(ID, Cmd, Opts) ->
     ExecCreateBody = #{
         'AttachStdout' => true,
         'AttachStderr' => true,
@@ -135,8 +135,16 @@ exec(ID, Cmd) ->
                 'Detach' => false,
                 'Tty' => true
             },
-            Opts = #{result_type => raw},
-            case docker_post([exec, ExecId, start], #{}, ExecStartBody, Opts) of
+            TimeoutOpts =
+                case Opts of
+                    #{timeout := infinity} -> #{timeout => infinity};
+                    #{timeout := Seconds} -> #{timeout => Seconds * 1000};
+                    #{} -> #{}
+                end,
+            PostOpts = maps:merge(#{result_type => raw}, TimeoutOpts),
+            case
+                docker_post([exec, ExecId, start], #{}, ExecStartBody, PostOpts)
+            of
                 {ok, 200, Result} -> {ok, Result};
                 {ok, 404, _} -> throw({exec_not_found, ExecId});
                 {ok, 500, Response} ->
