@@ -213,7 +213,7 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
             aest_docker_api:exec(ID, Cmd),
             log(NodeState, "Command executed on container ~p [~s]: ~s",
                 [Name, ID, CmdStr]),
-            case wait_stopped(ID, Timeout) of
+            case wait_stopped(ID, Timeout) of %% TODO Fix this call that has timeout actual parameter as seconds but handled inside function definition as milliseconds.
                 timeout -> aest_docker_api:stop_container(ID, Opts);
                 ok -> ok
             end,
