@@ -1,6 +1,6 @@
 {{#epoch_config}}
 ---
-peers:
+peers: {{^peers}}[]{{/peers}}
 {{#peers}}
     - {{peer}}
 {{/peers}}

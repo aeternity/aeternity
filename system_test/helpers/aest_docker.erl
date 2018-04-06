@@ -5,11 +5,13 @@
 %% API exports
 -export([start/1]).
 -export([stop/1]).
+-export([peer_from_spec/2]).
 -export([setup_node/2]).
 -export([delete_node/1]).
 -export([start_node/1]).
 -export([stop_node/1, stop_node/2]).
 -export([kill_node/1]).
+-export([get_peer_address/1]).
 -export([get_service_address/2]).
 
 %=== MACROS ====================================================================
@@ -23,6 +25,7 @@
 -define(EXT_SYNC_PORT, 3015).
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
+-define(EPOCH_STOP_TIMEOUT, 30).
 
 %=== TYPES =====================================================================
 
@@ -43,8 +46,8 @@
 %% Node specification
 -type node_spec() :: #{
     name := atom(),
-    % Names or URLs of the peer nodes
-    peers := [atom() | binary()],
+    pubkey := binary(),         % Public key of the node for peer connections
+    peers := [binary()],        % URLs of the peer nodes
     source := {pull, binary()}  % Source of the node image
 }.
 
@@ -53,6 +56,7 @@
     spec := node_spec(),        % Backup of the spec used when adding the node
     log_fun := log_fun(),       % Function to use for logging
     hostname := atom(),         % Hostname of the container running the node
+    pubkey := binary(),         % Public key of the node for peer connections
     exposed_ports := #{service_label() => pos_integer()},
     local_ports := #{service_label() => pos_integer()}
 }.
@@ -96,6 +100,14 @@ stop(BackendState) ->
     log(BackendState, "Networks pruned", []),
     ok.
 
+-spec peer_from_spec(node_spec(), backend_state()) -> binary().
+peer_from_spec(Spec, BackendState) ->
+    #{postfix := Postfix} = BackendState,
+    #{name := Name, pubkey := Key} = Spec,
+    Hostname = format("~s~s", [Name, Postfix]),
+    aec_peers:encode_peer_address(
+        #{host => Hostname, port => ?EXT_SYNC_PORT, pubkey => Key}).
+
 -spec setup_node(node_spec(), backend_state()) -> node_spec().
 setup_node(Spec, BackendState) ->
     #{log_fun := LogFun,
@@ -104,6 +116,7 @@ setup_node(Spec, BackendState) ->
       temp_dir := TempDir,
       net_id := NetId} = BackendState,
     #{name := Name,
+      pubkey := Key,
       peers := Peers,
       source := {pull, Image}} = Spec,
 
@@ -120,6 +133,7 @@ setup_node(Spec, BackendState) ->
         log_fun => LogFun,
         name => Name,
         hostname => Hostname,
+        pubkey => Key,
         exposed_ports => ExposedPorts,
         local_ports => LocalPorts
     },
@@ -127,14 +141,7 @@ setup_node(Spec, BackendState) ->
     ConfigFileName = format("epoch_~s.yaml", [Name]),
     ConfigFilePath = filename:join([TempDir, "config", ConfigFileName]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
-    PeerVars = lists:map(fun
-        (PeerName) when is_atom(PeerName) ->
-            PeerHostname = format("~s~s", [PeerName, Postfix]),
-            PeerInfo = aec_peers:encode_peer_address(
-                          #{ host => PeerHostname, port => ?EXT_SYNC_PORT,
-                             pubkey => pubkey(PeerName)}),
-            #{peer => PeerInfo}
-    end, Peers),
+    PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     ct:log("PeerVars: ~p", [PeerVars]),
     RootVars = #{
         hostname => Name,
@@ -152,6 +159,7 @@ setup_node(Spec, BackendState) ->
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
     KeysDir = filename:join([DataDir, "keys", Name]),
+    ok = filelib:ensure_dir(filename:join(KeysDir, "DUMMY")),
     PortMapping = maps:fold(fun(Label, Port, Acc) ->
         [{tcp, maps:get(Label, LocalPorts), Port} | Acc]
     end, [], ExposedPorts),
@@ -163,7 +171,7 @@ setup_node(Spec, BackendState) ->
         command => ["-aecore", "expected_mine_rate", ?EPOCH_MINE_RATE],
         env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE},
         volumes => [
-            {ro, KeysDir, ?EPOCH_KEYS_FOLDER},
+            {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
             {rw, LogPath, ?EPOCH_LOG_FOLDER}
         ],
@@ -194,8 +202,18 @@ stop_node(NodeState) -> stop_node(NodeState, #{}).
 
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
-    aest_docker_api:stop_container(ID, Opts),
-    log(NodeState, "Container ~p [~s] stopped", [Name, ID]),
+    Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+    case is_running(ID) of
+        false ->
+            log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
+        true ->
+            aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
+            case wait_stopped(ID, Timeout) of
+                timeout -> aest_docker_api:stop_container(ID, Opts);
+                ok -> ok
+            end,
+            log(NodeState, "Container ~p [~s] stopped", [Name, ID])
+    end,
     NodeState.
 
 -spec kill_node(node_state()) -> node_state().
@@ -204,10 +222,28 @@ kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
     log(NodeState, "Container ~p [~s] killed", [Name, ID]),
     NodeState.
 
--spec get_service_address(node_state(), service_label()) -> binary().
-get_service_address(Service, NodeState) ->
+-spec get_peer_address(node_state()) -> binary().
+get_peer_address(NodeState) ->
+    #{hostname := Hostname,
+      exposed_ports := #{sync := Port},
+      sync_pubkey := Key} = NodeState,
+    aec_peers:encode_peer_address(#{host => Hostname,
+                                    port => Port,
+                                    pubkey => Key}).
+
+-spec get_service_address(service_label(), node_state()) -> binary().
+get_service_address(sync, NodeState) ->
+    #{local_ports := #{sync := Port}, pubkey := Key} = NodeState,
+    aec_peers:encode_peer_address(#{host => <<"localhost">>,
+                                    port => Port,
+                                    pubkey => Key});
+get_service_address(Service, NodeState)
+  when Service == ext_http; Service == int_http ->
     #{local_ports := #{Service := Port}} = NodeState,
-    format("http://localhost:~w/", [Port]).
+    format("http://localhost:~w/", [Port]);
+get_service_address(int_ws, NodeState) ->
+    #{local_ports := #{int_ws := Port}} = NodeState,
+    format("ws://localhost:~w/", [Port]).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -241,9 +277,33 @@ write_template(TemplateFile, OutputFile, Context) ->
     ok = filelib:ensure_dir(OutputFile),
     file:write_file(OutputFile, Data).
 
-pubkey(node1) ->
-    <<37,195,115,246,90,69,150,234,253,209,246,49,199,88,5,116,191,57,106,189,48,134,209,227,116,85,44,59,51,41,245,55>>;
-pubkey(node2) ->
-    <<149,164,91,254,32,218,238,174,159,207,156,5,246,182,63,10,57,70,109,226,193,2,33,168,116,32,244,228,169,122,154,94>>;
-pubkey(node3) ->
-    <<29,110,222,56,140,83,227,182,7,100,207,18,240,52,200,151,221,151,247,213,94,191,198,219,184,33,139,118,35,95,157,120>>.
+wait_stopped(Id, Timeout) -> wait_stopped(Id, Timeout, os:timestamp()).
+
+wait_stopped(Id, Timeout, StartTime) ->
+    case is_running(Id) of
+        false -> ok;
+        true -> maybe_continue_waiting(Id, Timeout, StartTime)
+    end.
+
+is_running(Id) -> is_running(Id, 5).
+
+is_running(_Id, 0) -> error(retry_exausted);
+is_running(Id, Retries) ->
+    case aest_docker_api:inspect(Id) of
+        #{'State' := State} -> maps:get('Running', State, false);
+        _ ->
+            % Inspect may fail sometime when stopping a node, just retry
+            timer:sleep(100),
+            is_running(Id, Retries - 1)
+    end.
+
+maybe_continue_waiting(Id, infinity, StartTime) ->
+    timer:sleep(100),
+    wait_stopped(Id, infinity, StartTime);
+maybe_continue_waiting(Id, Timeout, StartTime) ->
+    case timer:now_diff(os:timestamp(), StartTime) > (1000 * Timeout) of
+        true -> timeout;
+        false ->
+            timer:sleep(200),
+            wait_stopped(Id, Timeout, StartTime)
+    end.
