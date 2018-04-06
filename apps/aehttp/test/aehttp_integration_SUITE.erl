@@ -16,6 +16,9 @@
 %% external endpoints
 -export(
    [
+    % transactions
+    account_transactions/1,
+
     % get block-s
     get_top_empty_chain/1,
     get_top_non_empty_chain/1,
@@ -45,6 +48,8 @@
     all_accounts_balances/1,
     all_accounts_balances_empty/1,
     all_accounts_balances_disabled/1,
+    balance/1,
+    balance_negative_cases/1,
 
     % infos
     version/1,
@@ -63,7 +68,6 @@
    [
     broken_spend_tx/1,
     miner_pub_key/1,
-    account_transactions/1,
 
     %% requested Endpoints
     block_number/1,
@@ -100,9 +104,6 @@
 
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
-
-    balance/1,
-    balance_negative_cases/1,
 
     list_oracles/1,
     list_oracle_queries/1,
