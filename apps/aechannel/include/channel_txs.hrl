@@ -44,8 +44,6 @@
 -record(channel_close_mutual_tx, {
           channel_id   :: binary(),
           amount       :: integer(),
-          initiator    :: pubkey(),
-          participant  :: pubkey(),
           fee          :: non_neg_integer(),
           nonce        :: non_neg_integer()
          }).

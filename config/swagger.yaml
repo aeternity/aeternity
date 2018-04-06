@@ -2627,10 +2627,6 @@ definitions:
         type: integer
         format: int64
         minimum: 0
-      initiator:
-        $ref: '#/definitions/EncodedHash'
-      participant:
-        $ref: '#/definitions/EncodedHash'
       fee:
         type: integer
         format: int64
@@ -2642,8 +2638,6 @@ definitions:
     required:
     - channel_id
     - amount
-    - initiator
-    - participant
     - fee
     - nonce
   ChannelCloseSoloTx:
