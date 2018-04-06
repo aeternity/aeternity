@@ -204,7 +204,15 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
         false ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
-            aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
+            Cmd = ["/home/epoch/node/bin/epoch", "stop"],
+            CmdStr = lists:join($ , Cmd),
+            log(NodeState,
+                "Container ~p [~s] still running: "
+                "attempting to stop node by executing command ~s",
+                [Name, ID, CmdStr]),
+            aest_docker_api:exec(ID, Cmd),
+            log(NodeState, "Command executed on container ~p [~s]: ~s",
+                [Name, ID, CmdStr]),
             case wait_stopped(ID, Timeout) of
                 timeout -> aest_docker_api:stop_container(ID, Opts);
                 ok -> ok
