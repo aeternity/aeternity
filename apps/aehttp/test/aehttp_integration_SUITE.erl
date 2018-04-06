@@ -243,6 +243,11 @@ groups() ->
         all_accounts_balances,
         all_accounts_balances_empty,
         all_accounts_balances_disabled,
+        balance,
+        balance_negative_cases,
+
+        % transactions
+        account_transactions,
 
         % infos
         version,
@@ -258,7 +263,6 @@ groups() ->
         broken_spend_tx,
         naming_system_broken_txs,
         miner_pub_key,
-        account_transactions,
 
         %% requested Endpoints
         block_number,
@@ -292,9 +296,6 @@ groups() ->
         block_txs_list_by_hash,
         block_txs_list_by_height_invalid_range,
         block_txs_list_by_hash_invalid_range,
-
-        balance,
-        balance_negative_cases,
 
         list_oracles,
         list_oracle_queries,
@@ -2965,12 +2966,12 @@ get_balance_at_top(EncodedPubKey) ->
     get_balance(EncodedPubKey, []).
 
 get_balance(EncodedPubKey, Params) ->
-    Host = internal_address(),
+    Host = external_address(),
     http_request(Host, get, "account/balance/" ++ binary_to_list(EncodedPubKey),
                  Params).
 
 get_account_transactions(EncodedPubKey, Params) ->
-    Host = internal_address(),
+    Host = external_address(),
     http_request(Host, get, "account/txs/" ++ binary_to_list(EncodedPubKey),
                  Params).
 
@@ -3329,11 +3330,11 @@ wrong_http_method_name(_Config) ->
     {ok, 405, _} = http_request(Host, post, "name", []).
 
 wrong_http_method_balance(_Config) ->
-    Host = internal_address(),
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "account/balance/123", []).
 
 wrong_http_method_account_transactions(_Config) ->
-    Host = internal_address(),
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "account/txs/123", []).
 
 wrong_http_method_block(_Config) ->
