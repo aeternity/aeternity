@@ -31,10 +31,10 @@ def test_not_enough_tokens():
     bob_internal_api = common.internal_api(bob_node)
 
     def get_bob_balance(height):
-        return common.get_account_balance_at_height(bob_internal_api, height)
+        return common.get_account_balance_at_height(bob_api, bob_internal_api, height)
     def get_alice_balance(height):
         k = test_settings["spend_tx"]["alice_pubkey"]
-        return common.get_account_balance_at_height(bob_internal_api, height, pub_key=k)
+        return common.get_account_balance_at_height(bob_api, bob_internal_api, height, pub_key=k)
 
     spend_tx_amt = test_settings["spend_tx"]["amount"]
     spend_tx_fee = test_settings["spend_tx"]["fee"]
@@ -104,8 +104,8 @@ def test_send_by_name():
     miner_send_tokens(bob_address, bob_init_balance, int_api, ext_api)
 
     # validate balances
-    alice_balance0 = common.get_account_balance(int_api, pub_key=alice_address).balance
-    bob_balance0 = common.get_account_balance(int_api, pub_key=bob_address).balance
+    alice_balance0 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
+    bob_balance0 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
 
     assert_equals(alice_balance0, alice_init_balance)
     assert_equals(bob_balance0, bob_init_balance)
@@ -117,7 +117,7 @@ def test_send_by_name():
     register_name(bob_name, bob_address, ext_api, bob_private_key)
 
     print("Bob has registered " + bob_name)
-    bob_balance1 = common.get_account_balance(int_api, pub_key=bob_address).balance
+    bob_balance1 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
     print("Bob balance is " + str(bob_balance1))
 
     tokens_to_send = test_settings["spend_tx"]["amount"]
@@ -125,8 +125,8 @@ def test_send_by_name():
     send_tokens_to_name(bob_name, tokens_to_send, alice_address, alice_private_key, ext_api)
 
     # validate balances
-    alice_balance2 = common.get_account_balance(int_api, pub_key=alice_address).balance
-    bob_balance2 = common.get_account_balance(int_api, pub_key=bob_address).balance
+    alice_balance2 = common.get_account_balance(ext_api, int_api, pub_key=alice_address).balance
+    bob_balance2 = common.get_account_balance(ext_api, int_api, pub_key=bob_address).balance
 
     print("Alice balance is " + str(alice_balance2))
     print("Bob balance is " + str(bob_balance2))

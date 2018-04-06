@@ -105,14 +105,14 @@ def genesis_hash(api):
 def wait_until_height(api, height):
     wait(lambda: api.get_top().height >= height, timeout_seconds=120, sleep_seconds=0.25)
 
-def get_account_balance(int_api, pub_key=None):
+def get_account_balance(api, int_api, pub_key=None):
     return _balance_from_get_account_balance(
-        lambda: int_api.get_account_balance(_node_pub_key(int_api, pub_key)))
+        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key)))
 
-def get_account_balance_at_height(int_api, height, pub_key=None):
+def get_account_balance_at_height(api, int_api, height, pub_key=None):
     return _balance_from_get_account_balance(
-        lambda: int_api.get_account_balance(_node_pub_key(int_api, pub_key),
-                                            height=height))
+        lambda: api.get_account_balance(_node_pub_key(int_api, pub_key),
+                                        height=height))
 
 def _node_pub_key(int_api, k):
     return k if k is not None else int_api.get_pub_key().pub_key
