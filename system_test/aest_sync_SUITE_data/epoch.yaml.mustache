@@ -1,11 +1,9 @@
 {{#epoch_config}}
 ---
-{{#has_peers}}
-peers:
+peers: {{^peers}}[]{{/peers}}
 {{#peers}}
     - {{peer}}
 {{/peers}}
-{{/has_peers}}
 
 sync:
     port: {{services.sync.port}}

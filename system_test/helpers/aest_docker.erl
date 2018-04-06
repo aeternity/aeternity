@@ -146,7 +146,6 @@ setup_node(Spec, BackendState) ->
     RootVars = #{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
-        has_peers => length(PeerVars) > 0,
         peers => PeerVars,
         services => #{
             sync => #{port => ?EXT_SYNC_PORT},
