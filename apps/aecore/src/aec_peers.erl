@@ -45,8 +45,10 @@
         , ppp/1
         ]).
 
-%% API used by aec_peer_connection_listener
--export([sync_port/0]).
+%% API used by aec_peer_connection and aec_peer_connection_listener
+-export([ sync_port/0
+        , ext_sync_port/0
+        , sync_listen_address/0]).
 
 -export([check_env/0]).
 
@@ -59,6 +61,7 @@
 -endif.
 
 -define(DEFAULT_SYNC_PORT, 3015).
+-define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
 
 -define(DEFAULT_PING_INTERVAL, 120 * 1000).
 -define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
@@ -77,8 +80,8 @@
          }).
 
 -type peer_id() :: binary(). %% The Peer is identified by its pubkey for now.
--type peer_info() :: #{ host    := string() | binary(),
-                        port    := inet:port_number(),
+-type peer_info() :: #{ host    => string() | binary(),
+                        port    => inet:port_number(),
                         pubkey  := pubkey(),
                         seckey  => pubkey(),
                         ping    => boolean(),
@@ -233,11 +236,9 @@ start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
 
 init(ok) ->
-    {_Scheme, Host, _Port} = aeu_env:local_peer(),
-    Port = sync_port(),
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
-    LocalPeer = #{host => Host, port => Port, seckey => SecKey, pubkey => PubKey},
+    LocalPeer = #{seckey => SecKey, pubkey => PubKey},
     lager:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{peers = gb_trees:empty(),
                 local_peer = LocalPeer}}.
@@ -450,10 +451,8 @@ handle_cast({add, PeerInfo}, State0) ->
                         lager:debug("Adding peer ~p", [PeerInfo]),
                         case maps:get(ping, PeerInfo, false) of
                             true ->
-                                #{ seckey := SKey, pubkey := PKey,
-                                   host := LHost, port := LPort } = State0#state.local_peer,
+                                #{ seckey := SKey, pubkey := PKey } = State0#state.local_peer,
                                 ConnInfo = PeerInfo#{ r_pubkey => maps:get(pubkey, PeerInfo),
-                                                      local_host => LHost, local_port => LPort,
                                                       seckey => SKey, pubkey => PKey },
                                 {ok, Pid} = aec_peer_connection:connect(ConnInfo),
                                 Peer#peer{ connection = {pending, Pid} };
@@ -623,7 +622,7 @@ peer_info(PeerId) when is_binary(PeerId) ->
     split_peer_id(PeerId);
 peer_info(#peer{ host = H, port = P, pubkey = PK }) ->
     #{ host => H, port => P, pubkey => PK };
-peer_info(PeerInfo = #{ host := _, port := _, pubkey := _ }) ->
+peer_info(PeerInfo = #{ pubkey := _ }) ->
     PeerInfo.
 
 peer_id(PubKey, Host, Port) when is_binary(Host) ->
@@ -677,6 +676,16 @@ ping_interval() ->
 
 sync_port() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
+
+ext_sync_port() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"external_port">>],
+        aecore, ext_sync_port, sync_port()).
+
+sync_listen_address() ->
+    Config = aeu_env:user_config_or_env([<<"sync">>, <<"listen_address">>],
+                aecore, sync_listen_address, ?DEFAULT_SYNC_LISTEN_ADDRESS),
+    {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
+    IpAddress.
 
 parse_peer_address(PeerAddress) ->
     case http_uri:parse(PeerAddress) of

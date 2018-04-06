@@ -215,7 +215,7 @@ crash_and_continue_sync(Cfg) ->
     BlocksPerSecond = proplists:get_value(blocks_per_second, Cfg),
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
     %% Create a chain long enough to need 10 seconds to fetch it
-    Length = BlocksPerSecond * 10,
+    Length = BlocksPerSecond * 20,
 
     setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
 
