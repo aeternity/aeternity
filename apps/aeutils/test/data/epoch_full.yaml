@@ -12,9 +12,14 @@ blocked_peers:
     - aenode://pp$2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
 
 sync:
+    # Internal port used for P2P communication
+    port: 3015
     # Port used for P2P communication
     # Make sure this port is reachable from you public facing IP.
-    port: 3015
+    # It will be the same as the `port` option if not specified.
+    external_port: 3015
+    # The listen address should be publicly accessible
+    listen_address: 0.0.0.0
     # Ping retry configuration in milliseconds
     ping_interval: 30000
 

@@ -7,16 +7,14 @@ It:
 * Does that. This impacts the persisted DB;
 * Does that;
 * Improves the stability of the testnet.
+* Add configuration (`sync` > `listen_address`) to select which IP the sync service will listen to.
+* Add configuration (`sync` > `external_port`) to support public sync port differing from the internal port.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.11.0
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.10.x".
-
-Configuration related changes for this release (epoch.yaml):
-* The (`http` > `external` > `peer_address`) option has been removed, only the port option (`http` > `external` > `port`) is required if it differs from the internal port.
-* The configuration field (`sync` > `external_port`) has been added for the cases where the publicly accessible port is different from the internal port.
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).

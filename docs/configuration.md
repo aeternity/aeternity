@@ -14,7 +14,7 @@ Please notice that, if your node is behind a firewall, you need to open a TCP po
 
 The following example configuration assumes that:
 * The listening TCP port on your public IP address is `3015`;
-* The listening TCP port on your node is the same - so `3015`.
+* The listening TCP port on your node is the same - so `3115`.
 
 ### Keys management
 
@@ -42,7 +42,8 @@ Create the file `/tmp/node/epoch.yaml` with the following content (amend the `sy
 ```yaml
 ---
 sync:
-    port: 3015
+    port: 3115
+    external_port: 3015
 
 keys:
     dir: keys
