@@ -45,11 +45,6 @@
         , ppp/1
         ]).
 
-%% API used by aec_peer_connection and aec_peer_connection_listener
--export([ sync_port/0
-        , ext_sync_port/0
-        , sync_listen_address/0]).
-
 -export([check_env/0]).
 
 %% gen_server callbacks
@@ -59,9 +54,6 @@
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
-
--define(DEFAULT_SYNC_PORT, 3015).
--define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
 
 -define(DEFAULT_PING_INTERVAL, 120 * 1000).
 -define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
@@ -673,19 +665,6 @@ backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
                                aecore, ping_interval, ?DEFAULT_PING_INTERVAL).
-
-sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
-
-ext_sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"external_port">>],
-        aecore, ext_sync_port, sync_port()).
-
-sync_listen_address() ->
-    Config = aeu_env:user_config_or_env([<<"sync">>, <<"listen_address">>],
-                aecore, sync_listen_address, ?DEFAULT_SYNC_LISTEN_ADDRESS),
-    {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
-    IpAddress.
 
 parse_peer_address(PeerAddress) ->
     case http_uri:parse(PeerAddress) of

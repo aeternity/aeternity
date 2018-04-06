@@ -1,3 +1,30 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
+%%%=============================================================================
+%%% @copyright 2018, Aeternity Anstalt
+%%% @doc
+%%%    Supervisor for the core application
+%%%
+%%%  Full supervision tree is
+%%%```
+%%%       aecore_sup  (one_for_one)
+%%%           |
+%%%           ------------------------------------------------------------
+%%%           |         |         |           |            |             |
+%%%           |   aec_metrics  aec_keys  aec_tx_pool aec_conductor aec_subscribe
+%%%           |
+%%%   aec_connection_sup  (one_for_all)
+%%%           |
+%%%           -------------------------------------------------------
+%%%           |                                          |          |
+%%%   aec_peer_connection_sup (simple_one_for_one)   aec_peers   aec_sync
+%%%           |
+%%%           --------------------
+%%%           |             |
+%%%   aec_peer_connection  ...
+%%%'''
+%%%
+%%% @end
+%%%=============================================================================
 -module(aecore_sup).
 
 -behaviour(supervisor).
@@ -31,12 +58,10 @@ init([]) ->
     {ok, {{one_for_one, 5, 10}, [watchdog_childspec(),
                                  ?CHILD(aec_metrics_rpt_dest, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
-                                 ?CHILD(aec_peer_connection_listener, 5000, worker),
-                                 ?CHILD(aec_peers, 5000, worker),
                                  ?CHILD(aec_tx_pool, 5000, worker),
-                                 ?CHILD(aec_sync, 5000, worker),
                                  ?CHILD(aec_conductor, 5000, worker),
-                                 ?CHILD(aec_subscribe, 5000, worker)
+                                 ?CHILD(aec_subscribe, 5000, worker),
+                                 ?CHILD(aec_connection_sup, 5000, supervisor)
                                 ]
          }}.
 

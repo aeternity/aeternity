@@ -18,7 +18,7 @@
         , ping/1
         , send_block/2
         , send_tx/2
-
+        , start_link/2
         , stop/1
         ]).
 
@@ -55,14 +55,16 @@
 
 %% -- API --------------------------------------------------------------------
 
-connect(Options) ->
+connect(#{} = Options) ->
     lager:debug("New peer connection to ~p", [Options]),
-    gen_server:start_link(?MODULE, [Options#{ role => initiator }], []).
+    aec_peer_connection_sup:start_peer_connection(Options#{ role => initiator}).
 
 accept(TcpSock, Options) ->
     {ok, {Host, _Port}} = inet:peername(TcpSock),
-    case gen_server:start_link(?MODULE, [Options#{ tcp_sock => TcpSock, role => responder,
-                                                   host => inet_parse:ntoa(Host)}], []) of
+    Options1 = Options#{ tcp_sock => TcpSock
+                       , role => responder
+                       , host => inet_parse:ntoa(Host)},
+    case aec_peer_connection_sup:start_peer_connection(Options1) of
         {ok, Pid} ->
             gen_tcp:controlling_process(TcpSock, Pid),
             gen_server:cast(Pid, give_tcp_socket_ownership),
@@ -70,6 +72,10 @@ accept(TcpSock, Options) ->
         Res ->
             Res
     end.
+
+start_link(Port, Opts) ->
+    Opts1 = Opts#{ext_sync_port => Port},
+    gen_server:start_link(?MODULE, [Opts1], []).
 
 retry(PeerCon) ->
     gen_server:cast(PeerCon, retry).
@@ -103,7 +109,9 @@ stop(PeerCon) ->
 
 
 call(PeerCon, Call) when is_pid(PeerCon) ->
-    gen_server:call(PeerCon, Call);
+    try gen_server:call(PeerCon, Call)
+    catch exit:{noproc, _} -> {error, no_connection}
+    end;
 call(PeerId, Call) when is_binary(PeerId) ->
     case aec_peers:get_connection(PeerId) of
         {ok, PeerCon}    ->
@@ -117,6 +125,7 @@ call(PeerId, Call) when is_binary(PeerId) ->
 
 
 %% -- gen_server callbacks ---------------------------------------------------
+
 init([Opts]) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
@@ -491,9 +500,9 @@ ping_obj(PingObj, Exclude) ->
              <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
              <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash) }.
 
-local_ping_obj(_S) ->
+local_ping_obj(#{ext_sync_port := Port}) ->
     PingObj = aec_sync:local_ping_object(),
-    PingObj#{ <<"port">> => aec_peers:ext_sync_port() }.
+    PingObj#{ <<"port">> => Port }.
 
 %% -- Get Header by Hash -----------------------------------------------------
 handle_get_header_by_hash(S, MsgObj) ->
