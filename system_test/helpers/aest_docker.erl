@@ -9,7 +9,7 @@
 -export([setup_node/2]).
 -export([delete_node/1]).
 -export([start_node/1]).
--export([stop_node/1, stop_node/2]).
+-export([stop_node/2]).
 -export([kill_node/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
@@ -196,9 +196,6 @@ start_node(#{container_id := ID, hostname := Name} = NodeState) ->
     aest_docker_api:start_container(ID),
     log(NodeState, "Container ~p [~s] started", [Name, ID]),
     NodeState.
-
--spec stop_node(node_state()) -> node_state().
-stop_node(NodeState) -> stop_node(NodeState, #{}).
 
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
