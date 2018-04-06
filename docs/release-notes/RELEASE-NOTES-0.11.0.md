@@ -3,6 +3,7 @@
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
 * Makes abilitation of HTTP API endpoints tagged as `debug` in the Swagger schema configurable;
+* Enables configuration of empty set of initial peers to contact;
 * Does this. This impacts consensus;
 * Does that. This impacts the persisted DB;
 * Does that;
