@@ -14,6 +14,10 @@ This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.10.x".
 
+Configuration related changes for this release (epoch.yaml):
+* The (`http` > `external` > `peer_address`) option has been removed, only the port option (`http` > `external` > `port`) is required if it differs from the internal port.
+* The configuration field (`sync` > `external_port`) has been added for the cases where the publicly accessible port is different from the internal port.
+
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
 

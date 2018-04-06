@@ -10,8 +10,7 @@ In order for your node to join the testnet, you need to specify in the configura
 
 (You do not need to specify the host at which your node can be contacted from the Internet, as each peer you ping will infer that from the address of the inbound TCP connection.)
 
-Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (`sync` > `port` parameter) and map that port to the one the node actually listens on (`sync` > `port` parameter - the same).
-As of release 0.10.0 the two port numbers *cannot* be distinct - this capability will be reinstated in a future release.
+Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (`sync` > `port` parameter) and map that port to the one the node actually listens on (`sync` > `port` parameter - the same). If the publicly available port needs to be different from the internal one, you need to set (`sync` > `external_port`) accordingly.
 
 The following example configuration assumes that:
 * The listening TCP port on your public IP address is `3015`;
