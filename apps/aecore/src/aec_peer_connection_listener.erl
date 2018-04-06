@@ -19,14 +19,16 @@ stop() ->
     ok.
 
 pc_listener() ->
-    {_Scheme, Host, _Port} = aeu_env:local_peer(),
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     Port = aec_peers:sync_port(),
+    Address = aec_peers:sync_listen_address(),
     erlang:process_flag(trap_exit, true),
     lager:info("Starting peer_connection_listener at port ~p", [Port]),
-    {ok, LSock} = gen_tcp:listen(Port, [{active, false}, binary, {reuseaddr, true}]),
-    pc_listener(LSock, #{ seckey => SecKey, pubkey => PubKey, local_host => Host, local_port => Port }).
+    {ok, LSock} = gen_tcp:listen(Port, [{active, false}, binary,
+                                        {reuseaddr, true},
+                                        {ip, Address}]),
+    pc_listener(LSock, #{ seckey => SecKey, pubkey => PubKey }).
 
 pc_listener(LSock, Opts) ->
     Self = self(),

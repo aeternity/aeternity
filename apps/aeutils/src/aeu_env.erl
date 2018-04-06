@@ -392,33 +392,3 @@ schema() ->
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
     Schema.
-
-%%% getting local peer from environment
-
--define(DEFAULT_SWAGGER_EXTERNAL_PORT, 8043).
-
--spec local_peer() -> {http_uri:scheme(), http_uri_host(), inet:port_number()}.
-local_peer() ->
-    ExternalPort =
-        user_config_or_env([<<"http">>, <<"external">>, <<"port">>],
-                                   aehttp, [external, port], ?DEFAULT_SWAGGER_EXTERNAL_PORT),
-    ExternalAddr =
-        user_config_or_env([<<"http">>, <<"external">>, <<"peer_address">>],
-                           aehttp, local_peer_address, undefined),
-    case ExternalAddr of
-        undefined ->
-            {ok, Host} = inet:gethostname(),
-            {http, Host, ExternalPort};
-        Uri ->
-          case http_uri:parse(Uri) of
-              {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query, _Fragment}} ->
-                  {Scheme, Host, Port};
-              {ok, {Scheme, _UserInfo, Host, Port, _Path, _Query}} ->
-                  {Scheme, Host, Port};
-              {error, _Reason} ->
-                  lager:debug("cannot parse Uri (~p): ~p", [Uri, _Reason]),
-                  erlang:error({cannot_parse, [{local_peer_address, Uri}]})
-          end
-    end.
-
-

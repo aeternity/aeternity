@@ -5,7 +5,7 @@ peers:
 
 http:
     external:
-        peer_address: http://node3:3013/
+        port: 3013
     internal:
         listen_address: 0.0.0.0
 

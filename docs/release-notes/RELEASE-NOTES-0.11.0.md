@@ -8,6 +8,8 @@ It:
 * Does that. This impacts the persisted DB;
 * Does that;
 * Improves the stability of the testnet.
+* Add configuration (`sync` > `listen_address`) to select which IP the sync service will listen to.
+* Add configuration (`sync` > `external_port`) to support public sync port differing from the internal port.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.11.0
 

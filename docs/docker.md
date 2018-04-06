@@ -62,7 +62,8 @@ The container will use the default configuration unless other configuration file
 
 #### External Peer Address
 
-Please note that, if your node is behind a firewall, you need to open and map a TCP port `3015` (default sync > port parameter) in your firewall to the container port `3015`.
+Please note that, if your node is behind a firewall, you need to open and map the TCP port defined by (`sync` > `port` with default `3015`) option in your firewall to the container port.
+If the publicly available port has to be different from the internal port it as to be reflected in the configuration with the ('sync' > 'external_port') option.
 
 #### Peer addresses
 

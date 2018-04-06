@@ -491,10 +491,9 @@ ping_obj(PingObj, Exclude) ->
              <<"genesis_hash">> => aec_base58c:encode(block_hash, GHash),
              <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash) }.
 
-local_ping_obj(S) ->
+local_ping_obj(_S) ->
     PingObj = aec_sync:local_ping_object(),
-    PingObj#{ <<"host">> => maps:get(local_host, S),
-              <<"port">> => maps:get(local_port, S) }.
+    PingObj#{ <<"port">> => aec_peers:ext_sync_port() }.
 
 %% -- Get Header by Hash -----------------------------------------------------
 handle_get_header_by_hash(S, MsgObj) ->
