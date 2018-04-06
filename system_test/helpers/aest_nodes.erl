@@ -15,7 +15,7 @@
 %% Generic API exports
 -export([setup_nodes/2]).
 -export([start_node/2]).
--export([stop_node/2, stop_node/3]).
+-export([stop_node/3]).
 -export([kill_node/2]).
 -export([get_service_address/3]).
 -export([http_get/5]).
@@ -42,7 +42,6 @@
 -define(CALL_TIMEOUT, 60000).
 -define(NODE_TEARDOWN_TIMEOUT, 0).
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
--define(DEFAULT_STOP_TIMEOUT, 30).
 
 %=== TYPES ====================================================================
 
@@ -131,12 +130,6 @@ setup_nodes(NodeSpecs, Ctx) ->
 -spec start_node(atom(), test_ctx()) -> ok.
 start_node(NodeName, Ctx) ->
     call(ctx2pid(Ctx), {start_node, NodeName}).
-
-%% @doc Stops a node previously started.
-%% The node will get killed after 30 seconds if it does not stop.
--spec stop_node(atom(), test_ctx()) -> ok.
-stop_node(NodeName, Ctx) ->
-    call(ctx2pid(Ctx), {stop_node, NodeName, ?DEFAULT_STOP_TIMEOUT}).
 
 %% @doc Stops a node previously started with explicit timeout (in seconds)
 %% after which the node will be killed.
