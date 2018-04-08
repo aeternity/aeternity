@@ -15,6 +15,7 @@
        , channel_reestablish/2
        , update_deposit/2
        , update_withdrawal/2
+       , error/2
        , shutdown/2]).
 
 -export([init/1
@@ -35,6 +36,7 @@ funding_locked     (Session, Msg) -> cast(Session, {msg, ?FND_LOCKED  , Msg}).
 channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL , Msg}).
 update_deposit     (Session, Msg) -> cast(Session, {msg, ?UPD_DEPOSIT , Msg}).
 update_withdrawal  (Session, Msg) -> cast(Session, {msg, ?UPD_WITHDRAW, Msg}).
+error              (Session, Msg) -> cast(Session, {msg, ?ERROR       , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN    , Msg}).
 
 close(Session) ->
@@ -58,16 +60,24 @@ init({Parent, Op}) ->
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
 establish({accept, Port, Opts}, St) ->
-    {ok, LSock} = gen_tcp:listen(Port, tcp_opts(listen, Opts)),
-    {ok, TcpSock} = gen_tcp:accept(LSock, tcp_opts(accept, Opts)),
+    TcpOpts = tcp_opts(listen, Opts),
+    lager:debug("listen: TcpOpts = ~p", [TcpOpts]),
+    {ok, LSock} = gen_tcp:listen(Port, TcpOpts),
+    {ok, TcpSock} = gen_tcp:accept(LSock),
     %% TODO: extract/check something from FinalState?
-    {ok, EConn, _FinalSt} = enoise:accept(TcpSock, enoise_opts(accept, Opts)),
+    EnoiseOpts = enoise_opts(accept, Opts),
+    lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
+    {ok, EConn, _FinalSt} = enoise:accept(TcpSock, EnoiseOpts),
     %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn};
 establish({connect, Host, Port, Opts}, St) ->
-    {ok, TcpSock} = connect_tcp(Host, Port, tcp_opts(connect, Opts)),
+    TcpOpts = tcp_opts(listen, Opts),
+    lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
+    {ok, TcpSock} = connect_tcp(Host, Port, TcpOpts),
     %% TODO: extract/check something from FinalState?
-    {ok, EConn, _FinalSt} = enoise:connect(TcpSock, enoise_opts(connect, Opts)),
+    EnoiseOpts = enoise_opts(connect, Opts),
+    lager:debug("EnoiseOpts (connect) = ~p", [EnoiseOpts]),
+    {ok, EConn, _FinalSt} = enoise:connect(TcpSock, EnoiseOpts),
     %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn}.
 
@@ -94,21 +104,38 @@ get_reconnect_params() ->
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
-handle_cast({msg, M, Info}, #st{econn = EConn} = St) ->
+handle_cast(Msg, St) ->
+    try handle_cast_(Msg, St)
+    catch
+        error:Reason ->
+            Trace = erlang:get_stacktrace(),
+            lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
+            erlang:error(Reason, Trace)
+    end.
+
+handle_cast_({msg, M, Info}, #st{econn = EConn} = St) ->
     enoise:send(EConn, aesc_codec:enc(M, Info)),
     {noreply, St};
-handle_cast(close, St) ->
+handle_cast_(close, St) ->
     {stop, close, St};
-handle_cast(_Msg, St) ->
+handle_cast_(_Msg, St) ->
     {noreply, St}.
 
+handle_info(Msg, St) ->
+    try handle_info_(Msg, St)
+    catch
+        error:Reason ->
+            Trace = erlang:get_stacktrace(),
+            lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
+            error(Reason, Trace)
+    end.
 
-handle_info({noise, EConn, Data}, #st{econn = EConn} = St) ->
+handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
     {_Type, _Info} = Msg = aesc_codec:dec(Data),
     tell_fsm(Msg, St),
     enoise:set_active(EConn, once),
     {noreply, St};
-handle_info(_Msg, St) ->
+handle_info_(_Msg, St) ->
     {noreply, St}.
 
 terminate(_Reason, _St) ->
@@ -118,6 +145,7 @@ code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
 cast(P, Msg) ->
+    lager:debug("to noise session ~p: ~p", [P, Msg]),
     gen_server:cast(P, Msg).
 
 tell_fsm({_, _} = Msg, #st{parent = Parent}) ->
@@ -134,10 +162,10 @@ tcp_opts(_Op, Opts) ->
 
 
 noise_defaults() ->
-    [{protocol, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}].
+    [{noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}].
 
 tcp_defaults() ->
-    [{active, once},
+    [{active, true},
      {reuseaddr, true},
      {mode, binary}].
 

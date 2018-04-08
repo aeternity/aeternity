@@ -19,6 +19,8 @@
 
 %% API
 -export([sign/2,
+         sign/3,
+         add_signatures/2,
          tx/1,
          verify/1,
          signatures/1,
@@ -62,6 +64,10 @@ sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     #signed_tx{tx = Tx,
                signatures = lists:sort(Signatures)}.
 
+-spec add_signatures(signed_tx(), list(binary())) -> signed_tx().
+add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
+  when is_list(NewSigs) ->
+    Tx#signed_tx{signatures = lists:usort(NewSigs ++ OldSigs)}.
 
 -spec tx(signed_tx()) -> tx().
 %% @doc Get the original transaction from a signed transaction.
