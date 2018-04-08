@@ -22,6 +22,7 @@
 -include("aesc_codec.hrl").
 
 -type bin32()   :: <<_:256>>.
+-type bin65()   :: <<_:520>>.
 -type i2bytes() :: 0 .. 16#FFFF.
 -type i4bytes() :: 0 .. 16#FFFFffff.
 -type i8bytes() :: 0 .. 16#FFFFffffFFFFffff.
@@ -32,7 +33,7 @@
 -type depth()       :: i4bytes().
 -type length()      :: i2bytes().
 -type amount()      :: i8bytes().
--type pubkey()      :: bin32().
+-type pubkey()      :: bin65().
 
 enc(?CH_OPEN     , Msg) -> enc_ch_open(Msg);
 enc(?CH_ACCEPT   , Msg) -> enc_ch_accept(Msg);
@@ -42,6 +43,7 @@ enc(?FND_SIGNED  , Msg) -> enc_fnd_signed(Msg);
 enc(?FND_LOCKED  , Msg) -> enc_fnd_locked(Msg);
 enc(?UPD_DEPOSIT , Msg) -> enc_upd_deposit(Msg);
 enc(?UPD_WITHDRAW, Msg) -> enc_upd_withdraw(Msg);
+enc(?ERROR       , Msg) -> enc_error(Msg);
 enc(?SHUTDOWN    , Msg) -> enc_shutdown(Msg).
 
 -define(id(C), C:1/unit:8).
@@ -54,6 +56,7 @@ dec(<<?id(?ID_FND_SIGNED)  , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
 dec(<<?id(?ID_FND_LOCKED)  , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
 dec(<<?id(?ID_UPD_DEPOSIT) , B/bytes>>) -> {?UPD_DEPOSIT , dec_upd_deposit(B)};
 dec(<<?id(?ID_UPD_WITHDRAW), B/bytes>>) -> {?UPD_WITHDRAW, dec_upd_withdraw(B)};
+dec(<<?id(?ID_ERROR)       , B/bytes>>) -> {?ERROR       , dec_error(B)};
 dec(<<?id(?ID_SHUTDOWN)    , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)}.
 
 
@@ -83,7 +86,7 @@ enc_ch_open(#{chain_hash := ChainHash
      , InitiatorAmt   :8 /unit:8
      , ParticipantAmt :8 /unit:8
      , ChanReserve    :8 /unit:8
-     , InitiatorPubkey:32/binary >>.
+     , InitiatorPubkey:65/binary >>.
 
 -spec dec_ch_open(binary()) -> ch_open_msg().
 dec_ch_open(<< ChainHash      :32/binary
@@ -93,7 +96,7 @@ dec_ch_open(<< ChainHash      :32/binary
              , InitiatorAmt   :8 /unit:8
              , ParticipantAmt :8 /unit:8
              , ChanReserve    :8 /unit:8
-             , InitiatorPubkey:32/binary >>) ->
+             , InitiatorPubkey:65/binary >>) ->
     #{chain_hash           => ChainHash
     , temporary_channel_id => ChanId
     , lock_period          => LockPeriod
@@ -104,46 +107,46 @@ dec_ch_open(<< ChainHash      :32/binary
     , initiator            => InitiatorPubkey}.
 
 
--type ch_accept_msg() :: #{temporary_channel_id := chan_id()
-                         , chain_hash           := hash()
-                         , minimum_depth        := depth()
-                         , initiator_amount     := amount()
-                         , participant_amount   := amount()
-                         , channel_reserve      := amount()
-                         , initiator            := pubkey()}.
+-type ch_accept_msg() :: #{ chain_hash           := hash()
+                          , temporary_channel_id := chan_id()
+                          , minimum_depth        := depth()
+                          , initiator_amount     := amount()
+                          , participant_amount   := amount()
+                          , channel_reserve      := amount()
+                          , participant          := pubkey()}.
 
 -spec enc_ch_accept(ch_accept_msg()) -> binary().
-enc_ch_accept(#{temporary_channel_id := ChanId
-              , chain_hash           := ChainHash
-              , minimum_depth        := MinDepth
-              , initiator_amount     := InitiatorAmt
-              , participant_amount   := ParticipantAmt
-              , channel_reserve      := ChanReserve
-              , initiator            := InitiatorPubkey}) ->
+enc_ch_accept(#{ chain_hash           := ChainHash
+               , temporary_channel_id := ChanId
+               , minimum_depth        := MinDepth
+               , initiator_amount     := InitiatorAmt
+               , participant_amount   := ParticipantAmt
+               , channel_reserve      := ChanReserve
+               , participant          := Participant}) ->
     << ?ID_CH_ACCEPT  :1 /unit:8
-     , ChanId         :32/binary
      , ChainHash      :32/binary
+     , ChanId         :32/binary
      , MinDepth       :4 /unit:8
      , InitiatorAmt   :8 /unit:8
      , ParticipantAmt :8 /unit:8
      , ChanReserve    :8 /unit:8
-     , InitiatorPubkey:32/binary >>.
+     , Participant    :65/binary >>.
 
 -spec dec_ch_accept(binary()) -> ch_accept_msg().
-dec_ch_accept(<< ChanId         :32/binary
-               , ChainHash      :32/binary
+dec_ch_accept(<< ChainHash      :32/binary
+               , ChanId         :32/binary
                , MinDepth       :4/unit:8
                , InitiatorAmt   :8 /unit:8
                , ParticipantAmt :8 /unit:8
                , ChanReserve    :8 /unit:8
-               , InitiatorPubkey:32/binary >>) ->
-    #{temporary_channel_id => ChanId
-    , chain_hash           => ChainHash
+               , Participant    :65/binary >>) ->
+    #{chain_hash           => ChainHash
+    , temporary_channel_id => ChanId
     , minimum_depth        => MinDepth
     , initiator_amount     => InitiatorAmt
     , participant_amount   => ParticipantAmt
     , channel_reserve      => ChanReserve
-    , initiator            => InitiatorPubkey}.
+    , participant          => Participant}.
 
 
 -type ch_reestabl_msg() :: #{temporary_channel_id := chan_id()}.
@@ -216,13 +219,11 @@ dec_fnd_locked(<< ChanId:32/binary
 
 
 -type upd_deposit_msg() :: #{temporary_channel_id := chan_id()
-                           , length               := length()
                            , data                 := binary()}.
 
 -spec enc_upd_deposit(upd_deposit_msg()) -> binary().
-enc_upd_deposit(#{temporary_channel_id := ChanId
-                , length := Length
-                , data   := Data}) ->
+enc_upd_deposit(#{ temporary_channel_id := ChanId
+                 , data   := Data }) ->
     Length = byte_size(Data),
     << ?ID_UPD_DEPOSIT:1 /unit:8
      , ChanId         :32/binary
@@ -234,18 +235,16 @@ dec_upd_deposit(<< ChanId:32/binary
                  , Length:2 /unit:8
                  , Data/bytes >>) ->
     Length = byte_size(Data),
-    #{temporary_channel_id => ChanId
-    , length => Length
-    , data   => Data}.
+    #{ temporary_channel_id => ChanId
+     , data   => Data }.
 
 -type upd_withdrawal_msg() :: #{temporary_channel_id := chan_id()
-                              , length               := length()
                               , data                 := binary()}.
 
 -spec enc_upd_withdraw(upd_withdrawal_msg()) -> binary().
 enc_upd_withdraw(#{temporary_channel_id := ChanId
-                 , length               := Length
                  , data                 := Data}) ->
+    Length = byte_size(Data),
     << ?ID_UPD_WITHDRAW :1 /unit:8
      , ChanId           :32/binary
      , Length           :2 /unit:8
@@ -257,8 +256,28 @@ dec_upd_withdraw(<< ChanId:32/binary
                   , Data/bytes >>) ->
     Length = byte_size(Data),
     #{temporary_channel_id => ChanId
-    , length => Length
     , data   => Data}.
+
+-type error_msg() :: #{ channel_id := chan_id()
+                      , length     := length()
+                      , data       := binary() }.
+
+-spec enc_error(error_msg()) -> binary().
+enc_error(#{ channel_id := ChanId
+           , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_ERROR :1 /unit:8
+     , ChanId    :32/binary
+     , Length    :2 /unit:8
+     , Data      :Length/bytes >>.
+
+-spec dec_error(binary8) -> error_msg().
+dec_error(<< ChanId:32/binary
+           , Length:2 /unit:8
+           , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
 
 -type shutdown_msg() :: #{temporary_channel_id := chan_id()}.
 

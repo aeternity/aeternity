@@ -8,6 +8,7 @@
 -define(FND_LOCKED  , funding_locked).
 -define(UPD_DEPOSIT , update_deposit).
 -define(UPD_WITHDRAW, update_withdrawal).
+-define(ERROR       , error).
 -define(SHUTDOWN    , shutdown).
 
 -define(ID_CH_OPEN     , 1).
@@ -18,5 +19,6 @@
 -define(ID_FND_LOCKED  , 6).
 -define(ID_UPD_DEPOSIT , 7).
 -define(ID_UPD_WITHDRAW, 8).
+-define(ID_ERROR       , 98).
 -define(ID_SHUTDOWN    , 99).
 

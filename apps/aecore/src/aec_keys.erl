@@ -35,7 +35,7 @@
 -export([check_key_pair/0]).
 
 -ifdef(TEST).
--export([encrypt_peerkey/2, check_key_pair/2]).
+-export([encrypt_peerkey/2, check_key_pair/2, privkey/0]).
 -endif.
 
 -define(SERVER, ?MODULE).
@@ -95,6 +95,10 @@ sign(Tx) ->
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
     gen_server:call(?MODULE, pubkey).
+
+-spec privkey() -> {ok, binary()} | {error, key_not_found}.
+privkey() ->
+    gen_server:call(?MODULE, privkey).
 
 -spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
 peer_pubkey() ->
@@ -210,6 +214,11 @@ handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
+handle_call(privkey, _From, #state{priv=PrivKey} = State) ->
+    case PrivKey of
+        undefined -> {reply, {error, key_not_found}, State};
+        _         -> {reply, {ok, PrivKey}, State}
+    end;
 handle_call(peer_pubkey, _From, #state{peer_pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(peer_pubkey, _From, #state{peer_pub=PubKey} = State) ->
