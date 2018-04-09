@@ -9,13 +9,15 @@
 
 getters_test() ->
     BlockHeader = #header{height = 11,
-                          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>},
+                          prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+                          version = ?PROTOCOL_VERSION},
     ?assertEqual(11, ?TEST_MODULE:height(BlockHeader)),
     ?assertEqual(<<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
                  ?TEST_MODULE:prev_hash(BlockHeader)).
 
 network_serialization_test() ->
-    Header = #header{ root_hash = <<0:32/unit:8>> },
+    Header = #header{ root_hash = <<0:32/unit:8>>,
+                      version = ?PROTOCOL_VERSION },
     SerializedHeader = ?TEST_MODULE:serialize_to_binary(Header),
     DeserializedHeader =
         ?TEST_MODULE:deserialize_from_binary(SerializedHeader),
@@ -24,7 +26,7 @@ network_serialization_test() ->
                  ?TEST_MODULE:serialize_to_binary(DeserializedHeader)).
 
 hash_test() ->
-    Header = #header{},
+    Header = #header{version = ?PROTOCOL_VERSION},
     {ok, _HeaderHash} = ?TEST_MODULE:hash_header(Header).
 
 validate_test_() ->
@@ -43,28 +45,31 @@ validate_test_() ->
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, false),
-              Header = #header{},
+              Header = #header{version = ?PROTOCOL_VERSION},
               ?assertEqual({error, incorrect_pow}, ?TEST_MODULE:validate(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
               NowTime = 7592837461,
               meck:expect(aeu_time, now_in_msecs, 0, NowTime),
-              Header = #header{time = 2 * NowTime},
+              Header = #header{time = 2 * NowTime,
+                               version = ?PROTOCOL_VERSION},
               ?assertEqual({error, block_from_the_future}, ?TEST_MODULE:validate(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
-              Header = #header{},
+              Header = #header{version = ?PROTOCOL_VERSION},
               ?assertEqual(ok, ?TEST_MODULE:validate(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
-              Header = #header{nonce = -1},
+              Header = #header{nonce = -1,
+                               version = ?PROTOCOL_VERSION},
               ?assertError(function_clause, ?TEST_MODULE:validate(Header))
       end,
       fun() ->
               meck:expect(aec_pow_cuckoo, verify, 4, true),
-              Header = #header{nonce = 16#1ffffffffffffffff},
+              Header = #header{nonce = 16#1ffffffffffffffff,
+                               version = ?PROTOCOL_VERSION},
               ?assertError(function_clause, ?TEST_MODULE:validate(Header))
       end]}.
