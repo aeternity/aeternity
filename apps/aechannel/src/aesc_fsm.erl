@@ -21,7 +21,7 @@
          code_change/4,
          terminate/3]).
 
--export([where/1]).
+-export([where/2]).
 
 %% FSM states
 -export([initialized/3,
@@ -138,8 +138,8 @@ signing_response(Fsm, Tag, Obj) ->
 own_funding_locked(Fsm, ChanId) ->
     gen_statem:cast(Fsm, {own_funding_locked, ChanId}).
 
-where(ChanId) ->
-    gproc:where(gproc_name(ChanId)).
+where(ChanId, Role) ->
+    gproc:where(gproc_name(ChanId, Role)).
 
 %% ======================================================================
 %% Default timer values
@@ -240,7 +240,7 @@ awaiting_open(cast, {channel_open, Msg}, #data{role = participant} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
             report_info(channel_open, D1),
-            %% gproc_register(D1),
+            gproc_register(D1),
             {next_state, accepted, send_channel_accept(D1)};
         {error, _} = Error ->
             close(Error, D)
@@ -255,7 +255,7 @@ initialized(enter, _OldSt, D) ->
 initialized(cast, {channel_accept, Msg}, #data{role = initiator} = D) ->
     case check_accept_msg(Msg, D) of
         {ok, D1} ->
-            %% gproc_register(D1),
+            gproc_register(D1),
             report_info(channel_accept, D1),
             {ok, CTx} = create_tx_for_signing(D1),
             ok = request_signing(create_tx, CTx, D1),
@@ -596,11 +596,11 @@ start_min_depth_watcher(#data{create_tx = SignedTx,
     evt({watcher, Watcher}),
     {ok, Watcher, Data#data{on_chain_id = OnChainId}}.
 
-%% gproc_register(#data{channel_id = ChanId}) ->
-%%     gproc:reg(gproc_name(ChanId)).
+gproc_register(#data{role = Role, channel_id = ChanId}) ->
+    gproc:reg(gproc_name(ChanId, Role)).
 
-gproc_name(Id) ->
-    {n, l, {aesc_channel, Id}}.
+gproc_name(Id, Role) ->
+    {n, l, {aesc_channel, {Id, Role}}}.
 
 
 %% start_trace() ->
