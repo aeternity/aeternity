@@ -1,0 +1,94 @@
+---
+# Pre-configured addresses of epoch nodes to contact. If not set TestNet seed peers will be used.
+peers:
+    # TestNet seed peers
+    - "aenode://pp$QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015" # us-west-2
+    - "aenode://pp$2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015" # eu-central-1
+    - "aenode://pp$27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015" # ap-southeast-1
+    - "aenode://pp$2i8N6XsjCGe1wkdMhDRs7t7xzijrjJDN4xA22RoNGCgt6ay9QB@31.13.249.70:3015" # eu-east
+
+# Pre-configured addresses of epoch nodes NOT to contact
+blocked_peers:
+    - aenode://pp$2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@some-really-bad-peer-address:3015
+
+sync:
+    # Internal port used for P2P communication
+    port: 3015
+    # Port used for P2P communication
+    # Make sure this port is reachable from you public facing IP.
+    # It will be the same as the `port` option if not specified.
+    external_port: 3015
+    # The listen address should be publicly accessible
+    listen_address: 0.0.0.0
+    # Ping retry configuration in milliseconds
+    ping_interval: 30000
+
+http:
+    external:
+        # Port used for external HTTP API
+        port: 3013
+        # The external listen address should be publicly accessible
+        listen_address: 0.0.0.0
+        # Timeouts in milliseconds
+        request_timeout: 1000
+        # Less than request_timeout
+        connect_timeout: 100
+        # Number of acceptors in server pool
+        acceptors: 10
+    internal:
+        # The internal listen address should be not publicly accessible
+        listen_address: 127.0.0.1
+        port: 3113
+        # Number of acceptors in server pool
+        acceptors: 10
+
+websocket:
+    internal:
+        # The WebSocket listen address should be not publicly accessible
+        listen_address: 127.0.0.1
+        port: 3114
+        # Number of acceptors in WebSocket HTTP server pool
+        acceptors: 10
+
+keys:
+    dir: keys
+    password: "secret"
+
+chain:
+    # Write chain data to disk.
+    persist: true
+    # Chain persistence directory relative to application root
+    db_path: .
+
+mining:
+    # Start mining automatically.
+    autostart: true
+    # Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.
+    attempt_timeout: 3600000
+    # Expected mine rate (milliseconds) between blocks. Used in governance.
+    expected_mine_rate: 300000
+    cuckoo:
+        miner:
+            # Executable binary of the miner.
+            executable: lean28
+            # Extra arguments to pass to the miner executable binary.
+            extra_args: ""
+            # Number of bits used for representing a node in the Cuckoo Cycle problem.
+            node_bits: 28
+
+logging:
+    # Controls the overload protection in the logs.
+    hwm: 50
+    # Sets the level of logging.
+    level: debug
+
+metrics:
+    # StatsD server and port
+    host: 127.0.0.1
+    port: 8125
+    reconnect_interval: 10000
+    rules:
+        - name: "ae.epoch.system.**"
+          actions: log
+        - name: "ae.epoch.aecore.**"
+          actions: log,send
