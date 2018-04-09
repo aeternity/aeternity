@@ -221,7 +221,8 @@ unblock_all() ->
 -record(state, {peers                   :: gb_trees:tree(binary(), peer()),
                 blocked = gb_sets:new() :: gb_sets:set(peer_id()),
                 local_peer              :: peer_info(),  %% for universal handling of URIs
-                next_unblock = 0        :: integer() %% Erlang timestamp in ms.
+                next_unblock = 0        :: integer(), %% Erlang timestamp in ms.
+                peer_monitors           :: ets:tab()
                }).
 
 start_link() ->
@@ -231,9 +232,12 @@ init(ok) ->
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{seckey => SecKey, pubkey => PubKey},
+    PMons = ets:new(aec_peer_monitors, [named_table, protected]),
     lager:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{peers = gb_trees:empty(),
-                local_peer = LocalPeer}}.
+                local_peer = LocalPeer,
+                peer_monitors = PMons
+               }}.
 
 handle_call({set_local_peer_info, Peer}, _From, State) ->
     {reply, ok, State#state{local_peer = Peer}};
@@ -410,6 +414,7 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }}
                         end
                 end,
+            maybe_add_monitor(NewPeer, State),
             State1 = State#state{peers = enter_peer(NewPeer, State#state.peers)},
             {reply, Res, metrics(State1)}
     end.
@@ -455,6 +460,7 @@ handle_cast({add, PeerInfo}, State0) ->
                         FoundPeer
                 end,
             State1 = State0#state{peers = enter_peer(NewPeer, State0#state.peers)},
+            maybe_add_monitor(NewPeer, State1),
             {noreply, metrics(State1)};
         true ->
             lager:debug("Will not add peer ~p", [ppp(PeerId)]),
@@ -490,6 +496,21 @@ handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
             lager:debug("stale ping_peer timer msg (~p) - ignore", [ppp(PeerId)]),
             {noreply, State}
     end;
+handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = State) ->
+    [{Pid, Ref, PeerId}] = ets:lookup(PMons, Pid),
+    ets:delete(PMons, Pid),
+    case lookup_peer(PeerId, State) of
+        {value, _, #peer{connection = {_, Pid}}} ->
+            %% This was an unexpected process down. Clean it up.
+            %% TODO: This should probably be restarted.
+            lager:error("Peer connection died - removing: ~p : ~p",
+                        [Pid, ppp(PeerId)]),
+            Peers = remove_peer(PeerId, State#state.peers),
+            {noreply, State#state{peers = Peers}};
+        _ ->
+            %% This was a stale process monitor message
+            {noreply, State}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -502,6 +523,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+maybe_add_monitor(#peer{connection = {_, Pid}} = Peer, #state{peer_monitors = PMons}) ->
+    case ets:lookup(PMons, Pid) =:= [] of
+        true ->
+            Ref = monitor(process, Pid),
+            PeerId = peer_id(Peer),
+            ets:insert(PMons, [{Pid, Ref, PeerId}]),
+            ok;
+        false ->
+            ok
+    end;
+maybe_add_monitor(#peer{}, #state{}) ->
+    ok.
 
 metrics(#state{peers = Peers, blocked = Blocked} = State) ->
     aec_metrics:try_update([ae,epoch,aecore,peers,count],
