@@ -259,7 +259,6 @@ dec_upd_withdraw(<< ChanId:32/binary
     , data   => Data}.
 
 -type error_msg() :: #{ channel_id := chan_id()
-                      , length     := length()
                       , data       := binary() }.
 
 -spec enc_error(error_msg()) -> binary().
@@ -271,7 +270,7 @@ enc_error(#{ channel_id := ChanId
      , Length    :2 /unit:8
      , Data      :Length/bytes >>.
 
--spec dec_error(binary8) -> error_msg().
+-spec dec_error(binary()) -> error_msg().
 dec_error(<< ChanId:32/binary
            , Length:2 /unit:8
            , Data/bytes >>) ->
