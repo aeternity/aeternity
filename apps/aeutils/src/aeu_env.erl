@@ -19,8 +19,6 @@
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
--type http_uri_host() :: string() | binary(). %% From https://github.com/erlang/otp/blob/9fc5b13/lib/inets/src/http_lib/http_uri.erl#L75
-
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
 -type config_tree() :: [{binary(), config_tree() | basic_or_list()}].
@@ -220,7 +218,7 @@ store([Vars0]) ->
     set_env(aeutils, '$user_config', Vars),
     set_env(aeutils, '$user_map', Vars0).
 
-check_config_({yamerl_exception, StackTrace} = Error) ->
+check_config_({yamerl_exception, _StackTrace} = Error) ->
     {error, Error};
 check_config_({'EXIT', Reason}) ->
     ShortError = pp_error(Reason),
