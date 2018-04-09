@@ -44,15 +44,21 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id  := ChannelId,
-      amount      := Amount,
-      fee         := Fee,
-      nonce       := Nonce}) ->
+new(#{channel_id        := ChannelId,
+      from              := From,
+      initiator_amount  := InitiatorAmount,
+      responder_amount  := ResponderAmount,
+      ttl               := TTL,
+      fee               := Fee,
+      nonce             := Nonce}) ->
     Tx = #channel_close_mutual_tx{
-            channel_id  = ChannelId,
-            amount      = Amount,
-            fee         = Fee,
-            nonce       = Nonce},
+            channel_id        = ChannelId,
+            from              = From,
+            initiator_amount  = InitiatorAmount,
+            responder_amount  = ResponderAmount,
+            ttl               = TTL,
+            fee               = Fee,
+            nonce             = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -75,16 +81,18 @@ origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     end.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_close_mutual_tx{channel_id  = ChannelId,
-                               amount      = Amount,
-                               fee         = Fee,
-                               nonce       = Nonce}, Trees, Height) ->
+check(#channel_close_mutual_tx{channel_id       = ChannelId,
+                               from             = _From,
+                               initiator_amount = InitiatorAmount,
+                               responder_amount = ResponderAmount,
+                               ttl              = TTL,
+                               fee              = Fee,
+                               nonce            = Nonce}, Trees, Height) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         none ->
             {error, channel_does_not_exist};
         {value, Channel} ->
             InitiatorPubKey = aesc_channels:initiator(Channel),
-            ParticipantPubKey = aesc_channels:participant(Channel),
             Checks =
                 [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, Fee) end,
                  fun() ->
@@ -93,7 +101,21 @@ check(#channel_close_mutual_tx{channel_id  = ChannelId,
                         false -> {error, channel_not_active}
                     end
                 end,
-                fun() -> check_peer_has_funds(InitiatorPubKey, ParticipantPubKey, ChannelId, Amount, Trees) end],
+                fun() -> % check fee
+                    ChannelAmt = aesc_channels:initiator_amount(Channel) +
+                                 aesc_channels:participant_amount(Channel),
+                    ok_or_error(ChannelAmt >= Fee, fee_too_big)
+                end,
+                fun() -> % check amounts
+                    ChannelAmt = aesc_channels:initiator_amount(Channel) +
+                                 aesc_channels:participant_amount(Channel),
+                    ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
+                                wrong_amounts)
+                end,
+                fun() -> % check TTL
+                    ok_or_error(TTL >= Height, ttl_expired)
+                end
+                ],
             case aeu_validation:run(Checks) of
                 ok ->
                     {ok, Trees};
@@ -103,10 +125,11 @@ check(#channel_close_mutual_tx{channel_id  = ChannelId,
     end.
 
 -spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#channel_close_mutual_tx{channel_id  = ChannelId,
-                                 amount      = Amount,
-                                 fee         = Fee,
-                                 nonce       = Nonce}, Trees, Height) ->
+process(#channel_close_mutual_tx{channel_id       = ChannelId,
+                                 initiator_amount = InitiatorAmount0,
+                                 responder_amount = ResponderAmount0,
+                                 fee              = Fee,
+                                 nonce            = Nonce}, Trees, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -196,13 +219,20 @@ verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
 %%% Internal functions
 %%%===================================================================
 
--spec check_peer_has_funds(pubkey(), pubkey(), aesc_channels:id(), aesc_channels:amount(), aec_trees:trees()) ->
-                                  ok | {error, insufficient_channel_peer_amount}.
-check_peer_has_funds(InitiatorPubkey, ParticipantPubKey, ChannelId, Amount, Trees) ->
-    case Amount > 0 of
-        true  -> aesc_utils:check_peer_has_funds(InitiatorPubkey, ChannelId, Amount, Trees);
-        false -> aesc_utils:check_peer_has_funds(ParticipantPubKey, ChannelId, Amount, Trees)
-    end.
+ok_or_error(false, ErrMsg) -> {error, ErrMsg};
+ok_or_error(true, _) -> ok.
+
+-spec subtract_fee(InitiatorAmount0  :: non_neg_integer(),
+                   ResponderAmount0  :: non_neg_integer(),
+                   IndividualFee     :: non_neg_integer()) ->
+    {InitiatorAmount :: non_neg_integer(),
+     ResponderAmount :: non_neg_integer()}.
+subtract_fee(IAmt, RAmt, IndividualFee) when IAmt < IndividualFee ->
+    {0, RAmt - 2 * IndividualFee};
+subtract_fee(IAmt, RAmt, IndividualFee) when RAmt < IndividualFee ->
+    {IAmt - 2 * IndividualFee, 0};
+subtract_fee(IAmt, RAmt, IndividualFee) ->
+    {IAmt - IndividualFee, RAmt - IndividualFee}.
 
 -spec version() -> non_neg_integer().
 version() ->

@@ -66,7 +66,8 @@ push(Tx) ->
 
 -spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx()), event()) -> ok.
 push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
-    % ignore those are not verifiable
+    % TODO: Add currently not verifiable transactions to a tx limbo
+    % currently ignore those are not verifiable
     Txs1 =
         lists:filter(
             fun(SignedTx) ->
