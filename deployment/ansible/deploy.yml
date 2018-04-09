@@ -52,7 +52,6 @@
         port: 3015
       http:
         external:
-          peer_address: http://{{ public_ip }}:3013/
           port: 3013
         internal:
           listen_address: "{{ api_internal_listen_address|default('127.0.0.1') }}"
