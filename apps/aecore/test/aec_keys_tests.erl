@@ -47,18 +47,14 @@ all_test_() ->
                {"Keys validation (positive case)",
                 fun() ->
                         {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-                        ValidPair = aec_keys:check_keys_pair(Pubkey, PrivKey,
-                                                         ecdsa, sha256,
-                                                         secp256k1),
+                        ValidPair = aec_keys:check_key_pair(Pubkey, PrivKey),
                         ?assertEqual(true, ValidPair)
                 end},
                {"Keys validation (negative case)",
                 fun() ->
                         Pubkey = <<"invalid">>,
                         Privkey = <<"key pair">>,
-                        ValidPair = aec_keys:check_keys_pair(Pubkey, Privkey,
-                                                         ecdsa, sha256,
-                                                         secp256k1),
+                        ValidPair = aec_keys:check_key_pair(Pubkey, Privkey),
                         ?assertEqual(false, ValidPair)
                 end},
                 {"Peer key validation (positive case)",

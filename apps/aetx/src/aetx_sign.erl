@@ -19,16 +19,14 @@
 
 %% API
 -export([sign/2,
-         sign/3,
          tx/1,
+         verify/1,
          signatures/1,
-         verify/2,
          is_coinbase/1,
          filter_invalid_signatures/1]).
 
 %% API that should be avoided to be used
--export([verify/1,
-         serialize_for_client/3,
+-export([serialize_for_client/3,
          serialize_for_client_pending/2,
          meta_data_from_client_serialized/2,
          serialize_to_binary/1,
@@ -39,6 +37,7 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("apps/aecore/include/aec_crypto.hrl").
 
 -record(signed_tx, {
           tx                         :: aetx:tx(),
@@ -52,23 +51,14 @@
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
 -spec sign(tx(), list(binary()) | binary()) -> signed_tx().
-sign(Tx, PrivKeys) ->
-  sign(Tx, PrivKeys, #{}).
-
--spec sign(tx(), list(binary()) | binary(), map()) -> signed_tx().
-%% @doc Given a transaction Tx, a private key and a crypto map,
-%% return the cryptographically signed transaction.
-%% A list of signers may be provided instead of one signer key.
-sign(Tx, PrivKey, CryptoMap) when is_binary(PrivKey) ->
-  sign(Tx, [PrivKey], CryptoMap);
-sign(Tx, PrivKeys, CryptoMap) when is_list(PrivKeys) ->
+sign(Tx, PrivKey) when is_binary(PrivKey) ->
+  sign(Tx, [PrivKey]);
+sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
-    Algo = maps:get(algo, CryptoMap, ecdsa),
-    Digest = maps:get(digest, CryptoMap, sha256),
-    Curve = maps:get(curve, CryptoMap, secp256k1),
+    Curve = crypto:ec_curve(?CRYPTO_CURVE),
     Signatures =
-       [ crypto:sign(Algo, Digest, Bin, [PrivKey, crypto:ec_curve(Curve)]) ||
-         PrivKey <- PrivKeys ],
+        [crypto:sign(?CRYPTO_ALGO, ?CRYPTO_DIGEST, Bin, [PrivKey, Curve])
+         || PrivKey <- PrivKeys],
     #signed_tx{tx = Tx,
                signatures = lists:sort(Signatures)}.
 
@@ -86,34 +76,34 @@ tx(#signed_tx{tx = Tx}) ->
 signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
 
-%% @doc Verify a signed transaction by checking that the provided keys indeed all
-%% have signed this transaction.
--spec verify(signed_tx(), list(binary())) -> ok | {error, signature_check_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}, Signers) ->
-    %% This works even for Signers being one public key!
-    #signed_tx{signatures = NewSigs} = sign(Tx, Signers),
-    case {NewSigs -- Sigs, Sigs -- NewSigs} of
-        {[], []} ->
-          ok;
-        {DSigs1, []} ->
-          lager:debug("No matching sigs (~p - ~p) additional new signatures", [DSigs1, Sigs]),
-          {error, signature_check_failed};
-        {_, DSigs2} ->
-          lager:debug("No matching sigs (~p - ~p) missing signatures", [DSigs2, Sigs]),
-          {error, signature_check_failed}
-    end.
-
-
-%% This should not call aec_keys verify, but aec_keys should call this module!
-%% with the keys of the signers.
 -spec verify(signed_tx()) -> ok | {error, signature_check_failed}.
 verify(#signed_tx{tx = Tx, signatures = Sigs}) ->
-    case aec_keys:verify(Sigs, Tx) of
-        true -> ok;
-        false ->
-            lager:debug("No matching sigs (~p)", [Sigs]),
-            {error, signature_check_failed}
-    end.
+    Bin     = aetx:serialize_to_binary(Tx),
+    Signers = aetx:signers(Tx),
+    verify_signatures(Signers, Bin, Sigs).
+
+verify_signatures([PubKey|Left], Bin, Sigs) ->
+    case verify_one_pubkey(Sigs, PubKey, Bin) of
+        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft);
+        error -> {error, signature_check_failed}
+    end;
+verify_signatures([],_Bin, []) ->
+    ok;
+verify_signatures(PubKeys,_Bin, Sigs) ->
+    lager:debug("Signature check failed: ~p ~p", [PubKeys, Sigs]),
+    {error, signature_check_failed}.
+
+verify_one_pubkey(Sigs, PubKey, Bin) ->
+    verify_one_pubkey(Sigs, PubKey, Bin, []).
+
+verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) ->
+    Key = [PubKey, crypto:ec_curve(?CRYPTO_CURVE)],
+    case crypto:verify(?CRYPTO_ALGO, ?CRYPTO_DIGEST, Bin, Sig, Key) of
+        true  -> {ok, Acc ++ Left};
+        false -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
+    end;
+verify_one_pubkey([],_PubKey,_Bin,_Acc) ->
+    error.
 
 -spec filter_invalid_signatures(list(signed_tx())) -> list(signed_tx()).
 filter_invalid_signatures(SignedTxs) ->
