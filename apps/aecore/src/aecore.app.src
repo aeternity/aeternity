@@ -72,6 +72,7 @@
                      {110, {aec_peers, check_env, []}},
                      {110, {aecore_app, check_env, []}},
                      {110, {aehttp_app, check_env, []}},
+                     {110, {aec_hard_forks, check_env, []}},
                      {200, {aec_db, check_db, []}}
                     ]}
           ]}

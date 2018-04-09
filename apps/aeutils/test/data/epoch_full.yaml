@@ -59,6 +59,10 @@ chain:
     persist: true
     # Chain persistence directory relative to application root
     db_path: .
+    # Hard forks
+    hard_forks:
+      "9": 0
+      "10": 5000
 
 mining:
     # Start mining automatically.

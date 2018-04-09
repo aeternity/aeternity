@@ -35,7 +35,7 @@ new_block_test_() ->
      {"Generate new block with given txs and 0 nonce",
       fun() ->
               PrevBlock = #block{height = 11, target = 17,
-                                 version = ?PROTOCOL_VERSION},
+                                 version = ?GENESIS_VERSION},
               BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
               NewBlock = ?TEST_MODULE:new(PrevBlock, [], aec_trees:new()),
@@ -48,7 +48,7 @@ new_block_test_() ->
               ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),
               ?assertEqual([], NewBlock#block.txs),
               ?assertEqual(17, NewBlock#block.target),
-              ?assertEqual(?PROTOCOL_VERSION, NewBlock#block.version)
+              ?assertEqual(?GENESIS_VERSION, NewBlock#block.version)
       end}}.
 
 network_serialization_test_() ->
