@@ -28,7 +28,7 @@
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
-          version = ?PROTOCOL_VERSION :: non_neg_integer(),
+          version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence()}).
 
 -record(header, {
@@ -39,7 +39,7 @@
           target = ?HIGHEST_TARGET_SCI :: aec_pow:sci_int(),
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
-          version = ?PROTOCOL_VERSION :: non_neg_integer(),
+          version                 :: non_neg_integer(),
           pow_evidence = no_value :: aec_pow:pow_evidence()}).
 
 -type(header_binary() :: binary()).
