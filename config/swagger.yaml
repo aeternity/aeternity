@@ -2623,7 +2623,17 @@ definitions:
     properties:
       channel_id:
         type: string
-      amount:
+      from:
+        $ref: '#/definitions/EncodedHash'
+      initiator_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      responder_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      ttl:
         type: integer
         format: int64
         minimum: 0
@@ -2637,7 +2647,10 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - amount
+    - from
+    - initiator_amount
+    - responder_amount
+    - ttl
     - fee
     - nonce
   ChannelCloseSoloTx:

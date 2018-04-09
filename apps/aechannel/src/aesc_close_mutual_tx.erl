@@ -128,30 +128,36 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
 process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  initiator_amount = InitiatorAmount0,
                                  responder_amount = ResponderAmount0,
-                                 fee              = Fee,
-                                 nonce            = Nonce}, Trees, Height) ->
+                                 fee              = Fee}, Trees, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
-    Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    InitiatorPubKey = aesc_channels:initiator(Channel0),
-    ParticipantPubKey = aesc_channels:participant(Channel0),
-    Channel1      = aesc_channels:subtract_funds(Channel0, Amount, InitiatorPubKey),
-    Channel2      = aesc_channels:add_funds(Channel1, Amount, ParticipantPubKey),
+    Channel      = aesc_state_tree:get(ChannelId, ChannelsTree0),
+    InitiatorPubKey = aesc_channels:initiator(Channel),
+    ParticipantPubKey = aesc_channels:participant(Channel),
+
+    IndividualFee = Fee div 2, %% TODO odd numbers
+
+    {InitiatorAmount, ResponderAmount} = subtract_fee(InitiatorAmount0,
+                                                      ResponderAmount0,
+                                                      IndividualFee),
 
     InitiatorAccount0         = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
-    {ok, InitiatorAccount1}   = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
-    {ok, InitiatorAccount2}   = aec_accounts:earn(InitiatorAccount1, aesc_channels:initiator_amount(Channel2), Height),
+    {ok, InitiatorAccount}    = aec_accounts:earn(InitiatorAccount0,
+                                                  InitiatorAmount,
+                                                  Height),
     ParticipantAccount0       = aec_accounts_trees:get(ParticipantPubKey, AccountsTree0),
-    {ok, ParticipantAccount1} = aec_accounts:earn(ParticipantAccount0, aesc_channels:participant_amount(Channel2), Height),
+    {ok, ParticipantAccount}  = aec_accounts:earn(ParticipantAccount0,
+                                                  ResponderAmount,
+                                                  Height),
 
-    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount2, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount1, AccountsTree1),
+    AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
+    AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount, AccountsTree1),
 
-    ChannelsTree1 = aesc_state_tree:delete(aesc_channels:id(Channel2), ChannelsTree0),
+    ChannelsTree = aesc_state_tree:delete(aesc_channels:id(Channel), ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
-    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
+    Trees2 = aec_trees:set_channels(Trees1, ChannelsTree),
     {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
@@ -167,45 +173,65 @@ signers(#channel_close_mutual_tx{} = CloseTx) ->
     accounts(CloseTx).
 
 -spec serialize(tx()) -> {vsn(), list()}.
-serialize(#channel_close_mutual_tx{channel_id  = ChannelId,
-                                   amount      = Amount,
-                                   fee         = Fee,
-                                   nonce       = Nonce}) ->
+serialize(#channel_close_mutual_tx{channel_id       = ChannelId,
+                                   from             = From,
+                                   initiator_amount = InitiatorAmount,
+                                   responder_amount = ResponderAmount,
+                                   ttl              = TTL,
+                                   fee              = Fee,
+                                   nonce            = Nonce}) ->
     {version(),
-     [ {channel_id , ChannelId}
-     , {amount     , Amount}
-     , {fee        , Fee}
-     , {nonce      , Nonce}
+     [ {channel_id        , ChannelId}
+     , {from              , From}
+     , {initiator_amount  , InitiatorAmount}
+     , {responder_amount  , ResponderAmount}
+     , {ttl               , TTL}
+     , {fee               , Fee}
+     , {nonce             , Nonce}
      ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
-            [ {channel_id , ChannelId}
-            , {amount     , Amount}
-            , {fee        , Fee}
-            , {nonce      , Nonce}]) ->
-    #channel_close_mutual_tx{channel_id  = ChannelId,
-                             amount      = Amount,
-                             fee         = Fee,
-                             nonce       = Nonce}.
+            [ {channel_id       , ChannelId}
+            , {from             , From}
+            , {initiator_amount , InitiatorAmount}
+            , {responder_amount , ResponderAmount}
+            , {ttl              , TTL}
+            , {fee              , Fee}
+            , {nonce            , Nonce}]) ->
+    #channel_close_mutual_tx{channel_id       = ChannelId,
+                             from             = From,
+                             initiator_amount = InitiatorAmount,
+                             responder_amount = ResponderAmount,
+                             ttl              = TTL,
+                             fee              = Fee,
+                             nonce            = Nonce}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
-                                    amount      = Amount,
+                                    from             = From,
+                                    initiator_amount = InitiatorAmount,
+                                    responder_amount = ResponderAmount,
+                                    ttl              = TTL,
                                     fee         = Fee,
                                     nonce       = Nonce}) ->
     #{<<"data_schema">> => <<"ChannelCloseMutualTxJSON">>, % swagger schema name
-      <<"vsn">>         => version(),
-      <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
-      <<"amount">>      => Amount,
-      <<"fee">>         => Fee,
-      <<"nonce">>       => Nonce}.
+      <<"channel_id">>        => aec_base58c:encode(channel, ChannelId),
+      <<"from">>              => aec_base58c:encode(account_pubkey, From),
+      <<"initiator_amount">>  => InitiatorAmount,
+      <<"responder_amount">>  => ResponderAmount,
+      <<"ttl">>               => TTL,
+      <<"fee">>               => Fee,
+      <<"nonce">>             => Nonce}.
 
 serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
-    [ {channel_id , binary}
-    , {amount     , int}
-    , {fee        , int}
-    , {nonce      , int}
+    [ {channel_id       , binary}
+    , {from             , binary}
+    , {initiator_amount , int}
+    , {responder_amount , int}
+    , {ttl              , int}
+    , {fee              , int}
+    , {nonce            , int}
     ].
 
 -spec verifiable(tx()) -> boolean().

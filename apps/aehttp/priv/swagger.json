@@ -3273,12 +3273,25 @@
     },
     "ChannelCloseMutualTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce" ],
+      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce", "responder_amount", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "amount" : {
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3295,9 +3308,12 @@
         }
       },
       "example" : {
-        "amount" : 0,
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
+        "ttl" : 0,
         "nonce" : 0
       }
     },
