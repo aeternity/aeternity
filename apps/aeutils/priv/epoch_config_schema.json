@@ -196,6 +196,28 @@
                     "description" :
                     "The directory where the chain is persisted to disk.",
                     "type" : "string"
+                },
+                "hard_forks" : {
+                    "description" : "The consensus protocol versions with respective effective heights",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "required" : [
+                        "9",
+                        "10"
+                    ],
+                    "properties" : {
+                        "9" : {
+                            "description" : "Minimum height at which protocol is effective",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "maximum" : 0
+                        },
+                        "10" : {
+                            "description" : "Minimum height at which protocol is effective",
+                            "type" : "integer",
+                            "minimum" : 0
+                        }
+                    }
                 }
             }
         },

@@ -29,13 +29,14 @@ mine_block_test_() ->
        {timeout, 60,
         {"Find a new block",
          fun() ->
-                 TopBlock = #block{height = 0,
+                 TopBlock = #block{height = ?GENESIS_HEIGHT,
                                    target = ?HIGHEST_TARGET_SCI,
-                                   version = ?PROTOCOL_VERSION},
+                                   version = ?GENESIS_VERSION},
                  % if there is a change in the structure of the block
                  % this will result in a change in the hash of the header
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
+                 % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  meck:expect(aec_pow, pick_nonce, 0, 17575765576845162115),
 
@@ -54,8 +55,9 @@ mine_block_test_() ->
        {timeout, 60,
         {"Proof of work fails with no_solution",
          fun() ->
-                 TopBlock = #block{target = ?LOWEST_TARGET_SCI,
-                                   version = ?PROTOCOL_VERSION},
+                 TopBlock = #block{height = ?GENESIS_HEIGHT,
+                                   target = ?LOWEST_TARGET_SCI,
+                                   version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
