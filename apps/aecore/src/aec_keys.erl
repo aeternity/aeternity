@@ -206,13 +206,6 @@ handle_call({sign, Tx}, _From,
             SignedTx = aetx_sign:sign(Tx, PrivKey),
             {reply, {ok, SignedTx}, State}
     end;
-handle_call({verify, Signatures, Tx}, _From, #state{crypto = C} = State) ->
-    SignersPubKeys = aetx:signers(Tx),
-    Bin = aetx:serialize_to_binary(Tx),
-    Res = lists:all(fun(SignerPubKey) ->
-                            has_signers_signature(Bin, SignerPubKey, Signatures, C)
-                    end, SignersPubKeys),
-    {reply, Res, State};
 handle_call(pubkey, _From, #state{pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{pub=PubKey} = State) ->
@@ -285,16 +278,6 @@ peer_key_filenames(KeysDir) -> p_gen_peer_filename(KeysDir).
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-
-has_signers_signature(Bin, SignerPubKey, Signatures,
-                      #crypto{algo = Algo,
-                              digest = Digest,
-                              curve = Curve}) ->
-    lists:any(
-      fun(Signature) ->
-              crypto:verify(
-                Algo, Digest, Bin, Signature, [SignerPubKey, crypto:ec_curve(Curve)])
-      end, Signatures).
 
 hash(Bin) ->
     crypto:hash(sha256, Bin).
