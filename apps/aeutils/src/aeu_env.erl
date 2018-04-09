@@ -220,6 +220,8 @@ store([Vars0]) ->
     set_env(aeutils, '$user_config', Vars),
     set_env(aeutils, '$user_map', Vars0).
 
+check_config_({yamerl_exception, StackTrace} = Error) ->
+    {error, Error};
 check_config_({'EXIT', Reason}) ->
     ShortError = pp_error(Reason),
     {error, ShortError};
