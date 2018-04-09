@@ -149,7 +149,9 @@ exec(ID, Cmd, Opts) ->
                 {ok, 200, Result} -> {ok, Result};
                 {ok, 404, _} -> throw({exec_not_found, ExecId});
                 {ok, 500, Response} ->
-                    throw({docker_error, maps:get(message, Response)})
+                    throw({docker_error, maps:get(message, Response)});
+                {error, timeout} ->
+                    throw({exec_start_timeout, {ID, ExecId}})
             end
     end.
 
