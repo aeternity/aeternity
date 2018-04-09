@@ -23,7 +23,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         verifiable/1
         ]).
 
 %%%===================================================================
@@ -65,10 +66,13 @@ fee(#channel_close_mutual_tx{fee = Fee}) ->
 nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> pubkey() | undefined.
 origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
-    {ok, Channel} = aec_chain:get_channel(ChannelId),
-    aesc_channels:initiator(Channel).
+    case aec_chain:get_channel(ChannelId) of
+        {ok, Channel} ->
+            aesc_channels:initiator(Channel);
+        {error, not_found} -> undefined
+    end.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{channel_id  = ChannelId,
@@ -78,7 +82,7 @@ check(#channel_close_mutual_tx{channel_id  = ChannelId,
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         none ->
             {error, channel_does_not_exist};
-        {ok, Channel} ->
+        {value, Channel} ->
             InitiatorPubKey = aesc_channels:initiator(Channel),
             ParticipantPubKey = aesc_channels:participant(Channel),
             Checks =
@@ -129,13 +133,15 @@ process(#channel_close_mutual_tx{channel_id  = ChannelId,
 
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
-    {ok, Channel} = aec_chain:get_channel(ChannelId),
-    [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)].
+    case aec_chain:get_channel(ChannelId) of
+        {ok, Channel} ->
+            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+        {error, not_found} -> []
+    end.
 
 -spec signers(tx()) -> list(pubkey()).
-signers(#channel_close_mutual_tx{channel_id = ChannelId}) ->
-    {ok, Channel} = aec_chain:get_channel(ChannelId),
-    [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)].
+signers(#channel_close_mutual_tx{} = CloseTx) ->
+    accounts(CloseTx).
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_mutual_tx{channel_id  = ChannelId,
@@ -178,6 +184,13 @@ serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
     , {fee        , int}
     , {nonce      , int}
     ].
+
+-spec verifiable(tx()) -> boolean().
+verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, _Channel} -> true;
+        {error, not_found} -> false
+    end.
 
 %%%===================================================================
 %%% Internal functions

@@ -16,6 +16,7 @@
         , new/2
         , nonce/1
         , origin/1
+        , verifiable/1
         , process/3
         , serialize_for_client/1
         , serialize_to_binary/1
@@ -119,6 +120,11 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
+-callback verifiable(Tx :: tx_instance()) ->
+    boolean().
+
+-optional_callbacks([verifiable/1]).
+
 %% -- ADT Implementation -----------------------------------------------------
 
 -spec new(CallbackModule :: module(),  Tx :: tx_instance()) ->
@@ -189,6 +195,23 @@ deserialize_from_binary(Bin) ->
     Template = CB:serialization_template(Vsn),
     Fields = aec_object_serialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
+
+-spec verifiable(Tx :: tx()) -> boolean().
+verifiable(Tx) ->
+    call_optional_callback(Tx, verifiable, [], true).
+
+
+call_optional_callback(#aetx{ cb = CB, tx = Tx }, FunAtom, Params0, Default) ->
+    Params = [Tx | Params0],
+    Arity = length(Params),
+    case erlang:function_exported(CB, FunAtom, Arity) of
+        true ->
+            apply(CB, FunAtom, Params);
+        false ->
+            Default
+    end.
+
+
 
 type_to_cb(spend_tx)           -> aec_spend_tx;
 type_to_cb(coinbase_tx)        -> aec_coinbase_tx;

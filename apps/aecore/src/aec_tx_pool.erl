@@ -66,10 +66,17 @@ push(Tx) ->
 
 -spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx()), event()) -> ok.
 push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, Txs, Event});
+    % ignore those are not verifiable
+    Txs1 =
+        lists:filter(
+            fun(SignedTx) ->
+                aetx:verifiable(aetx_sign:tx(SignedTx))
+            end,
+            Txs), 
+    gen_server:call(?SERVER, {push, Txs1, Event});
 push([], _) -> ok;
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, [Tx], Event}).
+    push([Tx], Event).
 
 -spec delete(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
 delete(Txs) when is_list(Txs) ->
