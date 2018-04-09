@@ -382,33 +382,7 @@ handle_ping_rsp(S, {ping, From}, RemotePingObj) ->
     remove_request_fld(S, ping).
 
 handle_ping(S, none, RemotePingObj) ->
-    {PeerOk, S1} =
-        case is_non_registered_accept(S) of
-             true ->
-                %% This is the first ping, now we have everything - accept the peer
-                #{<<"port">> := Port} = RemotePingObj,
-                Peer = #{ host => maps:get(host, S), port => Port,
-                          pubkey => maps:get(r_pubkey, S), connection => self(),
-                          ping => false, trusted => false },
-
-                %% Cancel the first ping_timeout
-                case maps:get(first_ping_tref, S, undefined) of
-                    undefined -> ok;
-                    Ref -> try erlang:cancel_timer(Ref, [{async, true}, {info, false}])
-                           catch error:_ -> ok end
-                end,
-
-                NewS = maps:remove(first_ping_tref, S#{ port => Port }),
-                case aec_peers:accept_peer(Peer, self()) of
-                    ok ->
-                        {ok, NewS};
-                    Err = {error, _} ->
-                        gen_server:cast(self(), stop),
-                        {Err, NewS}
-                end;
-             false ->
-                {ok, S}
-         end,
+    {PeerOk, S1} = handle_first_ping(S, RemotePingObj),
 
     PingObj =
         case PeerOk of
@@ -435,6 +409,34 @@ handle_ping(S, {ping, _From}, RemotePingObj) ->
     PingObj = #{ <<"pong">> => <<"pang">>, <<"reason">> => <<"already pinging">> },
     send_msg(S, ?MSG_PING_RSP, PingObj),
     S.
+
+handle_first_ping(S, RemotePingObj) ->
+    case is_non_registered_accept(S) of
+        true ->
+            %% This is the first ping, now we have everything - accept the peer
+            #{<<"port">> := Port} = RemotePingObj,
+            Peer = #{ host => maps:get(host, S), port => Port,
+                      pubkey => maps:get(r_pubkey, S), connection => self(),
+                      ping => false, trusted => false },
+
+            %% Cancel the first ping_timeout
+            case maps:get(first_ping_tref, S, undefined) of
+                undefined -> ok;
+                Ref -> try erlang:cancel_timer(Ref, [{async, true}, {info, false}])
+                       catch error:_ -> ok end
+            end,
+
+            NewS = maps:remove(first_ping_tref, S#{ port => Port }),
+            case aec_peers:accept_peer(Peer, self()) of
+                ok ->
+                    {ok, NewS};
+                Err = {error, _} ->
+                    gen_server:cast(self(), stop),
+                    {Err, NewS}
+            end;
+        false ->
+            {ok, S}
+    end.
 
 handle_ping_msg(S, RemotePingObj) ->
     #{ <<"genesis_hash">> := LGHash,
