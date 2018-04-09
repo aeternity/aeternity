@@ -96,9 +96,11 @@ sign(Tx) ->
 pubkey() ->
     gen_server:call(?MODULE, pubkey).
 
+-ifdef(TEST).
 -spec privkey() -> {ok, binary()} | {error, key_not_found}.
 privkey() ->
     gen_server:call(?MODULE, privkey).
+-endif.
 
 -spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
 peer_pubkey() ->

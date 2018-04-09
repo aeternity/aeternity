@@ -252,12 +252,6 @@ check_not_channel(InitiatorPubKey, Nonce, ParticipantPubKey, Trees) ->
         none              -> ok
     end.
 
-check_push_amount(PushAmount, InitiatorAmount) ->
-    case PushAmount =< InitiatorAmount of
-        true  -> ok;
-        false -> {error, push_amount_exceeds_initiator_amount}
-    end.
-
 check_reserve_amount(Reserve, InitiatorAmount,
                      ParticipantAmount) when is_integer(Reserve) ->
     case (Reserve =< InitiatorAmount) of
