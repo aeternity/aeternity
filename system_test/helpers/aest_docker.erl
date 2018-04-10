@@ -201,11 +201,12 @@ start_node(#{container_id := ID, hostname := Name} = NodeState) ->
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
     Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+    TimeoutMs = case Timeout of infinity -> infinity; _ -> Timeout * 1000 end,
     case is_running(ID) of
         false ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
-            attempt_epoch_stop(NodeState, Timeout),
+            attempt_epoch_stop(NodeState, TimeoutMs),
             case wait_stopped(ID, Timeout) of %% TODO Fix this call that has timeout actual parameter as seconds but handled inside function definition as milliseconds.
                 timeout ->
                     aest_docker_api:stop_container(ID, Opts);

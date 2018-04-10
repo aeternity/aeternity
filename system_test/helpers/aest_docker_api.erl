@@ -136,12 +136,7 @@ exec(ID, Cmd, Opts) ->
                 'Detach' => false,
                 'Tty' => true
             },
-            TimeoutOpts =
-                case Opts of
-                    #{timeout := infinity} -> #{timeout => infinity};
-                    #{timeout := Seconds} -> #{timeout => Seconds * 1000};
-                    #{} -> #{}
-                end,
+            TimeoutOpts = maps:with([timeout], Opts),
             PostOpts = maps:merge(#{result_type => raw}, TimeoutOpts),
             case
                 docker_post([exec, ExecId, start], #{}, ExecStartBody, PostOpts)
