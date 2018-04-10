@@ -26,6 +26,7 @@
          id/3,
          initiator/1,
          participant/1,
+         peers/1,
          total_amount/1,
          initiator_amount/1,
          channel_reserve/1,
@@ -204,6 +205,11 @@ initiator(#channel{initiator = InitiatorPubKey}) ->
 -spec participant(channel()) -> pubkey().
 participant(#channel{participant = ParticipantPubKey}) ->
     ParticipantPubKey.
+
+-spec peers(channel()) -> list(pubkey()).
+peers(#channel{initiator = InitiatorPubkey,
+               participant = ParticipantPubKey}) ->
+    [InitiatorPubkey, ParticipantPubKey].
 
 -spec total_amount(channel()) -> amount().
 total_amount(#channel{total_amount = TotalAmount}) ->
