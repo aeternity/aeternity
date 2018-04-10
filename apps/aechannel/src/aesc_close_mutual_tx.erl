@@ -102,13 +102,10 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
                     end
                 end,
                 fun() -> % check fee
-                    ChannelAmt = aesc_channels:initiator_amount(Channel) +
-                                 aesc_channels:participant_amount(Channel),
-                    ok_or_error(ChannelAmt >= Fee, fee_too_big)
+                    ok_or_error(InitiatorAmount + ResponderAmount >= Fee, fee_too_big)
                 end,
                 fun() -> % check amounts
-                    ChannelAmt = aesc_channels:initiator_amount(Channel) +
-                                 aesc_channels:participant_amount(Channel),
+                    ChannelAmt = aesc_channels:total_amount(Channel),
                     ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
                                 wrong_amounts)
                 end,

@@ -43,23 +43,17 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{channel_id   := ChannelId,
-      from_account := FromPubKey,
-      to_account   := ToPubKey,
-      amount       := Amount,
-      initiator    := InitiatorPubKey,
-      participant  := ParticipantPubKey,
-      fee          := Fee,
-      nonce        := Nonce}) ->
+new(#{channel_id  := ChannelId,
+      from        := FromPubKey,
+      amount      := Amount,
+      fee         := Fee,
+      nonce       := Nonce}) ->
     Tx = #channel_deposit_tx{
-            channel_id   = ChannelId,
-            from_account = FromPubKey,
-            to_account   = ToPubKey,
-            amount       = Amount,
-            initiator    = InitiatorPubKey,
-            participant  = ParticipantPubKey,
-            fee          = Fee,
-            nonce        = Nonce},
+            channel_id  = ChannelId,
+            from        = FromPubKey,
+            amount      = Amount,
+            fee         = Fee,
+            nonce       = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -74,22 +68,18 @@ nonce(#channel_deposit_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> pubkey().
-origin(#channel_deposit_tx{from_account = FromPubKey}) ->
+origin(#channel_deposit_tx{from = FromPubKey}) ->
     FromPubKey.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_deposit_tx{channel_id   = ChannelId,
-                          from_account = FromPubKey,
-                          to_account   = ToPubKey,
-                          amount       = Amount,
-                          initiator    = InitiatorPubKey,
-                          participant  = ParticipantPubKey,
-                          fee          = Fee,
-                          nonce        = Nonce}, Trees, Height) ->
+check(#channel_deposit_tx{channel_id  = ChannelId,
+                          from        = FromPubKey,
+                          amount      = Amount,
+                          fee         = Fee,
+                          nonce       = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Amount + Fee) end,
-         fun() -> aesc_utils:check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) end,
-         fun() -> aesc_utils:check_are_peers([FromPubKey, ToPubKey], [InitiatorPubKey, ParticipantPubKey]) end],
+         fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -98,12 +88,11 @@ check(#channel_deposit_tx{channel_id   = ChannelId,
     end.
 
 -spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#channel_deposit_tx{channel_id   = ChannelId,
-                            from_account = FromPubKey,
-                            to_account   = ToPubKey,
-                            amount       = Amount,
-                            fee          = Fee,
-                            nonce        = Nonce}, Trees, Height) ->
+process(#channel_deposit_tx{channel_id = ChannelId,
+                            from       = FromPubKey,
+                            amount     = Amount,
+                            fee        = Fee,
+                            nonce      = Nonce}, Trees, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -112,7 +101,7 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:add_funds(Channel0, Amount, ToPubKey),
+    Channel1      = aesc_channels:deposit(Channel0, Amount),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -120,86 +109,62 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
     {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
-accounts(#channel_deposit_tx{from_account = FromPubKey}) ->
-    %% Is `from_account` here enough?
-    %% Technically funds are taken from `from_account` balance, and they land in `to_account` channel balance.
-    %% So `to_account`'s channel balance is impacted only.
+accounts(#channel_deposit_tx{from = FromPubKey}) ->
     [FromPubKey].
 
 -spec signers(tx()) -> list(pubkey()).
-signers(#channel_deposit_tx{initiator   = InitiatorPubKey,
-                            participant = ParticipantPubKey}) ->
-    %% TODO: Maybe remove initiator and participant from tx payload and verify signatures based on MPT
-    %% This compilicates not only aetx:signers/1 callback, but also aetx:accounts/1,
-    %% which is used for APIs to get transaction for an accounts.
-    %% Does changing that make sense?
-    [InitiatorPubKey, ParticipantPubKey].
+signers(#channel_deposit_tx{channel_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, Channel} ->
+            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+        {error, not_found} ->
+            []
+    end.
 
 -spec serialize(tx()) -> {vsn(), list()}.
-serialize(#channel_deposit_tx{channel_id   = ChannelId,
-                              from_account = FromPubKey,
-                              to_account   = ToPubKey,
-                              amount       = Amount,
-                              initiator    = InitiatorPubKey,
-                              participant  = ParticipantPubKey,
-                              fee          = Fee,
-                              nonce        = Nonce}) ->
+serialize(#channel_deposit_tx{channel_id  = ChannelId,
+                              from        = FromPubKey,
+                              amount      = Amount,
+                              fee         = Fee,
+                              nonce       = Nonce}) ->
     {version(),
-    [ {channel_id  , ChannelId}
-    , {from_account, FromPubKey}
-    , {to_account  , ToPubKey}
-    , {initiator   , InitiatorPubKey}
-    , {participant , ParticipantPubKey}
-    , {amount      , Amount}
-    , {fee         , Fee}
-    , {nonce       , Nonce}
-    ]}.
+     [ {channel_id  , ChannelId}
+     , {from        , FromPubKey}
+     , {amount      , Amount}
+     , {fee         , Fee}
+     , {nonce       , Nonce}
+     ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             [ {channel_id  , ChannelId}
-            , {from_account, FromPubKey}
-            , {to_account  , ToPubKey}
-            , {initiator   , InitiatorPubKey}
-            , {participant , ParticipantPubKey}
+            , {from        , FromPubKey}
             , {amount      , Amount}
             , {fee         , Fee}
             , {nonce       , Nonce}]) ->
-    #channel_deposit_tx{channel_id = ChannelId,
-                        from_account = FromPubKey,
-                        to_account   = ToPubKey,
-                        amount       = Amount,
-                        initiator    = InitiatorPubKey,
-                        participant  = ParticipantPubKey,
-                        fee          = Fee,
-                        nonce        = Nonce}.
+    #channel_deposit_tx{channel_id  = ChannelId,
+                        from        = FromPubKey,
+                        amount      = Amount,
+                        fee         = Fee,
+                        nonce       = Nonce}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_deposit_tx{channel_id   = ChannelId,
-                               from_account = FromPubKey,
-                               to_account   = ToPubKey,
+                               from        = FromPubKey,
                                amount       = Amount,
-                               initiator    = InitiatorPubKey,
-                               participant  = ParticipantPubKey,
                                fee          = Fee,
                                nonce        = Nonce}) ->
     #{<<"data_schema">>  => <<"ChannelDepositTxJSON">>, % swagger schema name
       <<"vsn">>          => version(),
       <<"channel">>      => aec_base58c:encode(channel, ChannelId),
-      <<"from_account">> => aec_base58c:encode(account_pubkey, FromPubKey),
-      <<"to_account">>   => aec_base58c:encode(account_pubkey, ToPubKey),
+      <<"from">>         => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"amount">>       => Amount,
-      <<"initiator">>    => aec_base58c:encode(account_pubkey, InitiatorPubKey),
-      <<"participant">>  => aec_base58c:encode(account_pubkey, ParticipantPubKey),
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
 
 serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
     [ {channel_id  , binary}
-    , {from_account, binary}
-    , {to_account  , binary}
-    , {initiator   , binary}
-    , {participant , binary}
+    , {from        , binary}
     , {amount      , int}
     , {fee         , int}
     , {nonce       , int}
@@ -208,6 +173,21 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+check_channel(ChannelId, FromPubKey, Trees) ->
+    case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
+        {value, Channel} ->
+            case aesc_channels:is_active(Channel) of
+                true ->
+                    aesc_utils:check_are_peers([FromPubKey],
+                                               [aesc_channels:initiator(Channel),
+                                                aesc_channels:participant(Channel)]);
+                false ->
+                    {error, channel_not_active}
+            end;
+        none ->
+            {error, channel_does_not_exist}
+    end.
 
 -spec version() -> non_neg_integer().
 version() ->
