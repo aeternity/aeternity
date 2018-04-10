@@ -45,11 +45,6 @@
         , ppp/1
         ]).
 
-%% API used by aec_peer_connection and aec_peer_connection_listener
--export([ sync_port/0
-        , ext_sync_port/0
-        , sync_listen_address/0]).
-
 -export([check_env/0]).
 
 %% gen_server callbacks
@@ -59,9 +54,6 @@
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
-
--define(DEFAULT_SYNC_PORT, 3015).
--define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
 
 -define(DEFAULT_PING_INTERVAL, 120 * 1000).
 -define(BACKOFF_TIMES, [5, 15, 30, 60, 120, 300, 600]).
@@ -229,7 +221,8 @@ unblock_all() ->
 -record(state, {peers                   :: gb_trees:tree(binary(), peer()),
                 blocked = gb_sets:new() :: gb_sets:set(peer_id()),
                 local_peer              :: peer_info(),  %% for universal handling of URIs
-                next_unblock = 0        :: integer() %% Erlang timestamp in ms.
+                next_unblock = 0        :: integer(), %% Erlang timestamp in ms.
+                peer_monitors           :: ets:tab()
                }).
 
 start_link() ->
@@ -239,9 +232,12 @@ init(ok) ->
     {ok, SecKey} = aec_keys:peer_privkey(),
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{seckey => SecKey, pubkey => PubKey},
+    PMons = ets:new(aec_peer_monitors, [named_table, protected]),
     lager:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{peers = gb_trees:empty(),
-                local_peer = LocalPeer}}.
+                local_peer = LocalPeer,
+                peer_monitors = PMons
+               }}.
 
 handle_call({set_local_peer_info, Peer}, _From, State) ->
     {reply, ok, State#state{local_peer = Peer}};
@@ -418,6 +414,7 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }}
                         end
                 end,
+            maybe_add_monitor(NewPeer, State),
             State1 = State#state{peers = enter_peer(NewPeer, State#state.peers)},
             {reply, Res, metrics(State1)}
     end.
@@ -463,6 +460,7 @@ handle_cast({add, PeerInfo}, State0) ->
                         FoundPeer
                 end,
             State1 = State0#state{peers = enter_peer(NewPeer, State0#state.peers)},
+            maybe_add_monitor(NewPeer, State1),
             {noreply, metrics(State1)};
         true ->
             lager:debug("Will not add peer ~p", [ppp(PeerId)]),
@@ -498,6 +496,21 @@ handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
             lager:debug("stale ping_peer timer msg (~p) - ignore", [ppp(PeerId)]),
             {noreply, State}
     end;
+handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = State) ->
+    [{Pid, Ref, PeerId}] = ets:lookup(PMons, Pid),
+    ets:delete(PMons, Pid),
+    case lookup_peer(PeerId, State) of
+        {value, _, #peer{connection = {_, Pid}}} ->
+            %% This was an unexpected process down. Clean it up.
+            %% TODO: This should probably be restarted.
+            lager:error("Peer connection died - removing: ~p : ~p",
+                        [Pid, ppp(PeerId)]),
+            Peers = remove_peer(PeerId, State#state.peers),
+            {noreply, State#state{peers = Peers}};
+        _ ->
+            %% This was a stale process monitor message
+            {noreply, State}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -510,6 +523,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+maybe_add_monitor(#peer{connection = {_, Pid}} = Peer, #state{peer_monitors = PMons}) ->
+    case ets:lookup(PMons, Pid) =:= [] of
+        true ->
+            Ref = monitor(process, Pid),
+            PeerId = peer_id(Peer),
+            ets:insert(PMons, [{Pid, Ref, PeerId}]),
+            ok;
+        false ->
+            ok
+    end;
+maybe_add_monitor(#peer{}, #state{}) ->
+    ok.
 
 metrics(#state{peers = Peers, blocked = Blocked} = State) ->
     aec_metrics:try_update([ae,epoch,aecore,peers,count],
@@ -673,19 +699,6 @@ backoff_timeout(#peer{ retries = Retries, trusted = Trusted }) ->
 ping_interval() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
                                aecore, ping_interval, ?DEFAULT_PING_INTERVAL).
-
-sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
-
-ext_sync_port() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"external_port">>],
-        aecore, ext_sync_port, sync_port()).
-
-sync_listen_address() ->
-    Config = aeu_env:user_config_or_env([<<"sync">>, <<"listen_address">>],
-                aecore, sync_listen_address, ?DEFAULT_SYNC_LISTEN_ADDRESS),
-    {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
-    IpAddress.
 
 parse_peer_address(PeerAddress) ->
     case http_uri:parse(PeerAddress) of
