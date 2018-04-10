@@ -212,11 +212,9 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
                 "attempting to stop node by executing command ~s",
                 [Name, ID, CmdStr]),
             try
-                aest_docker_api:exec(ID, Cmd, #{timeout => Timeout})
-            of
-                {ok, _} ->
-                    log(NodeState, "Command executed on container ~p [~s]: ~s",
-                        [Name, ID, CmdStr])
+                {ok, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+                log(NodeState, "Command executed on container ~p [~s]: ~s",
+                    [Name, ID, CmdStr])
             catch
                 throw:{exec_start_timeout, TimeoutInfo} ->
                     log(NodeState,
