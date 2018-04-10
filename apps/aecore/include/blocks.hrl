@@ -1,8 +1,8 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 9).
+-define(PROTOCOL_VERSION, 10).
 
--define(GENESIS_VERSION, 9).
+-define(GENESIS_VERSION, 10).
 -define(GENESIS_HEIGHT, 0).
 
 -define(BLOCK_HEADER_HASH_BYTES, 32).
