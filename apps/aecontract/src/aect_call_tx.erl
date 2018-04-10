@@ -334,4 +334,3 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
             end;
         none -> {error, contract_does_not_exist}
     end.
-
