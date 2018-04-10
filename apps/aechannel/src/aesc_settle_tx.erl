@@ -99,7 +99,7 @@ process(#channel_settle_tx{channel_id = ChannelId,
     Initiator         = aesc_channels:initiator(Channel0),
     InitiatorAmount   = aesc_channels:initiator_amount(Channel0),
     Participant       = aesc_channels:participant(Channel0),
-    ParticipantAmount = aesc_channels:participant_amount(Channel0),
+    ParticipantAmount = aesc_channels:total_amount(Channel0) - InitiatorAmount,
 
     InitiatorAccount0         = aec_accounts_trees:get(Initiator, AccountsTree0),
     ParticipantAccount0       = aec_accounts_trees:get(Participant, AccountsTree0),

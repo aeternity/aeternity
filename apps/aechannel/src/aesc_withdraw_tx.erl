@@ -97,20 +97,17 @@ process(#channel_withdraw_tx{channel_id = ChannelId,
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
-    FromAccount0       = aec_accounts_trees:get(ToPubKey, AccountsTree0),
-    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce, Height),
-
     ToAccount0       = aec_accounts_trees:get(ToPubKey, AccountsTree0),
-    {ok, ToAccount1} = aec_accounts:earn(ToAccount0, Amount, Height),
+    {ok, ToAccount1} = aec_accounts:spend(ToAccount0, Fee, Nonce, Height),
+    {ok, ToAccount2} = aec_accounts:earn(ToAccount1, Amount, Height),
 
-    AccountsTree1 = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ToAccount1, AccountsTree1),
+    AccountsTree1 = aec_accounts_trees:enter(ToAccount2, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
     Channel1      = aesc_channels:withdraw(Channel0, Amount),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
-    Trees1 = aec_trees:set_accounts(Trees, AccountsTree2),
+    Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 

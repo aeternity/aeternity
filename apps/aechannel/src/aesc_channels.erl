@@ -26,7 +26,6 @@
          id/3,
          initiator/1,
          participant/1,
-         peers/1,
          total_amount/1,
          initiator_amount/1,
          channel_reserve/1,
@@ -78,7 +77,8 @@ close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
                total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
                sequence_number  = aesc_offchain_tx:sequence_number(State),
-               closes_at        = ClosesAt}.
+               closes_at        = ClosesAt,
+               status           = solo_closing}.
 
 -spec deposit(channel(), amount()) -> channel().
 deposit(#channel{total_amount = TotalAmount} = Ch, Amount) ->
@@ -205,11 +205,6 @@ initiator(#channel{initiator = InitiatorPubKey}) ->
 -spec participant(channel()) -> pubkey().
 participant(#channel{participant = ParticipantPubKey}) ->
     ParticipantPubKey.
-
--spec peers(channel()) -> list(pubkey()).
-peers(#channel{initiator = InitiatorPubkey,
-               participant = ParticipantPubKey}) ->
-    [InitiatorPubkey, ParticipantPubKey].
 
 -spec total_amount(channel()) -> amount().
 total_amount(#channel{total_amount = TotalAmount}) ->
