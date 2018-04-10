@@ -52,6 +52,10 @@
         , get_oracles/2
         ]).
 
+%%% Channels API
+-export([ get_channel/1
+        ]).
+
 %%% Difficulty API
 -export([ difficulty_at_hash/1
         , difficulty_at_top_block/0
@@ -117,6 +121,24 @@ get_oracles(From, Max) ->
     case get_top_state() of
         {ok, Trees} ->
             {ok, aeo_state_tree:get_oracles(From, Max, aec_trees:oracles(Trees))};
+        error ->
+            {error, no_state_trees}
+    end.
+
+%%%===================================================================
+%%% State channels
+%%%===================================================================
+
+-spec get_channel(aesc_channels:id()) ->
+                         {'ok', aesc_channels:channel()} |
+                         {'error', 'no_state_trees'|'not_found'}.
+get_channel(ChannelId) ->
+    case get_top_state() of
+        {ok, Trees} ->
+            case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
+                {value, Channel} -> {ok, Channel};
+                none -> {error, not_found}
+            end;
         error ->
             {error, no_state_trees}
     end.
