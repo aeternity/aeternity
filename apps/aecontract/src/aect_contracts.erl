@@ -343,7 +343,8 @@ assert_field(balance, X)    when is_integer(X), X >= 0   -> X;
 assert_field(height, X)     when is_integer(X), X > 0    -> X;
 assert_field(nonce, X)      when is_integer(X), X >= 0   -> X;
 assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
-assert_field(vm_version, X) when is_integer(X), X >= 0   -> X;
+assert_field(vm_version, X) when is_integer(X), X > 0,
+                                                X < 6    -> X;
 assert_field(code, X)       when is_binary(X)            -> X;
 assert_field(state, X)      when is_binary(X)            -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
