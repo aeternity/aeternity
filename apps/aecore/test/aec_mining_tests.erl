@@ -35,8 +35,8 @@ mine_block_test_() ->
                  % this will result in a change in the hash of the header
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
-                 %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 17575765576845162115),
+                 % let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
+                 meck:expect(aec_pow, pick_nonce, 0, 11360486843977841823),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
