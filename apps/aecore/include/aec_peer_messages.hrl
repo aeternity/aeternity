@@ -1,0 +1,15 @@
+-define(MSG_FRAGMENT, 0).
+-define(MSG_P2P_RESPONSE, 100).
+-define(MSG_PING, 1).
+-define(MSG_PING_RSP, 2).
+-define(MSG_GET_HEADER_BY_HASH, 3).
+-define(MSG_HEADER, 4).
+-define(MSG_GET_N_SUCCESSORS, 5).
+-define(MSG_HEADER_HASHES, 6).
+-define(MSG_GET_BLOCK, 7).
+-define(MSG_TX, 9).
+-define(MSG_BLOCK, 11).
+-define(MSG_GET_MEMPOOL, 13).
+-define(MSG_MEMPOOL, 14).
+-define(MSG_GET_HEADER_BY_HEIGHT, 15).
+
