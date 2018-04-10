@@ -73,11 +73,11 @@ origin(#channel_deposit_tx{from = FromPubKey}) ->
     FromPubKey.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_deposit_tx{channel_id  = ChannelId,
-                          from        = FromPubKey,
-                          amount      = Amount,
-                          fee         = Fee,
-                          nonce       = Nonce}, Trees, Height) ->
+check(#channel_deposit_tx{channel_id = ChannelId,
+                          from       = FromPubKey,
+                          amount     = Amount,
+                          fee        = Fee,
+                          nonce      = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Amount + Fee) end,
          fun() -> check_channel(ChannelId, FromPubKey, Trees) end],

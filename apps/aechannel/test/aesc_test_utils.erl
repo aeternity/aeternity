@@ -12,11 +12,20 @@
          trees/1,
          set_trees/2,
          priv_key/2,
+         get_account/2,
          set_account_balance/3,
          set_account_nonce/3,
          setup_new_account/1]).
+-export([close_solo/1,
+         get_channel/2,
+         set_channel/2]).
+-export([apply_on_trees_without_sigs_check/3]).
 -export([create_tx_spec/3,
-         create_tx_spec/4]).
+         create_tx_spec/4,
+         deposit_tx_spec/3,
+         deposit_tx_spec/4,
+         withdraw_tx_spec/3,
+         withdraw_tx_spec/4]).
 
 -include_lib("apps/aechannel/include/channel_txs.hrl").
 
@@ -93,6 +102,40 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 %%%===================================================================
+%%% Channel
+%%%===================================================================
+
+close_solo(Ch) ->
+    {ok, DummyStateTx} = aesc_offchain_tx:new(
+                           #{channel_id         => aesc_channels:id(Ch),
+                             initiator          => aesc_channels:initiator(Ch),
+                             participant        => aesc_channels:participant(Ch),
+                             initiator_amount   => 3,
+                             participant_amount => 4,
+                             state              => <<"state..">>,
+                             sequence_number    => 11}),
+    {_Type, Tx} = aetx:specialize_type(DummyStateTx),
+    aesc_channels:close_solo(Ch, Tx, 11).
+
+get_channel(ChannelId, State) ->
+    aesc_state_tree:get(ChannelId, aec_trees:channels(trees(State))).
+
+set_channel(Channel, State) ->
+    Trees  = trees(State),
+    ChTree = aesc_state_tree:enter(Channel, aec_trees:channels(Trees)),
+    set_trees(aec_trees:set_channels(Trees, ChTree), State).
+
+%%%===================================================================
+%%% Other utils
+%%%===================================================================
+
+apply_on_trees_without_sigs_check([SignedTx], Trees, Height) ->
+    Tx = aetx_sign:tx(SignedTx),
+    {ok, Trees1} = aetx:check(Tx, Trees, Height),
+    {ok, Trees2} = aetx:process(Tx, Trees1, Height),
+    {ok, [SignedTx], Trees2}.
+
+%%%===================================================================
 %%% Create tx
 %%%===================================================================
 
@@ -119,3 +162,43 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       channel_reserve    => 10,
       fee                => 3,
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Deposit tx
+%%%===================================================================
+
+deposit_tx_spec(ChannelId, FromPubKey, State) ->
+    deposit_tx_spec(ChannelId, FromPubKey, #{}, State).
+
+deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
+    Spec = maps:merge(deposit_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id => ChannelId,
+      from       => FromPubKey,
+      amount     => maps:get(amount, Spec),
+      fee        => maps:get(fee, Spec),
+      nonce      => maps:get(nonce, Spec)}.
+
+deposit_tx_default_spec(FromPubKey, State) ->
+    #{amount => 10,
+      fee    => 3,
+      nonce  => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Withdraw tx
+%%%===================================================================
+
+withdraw_tx_spec(ChannelId, ToPubKey, State) ->
+    withdraw_tx_spec(ChannelId, ToPubKey, #{}, State).
+
+withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
+    Spec = maps:merge(withdraw_tx_spec(ToPubKey, State), Spec0),
+    #{channel_id => ChannelId,
+      to         => ToPubKey,
+      amount     => maps:get(amount, Spec),
+      fee        => maps:get(fee, Spec),
+      nonce      => maps:get(nonce, Spec)}.
+
+withdraw_tx_spec(ToPubKey, State) ->
+    #{amount => 10,
+      fee    => 3,
+      nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
