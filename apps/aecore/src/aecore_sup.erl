@@ -14,9 +14,10 @@
 %%%           |
 %%%   aec_connection_sup  (one_for_all)
 %%%           |
-%%%           -------------------------------------------------------
-%%%           |                                          |          |
-%%%   aec_peer_connection_sup (simple_one_for_one)   aec_peers   aec_sync
+%%%           ---------------------------------------------------
+%%%           |                     |          |                |
+%%%   aec_peer_connection_sup   aec_peers   aec_sync  aec_connection_listener
+%%%     (simple_one_for_one)
 %%%           |
 %%%           --------------------
 %%%           |             |
