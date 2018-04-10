@@ -19,9 +19,6 @@
 %% API called from strongly connected component aec_peers
 -export([schedule_ping/1]).
 
-%% API called from both aehttp_dispatch_ext and aeu_requests
--export([local_ping_object/0]).
-
 -export([server_get_missing_blocks/1, start_sync/3, fetch_mempool/1]).
 
 %% gen_server callbacks
@@ -47,32 +44,6 @@
 -spec connect_peer(aec_peers:peer_info()) -> ok.
 connect_peer(PeerInfo) ->
     gen_server:cast(?MODULE, {connect, PeerInfo}).
-
-%% Builds a 'Ping' object for the initial ping.
-%% The 'Ping' object contains the following data:
-%% - source: our own peer uri
-%% - genesis_hash: base58Check-encoded hash of our genesis block
-%% - best_hash: base58Check-encoded hash of our top block
-%% - difficulty: (Ethereum: total_difficulty) our top_work
-%% - share: how many random peers we'd like the other node to share
-%% - peers: a random subset (size `Share`) that we know of
-%%
-%% Note that the peers element is not populated by this function.
-%% The pinger should insert a random list, excluding the pinged peer.
-%% The pinged should insert a random list, excluding the pinging peer,
-%%  as well as any peers that it shared.
-
--type ping_object() :: map().
--spec local_ping_object() -> ping_object().
-local_ping_object() ->
-    GHash = aec_chain:genesis_hash(),
-    TopHash = aec_chain:top_header_hash(),
-    {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
-    #{<<"genesis_hash">> => GHash,
-      <<"best_hash">>    => TopHash,
-      <<"difficulty">>   => Difficulty,
-      <<"share">>        => 32,  % TODO: make this configurable
-      <<"peers">>        => []}.
 
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).

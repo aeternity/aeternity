@@ -503,8 +503,15 @@ ping_obj(PingObj, Exclude) ->
              <<"best_hash">>  => aec_base58c:encode(block_hash, TopHash) }.
 
 local_ping_obj(#{ext_sync_port := Port}) ->
-    PingObj = aec_sync:local_ping_object(),
-    PingObj#{ <<"port">> => Port }.
+    GHash = aec_chain:genesis_hash(),
+    TopHash = aec_chain:top_header_hash(),
+    {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
+    #{<<"genesis_hash">> => GHash,
+      <<"best_hash">>    => TopHash,
+      <<"difficulty">>   => Difficulty,
+      <<"share">>        => 32,  % TODO: make this configurable
+      <<"peers">>        => [],
+      <<"port">>         => Port}.
 
 %% -- Get Header by Hash -----------------------------------------------------
 handle_get_header_by_hash(S, MsgObj) ->
