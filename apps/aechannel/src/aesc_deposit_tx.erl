@@ -23,7 +23,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         is_verifiable/1
         ]).
 
 %%%===================================================================
@@ -170,21 +171,26 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
     , {nonce       , int}
     ].
 
+-spec is_verifiable(tx()) -> boolean().
+is_verifiable(#channel_deposit_tx{channel_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, _Channel}     -> true;
+        {error, not_found} -> false
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+-spec check_channel(aesc_channels:id(), pubkey(), aec_trees:trees()) ->
+                           ok | {error, atom()}.
 check_channel(ChannelId, FromPubKey, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         {value, Channel} ->
-            case aesc_channels:is_active(Channel) of
-                true ->
-                    aesc_utils:check_are_peers([FromPubKey],
-                                               [aesc_channels:initiator(Channel),
-                                                aesc_channels:participant(Channel)]);
-                false ->
-                    {error, channel_not_active}
-            end;
+            Checks =
+                [fun() -> aesc_utils:check_is_active(Channel) end,
+                 fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end],
+            aeu_validation:run(Checks);
         none ->
             {error, channel_does_not_exist}
     end.

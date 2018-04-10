@@ -23,7 +23,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         is_verifiable/1
         ]).
 
 %%%===================================================================
@@ -175,31 +176,42 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
     , {nonce      , int}
     ].
 
+-spec is_verifiable(tx()) -> boolean().
+is_verifiable(#channel_withdraw_tx{channel_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, _Channel}     -> true;
+        {error, not_found} -> false
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+-spec check_channel(aesc_channels:id(), aesc_channels:amount(),
+                    pubkey(), aec_trees:trees()) ->
+                           ok | {error, atom()}.
 check_channel(ChannelId, Amount, ToPubKey, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         {value, Channel} ->
-            case aesc_channels:is_active(Channel) of
-                true ->
-                    case Amount >= aesc_channels:total_amount(Channel) of
-                        true ->
-                            aesc_utils:check_are_peers([ToPubKey],
-                                                       [aesc_channels:initiator(Channel),
-                                                        aesc_channels:participant(Channel)]);
-                        false ->
-                            {error, not_enough_channel_funds}
-                    end;
-                false ->
-                    {error, channel_not_active}
-            end;
+            Checks =
+                [fun() -> aesc_utils:check_is_active(Channel) end,
+                 fun() -> aesc_utils:check_is_peer(ToPubKey, aesc_channels:peers(Channel)) end,
+                 fun() -> check_amount(Channel, Amount) end],
+            aeu_validation:run(Checks);
         none ->
             {error, channel_does_not_exist}
+    end.
+
+-spec check_amount(aesc_channels:channel(), aesc_channels:amount()) ->
+                          ok | {error, not_enough_channel_funds}.
+check_amount(Channel, Amount) ->
+    case aesc_channels:total_amount(Channel) >= Amount of
+        true ->
+            ok;
+        false ->
+            {error, not_enough_channel_funds}
     end.
 
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_WITHDRAW_TX_VSN.
-

@@ -10,7 +10,8 @@
 
 %% API
 -export([check_active_channel_exists/3,
-         check_active_channel_exists/4,
+         check_is_active/1,
+         check_is_peer/2,
          check_are_peers/2,
          check_are_funds_in_channel/3]).
 
@@ -50,35 +51,27 @@ check_active_channel_exists(ChannelId, StateTx, Trees) ->
             end
     end.
 
--spec check_active_channel_exists(aesc_channels:id(), pubkey(), pubkey(),
-                                  aec_trees:trees()) -> {error, term()} | ok.
-check_active_channel_exists(ChannelId, InitiatorPubKey, ParticipantPubKey, Trees) ->
-    ChannelsTree = aec_trees:channels(Trees),
-    case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
-        none ->
-            {error, channel_does_not_exist};
-        {value, Ch} ->
-            case aesc_channels:is_active(Ch) of
-                true ->
-                    ChInitiatorPubKey   = aesc_channels:initiator(Ch),
-                    ChParticipantPubKey = aesc_channels:participant(Ch),
-                    case {ChInitiatorPubKey   =:= InitiatorPubKey,
-                          ChParticipantPubKey =:= ParticipantPubKey} of
-                        {true, true} -> ok;
-                        {_   , _}    -> {error, wrong_channel_peers}
-                    end;
-                false ->
-                    {error, channel_not_active}
-            end
+-spec check_is_active(aesc_channels:channel()) -> ok | {error, channel_not_active}.
+check_is_active(Channel) ->
+    case aesc_channels:is_active(Channel) of
+        true  -> ok;
+        false -> {error, channel_not_active}
     end.
 
--spec check_are_peers(list(pubkey()), list(pubkey())) -> ok | {error, accounts_not_peers}.
+-spec check_is_peer(pubkey(), list(pubkey())) -> ok | {error, account_not_peer}.
+check_is_peer(PubKey, Peers) ->
+    case lists:member(PubKey, Peers) of
+        true  -> ok;
+        false -> {error, account_not_peer}
+    end.
+
+-spec check_are_peers(list(pubkey()), list(pubkey())) -> ok | {error, account_not_peer}.
 check_are_peers([], _Peers) ->
     ok;
 check_are_peers([PubKey | Rest], Peers) ->
-    case lists:member(PubKey, Peers) of
-        true  -> check_are_peers(Rest, Peers);
-        false -> {error, accounts_not_peers}
+    case check_is_peer(PubKey, Peers) of
+        ok    -> check_are_peers(Rest, Peers);
+        Error -> Error
     end.
 
 -spec check_are_funds_in_channel(aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
