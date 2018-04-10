@@ -3273,21 +3273,28 @@
     },
     "ChannelCloseMutualTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "initiator", "nonce", "participant" ],
+      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce", "responder_amount", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "amount" : {
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "initiator_amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
         },
-        "initiator" : {
-          "$ref" : "#/definitions/EncodedHash"
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         },
-        "participant" : {
-          "$ref" : "#/definitions/EncodedHash"
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         },
         "fee" : {
           "type" : "integer",
@@ -3301,12 +3308,13 @@
         }
       },
       "example" : {
-        "amount" : 0,
-        "initiator" : { },
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "participant" : null
+        "ttl" : 0,
+        "nonce" : 0
       }
     },
     "ChannelCloseSoloTx" : {

@@ -42,12 +42,13 @@
          }).
 
 -record(channel_close_mutual_tx, {
-          channel_id   :: binary(),
-          amount       :: integer(),
-          initiator    :: pubkey(),
-          participant  :: pubkey(),
-          fee          :: non_neg_integer(),
-          nonce        :: non_neg_integer()
+          channel_id        :: binary(),
+          from              :: pubkey(),
+          initiator_amount  :: non_neg_integer(),
+          responder_amount  :: non_neg_integer(),
+          ttl               :: non_neg_integer(),
+          fee               :: non_neg_integer(),
+          nonce             :: non_neg_integer()
          }).
 
 -record(channel_close_solo_tx, {

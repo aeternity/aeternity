@@ -36,7 +36,7 @@
 %%%===================================================================
 
 -type id()     :: binary().
--type amount() :: integer().
+-type amount() :: non_neg_integer().
 -type status()     :: 'active' | 'solo_closing'.
 -type seq_number() :: non_neg_integer().
 
