@@ -69,7 +69,8 @@ tag(name_transfer_tx) -> 36;
 tag(contract) -> 40;
 tag(contract_call) -> 41;
 tag(contract_create_tx) -> 42;
-tag(contract_call_tx) -> 43.
+tag(contract_call_tx) -> 43;
+tag(block) -> 100.
 
 rev_tag(10) -> account;
 rev_tag(11) -> signed_tx;
@@ -91,4 +92,5 @@ rev_tag(36) -> name_transfer_tx;
 rev_tag(40) -> contract;
 rev_tag(41) -> contract_call;
 rev_tag(42) -> contract_create_tx;
-rev_tag(43) -> contract_call_tx.
+rev_tag(43) -> contract_call_tx;
+rev_tag(100) -> block.
