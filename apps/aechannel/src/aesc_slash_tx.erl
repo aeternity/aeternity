@@ -237,7 +237,7 @@ check_peers_equal(State, Channel) ->
     end.
 
 check_amounts_equal(State, Channel) ->
-    ChannelAmount = aesc_channels:initiator_amount(Channel) + aesc_channels:participant_amount(Channel),
+    ChannelAmount = aesc_channels:total_amount(Channel),
     StateAmount   = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
     case ChannelAmount =:= StateAmount of
         true  -> ok;

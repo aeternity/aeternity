@@ -9,22 +9,20 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([check_active_channel_exists/6,
+-export([check_active_channel_exists/3,
          check_active_channel_exists/4,
          check_are_peers/2,
-         check_peer_has_funds/4]).
+         check_are_funds_in_channel/3]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 -spec check_active_channel_exists(aesc_channels:id(),
-                                  pubkey(), aesc_channels:amount(),
-                                  pubkey(), aesc_channels:amount(),
+                                  aesc_offchain_tx:tx(),
                                   aec_trees:trees()) ->
                                          {error, term()} | ok.
-check_active_channel_exists(ChannelId, InitiatorPubKey, InitiatorAmount,
-                            ParticipantPubKey, ParticipantAmount, Trees) ->
+check_active_channel_exists(ChannelId, StateTx, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     case aesc_state_tree:lookup(ChannelId, ChannelsTree) of
         none ->
@@ -34,14 +32,18 @@ check_active_channel_exists(ChannelId, InitiatorPubKey, InitiatorAmount,
                 true ->
                     ChInitiatorPubKey   = aesc_channels:initiator(Ch),
                     ChParticipantPubKey = aesc_channels:participant(Ch),
-                    ChInitiatorAmount   = aesc_channels:initiator_amount(Ch),
-                    ChParticipantAmount = aesc_channels:participant_amount(Ch),
-                    case {ChInitiatorPubKey   =:= InitiatorPubKey,
-                          ChParticipantPubKey =:= ParticipantPubKey,
-                          ChInitiatorAmount + ChParticipantAmount =:= InitiatorAmount + ParticipantAmount} of
+                    ChTotalAmount       = aesc_channels:total_amount(Ch),
+                    SInitiatorPubKey    = aesc_offchain_tx:initiator(StateTx),
+                    SParticipantPubKey  = aesc_offchain_tx:participant(StateTx),
+                    SInitiatorAmount    = aesc_offchain_tx:initiator_amount(StateTx),
+                    SParticipantAmount  = aesc_offchain_tx:participant_amount(StateTx),
+                    STotalAmount        = SInitiatorAmount + SParticipantAmount,
+                    case {ChInitiatorPubKey   =:= SInitiatorPubKey,
+                          ChParticipantPubKey =:= SParticipantPubKey,
+                          ChTotalAmount =:= STotalAmount} of
                         {true, true, true} -> ok;
-                        {true, true, _   }    -> {error, payload_amounts_change_channel_funds};
-                        {_   , _   , _   }    -> {error, wrong_channel_peers}
+                        {true, true, _   } -> {error, payload_amounts_change_channel_funds};
+                        {_   , _   , _   } -> {error, wrong_channel_peers}
                     end;
                 false ->
                     {error, channel_not_active}
@@ -79,22 +81,12 @@ check_are_peers([PubKey | Rest], Peers) ->
         false -> {error, accounts_not_peers}
     end.
 
--spec check_peer_has_funds(pubkey(), aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
-                                  ok | {error, insufficient_channel_peer_amount}.
-check_peer_has_funds(PeerPubKey, ChannelId, Amount, Trees) ->
+-spec check_are_funds_in_channel(aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
+                                        ok | {error, insufficient_channel_funds}.
+check_are_funds_in_channel(ChannelId, Amount, Trees) ->
     ChannelsTree = aec_trees:channels(Trees),
     Channel      = aesc_state_tree:get(ChannelId, ChannelsTree),
-    case PeerPubKey =:= aesc_channels:initiator(Channel) of
-        true  -> check_sufficient_funds(aesc_channels:initiator_amount(Channel), Amount);
-        false -> check_sufficient_funds(aesc_channels:participant_amount(Channel), Amount)
-    end.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-check_sufficient_funds(Funds, Amount) ->
-    case Funds >= Amount of
+    case aesc_channels:total_amount(Channel) >= Amount of
         true  -> ok;
-        false -> {error, insufficient_channel_peer_amount}
+        false -> {error, insufficient_channel_funds}
     end.
