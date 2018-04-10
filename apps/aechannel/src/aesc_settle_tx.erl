@@ -167,8 +167,8 @@ for_client(#channel_settle_tx{channel_id = ChannelId,
                               party      = PartyPubKey,
                               fee        = Fee,
                               nonce      = Nonce}) ->
-    %% TODO: add swagger schema name
-    #{<<"vsn">>        => version(),
+    #{<<"data_schema">>=> <<"ChannelSettleTxJSON">>, % swagger schema name
+      <<"vsn">>        => version(),
       <<"channel_id">> => aec_base58c:encode(channel, ChannelId),
       <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"party">>      => aec_base58c:encode(account_pubkey, PartyPubKey),

@@ -2815,6 +2815,38 @@ definitions:
         minItems: 1
         items:
           type: string
+  ChannelCreateTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelCreateTx'
+  ChannelDepositTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelDepositTx'
+  ChannelWithdrawalTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelWithdrawalTx'
+  ChannelCloseMutualTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelCloseMutualTx'
+  ChannelCloseSoloTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelCloseSoloTx'
+  ChannelSlashTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelSlashTx'
+  ChannelSlashTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelSlashTx'
+  ChannelSettleTxJSON:
+    allOf:
+      - $ref: '#/definitions/JSONTx'
+      - $ref: '#/definitions/ChannelSettleTx'
 ## readable JSON objects for transactions:
   JSONTx:
     type: object
