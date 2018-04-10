@@ -74,7 +74,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                               height  = Height,
                               account = ContractKey,
                               nonce   = Nonce }) ->
-    VmVersion = 0,  %% TODO
+    VmVersion = 1,  %% TODO
     {ok, CallTx} =
         aect_call_tx:new(#{ caller     => ContractKey,
                             nonce      => Nonce,

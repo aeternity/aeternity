@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aect_create_tx).
 
+-include("aecontract.hrl").
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -150,6 +151,7 @@ signers(#contract_create_tx{owner = OwnerPubKey}) ->
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
+			    vm_version = VmVersion,
                             fee   = Fee} = CreateTx, _Context, Trees0, Height) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
@@ -159,14 +161,24 @@ process(#contract_create_tx{owner = OwnerPubKey,
     {ok, Owner1}  = aec_accounts:spend(Owner0, Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Owner1, AccountsTree0),
 
+    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
-    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
-    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+    Contract1 =
+	case VmVersion of
+	    ?AEVM_01_Solidity_01 ->
+		%% TODO: Execute init call to get the contract bytecode
+		%%       as a result. to be used for insertion
+		Contract;
+	    _ ->
+		Contract
+	end,
+    ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
     Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),

@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aect_call_tx).
 
+-include("aecontract.hrl").
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -308,10 +309,30 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 
 %% -- Running contract code --------------------------------------------------
 
+
 %% Call the contract and update the call object with the return value and gas
 %% used.
 -spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
 run_contract(#contract_call_tx
+             { contract   = ContractPubKey
+	     , vm_version = VmVersion
+             } = Tx, Call, Height, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    Code          = aect_contracts:code(Contract),
+
+    case VmVersion of
+	?AEVM_01_Sophia_01 ->
+	    call_AEVM_01_Sophia_01(Tx, Call, Height, Trees, Code);
+	?AEVM_01_Solidity_01 ->
+	    %% For now use the same ABI as for Sophia
+	    call_AEVM_01_Sophia_01(Tx, Call, Height, Trees, Code);
+	%% Wrong VM/ABI version just return an unchanged call.
+	_ -> Call
+	    
+    end.
+
+call_AEVM_01_Sophia_01(#contract_call_tx
              { caller     = Caller
              , contract   = ContractPubKey
              , gas        = Gas
@@ -319,13 +340,8 @@ run_contract(#contract_call_tx
              , call_data  = CallData
              , amount     = Value
              , call_stack = CallStack
-             } = _Tx, Call, Height, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
-
-    %% TODO: Handle different VMs and ABIs.
-    %% TODO: Move init and execution to a separate moidule to be re used by
+             } = _Tx, Call, Height, Trees, Code) ->
+    %% TODO: Move init and execution to a separate module to be re used by
     %% both on chain and off chain calls.
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
