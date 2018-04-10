@@ -71,7 +71,7 @@ push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
     Txs1 =
         lists:filter(
             fun(SignedTx) ->
-                aetx:verifiable(aetx_sign:tx(SignedTx))
+                aetx:is_verifiable(aetx_sign:tx(SignedTx))
             end,
             Txs), 
     gen_server:call(?SERVER, {push, Txs1, Event});

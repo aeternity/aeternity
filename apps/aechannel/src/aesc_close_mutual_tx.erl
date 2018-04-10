@@ -24,7 +24,7 @@
          serialize/1,
          deserialize/2,
          for_client/1,
-         verifiable/1
+         is_verifiable/1
         ]).
 
 %%%===================================================================
@@ -234,8 +234,8 @@ serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
     , {nonce            , int}
     ].
 
--spec verifiable(tx()) -> boolean().
-verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+-spec is_verifiable(tx()) -> boolean().
+is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, _Channel} -> true;
         {error, not_found} -> false

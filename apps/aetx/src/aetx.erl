@@ -16,7 +16,7 @@
         , new/2
         , nonce/1
         , origin/1
-        , verifiable/1
+        , is_verifiable/1
         , process/3
         , serialize_for_client/1
         , serialize_to_binary/1
@@ -120,10 +120,10 @@
 -callback for_client(Tx :: tx_instance()) ->
     map().
 
--callback verifiable(Tx :: tx_instance()) ->
+-callback is_verifiable(Tx :: tx_instance()) ->
     boolean().
 
--optional_callbacks([verifiable/1]).
+-optional_callbacks([is_verifiable/1]).
 
 %% -- ADT Implementation -----------------------------------------------------
 
@@ -196,9 +196,9 @@ deserialize_from_binary(Bin) ->
     Fields = aec_object_serialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
 
--spec verifiable(Tx :: tx()) -> boolean().
-verifiable(Tx) ->
-    call_optional_callback(Tx, verifiable, [], true).
+-spec is_verifiable(Tx :: tx()) -> boolean().
+is_verifiable(Tx) ->
+    call_optional_callback(Tx, is_verifiable, [], true).
 
 
 call_optional_callback(#aetx{ cb = CB, tx = Tx }, FunAtom, Params0, Default) ->
