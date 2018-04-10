@@ -70,7 +70,7 @@
 }.
 
 -type stop_node_options() :: #{
-    soft_timeout => pos_integer(),
+    soft_timeout => pos_integer() | infinity,
     hard_timeout => pos_integer()
 }.
 
