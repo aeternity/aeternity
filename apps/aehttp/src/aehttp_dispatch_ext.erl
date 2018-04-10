@@ -294,11 +294,11 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
 handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([initiator, initiator_amount,
-                                       participant, participant_amount,
+                                       responder, responder_amount,
                                        push_amount, channel_reserve,
-                                       lock_period, fee]),
+                                       lock_period, ttl, fee]),
                  base58_decode([{initiator, initiator, account_pubkey},
-                                {participant, participant, account_pubkey}]),
+                                {responder, responder, account_pubkey}]),
                  get_nonce(initiator),
                  unsigned_tx_response(fun aesc_create_tx:new/1)
                 ],

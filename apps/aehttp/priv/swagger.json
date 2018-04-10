@@ -3123,7 +3123,7 @@
     },
     "ChannelCreateTx" : {
       "type" : "object",
-      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "participant", "participant_amount", "push_amount" ],
+      "required" : [ "channel_reserve", "fee", "initiator", "initiator_amount", "lock_period", "push_amount", "responder", "responder_amount", "ttl" ],
       "properties" : {
         "initiator" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -3133,10 +3133,10 @@
           "format" : "int64",
           "minimum" : 0
         },
-        "participant" : {
+        "responder" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "participant_amount" : {
+        "responder_amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3156,6 +3156,11 @@
           "format" : "int64",
           "minimum" : 0
         },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
         "fee" : {
           "type" : "integer",
           "format" : "int64",
@@ -3168,13 +3173,14 @@
         }
       },
       "example" : {
+        "responder_amount" : 0,
         "initiator_amount" : 0,
         "initiator" : { },
         "fee" : 0,
-        "participant_amount" : 0,
+        "responder" : null,
         "push_amount" : 0,
+        "ttl" : 0,
         "nonce" : 0,
-        "participant" : null,
         "lock_period" : 0,
         "channel_reserve" : 0
       }

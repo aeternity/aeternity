@@ -11,10 +11,11 @@
 -record(channel_create_tx, {
           initiator          :: pubkey(),
           initiator_amount   :: non_neg_integer(),
-          participant        :: pubkey(),
-          participant_amount :: non_neg_integer(),
+          responder          :: pubkey(),
+          responder_amount   :: non_neg_integer(),
           channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
+          ttl                :: non_neg_integer(),
           fee                :: non_neg_integer(),
           nonce              :: non_neg_integer()
          }).
