@@ -3598,6 +3598,55 @@
         }
       }
     },
+    "ChannelCreateTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelCreateTx"
+      } ]
+    },
+    "ChannelDepositTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelDepositTx"
+      } ]
+    },
+    "ChannelWithdrawalTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelWithdrawalTx"
+      } ]
+    },
+    "ChannelCloseMutualTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelCloseMutualTx"
+      } ]
+    },
+    "ChannelCloseSoloTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelCloseSoloTx"
+      } ]
+    },
+    "ChannelSlashTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelSlashTx"
+      } ]
+    },
+    "ChannelSettleTxJSON" : {
+      "allOf" : [ {
+        "$ref" : "#/definitions/JSONTx"
+      }, {
+        "$ref" : "#/definitions/ChannelSettleTx"
+      } ]
+    },
     "JSONTx" : {
       "type" : "object",
       "required" : [ "data_schema" ],

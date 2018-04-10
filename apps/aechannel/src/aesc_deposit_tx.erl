@@ -183,8 +183,8 @@ for_client(#channel_deposit_tx{channel_id   = ChannelId,
                                participant  = ParticipantPubKey,
                                fee          = Fee,
                                nonce        = Nonce}) ->
-    %% TODO: add swagger schema name
-    #{<<"vsn">>          => version(),
+    #{<<"data_schema">>  => <<"ChannelDepositTxJSON">>, % swagger schema name
+      <<"vsn">>          => version(),
       <<"channel">>      => aec_base58c:encode(channel, ChannelId),
       <<"from_account">> => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"to_account">>   => aec_base58c:encode(account_pubkey, ToPubKey),
