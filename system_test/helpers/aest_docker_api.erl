@@ -17,7 +17,8 @@
 -export([stop_container/2]).
 -export([kill_container/1]).
 -export([inspect/1]).
--export([exec/2]).
+-export([exec/3]).
+-export([container_logs/1]).
 
 %=== MACROS ====================================================================
 
@@ -119,7 +120,7 @@ inspect(ID) ->
 %% Returning stdout is not working because hackney doesn't support results
 %% without content length. Should be fixed by:
 %%   https://github.com/benoitc/hackney/pull/481
-exec(ID, Cmd) ->
+exec(ID, Cmd, Opts) ->
     ExecCreateBody = #{
         'AttachStdout' => true,
         'AttachStderr' => true,
@@ -135,13 +136,27 @@ exec(ID, Cmd) ->
                 'Detach' => false,
                 'Tty' => true
             },
-            Opts = #{result_type => raw},
-            case docker_post([exec, ExecId, start], #{}, ExecStartBody, Opts) of
+            TimeoutOpts = maps:with([timeout], Opts),
+            PostOpts = maps:merge(#{result_type => raw}, TimeoutOpts),
+            case
+                docker_post([exec, ExecId, start], #{}, ExecStartBody, PostOpts)
+            of
                 {ok, 200, Result} -> {ok, Result};
                 {ok, 404, _} -> throw({exec_not_found, ExecId});
                 {ok, 500, Response} ->
-                    throw({docker_error, maps:get(message, Response)})
+                    throw({docker_error, maps:get(message, Response)});
+                {error, timeout} ->
+                    throw({exec_start_timeout, {ID, ExecId}})
             end
+    end.
+
+container_logs(ID) ->
+    Query = #{<<"stderr">> => <<"true">>, <<"stdout">> => <<"true">>},
+    case docker_get([containers, ID, logs], Query, #{result_type => raw}) of
+        {ok, 200, Response} -> Response;
+        {ok, 404, _} -> throw({container_not_found, ID});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, decode_json(Response))})
     end.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -264,7 +279,9 @@ docker_fetch_json_body(ClientRef, Type) ->
 
 decode(<<>>, _) -> {ok, undefined};
 decode(Data, raw) -> {ok, Data};
-decode(Data, json) ->
+decode(Data, json) -> decode_json(Data).
+
+decode_json(Data) ->
     try jsx:decode(Data, [{labels, attempt_atom}, return_maps]) of
         JsonObj -> {ok, JsonObj}
     catch

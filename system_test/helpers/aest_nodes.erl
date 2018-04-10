@@ -15,7 +15,7 @@
 %% Generic API exports
 -export([setup_nodes/2]).
 -export([start_node/2]).
--export([stop_node/2, stop_node/3]).
+-export([stop_node/3]).
 -export([kill_node/2]).
 -export([get_service_address/3]).
 -export([http_get/5]).
@@ -42,9 +42,8 @@
 -define(CALL_TIMEOUT, 60000).
 -define(NODE_TEARDOWN_TIMEOUT, 0).
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
--define(DEFAULT_STOP_TIMEOUT, 30).
 
-%=== TYPRES ====================================================================
+%=== TYPES ====================================================================
 
 -type test_ctx() :: pid() | proplists:proplist().
 -type node_service() :: ext_http | int_http | int_ws.
@@ -94,6 +93,7 @@ ct_setup(Config) ->
 -spec ct_cleanup(test_ctx()) -> ok.
 ct_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
+    call(Pid, dump_logs),
     call(Pid, cleanup),
     call(Pid, stop),
     wait_for_exit(Pid, 120000),
@@ -131,12 +131,6 @@ setup_nodes(NodeSpecs, Ctx) ->
 -spec start_node(atom(), test_ctx()) -> ok.
 start_node(NodeName, Ctx) ->
     call(ctx2pid(Ctx), {start_node, NodeName}).
-
-%% @doc Stops a node previously started.
-%% The node will get killed after 30 seconds if it does not stop.
--spec stop_node(atom(), test_ctx()) -> ok.
-stop_node(NodeName, Ctx) ->
-    call(ctx2pid(Ctx), {stop_node, NodeName, ?DEFAULT_STOP_TIMEOUT}).
 
 %% @doc Stops a node previously started with explicit timeout (in seconds)
 %% after which the node will be killed.
@@ -229,6 +223,9 @@ handlex({stop_node, NodeName, Timeout}, _From, State) ->
     {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
 handlex({kill_node, NodeName}, _From, State) ->
     {reply, ok, mgr_kill_node(NodeName, State)};
+handlex(dump_logs, _From, State) ->
+    ok = mgr_dump_logs(State),
+    {reply, ok, State};
 handlex(cleanup, _From, State) ->
     {reply, ok, mgr_cleanup(State)};
 handlex(stop, _From, State) ->
@@ -348,6 +345,18 @@ mgr_setup(DataDir, TempDir, LogFun) ->
 mgr_setup_backends(BackendMods, Opts) ->
     lists:foldl(fun(Mod, Acc) -> Acc#{Mod => Mod:start(Opts)} end,
                 #{}, BackendMods).
+
+mgr_dump_logs(#{nodes := Nodes1} = State) ->
+    maps:map(fun(Name, {Backend, NodeState}) ->
+        try
+            log(State, "Logs of node ~p:~n~s", [Name, Backend:node_logs(NodeState)])
+        catch
+            _:E ->
+                ST = erlang:get_stacktrace(),
+                log(State, "Error while dumping logs of node ~p: ~p~n~p", [Name, E, ST])
+        end
+    end, Nodes1),
+    ok.
 
 mgr_cleanup(State) ->
     %% So node cleanup can be disabled for debugging without commenting

@@ -9,8 +9,9 @@
 -export([setup_node/2]).
 -export([delete_node/1]).
 -export([start_node/1]).
--export([stop_node/1, stop_node/2]).
+-export([stop_node/2]).
 -export([kill_node/1]).
+-export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
 
@@ -69,7 +70,7 @@
 }.
 
 -type stop_node_options() :: #{
-    soft_timeout => pos_integer(),
+    soft_timeout => pos_integer() | infinity,
     hard_timeout => pos_integer()
 }.
 
@@ -197,20 +198,22 @@ start_node(#{container_id := ID, hostname := Name} = NodeState) ->
     log(NodeState, "Container ~p [~s] started", [Name, ID]),
     NodeState.
 
--spec stop_node(node_state()) -> node_state().
-stop_node(NodeState) -> stop_node(NodeState, #{}).
-
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
     Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
+    TimeoutMs = case Timeout of infinity -> infinity; _ -> Timeout * 1000 end,
     case is_running(ID) of
         false ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
-            aest_docker_api:exec(ID, ["/home/epoch/node/bin/epoch", "stop"]),
-            case wait_stopped(ID, Timeout) of
-                timeout -> aest_docker_api:stop_container(ID, Opts);
-                ok -> ok
+            attempt_epoch_stop(NodeState, TimeoutMs),
+            case wait_stopped(ID, Timeout) of %% TODO Fix this call that has timeout actual parameter as seconds but handled inside function definition as milliseconds.
+                timeout ->
+                    aest_docker_api:stop_container(ID, Opts);
+                ok ->
+                    log(NodeState,
+                        "Container ~p [~s] detected as stopped", [Name, ID]),
+                    ok
             end,
             log(NodeState, "Container ~p [~s] stopped", [Name, ID])
     end,
@@ -221,6 +224,10 @@ kill_node(#{container_id := ID, hostname := Name} = NodeState) ->
     aest_docker_api:kill_container(ID),
     log(NodeState, "Container ~p [~s] killed", [Name, ID]),
     NodeState.
+
+-spec node_logs(node_state()) -> iodata().
+node_logs(#{container_id := ID} = _NodeState) ->
+    aest_docker_api:container_logs(ID).
 
 -spec get_peer_address(node_state()) -> binary().
 get_peer_address(NodeState) ->
@@ -296,6 +303,25 @@ is_running(Id, Retries) ->
             timer:sleep(100),
             is_running(Id, Retries - 1)
     end.
+
+attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout) ->
+    Cmd = ["/home/epoch/node/bin/epoch", "stop"],
+    CmdStr = lists:join($ , Cmd),
+    log(NodeState,
+        "Container ~p [~s] still running: "
+        "attempting to stop node by executing command ~s",
+        [Name, ID, CmdStr]),
+    try
+        {ok, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+        log(NodeState, "Command executed on container ~p [~s]: ~s",
+            [Name, ID, CmdStr])
+    catch
+        throw:{exec_start_timeout, TimeoutInfo} ->
+            log(NodeState,
+                "Command execution timed out on container ~p [~s]:~n~p",
+                [Name, ID, TimeoutInfo])
+    end,
+    ok.
 
 maybe_continue_waiting(Id, infinity, StartTime) ->
     timer:sleep(100),
