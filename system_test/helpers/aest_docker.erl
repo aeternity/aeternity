@@ -205,22 +205,7 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
         false ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
-            Cmd = ["/home/epoch/node/bin/epoch", "stop"],
-            CmdStr = lists:join($ , Cmd),
-            log(NodeState,
-                "Container ~p [~s] still running: "
-                "attempting to stop node by executing command ~s",
-                [Name, ID, CmdStr]),
-            try
-                {ok, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
-                log(NodeState, "Command executed on container ~p [~s]: ~s",
-                    [Name, ID, CmdStr])
-            catch
-                throw:{exec_start_timeout, TimeoutInfo} ->
-                    log(NodeState,
-                        "Command execution timed out on container ~p [~s]:~n~p",
-                        [Name, ID, TimeoutInfo])
-            end,
+            attempt_epoch_stop(NodeState, Timeout),
             case wait_stopped(ID, Timeout) of %% TODO Fix this call that has timeout actual parameter as seconds but handled inside function definition as milliseconds.
                 timeout ->
                     aest_docker_api:stop_container(ID, Opts);
@@ -317,6 +302,25 @@ is_running(Id, Retries) ->
             timer:sleep(100),
             is_running(Id, Retries - 1)
     end.
+
+attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout) ->
+    Cmd = ["/home/epoch/node/bin/epoch", "stop"],
+    CmdStr = lists:join($ , Cmd),
+    log(NodeState,
+        "Container ~p [~s] still running: "
+        "attempting to stop node by executing command ~s",
+        [Name, ID, CmdStr]),
+    try
+        {ok, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+        log(NodeState, "Command executed on container ~p [~s]: ~s",
+            [Name, ID, CmdStr])
+    catch
+        throw:{exec_start_timeout, TimeoutInfo} ->
+            log(NodeState,
+                "Command execution timed out on container ~p [~s]:~n~p",
+                [Name, ID, TimeoutInfo])
+    end,
+    ok.
 
 maybe_continue_waiting(Id, infinity, StartTime) ->
     timer:sleep(100),
