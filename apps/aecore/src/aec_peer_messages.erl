@@ -6,7 +6,10 @@
 %%%=============================================================================
 -module(aec_peer_messages).
 
--export([serialize/2, serialize_response/2, deserialize/2]).
+-export([ deserialize/2
+        , serialize/2
+        , serialize_response/2
+        , tag/1]).
 
 -include("aec_peer_messages.hrl").
 
