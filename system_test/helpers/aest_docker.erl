@@ -5,6 +5,7 @@
 %% API exports
 -export([start/1]).
 -export([stop/1]).
+-export([prepare_spec/2]).
 -export([peer_from_spec/2]).
 -export([setup_node/2]).
 -export([delete_node/1]).
@@ -27,6 +28,8 @@
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
 -define(EPOCH_STOP_TIMEOUT, 30).
+% If the password is changed, reflect the change in epoch.yaml.mustache
+-define(PEER_KEYS_PASSWORD, <<"top secret">>).
 
 %=== TYPES =====================================================================
 
@@ -47,7 +50,8 @@
 %% Node specification
 -type node_spec() :: #{
     name := atom(),
-    pubkey := binary(),         % Public key of the node for peer connections
+    pubkey := binary(),         % Public part of the peer key
+    privkey := binary(),        % Private part of the peer key
     peers := [binary()],        % URLs of the peer nodes
     source := {pull, binary()}  % Source of the node image
 }.
@@ -57,7 +61,8 @@
     spec := node_spec(),        % Backup of the spec used when adding the node
     log_fun := log_fun(),       % Function to use for logging
     hostname := atom(),         % Hostname of the container running the node
-    pubkey := binary(),         % Public key of the node for peer connections
+    pubkey := binary(),         % Public part of the peer key
+    privkey := binary(),        % Private part of the peer key
     exposed_ports := #{service_label() => pos_integer()},
     local_ports := #{service_label() => pos_integer()}
 }.
@@ -101,6 +106,29 @@ stop(BackendState) ->
     log(BackendState, "Networks pruned", []),
     ok.
 
+-spec prepare_spec(node_spec(), backend_state()) -> node_spec().
+prepare_spec(#{pubkey := PubKey, privkey := PrivKey} = Spec, BackendState) ->
+    #{data_dir := DataDir} = BackendState,
+    #{name := Name} = Spec,
+    KeysDir = keys_dir(DataDir, Name),
+    Password = ?PEER_KEYS_PASSWORD,
+    {PubFile, PrivFile} = aec_keys:peer_key_filenames(KeysDir),
+    file:delete(PubFile),
+    file:delete(PrivFile),
+    aec_keys:save_peer_keys(Password, KeysDir, PubKey, PrivKey),
+    Spec;
+prepare_spec(#{pubkey := _PubKey}, _BackendState) ->
+    error(pubkey_without_privkey);
+prepare_spec(#{privkey := _PrivKey}, _BackendState) ->
+    error(provkey_without_pubkey);
+prepare_spec(Spec, BackendState) ->
+    #{data_dir := DataDir} = BackendState,
+    #{name := Name} = Spec,
+    Password = ?PEER_KEYS_PASSWORD,
+    KeysDir = keys_dir(DataDir, Name),
+    {_, PeerPub, _, PeerPriv} = aec_keys:setup_peer_keys(Password, KeysDir),
+    Spec#{pubkey => PeerPub, privkey => PeerPriv}.
+
 -spec peer_from_spec(node_spec(), backend_state()) -> binary().
 peer_from_spec(Spec, BackendState) ->
     #{postfix := Postfix} = BackendState,
@@ -117,7 +145,8 @@ setup_node(Spec, BackendState) ->
       temp_dir := TempDir,
       net_id := NetId} = BackendState,
     #{name := Name,
-      pubkey := Key,
+      pubkey := PubKey,
+      privkey := PrivKey,
       peers := Peers,
       source := {pull, Image}} = Spec,
 
@@ -134,7 +163,8 @@ setup_node(Spec, BackendState) ->
         log_fun => LogFun,
         name => Name,
         hostname => Hostname,
-        pubkey => Key,
+        pubkey => PubKey,
+        privkey => PrivKey,
         exposed_ports => ExposedPorts,
         local_ports => LocalPorts
     },
@@ -159,8 +189,7 @@ setup_node(Spec, BackendState) ->
     ok = write_template(TemplateFile, ConfigFilePath, Context),
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
-    KeysDir = filename:join([DataDir, "keys", Name]),
-    ok = filelib:ensure_dir(filename:join(KeysDir, "DUMMY")),
+    KeysDir = keys_dir(DataDir, Name),
     PortMapping = maps:fold(fun(Label, Port, Acc) ->
         [{tcp, maps:get(Label, LocalPorts), Port} | Acc]
     end, [], ExposedPorts),
@@ -253,6 +282,11 @@ get_service_address(int_ws, NodeState) ->
     format("ws://localhost:~w/", [Port]).
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+keys_dir(DataDir, Name) ->
+    KeysDir = filename:join([DataDir, "keys", Name]),
+    ok = filelib:ensure_dir(filename:join(KeysDir, "DUMMY")),
+    KeysDir.
 
 log(#{log_fun := LogFun}, Fmt, Args) -> log(LogFun, Fmt, Args);
 log(undefined, _Fmt, _Args) -> ok;
