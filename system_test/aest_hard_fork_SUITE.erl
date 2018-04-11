@@ -39,7 +39,7 @@
 -define(OLD_NODE1, #{
           name    => old_node1,
           pubkey  => ?PUBKEY1,
-          peers   => [old_node2],
+          peers   => [old_node2], %% Node version v0.10.1 does not support configuring empty set of initial peers.
           backend => aest_docker,
           source  => {pull, "aeternity/epoch:v0.10.1"},
           mine_rate => default
