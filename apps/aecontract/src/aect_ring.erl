@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%% API functions for compiling and encoding Ring contracts.
+%%% API functions for compiling and encoding Sophia contracts.
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -18,7 +18,7 @@
 compile(ContractAsBinString, OptionsAsBinString) ->
     ContractText = binary_to_list(ContractAsBinString),
     Options = parse_options(OptionsAsBinString),
-    try aer_compiler:from_string(ContractText, Options) of
+    try aeso_compiler:from_string(ContractText, Options) of
         %% TODO: Handle contract meta data.
         Code -> {ok, aeu_hex:hexstring_encode(Code)}
     catch error:Error ->
@@ -103,9 +103,9 @@ encode_call_data(Contract, Function, Argument) ->
 
 -spec create_call(binary(), binary(), binary()) -> binary() | {error, binary()}.
 create_call(Contract, Function, Argument) ->
-    Res = aer_abi:create_calldata(Contract,
-                                  binary_to_list(Function),
-                                  binary_to_list(Argument)),
+    Res = aeso_abi:create_calldata(Contract,
+                                   binary_to_list(Function),
+                                   binary_to_list(Argument)),
     case Res of
         {error, Error} ->
             {error, list_to_binary(io_lib:format("~p", [Error]))};

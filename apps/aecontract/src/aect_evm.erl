@@ -1,15 +1,15 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%% API functions for compiling and encoding Ring contracts.
+%%% API functions for compiling and encoding Sophia contracts.
 %%% @end
 %%%-------------------------------------------------------------------
 
 -module(aect_evm).
 
 -export([ call/2
-	, encode_call_data/3
-	, execute_call/2
+        , encode_call_data/3
+        , execute_call/2
         ]).
 
 
@@ -111,4 +111,3 @@ execute_call(#{ code := CodeAsHexBinString
     State = aevm_eeevm_state:init(Spec, TraceSpec),
     Result = aevm_eeevm:eval(State),
     Result.
-
