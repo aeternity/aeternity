@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
@@ -13,13 +14,30 @@
         , decode_fields/2
         ]).
 
+-type template() :: [{field_name(), type()}].
+-type field_name() :: atom().
+-type type() :: 'int'
+              | 'bool'
+              | 'binary'
+              | [type()] %% Length one in the type. This means a list of any length.
+              | tuple(). %% Any arity, containing type(). This means a static size array.
+
+-type encodable_term() :: non_neg_integer()
+                        | binary()
+                        | boolean()
+                        | [encodable_term()] %% Of any length
+                        | tuple().  %% Any arity, containing encodable_term().
+
+-type fields() :: [{field_name(), encodable_term()}].
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+-spec serialize(atom(), non_neg_integer(), template(), fields()) -> binary().
 serialize(Type, Vsn, Template, Fields) ->
     List = encode_fields([{tag, int}      , {vsn, int}|Template],
-                          [{tag, tag(Type)}, {vsn, Vsn}|Fields]),
+                         [{tag, tag(Type)}, {vsn, Vsn}|Fields]),
     aeu_rlp:encode(List).
 
 deserialize_type_and_vsn(Binary) ->
@@ -28,6 +46,7 @@ deserialize_type_and_vsn(Binary) ->
     [{tag, Tag}, {vsn, Vsn}] = decode_fields(Template, [TagBin, VsnBin]),
     {rev_tag(Tag), Vsn, Fields}.
 
+-spec deserialize(atom(), non_neg_integer(), template(), binary()) -> fields().
 deserialize(Type, Vsn, Template0, Binary) ->
     Tag = tag(Type),
     Decoded = aeu_rlp:decode(Binary),
@@ -44,56 +63,54 @@ deserialize(Type, Vsn, Template0, Binary) ->
 %%% Internal functions
 %%%===================================================================
 
-encode_fields([{Field, [Type]}|TypesLeft],
-               [{Field, List}|FieldsLeft]) when is_list(List) ->
-    [encode_list_field(Field, List, Type)|encode_fields(TypesLeft, FieldsLeft)];
 encode_fields([{Field, Type}|TypesLeft],
                [{Field, Val}|FieldsLeft]) ->
-    [encode_field(Field, Type, Val)|encode_fields(TypesLeft, FieldsLeft)];
+    try encode_field(Type, Val) of
+        Encoded -> [Encoded | encode_fields(TypesLeft, FieldsLeft)]
+    catch error:{illegal, T, V} ->
+        error({illegal_field, Field, Type, Val, T, V})
+    end;
 encode_fields([], []) ->
     [];
 encode_fields(Template, Values) ->
     error({illegal_template_or_values, Template, Values}).
 
-encode_list_field(Field, [Val|Left], Type) ->
-    [encode_field(Field, Type, Val)|encode_list_field(Field, Left, Type)];
-encode_list_field(_Field, [],_Type) ->
-    [];
-encode_list_field(Field, Values, Type) ->
-    error({illegal_list, Field, Values, Type}).
-
-encode_field(_Field, int, X) when is_integer(X), X >= 0 ->
+encode_field([Type], L) when is_list(L) ->
+    [encode_field(Type, X) || X <- L];
+encode_field(Type, T) when tuple_size(Type) =:= tuple_size(T) ->
+    Zipped = lists:zip(tuple_to_list(Type), tuple_to_list(T)),
+    [encode_field(X, Y) || {X, Y} <- Zipped];
+encode_field(int, X) when is_integer(X), X >= 0 ->
     binary:encode_unsigned(X);
-encode_field(_Field, binary, X) when is_binary(X) -> X;
-encode_field(_Field, bool, true) -> <<1:8>>;
-encode_field(_Field, bool, false) -> <<0:8>>;
-encode_field(Field, Type, Val) -> error({illegal_field, Field, Type, Val}).
+encode_field(binary, X) when is_binary(X) -> X;
+encode_field(bool, true) -> <<1:8>>;
+encode_field(bool, false) -> <<0:8>>;
+encode_field(Type, Val) -> error({illegal, Type, Val}).
 
-decode_fields([{Field, [Type]}|TypesLeft],
-              [List           |FieldsLeft]) when is_list(List) ->
-    [{Field, decode_list_field(Field, List, Type)}
-     |decode_fields(TypesLeft, FieldsLeft)];
 decode_fields([{Field, Type}|TypesLeft],
-              [Bin         |FieldsLeft]) ->
-    [{Field, decode_field(Field, Type, Bin)}
-     |decode_fields(TypesLeft, FieldsLeft)];
+              [Bin          |FieldsLeft]) ->
+    try decode_field(Type, Bin) of
+        Decoded -> [{Field, Decoded} | decode_fields(TypesLeft, FieldsLeft)]
+    catch error:{illegal, T, V} ->
+        error({illegal_field, Field, Type, Bin, T, V})
+    end;
 decode_fields([], []) ->
     [];
 decode_fields(Template, Values) ->
     error({illegal_template_or_values, Template, Values}).
 
-decode_list_field(Field, [Val|Left], Type) ->
-    [decode_field(Field, Type, Val)|decode_list_field(Field, Left, Type)];
-decode_list_field(_Field, [],_Type) ->
-    [].
-
-decode_field(Field, int, <<0:8, X/binary>> = B) when X =/= <<>> ->
-    error({illegal, Field, B});
-decode_field(_Field, int, X) when is_binary(X) -> binary:decode_unsigned(X);
-decode_field(_Field, binary, X) when is_binary(X) -> X;
-decode_field(_Field, bool, <<1:8>>) -> true;
-decode_field(_Field, bool, <<0:8>>) -> false;
-decode_field(Field, Type, X) -> error({illegal_field, Field, Type, X}).
+decode_field([Type], List) when is_list(List) ->
+    [decode_field(Type, X) || X <- List];
+decode_field(Type, List) when length(List) =:= tuple_size(Type) ->
+    Zipped = lists:zip(tuple_to_list(Type), List),
+    list_to_tuple([decode_field(X, Y) || {X, Y} <- Zipped]);
+decode_field(int, <<0:8, X/binary>> = B) when X =/= <<>> ->
+    error({illegal, int, B});
+decode_field(int, X) when is_binary(X) -> binary:decode_unsigned(X);
+decode_field(binary, X) when is_binary(X) -> X;
+decode_field(bool, <<1:8>>) -> true;
+decode_field(bool, <<0:8>>) -> false;
+decode_field(Type, X) -> error({illegal, Type, X}).
 
 tag(account) -> 10;
 tag(signed_tx) -> 11;
