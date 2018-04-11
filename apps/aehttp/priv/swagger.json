@@ -3181,27 +3181,15 @@
     },
     "ChannelDepositTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "from_account", "initiator", "nonce", "participant", "to_account" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
-        },
-        "from_account" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "to_account" : {
-          "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
-        },
-        "initiator" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "participant" : {
-          "$ref" : "#/definitions/EncodedHash"
         },
         "fee" : {
           "type" : "integer",
@@ -3216,38 +3204,25 @@
       },
       "example" : {
         "amount" : 0,
-        "from_account" : { },
-        "initiator" : null,
         "fee" : 0,
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "participant" : null,
-        "to_account" : null
+        "nonce" : 0
       }
     },
     "ChannelWithdrawalTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "from_account", "initiator", "nonce", "participant", "to_account" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce", "to" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "from_account" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "to_account" : {
+        "to" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
-        },
-        "initiator" : {
-          "$ref" : "#/definitions/EncodedHash"
-        },
-        "participant" : {
-          "$ref" : "#/definitions/EncodedHash"
         },
         "fee" : {
           "type" : "integer",
@@ -3262,13 +3237,10 @@
       },
       "example" : {
         "amount" : 0,
-        "from_account" : { },
-        "initiator" : null,
         "fee" : 0,
+        "to" : { },
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "participant" : null,
-        "to_account" : null
+        "nonce" : 0
       }
     },
     "ChannelCloseMutualTx" : {
