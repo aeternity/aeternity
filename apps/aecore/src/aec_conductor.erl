@@ -55,7 +55,6 @@
 -export([ add_synced_block/1
         , get_block_candidate/0
         , post_block/1
-        , post_header/1
         ]).
 
 %% for tests
@@ -132,10 +131,6 @@ post_block(#block{} = Block) ->
 add_synced_block(Block) ->
     gen_server:call(?SERVER, {add_synced_block, Block}).
 
--spec post_header(#header{}) -> 'ok' | {'error', any()}.
-post_header(#header{} = Header) ->
-    gen_server:call(?SERVER, {post_header, Header}).
-
 -spec get_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_block_candidate() ->
     gen_server:call(?SERVER, get_block_candidate).
@@ -192,9 +187,6 @@ handle_call(get_block_candidate,_From, State) ->
     {reply, Res, State};
 handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
-    {reply, Reply, State1};
-handle_call({post_header, Block},_From, State) ->
-    {Reply, State1} = handle_post_header(Block, State),
     {reply, Reply, State1};
 handle_call(stop_mining,_From, State) ->
     epoch_mining:info("Mining stopped"),
@@ -741,35 +733,6 @@ handle_add_block(Block, State, Publish) ->
                     {{error, Reason}, State};
                 {ok, {error, Reason}} ->
                     epoch_mining:info("Block failed validation: ~p", [Reason]),
-                    {{error, Reason}, State}
-            end
-    end.
-
-%%%===================================================================
-%%% In server context: A header was given to us from the outside world
-
-handle_post_header(Header, State) ->
-    epoch_mining:info("post_header: ~p", [Header]),
-    {ok, Hash} = aec_headers:hash_header(Header),
-    case aec_chain:has_header(Hash) of
-        true ->
-            epoch_mining:debug("Posted header already in chain", []),
-            {ok, State};
-        false ->
-            case aec_headers:validate(Header) of
-                ok ->
-                    case aec_chain_state:insert_header(Header) of
-                        ok ->
-                            %% This might have caused a fork
-                            case preempt_if_new_top(State, none) of
-                                no_change -> {ok, State};
-                                {changed, State1} -> {ok, start_mining(State1)}
-                            end;
-			{error, Reason} ->
-                            lager:debug("Couldn't insert block (~p)", [Reason]),
-                            {{error, Reason}, State}
-                    end;
-                {error, Reason} ->
                     {{error, Reason}, State}
             end
     end.

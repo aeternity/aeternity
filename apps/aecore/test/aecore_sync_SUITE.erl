@@ -426,39 +426,9 @@ mine_and_compare(N1, Config) ->
 
 expect_same(T0, Config) ->
     Nodes = [N || {_, N} <- ?config(nodes, Config)],
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    ct:log("AllEvents = ~p", [AllEvents]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    collect_sync_events(Nodes1),
+    aecore_suite_utils:await_sync_complete(T0, Nodes),
     expect_same_top(Nodes, 5),
     expect_same_tx(Nodes).
-
-collect_sync_events([]) ->
-    done;
-collect_sync_events(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            collect_sync_events(check_sync_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in collect_sync_events: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_event(#{sender := From, info := Info}, Nodes) ->
-    case Info of
-        {E, _} when E =:= server_done; E =:= client_done ->
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
 
 expect_same_top(Nodes, Tries) when Tries > 0 ->
     Blocks = lists:map(

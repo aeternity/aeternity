@@ -464,10 +464,12 @@ handle_ping_msg(S, RemotePingObj) ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
                 {{T, _}, {T, _}} ->
                     lager:debug("Same top blocks", []),
-                    aec_sync:server_get_missing_blocks(PeerId);
+                    aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
+                    ok;
                 {{_, DL}, {_, DR}} when DL > DR ->
                     lager:debug("Our difficulty is higher", []),
-                    aec_sync:server_get_missing_blocks(PeerId);
+                    aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
+                    ok;
                 {{_, _}, {_, DR}} ->
                     aec_sync:start_sync(PeerId, RTHash, DR)
             end,
@@ -503,7 +505,7 @@ ping_obj_rsp(S, RemotePingObj) ->
 
 local_ping_obj(#{ext_sync_port := Port}) ->
     GHash = aec_chain:genesis_hash(),
-    TopHash = aec_chain:top_header_hash(),
+    TopHash = aec_chain:top_block_hash(),
     {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
     #{genesis_hash => GHash,
       best_hash    => TopHash,

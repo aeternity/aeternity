@@ -12,10 +12,6 @@ block_hash(B) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
     Hash.
 
-header_hash(Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Hash.
-
 kill_and_restart_conductor() ->
     %% Stop server
     ok = aec_conductor:stop(),
@@ -72,53 +68,39 @@ write_chain_test_() ->
                %% Check block apart from state trees.
                ?compareBlockResults(GB, Block),
 
-               %% Genesis should be top header
-               Header = aec_db:get_top_header_hash(),
-               ?assertEqual(Header, Hash),
-
                %% Genesis should be top block
                TopBlockHash = aec_db:get_top_block_hash(),
-               ?assertEqual(Header, TopBlockHash),
+               ?assertEqual(Hash, TopBlockHash),
 
                ok
        end},
-      {"Build chain with genesis block plus 2 headers, then store block corresponding to top header",
+      {"Build chain with genesis block plus 2 blocks",
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-               %% Add a couple of headers - not blocks - to the chain.
-               BH1 = aec_blocks:to_header(B1),
-               ?assertEqual(ok, aec_conductor:post_header(BH1)),
-               BH2 = aec_blocks:to_header(B2),
-               ?assertEqual(ok, aec_conductor:post_header(BH2)),
 
                GHash = block_hash(GB),
-
                Block = aec_db:get_block(GHash),
 
                %% Check block apart from state trees.
                ?compareBlockResults(GB, Block),
 
-               %% BH2 should be top header
-               Header = aec_db:get_top_header_hash(),
-               B2Hash = header_hash(BH2),
-               ?assertEqual(B2Hash, Header),
-
                %% Genesis should be top block
                TopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(GHash, TopBlockHash),
 
-               %% Add one block corresponding to a header already in the chain.
+               %% Add one block
                ?assertEqual(ok, aec_conductor:post_block(B2)),
 
                %% GB should still be top block
                NewTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(GHash, NewTopBlockHash),
 
-               %% Add missing block corresponding to a header already in the chain.
+               %% Add missing block
                ?assertEqual(ok, aec_conductor:post_block(B1)),
 
                %% Now B2 should be the top block
                LastTopBlockHash = aec_db:get_top_block_hash(),
+               B2Hash = block_hash(B2),
                ?assertEqual(B2Hash, LastTopBlockHash),
 
                ok
@@ -151,13 +133,12 @@ restart_test_() ->
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-               BH2 = aec_blocks:to_header(B2),
                ?assertEqual({ok, GB}, aec_chain:get_block_by_height(0)),
                ?assertEqual(ok, aec_conductor:post_block(B1)),
                ?assertEqual(ok, aec_conductor:post_block(B2)),
                %% Now B2 should be the top block
                TopBlockHash = aec_db:get_top_block_hash(),
-               B2Hash = header_hash(BH2),
+               B2Hash = block_hash(B2),
                ?assertEqual(B2Hash, TopBlockHash),
                ChainTop1 = aec_chain:top_block(),
                ?compareBlockResults(B2, ChainTop1),
