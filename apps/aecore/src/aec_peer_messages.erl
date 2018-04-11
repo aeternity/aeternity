@@ -26,11 +26,11 @@
 
 serialize_response(Type, {ok, Object}) ->
     SerObj = serialize(Type, Object),
-    serialize(response, #{ result => <<"ok">>,
+    serialize(response, #{ result => true,
                            type   => tag(Type),
                            object => SerObj });
 serialize_response(Type, {error, Reason}) ->
-    serialize(response, #{ result => <<"error">>,
+    serialize(response, #{ result => false,
                            type   => tag(Type),
                            reason => to_binary(Reason) }).
 
@@ -206,9 +206,9 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
                                RspFlds),
     R = #{ result => Result, type => rev_tag(Type) },
     case Result of
-        <<"ok">> ->
+        true ->
             {response, Vsn, R#{ msg => deserialize(Type, Object) }};
-        <<"error">> ->
+        false ->
             {response, Vsn, R#{ reason => Reason }}
     end.
 
@@ -244,7 +244,7 @@ serialization_template(peer, ?PEER_VSN) ->
     , {port, int}
     , {pubkey, binary} ];
 serialization_template(response, ?RESPONSE_VSN) ->
-    [ {result, binary}
+    [ {result, bool}
     , {type, int}
     , {reason, binary}
     , {object, binary} ].

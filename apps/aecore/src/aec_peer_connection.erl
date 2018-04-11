@@ -236,9 +236,9 @@ handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
     handle_fragment(S, N, M, Fragment);
 handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     case aec_peer_messages:deserialize(Type, Payload) of
-        {response, _Vsn, #{ result := <<"error">>, type := MsgType, reason := Reason }} ->
+        {response, _Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
             {noreply, handle_msg(S, MsgType, true, {error, Reason})};
-        {response, _Vsn, #{ result := <<"ok">>, type := MsgType, msg := Msg }} ->
+        {response, _Vsn, #{ result := true, type := MsgType, msg := Msg }} ->
             {noreply, handle_msg(S, MsgType, true, {ok, Msg})};
         {MsgType, _Vsn, Msg} ->
             {noreply, handle_msg(S, MsgType, false, {ok, Msg})};
