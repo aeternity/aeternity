@@ -14,13 +14,9 @@
 %% API
 -export([ call/4
 	, encode_call_data/4
-	, run_contract/4]).
+	, run/2]).
 
 -define(PUB_SIZE, 65).
-
--opaque tx() :: #{}.
-
--export_type([tx/0]).
 
 call(<<"sophia">>, Code, Function, Argument) ->
     aect_sophia:simple_call(Code, Function, Argument);
@@ -43,65 +39,10 @@ encode_call_data(_, _, _, _) ->
 
 %% Call the contract and update the call object with the return value and gas
 %% used.
--spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
-run_contract(#contract_call_tx{	caller = Caller
-			      , nonce  = _Nonce
-			      , contract = ContractPubKey
-			      , vm_version = VmVersion
-			      , amount     = Amount
-			      , gas        = Gas 
-			      , gas_price  = GasPrice
-			      , call_data  = CallData
-			      , call_stack = CallStack
-			      } = _Tx, Call, Height, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
-    CallDef = #{ caller     => Caller
-	       , contract   => ContractPubKey
-	       , gas        => Gas
-	       , gas_price  => GasPrice
-	       , call_data  => CallData
-	       , amount     => Amount
-	       , call_stack => CallStack
-	       , code       => Code
-	       , call       => Call
-	       , height     => Height
-	       , trees      => Trees
-	       },
-    run(VmVersion, CallDef);
-run_contract(#contract_create_tx{ owner      = Caller
-				, nonce      = Nonce
-				, code       = Code
-				, vm_version = VmVersion
-				, amount     = Amount
-				, gas        = Gas 
-				, gas_price  = GasPrice
-				, call_data  = CallData
-				} = _Tx, Call, Height, Trees) ->
-    ContractPubKey = aect_contracts:compute_contract_pubkey(Caller, Nonce),
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
-    CallStack = [], %% TODO: should we have a call stack for create_tx also
-                    %% when creating a contract in a contract.
-
-    CallDef = #{ caller     => Caller
-	       , contract   => ContractPubKey
-	       , gas        => Gas
-	       , gas_price  => GasPrice
-	       , call_data  => CallData
-	       , amount     => Amount
-	       , call_stack => CallStack
-	       , code       => Code
-	       , call       => Call
-	       , height     => Height
-	       , trees      => Trees
-	       },
-    run(VmVersion, CallDef).
 
 
 
+-spec run(byte(), map()) -> aect_call:call().
 run(?AEVM_01_Sophia_01, CallDef) ->
     call_AEVM_01_Sophia_01(CallDef);
 run(?AEVM_01_Solidity_01, CallDef) ->

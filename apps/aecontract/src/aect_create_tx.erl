@@ -178,7 +178,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 	    ?AEVM_01_Solidity_01 ->
 		%% TODO: Execute init call to get the contract bytecode
 		%%       as a result. to be used for insertion
-		foo = aect_dispatch:run_contract(CreateTx, Call0, Height, Trees0),
+		_Call = run_contract(CreateTx, Call0, Height, Trees0),
 		Contract;
 	    _ ->
 		Contract
@@ -189,6 +189,37 @@ process(#contract_create_tx{owner = OwnerPubKey,
     Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
 
     {ok, Trees2}.
+
+run_contract(#contract_create_tx{ owner      = Caller
+				, nonce      = Nonce
+				, code       = Code
+				, vm_version = VmVersion
+				, amount     = Amount
+				, gas        = Gas 
+				, gas_price  = GasPrice
+				, call_data  = CallData
+				} = _Tx, Call, Height, Trees) ->
+    ContractPubKey = aect_contracts:compute_contract_pubkey(Caller, Nonce),
+    ContractsTree = aec_trees:contracts(Trees),
+    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    Code          = aect_contracts:code(Contract),
+    CallStack = [], %% TODO: should we have a call stack for create_tx also
+                    %% when creating a contract in a contract.
+
+    CallDef = #{ caller     => Caller
+	       , contract   => ContractPubKey
+	       , gas        => Gas
+	       , gas_price  => GasPrice
+	       , call_data  => CallData
+	       , amount     => Amount
+	       , call_stack => CallStack
+	       , code       => Code
+	       , call       => Call
+	       , height     => Height
+	       , trees      => Trees
+	       },
+    aect_dispatch:run(VmVersion, CallDef).
+
 
 serialize(#contract_create_tx{owner      = OwnerPubKey,
                               nonce      = Nonce,

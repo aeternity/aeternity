@@ -152,7 +152,7 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = aect_dispatch:run_contract(CallTx, Call0, Height, Trees1),
+    Call = run_contract(CallTx, Call0, Height, Trees1),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree2 =
@@ -176,6 +176,33 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     Trees3 = aec_trees:set_contracts(Trees2, ContractsTree3),
 
     {ok, Trees3}.
+
+run_contract(#contract_call_tx{	caller = Caller
+			      , nonce  = _Nonce
+			      , contract = ContractPubKey
+			      , vm_version = VmVersion
+			      , amount     = Amount
+			      , gas        = Gas 
+			      , gas_price  = GasPrice
+			      , call_data  = CallData
+			      , call_stack = CallStack
+			      } = _Tx, Call, Height, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    Code          = aect_contracts:code(Contract),
+    CallDef = #{ caller     => Caller
+	       , contract   => ContractPubKey
+	       , gas        => Gas
+	       , gas_price  => GasPrice
+	       , call_data  => CallData
+	       , amount     => Amount
+	       , call_stack => CallStack
+	       , code       => Code
+	       , call       => Call
+	       , height     => Height
+	       , trees      => Trees
+	       },
+    aect_dispatch:run(VmVersion, CallDef).
 
 serialize(#contract_call_tx{caller     = CallerPubKey,
                             nonce      = Nonce,
