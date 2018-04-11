@@ -23,7 +23,8 @@
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1
+         for_client/1,
+         is_verifiable/1
         ]).
 
 %%%===================================================================
@@ -44,14 +45,16 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id := ChannelId,
-      account    := AccountPubKey,
+      from       := FromPubKey,
       payload    := Payload,
+      ttl        := TTL,
       fee        := Fee,
       nonce      := Nonce}) ->
     Tx = #channel_slash_tx{
             channel_id = ChannelId,
-            account    = AccountPubKey,
+            from       = FromPubKey,
             payload    = Payload,
+            ttl        = TTL,
             fee        = Fee,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -68,18 +71,20 @@ nonce(#channel_slash_tx{nonce = Nonce}) ->
     Nonce.
 
 -spec origin(tx()) -> pubkey().
-origin(#channel_slash_tx{account = AccountPubKey}) ->
-    AccountPubKey.
+origin(#channel_slash_tx{from = FromPubKey}) ->
+    FromPubKey.
 
 -spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_slash_tx{channel_id = ChannelId,
-                        account    = AccountPubKey,
+                        from       = FromPubKey,
                         payload    = Payload,
+                        ttl        = TTL,
                         fee        = Fee,
                         nonce      = Nonce}, Trees, Height) ->
     Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
-         fun() -> check_payload(ChannelId, AccountPubKey, Payload, Height, Trees) end],
+        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
+         fun() -> aetx_utils:check_ttl(TTL, Height) end,
+         fun() -> check_payload(ChannelId, FromPubKey, Payload, Height, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -89,16 +94,16 @@ check(#channel_slash_tx{channel_id = ChannelId,
 
 -spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#channel_slash_tx{channel_id = ChannelId,
-                          account    = AccountPubKey,
+                          from       = FromPubKey,
                           payload    = Payload,
                           fee        = Fee,
                           nonce      = Nonce}, Trees, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
-    InitiatorAccount0       = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee, Nonce, Height),
-    AccountsTree1           = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
+    FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
+    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce, Height),
+    AccountsTree1           = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     {ok, _SignedTx, StateTx} = deserialize_from_binary(Payload),
     Channel0                 = aesc_state_tree:get(ChannelId, ChannelsTree0),
@@ -117,19 +122,21 @@ accounts(#channel_slash_tx{payload = Payload}) ->
     end.
 
 -spec signers(tx()) -> list(pubkey()).
-signers(#channel_slash_tx{account = AccountPubKey}) ->
-    [AccountPubKey].
+signers(#channel_slash_tx{from = FromPubKey}) ->
+    [FromPubKey].
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_slash_tx{channel_id = ChannelId,
-                            account    = AccountPubKey,
+                            from       = FromPubKey,
                             payload    = Payload,
+                            ttl        = TTL,
                             fee        = Fee,
                             nonce      = Nonce}) ->
     {version(),
      [ {channel_id, ChannelId}
-     , {account   , AccountPubKey}
+     , {from      , FromPubKey}
      , {payload   , Payload}
+     , {ttl       , TTL}
      , {fee       , Fee}
      , {nonce     , Nonce}
      ]}.
@@ -137,37 +144,49 @@ serialize(#channel_slash_tx{channel_id = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_SLASH_TX_VSN,
             [ {channel_id, ChannelId}
-            , {account   , AccountPubKey}
+            , {from      , FromPubKey}
             , {payload   , Payload}
+            , {ttl       , TTL}
             , {fee       , Fee}
             , {nonce     , Nonce}]) ->
     #channel_slash_tx{channel_id = ChannelId,
-                      account    = AccountPubKey,
+                      from       = FromPubKey,
                       payload    = Payload,
+                      ttl        = TTL,
                       fee        = Fee,
                       nonce      = Nonce}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_slash_tx{channel_id = ChannelId,
-                             account    = AccountPubKey,
+                             from       = FromPubKey,
                              payload    = Payload,
+                             ttl        = TTL,
                              fee        = Fee,
                              nonce      = Nonce}) ->
     %% TODO: add swagger schema name
     #{<<"vsn">>        => version(),
       <<"channel_id">> => aec_base58c:encode(channel, ChannelId),
-      <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"from">>    => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"payload">>    => Payload,
+      <<"ttl">>        => TTL,
       <<"fee">>        => Fee,
       <<"nonce">>      => Nonce}.
 
 serialization_template(?CHANNEL_SLASH_TX_VSN) ->
     [ {channel_id, binary}
-    , {account   , binary}
+    , {from      , binary}
     , {payload   , binary}
+    , {ttl       , int}
     , {fee       , int}
     , {nonce     , int}
     ].
+
+-spec is_verifiable(tx()) -> boolean().
+is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+    case aec_chain:get_channel(ChannelId) of
+        {ok, _Channel} -> true;
+        {error, not_found} -> false
+    end.
 
 %%%===================================================================
 %%% Internal functions
@@ -175,11 +194,11 @@ serialization_template(?CHANNEL_SLASH_TX_VSN) ->
 
 -spec check_payload(aesc_channels:id(), pubkey(), binary(), height(), aec_trees:trees()) ->
                            ok | {error, term()}.
-check_payload(ChannelId, AccountPubKey, Payload, Height, Trees) ->
+check_payload(ChannelId, FromPubKey, Payload, Height, Trees) ->
     case deserialize_from_binary(Payload) of
         {ok, SignedState, StateTx} ->
             Checks =
-                [fun() -> is_peer(AccountPubKey, SignedState) end,
+                [fun() -> is_peer(FromPubKey, SignedState) end,
                  fun() -> aetx_sign:verify(SignedState) end,
                  fun() -> check_channel(ChannelId, StateTx, Height, Trees) end],
             aeu_validation:run(Checks);

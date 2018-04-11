@@ -74,6 +74,7 @@ check_are_peers([PubKey | Rest], Peers) ->
         Error -> Error
     end.
 
+
 -spec check_are_funds_in_channel(aesc_channels:id(), non_neg_integer(), aec_trees:trees()) ->
                                         ok | {error, insufficient_channel_funds}.
 check_are_funds_in_channel(ChannelId, Amount, Trees) ->
