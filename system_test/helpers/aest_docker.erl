@@ -28,7 +28,6 @@
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
 -define(EPOCH_STOP_TIMEOUT, 30).
-% If the password is changed, reflect the change in epoch.yaml.mustache
 -define(PEER_KEYS_PASSWORD, <<"top secret">>).
 
 %=== TYPES =====================================================================
@@ -50,8 +49,8 @@
 %% Node specification
 -type node_spec() :: #{
     name := atom(),
-    pubkey := binary(),         % Public part of the peer key
-    privkey := binary(),        % Private part of the peer key
+    pubkey => binary(),         % Public part of the peer key
+    privkey => binary(),        % Private part of the peer key
     peers := [binary()],        % URLs of the peer nodes
     source := {pull, binary()}  % Source of the node image
 }.
@@ -178,6 +177,7 @@ setup_node(Spec, BackendState) ->
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
+        key_password => ?PEER_KEYS_PASSWORD,
         services => #{
             sync => #{port => ?EXT_SYNC_PORT},
             ext_http => #{port => ?EXT_HTTP_PORT},
