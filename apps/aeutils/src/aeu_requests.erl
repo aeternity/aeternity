@@ -120,7 +120,7 @@ get_block_by_height(Uri, Height) when is_integer(Height) ->
 -spec get_block(http_uri_uri(), binary()) -> response(aec_blocks:block()).
 get_block(Uri, Hash) ->
     EncHash = aec_base58c:encode(block_hash, Hash),
-    Response = process_request(Uri,'GetBlockByHash', [{"hash", EncHash}]),
+    Response = process_request(Uri,'GetBlockByHashDeprecated', [{"hash", EncHash}]),
     case Response of
         {ok, 200, Data} ->
             {ok, _Block} = aehttp_api_parser:decode(block, Data);

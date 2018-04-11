@@ -128,7 +128,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get a block by height",
-        "operationId" : "GetBlockByHeight",
+        "operationId" : "GetBlockByHeightDeprecated",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -157,7 +157,7 @@
       "get" : {
         "tags" : [ "external", "gossip" ],
         "description" : "Get a block by hash",
-        "operationId" : "GetBlockByHash",
+        "operationId" : "GetBlockByHashDeprecated",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -1527,9 +1527,9 @@
     },
     "/block/height/{height}" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get a block by height",
-        "operationId" : "GetBlockByHeightInternal",
+        "operationId" : "GetBlockByHeight",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "height",
@@ -1543,7 +1543,7 @@
           "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
-          "default" : "message_pack",
+          "default" : "json",
           "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
@@ -1564,9 +1564,9 @@
     },
     "/block/hash/{hash}" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get a block by hash",
-        "operationId" : "GetBlockByHashInternal",
+        "operationId" : "GetBlockByHash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "name" : "hash",
@@ -1580,7 +1580,7 @@
           "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
-          "default" : "message_pack",
+          "default" : "json",
           "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
@@ -1607,7 +1607,7 @@
     },
     "/block/genesis" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get the genesis block",
         "operationId" : "GetBlockGenesis",
         "produces" : [ "application/json" ],
@@ -1617,7 +1617,7 @@
           "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
-          "default" : "message_pack",
+          "default" : "json",
           "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
@@ -1632,7 +1632,7 @@
     },
     "/block/latest" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get the top block",
         "operationId" : "GetBlockLatest",
         "produces" : [ "application/json" ],
@@ -1642,7 +1642,7 @@
           "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
-          "default" : "message_pack",
+          "default" : "json",
           "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
@@ -1657,7 +1657,7 @@
     },
     "/block/pending" : {
       "get" : {
-        "tags" : [ "internal", "chain" ],
+        "tags" : [ "external", "chain" ],
         "description" : "Get the block being mined",
         "operationId" : "GetBlockPending",
         "produces" : [ "application/json" ],
@@ -1667,7 +1667,7 @@
           "description" : "Transactions encoding",
           "required" : false,
           "type" : "string",
-          "default" : "message_pack",
+          "default" : "json",
           "enum" : [ "message_pack", "json" ]
         } ],
         "responses" : {
