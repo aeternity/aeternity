@@ -172,6 +172,10 @@ process(#contract_create_tx{owner = OwnerPubKey,
     ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
     Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
 
+    %% Create the init call.
+   Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
+
+
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key. Though, even if

@@ -40,11 +40,8 @@ encode_call_data(_, _, _, _) ->
 
 %% -- Running contract code on chain ---------------------------------------
 
-
 %% Call the contract and update the call object with the return value and gas
 %% used.
-
-
 
 -spec run(byte(), map()) -> aect_call:call().
 run(?AEVM_01_Sophia_01, CallDef) ->
@@ -74,7 +71,6 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
-
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code       => Code,
 			address    => Address,
@@ -95,13 +91,9 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
                       chainState        => ChainState,
                       chainAPI          => aec_vm_chain},
              pre => #{}},
-          #{
-	     trace_fun  => fun(S,A) -> lager:error(S,A) end,
-	     trace => false
-	     })
+          #{trace => false})
     of
 	InitState ->
-
 	    %% TODO: Nicer error handling - do more in check.
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
