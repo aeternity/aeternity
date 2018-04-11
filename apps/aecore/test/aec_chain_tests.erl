@@ -20,24 +20,19 @@
 
 -import(aec_chain_state,
         [ insert_block/1
-        , insert_header/1
         ]).
 
 -import(aec_chain,
         [ difficulty_at_hash/1
         , difficulty_at_top_block/0
-        , difficulty_at_top_header/0
         , get_block/1
         , get_block_by_height/1
         , get_block_state/1
         , get_header/1
         , get_header_by_height/1
-        , get_missing_block_hashes/0
-        , hash_is_connected_to_genesis/1
         , top_block/0
         , top_block_hash/0
         , top_header/0
-        , top_header_hash/0
         ]).
 
 -define(compareBlockResults(B1, B2),
@@ -73,52 +68,8 @@ basic_access_test_() ->
              aec_test_utils:unmock_genesis(),
              aec_test_utils:stop_chain_db()
      end,
-     [ {"Access for header chain", fun basic_access_test_header_chain/0}
-     , {"Access for block chain", fun basic_access_test_block_chain/0}
-     , {"Access for missing blocks", fun basic_access_missing_blocks/0}
+     [ {"Access for block chain", fun basic_access_test_block_chain/0}
      ]}.
-
-basic_access_test_header_chain() ->
-    %% Create a chain that we are going to use.
-    Chain = aec_test_utils:gen_blocks_only_chain(3),
-    [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
-    [B0H, B1H, B2H] = [block_hash(B) || B <- Chain],
-
-    %% Add a couple of headers - not blocks - to the chain.
-    ok = insert_header(BH0),
-    ?assertEqual(error, get_header(B1H)),
-    ?assertEqual(error, get_header(B2H)),
-
-    ok = insert_header(BH1),
-    ?assertEqual(BH1, top_header()),
-
-    ok = insert_header(BH2),
-    ?assertEqual(BH2, top_header()),
-
-    %% Check by hash.
-    ?assertEqual({ok, BH0}, get_header(B0H)),
-    ?assertEqual({ok, BH1}, get_header(B1H)),
-    ?assertEqual({ok, BH2}, get_header(B2H)),
-
-    %% Check by height.
-    ?assertEqual({ok, BH0}, get_header_by_height(0)),
-    ?assertEqual({ok, BH1}, get_header_by_height(1)),
-    ?assertEqual({ok, BH2}, get_header_by_height(2)),
-    ?assertEqual({error, chain_too_short}, get_header_by_height(3)),
-
-    %% Test getting blocks for a header chain.
-    %% We only have the block for the genesis.
-
-    %% Get by hash
-    ?assertMatch(error, get_block(B0H)),
-    ?assertEqual(error, get_block(B1H)),
-    ?assertEqual(error, get_block(B2H)),
-
-    %% Get by height
-    ?assertMatch({error, block_not_found}, get_block_by_height(0)),
-    ?assertMatch({error, block_not_found}, get_block_by_height(1)),
-    ?assertMatch({error, block_not_found}, get_block_by_height(2)),
-    ?assertMatch({error, chain_too_short}, get_block_by_height(3)).
 
 basic_access_test_block_chain() ->
     %% Create a chain that we are going to use.
@@ -160,29 +111,6 @@ basic_access_test_block_chain() ->
     ?compareBlockResults({ok, B2}, get_block_by_height(2)),
     ?assertEqual({error, chain_too_short}, get_block_by_height(3)).
 
-basic_access_missing_blocks() ->
-    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-    [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
-    [B0H, B1H, B2H] = [block_hash(B) || B <- Chain],
-
-    %% Add some headers
-    ok = write_headers_to_chain([BH0, BH1]),
-    ?assertEqual(ordsets:from_list([B0H, B1H]),
-                 ordsets:from_list(get_missing_block_hashes())),
-    ok = write_headers_to_chain([BH2]),
-    ?assertEqual(ordsets:from_list([B0H, B1H, B2H]),
-                 ordsets:from_list(get_missing_block_hashes())),
-    ok = write_blocks_to_chain([B2]),
-    ?assertEqual(ordsets:from_list([B0H, B1H]),
-                 ordsets:from_list(get_missing_block_hashes())),
-    ok = write_blocks_to_chain([B0]),
-    ?assertEqual(ordsets:from_list([B1H]),
-                 ordsets:from_list(get_missing_block_hashes())),
-    ok = write_blocks_to_chain([B1]),
-    ?assertEqual(ordsets:from_list([]),
-                 ordsets:from_list(get_missing_block_hashes())),
-    ok.
-
 %%%===================================================================
 %%% Out of order tests
 
@@ -198,90 +126,43 @@ out_of_order_test_() ->
              aec_test_utils:unmock_genesis(),
              aec_test_utils:stop_chain_db()
      end,
-     [ {"Out of order insert of header chain",
-        fun out_of_order_test_header_chain/0}
-     , {"Out of order insert of block chain",
+     [ {"Out of order insert of block chain",
         fun out_of_order_test_block_chain/0}
-     , {"Out of order insert of mixed chain",
-        fun out_of_order_test_mixed_chain/0}
-     , {"Out of order check if a block is connected",
-        fun out_of_order_test_connected/0}
      ]}.
 
 restart_chain_db() ->
     aec_test_utils:stop_chain_db(),
     aec_test_utils:start_chain_db().
 
-out_of_order_test_header_chain() ->
-    %% Create a chain that we are going to use.
-    Chain = aec_test_utils:gen_blocks_only_chain(3),
-    [BH0, BH1, BH2] = [aec_blocks:to_header(B) || B <- Chain],
-    [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
-
-    %% Insert the headers in different order and assert
-    %% that the end result is the same
-    write_headers_to_chain([BH0, BH1, BH2]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH0, BH2, BH1]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH1, BH0, BH2]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH1, BH2, BH0]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH2, BH0, BH1]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH2, BH1, BH0]),
-    ?assertEqual(B2H, top_header_hash()),
-
-    %% Check that the top header is not moving if the chain is not complete.
-    restart_chain_db(),
-    write_headers_to_chain([BH0, BH2]),
-    ?assertEqual(B0H, top_header_hash()),
-
-    restart_chain_db(),
-    write_headers_to_chain([BH1, BH2]),
-    ?assertEqual(undefined, top_header_hash()),
-    ok.
-
 out_of_order_test_block_chain() ->
     %% Create a chain that we are going to use.
     Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
     [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
 
-    %% Insert the headers in different order and assert
+    %% Insert the blocks in different order and assert
     %% that the end result is the same
     write_blocks_to_chain([B0, B1, B2]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
     write_blocks_to_chain([B0, B2, B1]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
     write_blocks_to_chain([B1, B0, B2]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
     write_blocks_to_chain([B1, B2, B0]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
     write_blocks_to_chain([B2, B0, B1]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
     write_blocks_to_chain([B2, B1, B0]),
-    ?assertEqual(B2H, top_header_hash()),
+    ?assertEqual(B2H, top_block_hash()),
 
     %% Check that the top block is not moving if the chain is not complete.
     restart_chain_db(),
@@ -290,51 +171,6 @@ out_of_order_test_block_chain() ->
     restart_chain_db(),
     write_blocks_to_chain([B1, B2]),
     ?assertEqual(undefined, top_block_hash()),
-    ok.
-
-out_of_order_test_mixed_chain() ->
-    %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
-    [BH0, BH1,_BH2] = [aec_blocks:to_header(B) || B <- Chain],
-    [B0H, B1H, B2H] = [block_hash(H) || H <- Chain],
-
-    %% Check that the top header hash and the top block hash is moving
-    %% in the correct way.
-    ok = insert_header(BH0),
-    ?assertEqual(B0H, top_header_hash()),
-    ?assertEqual(undefined, top_block_hash()),
-    ok = insert_header(BH1),
-    ?assertEqual(B1H, top_header_hash()),
-    ?assertEqual(undefined, top_block_hash()),
-    ok = insert_block(B0),
-    ?assertEqual(B1H, top_header_hash()),
-    ?assertEqual(B0H, top_block_hash()),
-    ok = insert_block(B2),
-    ?assertEqual(B2H, top_header_hash()),
-    ?assertEqual(B0H, top_block_hash()),
-    ok = insert_block(B1),
-    ?assertEqual(B2H, top_header_hash()),
-    ?assertEqual(B2H, top_block_hash()),
-    ok.
-
-out_of_order_test_connected() ->
-    %% Create a chain that we are going to use.
-    Chain = [B0, B1, B2, B3] = aec_test_utils:gen_blocks_only_chain(4),
-    [B0H, B1H, B2H, B3H] = [block_hash(H) || H <- Chain],
-
-    %% Insert a broken chain and test connectivity
-    ok = write_blocks_to_chain([B0, B1, B3]),
-    ?assertEqual(true, hash_is_connected_to_genesis(B0H)),
-    ?assertEqual(true, hash_is_connected_to_genesis(B1H)),
-    ?assertEqual(false, hash_is_connected_to_genesis(B2H)),
-    ?assertEqual(false, hash_is_connected_to_genesis(B3H)),
-
-    %% Write the missing block
-    ok = write_blocks_to_chain([B2]),
-    ?assertEqual(true, hash_is_connected_to_genesis(B0H)),
-    ?assertEqual(true, hash_is_connected_to_genesis(B1H)),
-    ?assertEqual(true, hash_is_connected_to_genesis(B2H)),
-    ?assertEqual(true, hash_is_connected_to_genesis(B3H)),
     ok.
 
 %%%===================================================================
@@ -480,7 +316,7 @@ n_headers_backwards() ->
 
 
     ok = write_blocks_to_chain(Chain),
-    TopHash = top_header_hash(),
+    TopHash = top_block_hash(),
 
     {ok, Hdrs0} = aec_chain:get_n_headers_backwards_from_hash(TopHash, 2),
 
@@ -596,36 +432,36 @@ target_validation_test_() ->
      ]}.
 
 constant_target_at_the_beginning_of_the_chain() ->
-    Chain = [_,_,_,B3,_] = gen_blocks_only_chain_by_target(
-                             [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 222),
-    [BH0, BH1, BH2, BH3, BH4] = [aec_blocks:to_header(B) || B <- Chain],
+    [B0,B1,B2,B3,B4] =
+        gen_blocks_only_chain_by_target(
+          [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET], 222),
 
     %% Insert genesis
-    ok = insert_header(BH0),
+    ok = insert_block(B0),
 
     %% Do not allow too low target
-    BH1TooLowTarget = BH1#header{target = trunc(?GENESIS_TARGET / 2)},
+    B1TooLowTarget = B1#block{target = trunc(?GENESIS_TARGET / 2)},
     ?assertMatch({error, {target_not_equal_to_parent, _, _, _}},
-                 insert_header(BH1TooLowTarget)),
+                 insert_block(B1TooLowTarget)),
 
-    ok = insert_header(BH1),
-    ok = insert_header(BH2),
+    ok = insert_block(B1),
+    ok = insert_block(B2),
 
     %% Do not allow too high target
-    BH3TooHighTarget = BH3#header{target = 2 * ?GENESIS_TARGET},
+    B3TooHighTarget = B3#block{target = 2 * ?GENESIS_TARGET},
     ?assertMatch({error, {target_not_equal_to_parent, _, _, _}},
-                 insert_header(BH3TooHighTarget)),
+                 insert_block(B3TooHighTarget)),
 
-    ok = insert_header(BH3),
+    ok = insert_block(B3),
 
-    %% target_not_equal_to_parent does not kick in for header with height = 4
-    %% For header with height 4, header with height 1 is taken for difficulty recalculations
+    %% target_not_equal_to_parent does not kick in for block with height = 4
+    %% For block with height 4, block with height 1 is taken for difficulty recalculations
     ?assertNotMatch({error, {target_not_equal_to_parent, _, _, _}},
-                    insert_header(BH4)),
+                    insert_block(B4)),
     ?assertMatch({error, {wrong_target, _, _, _}},
-                 insert_header(BH4)),
+                 insert_block(B4)),
 
-    ?assertEqual(block_hash(B3), top_header_hash()),
+    ?assertEqual(block_hash(B3), top_block_hash()),
     ok.
 
 target_verified_based_on_calculations() ->
@@ -638,24 +474,23 @@ target_verified_based_on_calculations() ->
            nonce      => 12345,
            timestamps => [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000] },
 
-    Chain = gen_blocks_only_chain(ChainData),
-    [BH0, BH1, BH2, BH3, BH4, BH5] = [aec_blocks:to_header(B) || B <- Chain],
+    [B0, B1, B2, B3, B4, B5] = Chain = gen_blocks_only_chain(ChainData),
 
-    ok = insert_header(BH0),
-    ok = insert_header(BH1),
-    ok = insert_header(BH2),
-    ok = insert_header(BH3),
+    ok = insert_block(B0),
+    ok = insert_block(B1),
+    ok = insert_block(B2),
+    ok = insert_block(B3),
 
-    %% Try to insert header with height=4 with an incorrect target
-    BadBH4 = BH4#header{target = Bad4},
+    %% Try to insert block with height=4 with an incorrect target
+    BadB4 = B4#block{target = Bad4},
     ?assertMatch({error, {wrong_target, _, _, _}},
-                 insert_header(BadBH4)),
+                 insert_block(BadB4)),
 
-    %% Insert header with height=4 with expected target
-    ok = insert_header(BH4),
-    ok = insert_header(BH5),
+    %% Insert block with height=4 with expected target
+    ok = insert_block(B4),
+    ok = insert_block(B5),
 
-    ?assertEqual(block_hash(lists:last(Chain)), top_header_hash()),
+    ?assertEqual(block_hash(lists:last(Chain)), top_block_hash()),
     ok.
 
 test_postponed_target_verification() ->
@@ -708,21 +543,20 @@ total_difficulty_test_() ->
      end,
      [{"Get work in chain of only genesis",
        fun total_difficulty_only_genesis/0},
-      {"Get work in header chain",
+      {"Get work in block chain",
        fun total_difficulty_in_chain/0
       }]
     }.
 
 total_difficulty_only_genesis() ->
     ok = insert_block(genesis_block()),
-    {ok, Difficulty} = difficulty_at_top_header(),
+    {ok, Difficulty} = difficulty_at_top_block(),
     ?assertDifficultyEq(?GENESIS_DIFFICULTY, Difficulty).
 
 total_difficulty_in_chain() ->
     %% In order to pass target validation, block after genesis has to have the same target as genesis block
     [B0, B1, B2, B3, B4] = Chain = gen_blocks_only_chain_by_target([?GENESIS_TARGET, 1, 1, 1], 111),
     ok = write_blocks_to_chain(Chain),
-    {ok, DiffTopH} = difficulty_at_top_header(),
     {ok, DiffTopB} = difficulty_at_top_block(),
     {ok, Diff0} = difficulty_at_hash(block_hash(B0)),
     {ok, Diff1} = difficulty_at_hash(block_hash(B1)),
@@ -731,7 +565,6 @@ total_difficulty_in_chain() ->
     {ok, Diff4} = difficulty_at_hash(block_hash(B4)),
 
     %% Mecked difficulty = ?FACTOR / target
-    ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 3 * ?FACTOR, DiffTopH),
     ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 3 * ?FACTOR, DiffTopB),
     ?assertDifficultyEq(1 * ?GENESIS_DIFFICULTY + 0          , Diff0),
     ?assertDifficultyEq(2 * ?GENESIS_DIFFICULTY + 0          , Diff1),
@@ -759,6 +592,7 @@ forking_test_() ->
      , {"Fork on last block", fun fork_on_last_block/0}
      , {"Fork and out of order", fun fork_out_of_order/0}
      , {"Get by height in forks", fun fork_get_by_height/0}
+     , {"Test if hash is connected to genesis", fun fork_is_connected_to_genesis/0}
      , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      ]}.
@@ -787,14 +621,6 @@ fork_common(EasyChain, HardChain) ->
     %% Out of order
     ok = fork_common_block(lists:reverse(EasyChain), TopHashEasy,
                            lists:reverse(HardChain), TopHashHard),
-    %% Insert headers
-    EasyHeaders = [aec_blocks:to_header(X) || X <- EasyChain],
-    HardHeaders = [aec_blocks:to_header(X) || X <- HardChain],
-    ok = fork_common_headers(EasyHeaders, TopHashEasy, HardHeaders, TopHashHard),
-    %% Out of order
-    ok = fork_common_headers(lists:reverse(EasyHeaders), TopHashEasy,
-                             lists:reverse(HardHeaders), TopHashHard),
-
     ok.
 
 fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
@@ -811,22 +637,6 @@ fork_common_block(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
     ?assertEqual(TopHashHard, top_block_hash()),
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual(TopHashHard, top_block_hash()),
-    ok.
-
-fork_common_headers(EasyChain, TopHashEasy, HardChain, TopHashHard) ->
-    restart_chain_db(),
-    %% The second chain should take over
-    ok = write_headers_to_chain(EasyChain),
-    ?assertEqual(TopHashEasy, top_header_hash()),
-    ok = write_headers_to_chain(HardChain),
-    ?assertEqual(TopHashHard, top_header_hash()),
-
-    restart_chain_db(),
-    %% The second chain should not take over
-    ok = write_headers_to_chain(HardChain),
-    ?assertEqual(TopHashHard, top_header_hash()),
-    ok = write_headers_to_chain(EasyChain),
-    ?assertEqual(TopHashHard, top_header_hash()),
     ok.
 
 fork_out_of_order() ->
@@ -864,6 +674,30 @@ fork_get_by_height() ->
 
     ok.
 
+fork_is_connected_to_genesis() ->
+    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
+    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
+    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1], 222)),
+
+    %% Add the easy chain
+    ok = write_blocks_to_chain(EasyChain),
+    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
+     || B <- EasyChain],
+
+    %% Add only the top of the hard chain
+    HardTop = lists:last(HardChain),
+    HardTopHash = block_hash(HardTop),
+    ok = write_blocks_to_chain([HardTop]),
+    ?assertEqual(false, aec_chain:hash_is_connected_to_genesis(HardTopHash)),
+    
+    %% Add the rest of the hard chain.
+    ok = write_blocks_to_chain(HardChain),
+    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
+     || B <- EasyChain],
+    [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))
+     || B <- HardChain],
+    ok.
+
 fork_is_in_main_chain() ->
     CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
     EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
@@ -873,8 +707,14 @@ fork_is_in_main_chain() ->
     [?assertEqual(true, aec_chain:hash_is_in_main_chain(block_hash(B)))
      || B <- EasyChain],
     ok = write_blocks_to_chain(HardChain),
+    ?assertEqual(block_hash(lists:last(HardChain)), aec_chain:top_block_hash()),
+
+    ?assertEqual({ok, block_hash(lists:last(blocks_only_chain(CommonChain)))},
+                 aec_chain:find_common_ancestor(block_hash(lists:last(HardChain)),
+                                                block_hash(lists:last(EasyChain)))),
+
     [?assertEqual(true, aec_chain:hash_is_in_main_chain(block_hash(B)))
-     || B <- HardChain],
+     || B <- [hd(HardChain)]],
     [?assertEqual(false, aec_chain:hash_is_in_main_chain(block_hash(B)))
      || B <- EasyChain -- blocks_only_chain(CommonChain)],
     ?assertEqual(false, aec_chain:hash_is_in_main_chain(<<12345:256>>)),
@@ -1022,12 +862,6 @@ write_blocks_to_chain([H|T]) ->
     ok = insert_block(H),
     write_blocks_to_chain(T);
 write_blocks_to_chain([]) ->
-    ok.
-
-write_headers_to_chain([H|T]) ->
-    ok = insert_header(H),
-    write_headers_to_chain(T);
-write_headers_to_chain([]) ->
     ok.
 
 gen_blocks_only_chain(Data) ->

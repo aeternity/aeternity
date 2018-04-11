@@ -128,43 +128,10 @@ sync_fork_in_wrong_order(Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(dev1, Config),
     aecore_suite_utils:connect(N1),
-    await_sync_complete(T0, [N2]),
+    aecore_suite_utils:await_sync_complete(T0, [N2]),
     aec_test_utils:wait_for_it(
       fun() -> rpc:call(N2, aec_chain, top_block, [], 5000) end,
       N1Top),
     ok.
 
-await_sync_complete(T0, Nodes) ->
-    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
-    AllEvents = lists:flatten(
-                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes]),
-    ct:log("AllEvents = ~p", [AllEvents]),
-    Nodes1 =
-        lists:foldl(
-          fun(Msg, Acc) ->
-                  check_sync_event(Msg, Acc)
-          end, Nodes, AllEvents),
-    ct:log("Nodes1 = ~p", [Nodes1]),
-    collect_sync_events(Nodes1).
-
-collect_sync_events([]) ->
-    done;
-collect_sync_events(Nodes) ->
-    receive
-        {gproc_ps_event, chain_sync, Msg} ->
-            collect_sync_events(check_sync_event(Msg, Nodes))
-    after 20000 ->
-            ct:log("Timeout in collect_sync_events: ~p~n"
-                   "~p", [Nodes, process_info(self(), messages)]),
-            error(timeout)
-    end.
-
-check_sync_event(#{sender := From, info := Info} = Msg, Nodes) ->
-    case Info of
-        {E, _} when E =:= client_done ->
-            ct:log("got sync_event ~p", [Msg]),
-            lists:delete(node(From), Nodes);
-        _ ->
-            Nodes
-    end.
 

@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
@@ -19,21 +20,17 @@
         , get_block_state/1
         , get_header/1
         , get_header_by_height/1
-        , get_missing_block_hashes/0
         , get_n_headers_backwards_from_hash/2
         , get_at_most_n_headers_forward_from_hash/2
         , get_top_N_blocks_time_summary/1
         , get_transactions_between/2
         , has_block/1
-        , has_header/1
-        , hash_is_connected_to_genesis/1
         , hash_is_in_main_chain/1
+        , hash_is_connected_to_genesis/1
         , top_block/0
         , top_block_hash/0
-        , top_block_header/0
         , top_block_with_state/0
         , top_header/0
-        , top_header_hash/0
         ]).
 
 %%% Accounts API
@@ -55,7 +52,6 @@
 %%% Difficulty API
 -export([ difficulty_at_hash/1
         , difficulty_at_top_block/0
-        , difficulty_at_top_header/0
         ]).
 
 %%% For tests
@@ -148,7 +144,7 @@ resolve_name(Type, Name) ->
 %%% TODO: This doesn't belong here.
 
 get_top_N_blocks_time_summary(N) when is_integer(N), N > 0 ->
-    case top_block_header() of
+    case top_header() of
         undefined -> [];
         Header ->
             Prev = get_header(aec_headers:prev_hash(Header)),
@@ -202,7 +198,7 @@ pick_transaction([{mempool, Tx}|Left], none) ->
     pick_transaction(Left, {mempool, Tx});
 pick_transaction([{Hash, Tx}|Left], Acc) when is_binary(Hash) ->
     %% Pick the transaction if it was included in the main chain
-    case aec_chain:hash_is_in_main_chain(Hash) of
+    case hash_is_in_main_chain(Hash) of
         true  -> {Hash, Tx};
         false -> pick_transaction(Left, Acc)
     end;
@@ -215,14 +211,10 @@ pick_transaction([], Acc) ->
 
 -spec top_header() -> 'undefined' | aec_headers:header().
 top_header() ->
-    case top_header_hash() of
+    case top_block_hash() of
         undefined -> undefined;
         Hash -> aec_db:get_header(Hash)
     end.
-
--spec top_header_hash() -> 'undefined' | binary().
-top_header_hash() ->
-    aec_db:get_top_header_hash().
 
 -spec top_block() -> 'undefined' | aec_blocks:block().
 top_block() ->
@@ -231,23 +223,16 @@ top_block() ->
         Hash -> aec_db:get_block(Hash)
     end.
 
+-spec top_block_hash() -> 'undefined' | binary().
+top_block_hash() ->
+    aec_db:get_top_block_hash().
+
 -spec top_block_with_state() -> 'undefined' | {aec_blocks:block(), aec_trees:trees()}.
 top_block_with_state() ->
     case top_block_hash() of
         undefined -> undefined;
         Hash -> {aec_db:get_block(Hash), aec_db:get_block_state(Hash)}
     end.
-
--spec top_block_header() -> 'undefined' | aec_headers:header().
-top_block_header() ->
-    case top_block_hash() of
-        undefined -> undefined;
-        Hash -> aec_db:get_header(Hash)
-    end.
-
--spec top_block_hash() -> 'undefined' | binary().
-top_block_hash() ->
-    aec_db:get_top_block_hash().
 
 -spec genesis_hash() -> 'undefined' | binary().
 genesis_hash() ->
@@ -276,18 +261,11 @@ find_common_ancestor(Hash1, Hash2) when is_binary(Hash1), is_binary(Hash2) ->
 
 -spec hash_is_in_main_chain(binary()) -> boolean().
 hash_is_in_main_chain(Hash) when is_binary(Hash) ->
-    case get_header(Hash) of
-        error -> false;
-        {ok, Header} ->
-            Height = aec_headers:height(Header),
-            {ok, Hash} =:= aec_chain_state:get_hash_at_height(Height)
-    end.
+    aec_chain_state:hash_is_in_main_chain(Hash).
 
 -spec hash_is_connected_to_genesis(binary()) -> boolean().
 hash_is_connected_to_genesis(Hash) when is_binary(Hash) ->
     aec_chain_state:hash_is_connected_to_genesis(Hash).
-
-
 
 -spec get_at_most_n_headers_forward_from_hash(binary(), pos_integer()) ->
                                                  {'ok', [aec_headers:header()]} |
@@ -335,11 +313,6 @@ get_n_headers_backwards_from_hash({ok, Header}, N, Acc) ->
     get_n_headers_backwards_from_hash(get_header(PrevHash), N - 1, NewAcc);
 get_n_headers_backwards_from_hash(error,_N,_Acc) ->
     error.
-
--spec get_missing_block_hashes() -> [binary()].
-get_missing_block_hashes() ->
-    aec_chain_state:get_missing_block_hashes().
-
 
 %%%===================================================================
 %%% Get a block range
@@ -402,13 +375,6 @@ difficulty_at_top_block() ->
     case top_block_hash() of
         undefined -> {error, no_top};
         Hash -> difficulty_at_hash(Hash)
-    end.
-
--spec difficulty_at_top_header() -> {'ok', float()} | {'error', atom()}.
-difficulty_at_top_header() ->
-    case aec_db:get_top_header_difficulty() of
-        undefined -> {error, no_top};
-        Difficulty -> {ok, Difficulty}
     end.
 
 -spec difficulty_at_hash(binary()) -> {'ok', float()} | {'error', atom()}.
@@ -475,10 +441,6 @@ get_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 %%%===================================================================
 %%% Headers
 %%%===================================================================
-
--spec has_header(binary()) -> boolean().
-has_header(Hash) ->
-    aec_db:has_header(Hash).
 
 -spec get_header(binary()) -> {'ok', aec_headers:header()} | 'error'.
 get_header(Hash) when is_binary(Hash) ->

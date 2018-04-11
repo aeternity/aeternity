@@ -34,7 +34,8 @@
 -export([proxy/0,
          start_proxy/0,
          call_proxy/2,
-         await_aehttp/1
+         await_aehttp/1,
+         await_sync_complete/2
          ]).
 
 -include_lib("kernel/include/file.hrl").
@@ -232,6 +233,55 @@ file_missing(F) ->
 expected_logs() ->
     ["epoch.log", "epoch_mining.log",
      "epoch_pow_cuckoo.log", "epoch_metrics.log"].
+
+await_sync_complete(T0, Nodes) ->
+    [aecore_suite_utils:subscribe(N, chain_sync) || N <- Nodes],
+    [aecore_suite_utils:subscribe(N, mempool_sync) || N <- Nodes],
+    AllEvents = lists:flatten(
+                  [aecore_suite_utils:events_since(N, chain_sync, T0) || N <- Nodes] ++
+                      [aecore_suite_utils:events_since(N, mempool_sync, T0) || N <- Nodes]
+                 ),
+    ct:log("AllEvents = ~p", [AllEvents]),
+    SyncNodes =
+        lists:foldl(
+          fun(Msg, Acc) ->
+                  check_event(Msg, Acc)
+          end, Nodes, AllEvents),
+    MempoolNodes =
+        lists:foldl(
+          fun(Msg, Acc) ->
+                  check_event(Msg, Acc)
+          end, Nodes, AllEvents),
+    ct:log("SyncNodes = ~p", [SyncNodes]),
+    ct:log("MempoolNodes = ~p", [MempoolNodes]),
+    collect_sync_events(SyncNodes, MempoolNodes).
+
+collect_sync_events([], []) ->
+    done;
+collect_sync_events(SyncNodes, MempoolNodes) ->
+    receive
+        {gproc_ps_event, chain_sync, Msg} ->
+            SyncNodes1 = check_event(Msg, SyncNodes),
+            collect_sync_events(SyncNodes1, MempoolNodes);
+        {gproc_ps_event, mempool_sync, Msg} ->
+            MempoolNodes1 = check_event(Msg, MempoolNodes),
+            collect_sync_events(SyncNodes, MempoolNodes1)
+    after 20000 ->
+            ct:log("Timeout in collect_sync_events: ~p~n"
+                   "~p", [{SyncNodes, MempoolNodes}, process_info(self(), messages)]),
+            error(timeout)
+    end.
+
+check_event(#{sender := From, info := Info}, Nodes) ->
+    case Info of
+        {chain_sync_done, _} ->
+            lists:delete(node(From), Nodes);
+        {mempool_sync_done, _} ->
+            lists:delete(node(From), Nodes);
+        _ ->
+            Nodes
+    end.
+
 
 %%%=============================================================================
 %%% Internal functions

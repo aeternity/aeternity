@@ -625,7 +625,7 @@ get_block_hash_optionally_by_hash_or_height(Req) ->
                 {error, _} ->
                     {error, invalid_hash};
                 {ok, Hash} ->
-                    case aec_chain:has_header(Hash) of
+                    case aec_chain:has_block(Hash) of
                         false ->
                             {error, not_found};
                         true ->

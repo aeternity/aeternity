@@ -19,7 +19,7 @@
 %% API called from strongly connected component aec_peers
 -export([schedule_ping/1]).
 
--export([server_get_missing_blocks/1, start_sync/3, fetch_mempool/1]).
+-export([start_sync/3, fetch_mempool/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2,
@@ -47,9 +47,6 @@ connect_peer(PeerInfo) ->
 
 start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
     gen_server:cast(?MODULE, {start_sync, PeerId, RemoteHash, RemoteDifficulty}).
-
-server_get_missing_blocks(PeerId) ->
-    gen_server:cast(?MODULE, {server_get_missing, PeerId}).
 
 fetch_mempool(PeerId) ->
     gen_server:cast(?MODULE, {fetch_mempool, PeerId}).
@@ -189,9 +186,6 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     %% We could decide not to sync if we are already syncing, but that
     %% opens up for an attack in which someone fakes to have higher difficulty
     jobs:enqueue(sync_jobs, {start_sync, PeerId, RemoteHash}),
-    {noreply, State};
-handle_cast({server_get_missing, PeerId}, State) ->
-    jobs:enqueue(sync_jobs, {server_get_missing, PeerId}),
     {noreply, State};
 handle_cast({fetch_mempool, PeerId}, State) ->
     jobs:enqueue(sync_jobs, {fetch_mempool, PeerId}),
@@ -349,8 +343,6 @@ process_job([{_T, Job}]) ->
               false -> do_start_sync(PeerId, RemoteHash);
               _     -> lager:info("sync already in progress ~p", [ppp(PeerId)])
             end;
-        {server_get_missing, PeerId} ->
-            do_server_get_missing(PeerId);
         {fetch_mempool, PeerId} ->
             do_fetch_mempool(PeerId);
         {ping, PeerId} ->
@@ -390,7 +382,6 @@ do_forward_tx(Tx, PeerId) ->
     lager:debug("send_tx (~p): ~p", [ppp(PeerId), Res]).
 
 do_start_sync(PeerId, RemoteHash) ->
-    aec_events:publish(chain_sync, {client_start, PeerId}),
     case aec_peer_connection:get_header_by_hash(PeerId, RemoteHash) of
         {ok, Hdr} ->
             lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(Hdr)]),
@@ -457,16 +448,11 @@ agree_on_height(PeerId, _, RH, LHeader, LH, Max, Min) when RH =/= LH ->
              Min
     end.
 
-do_server_get_missing(PeerId) ->
-    aec_events:publish(chain_sync, {server_start, PeerId}),
-    do_get_missing_blocks(PeerId),
-    aec_events:publish(chain_sync, {server_done, PeerId}).
-
 fill_pool(PeerId, AgreedHash) ->
     case aec_peer_connection:get_n_successors(PeerId, AgreedHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
             delete_from_pool(PeerId),
-            aec_events:publish(chain_sync, {client_done, PeerId}),
+            aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
             done;
         {ok, ChunkHashes} ->
             HashPool = [ {K, #{peer => PeerId}} || K <- ChunkHashes ],
@@ -481,7 +467,7 @@ fill_pool(PeerId, AgreedHash) ->
 
 fetch_more(PeerId, _, _, done) ->
     delete_from_pool(PeerId),
-    aec_events:publish(chain_sync, {client_done, PeerId});
+    aec_events:publish(chain_sync, {chain_sync_done, PeerId});
 fetch_more(PeerId, LastHeight, _, {error, Error}) ->
     lager:info("Abort sync at height ~p Error ~p ", [LastHeight, Error]),
     delete_from_pool(PeerId);
@@ -504,17 +490,6 @@ fetch_more(PeerId, LastHeight, HeaderHash, Result) ->
         Other ->
             fetch_more(PeerId, LastHeight, HeaderHash, Other)
   end.
-
-fetch_block(Hash, PeerId) ->
-    case do_fetch_block_ext(Hash, PeerId) of
-        {ok, _, Block} ->
-            lager:debug("Block (~p) fetched from ~p", [pp(Hash), ppp(PeerId)]),
-            [{Hash, Block}];
-        {error, _} = Err ->
-            lager:error("Error fetching block (~p) from ~p: ~p",
-                        [pp(Hash), ppp(PeerId), Err]),
-            []
-    end.
 
 do_fetch_block(Hash, PeerId) ->
     case aec_chain:get_block(Hash) of
@@ -543,27 +518,6 @@ do_fetch_block_ext(Hash, PeerId) ->
             Error
     end.
 
-do_get_missing_blocks(PeerId) ->
-    Missing = aec_chain:get_missing_block_hashes(),
-    lager:debug("Missing block hashes: ~p", [pp(Missing)]),
-    fetch_missing_blocks(Missing, PeerId).
-
-try_write_blocks(Blocks) ->
-    lists:foreach(fun sync_post_block/1, Blocks).
-
-sync_post_block({_Hash, Block}) ->
-    %% No event publication for now (esp. not block_received!)
-    lager:debug("Calling post_block(~p)", [pp(Block)]),
-    aec_conductor:add_synced_block(Block).
-
-fetch_missing_blocks(Hashes, PeerId) ->
-    Blocks =
-        lists:foldl(
-          fun(Hash, Acc) ->
-                  fetch_block(Hash, PeerId) ++ Acc
-          end, [], Hashes),
-    try_write_blocks(Blocks).
-
 do_fetch_mempool(PeerId) ->
     case aec_peer_connection:get_mempool(PeerId) of
         {ok, Txs} ->
@@ -574,6 +528,7 @@ do_fetch_mempool(PeerId) ->
         Other ->
             lager:debug("Error fetching mempool from ~p: ~p",
                         [ppp(PeerId), Other]),
+            aec_events:publish(mempool_sync, {error, Other, PeerId}),
             Other
     end.
 

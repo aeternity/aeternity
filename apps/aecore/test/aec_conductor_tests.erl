@@ -183,7 +183,7 @@ chain_test_() ->
       {"Start mining add a block.", fun test_start_mining_add_block/0},
       {"Test preemption of mining", fun test_preemption/0},
       {"Test chain genesis state" , fun test_chain_genesis_state/0},
-      {timeout, 20, {"Test block publishing"    , fun test_block_publishing/0}}
+      {timeout, 20, {"Test block publishing", fun test_block_publishing/0}}
      ]}.
 
 test_start_mining_add_block() ->
@@ -252,7 +252,6 @@ test_chain_genesis_state() ->
     ?assertEqual(aec_trees:hash(GBS1), aec_trees:hash(GBS)),
 
     %% Check that genesis is top
-    ?assertEqual(GHH, aec_chain:top_header_hash()),
     ?assertEqual(GHH, aec_chain:top_block_hash()),
 
     %% Check chain state functions

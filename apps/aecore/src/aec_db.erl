@@ -1,3 +1,10 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2017, Aeternity Anstalt
+%%% @doc
+%%% API to the epoch db
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aec_db).
 
 -export([check_db/0,                    % called from setup hook
@@ -15,25 +22,18 @@
          read/2]).
 
 %% Mimicking the aec_persistence API used by aec_conductor_chain
--export([get_chain/0,
-         has_block/1,
-         has_header/1,
+-export([has_block/1,
          write_block/1,
-         write_header/1,
-         write_block_state/3,
+         write_block_state/4,
          write_genesis_hash/1,
          write_top_block_hash/1,
-         write_top_header_hash_and_difficulty/2,
          find_block/1,
          find_header/1,
-         find_chain_node/1,
-         find_chain_nodes_at_height/1,
+         find_headers_at_height/1,
          get_block/1,
          get_header/1,
          get_genesis_hash/0,
          get_top_block_hash/0,
-         get_top_header_hash/0,
-         get_top_header_difficulty/0,
          get_block_state/1
         ]).
 
@@ -54,12 +54,12 @@
 
 -export([ find_block_state/1
         , find_block_difficulty/1
-        , find_block_state_and_difficulty/1
+        , find_block_fork_id/1
+        , find_block_state_and_data/1
         ]).
 
 %% API for maintaining the tx-to-block mapping
--export([write_txs/2,
-         write_tx/3,
+-export([write_tx/3,
          read_tx/1,
          delete_tx/2]).
 
@@ -84,11 +84,11 @@
 %% - one per state tree
 
 -record(aec_blocks             , {key, txs}).
--record(aec_headers            , {key, value, has_block = false, height}).
+-record(aec_headers            , {key, value, height}).
 -record(aec_contract_state     , {key, value}).
 -record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
--record(aec_block_state        , {key, value, difficulty}).
+-record(aec_block_state        , {key, value, difficulty, fork_id}).
 -record(aec_oracle_cache       , {key, value}).
 -record(aec_oracle_state       , {key, value}).
 -record(aec_account_state      , {key, value}).
@@ -147,7 +147,6 @@ persisted_valid_genesis_block() ->
                                   [ExpectedGH, LoadedGH]),
                     false
             end
-              
     end.
 
 transaction(Fun) when is_function(Fun, 0) ->
@@ -170,38 +169,19 @@ write(Tab, Obj) ->
 delete(Tab, Key) ->
     mnesia:delete(Tab, Key, write).
 
-%% old-style chain_state initialization API
-
-get_chain() ->
-    ?t([element(2, find_chain_node(Hash))
-        || Hash <- mnesia:select(
-                     aec_headers, [{ #aec_headers{key = '$1', _ = '_'},
-                                     [], ['$1'] }], read)
-       ]).
-
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
+    Height = aec_headers:height(Header),
     Txs    = aec_blocks:txs(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     ?t(begin
-           mnesia:write(#aec_blocks{key = Hash, txs = Txs}),
-           write_header(Header, true)
-       end).
-
-write_header(Header) ->
-    write_header(Header, false).
-
-write_header(Header, HasBlock) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    Height = aec_headers:height(Header),
-    ?t(case mnesia:read(aec_headers, Hash) of
-           [#aec_headers{value = Header, has_block = OldHasBlock} = H] ->
-               NewHasBlock = (HasBlock or OldHasBlock),
-               mnesia:write(H#aec_headers{has_block = NewHasBlock});
-           [#aec_headers{value = Old}] -> error({header_exist, Header, Old});
-           [] -> mnesia:write(#aec_headers{key = Hash, value = Header,
-                                           height = Height,
-                                           has_block = HasBlock})
+           mnesia:write(#aec_blocks{key = Hash,
+                                    txs = Txs}),
+           [write_tx(aetx:hash(aetx_sign:tx(Tx)), Hash, Tx)
+            || Tx <- Txs],
+           mnesia:write(#aec_headers{key = Hash,
+                                     value = Header,
+                                     height = Height})
        end).
 
 get_block(Hash) ->
@@ -223,13 +203,7 @@ get_header(Hash) ->
 has_block(Hash) ->
     case ?t(mnesia:read(aec_headers, Hash)) of
         [] -> false;
-        [#aec_headers{has_block = Bool}] -> Bool
-    end.
-
-has_header(Hash) ->
-    case ?t(mnesia:read(aec_headers, Hash)) of
-        [] -> false;
-        [#aec_headers{}] -> true
+        [_] -> true
     end.
 
 find_block(Hash) ->
@@ -246,23 +220,15 @@ find_header(Hash) ->
         [] -> none
     end.
 
+find_headers_at_height(Height) when is_integer(Height), Height >= 0 ->
+    ?t([H || #aec_headers{value = H}
+                 <- mnesia:index_read(aec_headers, Height, height)]).
 
-find_chain_nodes_at_height(Height) when is_integer(Height), Height >= 0 ->
-    [header_to_node(H)
-     || H <- ?t(mnesia:index_read(aec_headers, Height, height))].
-
-find_chain_node(Hash) ->
-    case ?t(mnesia:read(aec_headers, Hash)) of
-        [H] -> header_to_node(H);
-        [] -> none
-    end.
-
-header_to_node(#aec_headers{has_block = false, value = H}) -> {header, H};
-header_to_node(#aec_headers{has_block = true, value = H}) -> {block, H}.
-
-write_block_state(Hash, Trees, AccDifficulty) ->
+write_block_state(Hash, Trees, AccDifficulty, ForkId) ->
     ?t(mnesia:write(#aec_block_state{key = Hash, value = Trees,
-                                     difficulty = AccDifficulty})).
+                                     difficulty = AccDifficulty,
+                                     fork_id = ForkId
+                                    })).
 
 write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node})).
@@ -288,27 +254,11 @@ write_genesis_hash(Hash) when is_binary(Hash) ->
 write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash})).
 
-write_top_header_hash_and_difficulty(Hash, Difficulty) when is_binary(Hash) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_header_hash,
-                                     value = {Hash, Difficulty}})).
-
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
 
 get_top_block_hash() ->
     get_chain_state_value(top_block_hash).
-
-get_top_header_hash() ->
-    case get_chain_state_value(top_header_hash) of
-        undefined -> undefined;
-        {Hash,_Difficulty} -> Hash
-    end.
-
-get_top_header_difficulty() ->
-    case get_chain_state_value(top_header_hash) of
-        undefined -> undefined;
-        {_Hash, Difficulty} -> Difficulty
-    end.
 
 get_block_state(Hash) ->
     ?t(begin
@@ -329,9 +279,16 @@ find_block_difficulty(Hash) ->
         [] -> none
     end.
 
-find_block_state_and_difficulty(Hash) ->
+find_block_fork_id(Hash) ->
     case ?t(mnesia:read(aec_block_state, Hash)) of
-        [#aec_block_state{value = Trees, difficulty = D}] -> {value, Trees, D};
+        [#aec_block_state{fork_id = F}] -> {value, F};
+        [] -> none
+    end.
+
+find_block_state_and_data(Hash) ->
+    case ?t(mnesia:read(aec_block_state, Hash)) of
+        [#aec_block_state{value = Trees, difficulty = D, fork_id = F}] ->
+            {value, Trees, D, F};
         [] -> none
     end.
 
@@ -379,11 +336,6 @@ get_chain_state_value(Key) ->
            _ ->
                undefined
        end).
-
-write_txs(Txs, Hash) ->
-    ?t([write_tx(aetx:hash(aetx_sign:tx(Tx)), Hash, Tx)
-        || Tx <- Txs]),
-    ok.
 
 write_tx(Hash, mempool, Tx) ->
     write_tx_(Hash, ?TX_IN_MEMPOOL, Tx);
