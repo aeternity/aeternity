@@ -152,7 +152,7 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = aect_dispatch:run_contract(CallTx, Call0, Height, Trees1),
+    Call = run_contract(CallTx, Call0, Height, Trees1),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree2 =

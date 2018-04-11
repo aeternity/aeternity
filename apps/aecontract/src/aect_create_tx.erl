@@ -235,7 +235,6 @@ run_contract(#contract_create_tx{ owner      = Caller
 				, call_data  = CallData
 				} =_Tx,
 	     Call, Height, Trees,_Contract, ContractPubKey)->
-
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
 
