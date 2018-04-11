@@ -171,7 +171,7 @@ deserialize_from_binary(Bin) ->
         aec_object_serialization:deserialize_type_and_vsn(Bin),
     CB = type_to_cb(Type),
     Template = CB:serialization_template(Vsn),
-    Fields = aec_object_serialization:decode_fields(Template, RawFields),
+    Fields = aec_serialization:decode_fields(Template, RawFields),
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
 
 type_to_cb(spend_tx)           -> aec_spend_tx;

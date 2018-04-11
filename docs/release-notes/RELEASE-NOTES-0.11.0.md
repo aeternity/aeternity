@@ -2,6 +2,8 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not
+  able to talk to nodes running older versions;
 * Makes abilitation of HTTP API endpoints tagged as `debug` in the Swagger schema configurable;
 * Enables configuration of empty set of initial peers to contact;
 * Does this. This impacts consensus;

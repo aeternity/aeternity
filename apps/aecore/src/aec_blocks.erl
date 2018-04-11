@@ -19,7 +19,9 @@
          new_with_state/3,
          from_header_and_txs/2,
          to_header/1,
+         serialize_to_binary/1,
          serialize_to_map/1,
+         deserialize_from_binary/1,
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
@@ -156,6 +158,28 @@ from_header_and_txs(#header{height = Height,
            txs = Txs
           }.
 
+serialize_to_binary(B = #block{}) ->
+    Hdr = aec_headers:serialize_to_binary(to_header(B)),
+    Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- B#block.txs ],
+    aec_object_serialization:serialize(
+        block,
+        ?PROTOCOL_VERSION,
+        serialization_template(?PROTOCOL_VERSION),
+        [{header, Hdr}, {txs, Txs}]).
+
+deserialize_from_binary(Bin) ->
+    [ {header, Hdr0}
+    , {txs, Txs0} ] = aec_object_serialization:deserialize(
+                          block,
+                          ?PROTOCOL_VERSION,
+                          serialization_template(?PROTOCOL_VERSION),
+                          Bin),
+    Hdr = aec_headers:deserialize_from_binary(Hdr0),
+    Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
+    from_header_and_txs(Hdr, Txs).
+
+serialization_template(?PROTOCOL_VERSION) ->
+    [{header, binary}, {txs, [binary]}].
 
 serialize_to_map(B = #block{}) ->
     #{<<"height">> => height(B),

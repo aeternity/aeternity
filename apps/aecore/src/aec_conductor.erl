@@ -634,7 +634,7 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%% Worker: Generate new block candidates
 
 new_candidate(Block, Nonce, MaxNonce, State) ->
-    HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(Block)),
+    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     #candidate{block = Block,
                bin = HeaderBin,
                nonce = Nonce,

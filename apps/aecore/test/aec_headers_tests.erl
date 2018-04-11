@@ -15,13 +15,13 @@ getters_test() ->
                  ?TEST_MODULE:prev_hash(BlockHeader)).
 
 network_serialization_test() ->
-    Header = #header{},
-    {ok, SerializedHeader} = ?TEST_MODULE:serialize_to_map(Header),
+    Header = #header{ root_hash = <<0:32/unit:8>> },
+    SerializedHeader = ?TEST_MODULE:serialize_to_binary(Header),
     DeserializedHeader =
-        ?TEST_MODULE:deserialize_from_map(SerializedHeader),
+        ?TEST_MODULE:deserialize_from_binary(SerializedHeader),
     ?assertEqual(Header, DeserializedHeader),
-    ?assertEqual({ok, SerializedHeader},
-                 ?TEST_MODULE:serialize_to_map(DeserializedHeader)).
+    ?assertEqual(SerializedHeader,
+                 ?TEST_MODULE:serialize_to_binary(DeserializedHeader)).
 
 hash_test() ->
     Header = #header{},

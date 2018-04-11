@@ -9,8 +9,9 @@
          difficulty/1,
          time_in_secs/1,
          time_in_msecs/1,
-         serialize_for_hash/1,
+         serialize_to_binary/1,
          serialize_to_map/1,
+         deserialize_from_binary/1,
          deserialize_from_map/1,
          hash_header/1,
          serialize_pow_evidence/1,
@@ -84,19 +85,19 @@ deserialize_from_map(H = #{}) ->
       <<"pow">> := PowEvidence,
       <<"txs_hash">> := TxsHash
     } = H,
-    #header{height = Height,
-                 prev_hash = PrevHash,
-                 root_hash = RootHash,
-                 target = Target,
-                 nonce = Nonce,
-                 time = Time,
-                 version = Version,
-                 pow_evidence = PowEvidence,
-                 txs_hash = TxsHash}.
+    #header{ height = Height,
+             prev_hash = PrevHash,
+             root_hash = RootHash,
+             target = Target,
+             nonce = Nonce,
+             time = Time,
+             version = Version,
+             pow_evidence = PowEvidence,
+             txs_hash = TxsHash}.
 
--spec serialize_for_hash(header()) -> deterministic_header_binary().
-serialize_for_hash(H) ->
-    PowEvidence = serialize_pow_evidence_for_hash(H#header.pow_evidence),
+-spec serialize_to_binary(header()) -> deterministic_header_binary().
+serialize_to_binary(H) ->
+    PowEvidence = serialize_pow_evidence_to_binary(H#header.pow_evidence),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
     <<(H#header.version):64,
       (H#header.height):64,
@@ -109,12 +110,32 @@ serialize_for_hash(H) ->
       (H#header.time):64
     >>.
 
+-spec deserialize_from_binary(deterministic_header_binary()) -> header().
+deserialize_from_binary(Bin) ->
+    <<Version:64, Height:64,
+      PrevHash:32/binary,
+      TxsHash:32/binary,
+      RootHash:32/binary,
+      Target:64,
+      PowEvidenceBin:168/binary,
+      Nonce:64, Time:64 >> = Bin,
+    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+    #header{ height = Height,
+             prev_hash = PrevHash,
+             root_hash = RootHash,
+             target = Target,
+             nonce = Nonce,
+             time = Time,
+             version = Version,
+             pow_evidence = PowEvidence,
+             txs_hash = TxsHash }.
+
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
-    BinaryH = serialize_for_hash(H),
+    BinaryH = serialize_to_binary(H),
     {ok, aec_hash:hash(header, BinaryH)}.
 
-serialize_pow_evidence_for_hash(Ev) ->
+serialize_pow_evidence_to_binary(Ev) ->
    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
 
 serialize_pow_evidence(Ev) ->
@@ -124,6 +145,9 @@ serialize_pow_evidence(Ev) ->
         false ->
             lists:duplicate(?POW_EV_SIZE, 0)
     end.
+
+deserialize_pow_evidence_from_binary(Bin) ->
+    deserialize_pow_evidence([ X || <<X:32>> <= Bin ]).
 
 deserialize_pow_evidence(L) when is_list(L) ->
     % not trusting the network, filterting out any non-integers or negative
@@ -162,7 +186,7 @@ validate_pow(#header{nonce = Nonce,
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
     Header1 = Header#header{nonce = 0, pow_evidence = no_value},
-    HeaderBinary = serialize_for_hash(Header1),
+    HeaderBinary = serialize_to_binary(Header1),
     case aec_pow_cuckoo:verify(HeaderBinary, Nonce, Evd, Target) of
         true ->
             ok;
