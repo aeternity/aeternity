@@ -28,7 +28,7 @@
 
 -import(aeu_debug, [pp/1]).
 
--define(P2P_PROTOCOL_VSN, 1).
+-define(P2P_PROTOCOL_VSN, 2).
 
 -define(FIRST_PING_TIMEOUT, 30000).
 -define(NOISE_HS_TIMEOUT, 5000).
