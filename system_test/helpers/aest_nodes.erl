@@ -66,7 +66,11 @@
 %% When `backend` is `aest_docker`:
 
     % The source of the docker image
-    source  := {pull, binary() | string()}
+    source  := {pull, binary() | string()},
+    % Public/private peer key can be specified explicity for the node.
+    % Both are required and will be saved, overriding any present keys.
+    pubkey => binary(),
+    privkey => binary()
 }.
 
 %=== COMMON TEST API FUNCTIONS =================================================
@@ -442,11 +446,15 @@ mgr_safe_delete_all(#{nodes := Nodes1} = State) ->
 
 mgr_prepare_specs(NodeSpecs, State) ->
     #{backends := Backends, nodes := Nodes} = State,
+    PrepSpecs = lists:foldl(fun(#{backend := Mod} = S, Acc) ->
+        #{Mod := BackendState} = Backends,
+        [Mod:prepare_spec(S, BackendState) | Acc]
+    end, [], NodeSpecs),
     CurrAddrs = maps:map(fun(_, {M, S}) -> M:get_peer_address(S) end, Nodes),
     AllAddrs = lists:foldl(fun(#{backend := Mod, name := Name} = S, Acc) ->
         #{Mod := BackendState} = Backends,
         Acc#{Name => Mod:peer_from_spec(S, BackendState)}
-    end, CurrAddrs, NodeSpecs),
+    end, CurrAddrs, PrepSpecs),
     lists:map(fun(#{peers := Peers} = Spec) ->
         NewPeers = lists:map(fun
             (Addr) when is_binary(Addr) -> Addr;
@@ -457,4 +465,4 @@ mgr_prepare_specs(NodeSpecs, State) ->
                 end
         end, Peers),
         Spec#{peers := NewPeers}
-    end, NodeSpecs).
+    end, PrepSpecs).

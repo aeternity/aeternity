@@ -33,25 +33,22 @@
 
 -define(OLD_NODE1, #{
     name    => old_node1,
-    pubkey  => <<37,195,115,246,90,69,150,234,253,209,246,49,199,88,5,116,191,57,106,189,48,134,209,227,116,85,44,59,51,41,245,55>>,
     peers   => [old_node2],
     backend => aest_docker,
     % Change to a compatible fixed version when possible
-    source  => {pull, "aeternity/epoch:v0.10.1"}
+    source  => {pull, "aeternity/epoch:local"}
 }).
 
 -define(OLD_NODE2, #{
     name    => old_node2,
-    pubkey  => <<149,164,91,254,32,218,238,174,159,207,156,5,246,182,63,10,57,70,109,226,193,2,33,168,116,32,244,228,169,122,154,94>>,
     peers   => [old_node1],
     backend => aest_docker,
     % Change to a compatible fixed version when possible
-    source  => {pull, "aeternity/epoch:v0.10.1"}
+    source  => {pull, "aeternity/epoch:local"}
 }).
 
 -define(NEW_NODE1, #{
     name    => new_node1,
-    pubkey  => <<29,110,222,56,140,83,227,182,7,100,207,18,240,52,200,151,221,151,247,213,94,191,198,219,184,33,139,118,35,95,157,120>>,
     peers   => [old_node1],
     backend => aest_docker,
     source  => {pull, "aeternity/epoch:local"}
@@ -59,7 +56,6 @@
 
 -define(STANDALONE_NODE, #{
     name    => standalone_node,
-    pubkey  => <<29,110,222,56,140,83,227,182,7,100,207,18,240,52,200,151,221,151,247,213,94,191,198,219,184,33,139,118,35,95,157,120>>,
     peers   => [],
     backend => aest_docker,
     source  => {pull, "aeternity/epoch:local"}

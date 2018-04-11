@@ -25,7 +25,10 @@
          terminate/2, code_change/3]).
 
 -export([sign/1, pubkey/0, delete/0,
-         wait_for_pubkey/0]).
+         wait_for_pubkey/0,
+         setup_peer_keys/2,
+         save_peer_keys/4,
+         peer_key_filenames/1]).
 
 -export([peer_pubkey/0, peer_privkey/0, check_peer_keys/2]).
 
@@ -164,20 +167,8 @@ init([Password, KeysDir]) when is_binary(Password) ->
         end,
 
     %% Setup Peer keys
-    {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
-    {PeerPub, PeerPriv} =
-        case {from_local_dir(PeerPubFile), from_local_dir(PeerPrivFile)} of
-            {{ok, EPeerPub}, {ok, EPeerPriv}} ->
-                PeerPub0  = decrypt_peerkey(Password, EPeerPub),
-                PeerPriv0 = decrypt_peerkey(Password, EPeerPriv),
-                case check_peer_keys(PeerPub0, PeerPriv0) of
-                    true  -> {PeerPub0, PeerPriv0};
-                    false -> erlang:error({invalid_peer_key_pair_from_local,
-                                           [PeerPubFile, PeerPrivFile]})
-                end;
-            _ ->
-                p_gen_new_peer(Password, PeerPubFile, PeerPrivFile)
-        end,
+    {PeerPubFile, PeerPub, PeerPrivFile, PeerPriv} =
+        setup_peer_keys(Password, KeysDir),
 
     %% For sake of simplicity, if the initialization fails the
     %% initialization above crashes - rather than collecting failure
@@ -252,6 +243,37 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+setup_peer_keys(Password, KeysDir) ->
+    {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
+    {PeerPubKey, PeerPrivKey} =
+        case {from_local_dir(PeerPubFile), from_local_dir(PeerPrivFile)} of
+            {{ok, EPeerPub}, {ok, EPeerPriv}} ->
+                PeerPub0  = decrypt_peerkey(Password, EPeerPub),
+                PeerPriv0 = decrypt_peerkey(Password, EPeerPriv),
+                case check_peer_keys(PeerPub0, PeerPriv0) of
+                    true  -> {PeerPub0, PeerPriv0};
+                    false -> erlang:error({invalid_peer_key_pair_from_local,
+                                           [PeerPubFile, PeerPrivFile]})
+                end;
+            _ ->
+                p_gen_new_peer(Password, PeerPubFile, PeerPrivFile)
+        end,
+    {PeerPubFile, PeerPubKey, PeerPrivFile, PeerPrivKey}.
+
+save_peer_keys(Password, KeysDir, PubKey, PrivKey) ->
+    case check_peer_keys(PubKey, PrivKey) of
+        true ->
+            {PeerPubFile, PeerPrivFile} = p_gen_peer_filename(KeysDir),
+            {EncPub, EncPriv} =
+                p_save_peer_keys(Password, PeerPubFile, PubKey,
+                                           PeerPrivFile, PrivKey),
+            {PeerPubFile, EncPub, PeerPrivFile, EncPriv};
+        false ->
+            error({key_pair_check_failed, [PubKey, PrivKey]})
+    end.
+
+peer_key_filenames(KeysDir) -> p_gen_peer_filename(KeysDir).
 
 %%%===================================================================
 %%% Internal functions
@@ -365,16 +387,22 @@ p_gen_new_peer(Password, PeerPubFile, PeerPrivFile) ->
     PrivKey = enoise_keypair:seckey(KeyPair),
     case check_peer_keys(PubKey, PrivKey) of
         true ->
-            EncPub = encrypt_peerkey(Password, PubKey),
+            {EncPub, EncPriv} =
+                p_save_peer_keys(Password, PeerPubFile, PubKey,
+                                           PeerPrivFile, PrivKey),
             lager:debug("New PubKey: ~p", [EncPub]),
-            EncPriv = encrypt_peerkey(Password, PrivKey),
             lager:debug("New PrivKey: ~p", [EncPriv]),
-            ok = to_local_dir(PeerPubFile, EncPub),
-            ok = to_local_dir(PeerPrivFile, EncPriv),
             {PubKey, PrivKey};
         false ->
             error({generated_key_pair_check_failed, [PubKey, PrivKey]})
     end.
+
+p_save_peer_keys(Password, PeerPubFile, PubKey, PeerPrivFile, PrivKey) ->
+    EncPub = encrypt_peerkey(Password, PubKey),
+    EncPriv = encrypt_peerkey(Password, PrivKey),
+    ok = to_local_dir(PeerPubFile, EncPub),
+    ok = to_local_dir(PeerPrivFile, EncPriv),
+    {EncPub, EncPriv}.
 
 check_peer_keys(PubKey, PrivKey) ->
     PubKey == enacl:curve25519_scalarmult_base(PrivKey).
