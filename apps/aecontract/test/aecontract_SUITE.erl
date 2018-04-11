@@ -152,9 +152,7 @@ make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     aect_contracts:new(ContractKey, CTx, 1).
 
 make_call(PubKey, ContractKey, Call, S) ->
-    Tx = aect_test_utils:call_tx(PubKey, ContractKey, #{ call => Call }, S),
-    {contract_call_tx, CTx} = aetx:specialize_type(Tx),
-    aect_call:new(CTx, 1).
+    aect_call:new(PubKey, 0, ContractKey, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
