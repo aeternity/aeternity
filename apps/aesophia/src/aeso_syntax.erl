@@ -1,12 +1,12 @@
 %%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
-%%% @doc Ring abstract syntax types.
+%%% @doc Sophia abstract syntax types.
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aer_syntax).
+-module(aeso_syntax).
 
 -export([get_ann/1, get_ann/2, get_ann/3]).
 

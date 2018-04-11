@@ -1,4 +1,4 @@
--module(aer_parser_tests).
+-module(aeso_parser_tests).
 
 -export([parse_contract/1]).
 
@@ -66,13 +66,13 @@ simple_contracts_test_() ->
     }.
 
 parse_contract(Name) ->
-    parse_string(aer_test_utils:read_contract(Name)).
+    parse_string(aeso_test_utils:read_contract(Name)).
 
 roundtrip_contract(Name) ->
-    round_trip(aer_test_utils:read_contract(Name)).
+    round_trip(aeso_test_utils:read_contract(Name)).
 
 parse_string(Text) ->
-    case aer_parser:string(Text) of
+    case aeso_parser:string(Text) of
         {ok, Contract} -> Contract;
         Err -> error(Err)
     end.
@@ -84,7 +84,7 @@ parse_expr(Text) ->
 
 round_trip(Text) ->
     Contract  = parse_string(Text),
-    Text1     = prettypr:format(aer_pretty:decls(Contract)),
+    Text1     = prettypr:format(aeso_pretty:decls(Contract)),
     Contract1 = parse_string(Text1),
     NoSrcLoc  = remove_line_numbers(Contract),
     NoSrcLoc1 = remove_line_numbers(Contract1),

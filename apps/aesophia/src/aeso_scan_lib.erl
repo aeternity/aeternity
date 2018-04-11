@@ -4,7 +4,7 @@
 %%% @doc A customisable lexer.
 %%% @end
 %%%-------------------------------------------------------------------
--module(aer_scan_lib).
+-module(aeso_scan_lib).
 
 -export([compile/1, string/3,
          token/1, token/2, symbol/0, skip/0,

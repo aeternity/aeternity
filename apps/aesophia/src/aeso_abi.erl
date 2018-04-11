@@ -2,12 +2,12 @@
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
 %%%     Encode and decode data and function calls according to
-%%%     Ring-AEVM-ABI.
+%%%     Sophia-AEVM-ABI.
 %%% @end
 %%% Created : 25 Jan 2018
 %%%
 %%%-------------------------------------------------------------------
--module(aer_abi).
+-module(aeso_abi).
 -define(HASH_SIZE, 32).
 
 -export([create_calldata/3]).
@@ -17,7 +17,7 @@
 create_calldata(Contract, Function, Argument) ->
     %% TODO: check that function exists in cotract.
     FunctionHandle = encode_function(Contract, Function),
-    case aer_constants:string(Argument) of
+    case aeso_constants:string(Argument) of
         {ok, ParsedArgument} ->
             encode_call(FunctionHandle, ParsedArgument);
         {error, _} ->
@@ -27,7 +27,7 @@ create_calldata(Contract, Function, Argument) ->
 encode_call(FunctionHandle, ArgumentAst) ->
     Argument = ast_to_erlang(ArgumentAst),
     Call = {FunctionHandle, Argument},
-    {0, Data} = aer_data:to_binary(Call),
+    {0, Data} = aeso_data:to_binary(Call),
     _ArgumentType = get_type(Argument),
     %% TODO: Verify that the type matches the function signature.
     Data.
