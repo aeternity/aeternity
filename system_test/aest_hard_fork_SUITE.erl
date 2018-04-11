@@ -15,10 +15,10 @@
 
 % Test cases
 -export([
-         node_persisting_chain_and_not_mining_has_genesis_as_top/1,
-         restore_db_backup_on_same_release/1,
+         old_node_persisting_chain_and_not_mining_has_genesis_as_top/1,
+         restore_db_backup_on_old_node/1,
          old_node_can_receive_chain_from_other_old_node/1,
-         restore_db_backup_with_short_chain_on_new_release/1,
+         restore_db_backup_with_short_chain_on_new_node/1,
          new_node_can_receive_short_old_chain_from_other_new_node/1,
          new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol/1
         ]).
@@ -86,13 +86,13 @@ groups() ->
     [
      {assumptions,
       [
-       node_persisting_chain_and_not_mining_has_genesis_as_top
+       old_node_persisting_chain_and_not_mining_has_genesis_as_top
       ]},
      {hard_fork, [sequence],
       [
        %% Old node can restore DB backup of testnet.  This test also
        %% determines info of top of chain in DB backup.
-       restore_db_backup_on_same_release,
+       restore_db_backup_on_old_node,
        {group, hard_fork_all}
       ]},
      {hard_fork_all,
@@ -108,7 +108,7 @@ groups() ->
        %% testnet (old chain):
        %%
        %% * New node can restore DB backup of testnet - case old chain of height lower than height at which new protocol is effective.
-       restore_db_backup_with_short_chain_on_new_release,
+       restore_db_backup_with_short_chain_on_new_node,
        %%
        %% * New node can receive (sync) old chain from other new node that restored DB from backup - case old chain of height lower than height of new protocol.
        new_node_can_receive_short_old_chain_from_other_new_node,
@@ -145,7 +145,7 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(hard_fork_all, Config) ->
-    {_, {restore_db_backup_on_same_release, SavedCfg}} =
+    {_, {restore_db_backup_on_old_node, SavedCfg}} =
         proplists:lookup(saved_config, Config),
     [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
      {_, _} = proplists:lookup(db_backup_top_hash, SavedCfg)
@@ -164,14 +164,14 @@ end_per_testcase(_TC, Config) ->
 
 %=== TEST CASES ================================================================
 
-node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
+old_node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
     aest_nodes:setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
     start_node(old_node1, Cfg),
     #{height := 0} = get_block_by_height(old_node1, 0, Cfg),
     #{height := 0} = aest_nodes:get_top(old_node1, Cfg),
     ok.
 
-restore_db_backup_on_same_release(Cfg) ->
+restore_db_backup_on_old_node(Cfg) ->
     aest_nodes:setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
     start_node(old_node1, Cfg),
     {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(old_node1, Cfg),
@@ -195,7 +195,7 @@ old_node_can_receive_chain_from_other_old_node(Cfg) ->
     ?assertEqual(TopHash, maps:get(hash, B)),
     ok.
 
-restore_db_backup_with_short_chain_on_new_release(Cfg) ->
+restore_db_backup_with_short_chain_on_new_node(Cfg) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     aest_nodes:setup_nodes([?NEW_NODE1(3 + TopHeight)], Cfg),
