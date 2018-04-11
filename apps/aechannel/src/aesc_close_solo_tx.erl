@@ -211,13 +211,8 @@ is_peer(AccountPubKey, SignedState) ->
 check_channel(ChannelId, StateTx, Trees) ->
     case ChannelId =:= aesc_offchain_tx:channel_id(StateTx) of
         true ->
-            StateInitiator         = aesc_offchain_tx:initiator(StateTx),
-            StateParticipant       = aesc_offchain_tx:participant(StateTx),
-            StateInitiatorAmount   = aesc_offchain_tx:initiator_amount(StateTx),
-            StateParticipantAmount = aesc_offchain_tx:participant_amount(StateTx),
             aesc_utils:check_active_channel_exists(
-              ChannelId, StateInitiator, StateInitiatorAmount,
-              StateParticipant, StateParticipantAmount, Trees);
+              ChannelId, StateTx, Trees);
         false ->
             {error, bad_state_channel_id}
     end.

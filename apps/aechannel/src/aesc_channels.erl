@@ -9,8 +9,8 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([add_funds/3,
-         deserialize/1,
+-export([deserialize/1,
+         deposit/2,
          is_active/1,
          is_solo_closed/2,
          is_solo_closing/2,
@@ -19,15 +19,15 @@
          serialize/1,
          slash/3,
          close_solo/3,
-         subtract_funds/3]).
+         withdraw/2]).
 
 %% Getters
 -export([id/1,
          id/3,
          initiator/1,
-         initiator_amount/1,
          participant/1,
-         participant_amount/1,
+         total_amount/1,
+         initiator_amount/1,
          channel_reserve/1,
          sequence_number/1]).
 
@@ -40,16 +40,16 @@
 -type status()     :: 'active' | 'solo_closing'.
 -type seq_number() :: non_neg_integer().
 
--record(channel, {id                 :: id(),
-                  initiator          :: pubkey(),
-                  participant        :: pubkey(),
-                  initiator_amount   :: amount(),
-                  participant_amount :: amount(),
-                  channel_reserve    :: amount(),
-                  sequence_number    :: seq_number(),
-                  status             :: status(),
-                  lock_period        :: non_neg_integer(),
-                  closes_at          :: 'undefined' | height()}).
+-record(channel, {id               :: id(),
+                  initiator        :: pubkey(),
+                  participant      :: pubkey(),
+                  total_amount     :: amount(),
+                  initiator_amount :: amount(),
+                  channel_reserve  :: amount(),
+                  sequence_number  :: seq_number(),
+                  status           :: status(),
+                  lock_period      :: non_neg_integer(),
+                  closes_at        :: 'undefined' | height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -71,53 +71,48 @@
 %%% API
 %%%===================================================================
 
--spec add_funds(channel(), amount(), pubkey()) -> channel().
-add_funds(#channel{} = Channel, Amount, PubKey) ->
-    case initiator(Channel) =:= PubKey of
-        true ->
-            update_initiator_amount(Channel, Amount);
-        false ->
-            PubKey = participant(Channel),
-            update_participant_amount(Channel, Amount)
-    end.
-
 -spec close_solo(channel(), aesc_offchain_tx:tx(), height()) -> channel().
 close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
-    Ch#channel{initiator_amount   = aesc_offchain_tx:initiator_amount(State),
-               participant_amount = aesc_offchain_tx:participant_amount(State),
-               sequence_number    = aesc_offchain_tx:sequence_number(State),
-               closes_at          = ClosesAt}.
+    Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
+               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
+               sequence_number  = aesc_offchain_tx:sequence_number(State),
+               closes_at        = ClosesAt,
+               status           = solo_closing}.
+
+-spec deposit(channel(), amount()) -> channel().
+deposit(#channel{total_amount = TotalAmount} = Ch, Amount) ->
+    Ch#channel{total_amount = TotalAmount + Amount}.
 
 -spec deserialize(binary()) -> channel().
 deserialize(Bin) ->
     {ok, List} = msgpack:unpack(Bin),
-    [#{<<"type">>               := ?CHANNEL_TYPE},
-     #{<<"vsn">>                := ?CHANNEL_VSN},
-     #{<<"id">>                 := Id},
-     #{<<"initiator">>          := InitiatorPubKey},
-     #{<<"initiator_amount">>   := InitiatorAmount},
-     #{<<"participant">>        := ParticipantPubKey},
-     #{<<"participant_amount">> := ParticipantAmount},
-     #{<<"channel_reserve">>    := ChannelReserve},
-     #{<<"sequence_number">>    := SequenceNumber},
-     #{<<"status">>             := Status},
-     #{<<"lock_period">>        := LockPeriod},
-     #{<<"closes_at">>          := ClosesAt0}] = List,
+    [#{<<"type">>             := ?CHANNEL_TYPE},
+     #{<<"vsn">>              := ?CHANNEL_VSN},
+     #{<<"id">>               := Id},
+     #{<<"initiator">>        := InitiatorPubKey},
+     #{<<"participant">>      := ParticipantPubKey},
+     #{<<"total_amount">>     := TotalAmount},
+     #{<<"initiator_amount">> := InitiatorAmount},
+     #{<<"channel_reserve">>  := ChannelReserve},
+     #{<<"sequence_number">>  := SequenceNumber},
+     #{<<"status">>           := Status},
+     #{<<"lock_period">>      := LockPeriod},
+     #{<<"closes_at">>        := ClosesAt0}] = List,
     ClosesAt = case ClosesAt0 of
                    0                    -> undefined;
                    H when is_integer(H) -> H
                end,
-    #channel{id                 = Id,
-             initiator          = InitiatorPubKey,
-             initiator_amount   = InitiatorAmount,
-             participant        = ParticipantPubKey,
-             participant_amount = ParticipantAmount,
-             channel_reserve    = ChannelReserve,
-             sequence_number    = SequenceNumber,
-             status             = binary_to_atom(Status, utf8),
-             lock_period        = LockPeriod,
-             closes_at          = ClosesAt}.
+    #channel{id               = Id,
+             initiator        = InitiatorPubKey,
+             participant      = ParticipantPubKey,
+             total_amount     = TotalAmount,
+             initiator_amount = InitiatorAmount,
+             channel_reserve  = ChannelReserve,
+             sequence_number  = SequenceNumber,
+             status           = binary_to_atom(Status, utf8),
+             lock_period      = LockPeriod,
+             closes_at        = ClosesAt}.
 
 -spec is_active(channel()) -> boolean().
 is_active(#channel{status = Status}) ->
@@ -143,15 +138,17 @@ new(ChCTx) ->
     Id = id(aesc_create_tx:initiator(ChCTx),
             aesc_create_tx:nonce(ChCTx),
             aesc_create_tx:participant(ChCTx)),
-    #channel{id                 = Id,
-             initiator          = aesc_create_tx:initiator(ChCTx),
-             initiator_amount   = aesc_create_tx:initiator_amount(ChCTx),
-             participant        = aesc_create_tx:participant(ChCTx),
-             participant_amount = aesc_create_tx:participant_amount(ChCTx),
-             channel_reserve    = aesc_create_tx:channel_reserve(ChCTx),
-             sequence_number    = 0,
-             status             = active,
-             lock_period        = aesc_create_tx:lock_period(ChCTx)}.
+    InitiatorAmount   = aesc_create_tx:initiator_amount(ChCTx),
+    ParticipantAmount = aesc_create_tx:participant_amount(ChCTx),
+    #channel{id               = Id,
+             initiator        = aesc_create_tx:initiator(ChCTx),
+             participant      = aesc_create_tx:participant(ChCTx),
+             total_amount     = InitiatorAmount + ParticipantAmount,
+             initiator_amount = InitiatorAmount,
+             channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
+             sequence_number  = 0,
+             status           = active,
+             lock_period      = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(pubkey()).
 peers(#channel{} = Ch) ->
@@ -163,37 +160,31 @@ serialize(#channel{} = Ch) ->
                    undefined            -> 0;
                    H when is_integer(H) -> H
                end,
-    msgpack:pack([#{<<"type">>               => ?CHANNEL_TYPE},
-                  #{<<"vsn">>                => ?CHANNEL_VSN},
-                  #{<<"id">>                 => id(Ch)},
-                  #{<<"initiator">>          => initiator(Ch)},
-                  #{<<"initiator_amount">>   => initiator_amount(Ch)},
-                  #{<<"participant">>        => participant(Ch)},
-                  #{<<"participant_amount">> => participant_amount(Ch)},
-                  #{<<"channel_reserve">>    => channel_reserve(Ch)},
-                  #{<<"sequence_number">>    => sequence_number(Ch)},
-                  #{<<"status">>             => status(Ch)},
-                  #{<<"lock_period">>        => lock_period(Ch)},
-                  #{<<"closes_at">>          => ClosesAt}
+    msgpack:pack([#{<<"type">>             => ?CHANNEL_TYPE},
+                  #{<<"vsn">>              => ?CHANNEL_VSN},
+                  #{<<"id">>               => id(Ch)},
+                  #{<<"initiator">>        => initiator(Ch)},
+                  #{<<"participant">>      => participant(Ch)},
+                  #{<<"total_amount">>     => total_amount(Ch)},
+                  #{<<"initiator_amount">> => initiator_amount(Ch)},
+                  #{<<"channel_reserve">>  => channel_reserve(Ch)},
+                  #{<<"sequence_number">>  => sequence_number(Ch)},
+                  #{<<"status">>           => status(Ch)},
+                  #{<<"lock_period">>      => lock_period(Ch)},
+                  #{<<"closes_at">>        => ClosesAt}
                  ]).
 
 -spec slash(channel(), aesc_offchain_tx:tx(), height()) -> channel().
 slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
-    Ch#channel{initiator_amount   = aesc_offchain_tx:initiator_amount(State),
-               participant_amount = aesc_offchain_tx:participant_amount(State),
-               sequence_number    = aesc_offchain_tx:sequence_number(State),
-               closes_at          = ClosesAt}.
+    Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
+               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
+               sequence_number  = aesc_offchain_tx:sequence_number(State),
+               closes_at        = ClosesAt}.
 
--spec subtract_funds(channel(), amount(), pubkey()) -> channel().
-subtract_funds(#channel{} = Channel, Amount, PubKey) ->
-    case initiator(Channel) =:= PubKey of
-        true ->
-            update_initiator_amount(Channel, -Amount);
-        false ->
-            PubKey = participant(Channel),
-            update_participant_amount(Channel, -Amount)
-    end.
+-spec withdraw(channel(), amount()) -> channel().
+withdraw(#channel{total_amount = TotalAmount} = Ch, Amount) ->
+    Ch#channel{total_amount = TotalAmount - Amount}.
 
 %%%===================================================================
 %%% Getters
@@ -211,6 +202,14 @@ id(#channel{id = Id}) ->
 initiator(#channel{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
+-spec participant(channel()) -> pubkey().
+participant(#channel{participant = ParticipantPubKey}) ->
+    ParticipantPubKey.
+
+-spec total_amount(channel()) -> amount().
+total_amount(#channel{total_amount = TotalAmount}) ->
+    TotalAmount.
+
 -spec initiator_amount(channel()) -> amount().
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
@@ -223,14 +222,6 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec participant(channel()) -> pubkey().
-participant(#channel{participant = ParticipantPubKey}) ->
-    ParticipantPubKey.
-
--spec participant_amount(channel()) -> amount().
-participant_amount(#channel{participant_amount = ParticipantAmount}) ->
-    ParticipantAmount.
-
 -spec sequence_number(channel()) -> non_neg_integer().
 sequence_number(#channel{sequence_number = SeqNumber}) ->
     SeqNumber.
@@ -238,17 +229,3 @@ sequence_number(#channel{sequence_number = SeqNumber}) ->
 -spec status(channel()) -> atom().
 status(#channel{status = Status}) ->
     Status.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
--spec update_initiator_amount(channel(), amount()) -> channel().
-update_initiator_amount(Channel, Amount) ->
-    InitiatorAmount = initiator_amount(Channel),
-    Channel#channel{initiator_amount = InitiatorAmount + Amount}.
-
--spec update_participant_amount(channel(), amount()) -> channel().
-update_participant_amount(Channel, Amount) ->
-    ParticipantAmount = participant_amount(Channel),
-    Channel#channel{participant_amount = ParticipantAmount + Amount}.

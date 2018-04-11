@@ -306,30 +306,22 @@ handle_request('PostChannelCreate', #{'ChannelCreateTx' := Req}, _Context) ->
 
 handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from_account, to_account,
+                 read_required_params([channel_id, from,
                                        amount,
-                                       initiator, participant,
                                        fee, nonce]),
                  base58_decode([{channel_id, channel_id, channel},
-                                {from_account, from_account, account_pubkey},
-                                {to_account, to_account, account_pubkey},
-                                {initiator, initiator, account_pubkey},
-                                {participant, participant, account_pubkey}]),
+                                {from, from, account_pubkey}]),
                  unsigned_tx_response(fun aesc_deposit_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from_account, to_account,
+                 read_required_params([channel_id, to,
                                        amount,
-                                       initiator, participant,
                                        fee, nonce]),
                  base58_decode([{channel_id, channel_id, channel},
-                                {from_account, from_account, account_pubkey},
-                                {to_account, to_account, account_pubkey},
-                                {initiator, initiator, account_pubkey},
-                                {participant, participant, account_pubkey}]),
+                                {to, to, account_pubkey}]),
                  unsigned_tx_response(fun aesc_withdraw_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
