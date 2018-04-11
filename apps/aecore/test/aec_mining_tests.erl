@@ -29,12 +29,14 @@ mine_block_test_() ->
        {timeout, 60,
         {"Find a new block",
          fun() ->
-                 TopBlock = #block{height = 0,
-                                   target = ?HIGHEST_TARGET_SCI},
+                 TopBlock = #block{height = ?GENESIS_HEIGHT,
+                                   target = ?HIGHEST_TARGET_SCI,
+                                   version = ?GENESIS_VERSION},
                  % if there is a change in the structure of the block
                  % this will result in a change in the hash of the header
                  % and will invalidate the nonce value below
                  % in order to find a proper nonce for your
+                 % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
                  meck:expect(aec_pow, pick_nonce, 0, 17575765576845162115),
 
@@ -53,7 +55,9 @@ mine_block_test_() ->
        {timeout, 60,
         {"Proof of work fails with no_solution",
          fun() ->
-                 TopBlock = #block{target = ?LOWEST_TARGET_SCI},
+                 TopBlock = #block{height = ?GENESIS_HEIGHT,
+                                   target = ?LOWEST_TARGET_SCI,
+                                   version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
@@ -95,14 +99,16 @@ difficulty_recalculation_test_() ->
                              #block{height = BlockHeight,
                                     target = ?HIGHEST_TARGET_SCI,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
-                                    time = Now}),
+                                    time = Now,
+                                    version = ?PROTOCOL_VERSION}),
                  Chain = lists:duplicate(10, #header{height = 20,
                                                      target = ?HIGHEST_TARGET_SCI,
-                                                     time = Now - (10 * OneBlockExpectedMineTime)}),
+                                                     time = Now - (10 * OneBlockExpectedMineTime),
+                                                     version = ?PROTOCOL_VERSION}),
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
 
-                 TopBlock = #block{},
+                 TopBlock = #block{version = ?PROTOCOL_VERSION},
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
@@ -121,7 +127,8 @@ difficulty_recalculation_test_() ->
                  BlockHeight = 200,
                  TS  = [ {X, Now - X * 300001} || X <- lists:seq(1, 10) ], %% Almost perfect timing!!
                  PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
-                 Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T } || {I, T} <- TS ],
+                 Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T,
+                                    version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
 
 
                  {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => ?TEST_PUB,
@@ -130,13 +137,14 @@ difficulty_recalculation_test_() ->
                              #block{height = BlockHeight,
                                     target = PastTarget,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
-                                    time = Now}),
+                                    time = Now,
+                                    version = ?PROTOCOL_VERSION}),
 
                  meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
                  %% One block should be mined every 5 mins
                  meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
 
-                 TopBlock = #block{},
+                 TopBlock = #block{version = ?PROTOCOL_VERSION},
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
                  HeaderBin = aec_headers:serialize_for_hash(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),

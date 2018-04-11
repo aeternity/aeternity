@@ -47,3 +47,4 @@ swagger/swagger-codegen-cli-*.jar
 .virtualenv/
 *.retry
 system_test/logs
+system_test/aest_hard_fork_SUITE_data/db

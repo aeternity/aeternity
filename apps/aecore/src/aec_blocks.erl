@@ -38,8 +38,6 @@
 -type block() :: #block{}.
 -export_type([block/0]).
 
--define(CURRENT_BLOCK_VERSION, ?GENESIS_VERSION).
-
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
     Block#block.prev_hash.
@@ -94,8 +92,17 @@ new(LastBlock, Txs, Trees0) ->
                                 {block(), aec_trees:trees()}.
 new_with_state(LastBlock, Txs, Trees0) ->
     LastBlockHeight = height(LastBlock),
+
+    %% Assert correctness of last block protocol version, as minimum
+    %% sanity check on previous block and state (mainly for potential
+    %% stale state persisted in DB and for development testing).
+    ExpectedLastBlockVersion = protocol_effective_at_height(LastBlockHeight),
+    {ExpectedLastBlockVersion, _} = {LastBlock#block.version,
+                                     {expected, ExpectedLastBlockVersion}},
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
+
     Height = LastBlockHeight + 1,
+    Version = protocol_effective_at_height(Height),
 
     %% We should not have any transactions with invalid signatures for
     %% creation of block candidate, as only txs with validated signatures should land in mempool.
@@ -112,8 +119,11 @@ new_with_state(LastBlock, Txs, Trees0) ->
                txs = Txs1,
                target = target(LastBlock),
                time = aeu_time:now_in_msecs(),
-               version = ?CURRENT_BLOCK_VERSION},
+               version = Version},
     {NewBlock, Trees}.
+
+protocol_effective_at_height(H) ->
+    aec_hard_forks:protocol_effective_at_height(H, aec_hard_forks:protocols(aec_governance:protocols())).
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,
