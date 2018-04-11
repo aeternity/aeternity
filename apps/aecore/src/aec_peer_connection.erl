@@ -219,7 +219,7 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 ok ->
                     {noreply, S#{ status => {connected, ESock} }};
                 {error, _} ->
-                    lager:debug("Dropping unnecessary connection to ", [maps:get(host, S)]),
+                    lager:debug("Dropping unnecessary connection to ~p", [maps:get(host, S)]),
                     enoise:close(ESock),
                     {stop, normal, S}
             end;

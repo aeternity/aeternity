@@ -99,7 +99,6 @@ deserialize(Type, Binary) ->
     try
         [VsnBin | Fields] = aeu_rlp:decode(Binary),
         [{vsn, Vsn}] = aec_serialization:decode_fields([{vsn, int}], [VsnBin]),
-        lager:debug("deserilaize ~p", [{rev_tag(Type), Vsn, Fields}]),
         deserialize(rev_tag(Type), Vsn, Fields)
     catch _:Reason ->
         {error, Reason}
