@@ -182,7 +182,7 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
     ].
 
 -spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+is_verifiable(#channel_close_solo_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, _Channel} -> true;
         {error, not_found} -> false

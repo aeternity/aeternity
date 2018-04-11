@@ -109,8 +109,9 @@ process(#channel_settle_tx{channel_id       = ChannelId,
     Channel0        = aesc_state_tree:get(ChannelId, ChannelsTree0),
     Initiator       = aesc_channels:initiator(Channel0),
     InitiatorAmount = aesc_channels:initiator_amount(Channel0), % same amt
+    TotalAmount     = aesc_channels:total_amount(Channel0),
     Responder       = aesc_channels:participant(Channel0),
-    ResponderAmount = aesc_channels:participant_amount(Channel0), % same amt
+    ResponderAmount = TotalAmount - InitiatorAmount, % same amt
 
     InitiatorAccount0       = aec_accounts_trees:get(Initiator, AccountsTree0),
     ResponderAccount0       = aec_accounts_trees:get(Responder, AccountsTree0),
@@ -137,7 +138,7 @@ process(#channel_settle_tx{channel_id       = ChannelId,
     {ok, Trees2}.
 
 -spec accounts(tx()) -> list(pubkey()).
-accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+accounts(#channel_settle_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
             [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
@@ -213,7 +214,7 @@ serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
     ].
 
 -spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
+is_verifiable(#channel_settle_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, _Channel} -> true;
         {error, not_found} -> false
@@ -235,13 +236,11 @@ check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, T
                  fun() -> aesc_utils:check_are_funds_in_channel(ChannelId,
                                 InitiatorAmount + ResponderAmount, Trees) end,
                  %% check individual amounts are what is expected
-                 fun() -> check_peer_amount(Channel,
-                                            fun aesc_channels:initiator_amount/1,
-                                            InitiatorAmount)
+                 fun() -> check_peer_amount(Channel, pInitiatorAmount,
+                                            fun aesc_channels:initiator_amount/1)
                  end,
-                 fun() -> check_peer_amount(Channel,
-                                            fun aesc_channels:participant_amount/1,
-                                            ResponderAmount)
+                 fun() -> check_peer_amount(Channel, ResponderAmount,
+                                            fun aesc_channels:participant_amount/1)
                  end,
                  fun() -> check_solo_closed(Channel, Height) end],
             aeu_validation:run(Checks)

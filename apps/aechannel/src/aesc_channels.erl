@@ -28,6 +28,7 @@
          participant/1,
          total_amount/1,
          initiator_amount/1,
+         participant_amount/1,
          channel_reserve/1,
          sequence_number/1]).
 
@@ -213,6 +214,11 @@ total_amount(#channel{total_amount = TotalAmount}) ->
 -spec initiator_amount(channel()) -> amount().
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
+
+-spec participant_amount(channel()) -> amount().
+participant_amount(#channel{initiator_amount = InitiatorAmount,
+                            total_amount = TotalAmount}) ->
+    TotalAmount - InitiatorAmount.
 
 -spec channel_reserve(channel()) -> amount().
 channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
