@@ -43,7 +43,7 @@ apps/*/doc/stylesheet.css
 otp_patches/*.erl
 swagger/swagger-codegen-cli-*.jar
 *.erl~
-*.aer~
+*.aes~
 .virtualenv/
 *.retry
 system_test/logs

@@ -225,7 +225,7 @@ killall:
 
 clean:
 	@./rebar3 clean
-	( cd apps/aering/test/contracts && $(MAKE) clean; )
+	( cd apps/aesophia/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
 	@rm -rf _build/system_test+test _build/system_test system_test/logs _build/test _build/prod _build/local
