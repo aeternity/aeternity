@@ -2,17 +2,17 @@
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%     Translator from Aering Icode to Aevm Assebly
+%%%     Translator from Aesophia Icode to Aevm Assebly
 %%% @end
 %%% Created : 21 Dec 2017
 %%%
 %%%-------------------------------------------------------------------
--module(aer_icode_to_asm).
+-module(aeso_icode_to_asm).
 
 -export([convert/2]).
 
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
--include("aer_icode.hrl").
+-include("aeso_icode.hrl").
 
 convert(#{ contract_name := _ContractName
          , functions := Functions
@@ -73,7 +73,7 @@ make_args(Args) ->
     [{var_ref,[I-1 + $a]} || I <- lists:seq(1,length(Args))].
 
 fun_hash(Name) ->
-    {tuple,[{integer,X} || X <- [length(Name)|aer_data:binary_to_words(list_to_binary(Name))]]}.
+    {tuple,[{integer,X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
     [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name)},

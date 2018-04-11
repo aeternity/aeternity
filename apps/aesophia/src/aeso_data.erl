@@ -1,4 +1,4 @@
--module(aer_data).
+-module(aeso_data).
 
 -export([to_binary/1,binary_to_words/1,from_binary/2]).
 
