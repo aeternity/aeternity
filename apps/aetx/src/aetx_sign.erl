@@ -19,7 +19,6 @@
 
 %% API
 -export([sign/2,
-         sign/3,
          add_signatures/2,
          tx/1,
          verify/1,
