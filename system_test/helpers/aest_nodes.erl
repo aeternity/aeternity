@@ -274,7 +274,7 @@ call(Pid, Msg) ->
 
 start(DataDir, TempDir, LogFun) ->
     {ok, _} = application:ensure_all_started(hackney),
-    gen_server:start_link(?MODULE, [DataDir, TempDir, LogFun], []).
+    gen_server:start(?MODULE, [DataDir, TempDir, LogFun], []).
 
 wait_for_exit(Pid, Timeout) ->
     Ref = erlang:monitor(process, Pid),
