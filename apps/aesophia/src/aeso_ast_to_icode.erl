@@ -2,19 +2,19 @@
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%     Compiler from Aeterinty Ring language to the Aeternity VM, aevm.
+%%%     Compiler from Aeterinty Sophia language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 21 Dec 2017
 %%%
 %%%-------------------------------------------------------------------
--module(aer_ast_to_icode).
+-module(aeso_ast_to_icode).
 
 -export([convert/2]).
 
--include("aer_icode.hrl").
+-include("aeso_icode.hrl").
 
 convert(Tree, Options) ->
-    TypedTree = aer_ast_infer_types:infer(Tree),
+    TypedTree = aeso_ast_infer_types:infer(Tree),
     [io:format("Typed tree:\n  ~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
     code(TypedTree,
 %%    code(Tree,
@@ -68,7 +68,7 @@ ast_body({id, _, Name}) ->
 ast_body({int, _, Value}) ->
     #integer{value = Value};
 ast_body({string,_,Bin}) ->
-    Cpts = [size(Bin)|aer_data:binary_to_words(Bin)],
+    Cpts = [size(Bin)|aeso_data:binary_to_words(Bin)],
     #tuple{cpts = [#integer{value=X} || X <- Cpts]};
 ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};

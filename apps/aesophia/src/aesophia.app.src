@@ -1,4 +1,4 @@
-{application, aering,
+{application, aesophia,
  [{description, "Contract Language for Aethernity"},
   {vsn, "0.0.1"},
   {registered, []},

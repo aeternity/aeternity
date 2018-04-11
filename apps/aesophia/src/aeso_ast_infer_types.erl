@@ -1,4 +1,4 @@
--module(aer_ast_infer_types).
+-module(aeso_ast_infer_types).
 
 -export([infer/1]).
 

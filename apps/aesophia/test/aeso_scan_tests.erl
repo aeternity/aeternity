@@ -1,4 +1,4 @@
--module(aer_scan_tests).
+-module(aeso_scan_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -13,7 +13,7 @@ empty_contract_test_() ->
      [{"Scan an empty contract.",
        fun() ->
                Text = " ",
-               {ok, []} = aer_scan:scan(Text),
+               {ok, []} = aeso_scan:scan(Text),
                ok
        end}
      ]}.
@@ -26,7 +26,7 @@ all_tokens_test_() ->
             Tokens = all_tokens(),
             Text = string:join(lists:map(fun show_token/1, Tokens), " "),
             io:format("~s\n", [Text]),
-            {ok, Tokens1} = aer_scan:scan(Text),
+            {ok, Tokens1} = aeso_scan:scan(Text),
             true = compare_tokens(Tokens, Tokens1),
             ok
         end}

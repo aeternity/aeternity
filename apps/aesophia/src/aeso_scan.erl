@@ -5,12 +5,12 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
--module(aer_scan).
+-module(aeso_scan).
 
 -export([scan/1]).
 
--import(aer_scan_lib, [token/1, token/2, symbol/0, skip/0,
-                       override/2, push/2, pop/1]).
+-import(aeso_scan_lib, [token/1, token/2, symbol/0, skip/0,
+                        override/2, push/2, pop/1]).
 
 lexer() ->
     DIGIT    = "[0-9]",
@@ -71,8 +71,8 @@ lexer() ->
     [{code, Rules}, {comment, CommentRules}].
 
 scan(String) ->
-    Lexer = aer_scan_lib:compile(lexer()),
-    aer_scan_lib:string(Lexer, code, String).
+    Lexer = aeso_scan_lib:compile(lexer()),
+    aeso_scan_lib:string(Lexer, code, String).
 
 %% -- Helpers ----------------------------------------------------------------
 

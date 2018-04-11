@@ -2,16 +2,16 @@
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%     Intermediate Code for Aeterinty Ring language.
+%%%     Intermediate Code for Aeterinty Sophia language.
 %%% @end
 %%% Created : 21 Dec 2017
 %%% 
 %%%-------------------------------------------------------------------
--module(aer_icode).
+-module(aeso_icode).
 
 -export([pp/1]).
 
--include("aer_icode.hrl").
+-include("aeso_icode.hrl").
 
 pp(Icode) ->
     %% TODO: Actually do *Pretty* printing.

@@ -1,4 +1,4 @@
--module(aer_ast).
+-module(aeso_ast).
 
 -export([int/2,
          line/1,
@@ -7,7 +7,7 @@
          symbol_name/1
         ]).
 
--include("aer_ast.hrl").
+-include("aeso_ast.hrl").
 
 symbol(Line, Chars) -> {symbol, Line, Chars}.
 int(Line, Int) -> {'Int', Line, Int}.

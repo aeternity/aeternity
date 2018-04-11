@@ -2,7 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-make_cmd() -> "make -C " ++ aer_test_utils:contract_path().
+make_cmd() -> "make -C " ++ aeso_test_utils:contract_path().
 
 contracts_test_() ->
     {setup,
@@ -10,7 +10,7 @@ contracts_test_() ->
      fun(_) -> os:cmd(make_cmd() ++ " clean") end,
      [ {"Testing the " ++ Contract ++ " contract",
         fun() ->
-          ?assertCmdOutput(Expected, filename:join(aer_test_utils:contract_path(), Contract ++ "_test"))
+          ?assertCmdOutput(Expected, filename:join(aeso_test_utils:contract_path(), Contract ++ "_test"))
         end} || {Contract, Expected} <- contracts() ]}.
 
 contracts() ->

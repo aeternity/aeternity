@@ -2,13 +2,13 @@
 %%% @author Happi (Erik Stenman)
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%%     Compiler from Aeterinty Ring language to the Aeternity VM, aevm.
+%%%     Compiler from Aeterinty Sophia language to the Aeternity VM, aevm.
 %%% @end
 %%% Created : 12 Dec 2017
 %%% aec_conductor:stop_mining().
-%%% aer_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_ring_code]).
+%%% aeso_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_ring_code]).
 %%%-------------------------------------------------------------------
--module(aer_compiler).
+-module(aeso_compiler).
 
 -export([ file/1
         , file/2
@@ -47,10 +47,10 @@ parse(C,_Options) ->
     parse_string(C).
     
 to_icode(Ast, Options) ->
-    aer_ast_to_icode:convert(Ast, Options).
+    aeso_ast_to_icode:convert(Ast, Options).
 
 assemble(Icode, Options) ->
-    aer_icode_to_asm:convert(Icode, Options).
+    aeso_icode_to_asm:convert(Icode, Options).
 
 
 to_bytecode(['COMMENT',_|Rest],_Options) ->
@@ -63,8 +63,8 @@ to_bytecode([], _) -> [].
 
 pp_ring_code(C, Opts)->  pp(C, Opts, pp_ring_code,
                             fun (X) -> io:format("~s~n",[X]) end).
-pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aer_ast:pp/1).
-pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aer_icode:pp/1).
+pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aeso_ast:pp/1).
+pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aeso_icode:pp/1).
 pp_assembler(C, Opts)->  pp(C, Opts, pp_assembler, fun aeb_asm:pp/1).
 pp_bytecode(C, Opts) ->  pp(C, Opts, pp_bytecode, fun aeb_disassemble:pp/1).
 
@@ -81,22 +81,22 @@ pp(Code, Options, Option, PPFun) ->
 %% TODO: Tempoary parser hook below...
 
 parse_string(Text) ->
-    case aer_parser:string(Text) of
+    case aeso_parser:string(Text) of
         {ok, Contract} -> Contract;
-        Err = {error, {Line, aer_scan, Reason}} ->
+        Err = {error, {Line, aeso_scan, Reason}} ->
             io:format("Lexical error at line ~p:\n  ~s\n", [Line, Reason]),
             error(Err);
-        Err = {error, {Line, aer_parser, Reason}} ->
+        Err = {error, {Line, aeso_parser, Reason}} ->
             io:format("Parse error at line ~p:\n  ~s\n", [Line, Reason]),
             error(Err)
     end.
 
 read_contract(Name) ->
-    {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aer"]))),
+    {ok, Bin} = file:read_file(filename:join(contract_path(), lists:concat([Name, ".aes"]))),
     binary_to_list(Bin).
 
 contract_path() ->
-    "apps/aering/test/contracts".
+    "apps/aesophia/test/contracts".
 
 
 solidity_id_contract() ->

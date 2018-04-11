@@ -6,7 +6,7 @@
 %%%      Programming 14, 6 (November 2004)
 %%% @end
 %%%-------------------------------------------------------------------
--module(aer_parse_lib).
+-module(aeso_parse_lib).
 
 -export([parse/2,
          return/1, fail/0, fail/1, map/2, bind/2,
@@ -24,16 +24,16 @@
 -type tokens() :: [token()].
 -type error()  :: {pos(), string()}.
 
--define(lazy(F),     {aer_parse_lazy, F}).
--define(fail(Err),   {aer_parse_fail, Err}).
--define(choice(Ps),  {aer_parse_choice, Ps}).
--define(bind(P, F),  {aer_parse_bind, P, F}).
--define(right(P, Q), {aer_parse_right, P, Q}).
--define(left(P, Q),  {aer_parse_left, P, Q}).
--define(map(F, P),   {aer_parse_map, F, P}).
--define(layout,       aer_parse_layout).
--define(tok(Atom),   {aer_parse_tok, Atom}).
--define(return(X),   {aer_parse_return, X}).
+-define(lazy(F),     {aeso_parse_lazy, F}).
+-define(fail(Err),   {aeso_parse_fail, Err}).
+-define(choice(Ps),  {aeso_parse_choice, Ps}).
+-define(bind(P, F),  {aeso_parse_bind, P, F}).
+-define(right(P, Q), {aeso_parse_right, P, Q}).
+-define(left(P, Q),  {aeso_parse_left, P, Q}).
+-define(map(F, P),   {aeso_parse_map, F, P}).
+-define(layout,       aeso_parse_layout).
+-define(tok(Atom),   {aeso_parse_tok, Atom}).
+-define(return(X),   {aeso_parse_return, X}).
 
 %% Type synonyms since you can't have function types as macro arguments for some reason.
 -type delayed(A)         :: fun(() -> A).
