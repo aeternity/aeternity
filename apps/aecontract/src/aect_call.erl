@@ -11,7 +11,7 @@
 -export([ deserialize/1
         , id/1
         , id/3
-        , new/2
+        , new/4
         , contract_address/1
         , caller_address/1
         , caller_nonce/1
@@ -61,12 +61,13 @@
 %%% API
 %%%===================================================================
 
--spec new(aect_call_tx:tx(), height()) -> call().
-new(CallTx, BlockHeight) ->
-    C = #call{ caller_address   = aect_call_tx:caller(CallTx)
-             , caller_nonce     = aect_call_tx:nonce(CallTx)
+-spec new(Caller::pubkey(), Nonce::non_neg_integer(), Address::pubkey(),
+	  height()) -> call().
+new(Caller, Nonce, Address, BlockHeight) ->
+    C = #call{ caller_address   = Caller
+             , caller_nonce     = Nonce
              , height           = BlockHeight
-             , contract_address = aect_call_tx:contract(CallTx)
+             , contract_address = Address
              , gas_used         = 0     %% These are filled later
              , return_value     = <<>>  %% in aect_call_tx:process()
              },

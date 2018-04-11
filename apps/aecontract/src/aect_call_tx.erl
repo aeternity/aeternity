@@ -38,8 +38,6 @@
          call_data/1,
          call_stack/1]).
 
--define(PUB_SIZE, 65).
-
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
 -define(CONTRACT_CALL_TX_FEE, 2).
@@ -128,7 +126,10 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Create the call.
-    Call0 = aect_call:new(CallTx, Height),
+    Call0 = aect_call:new(aect_call_tx:caller(CallTx),
+			  aect_call_tx:nonce(CallTx),
+			  aect_call_tx:contract(CallTx),
+			  Height),
 
     %% Transfer the attached funds to the callee (before calling the contract!)
     Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree0),
@@ -151,7 +152,7 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = run_contract(CallTx, Call0, Height, Trees1),
+    Call = aect_dispatch:run_contract(CallTx, Call0, Height, Trees1),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree2 =
@@ -305,86 +306,5 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
                 false -> {error, wrong_vm_version}
             end;
         none -> {error, contract_does_not_exist}
-    end.
-
-%% -- Running contract code --------------------------------------------------
-
-
-%% Call the contract and update the call object with the return value and gas
-%% used.
--spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
-run_contract(#contract_call_tx
-             { contract   = ContractPubKey
-	     , vm_version = VmVersion
-             } = Tx, Call, Height, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
-
-    case VmVersion of
-	?AEVM_01_Sophia_01 ->
-	    call_AEVM_01_Sophia_01(Tx, Call, Height, Trees, Code);
-	?AEVM_01_Solidity_01 ->
-	    %% For now use the same ABI as for Sophia
-	    call_AEVM_01_Sophia_01(Tx, Call, Height, Trees, Code);
-	%% Wrong VM/ABI version just return an unchanged call.
-	_ -> Call
-	    
-    end.
-
-call_AEVM_01_Sophia_01(#contract_call_tx
-             { caller     = Caller
-             , contract   = ContractPubKey
-             , gas        = Gas
-             , gas_price  = GasPrice
-             , call_data  = CallData
-             , amount     = Value
-             , call_stack = CallStack
-             } = _Tx, Call, Height, Trees, Code) ->
-    %% TODO: Move init and execution to a separate module to be re used by
-    %% both on chain and off chain calls.
-    ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
-    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
-    try aevm_eeevm_state:init(
-	  #{ exec => #{ code       => Code,
-			address    => Address,
-			caller     => Caller,
-			data       => CallData,
-			gas        => Gas,
-			gasPrice   => GasPrice,
-			origin     => Caller,
-			value      => Value,
-                        call_stack => CallStack },
-             %% TODO: set up the env properly
-             env => #{currentCoinbase   => 0,
-                      currentDifficulty => 0,
-                      currentGasLimit   => Gas,
-                      currentNumber     => Height,
-                      currentTimestamp  => 0,
-                      chainState        => ChainState,
-                      chainAPI          => aec_vm_chain},
-             pre => #{}},
-          #{trace => false})
-    of
-	InitState ->
-	    %% TODO: Nicer error handling - do more in check.
-	    %% Update gas_used depending on exit type.x
-	    try aevm_eeevm:eval(InitState) of
-		%% Succesful execution
-		{ok, #{ gas := GasLeft, out := ReturnValue }} ->
-		    aect_call:set_gas_used(Gas - GasLeft,
-					   aect_call:set_return_value(ReturnValue, Call));
-		%% Executinon reulting in VM exeception.
-		%% Gas used, but other state not affected.
-		%% TODO: Use up the right amount of gas depending on error
-		%% TODO: Store errorcode in state tree
-		{error,_Error, #{ gas :=_GasLeft}} ->
-		    aect_call:set_gas_used(Gas,
-					   aect_call:set_return_value(<<>>, Call))
-
-	    catch _:_ -> Call
-	    end
-    catch _:_ ->
-	    Call
     end.
 
