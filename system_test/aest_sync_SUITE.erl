@@ -10,13 +10,15 @@
 % Test cases
 -export([new_node_joins_network/1,
          docker_keeps_data/1,
-         crash_and_continue_sync/1]).
+         crash_and_continue_sync/1,
+         net_split_recovery/1]).
 
 -import(aest_nodes, [
     setup_nodes/2,
     start_node/2,
     stop_node/2, stop_node/3,
     kill_node/2,
+    connect_node/3, disconnect_node/3,
     http_get/5,
     request/4,
     wait_for_height/4,
@@ -61,12 +63,48 @@
     source  => {pull, "aeternity/epoch:local"}
 }).
 
+
+-define(NET1_NODE1, #{
+    name     => net1_node1,
+    peers    => [net1_node2, net2_node1],
+    backend  => aest_docker,
+    source   => {pull, "aeternity/epoch:local"},
+    networks => [net1]
+}).
+
+-define(NET1_NODE2, #{
+    name    => net1_node2,
+    peers   => [net1_node1, net2_node2],
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"},
+    networks => [net1]
+}).
+
+-define(NET2_NODE1, #{
+    name    => net2_node1,
+    peers   => [net1_node1, net2_node2],
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"},
+    networks => [net2]
+}).
+
+-define(NET2_NODE2, #{
+    name    => net2_node2,
+    peers   => [net1_node2, net2_node1],
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"},
+    networks => [net2]
+}).
+
+
+
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() -> [
     new_node_joins_network
     , docker_keeps_data
     , crash_and_continue_sync
+    , net_split_recovery
 ].
 
 init_per_testcase(_TC, Config) ->
@@ -247,6 +285,89 @@ crash_and_continue_sync(Cfg) ->
             ct:log("Node 2 at height ~p: ~p~n", [Length, B2]),
             ?assertEqual(B1, B2)
     end.
+
+net_split_recovery(Cfg) ->
+    Length = 10,
+
+    setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
+    start_node(net1_node1, Cfg),
+    start_node(net1_node2, Cfg),
+    start_node(net2_node1, Cfg),
+    start_node(net2_node2, Cfg),
+
+    %% Starts with a net split
+
+    wait_for_height(Length, [net1_node1, net1_node2, net2_node1, net2_node2],
+                    Length * ?MINING_TIMEOUT, Cfg),
+
+    A1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length}, Cfg),
+    A2 = request(net1_node2, [v2, 'block-by-height'], #{height => Length}, Cfg),
+    A3 = request(net2_node1, [v2, 'block-by-height'], #{height => Length}, Cfg),
+    A4 = request(net2_node2, [v2, 'block-by-height'], #{height => Length}, Cfg),
+
+    %% Check that the chains are different
+    ?assertEqual(A1, A2),
+    ?assertEqual(A3, A4),
+    ?assertNotEqual(A1, A3),
+
+    %% Join all the nodes
+    connect_node(net1_node1, net2, Cfg),
+    connect_node(net1_node2, net2, Cfg),
+    connect_node(net2_node1, net1, Cfg),
+    connect_node(net2_node2, net1, Cfg),
+
+    wait_for_height(Length * 3, [net1_node1, net1_node2, net2_node1, net2_node2],
+                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+
+    B1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 3}, Cfg),
+    B2 = request(net1_node2, [v2, 'block-by-height'], #{height => Length * 3}, Cfg),
+    B3 = request(net2_node1, [v2, 'block-by-height'], #{height => Length * 3}, Cfg),
+    B4 = request(net2_node2, [v2, 'block-by-height'], #{height => Length * 3}, Cfg),
+
+    %% Check that the chain merged
+    ?assertEqual(B1, B2),
+    ?assertEqual(B1, B3),
+    ?assertEqual(B1, B4),
+
+    %% Split again the nodes in two cluster of 2 nodes
+    disconnect_node(net1_node1, net2, Cfg),
+    disconnect_node(net1_node2, net2, Cfg),
+    disconnect_node(net2_node1, net1, Cfg),
+    disconnect_node(net2_node2, net1, Cfg),
+
+    wait_for_height(Length * 5, [net1_node1, net1_node2, net2_node1, net2_node2],
+                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+
+    C1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 5}, Cfg),
+    C2 = request(net1_node2, [v2, 'block-by-height'], #{height => Length * 5}, Cfg),
+    C3 = request(net2_node1, [v2, 'block-by-height'], #{height => Length * 5}, Cfg),
+    C4 = request(net2_node2, [v2, 'block-by-height'], #{height => Length * 5}, Cfg),
+
+    %% Check the the chains forked
+    ?assertEqual(C1, C2),
+    ?assertEqual(C3, C4),
+    ?assertNotEqual(C1, C3),
+
+    %% Reconnect the nodes together
+    connect_node(net1_node1, net2, Cfg),
+    connect_node(net1_node2, net2, Cfg),
+    connect_node(net2_node1, net1, Cfg),
+    connect_node(net2_node2, net1, Cfg),
+
+    wait_for_height(Length * 7, [net1_node1, net1_node2, net2_node1, net2_node2],
+                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+
+    D1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 7}, Cfg),
+    D2 = request(net1_node2, [v2, 'block-by-height'], #{height => Length * 7}, Cfg),
+    D3 = request(net2_node1, [v2, 'block-by-height'], #{height => Length * 7}, Cfg),
+    D4 = request(net2_node2, [v2, 'block-by-height'], #{height => Length * 7}, Cfg),
+
+    %% Check the chain merged again
+    ?assertEqual(D1, D2),
+    ?assertEqual(D1, D3),
+    ?assertEqual(D1, D4),
+
+    ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
 

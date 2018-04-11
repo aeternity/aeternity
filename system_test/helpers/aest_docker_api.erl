@@ -9,8 +9,11 @@
 %% API exports
 -export([start/0]).
 -export([info/0]).
+-export([get_networks/0]).
 -export([create_network/1]).
 -export([prune_networks/0]).
+-export([connect_container/2]).
+-export([disconnect_container/2]).
 -export([create_container/2]).
 -export([delete_container/1]).
 -export([start_container/1]).
@@ -41,6 +44,13 @@ info() ->
     {ok, 200, Info} = docker_get([info]),
     Info.
 
+get_networks() ->
+    case docker_get([networks]) of
+        {ok, 200, Response} -> Response;
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
+    end.
+
 create_network(Config) ->
     BodyObj = maps:fold(fun create_network_object/3, #{}, Config),
     case docker_post([networks, create], #{}, BodyObj) of
@@ -52,6 +62,29 @@ create_network(Config) ->
 prune_networks() ->
     case docker_post([networks, prune], #{}) of
         {ok, 200, Response} -> Response;
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
+    end.
+
+connect_container(ContName, NetName) ->
+    BodyObj = #{
+        'Container' => json_string(ContName)
+    },
+    case docker_post([networks, NetName, connect], #{}, BodyObj) of
+        {ok, 200, Response} -> Response;
+        {ok, 404, _Response} -> throw({not_found, {ContName, NetName}});
+        {ok, 500, Response} ->
+            throw({docker_error, maps:get(message, Response)})
+    end.
+
+disconnect_container(ContName, NetName) ->
+    BodyObj = #{
+        'Container' => json_string(ContName),
+        'Force' => true
+    },
+    case docker_post([networks, NetName, disconnect], #{}, BodyObj) of
+        {ok, 200, Response} -> Response;
+        {ok, 404, _Response} -> throw({not_found, {ContName, NetName}});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, Response)})
     end.
