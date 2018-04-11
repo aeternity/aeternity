@@ -33,8 +33,13 @@
 
 -define(PROTOCOLS(H), #{9 => 0, 10 => H}).
 
+-define(HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(OldChainHeight),
+        (- 3 + OldChainHeight)
+       ).
+
 -define(PUBKEY1, <<37,195,115,246,90,69,150,234,253,209,246,49,199,88,5,116,191,57,106,189,48,134,209,227,116,85,44,59,51,41,245,55>>).
 -define(PUBKEY2, <<149,164,91,254,32,218,238,174,159,207,156,5,246,182,63,10,57,70,109,226,193,2,33,168,116,32,244,228,169,122,154,94>>).
+-define(PUBKEY3, <<29,110,222,56,140,83,227,182,7,100,207,18,240,52,200,151,221,151,247,213,94,191,198,219,184,33,139,118,35,95,157,120>>).
 
 -define(OLD_NODE1, #{
           name    => old_node1,
@@ -74,6 +79,16 @@
           hard_forks => ?PROTOCOLS(H)
          }).
 
+-define(NEW_NODE3(H), #{
+          name    => new_node3,
+          pubkey  => ?PUBKEY3,
+          peers   => [new_node1],
+          backend => aest_docker,
+          source  => {pull, "aeternity/epoch:local"},
+          mine_rate => default,
+          hard_forks => ?PROTOCOLS(H)
+         }).
+
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() ->
@@ -88,33 +103,24 @@ groups() ->
       [
        old_node_persisting_chain_and_not_mining_has_genesis_as_top
       ]},
-     {hard_fork, [sequence],
+     {hard_fork,
+      [sequence], %% Hard deps among tests/groups.
       [
-       %% Old node can restore DB backup of testnet.  This test also
-       %% determines info of top of chain in DB backup.
-       restore_db_backup_on_old_node,
+       restore_db_backup_on_old_node, %% Determines info of top of chain in DB backup.
        {group, hard_fork_all}
       ]},
      {hard_fork_all,
+      [sequence], %% Soft deps among tests/groups: if a test/group fails better skipping the rest.
       [
-       %% Sanity checks on software version supporting only old
-       %% protocol:
-       %%
-       %% * Old node can receive (sync) chain from other old node that restored DB from backup.
        old_node_can_receive_chain_from_other_old_node,
-       %% ----
-       %% Checks on capability of software version supporting both old
-       %% and new version of the protocol to restore DB backup of
-       %% testnet (old chain):
-       %%
-       %% * New node can restore DB backup of testnet - case old chain of height lower than height at which new protocol is effective.
+       {group, upgrade_flow_smoke_test}
+      ]},
+     {upgrade_flow_smoke_test,
+      [sequence], %% Hard deps among tests/groups.
+      [
        restore_db_backup_with_short_chain_on_new_node,
-       %%
-       %% * New node can receive (sync) old chain from other new node that restored DB from backup - case old chain of height lower than height of new protocol.
-       new_node_can_receive_short_old_chain_from_other_new_node,
-       %%
-       %% * New node accepts (sync) from other new node that restored DB from backup old chain only up to configured height for new protocol.
-       new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol
+       new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol,
+       new_node_can_receive_short_old_chain_from_other_new_node
        %% ----
        %% Checks on capability of software version supporting both old
        %% and new version of the protocol to mine using old protocol:
@@ -144,23 +150,49 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(assumptions, Config) -> Config;
+init_per_group(hard_fork, Config) -> Config;
 init_per_group(hard_fork_all, Config) ->
     {_, {restore_db_backup_on_old_node, SavedCfg}} =
         proplists:lookup(saved_config, Config),
     [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
      {_, _} = proplists:lookup(db_backup_top_hash, SavedCfg)
      | Config];
-init_per_group(_, Config) ->
-    Config.
+init_per_group(upgrade_flow_smoke_test, Config) ->
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
+    NewConfig = aest_nodes:ct_setup(Config),
+    aest_nodes:setup_nodes(
+      [?NEW_NODE1(3 + TopHeight),
+       ?NEW_NODE2(?HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(TopHeight)),
+       ?NEW_NODE3(3 + TopHeight)], NewConfig),
+    NewConfig.
 
-end_per_group(_, _Config) ->
+end_per_group(assumptions, _) -> ok;
+end_per_group(hard_fork, _) -> ok;
+end_per_group(hard_fork_all, _) -> ok;
+end_per_group(upgrade_flow_smoke_test, Config) ->
+    aest_nodes:ct_cleanup(Config),
     ok.
 
-init_per_testcase(_TC, Config) ->
-    aest_nodes:ct_setup(Config).
+init_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
+    aest_nodes:ct_setup(Config);
+init_per_testcase(restore_db_backup_on_old_node, Config) ->
+    aest_nodes:ct_setup(Config);
+init_per_testcase(old_node_can_receive_chain_from_other_old_node, Config) ->
+    aest_nodes:ct_setup(Config);
+init_per_testcase(restore_db_backup_with_short_chain_on_new_node, Config) -> Config;
+init_per_testcase(new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol, Config) -> Config;
+init_per_testcase(new_node_can_receive_short_old_chain_from_other_new_node, Config) -> Config.
 
-end_per_testcase(_TC, Config) ->
-    aest_nodes:ct_cleanup(Config).
+end_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(restore_db_backup_on_old_node, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(old_node_can_receive_chain_from_other_old_node, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(restore_db_backup_with_short_chain_on_new_node, _) -> ok;
+end_per_testcase(new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol, _) -> ok;
+end_per_testcase(new_node_can_receive_short_old_chain_from_other_new_node, _) -> ok.
 
 %=== TEST CASES ================================================================
 
@@ -169,8 +201,10 @@ old_node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
     start_node(old_node1, Cfg),
     #{height := 0} = get_block_by_height(old_node1, 0, Cfg),
     #{height := 0} = aest_nodes:get_top(old_node1, Cfg),
+    aest_nodes:kill_node(old_node1, Cfg),
     ok.
 
+%% Old node can restore DB backup of testnet.
 restore_db_backup_on_old_node(Cfg) ->
     aest_nodes:setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
     start_node(old_node1, Cfg),
@@ -178,10 +212,15 @@ restore_db_backup_on_old_node(Cfg) ->
     ?assertMatch(X when is_integer(X) andalso X > 0, TopHeight),
     B = get_block_by_height(old_node1, TopHeight, Cfg),
     ?assertEqual(TopHash, maps:get(hash, B)),
+    aest_nodes:kill_node(old_node1, Cfg),
     {save_config,
      [{db_backup_top_height, TopHeight},
       {db_backup_top_hash, TopHash}]}.
 
+%% Sanity check on software version supporting only old protocol:
+%%
+%% Old node can receive (sync) chain from other old node that restored
+%% DB from backup.
 old_node_can_receive_chain_from_other_old_node(Cfg) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
@@ -193,35 +232,38 @@ old_node_can_receive_chain_from_other_old_node(Cfg) ->
     wait_for_height_syncing(TopHeight, [old_node2], {{45000, ms}, {200, blocks}}, Cfg),
     B = get_block_by_height(old_node2, TopHeight, Cfg),
     ?assertEqual(TopHash, maps:get(hash, B)),
+    aest_nodes:kill_node(old_node2, Cfg),
+    aest_nodes:kill_node(old_node1, Cfg),
     ok.
 
+%% Check on capability of software version supporting both old and new
+%% version of the protocol to restore DB backup of testnet (old
+%% chain):
+%%
+%% New node can restore DB backup of testnet - case old chain of
+%% height lower than height at which new protocol is effective.
 restore_db_backup_with_short_chain_on_new_node(Cfg) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
-    aest_nodes:setup_nodes([?NEW_NODE1(3 + TopHeight)], Cfg),
     start_node(new_node1, Cfg),
     ?assertEqual({ok, {TopHash, TopHeight}},
                  restore_db_backup_on_node(new_node1, Cfg)),
     B = get_block_by_height(new_node1, TopHeight, Cfg),
     ?assertEqual(TopHash, maps:get(hash, B)),
-    ok.
+    {save_config,
+     [{new_node_left_running_with_old_chain, new_node1}]}.
 
-new_node_can_receive_short_old_chain_from_other_new_node(Cfg) ->
-    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
-    {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
-    aest_nodes:setup_nodes([?NEW_NODE1(3 + TopHeight), ?NEW_NODE2(3 + TopHeight)], Cfg),
-    start_node(new_node1, Cfg),
-    {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(new_node1, Cfg),
-    start_node(new_node2, Cfg),
-    aest_nodes:wait_for_height(TopHeight, [new_node1], 5000, Cfg),
-    wait_for_height_syncing(TopHeight, [new_node2], {{45000, ms}, {200, blocks}}, Cfg),
-    B = get_block_by_height(new_node2, TopHeight, Cfg),
-    ?assertEqual(TopHash, maps:get(hash, B)),
-    ok.
-
+%% Checks on capability of software version supporting both old and
+%% new version of the protocol to restore DB backup of testnet (old
+%% chain):
+%%
+%% New node accepts (sync) from other new node that restored DB from
+%% backup old chain only up to configured height for new protocol.
 new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, new_node1} = proplists:lookup(new_node_left_running_with_old_chain, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
-    {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     %% If:
     %% 1. All new nodes - 1 and 2 - followed same consensus rules
     %%    (specifically switching to new protocol at same height); and
@@ -238,15 +280,10 @@ new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol
     %% Rather, configure nodes with different heights at which new
     %% protocol enters into effect - so to make new node 1 supply
     %% blocks to new node 2 that are too high old blocks for node 2.
-    HeightOfNewProtocolForReadingDB = 3 + TopHeight,
-    HeightOfNewProtocolForValidatingBlocks = - 3 + TopHeight,
-    aest_nodes:setup_nodes(
-      [?NEW_NODE1(HeightOfNewProtocolForReadingDB),
-       ?NEW_NODE2(HeightOfNewProtocolForValidatingBlocks)], Cfg),
-    start_node(new_node1, Cfg),
-    {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(new_node1, Cfg),
-    start_node(new_node2, Cfg),
     aest_nodes:wait_for_height(TopHeight, [new_node1], 5000, Cfg),
+    HeightOfNewProtocolForValidatingBlocks =
+        ?HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(TopHeight),
+    start_node(new_node2, Cfg),
     LastSyncedOldBlock = - 1 + HeightOfNewProtocolForValidatingBlocks,
     wait_for_height_syncing(LastSyncedOldBlock, [new_node2], {{45000, ms}, {200, blocks}}, Cfg),
     B1 = get_block_by_height(new_node1, LastSyncedOldBlock, Cfg),
@@ -259,6 +296,29 @@ new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol
     ?assertMatch(
         {ok, 404, _},
         aest_nodes:http_get(new_node2, int_http, [v2, block, height, HeightOfNewProtocolForValidatingBlocks], #{}, Cfg)),
+    aest_nodes:kill_node(new_node2, Cfg),
+    {save_config,
+     [{new_node_left_running_with_old_chain, new_node1}]}.
+
+%% Checks on capability of software version supporting both old and
+%% new version of the protocol to restore DB backup of testnet (old
+%% chain):
+%%
+%% New node can receive (sync) old chain from other new node that
+%% restored DB from backup - case old chain of height lower than
+%% height of new protocol.
+new_node_can_receive_short_old_chain_from_other_new_node(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, new_node1} = proplists:lookup(new_node_left_running_with_old_chain, SavedCfg),
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    aest_nodes:wait_for_height(TopHeight, [new_node1], 5000, Cfg),
+    start_node(new_node3, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node3], {{45000, ms}, {200, blocks}}, Cfg),
+    B = get_block_by_height(new_node3, TopHeight, Cfg),
+    ?assertEqual(TopHash, maps:get(hash, B)),
+    aest_nodes:kill_node(new_node3, Cfg),
+    aest_nodes:kill_node(new_node1, Cfg),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
