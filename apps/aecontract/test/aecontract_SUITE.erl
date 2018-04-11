@@ -109,7 +109,7 @@ call_contract(_Cfg) ->
 
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aer"),
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
     CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract}, S2),
 
     %% Test that the create transaction is accepted

@@ -157,11 +157,11 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 compile_contract(File) ->
-    CodeDir = code:lib_dir(aering, test),
+    CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    aer_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]).
+    aeso_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]).
 
 %%%===================================================================
 %%% Keys TODO: Should move

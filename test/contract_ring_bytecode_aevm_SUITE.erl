@@ -17,8 +17,8 @@
 all() -> [ execute_identity_fun_from_ring_file ].
 
 execute_identity_fun_from_ring_file(_Cfg) ->
-    CodeDir = code:lib_dir(aering, test),
-    FileName = filename:join(CodeDir, "contracts/identity.aer"),
+    CodeDir = code:lib_dir(aesophia, test),
+    FileName = filename:join(CodeDir, "contracts/identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
     {ok, Code} = aect_ring:compile(ContractBin, <<>>),
     CallData = aect_ring:create_call(Code, <<"main">>, <<"42">>),
