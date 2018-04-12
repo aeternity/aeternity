@@ -16,6 +16,7 @@
 % Test cases
 -export([
          old_node_persisting_chain_and_not_mining_has_genesis_as_top/1,
+         new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top/1,
          new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow/1,
          restore_db_backup_on_old_node/1,
          old_node_can_receive_chain_from_other_old_node/1,
@@ -133,7 +134,12 @@ groups() ->
     [
      {assumptions,
       [
-       old_node_persisting_chain_and_not_mining_has_genesis_as_top,
+       {genesis,
+        [sequence], %% Hard deps among tests.
+        [
+         old_node_persisting_chain_and_not_mining_has_genesis_as_top,
+         new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top
+        ]},
        new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow
       ]},
      {hard_fork,
@@ -178,6 +184,7 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_group(assumptions, Config) -> Config;
+init_per_group(genesis, Config) -> Config;
 init_per_group(hard_fork, Config) -> Config;
 init_per_group(hard_fork_all, Config) ->
     {_, {restore_db_backup_on_old_node, SavedCfg}} =
@@ -196,6 +203,7 @@ init_per_group(upgrade_flow_smoke_test, Config) ->
     NewConfig.
 
 end_per_group(assumptions, _) -> ok;
+end_per_group(genesis, _) -> ok;
 end_per_group(hard_fork, _) -> ok;
 end_per_group(hard_fork_all, _) -> ok;
 end_per_group(upgrade_flow_smoke_test, Config) ->
@@ -203,6 +211,8 @@ end_per_group(upgrade_flow_smoke_test, Config) ->
     ok.
 
 init_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
+    aest_nodes:ct_setup(Config);
+init_per_testcase(new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top, Config) ->
     aest_nodes:ct_setup(Config);
 init_per_testcase(new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow, Config) ->
     aest_nodes:ct_setup(Config);
@@ -217,6 +227,8 @@ init_per_testcase(new_node_can_mine_on_old_chain_using_old_protocol, Config) -> 
 init_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, Config) -> Config.
 
 end_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top, Config) ->
     aest_nodes:ct_cleanup(Config);
 end_per_testcase(new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow, Config) ->
     aest_nodes:ct_cleanup(Config);
@@ -236,8 +248,20 @@ old_node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
     aest_nodes:setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
     start_node(old_node1, Cfg),
     #{height := 0} = get_block_by_height(old_node1, 0, Cfg),
-    #{height := 0} = aest_nodes:get_top(old_node1, Cfg),
+    #{height := 0, hash := Hash} = aest_nodes:get_top(old_node1, Cfg),
     aest_nodes:kill_node(old_node1, Cfg),
+    {save_config,
+     [{genesis_hash, Hash}]}.
+
+new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, Hash} = proplists:lookup(genesis_hash, SavedCfg),
+    aest_nodes:setup_nodes([?NEW_NODE1(42)], Cfg),
+    start_node(new_node1, Cfg),
+    #{height := 0} = get_block_by_height(new_node1, 0, Cfg),
+    #{height := 0, hash := NewHash} = aest_nodes:get_top(new_node1, Cfg),
+    ?assertEqual(Hash, NewHash),
+    aest_nodes:kill_node(new_node1, Cfg),
     ok.
 
 new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow(Cfg) ->
