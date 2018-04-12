@@ -1,7 +1,9 @@
 -module(aec_governance).
 
 %% API
--export([blocks_to_check_difficulty_count/0,
+-export([sorted_protocol_versions/0,
+         protocols/0,
+         blocks_to_check_difficulty_count/0,
          expected_block_mine_rate/0,
          block_mine_reward/0,
          max_txs_in_block/0,
@@ -13,10 +15,39 @@
          name_claim_preclaim_delta/0,
          name_registrars/0]).
 
+-export_type([protocols/0]).
+
+-include("common.hrl").
+-include("blocks.hrl").
+
+-define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
+-define(PROTOCOLS, #{?GENESIS_VERSION => ?GENESIS_HEIGHT,
+                     ?PROTOCOL_VERSION => 3750}).
+
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
 -define(BLOCK_MINE_REWARD, 10).
 
+
+%% Maps consensus protocol version to minimum height at which such
+%% version is effective.  The height must be strictly increasing with
+%% the version.
+-type protocols() :: #{?GENESIS_VERSION := ?GENESIS_HEIGHT,
+                       ?PROTOCOL_VERSION := non_neg_integer()}.
+
+
+sorted_protocol_versions() ->
+    ?SORTED_VERSIONS.
+
+protocols() ->
+    case aeu_env:user_map([<<"chain">>, <<"hard_forks">>]) of
+        undefined -> ?PROTOCOLS;
+        {ok, M} ->
+            maps:from_list(
+              lists:map(
+                fun({K, V}) -> {binary_to_integer(K), V} end,
+                maps:to_list(M)))
+    end.
 
 blocks_to_check_difficulty_count() ->
     ?BLOCKS_TO_CHECK_DIFFICULTY_COUNT.

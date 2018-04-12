@@ -15,6 +15,8 @@
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
+-export([extract_archive/3]).
+-export([run_cmd_in_node_dir/2]).
 
 %=== MACROS ====================================================================
 
@@ -52,7 +54,12 @@
     pubkey => binary(),         % Public part of the peer key
     privkey => binary(),        % Private part of the peer key
     peers := [binary()],        % URLs of the peer nodes
-    source := {pull, binary()}  % Source of the node image
+    source := {pull, binary()}, % Source of the node image
+    mine_rate => default | pos_integer(),
+    cuckoo_miner => default | #{ex := binary(),
+                                args := binary(),
+                                bits := pos_integer()},
+    hard_forks => #{non_neg_integer() => non_neg_integer()} % Consensus protocols (version -> height)
 }.
 
 %% State of a node
@@ -148,6 +155,7 @@ setup_node(Spec, BackendState) ->
       privkey := PrivKey,
       peers := Peers,
       source := {pull, Image}} = Spec,
+    MineRate = maps:get(mine_rate, Spec, ?EPOCH_MINE_RATE),
 
     Hostname = format("~s~s", [Name, Postfix]),
     ExposedPorts = #{
@@ -173,7 +181,30 @@ setup_node(Spec, BackendState) ->
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     ct:log("PeerVars: ~p", [PeerVars]),
-    RootVars = #{
+    CuckooMinerVars =
+        case maps:find(cuckoo_miner, Spec) of
+            error -> #{};
+            {ok, CuckooMiner} ->
+                #{cuckoo_miner_present => [#{}],
+                  cuckoo_miner =>
+                      %% This may be improved upon.
+                      [#{executable => maps:get(ex, CuckooMiner),
+                         extra_args => maps:get(args, CuckooMiner),
+                         node_bits => maps:get(bits, CuckooMiner)
+                        }]}
+        end,
+    ct:log("CuckooMinerVars: ~p", [CuckooMinerVars]),
+    HardForkVars =
+        case maps:find(hard_forks, Spec) of
+            error -> #{};
+            {ok, HardForks} ->
+                #{hard_forks_present => [#{}],
+                  hard_forks =>
+                      lists:map(fun({V, H}) -> #{version => V, height => H} end,
+                                maps:to_list(HardForks))}
+        end,
+    ct:log("HardForkVars: ~p", [HardForkVars]),
+    RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,
@@ -187,6 +218,12 @@ setup_node(Spec, BackendState) ->
     },
     Context = #{epoch_config => RootVars},
     ok = write_template(TemplateFile, ConfigFilePath, Context),
+    Command =
+        case MineRate of
+            default -> [];
+            _ when is_integer(MineRate), MineRate > 0 ->
+                ["-aecore", "expected_mine_rate", MineRate]
+        end,
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
     KeysDir = keys_dir(DataDir, Name),
@@ -198,7 +235,7 @@ setup_node(Spec, BackendState) ->
         network => NetId,
         image => Image,
         ulimits => [{nofile, 1024, 1024}],
-        command => ["-aecore", "expected_mine_rate", ?EPOCH_MINE_RATE],
+        command => Command,
         env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE},
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
@@ -280,6 +317,20 @@ get_service_address(Service, NodeState)
 get_service_address(int_ws, NodeState) ->
     #{local_ports := #{int_ws := Port}} = NodeState,
     format("ws://localhost:~w/", [Port]).
+
+extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archive) ->
+    ok = aest_docker_api:extract_archive(ID, Path, Archive),
+    log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
+    NodeState.
+
+%% This is meant to be changed or removed once `aest_docker_api:exec`
+%% supports stdout.
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
+    log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
+    Cmd1 = lists:flatten(io_lib:format("docker exec ~s ~s", [ID, lists:join($ , Cmd)])),
+    Result = lib:nonl(os:cmd(Cmd1)),
+    log(NodeState, "Run command ~p on container ~p [~s] with result ~p", [Cmd, Name, ID, Result]),
+    {ok, Result, NodeState}.
 
 %=== INTERNAL FUNCTIONS ========================================================
 

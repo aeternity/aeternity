@@ -2,6 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Plants support for introducing backward incompatible changes to the consensus protocol (hard forking) without restarting the blockchain from genesis. This impacts the persisted DB;
 * Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not
   able to talk to nodes running older versions;
 * Makes abilitation of HTTP API endpoints tagged as `debug` in the Swagger schema configurable;
