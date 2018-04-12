@@ -18,8 +18,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/3,
-         process/3,
+         check/4,
+         process/4,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -76,9 +76,9 @@ nonce(#ns_claim_tx{nonce = Nonce}) ->
 origin(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
-                   fee = Fee, name = Name, name_salt = NameSalt}, Trees, Height) ->
+                   fee = Fee, name = Name, name_salt = NameSalt}, _Context, Trees, Height) ->
     case aens_utils:to_ascii(Name) of
         {ok, NameAscii} ->
             %% TODO: Maybe include burned fee in tx fee. To do so, mechanism determining
@@ -99,9 +99,9 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             {error, Reason}
     end.
 
--spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
-                     name = PlainName, name_salt = NameSalt} = ClaimTx, Trees0, Height) ->
+                     name = PlainName, name_salt = NameSalt} = ClaimTx, _Context, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     NSTree0 = aec_trees:ns(Trees0),
 

@@ -10,8 +10,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/3,
-         process/3,
+         check/4,
+         process/4,
          accounts/1,
          signers/1,
          serialize/1,
@@ -58,12 +58,12 @@ nonce(#coinbase_tx{}) ->
 origin(#coinbase_tx{}) ->
     undefined.
 
--spec check(tx(), aec_trees:trees(), height()) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) ->
                     {ok, aec_trees:trees()} | {error, term()}.
-check(#coinbase_tx{block_height = CBHeight}, _Trees, Height)
+check(#coinbase_tx{block_height = CBHeight}, _Context, _Trees, Height)
     when CBHeight =/= Height ->
     {error, wrong_height};
-check(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees, Height) ->
+check(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees, Height) ->
     ExpectedReward = aec_governance:block_mine_reward(),
     case Reward =:= ExpectedReward of
         true ->
@@ -75,8 +75,8 @@ check(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees, Height) ->
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block
 %% is added to miner's account in aec_trees:apply_signed_txs/3.
--spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#coinbase_tx{account = AccountPubkey, reward = Reward}, Trees0, Height) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+process(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees0, Height) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),
 

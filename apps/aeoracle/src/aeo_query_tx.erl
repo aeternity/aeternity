@@ -16,8 +16,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/3,
-         process/3,
+         check/4,
+         process/4,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -105,10 +105,10 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
-                       query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, Trees, Height) ->
+                       query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, _Context, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Height, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
@@ -130,9 +130,9 @@ accounts(#oracle_query_tx{sender = SenderPubKey,
 signers(#oracle_query_tx{sender = SenderPubKey}) ->
     [SenderPubKey].
 
--spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
-                         query_fee = QueryFee} = QueryTx, Trees0, Height) ->
+                         query_fee = QueryFee} = QueryTx, _Context, Trees0, Height) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 

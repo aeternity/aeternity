@@ -20,7 +20,8 @@ execute_identy_fun_from_file(_Cfg) ->
     CodeDir = code:lib_dir(aebytecode, test),
     FileName = filename:join(CodeDir, "asm_code/identity.aesm"),
     Code = aeb_asm:file(FileName, []),
-    {ok, Res} = 
+    ChainState = aevm_dummy_chain:new_state(),
+    {ok, Res} =
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
@@ -35,7 +36,9 @@ execute_identy_fun_from_file(_Cfg) ->
                         currentDifficulty => 0,
                         currentGasLimit => 10000,
                         currentNumber => 0,
-                        currentTimestamp => 0},
+                        currentTimestamp => 0,
+                        chainState => ChainState,
+                        chainAPI => aevm_dummy_chain},
                pre => #{}},
             #{trace => false})
          ),
