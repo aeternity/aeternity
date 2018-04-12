@@ -19,6 +19,8 @@
 -export([kill_node/2]).
 -export([extract_archive/4]).
 -export([run_cmd_in_node_dir/3]).
+-export([connect_node/3]).
+-export([disconnect_node/3]).
 -export([get_service_address/3]).
 -export([http_get/5]).
 
@@ -155,6 +157,16 @@ extract_archive(NodeName, Path, Archive, Ctx) ->
 run_cmd_in_node_dir(NodeName, Cmd, Ctx) ->
     call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd}).
 
+%% @doc Connect a node to a network.
+-spec connect_node(atom(), atom(), test_ctx()) -> ok.
+connect_node(NodeName, NetName, Ctx) ->
+    call(ctx2pid(Ctx), {connect_node, NodeName, NetName}).
+
+%% @doc Disconnect a node from a network.
+-spec disconnect_node(atom(), atom(), test_ctx()) -> ok.
+disconnect_node(NodeName, NetName, Ctx) ->
+    call(ctx2pid(Ctx), {disconnect_node, NodeName, NetName}).
+
 %% @doc Retrieves the address of a given node's service.
 -spec get_service_address(atom(), node_service(), test_ctx()) -> binary().
 get_service_address(NodeName, Service, Ctx) ->
@@ -243,6 +255,10 @@ handlex({run_cmd_in_node_dir, NodeName, Cmd}, _From, State) ->
 handlex(dump_logs, _From, State) ->
     ok = mgr_dump_logs(State),
     {reply, ok, State};
+handlex({connect_node, NodeName, NetName}, _From, State) ->
+    {reply, ok, mgr_connect_node(NodeName, NetName, State)};
+handlex({disconnect_node, NodeName, NetName}, _From, State) ->
+    {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
 handlex(cleanup, _From, State) ->
     {reply, ok, mgr_cleanup(State)};
 handlex(stop, _From, State) ->
@@ -439,6 +455,16 @@ mgr_run_cmd_in_node_dir(NodeName, Cmd, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     {ok, Result, NodeState2} = Mod:run_cmd_in_node_dir(NodeState, Cmd),
     {ok, Result, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}}.
+
+mgr_connect_node(NodeName, NetName, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    NodeState2 = Mod:connect_node(NetName, NodeState),
+    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
+
+mgr_disconnect_node(NodeName, NetName, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    NodeState2 = Mod:disconnect_node(NetName, NodeState),
+    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
 
 mgr_safe_stop_backends(#{backends := Backends} = State) ->
     maps:map(fun(Mod, BackendState) ->
