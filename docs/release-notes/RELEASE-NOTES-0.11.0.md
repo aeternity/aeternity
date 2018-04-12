@@ -1,18 +1,14 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on support for hard forking.
 It:
 * Plants support for introducing backward incompatible changes to the consensus protocol (hard forking) without restarting the blockchain from genesis. This impacts the persisted DB;
-* Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not
-  able to talk to nodes running older versions;
+* Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not able to talk to nodes running older versions;
 * Makes abilitation of HTTP API endpoints tagged as `debug` in the Swagger schema configurable;
 * Enables configuration of empty set of initial peers to contact;
-* Does this. This impacts consensus;
-* Does that. This impacts the persisted DB;
-* Does that;
-* Improves the stability of the testnet.
 * Add configuration (`sync` > `listen_address`) to select which IP the sync service will listen to.
 * Add configuration (`sync` > `external_port`) to support public sync port differing from the internal port.
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.11.0
 
