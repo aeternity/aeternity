@@ -286,6 +286,11 @@ crash_and_continue_sync(Cfg) ->
             ?assertEqual(B1, B2)
     end.
 
+%% Test that two disconnected clusters of nodes are able to recover and merge
+%% there chain when connected back together.
+%% It tests both case of the chain being started from scratch in different
+%% network partitions, and that the network is partitiioned when the chain
+%% is already shared.
 net_split_recovery(Cfg) ->
     Length = 10,
 
