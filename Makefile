@@ -163,7 +163,7 @@ system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup: system_test
 	zcat <$< >$@
 
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz:
-	curl -fsS --create-dirs -o $@ https://6798-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp/mnesia_ip-172-31-36-149_db_backup_1523145687.gz
+	curl -fsS --create-dirs -o $@ https://7305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp/mnesia_ip-172-31-36-149_db_backup_1523491249.gz
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
