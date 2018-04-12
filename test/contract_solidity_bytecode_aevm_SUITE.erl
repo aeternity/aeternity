@@ -2,8 +2,9 @@
 
 %% common_test exports
 -export(
-   [
-    all/0
+   [ all/0
+   , end_per_testcase/2
+   , init_per_testcase/2
    ]).
 
 %% test case exports
@@ -13,31 +14,95 @@
    ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("eunit/include/eunit.hrl").
+
+-define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
+-define(REGISTERED_PROCS_WHITELIST,
+        [cover_server, timer_server, %% by test framework
+         exec_app, exec, %% by erlexec
+         inet_gethost_native_sup, inet_gethost_native, %% by inet
+         prfTarg,  %% by eper
+         dets_sup, dets  %% by mnesia
+        ]).
+
+init_per_testcase(_, Cfg) ->
+    lager_common_test_backend:bounce(error),
+    Apps = application:which_applications(),
+    Names = registered(),
+    {MyPubKey, MyPrivKey} = new_key_pair(),
+    Amount = 100000,
+    Preset = [{MyPubKey, Amount}],
+
+    [ {running_apps, Apps}
+    , {regnames, Names}    
+    , {my_pub_key, MyPubKey}
+    , {my_priv_key, MyPrivKey}
+    , {preset, Preset}
+    , {vm_version, 2} %% AEVM/Solidity
+    , {code, id_bytecode()}
+      | Cfg].
+
+end_per_testcase(_TC, Config) ->
+    Apps0 = ?config(running_apps, Config),
+    Names0 = ?config(regnames, Config),
+    Apps = application:which_applications() -- ?STARTED_APPS_WHITELIST,
+    Names = registered() -- ?REGISTERED_PROCS_WHITELIST,
+    case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
+        {[], [], []} ->
+            ok;
+        {_, _, Logs} when Logs =/= []->
+            {fail, {errors_in_lager_log, lists:map(fun iolist_to_s/1, Logs)}};
+        {NewApps, _, _} when NewApps =/= [] ->
+            %% New applications take precedence over new registered processes
+            {fail, {started_applications, NewApps}};
+        {_, NewReg, _} ->
+            await_registered(NewReg, Names0)
+    end.
+
+await_registered(Rest, Names0) ->
+    receive after 100 ->
+                    await_registered(9, Rest, Names0)
+            end.
+
+await_registered(N, _, Names0) when N > 0 ->
+    case (registered() -- Names0) -- ?REGISTERED_PROCS_WHITELIST of
+        [] ->
+            ok;
+        [_|_] = NewReg ->
+            receive after 100 ->
+                            await_registered(N-1, NewReg, Names0)
+                    end
+    end;
+await_registered(_, NewReg, _Names0) ->
+    {fail, {registered_processes, NewReg}}.
+
+-spec iolist_to_s(iolist()) -> string().
+iolist_to_s(L) ->
+    lists:flatten(io_lib:format("~s~n", [L])).
+
+
+%% ------------------------------------------------------------------------
+%% Test cases
+%% ------------------------------------------------------------------------
 
 all() -> [ execute_identity_fun_from_solidity_binary ].
 
-execute_identity_fun_from_solidity_binary(_Cfg) ->
-    ContractBin} = id_bytecode(),
-    CallData = aect_evm:create_call(Code, <<"init">>, <<"42">>),
-    {ok, #{ out := RetVal}} =
-        aect_evm:execute_call(
-          #{ code => Code,
-             address => 0,
-             caller => 0,
-             data => CallData,
-             gas => 1000000,
-             gasPrice => 1,
-             origin => 0,
-             value => 0,
-             currentCoinbase => 0,
-             currentDifficulty => 0,
-             currentGasLimit => 10000,
-             currentNumber => 0,
-             currentTimestamp => 0,
-             chainState => aevm_dummy_chain:new_state(),
-             chainAPI => aevm_dummy_chain},
-          true),
-    <<42:256>> = RetVal,
+execute_identity_fun_from_solidity_binary(Cfg) ->
+    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
+
+    ok = mock_genesis(Cfg),
+    ok = application:start(aecore),
+    Tx = create_tx(#{}, Cfg),
+    PrivKey = ?config(my_priv_key, Cfg),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),    
+    ok = aec_tx_pool:push(SignedTx),
+    %% {Block, ATx} = 
+	aec_chain:find_transaction_in_main_chain_or_mempool(SignedTx),
+    %% mempool = Block,
+    ok = unmock_genesis(Cfg),
+    ok = application:stop(aecore),
+    ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
     ok.
 
 id_bytecode() ->
@@ -49,53 +114,6 @@ id_bytecode() ->
       "7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
       "e405cbf70029">>.
 
-create_tx(Override) ->
-    Map = #{ owner      => <<4711:65/unit:8>>
-           , nonce      => 42
-           , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
-           , vm_version => 1
-           , fee        => 10
-           , deposit    => 100
-           , amount     => 50
-           , gas        => 100
-           , gas_price  => 5
-           , call_data  => <<"NOT ENCODED ACCORDING TO ABI">>
-           },
-    Map1 = maps:merge(Map, Override),
-    {ok, Tx} = aect_create_tx:new(Map1),
-    {contract_create_tx, CTx} = aetx:specialize_type(Tx),
-    CTx.
-
-
-%%%===================================================================
-%%% Accounts
-%%%===================================================================
-
-setup_new_account(State) ->
-    setup_new_account(1000, 1, State).
-
-setup_new_account(Balance, Height, State) ->
-    {PubKey, PrivKey} = new_key_pair(),
-    State1            = insert_key_pair(PubKey, PrivKey, State),
-    State2            = set_account(aec_accounts:new(PubKey, Balance, Height), State1),
-    {PubKey, State2}.
-
-set_account_balance(PubKey, NewBalance, State) ->
-    A        = get_account(PubKey, State),
-    Balance  = aec_accounts:balance(A),
-    Height   = aec_accounts:height(A),
-    Nonce    = aec_accounts:nonce(A),
-    {ok, A1} = aec_accounts:spend(A, Balance, Nonce, Height),
-    {ok, A2} = aec_accounts:earn(A1, NewBalance, Height),
-    set_account(A2, State).
-
-get_account(PubKey, State) ->
-    aec_accounts_trees:get(PubKey, aec_trees:accounts(trees(State))).
-
-set_account(Account, State) ->
-    Trees   = trees(State),
-    AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
-    set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 %%%===================================================================
 %%% Keys TODO: Should move
@@ -108,9 +126,93 @@ new_key_pair() ->
     {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
     {Pubkey, pad_privkey(PrivKey)}.
 
-%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed to fit the
-%% private key. It does not pad with zeros.
+%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed
+%%  to fit the private key. It does not pad with zeros.
 
 pad_privkey(Bin) ->
     Pad = ?PRIV_SIZE - size(Bin),
     <<0:(Pad*8), Bin/binary>>.
+
+%%%===================================================================
+%%% Accounts in Genesis
+%%%===================================================================
+
+
+mock_genesis(Cfg) ->
+    Preset = ?config(preset, Cfg),
+    meck:new(aec_genesis_block_settings, []),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, Preset),
+    ok.
+
+unmock_genesis(_Cfg) ->
+    meck:unload(aec_genesis_block_settings),
+    ok.
+
+create_tx(Override, Cfg) ->
+    PubKey = ?config(my_pub_key, Cfg),
+    Code = ?config(code, Cfg),
+    VmVersion = ?config(vm_version, Cfg),
+    Map = #{ owner      => PubKey
+           , nonce      => 0
+           , code       => Code
+           , vm_version => VmVersion
+           , fee        => 10
+           , deposit    => 100
+           , amount     => 50
+           , gas        => 100
+           , gas_price  => 5
+           , call_data  => <<"">>
+           },
+    Map1 = maps:merge(Map, Override),
+    {ok, Tx} = aect_create_tx:new(Map1),
+    Tx.
+
+
+
+prepare_app_start(App, Config) ->
+    try prepare_app_start_(App, Config)
+    catch
+        error:Reason ->
+            error({Reason, erlang:get_stacktrace()})
+    end.
+
+prepare_app_start_(App, Config) ->
+    application:load(App),
+    TempDir = create_temp_key_dir(),
+    application:set_env(aecore, keys_dir, TempDir),
+    application:set_env(aecore, password, <<"secret">>),
+
+    {ok, Deps0} = application:get_key(App, applications),
+    Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app
+    AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
+    [ ok = application:ensure_started(Dep) || Dep <- Deps ],
+    {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
+
+app_stop(Apps, TempDir) ->
+    remove_temp_key_dir(TempDir),
+    [ application:stop(App) || App <- Apps ],
+    ok.
+
+maybe_add_mnesia(App, Deps) ->
+    case lists:member(aecore, [App|Deps]) of
+        true  -> Deps ++ [mnesia];
+        false -> Deps
+    end.
+
+remove_temp_key_dir(TmpKeysDir) ->
+    {ok, KeyFiles} = file:list_dir(TmpKeysDir),
+    %% Expect four filenames - private and public keys x2.
+    [_KF1, _KF2, _KF3, _KF4] = KeyFiles,
+    lists:foreach(
+      fun(F) ->
+              AbsF = filename:absname_join(TmpKeysDir, F),
+              {ok, _} = {file:delete(AbsF), {F, AbsF}}
+      end,
+      KeyFiles),
+    ok = file:del_dir(TmpKeysDir).
+
+create_temp_key_dir() ->
+    mktempd(os:type()).
+
+mktempd({unix, _}) ->
+    lib:nonl(?cmd("mktemp -d")).
