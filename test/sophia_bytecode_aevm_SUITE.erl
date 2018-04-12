@@ -1,4 +1,4 @@
--module(ring_bytecode_aevm_SUITE).
+-module(sophia_bytecode_aevm_SUITE).
 
 %% common_test exports
 -export(
@@ -10,7 +10,7 @@
 -export(
    [
      execute_identity_fun_from_bytecode/1
-     , execute_identity_fun_from_ring_file/1
+     , execute_identity_fun_from_sophia_file/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -18,9 +18,9 @@
 all() ->
     [
       execute_identity_fun_from_bytecode,
-      execute_identity_fun_from_ring_file ].
+      execute_identity_fun_from_sophia_file ].
 
-execute_identity_fun_from_ring_file(_Cfg) ->
+execute_identity_fun_from_sophia_file(_Cfg) ->
     CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, "contracts/identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
