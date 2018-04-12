@@ -177,7 +177,7 @@ get_top_blocks_time_summary(Count) ->
     {ok, lists:reverse(TimeSummary)}.
 
 contract_compile(Code, Options) ->
-    case aect_ring:compile(Code, Options) of
+    case aect_sophia:compile(Code, Options) of
           {ok, _ByteCode} = OK -> OK;
           {error, _ErrorMsg} = Err -> Err
     end.

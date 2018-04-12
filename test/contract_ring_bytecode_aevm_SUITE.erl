@@ -20,8 +20,8 @@ execute_identity_fun_from_ring_file(_Cfg) ->
     CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, "contracts/identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
-    {ok, Code} = aect_ring:compile(ContractBin, <<>>),
-    CallData = aect_ring:create_call(Code, <<"main">>, <<"42">>),
+    {ok, Code} = aect_sophia:compile(ContractBin, <<>>),
+    CallData = aect_sophia:create_call(Code, <<"main">>, <<"42">>),
     {ok, #{ out := RetVal}} =
         aect_evm:execute_call(
           #{ code => Code,

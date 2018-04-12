@@ -5,7 +5,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aect_ring).
+-module(aect_sophia).
 
 -export([ compile/2
         , create_call/3
