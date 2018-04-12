@@ -64,6 +64,9 @@
 }).
 
 
+%% By default, this node only connects to network `net1` even though
+%% it has a `net2_node1` as a peer. It means that if it is not connected
+%% explicitly to `net2` it will not be able to connect to `net2_node1`.
 -define(NET1_NODE1, #{
     name     => net1_node1,
     peers    => [net1_node2, net2_node1],
@@ -72,6 +75,9 @@
     networks => [net1]
 }).
 
+%% By default, this node only connects to network `net1` even though
+%% it has a `net2_node2` as a peer. It means that if it is not connected
+%% explicitly to `net2` it will not be able to connect to `net2_node2`.
 -define(NET1_NODE2, #{
     name    => net1_node2,
     peers   => [net1_node1, net2_node2],
@@ -80,6 +86,9 @@
     networks => [net1]
 }).
 
+%% By default, this node only connects to network `net2` even though
+%% it has a `net1_node1` as a peer. It means that if it is not connected
+%% explicitly to `net1` it will not be able to connect to `net1_node1`.
 -define(NET2_NODE1, #{
     name    => net2_node1,
     peers   => [net1_node1, net2_node2],
@@ -88,6 +97,9 @@
     networks => [net2]
 }).
 
+%% By default, this node only connects to network `net2` even though
+%% it has a `net1_node2` as a peer. It means that if it is not connected
+%% explicitly to `net1` it will not be able to connect to `net1_node2`.
 -define(NET2_NODE2, #{
     name    => net2_node2,
     peers   => [net1_node2, net2_node1],
