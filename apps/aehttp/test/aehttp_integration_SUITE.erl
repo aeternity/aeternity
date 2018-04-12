@@ -1086,25 +1086,26 @@ state_channel_id(Tx) ->
     {channel_create_tx, ChCTx} = aetx:specialize_type(Tx),
     Initiator = aesc_create_tx:initiator(ChCTx),
     Nonce = aesc_create_tx:nonce(ChCTx),
-    Participant = aesc_create_tx:participant(ChCTx),
-    aesc_channels:id(Initiator, Nonce, Participant).
+    Responder = aesc_create_tx:responder(ChCTx),
+    aesc_channels:id(Initiator, Nonce, Responder).
 
-state_channels_create(MinerPubkey, ParticipantPubkey) ->
+state_channels_create(MinerPubkey, ResponderPubkey) ->
     Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
-                participant => aec_base58c:encode(account_pubkey, ParticipantPubkey),
-                participant_amount => 3,
+                responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
+                responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
+                ttl => 100,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{initiator => MinerPubkey,
-                          participant => ParticipantPubkey}),
+                          responder => ResponderPubkey}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
     test_invalid_hash(MinerPubkey, initiator, Encoded, fun get_channel_create/1),
-    test_invalid_hash(ParticipantPubkey, participant, Encoded, fun get_channel_create/1),
+    test_invalid_hash(ResponderPubkey, responder, Encoded, fun get_channel_create/1),
     test_missing_address(initiator, Encoded, fun get_channel_create/1),
     {ok, Tx}.
 
