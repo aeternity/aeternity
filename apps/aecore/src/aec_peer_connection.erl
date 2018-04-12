@@ -315,11 +315,15 @@ cleanup_connection(State) ->
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
         _                         -> ok
     end,
+    cleanup_requests(State).
+
+cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
     [ gen_server:reply(From, {error, disconnected})
       || {_Request, From} <- Reqs ].
 
 connect_fail(S) ->
+    cleanup_requests(S),
     case aec_peers:connect_fail(peer_id(S), self()) of
         keep ->
             {noreply, S#{ status := error }};
