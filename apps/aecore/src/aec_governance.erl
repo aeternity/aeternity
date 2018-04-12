@@ -22,7 +22,7 @@
 
 -define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
 -define(PROTOCOLS, #{?GENESIS_VERSION => ?GENESIS_HEIGHT,
-                     ?PROTOCOL_VERSION => 5000}). %% TODO Adapt before release.
+                     ?PROTOCOL_VERSION => 3750}).
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
