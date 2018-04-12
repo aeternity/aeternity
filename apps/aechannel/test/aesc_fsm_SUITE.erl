@@ -67,7 +67,7 @@ init_per_group(_Group, Config) ->
     aecore_suite_utils:connect(aecore_suite_utils:node_name(dev2)),
     ct:log("dev2 connected", []),
     try [{initiator, prep_account(initiator, dev1)},
-         {participant, prep_account(participant, dev2)}
+         {responder, prep_account(responder, dev2)}
          | Config]
     catch
         error:Reason ->
@@ -93,27 +93,27 @@ stop_node(N, Config) ->
 
 create_channel(Cfg) ->
     I = ?config(initiator, Cfg),
-    P = ?config(participant, Cfg),
+    P = ?config(responder, Cfg),
 
     Port = proplists:get_value(port, Cfg, 9325),
 
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
-    Spec = #{initiator          => maps:get(pub, I),
-             participant        => maps:get(pub, P),
-             initiator_amount   => 5,
-             participant_amount => 5,
-             push_amount        => 2,
-             lock_period        => 10,
-             channel_reserve    => 3,
-             minimum_depth      => 3,
-             ttl                => 100,
-             client             => self(),
-             noise              => [{noise, Proto}],
-             report_info        => true},
+    Spec = #{initiator        => maps:get(pub, I),
+             responder        => maps:get(pub, P),
+             initiator_amount => 5,
+             responder_amount => 5,
+             push_amount      => 2,
+             lock_period      => 10,
+             channel_reserve  => 3,
+             minimum_depth    => 3,
+             ttl              => 100,
+             client           => self(),
+             noise            => [{noise, Proto}],
+             report_info      => true},
 
-    {ok, FsmP} = rpc(dev1, aesc_fsm, participate, [Port, Spec]),
+    {ok, FsmP} = rpc(dev1, aesc_fsm, respond, [Port, Spec]),
     {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec]),
 
     ct:log("FSMs, I = ~p, P = ~p", [FsmI, FsmP]),

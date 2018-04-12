@@ -248,7 +248,7 @@ check_channel(ChannelId, StateTx, Height, Trees) ->
 
 check_peers_equal(State, Channel) ->
     case aesc_channels:initiator(Channel) =:= aesc_offchain_tx:initiator(State)
-        andalso aesc_channels:participant(Channel) =:= aesc_offchain_tx:participant(State) of
+        andalso aesc_channels:responder(Channel) =:= aesc_offchain_tx:responder(State) of
         true ->
             ok;
         false ->
@@ -257,7 +257,7 @@ check_peers_equal(State, Channel) ->
 
 check_amounts_equal(State, Channel) ->
     ChannelAmount = aesc_channels:total_amount(Channel),
-    StateAmount   = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
+    StateAmount   = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
     case ChannelAmount =:= StateAmount of
         true  -> ok;
         false -> {error, wrong_state_amount}

@@ -37,7 +37,7 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--type role() :: initiator | participant.
+-type role() :: initiator | responder.
 -type sign_tag() :: create_tx
                   | funding_created.
 
@@ -47,7 +47,7 @@
 -record(state, { sequence_number    :: non_neg_integer()
                , data               :: binary()
                , initiator_amount   :: aesc_channels:amount()
-               , participant_amount :: aesc_channels:amount()
+               , responder_amount   :: aesc_channels:amount()
                }).
 
 -record(data, { role                   :: role()
@@ -112,8 +112,8 @@ message(Fsm, {T, _} = Msg) when T =:= channel_open
                               ; T =:= funding_created
                               ; T =:= funding_signed
                               ; T =:= funding_locked
-                              ; T =:= update_deposit
-                              ; T =:= update_withdrawal
+                              ; T =:= update
+                              ; T =:= update_signed
                               ; T =:= disconnect
                               ; T =:= shutdown
                               ; T =:= channel_reestablish ->
@@ -171,7 +171,7 @@ initiate(Host, Port, #{} = Opts0) ->
 participate(Port, #{} = Opts0) ->
     lager:debug("participate(~p, ~p)", [Port, Opts0]),
     Opts = maps:merge(#{client => self()}, Opts0),
-    start_link(#{role => participant
+    start_link(#{role => responder
                , port => Port
                , opts => Opts}).
 
@@ -188,10 +188,10 @@ init(#{role := Role} = Arg) ->
               fun check_timeout_opt/1
              ], Opts0),
     Session = start_session(Arg, Opts),
-    Data = #data{role = Role,
-                 client = Client,
+    Data = #data{role    = Role,
+                 client  = Client,
                  session = Session,
-                 opts = Opts},
+                 opts    = Opts},
     lager:debug("Session started, Data = ~p", [Data]),
     %% TODO: Amend the fsm above to include this step. We have transport-level
     %% connectivity, but not yet agreement on the channel parameters. We will next send
@@ -199,7 +199,7 @@ init(#{role := Role} = Arg) ->
     case Role of
         initiator ->
             {ok, initialized, send_open_msg(Data)};
-        participant ->
+        responder ->
             {ok, awaiting_open, Data}
     end.
 
@@ -210,7 +210,7 @@ check_opts([], Opts) ->
 
 check_minimum_depth_opt(DefMinDepth, Role, Opts) ->
     case {maps:find(minimum_depth, Opts), Role} of
-        {error, participant} -> Opts#{minimum_depth => DefMinDepth};
+        {error, responder} -> Opts#{minimum_depth => DefMinDepth};
         _                    -> Opts
     end.
 
@@ -223,9 +223,9 @@ check_timeout_opt(Opts) ->
             Opts#{timeouts => default_timeouts()}
     end.
 
-%% As per CHANNELS.md, the participant is regarded as the one typically
+%% As per CHANNELS.md, the responder is regarded as the one typically
 %% providing the service, and the initiator connects.
-start_session(#{role := participant, port := Port}, Opts) ->
+start_session(#{role := responder, port := Port}, Opts) ->
     NoiseOpts = maps:get(noise, Opts, []),
     ok(aesc_session_noise:accept(Port, NoiseOpts));
 start_session(#{role := initiator, host := Host, port := Port}, Opts) ->
@@ -236,7 +236,7 @@ ok({ok, X}) -> X.
 
 awaiting_open(enter, _OldSt, D) ->
     {keep_state, D, [timer(open, D)]};
-awaiting_open(cast, {channel_open, Msg}, #data{role = participant} = D) ->
+awaiting_open(cast, {channel_open, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
             report_info(channel_open, D1),
@@ -276,13 +276,23 @@ awaiting_signature(cast, {signed, create_tx, Tx},
     {next_state, half_signed,
      send_funding_created_msg(Tx, D#data{latest = undefined})};
 awaiting_signature(cast, {signed, funding_created, SignedTx},
-                   #data{role = participant,
+                   #data{role = responder,
                          latest = {sign, funding_created, HSCTx}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_funding_signed_msg(NewSignedTx, D#data{create_tx = NewSignedTx}),
     {ok, Watcher, D2} = start_min_depth_watcher(D1),
     {next_state, awaiting_locked, D2#data{latest = {watcher, Watcher}}};
+awaiting_signature(cast, {signed, update, SignedTx}, D) ->
+    D1 = send_update_msg(SignedTx, D#data{state = [SignedTx|D#data.state]}),
+    {next_state, awaiting_update_ack, D1#data{latest = undefined}};
+awaiting_signature(cast, {signed, update_ack, SignedTx},
+                   #data{latest = {sign, update_ack, OCTx}} = D) ->
+    NewSignedTx = aetx_sign:add_signatures(
+                    OCTx, aetx_sign:signatures(SignedTx)),
+    D1 = send_update_ack_msg(NewSignedTx, D),
+    D2 = D1#data{state = [NewSignedTx | clean_state(D1#data.state)]},
+    {next_state, open, D2};
 awaiting_signature(timeout, sign = T, D) ->
     close({timeout, T}, D);
 awaiting_signature(cast, {disconnect, _Msg}, D) ->
@@ -290,7 +300,7 @@ awaiting_signature(cast, {disconnect, _Msg}, D) ->
 
 accepted(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_create, D)]};
-accepted(cast, {funding_created, Msg}, #data{role = participant} = D) ->
+accepted(cast, {funding_created, Msg}, #data{role = responder} = D) ->
     case check_funding_created_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report_info(funding_created, D1),
@@ -336,13 +346,53 @@ awaiting_locked(cast, {disconnect, _Msg}, D) ->
 awaiting_locked(timeout, funding_lock = T, D) ->
     close({timeout, T}, D).
 
+awaiting_initial_state(enter, _OldSt, D) ->
+    {keep_state, D, [timer(accept, D)]};  % reusing accept timer (TODO ?)
+awaiting_initial_state(cast, {update, Msg}, #data{role = responder} = D) ->
+    case check_update_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report_info(update, D1),
+            ok = request_signing(update_ack, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, update_ack, SignedTx}},
+            {next_state, awaiting_signature, D2};
+        {error,_} = _Error ->
+            %% TODO: do we do a dispute challenge here?
+            close(Error, D)
+    end;
+awaiting_initial_state(cast, {disconnect, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_initial_state(timeout, accept, D) ->
+    close({timeout, awaiting_initial_state}, D).
+
+awaiting_update_ack(enter, _OldSt, D) ->
+    {keep_state, D, [timer(accept)]};
+awaiting_update_ack(cast, {update_ack, SignedTx}, #data{role = initiator} = D) ->
+    case check_update_ack(SignedTx, D) of
+        {ok, D1} ->
+            {next_state, open, D1};
+        {error, _} = Error ->
+            close(Error)
+    end;
+awaiting_update_ack(cast, {disconnect, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_update_ack(timeout, accept, D) ->
+    close({timeout, awaiting_update_ack}, D).
+
 signed(enter, _OldSt, D) ->
     {keep_state, D, [timer(funding_lock, D)]};
 signed(cast, {funding_locked, Msg}, D) ->
     case check_funding_locked_msg(Msg, D) of
         {ok, D1} ->
             report_info(funding_locked, D1),
-            {next_state, open, D1};
+            case D1#data.role of
+                initiator ->
+                    OCTx = initial_state(D1),
+                    ok   = request_signing(state, OCTx, D1),
+                    D2   = D1#data{latest = {sign, state_update, OCTx}},
+                    {next_state, awaiting_signature, D2};
+                responder ->
+                    {next_state, awaiting_initial_state, D1}
+            end;
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -418,23 +468,23 @@ send_open_msg(#data{opts       = Opts,
                     session    = Sn} = Data) ->
     #{ lock_period        := LockPeriod
      , initiator          := Initiator
-     , participant        := Participant
+     , responder          := Responder
      , push_amount        := PushAmount
      , initiator_amount   := InitiatorAmount
-     , participant_amount := ParticipantAmount
+     , responder_amount   := ResponderAmount
      , channel_reserve    := ChannelReserve } = Opts,
     ChainHash = aec_chain:genesis_hash(),
     %%
     %% Generate a temporary channel id
     ChannelId = aesc_channels:id(Initiator,
                                  erlang:unique_integer(),
-                                 Participant),
+                                 Responder),
     Msg = #{ chain_hash           => ChainHash
            , temporary_channel_id => ChannelId
            , lock_period          => LockPeriod
            , push_amount          => PushAmount
            , initiator_amount     => InitiatorAmount
-           , participant_amount   => ParticipantAmount
+           , responder_amount     => ResponderAmount
            , channel_reserve      => ChannelReserve
            , initiator            => Initiator
            },
@@ -446,7 +496,7 @@ check_open_msg(#{ chain_hash           := ChainHash
                 , lock_period          := LockPeriod
                 , push_amount          := PushAmt
                 , initiator_amount     := InitiatorAmt
-                , participant_amount   := ParticipantAmt
+                , responder_amount     := ResponderAmt
                 , channel_reserve      := ChanReserve
                 , initiator            := InitiatorPubkey},
                #data{opts = Opts} = Data) ->
@@ -458,7 +508,7 @@ check_open_msg(#{ chain_hash           := ChainHash
                      , initiator          => InitiatorPubkey
                      , push_amount        => PushAmt
                      , initiator_amount   => InitiatorAmt
-                     , participant_amount => ParticipantAmt
+                     , responder_amount   => ResponderAmt
                      , channel_reserve    => ChanReserve},
             {ok, Data#data{channel_id = ChanId,
                            opts       = Opts1}};
@@ -470,18 +520,18 @@ send_channel_accept(#data{opts          = Opts,
                           session       = Sn,
                           channel_id    = ChanId} = Data) ->
     #{ minimum_depth      := MinDepth
-     , participant        := Participant
+     , responder        := Responder
      , initiator_amount   := InitiatorAmt
-     , participant_amount := ParticipantAmt
+     , responder_amount := ResponderAmt
      , channel_reserve    := ChanReserve } = Opts,
     ChainHash = aec_chain:genesis_hash(),
     Msg = #{ chain_hash           => ChainHash
            , temporary_channel_id => ChanId
            , minimum_depth        => MinDepth
            , initiator_amount     => InitiatorAmt
-           , participant_amount   => ParticipantAmt
+           , responder_amount     => ResponderAmt
            , channel_reserve      => ChanReserve
-           , participant          => Participant
+           , responder            => Responder
            },
     aesc_session_noise:channel_accept(Sn, Msg),
     Data.
@@ -490,16 +540,16 @@ check_accept_msg(#{ chain_hash           := ChainHash
                   , temporary_channel_id := ChanId
                   , minimum_depth        := MinDepth
                   , initiator_amount     := _InitiatorAmt
-                  , participant_amount   := _ParticipantAmt
+                  , responder_amount     := _ResponderAmt
                   , channel_reserve      := _ChanReserve
-                  , participant          := Participant},
+                  , responder            := Responder},
                  #data{channel_id = ChanId,
                        opts = Opts} = Data) ->
     %% TODO: implement more checks
     case aec_chain:genesis_hash() of
         ChainHash ->
             {ok, Data#data{opts = Opts#{ minimum_depth => MinDepth
-                                       , participant   => Participant}}};
+                                       , responder     => Responder}}};
         _ ->
             {error, chain_hash_mismatch}
     end.
@@ -518,7 +568,7 @@ create_tx_defaults(Initiator) ->
      , nonce => Nonce }.
 
 send_funding_created_msg(SignedTx, #data{channel_id = Ch,
-                                         session   = Sn} = Data) ->
+                                         session    = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
     Msg = #{ temporary_channel_id => Ch
            ,  data                => TxBin},
@@ -569,6 +619,24 @@ check_funding_locked_msg(#{ temporary_channel_id := TmpChanId
             {error, temporary_channel_id_mismatch}
     end.
 
+send_update_msg(SignedTx, #data{ on_chain_id = OnChainId,
+                               , session     = Sn} = Data) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ channel_id => ChanId
+           , data       => TxBin },
+    aesc_session_noise:update(Sn, Msg),
+    Data.
+
+check_update_msg(#{ channel_id := ChanId
+                  , data       := TxBin },
+                 #data{ on_chain_id = ChanId
+                      , state       = State } = D) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    case State of
+        [LastSignedTx|_] ->
+            foo
+    end.
+
 
 request_signing(Tag, Obj, #data{client    = Client,
                                 channel_id = ChanId}) ->
@@ -577,11 +645,11 @@ request_signing(Tag, Obj, #data{client    = Client,
     ok.
 
 default_minimum_depth(initiator  ) -> undefined;
-default_minimum_depth(participant) -> ?MINIMUM_DEPTH.
+default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
 start_min_depth_watcher(#data{create_tx = SignedTx,
                               opts = #{initiator     := Initiator,
-                                       participant   := Participant,
+                                       responder     := Responder,
                                        minimum_depth := MinDepth}} = Data) ->
     Tx = aetx_sign:tx(SignedTx),
     TxHash = aetx:hash(Tx),
@@ -590,11 +658,28 @@ start_min_depth_watcher(#data{create_tx = SignedTx,
     evt({specialize_type, Sp}),
     Nonce = aesc_create_tx:nonce(CTx),
     evt({nonce, Nonce}),
-    OnChainId = aesc_channels:id(Initiator, Nonce, Participant),
+    OnChainId = aesc_channels:id(Initiator, Nonce, Responder),
     evt({on_chain_id, OnChainId}),
     {ok, Watcher} = aesc_fsm_min_depth_watcher:start_link(TxHash, OnChainId, MinDepth),
     evt({watcher, Watcher}),
     {ok, Watcher, Data#data{on_chain_id = OnChainId}}.
+
+initial_state(#data{create_tx = SignedTx,
+                    on_chain_id =>  ChanId } = D) ->
+    Tx = aetx_sign:tx(SignedTx),
+    {Mod, CTx} = aetx:specialize_type(Tx),
+    Initiator = Mod:initiator(CTx),
+    Responder = Mod:responder(CTx),
+    InitiatorAmount = Mod:initiator_amount(CTx),
+    ResponderAmount = Mod:responder_amount(CTx),
+    aesc_offchain_tx:new(#{ channel_id  => ChanId
+                          , initiator   => Initiator
+                          , responder   => Responder
+                          , initiator_amount => InitiatorAmount
+                          , responder_amount => ResponderAmount
+                          , state       => <<>>
+                          , sequence_number => 0 }).
+
 
 gproc_register(#data{role = Role, channel_id = ChanId}) ->
     gproc:reg(gproc_name(ChanId, Role)).

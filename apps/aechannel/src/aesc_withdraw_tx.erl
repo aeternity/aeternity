@@ -161,7 +161,7 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
 
 -spec for_client(tx()) -> map().
 for_client(#channel_withdraw_tx{channel_id   = ChannelId,
-                                to   = ToPubKey,
+                                to           = ToPubKey,
                                 amount       = Amount,
                                 ttl          = TTL,
                                 fee          = Fee,

@@ -121,7 +121,7 @@ accounts(#channel_deposit_tx{from = FromPubKey}) ->
 signers(#channel_deposit_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
-            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+            [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)];
         {error, not_found} ->
             []
     end.
