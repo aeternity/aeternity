@@ -139,27 +139,27 @@ apply_on_trees_without_sigs_check([SignedTx], Trees, Height) ->
 %%% Create tx
 %%%===================================================================
 
-create_tx_spec(InitiatorPubKey, ParticipantPubKey, State) ->
-    create_tx_spec(InitiatorPubKey, ParticipantPubKey, #{}, State).
+create_tx_spec(InitiatorPubKey, ResponderPubKey, State) ->
+    create_tx_spec(InitiatorPubKey, ResponderPubKey, #{}, State).
 
-create_tx_spec(InitiatorPubKey, ParticipantPubKey, Spec0, State) ->
+create_tx_spec(InitiatorPubKey, ResponderPubKey, Spec0, State) ->
     Spec = maps:merge(create_tx_default_spec(InitiatorPubKey, State), Spec0),
     #{initiator          => InitiatorPubKey,
       initiator_amount   => maps:get(initiator_amount, Spec),
-      participant        => ParticipantPubKey,
-      participant_amount => maps:get(participant_amount, Spec),
+      responder          => ResponderPubKey,
+      responder_amount   => maps:get(responder_amount, Spec),
       channel_reserve    => maps:get(channel_reserve, Spec),
       lock_period        => maps:get(lock_period, Spec),
-      channel_reserve    => maps:get(channel_reserve, Spec),
+      ttl                => maps:get(ttl, Spec),
       fee                => maps:get(fee, Spec),
       nonce              => maps:get(nonce, Spec)}.
 
 create_tx_default_spec(InitiatorPubKey, State) ->
     #{initiator_amount   => 50,
-      participant_amount => 50,
+      responder_amount   => 50,
       channel_reserve    => 20,
       lock_period        => 100,
-      channel_reserve    => 10,
+      ttl                => 100,
       fee                => 3,
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 

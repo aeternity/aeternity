@@ -10,7 +10,8 @@
 
 %% API
 -export([check_account/4,
-         check_account/5]).
+         check_account/5,
+         check_ttl/2]).
 
 %%%===================================================================
 %%% API
@@ -48,6 +49,12 @@ check_account(AccountPubKey, Trees, Height, Amount) ->
             {error, account_not_found}
     end.
 
+-spec check_ttl(non_neg_integer(), non_neg_integer()) -> ok | {error, ttl_expired}.
+check_ttl(TTL, Height) ->
+    case TTL >= Height of
+      true -> ok;
+      false -> {error, ttl_expired}
+    end.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
