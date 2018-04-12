@@ -37,7 +37,7 @@ ast_to_erlang({int, _, N}) -> N.
 encode_function(_Contract, Function) ->
      << <<X>> || X <- Function>>.
 
-%% TODO: Handle all ring data types.
+%% TODO: Handle all sophia data types.
 get_type(I) when is_integer(I) -> int;
 get_type(T) when is_tuple(T) ->
     ListOfTypes = [get_type(E) || E <- tuple_to_list(T)],
