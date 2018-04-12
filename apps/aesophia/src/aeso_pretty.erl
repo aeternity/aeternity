@@ -1,11 +1,11 @@
 %%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
-%%% @doc Pretty printer for Ring.
+%%% @doc Pretty printer for Sophia.
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
--module(aer_pretty).
+-module(aeso_pretty).
 
 -import(prettypr, [text/1, sep/1, above/2, beside/2, nest/2, empty/0]).
 
@@ -22,11 +22,11 @@
 
 %% -- Options ----------------------------------------------------------------
 
--define(aer_pretty_opts, aer_pretty_opts).
+-define(aeso_pretty_opts, aeso_pretty_opts).
 
 -spec options() -> options().
 options() ->
-    case get(?aer_pretty_opts) of
+    case get(?aeso_pretty_opts) of
         undefined -> [];
         Opts      -> Opts
     end.
@@ -43,9 +43,9 @@ indent() -> option(indent, 2).
 
 -spec with_options(options(), fun(() -> A)) -> A.
 with_options(Options, Fun) ->
-    put(?aer_pretty_opts, Options),
+    put(?aeso_pretty_opts, Options),
     Res = Fun(),
-    erase(?aer_pretty_opts),
+    erase(?aeso_pretty_opts),
     Res.
 
 %% -- Pretty printing helpers ------------------------------------------------
@@ -123,9 +123,9 @@ record(Ds) ->
 equals(A, B) -> follow(hsep(A, text("=")), B).
 
 %% typed(A, B) -> A : B.
--spec typed(doc(), aer_syntax:type()) -> doc().
+-spec typed(doc(), aeso_syntax:type()) -> doc().
 typed(A, Type) ->
-    case aer_syntax:get_ann(origin, Type) == system andalso
+    case aeso_syntax:get_ann(origin, Type) == system andalso
          not show_generated() of
         true  -> A;
         false -> follow(hsep(A, text(":")), type(Type))
@@ -133,18 +133,18 @@ typed(A, Type) ->
 
 %% -- Exports ----------------------------------------------------------------
 
--spec decls([aer_syntax:decl()], options()) -> doc().
+-spec decls([aeso_syntax:decl()], options()) -> doc().
 decls(Ds, Options) ->
     with_options(Options, fun() -> decls(Ds) end).
 
--spec decls([aer_syntax:decl()]) -> doc().
+-spec decls([aeso_syntax:decl()]) -> doc().
 decls(Ds) -> above([ decl(D) || D <- Ds ]).
 
--spec decl(aer_syntax:decl(), options()) -> doc().
+-spec decl(aeso_syntax:decl(), options()) -> doc().
 decl(D, Options) ->
     with_options(Options, fun() -> decl(D) end).
 
--spec decl(aer_syntax:decl()) -> doc().
+-spec decl(aeso_syntax:decl()) -> doc().
 decl({contract, _, C, Ds}) ->
     block(follow(text("contract"), hsep(name(C), text("="))), decls(Ds));
 decl({type_decl, _, T, []})   -> hsep(text("type"), name(T));
@@ -159,23 +159,23 @@ decl(D = {letfun, _, _, _, _, _}) -> letdecl("function", D);
 decl(D = {letval, _, _, _, _})    -> letdecl("let", D);
 decl(D = {letrec, _, _})          -> letdecl("let", D).
 
--spec expr(aer_syntax:expr(), options()) -> doc().
+-spec expr(aeso_syntax:expr(), options()) -> doc().
 expr(E, Options) ->
     with_options(Options, fun() -> expr(E) end).
 
--spec expr(aer_syntax:expr()) -> doc().
+-spec expr(aeso_syntax:expr()) -> doc().
 expr(E) -> expr_p(0, E).
 
 %% -- Not exported -----------------------------------------------------------
 
--spec name(aer_syntax:id() | aer_syntax:con() | aer_syntax:tvar()) -> doc().
+-spec name(aeso_syntax:id() | aeso_syntax:con() | aeso_syntax:tvar()) -> doc().
 name({id, _,   Name})  -> text(Name);
 name({con, _,  Name})  -> text(Name);
 name({qid, _,  Names}) -> text(string:join(Names, "."));
 name({qcon, _, Names}) -> text(string:join(Names, "."));
 name({tvar, _, Name})  -> text(Name).
 
--spec letdecl(string(), aer_syntax:letbind()) -> doc().
+-spec letdecl(string(), aeso_syntax:letbind()) -> doc().
 letdecl(Let, {letval, _, F, T, E}) ->
     block_expr(0, hsep([text(Let), typed(name(F), T), text("=")]), E);
 letdecl(Let, {letfun, _, F, Args, T, E}) ->
@@ -183,29 +183,29 @@ letdecl(Let, {letfun, _, F, Args, T, E}) ->
 letdecl(Let, {letrec, _, [D | Ds]}) ->
     hsep(text(Let), above([ letdecl("rec", D) | [ letdecl("and", D1) || D1 <- Ds ] ])).
 
--spec args([aer_syntax:arg()]) -> doc().
+-spec args([aeso_syntax:arg()]) -> doc().
 args(Args) ->
     tuple(lists:map(fun arg/1, Args)).
 
--spec arg(aer_syntax:arg()) -> doc().
+-spec arg(aeso_syntax:arg()) -> doc().
 arg({arg, _, X, T}) -> typed(name(X), T).
 
--spec typedef(aer_syntax:typedef()) -> doc().
+-spec typedef(aeso_syntax:typedef()) -> doc().
 typedef({alias_t, Type})           -> type(Type);
 typedef({record_t, Fields})        ->
     record(lists:map(fun field_t/1, Fields));
 typedef({variant_t, Constructors}) ->
     par(punctuate(text(" |"), lists:map(fun constructor_t/1, Constructors))).
 
--spec constructor_t(aer_syntax:constructor_t()) -> doc().
+-spec constructor_t(aeso_syntax:constructor_t()) -> doc().
 constructor_t({constr_t, _, C, []}) -> name(C);
 constructor_t({constr_t, _, C, Args}) -> beside(name(C), tuple_type(Args)).
 
--spec field_t(aer_syntax:field_t()) -> doc().
+-spec field_t(aeso_syntax:field_t()) -> doc().
 field_t({field_t, _, immutable, Name, Type}) ->
     typed(name(Name), Type).
 
--spec type(aer_syntax:type()) -> doc().
+-spec type(aeso_syntax:type()) -> doc().
 type({fun_t, _, Args, Ret}) ->
     follow(hsep(tuple_type(Args), text("=>")), type(Ret));
 type({app_t, _, Type, Args}) ->
@@ -215,15 +215,15 @@ type({tuple_t, _, Args}) ->
 type(T = {id, _, _})   -> name(T);
 type(T = {tvar, _, _}) -> name(T).
 
--spec tuple_type([aer_syntax:type()]) -> doc().
+-spec tuple_type([aeso_syntax:type()]) -> doc().
 tuple_type(Args) ->
     tuple(lists:map(fun type/1, Args)).
 
--spec expr_p(integer(), aer_syntax:expr()) -> doc().
+-spec expr_p(integer(), aeso_syntax:expr()) -> doc().
 expr_p(P, {lam, _, Args, E}) ->
     paren(P > 100, follow(hsep(args(Args), text("=>")), expr_p(100, E)));
 expr_p(P, If = {'if', Ann, Cond, Then, Else}) ->
-    Format   = aer_syntax:get_ann(format, If),
+    Format   = aeso_syntax:get_ann(format, If),
     if  Format == '?:' ->
             paren(P > 100,
                 follow(expr_p(200, Cond),
@@ -258,7 +258,7 @@ expr_p(P, {assign, _, LV, E}) ->
 expr_p(_, {app, _, {'..', _}, [A, B]}) ->
     list([infix(0, '..', A, B)]);
 expr_p(P, E = {app, _, F = {Op, _}, Args}) when is_atom(Op) ->
-    case {aer_syntax:get_ann(format, E), Args} of
+    case {aeso_syntax:get_ann(format, E), Args} of
         {infix, [A, B]} -> infix(P, Op, A, B);
         {prefix, [A]}   -> prefix(P, Op, A);
         _               -> app(P, F, Args)
@@ -267,7 +267,7 @@ expr_p(P, {app, _, F, Args}) ->
     app(P, F, Args);
 %% -- Constants
 expr_p(_, E = {int, _, N}) ->
-    S = case aer_syntax:get_ann(format, E) of
+    S = case aeso_syntax:get_ann(format, E) of
             hex -> "0x" ++ integer_to_list(N, 16);
             _   -> integer_to_list(N)
            end,
@@ -295,12 +295,12 @@ stmt_p({elif, _, Cond, Then}) ->
     block_expr(200, beside(text("elif"), paren(expr(Cond))), Then);
 stmt_p({else, Else}) ->
     HideGenerated = not show_generated(),
-    case aer_syntax:get_ann(origin, Else) of
+    case aeso_syntax:get_ann(origin, Else) of
         system when HideGenerated -> empty();
         _ -> block_expr(200, text("else"), Else)
     end.
 
--spec bin_prec(aer_syntax:bin_op()) -> {integer(), integer(), integer()}.
+-spec bin_prec(aeso_syntax:bin_op()) -> {integer(), integer(), integer()}.
 bin_prec('..')   -> {  0,   0,   0};  %% Always printed inside '[ ]'
 bin_prec('||')   -> {200, 300, 200};
 bin_prec('&&')   -> {300, 400, 300};
@@ -323,12 +323,12 @@ bin_prec('/')    -> {700, 700, 800};
 bin_prec(mod)    -> {700, 700, 800};
 bin_prec('band') -> {700, 700, 800}.
 
--spec un_prec(aer_syntax:un_op()) -> {integer(), integer()}.
+-spec un_prec(aeso_syntax:un_op()) -> {integer(), integer()}.
 un_prec('-')    -> {650, 650};
 un_prec('!')    -> {800, 800};
 un_prec('bnot') -> {800, 800}.
 
--spec infix(integer(), aer_syntax:bin_op(), aer_syntax:expr(), aer_syntax:expr()) -> doc().
+-spec infix(integer(), aeso_syntax:bin_op(), aeso_syntax:expr(), aeso_syntax:expr()) -> doc().
 infix(P, Op, A, B) ->
     {Top, L, R} = bin_prec(Op),
     paren(P > Top,
@@ -366,7 +366,7 @@ statement(E) -> expr(E).
 get_elifs(Expr) -> get_elifs(Expr, []).
 
 get_elifs(If = {'if', Ann, Cond, Then, Else}, Elifs) ->
-    case aer_syntax:get_ann(format, If) of
+    case aeso_syntax:get_ann(format, If) of
         elif -> get_elifs(Else, [{elif, Ann, Cond, Then} | Elifs]);
         _    -> {lists:reverse(Elifs), If}
     end;

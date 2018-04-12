@@ -21,14 +21,14 @@ all() ->
       execute_identity_fun_from_ring_file ].
 
 execute_identity_fun_from_ring_file(_Cfg) ->
-    CodeDir = code:lib_dir(aering, test),
-    FileName = filename:join(CodeDir, "contracts/identity.aer"),
+    CodeDir = code:lib_dir(aesophia, test),
+    FileName = filename:join(CodeDir, "contracts/identity.aes"),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    Code = aer_compiler:from_string(Contract, []),
+    Code = aeso_compiler:from_string(Contract, []),
 
     %% Create the call data
-    CallData = aer_abi:create_calldata(Code, "main", "42"),
+    CallData = aeso_abi:create_calldata(Code, "main", "42"),
 
     {ok, Res} =
         aevm_eeevm:eval(

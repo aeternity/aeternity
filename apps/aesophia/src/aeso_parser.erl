@@ -1,20 +1,20 @@
-%%% File        : aer_parser.erl
+%%% File        : aeso_parser.erl
 %%% Author      : Ulf Norell
 %%% Description :
 %%% Created     : 1 Mar 2018 by Ulf Norell
--module(aer_parser).
+-module(aeso_parser).
 
 -export([string/1]).
 
--include("aer_parse_lib.hrl").
+-include("aeso_parse_lib.hrl").
 
--spec string(string()) -> {ok, [aer_syntax:decl()]} | {error, {aer_parse_lib:pos(), atom(), term()}}.
+-spec string(string()) -> {ok, [aeso_syntax:decl()]} | {error, {aeso_parse_lib:pos(), atom(), term()}}.
 string(String) ->
   parse_and_scan(file(), String).
 
 parse_and_scan(P, S) ->
-  case aer_scan:scan(S) of
-    {ok, Tokens} -> aer_parse_lib:parse(P, Tokens);
+  case aeso_scan:scan(S) of
+    {ok, Tokens} -> aeso_parse_lib:parse(P, Tokens);
     Error        -> Error
   end.
 
@@ -254,9 +254,9 @@ bracket_list(P) -> brackets(comma_sep(P)).
 
 %% -- Annotations ------------------------------------------------------------
 
--type ann()      :: aer_syntax:ann().
--type ann_line() :: aer_syntax:ann_line().
--type ann_col()  :: aer_syntax:ann_col().
+-type ann()      :: aeso_syntax:ann().
+-type ann_line() :: aeso_syntax:ann_line().
+-type ann_col()  :: aeso_syntax:ann_col().
 
 -spec pos_ann(ann_line(), ann_col()) -> ann().
 pos_ann(Line, Col) -> [{line, Line}, {col, Col}].
@@ -340,7 +340,7 @@ tuple_e(Ann, Exprs)   -> {tuple, Ann, Exprs}.
 fun_domain({tuple_t, _, Args}) -> Args;
 fun_domain(T)                  -> [T].
 
--spec parse_pattern(aer_syntax:expr()) -> aer_parse_lib:parser(aer_syntax:pat()).
+-spec parse_pattern(aeso_syntax:expr()) -> aeso_parse_lib:parser(aeso_syntax:pat()).
 parse_pattern({app, Ann, Con = {'::', _}, Es}) ->
     {app, Ann, Con, lists:map(fun parse_pattern/1, Es)};
 parse_pattern({app, Ann, Con = {con, _, _}, Es}) ->
@@ -362,7 +362,7 @@ parse_pattern(E = {string, _, _}) -> E;
 parse_pattern(E = {char, _, _})   -> E;
 parse_pattern(E) -> bad_expr_err("Not a valid pattern", E).
 
--spec parse_field_pattern(aer_syntax:field(aer_syntax:expr())) -> aer_parse_lib:parser(aer_syntax:field(aer_syntax:pat())).
+-spec parse_field_pattern(aeso_syntax:field(aeso_syntax:expr())) -> aeso_parse_lib:parser(aeso_syntax:field(aeso_syntax:pat())).
 parse_field_pattern({field, Ann, F, E}) ->
     {field, Ann, F, parse_pattern(E)}.
 
@@ -373,9 +373,9 @@ return_error(Pos, Err) ->
 ret_doc_err(Ann, Doc) ->
     return_error(ann_pos(Ann), prettypr:format(Doc)).
 
--spec bad_expr_err(string(), aer_syntax:expr()) -> no_return().
+-spec bad_expr_err(string(), aeso_syntax:expr()) -> no_return().
 bad_expr_err(Reason, E) ->
   ret_doc_err(get_ann(E),
               prettypr:sep([prettypr:text(Reason ++ ":"),
-                            prettypr:nest(2, aer_pretty:expr(E))])).
+                            prettypr:nest(2, aeso_pretty:expr(E))])).
 
