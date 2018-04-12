@@ -132,7 +132,7 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
 
     Channel      = aesc_state_tree:get(ChannelId, ChannelsTree0),
     InitiatorPubKey = aesc_channels:initiator(Channel),
-    ParticipantPubKey = aesc_channels:participant(Channel),
+    ResponderPubKey = aesc_channels:responder(Channel),
 
     CFee = ceil(Fee / 2),
     FFee = floor(Fee / 2),
@@ -145,13 +145,13 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
     {ok, InitiatorAccount}    = aec_accounts:earn(InitiatorAccount0,
                                                   InitiatorAmount,
                                                   Height),
-    ParticipantAccount0       = aec_accounts_trees:get(ParticipantPubKey, AccountsTree0),
-    {ok, ParticipantAccount}  = aec_accounts:earn(ParticipantAccount0,
-                                                  ResponderAmount,
-                                                  Height),
+    ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
+    {ok, ResponderAccount}  = aec_accounts:earn(ResponderAccount0,
+                                                ResponderAmount,
+                                                Height),
 
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
-    AccountsTree2 = aec_accounts_trees:enter(ParticipantAccount, AccountsTree1),
+    AccountsTree2 = aec_accounts_trees:enter(ResponderAccount, AccountsTree1),
 
     ChannelsTree = aesc_state_tree:delete(aesc_channels:id(Channel), ChannelsTree0),
 
@@ -163,7 +163,7 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
 accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
-            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+            [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)];
         {error, not_found} -> []
     end.
 

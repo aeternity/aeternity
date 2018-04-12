@@ -55,6 +55,9 @@ encode_fields([], []) ->
 encode_fields(Template, Values) ->
     error({illegal_template_or_values, Template, Values}).
 
+encode_list_field(Field, Vals, Type) when is_tuple(Type) ->
+    Types = tuple_to_list(Type),
+    [encode_fixarray_field(Field, V, size(Type), Types) || V <- Vals];
 encode_list_field(Field, [Val|Left], Type) ->
     [encode_field(Field, Type, Val)|encode_list_field(Field, Left, Type)];
 encode_list_field(_Field, [],_Type) ->
@@ -67,6 +70,7 @@ encode_field(_Field, int, X) when is_integer(X), X >= 0 ->
 encode_field(_Field, binary, X) when is_binary(X) -> X;
 encode_field(_Field, bool, true) -> <<1:8>>;
 encode_field(_Field, bool, false) -> <<0:8>>;
+encode_field(_Field, [], []) -> [];
 encode_field(Field, Type, Val) -> error({illegal_field, Field, Type, Val}).
 
 decode_fields([{Field, [Type]}|TypesLeft],
@@ -82,6 +86,9 @@ decode_fields([], []) ->
 decode_fields(Template, Values) ->
     error({illegal_template_or_values, Template, Values}).
 
+decode_list_field(Field, Vals, Type) when is_tuple(Type) ->
+    Types = tuple_to_list(Type),
+    [decode_fixarray_field(Field, V, Types) || V <- Vals];
 decode_list_field(Field, [Val|Left], Type) ->
     [decode_field(Field, Type, Val)|decode_list_field(Field, Left, Type)];
 decode_list_field(_Field, [],_Type) ->
@@ -91,9 +98,32 @@ decode_field(Field, int, <<0:8, X/binary>> = B) when X =/= <<>> ->
     error({illegal, Field, B});
 decode_field(_Field, int, X) when is_binary(X) -> binary:decode_unsigned(X);
 decode_field(_Field, binary, X) when is_binary(X) -> X;
+decode_field(_Field, [Type|Ts], [H|T]) ->
+    [decode_field(_Field, Type, H) | decode_field(_Field, Ts, T)];
+decode_field(_Field, [], []) -> [];
 decode_field(_Field, bool, <<1:8>>) -> true;
 decode_field(_Field, bool, <<0:8>>) -> false;
 decode_field(Field, Type, X) -> error({illegal_field, Field, Type, X}).
+
+encode_fixarray_field(Field, Val, Sz, Types) when is_tuple(Val),
+                                                  size(Val) =:= Sz ->
+    encode_fixarray_field_elems(Field, tuple_to_list(Val), Types);
+encode_fixarray_field(Field, Type, _Sz, X) -> error({illegal_field, Field, Type, X}).
+
+encode_fixarray_field_elems(Field, [X|T], [Type|Ts]) ->
+    [encode_field(Field, Type, X) | encode_fixarray_field_elems(Field, T, Ts)];
+encode_fixarray_field_elems(_Field, [], []) ->
+    [].
+
+decode_fixarray_field(Field, V, Types) when is_list(V) ->
+    list_to_tuple(decode_fixarray_field_elems(Field, V, Types));
+decode_fixarray_field(Field, V, Types) ->
+    error({illegal_field, Field, list_to_tuple(Types), V}).
+
+decode_fixarray_field_elems(Field, [H|T], [Type|Ts]) ->
+    [decode_field(Field, Type, H) | decode_fixarray_field_elems(Field, T, Ts)];
+decode_fixarray_field_elems(_Field, [], []) ->
+    [].
 
 tag(account) -> 10;
 tag(signed_tx) -> 11;

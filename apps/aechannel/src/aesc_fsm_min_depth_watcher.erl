@@ -136,9 +136,9 @@ determine_depth_(Height, MinDepth) ->
 %%     case aetx:specialize_type(Tx) of
 %%         {channel_create_tx, CTx} ->
 %%             Initiator   = aesc_create_tx:initiator(CTx),
-%%             Participant = aesc_create_tx:participant(CTx),
+%%             Responder = aesc_create_tx:responder(CTx),
 %%             Nonce       = aesc_create_tx:nonce(CTx),
-%%             case aesc_channels:id(Initiator, Nonce, Participant) of
+%%             case aesc_channels:id(Initiator, Nonce, Responder) of
 %%                 ChanId -> true;
 %%                 _      -> has_chan_id(T, ChanId)
 %%             end;

@@ -31,17 +31,17 @@ check_active_channel_exists(ChannelId, StateTx, Trees) ->
         {value, Ch} ->
             case aesc_channels:is_active(Ch) of
                 true ->
-                    ChInitiatorPubKey   = aesc_channels:initiator(Ch),
-                    ChParticipantPubKey = aesc_channels:participant(Ch),
-                    ChTotalAmount       = aesc_channels:total_amount(Ch),
-                    SInitiatorPubKey    = aesc_offchain_tx:initiator(StateTx),
-                    SParticipantPubKey  = aesc_offchain_tx:participant(StateTx),
-                    SInitiatorAmount    = aesc_offchain_tx:initiator_amount(StateTx),
-                    SParticipantAmount  = aesc_offchain_tx:participant_amount(StateTx),
-                    STotalAmount        = SInitiatorAmount + SParticipantAmount,
-                    case {ChInitiatorPubKey   =:= SInitiatorPubKey,
-                          ChParticipantPubKey =:= SParticipantPubKey,
-                          ChTotalAmount =:= STotalAmount} of
+                    ChInitiatorPubKey = aesc_channels:initiator(Ch),
+                    ChResponderPubKey = aesc_channels:responder(Ch),
+                    ChTotalAmount     = aesc_channels:total_amount(Ch),
+                    SInitiatorPubKey  = aesc_offchain_tx:initiator(StateTx),
+                    SResponderPubKey  = aesc_offchain_tx:responder(StateTx),
+                    SInitiatorAmount  = aesc_offchain_tx:initiator_amount(StateTx),
+                    SResponderAmount  = aesc_offchain_tx:responder_amount(StateTx),
+                    STotalAmount      = SInitiatorAmount + SResponderAmount,
+                    case {ChInitiatorPubKey =:= SInitiatorPubKey,
+                          ChResponderPubKey =:= SResponderPubKey,
+                          ChTotalAmount     =:= STotalAmount} of
                         {true, true, true} -> ok;
                         {true, true, _   } -> {error, payload_amounts_change_channel_funds};
                         {_   , _   , _   } -> {error, wrong_channel_peers}

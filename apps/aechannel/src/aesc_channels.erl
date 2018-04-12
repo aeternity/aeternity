@@ -25,7 +25,7 @@
 -export([id/1,
          id/3,
          initiator/1,
-         participant/1,
+         responder/1,
          total_amount/1,
          initiator_amount/1,
          participant_amount/1,
@@ -44,7 +44,7 @@
 
 -record(channel, {id               :: id(),
                   initiator        :: pubkey(),
-                  participant      :: pubkey(),
+                  responder        :: pubkey(),
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
@@ -77,7 +77,7 @@
 close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
-               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
+               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
                sequence_number  = aesc_offchain_tx:sequence_number(State),
                closes_at        = ClosesAt,
                status           = solo_closing}.
@@ -93,7 +93,7 @@ deserialize(Bin) ->
      #{<<"vsn">>              := ?CHANNEL_VSN},
      #{<<"id">>               := Id},
      #{<<"initiator">>        := InitiatorPubKey},
-     #{<<"participant">>      := ParticipantPubKey},
+     #{<<"responder">>        := ResponderPubKey},
      #{<<"total_amount">>     := TotalAmount},
      #{<<"initiator_amount">> := InitiatorAmount},
      #{<<"channel_reserve">>  := ChannelReserve},
@@ -107,7 +107,7 @@ deserialize(Bin) ->
                end,
     #channel{id               = Id,
              initiator        = InitiatorPubKey,
-             participant      = ParticipantPubKey,
+             responder        = ResponderPubKey,
              total_amount     = TotalAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
@@ -129,10 +129,10 @@ is_solo_closing(#channel{status = Status, closes_at = ClosesAt}, Height) ->
     Status =:= solo_closing andalso ClosesAt > Height.
 
 -spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
-id(InitiatorPubKey, Nonce, ParticipantPubKey) ->
+id(InitiatorPubKey, Nonce, ResponderPubKey) ->
     Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
-            ParticipantPubKey:?PUB_SIZE/binary>>,
+            ResponderPubKey:?PUB_SIZE/binary>>,
     aec_hash:hash(pubkey, Bin).
 
 -spec new(aesc_create_tx:tx()) -> channel().
@@ -144,7 +144,7 @@ new(ChCTx) ->
     ResponderAmount = aesc_create_tx:responder_amount(ChCTx),
     #channel{id               = Id,
              initiator        = aesc_create_tx:initiator(ChCTx),
-             participant      = aesc_create_tx:responder(ChCTx),
+             responder        = aesc_create_tx:responder(ChCTx),
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
@@ -154,7 +154,7 @@ new(ChCTx) ->
 
 -spec peers(channel()) -> list(pubkey()).
 peers(#channel{} = Ch) ->
-    [initiator(Ch), participant(Ch)].
+    [initiator(Ch), responder(Ch)].
 
 -spec serialize(channel()) -> binary().
 serialize(#channel{} = Ch) ->
@@ -166,7 +166,7 @@ serialize(#channel{} = Ch) ->
                   #{<<"vsn">>              => ?CHANNEL_VSN},
                   #{<<"id">>               => id(Ch)},
                   #{<<"initiator">>        => initiator(Ch)},
-                  #{<<"participant">>      => participant(Ch)},
+                  #{<<"responder">>        => responder(Ch)},
                   #{<<"total_amount">>     => total_amount(Ch)},
                   #{<<"initiator_amount">> => initiator_amount(Ch)},
                   #{<<"channel_reserve">>  => channel_reserve(Ch)},
@@ -180,7 +180,7 @@ serialize(#channel{} = Ch) ->
 slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
-               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:participant_amount(State),
+               total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
                sequence_number  = aesc_offchain_tx:sequence_number(State),
                closes_at        = ClosesAt}.
 
@@ -204,9 +204,9 @@ id(#channel{id = Id}) ->
 initiator(#channel{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
--spec participant(channel()) -> pubkey().
-participant(#channel{participant = ParticipantPubKey}) ->
-    ParticipantPubKey.
+-spec responder(channel()) -> pubkey().
+responder(#channel{responder = ResponderPubKey}) ->
+    ResponderPubKey.
 
 -spec total_amount(channel()) -> amount().
 total_amount(#channel{total_amount = TotalAmount}) ->

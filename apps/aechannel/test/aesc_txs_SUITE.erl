@@ -84,7 +84,7 @@ create(Cfg) ->
     ChannelId = aesc_channels:id(PubKey1, 1, PubKey2),
     {value, Ch} = aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees2)),
     PubKey1 = aesc_channels:initiator(Ch),
-    PubKey2 = aesc_channels:participant(Ch),
+    PubKey2 = aesc_channels:responder(Ch),
     0       = aesc_channels:sequence_number(Ch),
     true    = aesc_channels:is_active(Ch),
     {PubKey1, PubKey2, ChannelId, S3}.
@@ -146,7 +146,7 @@ create_negative(Cfg) ->
     %% Test responder funds lower than channel reserve
     TxSpec7 = aesc_test_utils:create_tx_spec(PubKey1, PubKey2,
                                              #{responder_amount => 5,
-                                               channel_reserve => 8}, S2),
+                                               channel_reserve  => 8}, S2),
     {ok, Tx7} = aesc_create_tx:new(TxSpec7),
     {error, insufficient_responder_amount} =
         aetx:check(Tx7, Trees, Height),
