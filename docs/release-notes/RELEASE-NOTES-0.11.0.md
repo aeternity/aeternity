@@ -1,24 +1,21 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on support for hard forking.
 It:
 * Plants support for introducing backward incompatible changes to the consensus protocol (hard forking) without restarting the blockchain from genesis. This impacts the persisted DB;
-* Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not
-  able to talk to nodes running older versions;
+* Adds a consistent serialization of P2P messages, using RLP in favor of MsgPack. This means that 0.11.0-nodes are not able to talk to nodes running older versions;
 * Makes abilitation of HTTP API endpoints tagged as `debug` in the Swagger schema configurable;
 * Enables configuration of empty set of initial peers to contact;
-* Does this. This impacts consensus;
-* Does that. This impacts the persisted DB;
-* Does that;
-* Improves the stability of the testnet.
 * Add configuration (`sync` > `listen_address`) to select which IP the sync service will listen to.
 * Add configuration (`sync` > `external_port`) to support public sync port differing from the internal port.
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.11.0
 
-This release introduces backward incompatible changes in the chain format:
-* After upgrading your node, you will not have your previous balance (even if you keep your key pair);
+This release introduce a new consensus protocol version at height 3750 while the genesis block is unchanged from the previous release "v0.10.1", therefore:
+* Ensure you keep your account key pair: after upgrading your node, you shall have your previous balance as of approx. Thu 12 Apr 2018;
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.10.x".
+  * (Note for advanced users: this release *may* be able to start using a persisted blockchain produced by the previous release "v0.10.1" though this setup is not supported; this advanced information may be used for trustlessly seeding the lowest portion of a chain mined by the previous release into the peer-to-peer network of nodes running this release.)
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).

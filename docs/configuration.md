@@ -14,7 +14,7 @@ Please notice that, if your node is behind a firewall, you need to open a TCP po
 
 The following example configuration assumes that:
 * The listening TCP port on your public IP address is `3015`;
-* The listening TCP port on your node is the same - so `3115`.
+* The listening TCP port on your node is `3115`.
 
 ### Keys management
 
