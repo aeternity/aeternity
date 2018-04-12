@@ -6,7 +6,10 @@
 %%%=============================================================================
 -module(aec_peer_messages).
 
--export([serialize/2, serialize_response/2, deserialize/2]).
+-export([ deserialize/2
+        , serialize/2
+        , serialize_response/2
+        , tag/1]).
 
 -include("aec_peer_messages.hrl").
 
@@ -26,11 +29,11 @@
 
 serialize_response(Type, {ok, Object}) ->
     SerObj = serialize(Type, Object),
-    serialize(response, #{ result => <<"ok">>,
+    serialize(response, #{ result => true,
                            type   => tag(Type),
                            object => SerObj });
 serialize_response(Type, {error, Reason}) ->
-    serialize(response, #{ result => <<"error">>,
+    serialize(response, #{ result => false,
                            type   => tag(Type),
                            reason => to_binary(Reason) }).
 
@@ -99,7 +102,6 @@ deserialize(Type, Binary) ->
     try
         [VsnBin | Fields] = aeu_rlp:decode(Binary),
         [{vsn, Vsn}] = aec_serialization:decode_fields([{vsn, int}], [VsnBin]),
-        lager:debug("deserilaize ~p", [{rev_tag(Type), Vsn, Fields}]),
         deserialize(rev_tag(Type), Vsn, Fields)
     catch _:Reason ->
         {error, Reason}
@@ -207,9 +209,9 @@ deserialize(response, Vsn, RspFlds) when Vsn == ?RESPONSE_VSN ->
                                RspFlds),
     R = #{ result => Result, type => rev_tag(Type) },
     case Result of
-        <<"ok">> ->
+        true ->
             {response, Vsn, R#{ msg => deserialize(Type, Object) }};
-        <<"error">> ->
+        false ->
             {response, Vsn, R#{ reason => Reason }}
     end.
 
@@ -245,7 +247,7 @@ serialization_template(peer, ?PEER_VSN) ->
     , {port, int}
     , {pubkey, binary} ];
 serialization_template(response, ?RESPONSE_VSN) ->
-    [ {result, binary}
+    [ {result, bool}
     , {type, int}
     , {reason, binary}
     , {object, binary} ].

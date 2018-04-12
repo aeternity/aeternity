@@ -65,22 +65,22 @@ retry(PeerCon) ->
     gen_server:cast(PeerCon, retry).
 
 ping(PeerId) ->
-    call(PeerId, ping).
+    call(PeerId, {ping, []}).
 
 get_header_by_hash(PeerId, Hash) ->
-    call(PeerId, {get_header_by_hash, Hash}).
+    call(PeerId, {get_header_by_hash, [Hash]}).
 
 get_header_by_height(PeerId, Hash) ->
-    call(PeerId, {get_header_by_height, Hash}).
+    call(PeerId, {get_header_by_height, [Hash]}).
 
 get_n_successors(PeerId, Hash, N) ->
-    call(PeerId, {get_n_successors, Hash, N}).
+    call(PeerId, {get_n_successors, [Hash, N]}).
 
 get_block(PeerId, Hash) ->
-    call(PeerId, {get_block, Hash}).
+    call(PeerId, {get_block, [Hash]}).
 
 get_mempool(PeerId) ->
-    call(PeerId, get_mempool).
+    call(PeerId, {get_mempool, []}).
 
 send_tx(PeerId, Tx) ->
     cast(PeerId, {send_tx, Tx}).
@@ -125,19 +125,8 @@ init([Opts]) ->
     Genesis = aec_chain:genesis_hash(),
     {ok, Opts#{ version => Version, genesis => Genesis }, 0}.
 
-handle_call(ping, From, State) ->
-    send_ping(State, From, local_ping_obj(State));
-handle_call({get_header_by_hash, Hash}, From, State) ->
-    send_get_header_by_hash(State, From, Hash);
-handle_call({get_header_by_height, Hash}, From, State) ->
-    send_get_header_by_height(State, From, Hash);
-handle_call({get_n_successors, Hash, N}, From, State) ->
-    send_get_n_successors(State, From, Hash, N);
-handle_call({get_block, Hash}, From, State) ->
-    send_get_block(State, From, Hash);
-handle_call(get_mempool, From, State) ->
-    send_get_mempool(State, From).
-
+handle_call(Request, From, State) ->
+    handle_request(State, Request, From).
 
 handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
     Self = self(),
@@ -175,7 +164,7 @@ handle_cast({send_block, Hash}, State) ->
     send_send_block(State, Hash),
     {noreply, State};
 handle_cast(stop, State) ->
-    close_connection(State),
+    cleanup_connection(State),
     {stop, normal, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -192,7 +181,7 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
         Ref when NonRegAccept ->
             lager:info("Connecting peer never sent ping, stopping"),
             %% Consider blocking this peer
-            close_connection(S),
+            cleanup_connection(S),
             {stop, normal, S};
         _ ->
             lager:debug("Got stale first_ping_timeout", []),
@@ -219,7 +208,7 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 ok ->
                     {noreply, S#{ status => {connected, ESock} }};
                 {error, _} ->
-                    lager:debug("Dropping unnecessary connection to ", [maps:get(host, S)]),
+                    lager:debug("Dropping unnecessary connection to ~p", [maps:get(host, S)]),
                     enoise:close(ESock),
                     {stop, normal, S}
             end;
@@ -236,9 +225,9 @@ handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
     handle_fragment(S, N, M, Fragment);
 handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     case aec_peer_messages:deserialize(Type, Payload) of
-        {response, _Vsn, #{ result := <<"error">>, type := MsgType, reason := Reason }} ->
+        {response, _Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
             {noreply, handle_msg(S, MsgType, true, {error, Reason})};
-        {response, _Vsn, #{ result := <<"ok">>, type := MsgType, msg := Msg }} ->
+        {response, _Vsn, #{ result := true, type := MsgType, msg := Msg }} ->
             {noreply, handle_msg(S, MsgType, true, {ok, Msg})};
         {MsgType, _Vsn, Msg} ->
             {noreply, handle_msg(S, MsgType, false, {ok, Msg})};
@@ -261,7 +250,7 @@ terminate(normal, _State) ->
     ok;
 terminate(NonNormal, State) ->
     lager:info("Non-normal terminate, reason: ~p", [NonNormal]),
-    close_connection(State),
+    cleanup_connection(State),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -317,7 +306,7 @@ is_non_registered_accept(State) ->
     maps:get(role, State, no_role) == responder
         andalso maps:get(port, State, no_port) == no_port.
 
-close_connection(State) ->
+cleanup_connection(State) ->
     case maps:get(status, State, error) of
         {connected, ESock} -> enoise:close(ESock);
         _                  -> ok
@@ -325,7 +314,10 @@ close_connection(State) ->
     case maps:get(gen_tcp, State, undefined) of
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
         _                         -> ok
-    end.
+    end,
+    Reqs = maps:to_list(maps:get(requests, State, #{})),
+    [ gen_server:reply(From, {error, disconnected})
+      || {_Request, From} <- Reqs ].
 
 connect_fail(S) ->
     case aec_peers:connect_fail(peer_id(S), self()) of
@@ -345,7 +337,7 @@ handle_fragment(S = #{ fragments := Fragments }, N, _M, Fragment) when N == leng
     {noreply, S#{ fragments := [Fragment | Fragments] }};
 handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
     lager:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
-    close_connection(S),
+    cleanup_connection(S),
     connect_fail(maps:remove(fragments, S)).
 
 handle_msg(S, MsgType, IsResponse, Result) ->
@@ -377,6 +369,35 @@ handle_msg(S, MsgType, true, Request, {ok, {MsgType, _Vsn, Msg}}) ->
         header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
         block   -> handle_get_block_rsp(S, Request, Msg)
     end.
+
+handle_request(S, {Request, Args}, From) ->
+    case get_request(S, Request) of
+        none ->
+            handle_request(S, Request, Args, From);
+        {Request, _From} ->
+            {reply, {error, request_already_in_progress}, S}
+    end.
+
+
+handle_request(S = #{ status := error }, _Req, _Args, _From) ->
+    {reply, {error, disconnected}, S};
+handle_request(S, Request, Args, From) ->
+    ReqData = prepare_request_data(S, Request, Args),
+    send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData)),
+    {noreply, set_request(S, map_request(Request), From)}.
+
+prepare_request_data(S, ping, []) ->
+    ping_obj(local_ping_obj(S), [peer_id(S)]);
+prepare_request_data(_S, get_header_by_hash, [Hash]) ->
+    #{ hash => Hash };
+prepare_request_data(_S, get_header_by_height, [Height]) ->
+    #{ height => Height };
+prepare_request_data(_S, get_n_successors, [Hash, N]) ->
+    #{ hash => Hash, n => N };
+prepare_request_data(_S, get_block, [Hash]) ->
+    #{ hash => Hash };
+prepare_request_data(_S, get_mempool, []) ->
+    #{}.
 
 %% -- Ping message -----------------------------------------------------------
 
@@ -467,13 +488,6 @@ decode_remote_ping(#{ genesis_hash := GHash,
 decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
-send_ping(S = #{ status := error }, _From, _PingObj) ->
-    {reply, {error, disconnected}, S};
-send_ping(S = #{ status := {connected, _ESock} }, From, PingObj0) ->
-    PingObj = ping_obj(PingObj0, [peer_id(S)]),
-    send_msg(S, ?MSG_PING, aec_peer_messages:serialize(ping, PingObj)),
-    {noreply, set_request(S, ping, From)}.
-
 %% Encode hashes and get peers for PingObj
 ping_obj(PingObj, Exclude) ->
     #{share := Share} = PingObj,
@@ -499,13 +513,6 @@ local_ping_obj(#{ext_sync_port := Port}) ->
       port         => Port}.
 
 %% -- Get Header by Hash -----------------------------------------------------
-
-send_get_header_by_hash(S = #{ status := error }, _From, _Hash) ->
-    {reply, {error, disconnected}, S};
-send_get_header_by_hash(S = #{ status := {connected, _ESock} }, From, Hash) ->
-    Msg = aec_peer_messages:serialize(get_header_by_hash, #{ hash => Hash }),
-    send_msg(S, ?MSG_GET_HEADER_BY_HASH, Msg),
-    {noreply, set_request(S, get_header, From)}.
 
 handle_get_header_by_hash(S, Msg) ->
     Response = get_header(maps:get(hash, Msg, undefined)),
@@ -543,13 +550,6 @@ get_header(Fun, Arg) ->
 
 %% -- Get Header by Height -----------------------------------------------------
 
-send_get_header_by_height(S = #{ status := errr }, _From, _Hash) ->
-    {reply, {error, disconnected}, S};
-send_get_header_by_height(S = #{ status := {connected, _ESock} }, From, Height) ->
-    Msg = aec_peer_messages:serialize(get_header_by_height, #{ height => Height }),
-    send_msg(S, ?MSG_GET_HEADER_BY_HEIGHT, Msg),
-    {noreply, set_request(S, get_header, From)}.
-
 handle_get_header_by_height(S, Msg) ->
     Response = get_header(maps:get(height, Msg, undefined)),
     send_response(S, header, Response),
@@ -558,13 +558,6 @@ handle_get_header_by_height(S, Msg) ->
 %% Response is handled above in Get Header by Hash
 
 %% -- Get N Successors -------------------------------------------------------
-
-send_get_n_successors(S = #{ status := error }, _From, _Hash, _N) ->
-    {reply, {error, disconnected}, S};
-send_get_n_successors(S = #{ status := {connected, _ESock} }, From, Hash, N) ->
-    Msg = aec_peer_messages:serialize(get_n_successors, #{ hash => Hash, n => N }),
-    send_msg(S, ?MSG_GET_N_SUCCESSORS, Msg),
-    {noreply, set_request(S, get_n_successors, From)}.
 
 handle_get_n_successors(S, Msg) ->
     Response =
@@ -598,13 +591,6 @@ handle_header_hashes_rsp(S, {get_n_successors, From}, Msg) ->
 
 %% -- Get Block --------------------------------------------------------------
 
-send_get_block(S = #{ status := error }, _From, _Hash) ->
-    {reply, {error, disconnected}, S};
-send_get_block(S = #{ status := {connected, _ESock} }, From, Hash) ->
-    Msg = aec_peer_messages:serialize(get_block, #{ hash => Hash }),
-    send_msg(S, ?MSG_GET_BLOCK, Msg),
-    {noreply, set_request(S, get_block, From)}.
-
 handle_get_block(S, Msg) ->
     Response =
         case maps:get(hash, Msg, undefined) of
@@ -634,12 +620,6 @@ handle_get_block_rsp(S, {get_block, From}, Msg) ->
 
 %% -- Get Mempool --------------------------------------------------------------
 
-send_get_mempool(S = #{ status := error }, _From) ->
-    {reply, {error, disconnected}, S};
-send_get_mempool(S = #{ status := {connected, _ESock} }, From) ->
-    send_msg(S, ?MSG_GET_MEMPOOL, aec_peer_messages:serialize(get_mempool, #{})),
-    {noreply, set_request(S, get_mempool, From)}.
-
 handle_get_mempool(S, _MsgObj) ->
     {ok, Txs0} = aec_tx_pool:peek(infinity),
     Txs = [ aetx_sign:serialize_to_binary(T) || T <- Txs0 ],
@@ -663,7 +643,7 @@ send_send_block(#{ status := error }, _Block) ->
 send_send_block(S = #{ status := {connected, _ESock} }, Block) ->
     SerBlock = aec_blocks:serialize_to_binary(Block),
     Msg = aec_peer_messages:serialize(block, #{ block => SerBlock }),
-    send_msg(S, ?MSG_BLOCK, Msg).
+    send_msg(S, block, Msg).
 
 handle_new_block(S, Msg) ->
     try
@@ -684,7 +664,7 @@ send_send_tx(#{ status := error }, _Tx) ->
 send_send_tx(S = #{ status := {connected, _ESock} }, Tx) ->
     TxSerialized = aetx_sign:serialize_to_binary(Tx),
     Msg = aec_peer_messages:serialize(tx, #{ tx => TxSerialized }),
-    send_msg(S, ?MSG_TX, Msg).
+    send_msg(S, tx, Msg).
 
 handle_new_tx(S, Msg) ->
     try
@@ -699,11 +679,11 @@ handle_new_tx(S, Msg) ->
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
     lager:debug("Sending ~p - ~p", [Type, Msg]),
-    do_send(ESock, <<Type:16, Msg/binary>>).
+    do_send(ESock, <<(aec_peer_messages:tag(Type)):16, Msg/binary>>).
 
 send_response(S, Type, Response) ->
     Msg = aec_peer_messages:serialize_response(Type, Response),
-    send_msg(S, ?MSG_P2P_RESPONSE, Msg).
+    send_msg(S, response, Msg).
 
 %% If the message is more than 65533 bytes it won't fit in a single Noise
 %% message and we need to fragment it.
