@@ -168,8 +168,9 @@ handle_call({fetch_next, PeerId, HeightIn, HashIn, Result}, _, State) ->
                     %% We have all blocks, just insertion left
                     lager:info("Got all blocks insertion to be done from height ~p", [NewHeight]),
                     {reply, {insert, NewHeight, NewHash}, State#state{hash_pool = NewHashPool}};
-                PickAHash ->
-                    {PickH, PickHash} = lists:nth(rand:uniform(length(PickAHash)), PickAHash),
+                PickFromHashes ->
+                    Random = rand:uniform(length(PickFromHashes)),
+                    {PickH, PickHash} = lists:nth(Random, PickFromHashes),
                     lager:debug("Get block at height ~p", [PickH]),
                     {reply, {fetch, NewHeight, NewHash, PickHash}, State#state{hash_pool = NewHashPool}}
             end
@@ -291,9 +292,9 @@ update_chain_from_pool(AgreedHeight, AgreedHash, HashPool) ->
       {_, _, [], Rest, NAdded} when Rest =/= [] andalso NAdded < ?MAX_ADDS ->
          lager:error("Cannot split hash pool ~p at ~p: ~p", [Rest, AgreedHeight, AgreedHash]),
          %% This is weird, we cannot get our next block
-        {error, {stuck_at, AgreedHeight + 1}};
+         {error, {stuck_at, AgreedHeight + 1}};
       {NewAgreedHeight, NewAgreedHash, Same, Rest, _} ->
-        {ok, NewAgreedHeight, NewAgreedHash, Same ++ Rest}
+         {ok, NewAgreedHeight, NewAgreedHash, Same ++ Rest}
     end.
 
 split_hash_pool(Height, PrevHash, [{{H, _},_} | HashPool], Same, NAdded) when H < Height ->
@@ -390,16 +391,12 @@ do_start_sync(PeerId, RemoteHash) ->
             LocalHeader = aec_chain:top_header(),
             LocalHeight = aec_headers:height(LocalHeader),
             RemoteHeight = aec_headers:height(Hdr),
-            AgreedHeight =
-               case LocalHeight == 0 of
-                    true -> 0;
-                    false ->
-                      agree_on_height(PeerId, Hdr, RemoteHeight,
-                                      LocalHeader, LocalHeight, LocalHeight, 0)
-               end,
+            MinAgreedHash = aec_chain:genesis_hash(),
+            MaxAgree = min(LocalHeight, RemoteHeight),
+            {AgreedHeight, AgreedHash} =
+                agree_on_height(PeerId, Hdr, RemoteHeight,
+                                MaxAgree, MaxAgree, 0, MinAgreedHash),
             lager:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AgreedHeight]),
-            {ok, LocalAtHeight} = aec_chain:get_header_by_height(AgreedHeight),
-            {ok, AgreedHash} = aec_headers:hash_header(LocalAtHeight),
             %% The prev_hash of next block should be AgreedHash
             case new_header(PeerId, Hdr, AgreedHeight, AgreedHash) of
                 false ->
@@ -415,37 +412,43 @@ do_start_sync(PeerId, RemoteHash) ->
     end.
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
-agree_on_height(PeerId, RHeader, RH, LHeader, LH, Max, Min) when RH == LH ->
-    case RHeader == LHeader of
+%% We look for the block that is both on remote highest chain and in our local
+%% chain connected to genesis (may be on a fork, but that fork has now more
+%% difficulty than our highest chain (otherwise we would not sync).
+%%
+%% Invariant: AgreedHash is hash at height Min.
+agree_on_height(_PeerId, _RHeader, _RH, _LH, Min, Min, AgreedHash) ->
+    {Min, AgreedHash};
+agree_on_height(PeerId, RHeader, RH, CheckHeight, Max, Min, AgreedHash) when RH == CheckHeight ->
+    {ok, Hash} = aec_headers:hash_header(RHeader),
+    case aec_chain:hash_is_connected_to_genesis(Hash) of
         true ->
              %% We agree on a block
-             Middle = (Max + LH) div 2,
+             Middle = (Max + RH) div 2,
              case Min < Middle andalso Middle < Max of
                true ->
-                   {ok, LocalAtHeight} = aec_chain:get_header_by_height(Middle),
-                   agree_on_height(PeerId, RHeader, RH, LocalAtHeight, Middle, Max, LH);
+                   agree_on_height(PeerId, RHeader, RH, Middle, Max, RH, Hash);
                false ->
-                   LH
+                   {RH, Hash}
              end;
         false ->
              %% We disagree. Local on a fork compared to remote. Check half-way
-             Middle = (Min + LH) div 2,
+             Middle = (Min + RH) div 2,
              case Min < Middle andalso Middle < Max of
                  true ->
-                     {ok, LocalAtHeight} = aec_chain:get_header_by_height(Middle),
-                     agree_on_height(PeerId, RHeader, RH, LocalAtHeight, Middle, LH, Min);
-                false ->
-                    Min
+                     agree_on_height(PeerId, RHeader, RH, Middle, RH, Min, AgreedHash);
+                 false ->
+                     {Min, AgreedHash}
              end
     end;
-agree_on_height(PeerId, _, RH, LHeader, LH, Max, Min) when RH =/= LH ->
-    case aec_peer_connection:get_header_by_height(PeerId, LH) of
+agree_on_height(PeerId, _, RH, CheckHeight, Max, Min, AgreedHash) when RH =/= CheckHeight ->
+    case aec_peer_connection:get_header_by_height(PeerId, CheckHeight) of
          {ok, RemoteAtHeight} ->
              lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
-             agree_on_height(PeerId, RemoteAtHeight, LH, LHeader, LH, Max, Min);
+             agree_on_height(PeerId, RemoteAtHeight, CheckHeight, CheckHeight, Max, Min, AgreedHash);
          {error, Reason} ->
-             lager:debug("Fetching header ~p from ~p failed: ~p", [LH, ppp(PeerId), Reason]),
-             Min
+             lager:debug("Fetching header ~p from ~p failed: ~p", [CheckHeight, ppp(PeerId), Reason]),
+             {Min, AgreedHash}
     end.
 
 fill_pool(PeerId, AgreedHash) ->
