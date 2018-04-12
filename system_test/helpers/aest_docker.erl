@@ -56,6 +56,9 @@
     peers := [binary()],        % URLs of the peer nodes
     source := {pull, binary()}, % Source of the node image
     mine_rate => default | pos_integer(),
+    cuckoo_miner => default | #{ex := binary(),
+                                args := binary(),
+                                bits := pos_integer()},
     hard_forks => #{non_neg_integer() => non_neg_integer()} % Consensus protocols (version -> height)
 }.
 
@@ -178,6 +181,19 @@ setup_node(Spec, BackendState) ->
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     ct:log("PeerVars: ~p", [PeerVars]),
+    CuckooMinerVars =
+        case maps:find(cuckoo_miner, Spec) of
+            error -> #{};
+            {ok, CuckooMiner} ->
+                #{cuckoo_miner_present => [#{}],
+                  cuckoo_miner =>
+                      %% This may be improved upon.
+                      [#{executable => maps:get(ex, CuckooMiner),
+                         extra_args => maps:get(args, CuckooMiner),
+                         node_bits => maps:get(bits, CuckooMiner)
+                        }]}
+        end,
+    ct:log("CuckooMinerVars: ~p", [CuckooMinerVars]),
     HardForkVars =
         case maps:find(hard_forks, Spec) of
             error -> #{};
@@ -188,7 +204,7 @@ setup_node(Spec, BackendState) ->
                                 maps:to_list(HardForks))}
         end,
     ct:log("HardForkVars: ~p", [HardForkVars]),
-    RootVars = HardForkVars#{
+    RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
         peers => PeerVars,

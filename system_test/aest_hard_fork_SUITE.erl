@@ -16,6 +16,7 @@
 % Test cases
 -export([
          old_node_persisting_chain_and_not_mining_has_genesis_as_top/1,
+         new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow/1,
          restore_db_backup_on_old_node/1,
          old_node_can_receive_chain_from_other_old_node/1,
          restore_db_backup_with_short_chain_on_new_node/1,
@@ -40,6 +41,12 @@
        ).
 -define(HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(OldChainHeight),
         (- 3 + OldChainHeight)
+       ).
+
+-define(CUCKOO_MINER(N),
+        #{ex => list_to_binary("mean" ++ integer_to_list(N) ++ "s-generic"),
+          args => <<"-t 5">>,
+          bits => N}
        ).
 
 -define(OLD_NODE1, #{
@@ -94,6 +101,26 @@
           hard_forks => ?PROTOCOLS(H)
          }).
 
+-define(FAST_NEW_NODE1(H), #{
+          name    => fast_new_node1,
+          peers   => [],
+          backend => aest_docker,
+          source  => {pull, "aeternity/epoch:local"},
+          mine_rate => 1000,
+          cuckoo_miner => ?CUCKOO_MINER(16),
+          hard_forks => ?PROTOCOLS(H)
+         }).
+
+-define(FAST_NEW_NODE2(H), #{
+          name    => fast_new_node2,
+          peers   => [fast_new_node1],
+          backend => aest_docker,
+          source  => {pull, "aeternity/epoch:local"},
+          mine_rate => 1000,
+          cuckoo_miner => ?CUCKOO_MINER(16),
+          hard_forks => ?PROTOCOLS(H)
+         }).
+
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() ->
@@ -106,7 +133,8 @@ groups() ->
     [
      {assumptions,
       [
-       old_node_persisting_chain_and_not_mining_has_genesis_as_top
+       old_node_persisting_chain_and_not_mining_has_genesis_as_top,
+       new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow
       ]},
      {hard_fork,
       [sequence], %% Hard deps among tests/groups.
@@ -176,6 +204,8 @@ end_per_group(upgrade_flow_smoke_test, Config) ->
 
 init_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
     aest_nodes:ct_setup(Config);
+init_per_testcase(new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow, Config) ->
+    aest_nodes:ct_setup(Config);
 init_per_testcase(restore_db_backup_on_old_node, Config) ->
     aest_nodes:ct_setup(Config);
 init_per_testcase(old_node_can_receive_chain_from_other_old_node, Config) ->
@@ -187,6 +217,8 @@ init_per_testcase(new_node_can_mine_on_old_chain_using_old_protocol, Config) -> 
 init_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, Config) -> Config.
 
 end_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow, Config) ->
     aest_nodes:ct_cleanup(Config);
 end_per_testcase(restore_db_backup_on_old_node, Config) ->
     aest_nodes:ct_cleanup(Config);
@@ -206,6 +238,17 @@ old_node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
     #{height := 0} = get_block_by_height(old_node1, 0, Cfg),
     #{height := 0} = aest_nodes:get_top(old_node1, Cfg),
     aest_nodes:kill_node(old_node1, Cfg),
+    ok.
+
+new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow(Cfg) ->
+    aest_nodes:setup_nodes([?FAST_NEW_NODE1(25), ?FAST_NEW_NODE2(25)], Cfg),
+    start_node(fast_new_node1, Cfg),
+    run_erl_cmd_on_node(fast_new_node1, "aec_conductor:start_mining().", "ok", Cfg), %% It would be better to configure node to autostart mining in the first place.
+    wait_for_height_syncing(20, [fast_new_node1], {{45000, ms}, {5, blocks}}, Cfg),
+    start_node(fast_new_node2, Cfg),
+    #{hash := HashMined} = get_block_by_height(fast_new_node1, 20, Cfg),
+    wait_for_height_syncing(20, [fast_new_node2], {{45000, ms}, {5, blocks}}, Cfg),
+    ?assertEqual(HashMined, maps:get(hash, get_block_by_height(fast_new_node2, 20, Cfg))),
     ok.
 
 %% Old node can restore DB backup of testnet.

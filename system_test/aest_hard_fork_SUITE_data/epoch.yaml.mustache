@@ -35,4 +35,13 @@ chain:
 
 mining:
     autostart: false
+{{#cuckoo_miner_present}}
+    cuckoo:
+        miner:
+{{/cuckoo_miner_present}}
+{{#cuckoo_miner}}
+            executable: {{executable}}
+            extra_args: {{extra_args}}
+            node_bits: {{node_bits}}
+{{/cuckoo_miner}}
 {{/epoch_config}}
