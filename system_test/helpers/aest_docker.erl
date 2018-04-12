@@ -323,6 +323,8 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
     NodeState.
 
+%% This is meant to be changed or removed once `aest_docker_api:exec`
+%% supports stdout.
 run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
     log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
     Cmd1 = lists:flatten(io_lib:format("docker exec ~s ~s", [ID, lists:join($ , Cmd)])),
