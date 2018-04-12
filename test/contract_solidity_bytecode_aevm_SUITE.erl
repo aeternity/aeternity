@@ -149,7 +149,6 @@ id_bytecode() ->
 %% Helper Functions
 %% ------------------------------------------------------------------------
 
-
 %%%===================================================================
 %%% Keys TODO: Should move
 %%%===================================================================
@@ -276,3 +275,4 @@ mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
                     (App, Key, Def) ->
                        meck:passthrough([App, Key, Def])
                end).
+
