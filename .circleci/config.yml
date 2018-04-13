@@ -425,6 +425,15 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - test:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+
       - eunit:
           requires:
             - build
