@@ -147,21 +147,21 @@ jobs:
           paths:
             - .cache/rebar3
 
-  test:
-    <<: *container_config
-    steps:
-      - checkout
-      - *restore_rebar_cache
-      - *restore_build_cache
-      - run:
-          name: Test
-          command: |
-            epmd -daemon
-            make test
-      - store_test_results:
-          path: _build/test/logs
-      - store_artifacts:
-          path: _build/test/logs
+#  test:
+#    <<: *container_config
+#    steps:
+#      - checkout
+#      - *restore_rebar_cache
+#      - *restore_build_cache
+#      - run:
+#          name: Test
+#          command: |
+#            epmd -daemon
+#            make test
+#      - store_test_results:
+#          path: _build/test/logs
+#      - store_artifacts:
+#          path: _build/test/logs
 
   eunit:
     <<: *container_config
@@ -425,16 +425,16 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - test:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-            tags:
-              only: /^v.*$/
+#      - test:
+#          requires:
+#            - build
+#          filters:
+#            branches:
+#              ignore:
+#                - env/dev1
+#                - env/dev2
+#            tags:
+#              only: /^v.*$/
 
       - eunit:
           requires:
