@@ -193,7 +193,7 @@ deserialize_from_binary(Bin) ->
             Err
     end.
 
-serialization_template(Vsn) when Vsn >= 9 andalso Vsn =< ?PROTOCOL_VERSION ->
+serialization_template(Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
     {ok, [{header, binary}, {txs, [binary]}]};
 serialization_template(Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
