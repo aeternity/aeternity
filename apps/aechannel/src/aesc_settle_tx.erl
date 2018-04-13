@@ -232,17 +232,17 @@ check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, T
         {value, Channel} ->
             Checks =
                 [fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
+                 fun() -> check_solo_closed(Channel, Height) end,
                  %% check total amount
                  fun() -> aesc_utils:check_are_funds_in_channel(ChannelId,
                                 InitiatorAmount + ResponderAmount, Trees) end,
                  %% check individual amounts are what is expected
-                 fun() -> check_peer_amount(Channel, pInitiatorAmount,
+                 fun() -> check_peer_amount(Channel, InitiatorAmount,
                                             fun aesc_channels:initiator_amount/1)
                  end,
                  fun() -> check_peer_amount(Channel, ResponderAmount,
                                             fun aesc_channels:participant_amount/1)
-                 end,
-                 fun() -> check_solo_closed(Channel, Height) end],
+                 end],
             aeu_validation:run(Checks)
     end.
 

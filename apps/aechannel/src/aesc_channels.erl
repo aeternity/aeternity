@@ -30,7 +30,8 @@
          initiator_amount/1,
          participant_amount/1,
          channel_reserve/1,
-         sequence_number/1]).
+         sequence_number/1,
+         closes_at/1]).
 
 %%%===================================================================
 %%% Types

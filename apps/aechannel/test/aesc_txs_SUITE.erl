@@ -23,7 +23,9 @@
          deposit/1,
          deposit_negative/1,
          withdraw/1,
-         withdraw_negative/1]).
+         withdraw_negative/1,
+         settle/1,
+         settle_negative/1]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -48,7 +50,9 @@ groups() ->
        slash_negative,
        deposit,
        deposit_negative,
-       withdraw]
+       withdraw,
+       settle,
+       settle_negative]
      }
     ].
 
@@ -173,7 +177,7 @@ close_solo(Cfg) ->
     Ch = aesc_test_utils:get_channel(ChannelId, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
 
-    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    InitiatorEndBalance = rand:uniform(ChannelAmount),
     ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
     %% Create close_solo tx and apply it on state trees
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
@@ -183,7 +187,7 @@ close_solo(Cfg) ->
     Test =
         fun(From, FromPrivKey) ->
             TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                                    #{fee    => Fee}, S),
+                                                    #{fee => Fee}, S),
             {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
             SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
@@ -198,7 +202,9 @@ close_solo(Cfg) ->
                 false ->
                     Acc1Balance1 = Acc1Balance0,
                     Acc2Balance1 = Acc2Balance0 - Fee
-            end
+            end,
+            ClosedCh = aesc_test_utils:get_channel(ChannelId, S1),
+            false = aesc_channels:is_active(ClosedCh)
         end,
     Test(PubKey1, PrivKey1),
     Test(PubKey2, PrivKey2),
@@ -216,7 +222,7 @@ close_solo_negative(Cfg) ->
     Ch = aesc_test_utils:get_channel(ChannelId, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
 
-    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
     ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     participant_amount => ParticipantEndBalance},
@@ -373,6 +379,7 @@ close_mutual(Cfg) ->
             {_, {_, _, _, Acc1Balance1, _}, {_, _, _, Acc2Balance1, _}} =
              {Fee,  {Acc1Balance0, IAmt0, IAmt, Acc1Balance0 + IAmt, Acc1Balance1},
                     {Acc2Balance0, PAmt0, PAmt, Acc2Balance0 + PAmt, Acc2Balance1}},
+            none = aesc_test_utils:lookup_channel(ChannelId, S1),
             {IAmt, PAmt}
         end,
     100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
@@ -699,7 +706,7 @@ slash(Cfg) ->
     {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
 
-    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    InitiatorEndBalance = rand:uniform(ChannelAmount),
     ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
     %% Create close_solo tx and apply it on state trees
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
@@ -749,7 +756,7 @@ slash_negative(Cfg) ->
     Ch = aesc_test_utils:get_channel(ChannelId, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
 
-    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
     ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     participant_amount => ParticipantEndBalance},
@@ -867,3 +874,145 @@ slash_negative(Cfg) ->
                 aetx:check(TxPayload2, Trees2, Height + 2),
     ok.
 
+%%%===================================================================
+%%% Settle
+%%%===================================================================
+
+settle(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
+
+    %% Get channel and account funds
+
+    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S0),
+    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
+
+
+    100 = ChannelAmount = aesc_channels:total_amount(Ch0),
+    %% Create close_mutual tx and apply it on state trees
+    Test =
+        fun(From, IAmt, PAmt, Fee) ->
+            Ch = aesc_test_utils:close_solo(Ch0, #{initiator_amount => IAmt,
+                                                   participant_amount => PAmt}),
+            ClosesAt = aesc_channels:closes_at(Ch),
+            ChannelAmount = IAmt + PAmt, %% assert
+
+            S = aesc_test_utils:set_channel(Ch, S0),
+            Trees = aens_test_utils:trees(S),
+
+            TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, From,
+                                                    #{initiator_amount => IAmt,
+                                                      responder_amount => PAmt,
+                                                      ttl => 1001,
+                                                      fee    => Fee}, S),
+            {ok, Tx} = aesc_settle_tx:new(TxSpec),
+            SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
+            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                        [SignedTx], Trees, ClosesAt),
+            S1 = aesc_test_utils:set_trees(Trees1, S),
+
+            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
+            {IFee, PFee} =
+                case From of
+                    PubKey1 -> {Fee, 0};
+                    PubKey2 -> {0, Fee}
+                end,
+            % ensure balances are updated
+            {_, {_, _, _, Acc1Balance1, _}, {_, _, _, Acc2Balance1, _}} =
+             {Fee,  {Acc1Balance0, IFee, IAmt, Acc1Balance0 + IAmt - IFee, Acc1Balance1},
+                    {Acc2Balance0, PFee, PAmt, Acc2Balance0 + PAmt - PFee, Acc2Balance1}},
+            none = aesc_test_utils:lookup_channel(ChannelId, S1),
+            {IAmt, PAmt}
+        end,
+    100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
+    lists:foreach(
+        fun(From) ->
+            Fee = 10,
+            % normal cases
+            {50, 50} = Test(From, 50, ChannelAmount - 50, Fee),
+            {20, 80} = Test(From, 20, ChannelAmount - 20, Fee)
+        end,
+        [PubKey1, PubKey2]),
+    ok.
+
+settle_negative(Cfg) ->
+    {PubKey1, _PubKey2, ChannelId, S0} = create(Cfg),
+    Trees0 = aesc_test_utils:trees(S0),
+    Height = 2,
+
+    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
+    100 = ChannelAmount = aesc_channels:total_amount(Ch0),
+
+    %% Test not closed at all 
+    TxSpec0 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+                                        #{initiator_amount => ChannelAmount,
+                                          responder_amount => 0}, S0),
+    {ok, Tx0} = aesc_settle_tx:new(TxSpec0),
+    {error, channel_not_closed} =
+        aetx:check(Tx0, Trees0, Height),
+
+    %% Test not closed yet 
+    Ch = aesc_test_utils:close_solo(Ch0, #{initiator_amount => ChannelAmount,
+                                           participant_amount => 0}),
+    ClosesAt = aesc_channels:closes_at(Ch),
+    S   = aesc_test_utils:set_channel(Ch, S0),
+    ChannelAmount = aesc_channels:total_amount(Ch),
+    TxSpec = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+                                            #{initiator_amount => ChannelAmount,
+                                              responder_amount => 0,
+                                              ttl => ClosesAt + 1}, S),
+    Trees = aesc_test_utils:trees(S),
+    {ok, Tx} = aesc_settle_tx:new(TxSpec),
+    {error, channel_not_closed} =
+        aetx:check(Tx, Trees, ClosesAt - 1),
+
+    %% Test bad from account key
+    BadPubKey = <<42:65/unit:8>>,
+    TxSpec1 = aesc_test_utils:settle_tx_spec(ChannelId, BadPubKey,
+                                                   #{nonce => 2,
+                                                    ttl => ClosesAt + 1}, S),
+    {ok, Tx1} = aesc_settle_tx:new(TxSpec1),
+    {error, account_not_found} =
+        aetx:check(Tx1, Trees, ClosesAt),
+
+    %% Test insufficient different tokens distribution than in channel
+    TxSpec2 = aesc_test_utils:settle_tx_spec(
+                ChannelId, PubKey1,
+                #{initiator_amount => 1,
+                  responder_amount => ChannelAmount - 1,
+                  ttl    => ClosesAt + 1,
+                  fee    => 2}, S),
+    {ok, Tx2} = aesc_settle_tx:new(TxSpec2),
+    {error, wrong_amt} =
+        aetx:check(Tx2, Trees, ClosesAt),
+
+    %% Test too high from account nonce
+    TxSpec3 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+                                                   #{nonce => 0}, S),
+    {ok, Tx3} = aesc_settle_tx:new(TxSpec3),
+    {error, account_nonce_too_high} =
+        aetx:check(Tx3, Trees, ClosesAt),
+
+    %% Test channel does not exist
+    TxSpec4 = aesc_test_utils:settle_tx_spec(<<"abcdefghi">>, PubKey1,
+                                             #{ttl => ClosesAt}, S),
+    {ok, Tx4} = aesc_settle_tx:new(TxSpec4),
+    {error, channel_does_not_exist} =
+        aetx:check(Tx4, Trees, ClosesAt),
+
+    %% Test only one settle 
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
+    SignedTx = aetx_sign:sign(Tx, [PrivKey1]),
+    {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                [SignedTx], Trees, ClosesAt),
+    S5 = aesc_test_utils:set_trees(Trees1, S),
+
+    TxSpec5 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+                                      #{initiator_amount => ChannelAmount,
+                                        ttl => ClosesAt + 2,
+                                        responder_amount => 0}, S5),
+    {ok, Tx5} = aesc_close_mutual_tx:new(TxSpec5),
+    {error, channel_does_not_exist} =
+        aetx:check(Tx5, Trees1, ClosesAt + 2),
+  ok.

@@ -18,7 +18,9 @@
          setup_new_account/1]).
 
 -export([close_solo/1,
+         close_solo/2,
          get_channel/2,
+         lookup_channel/2,
          set_channel/2]).
 
 -export([apply_on_trees_without_sigs_check/3]).
@@ -41,7 +43,10 @@
          deposit_tx_spec/4,
 
          withdraw_tx_spec/3,
-         withdraw_tx_spec/4]).
+         withdraw_tx_spec/4,
+        
+         settle_tx_spec/3,
+         settle_tx_spec/4]).
 
 -include_lib("apps/aechannel/include/channel_txs.hrl").
 
@@ -122,14 +127,21 @@ set_account(Account, State) ->
 %%%===================================================================
 
 close_solo(Ch) ->
+    close_solo(Ch, #{}).
+
+close_solo(Ch, Params) ->
     DummyStateTx = state_tx(aesc_channels:id(Ch),
                             aesc_channels:initiator(Ch),
-                            aesc_channels:participant(Ch)),
+                            aesc_channels:participant(Ch),
+                            Params),
     {_Type, Tx} = aetx:specialize_type(DummyStateTx),
     aesc_channels:close_solo(Ch, Tx, 11).
 
 get_channel(ChannelId, State) ->
     aesc_state_tree:get(ChannelId, aec_trees:channels(trees(State))).
+
+lookup_channel(ChannelId, State) ->
+    aesc_state_tree:lookup(ChannelId, aec_trees:channels(trees(State))).
 
 set_channel(Channel, State) ->
     Trees  = trees(State),
@@ -279,6 +291,30 @@ slash_tx_default_spec(FromPubKey, State) ->
     #{ttl     => 100,
       fee     => 3,
       nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Settle tx
+%%%===================================================================
+
+settle_tx_spec(ChannelId, FromPubKey, State) ->
+    settle_tx_spec(ChannelId, FromPubKey, #{}, State).
+
+settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
+    Spec = maps:merge(settle_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id        => ChannelId,
+      from              => FromPubKey,
+      initiator_amount  => maps:get(initiator_amount, Spec),
+      responder_amount  => maps:get(responder_amount, Spec),
+      ttl               => maps:get(ttl, Spec),
+      fee               => maps:get(fee, Spec),
+      nonce             => maps:get(nonce, Spec)}.
+
+settle_tx_default_spec(FromPubKey, State) ->
+    #{initiator_amount => 10,
+      responder_amount => 10,
+      ttl              => 100,
+      fee              => 3,
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 
 state_tx(ChannelId, Initiator, Participant) ->
