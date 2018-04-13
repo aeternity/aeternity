@@ -27,6 +27,8 @@
                         , read_tx_encoding_param/1
                         , parse_filter_param/2
                         , read_optional_param/3
+                        , get_block/3
+                        , get_block/4
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -45,7 +47,20 @@ handle_request('GetTop', _, _Context) ->
     EncodedHeader = aehttp_api_parser:encode(header, TopHeader),
     {200, [], maps:put(<<"hash">>, EncodedHash, EncodedHeader)};
 
+handle_request('GetBlockGenesis', Req, _Context) ->
+    get_block(fun aehttp_logic:get_block_genesis/0, Req, json);
+
+handle_request('GetBlockLatest', Req, _Context) ->
+    get_block(fun aehttp_logic:get_block_latest/0, Req, json);
+
+handle_request('GetBlockPending', Req, _Context) ->
+    get_block(fun aehttp_logic:get_block_pending/0, Req, json, false);
+
 handle_request('GetBlockByHeight', Req, _Context) ->
+    Height = maps:get('height', Req),
+    get_block(fun() -> aehttp_logic:get_block_by_height(Height) end, Req, json);
+
+handle_request('GetBlockByHeightDeprecated', Req, _Context) ->
     Height = maps:get('height', Req),
     case aehttp_logic:get_block_by_height(Height) of
         {ok, Block} ->
@@ -56,7 +71,15 @@ handle_request('GetBlockByHeight', Req, _Context) ->
             {404, [], #{reason => <<"Chain too short">>}}
     end;
 
-handle_request('GetBlockByHash' = _Method, Req, _Context) ->
+handle_request('GetBlockByHash', Req, _Context) ->
+    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req, json)
+    end;
+
+handle_request('GetBlockByHashDeprecated' = _Method, Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}};

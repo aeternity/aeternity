@@ -3,7 +3,12 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [read_tx_encoding_param/1, parse_filter_param/2]).
+-import(aehttp_helpers, [ read_tx_encoding_param/1
+                        , parse_filter_param/2
+                        , get_block/2
+                        , get_block/3
+                        , get_block_from_chain/1
+                        ]).
 
 -spec handle_request(
         OperationID :: atom(),
@@ -256,27 +261,6 @@ handle_request('GetBlockNumber', _Req, _Context) ->
     {ok, Height} = aehttp_logic:get_top_height(),
     {200, [], #{height => Height}};
 
-handle_request('GetBlockByHeightInternal', Req, _Context) ->
-    Height = maps:get('height', Req),
-    get_block(fun() -> aehttp_logic:get_block_by_height(Height) end, Req);
-
-handle_request('GetBlockByHashInternal', Req, _Context) ->
-    case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            get_block(fun() -> aehttp_logic:get_block_by_hash(Hash) end, Req)
-    end;
-
-handle_request('GetBlockGenesis', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_genesis/0, Req);
-
-handle_request('GetBlockLatest', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_latest/0, Req);
-
-handle_request('GetBlockPending', Req, _Context) ->
-    get_block(fun aehttp_logic:get_block_pending/0, Req, false);
-
 handle_request('GetBlockTxsCountByHash', Req, _Context) ->
     case aec_base58c:safe_decode(block_hash, maps:get('hash', Req)) of
         {error, _} ->
@@ -366,43 +350,6 @@ handle_request(OperationID, Req, Context) ->
     {501, [], #{}}.
 
 %% Internals
-get_block(Fun, Req) ->
-    get_block(Fun, Req, true).
-
-get_block(Fun, Req, AddHash) when is_function(Fun, 0) ->
-    case get_block_from_chain(Fun) of
-        {ok, Block} ->
-            case read_tx_encoding_param(Req) of
-                {error, Err} ->
-                    Err;
-                {ok, TxEncoding} ->
-                    DataSchema =
-                        case TxEncoding of
-                            message_pack ->
-                                <<"BlockWithMsgPackTxs">>;
-                            json ->
-                                <<"BlockWithJSONTxs">>
-                        end,
-                    Resp0 = aehttp_logic:cleanup_genesis(
-                        aehttp_api_parser:encode_client_readable_block(Block, TxEncoding)),
-                    % we add swagger's definition name to the object so the
-                    % result could be validated against the schema
-                    Resp1 = Resp0#{data_schema => DataSchema},
-                    Resp =
-                        case AddHash of
-                            true ->
-                                {ok, Hash} = aec_blocks:hash_internal_representation(Block),
-                                Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
-                            false ->
-                                Resp1
-                        end,
-                    lager:debug("Resp = ~p", [pp(Resp)]),
-                    {200, [], Resp}
-              end;
-        {_Code, _, _Reason} = Err ->
-            Err
-    end.
-
 get_block_txs_count(Fun, Req) when is_function(Fun, 0) ->
     case get_block_from_chain(Fun) of
         {ok, Block} ->
@@ -467,26 +414,6 @@ get_block_tx_by_index(Fun, Index, Req) when is_function(Fun, 0) ->
             Err
     end.
 
-
--spec get_block_from_chain(fun(() -> {ok, aec_blocks:block()} | error | {error, atom()}))
-    -> {ok, aec_blocks:block()}| {404, [], map()}.
-get_block_from_chain(Fun) when is_function(Fun, 0) ->
-    case Fun() of
-        {ok, _Block} = OK ->
-            OK;
-        error ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, no_top_header} ->
-            {404, [], #{reason => <<"No top header">>}};
-        {error, block_not_found} ->
-            {404, [], #{reason => <<"Block not found">>}};
-        {error, chain_too_short} ->
-            {404, [], #{reason => <<"Chain too short">>}};
-        {error, miner_starting} ->
-            {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
-        {error, not_mining} ->
-            {404, [], #{reason => <<"Not mining, no pending block">>}}
-    end.
 
 get_block_range(GetFun, Req) when is_function(GetFun, 0) ->
     case read_tx_encoding_param(Req) of

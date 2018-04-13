@@ -20,6 +20,10 @@
         , read_tx_encoding_param/1
         , read_optional_param/3
         , parse_filter_param/2
+        , get_block/2
+        , get_block/3
+        , get_block/4
+        , get_block_from_chain/1
         ]).
 
 -export([ get_transaction/2
@@ -28,6 +32,8 @@
 
 -export([ ok_response/1
         , unsigned_tx_response/1]).
+
+-import(aeu_debug, [pp/1]).
 
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
@@ -361,7 +367,13 @@ encode_transaction(TxKey, TxEncodingKey, EncodedTxKey) ->
 -spec read_tx_encoding_param(map()) -> {ok, json | message_pack} |
                                        {error, {integer(), list(), map()}}.
 read_tx_encoding_param(Req) ->
-    case read_optional_enum_param(tx_encoding, Req, message_pack,
+    read_tx_encoding_param(Req, message_pack).
+
+-spec read_tx_encoding_param(map(), DefaultEncoding :: json | message_pack) ->
+                                    {ok, json | message_pack} |
+                                    {error, {integer(), list(), map()}}.
+read_tx_encoding_param(Req, DefaultEncoding) ->
+    case read_optional_enum_param(tx_encoding, Req, DefaultEncoding,
                                   [message_pack, json]) of
         {error, unexpected_value} ->
             {error, {404, [], #{reason => <<"Unsupported transaction encoding">>}}};
@@ -403,4 +415,64 @@ parse_filter_param(ParamName, Req) when is_atom(ParamName) ->
             end;
         true ->
             {ok, []}
+    end.
+
+-spec get_block_from_chain(fun(() -> {ok, aec_blocks:block()} | error | {error, atom()}))
+    -> {ok, aec_blocks:block()}| {404, [], map()}.
+get_block_from_chain(Fun) when is_function(Fun, 0) ->
+    case Fun() of
+        {ok, _Block} = OK ->
+            OK;
+        error ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, no_top_header} ->
+            {404, [], #{reason => <<"No top header">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {error, chain_too_short} ->
+            {404, [], #{reason => <<"Chain too short">>}};
+        {error, miner_starting} ->
+            {404, [], #{reason => <<"Starting mining, pending block not available yet">>}};
+        {error, not_mining} ->
+            {404, [], #{reason => <<"Not mining, no pending block">>}}
+    end.
+
+get_block(Fun, Req) ->
+    get_block(Fun, Req, message_pack, true).
+
+get_block(Fun, Req, DefaultEncoding) ->
+    get_block(Fun, Req, DefaultEncoding, true).
+
+get_block(Fun, Req, DefaultEncoding, AddHash) when is_function(Fun, 0) ->
+    case get_block_from_chain(Fun) of
+        {ok, Block} ->
+            case read_tx_encoding_param(Req, DefaultEncoding) of
+                {error, Err} ->
+                    Err;
+                {ok, TxEncoding} ->
+                    DataSchema =
+                        case TxEncoding of
+                            message_pack ->
+                                <<"BlockWithMsgPackTxs">>;
+                            json ->
+                                <<"BlockWithJSONTxs">>
+                        end,
+                    Resp0 = aehttp_logic:cleanup_genesis(
+                        aehttp_api_parser:encode_client_readable_block(Block, TxEncoding)),
+                    % we add swagger's definition name to the object so the
+                    % result could be validated against the schema
+                    Resp1 = Resp0#{data_schema => DataSchema},
+                    Resp =
+                        case AddHash of
+                            true ->
+                                {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+                                Resp1#{hash => aec_base58c:encode(block_hash, Hash)};
+                            false ->
+                                Resp1
+                        end,
+                    lager:debug("Resp = ~p", [pp(Resp)]),
+                    {200, [], Resp}
+              end;
+        {_Code, _, _Reason} = Err ->
+            Err
     end.

@@ -22,11 +22,19 @@
     % get block-s
     get_top_empty_chain/1,
     get_top_non_empty_chain/1,
+    block_genesis/1,
+    block_pending/1,
+    block_latest/1,
     block_by_height/1,
     block_not_found_by_height/1,
+    block_by_height_deprecated/1,
+    block_not_found_by_height_deprecated/1,
     block_by_hash/1,
+    block_by_hash_deprecated/1,
     block_not_found_by_broken_hash/1,
     block_not_found_by_hash/1,
+    block_not_found_by_broken_hash_deprecated/1,
+    block_not_found_by_hash_deprecated/1,
 
     % non signed txs
     contract_transactions/1,
@@ -71,16 +79,6 @@
 
     %% requested Endpoints
     block_number/1,
-
-    internal_block_by_height/1,
-    internal_block_by_hash/1,
-    internal_block_genesis/1,
-    internal_block_pending/1,
-    internal_block_latest/1,
-
-    internal_block_not_found_by_height/1,
-    internal_block_not_found_by_broken_hash/1,
-    internal_block_not_found_by_hash/1,
 
     block_txs_count_by_height/1,
     block_txs_count_by_hash/1,
@@ -141,7 +139,9 @@
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
     wrong_http_method_block_by_height/1,
+    wrong_http_method_block_by_height_deprecated/1,
     wrong_http_method_block_by_hash/1,
+    wrong_http_method_block_by_hash_deprecated/1,
     wrong_http_method_header_by_hash/1,
     wrong_http_method_transactions/1,
     wrong_http_method_tx_id/1,
@@ -162,11 +162,9 @@
     wrong_http_method_version/1,
     wrong_http_method_info/1,
     wrong_http_method_block_number/1,
-    wrong_http_method_internal_block_by_height/1,
-    wrong_http_method_internal_block_by_hash/1,
-    wrong_http_method_internal_block_latest/1,
-    wrong_http_method_internal_block_genesis/1,
-    wrong_http_method_internal_block_pending/1,
+    wrong_http_method_block_latest/1,
+    wrong_http_method_block_genesis/1,
+    wrong_http_method_block_pending/1,
     wrong_http_method_block_txs_count_by_height/1,
     wrong_http_method_block_txs_count_by_hash/1,
     wrong_http_method_block_txs_count_latest/1,
@@ -218,11 +216,20 @@ groups() ->
         % get block-s
         get_top_empty_chain,
         get_top_non_empty_chain,
+        block_genesis,
+        block_pending,
+        block_latest,
+
         block_by_height,
         block_not_found_by_height,
+        block_not_found_by_height_deprecated,
+        block_by_height_deprecated,
         block_by_hash,
+        block_by_hash_deprecated,
         block_not_found_by_broken_hash,
         block_not_found_by_hash,
+        block_not_found_by_broken_hash_deprecated,
+        block_not_found_by_hash_deprecated,
 
         % non signed txs
         contract_transactions,
@@ -267,16 +274,6 @@ groups() ->
 
         %% requested Endpoints
         block_number,
-
-        internal_block_by_height,
-        internal_block_by_hash,
-        internal_block_genesis,
-        internal_block_pending,
-        internal_block_latest,
-
-        internal_block_not_found_by_height,
-        internal_block_not_found_by_broken_hash,
-        internal_block_not_found_by_hash,
 
         block_txs_count_by_height,
         block_txs_count_by_hash,
@@ -327,7 +324,9 @@ groups() ->
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
         wrong_http_method_block_by_height,
+        wrong_http_method_block_by_height_deprecated,
         wrong_http_method_block_by_hash,
+        wrong_http_method_block_by_hash_deprecated,
         wrong_http_method_header_by_hash,
         wrong_http_method_transactions,
         wrong_http_method_tx_id,
@@ -348,11 +347,9 @@ groups() ->
         wrong_http_method_version,
         wrong_http_method_info,
         wrong_http_method_block_number,
-        wrong_http_method_internal_block_by_height,
-        wrong_http_method_internal_block_by_hash,
-        wrong_http_method_internal_block_latest,
-        wrong_http_method_internal_block_genesis,
-        wrong_http_method_internal_block_pending,
+        wrong_http_method_block_latest,
+        wrong_http_method_block_genesis,
+        wrong_http_method_block_pending,
         wrong_http_method_block_txs_count_by_height,
         wrong_http_method_block_txs_count_by_hash,
         wrong_http_method_block_txs_count_latest,
@@ -434,7 +431,7 @@ get_top_empty_chain(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
-    {ok, 200, GenBlockMap} = get_block_by_height(0),
+    {ok, 200, GenBlockMap} = get_block_by_height_deprecated(0),
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
@@ -453,6 +450,26 @@ get_top_non_empty_chain(_Config) ->
     ok.
 
 block_by_height(_Config) ->
+    GetExpectedBlockFun =
+        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+    CallApiFun = fun get_block_by_height/2,
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+
+block_not_found_by_height(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    lists:foreach(
+        fun(H) ->
+            lists:foreach(
+                fun(Opt) ->
+                    {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
+                        = get_block_by_height(H, Opt)
+                end,
+                [default, message_pack, json])
+        end,
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
+    ok.
+
+block_by_height_deprecated(_Config) ->
     BlocksToCheck = 4,
     InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
@@ -469,7 +486,7 @@ block_by_height(_Config) ->
         fun(Height) ->
             {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
             ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
-            {ok, 200, BlockMap} = get_block_by_height(Height),
+            {ok, 200, BlockMap} = get_block_by_height_deprecated(Height),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             BlockMap = ExpectedBlockMap,
@@ -478,7 +495,7 @@ block_by_height(_Config) ->
         lists:seq(0, BlocksToCheck)), % from genesis
     ok.
 
-block_not_found_by_height(_Config) ->
+block_not_found_by_height_deprecated(_Config) ->
     InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     % ensure no mining (and thus - no new blocks)
     {error, not_mining}  = rpc(aec_conductor, get_block_candidate, []),
@@ -486,34 +503,74 @@ block_not_found_by_height(_Config) ->
     lists:foreach(
         fun(_) ->
             Height = rand:uniform(99) + 1 + InitialHeight, % random number 1-100 + CurrentTopHeight
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height(Height)
+            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height_deprecated(Height)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
 block_not_found_by_hash(_Config) ->
+    lists:foreach(
+        fun(_Height) ->
+            lists:foreach(
+                fun(Opt) ->
+                    H = random_hash(),
+                    error = rpc(aec_chain, get_block, [H]),
+                    Hash = aec_base58c:encode(block_hash, H),
+                    {ok, 404, #{<<"reason">> := <<"Block not found">>}}
+                        = get_block_by_hash(Hash, Opt)
+                end,
+                [default, message_pack, json])
+        end,
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
+    ok.
+
+block_not_found_by_broken_hash(_Config) ->
+    lists:foreach(
+        fun(_) ->
+            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
+            lists:foreach(
+                fun(Opt) ->
+                    {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
+                        get_block_by_hash(BrokenHash, Opt)
+                end,
+                [default, message_pack, json])
+        end,
+        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
+    ok.
+
+block_not_found_by_hash_deprecated(_Config) ->
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(_) ->
             H = random_hash(),
             error = rpc(aec_chain, get_block, [H]),
             Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash(Hash)
+            {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash_deprecated(Hash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
-block_not_found_by_broken_hash(_Config) ->
+block_not_found_by_broken_hash_deprecated(_Config) ->
     NumberOfChecks = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(_) ->
             <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} = get_block_by_hash(BrokenHash)
+            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} = get_block_by_hash_deprecated(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
 block_by_hash(_Config) ->
+    GetExpectedBlockFun =
+        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
+    CallApiFun =
+        fun(H, Opts) ->
+            {ok, Hash} = block_hash_by_height(H),
+            get_block_by_hash(Hash, Opts)
+        end,
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+
+block_by_hash_deprecated(_Config) ->
     BlocksToCheck = 4,
     InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
     BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
@@ -532,7 +589,7 @@ block_by_hash(_Config) ->
             {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
             Hash = aec_base58c:encode(block_hash, H),
             ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
-            {ok, 200, BlockMap} = get_block_by_hash(Hash),
+            {ok, 200, BlockMap} = get_block_by_hash_deprecated(Hash),
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             BlockMap = ExpectedBlockMap,
@@ -1400,12 +1457,12 @@ test_info(BlocksToMine) ->
               <<"time">>  := 0} = BlockSummary;
         (BlockSummary, ExpectedHeight) ->
             #{<<"height">> := ExpectedHeight} = BlockSummary,
-            {ok, 200, BlockMap} = get_block_by_height(ExpectedHeight),
+            {ok, 200, BlockMap} = get_block_by_height_deprecated(ExpectedHeight),
             #{<<"time">> := Time, <<"target">> := Target} = BlockMap,
             #{<<"time">> := Time} = BlockSummary,
             Difficulty = aec_pow:target_to_difficulty(Target),
             #{<<"difficulty">> := Difficulty} = BlockSummary,
-            {ok, 200, PreviousBlockMap} = get_block_by_height(ExpectedHeight -1),
+            {ok, 200, PreviousBlockMap} = get_block_by_height_deprecated(ExpectedHeight -1),
             #{<<"time">> := PrevTime} = PreviousBlockMap,
             TimeDelta = Time - PrevTime,
             #{<<"time_delta_to_parent">> := TimeDelta} = BlockSummary,
@@ -1585,67 +1642,7 @@ block_number(_Config) ->
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
-internal_block_by_height(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
-    CallApiFun = fun get_internal_block_by_height/2,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-internal_block_not_found_by_height(_Config) ->
-    ok = rpc(aec_conductor, reinit_chain, []),
-    lists:foreach(
-        fun(H) ->
-            lists:foreach(
-                fun(Opt) ->
-                    {ok, 404, #{<<"reason">> := <<"Chain too short">>}}
-                        = get_internal_block_by_height(H, Opt)
-                end,
-                [default, message_pack, json])
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-internal_block_by_hash(_Config) ->
-    GetExpectedBlockFun =
-        fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
-    CallApiFun =
-        fun(H, Opts) ->
-            {ok, Hash} = block_hash_by_height(H),
-            get_internal_block_by_hash(Hash, Opts)
-        end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-internal_block_not_found_by_hash(_Config) ->
-    lists:foreach(
-        fun(_Height) ->
-            lists:foreach(
-                fun(Opt) ->
-                    H = random_hash(),
-                    error = rpc(aec_chain, get_block, [H]),
-                    Hash = aec_base58c:encode(block_hash, H),
-                    {ok, 404, #{<<"reason">> := <<"Block not found">>}}
-                        = get_internal_block_by_hash(Hash, Opt)
-                end,
-                [default, message_pack, json])
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-internal_block_not_found_by_broken_hash(_Config) ->
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            lists:foreach(
-                fun(Opt) ->
-                    {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} =
-                        get_internal_block_by_hash(BrokenHash, Opt)
-                end,
-                [default, message_pack, json])
-        end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
-    ok.
-
-internal_block_genesis(_Config) ->
+block_genesis(_Config) ->
     GetExpectedBlockFun =
         fun(_H) ->
             GenesisBlock = rpc(aec_chain, genesis_block, []),
@@ -1657,7 +1654,7 @@ internal_block_genesis(_Config) ->
         end,
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
 
-internal_block_latest(_Config) ->
+block_latest(_Config) ->
     GetExpectedBlockFun =
         fun(_H) ->
             TopBlock = rpc(aec_chain, top_block, []),
@@ -1671,7 +1668,7 @@ internal_block_latest(_Config) ->
 
 %% we need really slow mining; since mining speed is not modified for the
 %% first X blocks, we need to premine them before the test
-internal_block_pending(_Config) ->
+block_pending(_Config) ->
     BlocksToPremine = rpc(aec_governance, blocks_to_check_difficulty_count, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToPremine),
@@ -1712,10 +1709,6 @@ internal_block_pending(_Config) ->
                    maps:get(Key, Map2, not_found2)
         end,
     % no block should have been mined, so the same prev_hash
-    ValidateKeys(ExpectedPendingTx, PendingTxDefault, <<"prev_hash">>),
-    ValidateKeys(ExpectedPendingTx, PendingTxDefault, <<"data_schema">>),
-
-    % no block should have been mined, so the same prev_hash
     ValidateKeys(ExpectedPendingTx, PendingTxHashes, <<"prev_hash">>),
     ValidateKeys(ExpectedPendingTx, PendingTxHashes, <<"data_schema">>),
 
@@ -1729,6 +1722,11 @@ internal_block_pending(_Config) ->
     % no block should have been mined, so the same prev_hash
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"prev_hash">>),
     ValidateKeys(ExpectedPendingTxsObjects, PendingTxObjects, <<"data_schema">>),
+
+    % no block should have been mined, so the same prev_hash
+    ValidateKeys(ExpectedPendingTxsObjects, PendingTxDefault, <<"prev_hash">>),
+    ValidateKeys(ExpectedPendingTxsObjects, PendingTxDefault, <<"data_schema">>),
+
     rpc(aec_conductor, stop_mining, []),
     ok.
 
@@ -1752,7 +1750,6 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
                                                          BlockMap]),
             {ok, 200, BlockMap1} = CallApiFun(Height, message_pack),
-            true = equal_block_maps(BlockMap, ExpectedBlockMap),
             true = equal_block_maps(BlockMap1, ExpectedBlockMap),
 
             ExpectedBlockMapTxsObjects = maps:merge(Specific(<<"BlockWithJSONTxs">>),
@@ -1760,6 +1757,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             {ok, 200, BlockMap2} = CallApiFun(Height, json),
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
                    [ExpectedBlockMapTxsObjects, BlockMap2]),
+            true = equal_block_maps(BlockMap, ExpectedBlockMapTxsObjects),
             true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects),
             % prepare the next block
             case Height of
@@ -1944,9 +1942,9 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
     lists:foreach(
         fun(Height) ->
             lists:foreach(
-                fun({Opts, DataSchema}) ->
+                fun({Opts, GetBlockDef, DataSchema}) ->
                     {ok, 200, BlockMap} =
-                        get_internal_block_by_height(Height, Opts),
+                        get_block_by_height(Height, GetBlockDef),
                     AllTxs = maps:get(<<"transactions">>, BlockMap, []),
                     TxsIdxs =
                         case length(AllTxs) of
@@ -1965,9 +1963,9 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
                         end,
                         lists:zip(AllTxs, TxsIdxs))
                 end,
-                [{default, <<"SingleTxMsgPack">>},
-                 {message_pack,  <<"SingleTxMsgPack">>},
-                 {json,  <<"SingleTxJSON">>}]),
+                [{default, message_pack, <<"SingleTxMsgPack">>},
+                 {message_pack, message_pack, <<"SingleTxMsgPack">>},
+                 {json, json, <<"SingleTxJSON">>}]),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
             add_spend_txs()
         end,
@@ -2459,7 +2457,7 @@ ws_get_genesis(_Config) ->
     {ok, ConnPid} = ws_start_link(),
     {_Tag, #{ <<"block">> := Block }} =
         ws_chain_get(ConnPid, #{height => 0, type => block}),
-    {ok, 200, BlockMap} = get_internal_block_by_height(0, message_pack),
+    {ok, 200, BlockMap} = get_block_by_height(0, message_pack),
     ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
     Block = ExpectedBlockMap,
@@ -2887,11 +2885,21 @@ get_name_revoke(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/name/revoke", Data).
 
-get_block_by_height(Height) ->
+get_block_by_height(Height, TxObjects) ->
+    Params = tx_encoding_param(TxObjects),
+    Host = external_address(),
+    http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
+
+get_block_by_height_deprecated(Height) ->
     Host = external_address(),
     http_request(Host, get, "block-by-height", [{height, Height}]).
 
-get_block_by_hash(Hash) ->
+get_block_by_hash(Hash, TxObjects) ->
+    Params = tx_encoding_param(TxObjects),
+    Host = external_address(),
+    http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
+
+get_block_by_hash_deprecated(Hash) ->
     Host = external_address(),
     http_request(Host, get, "block-by-hash", [{hash, Hash}]).
 
@@ -3010,19 +3018,9 @@ get_block_number() ->
     Host = internal_address(),
     http_request(Host, get, "block/number", []).
 
-get_internal_block_by_height(Height, TxObjects) ->
-    Params = tx_encoding_param(TxObjects),
-    Host = internal_address(),
-    http_request(Host, get, "block/height/" ++ integer_to_list(Height), Params).
-
-get_internal_block_by_hash(Hash, TxObjects) ->
-    Params = tx_encoding_param(TxObjects),
-    Host = internal_address(),
-    http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
-
 get_internal_block_preset(Segment, TxObjects) ->
     Params = tx_encoding_param(TxObjects),
-    Host = internal_address(),
+    Host = external_address(),
     http_request(Host, get, "block/" ++ Segment, Params).
 
 tx_encoding_param(default) -> #{};
@@ -3134,7 +3132,7 @@ swagger_validation_body(_Config) ->
         }}} = process_http_return(R).
 
 swagger_validation_enum(_Config) ->
-    Host = internal_address(),
+    Host = external_address(),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"tx_encoding">>,
@@ -3278,11 +3276,15 @@ wrong_http_method_name_revoke(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
 
-wrong_http_method_block_by_height(_Config) ->
+wrong_http_method_block_by_height_deprecated(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block-by-height", []).
 
 wrong_http_method_block_by_hash(_Config) ->
+    Host = external_address(),
+    {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
+
+wrong_http_method_block_by_hash_deprecated(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block-by-hash", []).
 
@@ -3366,24 +3368,20 @@ wrong_http_method_block_number(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "block/number", []).
 
-wrong_http_method_internal_block_by_height(_Config) ->
-    Host = internal_address(),
+wrong_http_method_block_by_height(_Config) ->
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/height/123", []).
 
-wrong_http_method_internal_block_by_hash(_Config) ->
-    Host = internal_address(),
-    {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
-
-wrong_http_method_internal_block_latest(_Config) ->
-    Host = internal_address(),
+wrong_http_method_block_latest(_Config) ->
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/latest", []).
 
-wrong_http_method_internal_block_genesis(_Config) ->
-    Host = internal_address(),
+wrong_http_method_block_genesis(_Config) ->
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/genesis", []).
 
-wrong_http_method_internal_block_pending(_Config) ->
-    Host = internal_address(),
+wrong_http_method_block_pending(_Config) ->
+    Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/pending", []).
 
 wrong_http_method_block_txs_count_by_height(_Config) ->
@@ -3689,4 +3687,3 @@ make_params([H | T], Accum) when is_map(H) ->
     make_params(T, maps:to_list(H) ++ Accum);
 make_params([{K, V} | T], Accum) ->
     make_params(T, [{K, V} | Accum]).
-    
