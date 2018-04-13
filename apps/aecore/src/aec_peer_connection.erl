@@ -720,8 +720,5 @@ send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
-peer_id(#{ r_pubkey := PK, host := H, port := P }) when is_binary(H) ->
-    <<PK/binary, P:16, H/binary>>;
-peer_id(#{ r_pubkey := PK, host := H, port := P }) ->
-    <<PK/binary, P:16, (list_to_binary(H))/binary>>.
-
+peer_id(#{ r_pubkey := PK }) ->
+    PK.
