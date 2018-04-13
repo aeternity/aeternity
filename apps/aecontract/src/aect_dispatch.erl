@@ -74,6 +74,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code       => Code,
 			address    => Address,
@@ -83,7 +84,8 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 			gasPrice   => GasPrice,
 			origin     => Caller,
 			value      => Value,
-                        call_stack => CallStack },
+                        call_stack => CallStack
+		      },
              %% TODO: set up the env properly
              env => #{currentCoinbase   => 0,
                       currentDifficulty => 0,
@@ -93,27 +95,50 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
                       chainState        => ChainState,
                       chainAPI          => aec_vm_chain},
              pre => #{}},
-          #{trace => false})
+          #{
+	     trace_fun  => fun(S,A) -> lager:error(S,A) end,
+	     trace => true
+	     })
     of
 	InitState ->
+	    lager:error("InitState ~p, ~p~n", [InitState, Gas]),
+
 	    %% TODO: Nicer error handling - do more in check.
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
 		%% Succesful execution
-		{ok, #{ gas := GasLeft, out := ReturnValue }} ->
-		    aect_call:set_gas_used(Gas - GasLeft,
-					   aect_call:set_return_value(ReturnValue, Call));
-		%% Executinon reulting in VM exeception.
+		{ok, #{ gas := GasLeft, out := ReturnValue } = State} ->
+		    lager:error("Return state ~p~n", [State]),
+		    aect_call:set_gas_used(
+		      Gas - GasLeft,
+		      aect_call:set_return_type(
+			ok, 
+			aect_call:set_return_value(ReturnValue, Call)));
+		{revert, #{ gas := GasLeft, out := ReturnValue } = State} ->
+		    lager:error("Return state ~p~n", [State]),
+		    aect_call:set_gas_used(
+		      Gas - GasLeft,
+		      aect_call:set_return_type(
+			revert, 
+			aect_call:set_return_value(ReturnValue, Call)));
+		%% Execution resulting in VM exeception.
 		%% Gas used, but other state not affected.
 		%% TODO: Use up the right amount of gas depending on error
 		%% TODO: Store errorcode in state tree
 		{error,_Error, #{ gas :=_GasLeft}} ->
-		    aect_call:set_gas_used(Gas,
-					   aect_call:set_return_value(<<>>, Call))
+		    lager:error("Return error ~p:~p~n", [error,_Error]),
+		    aect_call:set_gas_used(
+		      Gas,
+		      aect_call:set_return_type(
+			error, 
+			aect_call:set_return_value(<<>>, Call)))
 
-	    catch _:_ -> Call
+	    catch T:E ->
+		    lager:error("Return error ~p:~p~n", [T,E]),
+		    aect_call:set_return_type(error, Call)
 	    end
-    catch _:_ ->
-	    Call
+    catch T:E ->
+	    lager:error("Return error ~p:~p~n", [T,E]),
+	    aect_call:set_return_type(error, Call)
     end.
 

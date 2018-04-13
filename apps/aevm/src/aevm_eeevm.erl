@@ -26,6 +26,13 @@
 -include("aevm_eeevm.hrl").
 -include("aevm_gas.hrl").
 
+-define(AEVM_SIGNAL(___SIGNAL___, ___STATE___),
+	{aevm_signal, ___SIGNAL___, ___STATE___}).
+
+-define(REVERT_SIGNAL(___State___),
+        ?AEVM_SIGNAL(revert, ___State___)).
+
+
 %% Main eval loop.
 %%
 %%
@@ -40,8 +47,14 @@ eval(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
-            {error, What, StateOut}
+            {error, What, StateOut};
+	throw:?AEVM_SIGNAL(Signal, StateOut) ->
+	    handle_signal(Signal, State, StateOut)
     end.
+
+handle_signal(revert, StateIn, StateOut) -> 
+    {revert, aevm_eeevm_state:set_storage(
+	       aevm_eeevm_state:storage(StateIn), StateOut)}.
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
@@ -380,7 +393,6 @@ loop(StateIn) ->
 		    next_instruction(OP, State, State1);
 		?BALANCE ->
 		    %% 0x31 BALANCE δ=1 α=1
-		    %%  Get balance of the given account.
 		    %%  Get balance of the given account.
 		    %% µ's[0] ≡ σ[µs[0]]b if σ[µs[0] mod 2^160] =/= ∅
 		    %%          0  otherwise
@@ -1132,7 +1144,21 @@ loop(StateIn) ->
 		16#fa -> eval_error({illegal_instruction, OP}, State0);
 		16#fb -> eval_error({illegal_instruction, OP}, State0);
 		16#fc -> eval_error({illegal_instruction, OP}, State0);
-		16#fd -> eval_error({illegal_instruction, OP}, State0);
+		?REVERT ->
+		    %% 0xfd REVERT δ=2 α=∅
+		    %% Halt execution reverting state changes but returning data and remaining gas.
+		    %% For the gas calculation, we use the memory expansion function,
+		    %% µ'i ≡ M(µi, µs[0], µs[1])
+		    %% X(σ, µ, A, I) = (∅, µ', A0, I, o)
+		    %%  Where
+		    %%   o ≡ H(µ, I)
+		    %%   µ' ≡ µ except: µ'g ≡ µg − C(σ, µ, I)
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
+		    State4 = aevm_eeevm_state:set_out(Out, State3),
+                    State5 = spend_mem_gas(State, State4),
+		    throw(?REVERT_SIGNAL(State5));
 		?INVALID ->
 		    %% 0xfe INVALID δ=∅ α=∅
 		    %% Designated invalid instruction.
