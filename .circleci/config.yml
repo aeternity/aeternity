@@ -433,6 +433,8 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
+            tags:
+              ignore: /^v.*$/
 
       - eunit:
           requires:
