@@ -23,15 +23,17 @@
          exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
          prfTarg,  %% by eper
-         dets_sup, dets  %% by mnesia
+         dets_sup, dets,  %% by mnesia
+	 aeu_env_meck %% by test
         ]).
 
 init_per_testcase(_, Cfg) ->
     lager_common_test_backend:bounce(error),
     Apps = application:which_applications(),
     Names = registered(),
+    mock_fast_and_deterministic_cuckoo_pow(),
     {MyPubKey, MyPrivKey} = new_key_pair(),
-    Amount = 100000,
+    Amount = 100000000000000000000,
     Preset = [{MyPubKey, Amount}],
 
     [ {running_apps, Apps}
@@ -95,24 +97,49 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
     ok = application:start(aecore),
     Tx = create_tx(#{}, Cfg),
     PrivKey = ?config(my_priv_key, Cfg),
-    SignedTx = aetx_sign:sign(Tx, PrivKey),    
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
-    %% {Block, ATx} = 
-	aec_chain:find_transaction_in_main_chain_or_mempool(SignedTx),
-    %% mempool = Block,
+    TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+
+    wait_for_it(fun () ->  
+    			none =/= 
+    			    aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
+     		end, true),
+
+    %% lager:error("TxBin ~w~n",[TxHash]),    
+
+    wait_for_it(fun () ->  
+			case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+			    'none' -> false;
+			    {'mempool', _} -> false;
+			    {_Bin, _TX} -> true
+			end
+     		end, true),
+
+
+    {Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
+    %% lager:error("Res ~w~n",[Res]),
+
     ok = unmock_genesis(Cfg),
     ok = application:stop(aecore),
     ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
     ok.
 
 id_bytecode() ->
-    <<"0x6060604052341561000f57600080fd5b60ae8061001d6000396000f300606060"
-      "405260043610603f576000357c0100000000000000000000000000000000000000"
-      "000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
-      "3415604e57600080fd5b606260048080359060200190919050506078565b604051"
-      "8082815260200191505060405180910390f35b60008190509190505600a165627a"
-      "7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
-      "e405cbf70029">>.
+    aeu_hex:hexstring_decode(
+      <<"0x6060604052341561000f57600080fd5b60ae8061001d6000396000f300606060"
+	"405260043610603f576000357c0100000000000000000000000000000000000000"
+	"000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
+	"3415604e57600080fd5b606260048080359060200190919050506078565b604051"
+	"8082815260200191505060405180910390f35b60008190509190505600a165627a"
+	"7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
+	"e405cbf70029">>).
+
+
+
+%% ------------------------------------------------------------------------
+%% Helper Functions
+%% ------------------------------------------------------------------------
 
 
 %%%===================================================================
@@ -153,15 +180,15 @@ create_tx(Override, Cfg) ->
     Code = ?config(code, Cfg),
     VmVersion = ?config(vm_version, Cfg),
     Map = #{ owner      => PubKey
-           , nonce      => 0
+           , nonce      => 1
            , code       => Code
            , vm_version => VmVersion
            , fee        => 10
            , deposit    => 100
-           , amount     => 50
-           , gas        => 100
+           , amount     => 0
+           , gas        => 1000000000000000000
            , gas_price  => 5
-           , call_data  => <<"">>
+           , call_data  => <<"0">>
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aect_create_tx:new(Map1),
@@ -216,3 +243,28 @@ create_temp_key_dir() ->
 
 mktempd({unix, _}) ->
     lib:nonl(?cmd("mktemp -d")).
+
+wait_for_it(Fun, Value) ->
+    wait_for_it(Fun, Value, 0).
+
+wait_for_it(Fun, Value, Sleep) ->
+    case Fun() of
+        Value ->
+            Value;
+        _Other ->
+            %% ?ifDebugFmt("Waiting for ~p got ~p~n",[Value,_Other]),
+            timer:sleep(Sleep),
+            wait_for_it(Fun, Value, Sleep + 10)
+    end.
+
+mock_fast_and_deterministic_cuckoo_pow() ->
+    mock_fast_cuckoo_pow({"mean16s-generic", "", 16}).
+
+mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
+    meck:expect(aeu_env, get_env, 3,
+                fun
+                    (aecore, aec_pow_cuckoo, _) ->
+                       Cfg;
+                    (App, Key, Def) ->
+                       meck:passthrough([App, Key, Def])
+               end).

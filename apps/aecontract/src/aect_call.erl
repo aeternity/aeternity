@@ -16,6 +16,7 @@
         , caller_address/1
         , caller_nonce/1
         , height/1
+        , return_type/1
         , return_value/1
         , gas_used/1
         , serialize/1
@@ -23,6 +24,7 @@
         , set_caller_address/2
         , set_caller_nonce/2
         , set_height/2
+        , set_return_type/2
         , set_return_value/2
         , set_gas_used/2
         ]).
@@ -42,6 +44,7 @@
               , contract_address :: pubkey()
               , gas_used         :: amount()
               , return_value     :: binary()
+	      , return_type      :: ok | error | revert			    
               }).
 
 -opaque call() :: #call{}.
@@ -70,6 +73,7 @@ new(Caller, Nonce, Address, BlockHeight) ->
              , contract_address = Address
              , gas_used         = 0     %% These are filled later
              , return_value     = <<>>  %% in aect_call_tx:process()
+             , return_type      = ok
              },
     assert_fields(C).
 
@@ -146,6 +150,9 @@ height(I) -> I#call.height.
 -spec contract_address(call()) -> pubkey().
 contract_address(I) -> I#call.contract_address.
 
+-spec return_type(call()) -> ok | error | revert.
+return_type(I) -> I#call.return_type.
+
 -spec return_value(call()) -> binary().
 return_value(I) -> I#call.return_value.
 
@@ -175,9 +182,15 @@ set_contract_address(X, I) ->
 set_return_value(X, I) ->
     I#call{return_value = assert_field(return_value, X)}.
 
+-spec set_return_type(ok | error | revert, call()) -> call().
+set_return_type(ok, I) -> I#call{return_type = ok };
+set_return_type(error, I) -> I#call{return_type = error };
+set_return_type(revert, I) -> I#call{return_type = revert }.
+
 -spec set_gas_used(integer(), call()) -> call().
 set_gas_used(X, I) ->
     I#call{gas_used = assert_field(gas_used, X)}.
+
 
 %%%===================================================================
 %%% Internal functions

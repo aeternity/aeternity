@@ -154,18 +154,22 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			    vm_version = VmVersion,
                             fee   = Fee} = CreateTx, _Context, Trees0, Height) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
-    ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Charge the fee to the contract owner (caller)
     Owner0        = aec_accounts_trees:get(OwnerPubKey, AccountsTree0),
     {ok, Owner1}  = aec_accounts:spend(Owner0, Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Owner1, AccountsTree0),
+    Trees1        = aec_trees:set_accounts(Trees0, AccountsTree1),
 
+    %% Create the contract and add to state tree
     ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
     Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+    ContractsTree0 = aec_trees:contracts(Trees1),
+    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
 
     %% Create the init call.
-   Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
+    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
 
     %% Create the contract and insert it into the contract state tree
@@ -176,17 +180,17 @@ process(#contract_create_tx{owner = OwnerPubKey,
     Contract1 =
 	case VmVersion of
 	    ?AEVM_01_Solidity_01 ->
-		%% TODO: Execute init call to get the contract bytecode
-		%%       as a result. to be used for insertion
-		_Call = run_contract(CreateTx, Call0, Height, Trees0),
+		%% Execute init call to get the contract bytecode
+		%% as a result. to be used for insertion
+		CallRes = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
+		case aect_call:get_return_type(CallRes) of
+		    ok ->
+			
+		lager:error("Init call result ~w~n",[_Call]), 
 		Contract;
 	    _ ->
 		Contract
 	end,
-    ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
-
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
 
     {ok, Trees2}.
 
@@ -198,11 +202,9 @@ run_contract(#contract_create_tx{ owner      = Caller
 				, gas        = Gas 
 				, gas_price  = GasPrice
 				, call_data  = CallData
-				} = _Tx, Call, Height, Trees) ->
-    ContractPubKey = aect_contracts:compute_contract_pubkey(Caller, Nonce),
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
+				} = Tx,
+	     Call, Height, Trees, Contract, ContractPubKey)->
+
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
 
@@ -211,7 +213,7 @@ run_contract(#contract_create_tx{ owner      = Caller
 	       , gas        => Gas
 	       , gas_price  => GasPrice
 	       , call_data  => CallData
-	       , amount     => Amount
+	       , amount     => 0 %% Initial call takes no amount
 	       , call_stack => CallStack
 	       , code       => Code
 	       , call       => Call
