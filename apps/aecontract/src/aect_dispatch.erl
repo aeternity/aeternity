@@ -12,7 +12,7 @@
 	, encode_call_data/4]).
 
 
-call(<<"ring">>, Code, Function, Argument) ->
+call(<<"sophia">>, Code, Function, Argument) ->
     aect_sophia:simple_call(Code, Function, Argument);
 call(<<"evm">>, Code, _, Argument) ->
     aect_evm:call(Code, Argument);
@@ -20,7 +20,7 @@ call(_, _, _, _) ->
     {error, <<"Unknown call ABI">>}.
 
 
-encode_call_data(<<"ring">>, Code, Function, Argument) ->
+encode_call_data(<<"sophia">>, Code, Function, Argument) ->
     aect_sophia:encode_call_data(Code, Function, Argument);
 encode_call_data(<<"evm">>, Code, Function, Argument) ->
     aect_evm:encode_call_data(Code, Function, Argument);

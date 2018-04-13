@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 12 Dec 2017
 %%% aec_conductor:stop_mining().
-%%% aeso_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_ring_code]).
+%%% aeso_compiler:file( identity, [pp_ast,pp_icode,pp_assembler,pp_bytecode, pp_sophia_code]).
 %%%-------------------------------------------------------------------
 -module(aeso_compiler).
 
@@ -16,7 +16,8 @@
 
 -export([test/0]).
 
--type option() :: pp_ring_code | pp_ast | pp_icode | pp_assembler | pp_bytecode.
+-type option() :: pp_sophia_code | pp_ast | pp_icode | pp_assembler |
+                  pp_bytecode.
 -type options() :: [option()].
 
 -export_type([ option/0
@@ -31,7 +32,7 @@ file(Filename, Options) ->
     from_string(C, Options).
 
 from_string(ContractString, Options) ->
-    ok = pp_ring_code(ContractString, Options),
+    ok = pp_sophia_code(ContractString, Options),
     Ast = parse(ContractString, Options),
     ok = pp_ast(Ast, Options),
     ICode = to_icode(Ast, Options),
@@ -61,7 +62,7 @@ to_bytecode([], _) -> [].
 
 
 
-pp_ring_code(C, Opts)->  pp(C, Opts, pp_ring_code,
+pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code,
                             fun (X) -> io:format("~s~n",[X]) end).
 pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aeso_ast:pp/1).
 pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aeso_icode:pp/1).
