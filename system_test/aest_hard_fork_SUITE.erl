@@ -35,7 +35,10 @@
 
 -define(DB_BACKUP_DEST_DIR, "/tmp/mnesia_backup").
 
--define(PROTOCOLS(H), #{9 => 0, 10 => H}).
+-define(GENESIS_PROTOCOL_VERSION, 9).
+-define(NEW_PROTOCOL_VERSION, 10).
+-define(PROTOCOLS(H), #{?GENESIS_PROTOCOL_VERSION => 0,
+                        ?NEW_PROTOCOL_VERSION => H}).
 
 -define(HEIGHT_OF_NEW_PROTOCOL(OldChainHeight),
         (2 + OldChainHeight)
@@ -403,7 +406,8 @@ new_node_can_mine_on_old_chain_using_old_protocol(Cfg) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
-    #{height := TopHeight} = aest_nodes:get_top(new_node3, Cfg),
+    #{version := ?GENESIS_PROTOCOL_VERSION,
+      height := TopHeight} = aest_nodes:get_top(new_node3, Cfg),
     HeightToBeMinedWithOldProtocol = - 1 + HeightOfNewProtocol,
     {true, _} = {HeightToBeMinedWithOldProtocol > TopHeight,
                  {check_at_least_a_block_to_mine_using_old_protocol,
@@ -415,7 +419,8 @@ new_node_can_mine_on_old_chain_using_old_protocol(Cfg) ->
     ok = mock_pow_on_node(new_node4, Cfg), %% TODO Make configurable.
     run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
-    #{hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithOldProtocol, Cfg),
+    #{version := ?GENESIS_PROTOCOL_VERSION,
+      hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithOldProtocol, Cfg),
     %% Ensure distinct non-mining node can sync mined block(s).
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
     ?assertEqual(HashMined, maps:get(hash, get_block_by_height(new_node4, HeightToBeMinedWithOldProtocol, Cfg))),
@@ -437,7 +442,8 @@ new_node_can_mine_on_old_chain_using_new_protocol(Cfg) ->
     HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
     HeightToBeMinedWithNewProtocol = 1 + HeightOfNewProtocol, %% I.e. two blocks with new protocol.
     wait_for_height_syncing(HeightToBeMinedWithNewProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
-    #{hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithNewProtocol, Cfg),
+    #{version := ?NEW_PROTOCOL_VERSION,
+      hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithNewProtocol, Cfg),
     %% Ensure distinct non-mining node can sync mined block(s).
     wait_for_height_syncing(HeightToBeMinedWithNewProtocol, [new_node4], {{45000, ms}, {1000, blocks}}, Cfg),
     ?assertEqual(HashMined, maps:get(hash, get_block_by_height(new_node4, HeightToBeMinedWithNewProtocol, Cfg))),
