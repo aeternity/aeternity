@@ -71,6 +71,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+
     try aevm_eeevm_state:init(
 	  #{ exec => #{ code       => Code,
 			address    => Address,
@@ -91,9 +92,14 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
                       chainState        => ChainState,
                       chainAPI          => aec_vm_chain},
              pre => #{}},
-          #{trace => false})
+          #{
+	     trace_fun  => fun(S,A) -> lager:error(S,A) end,
+	     trace => true
+	     })
     of
 	InitState ->
+	    lager:error("InitState ~p, ~p~n", [InitState, Gas]),
+
 	    %% TODO: Nicer error handling - do more in check.
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
@@ -122,7 +128,6 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		      aect_call:set_return_type(
 			error, 
 			aect_call:set_return_value(error_to_binary(Error), Call)))
-
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),
 		    aect_call:set_return_type(error, Call)

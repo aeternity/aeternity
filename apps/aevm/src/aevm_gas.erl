@@ -46,6 +46,7 @@ op_dynamic_cost(?CALLCODE, State) ->
 op_dynamic_cost(?CALLDATACOPY, State) ->
     ?GCOPY * round(ceil(peek(2, State)/32));
 op_dynamic_cost(?CODECOPY, State) ->
+    lager:error("CodeCopy Dynamic cost ~w~n",[ ?GCOPY * round(ceil(peek(2, State)/32))]), 
     ?GCOPY * round(ceil(peek(2, State)/32));
 op_dynamic_cost(?EXTCODECOPY, State) ->
     ?GCOPY * round(ceil(peek(3, State)/32));

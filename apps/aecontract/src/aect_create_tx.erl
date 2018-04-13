@@ -168,12 +168,15 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %% Create the init call.
     Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
-
+    %% Create the contract and add to state tree
     ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
     Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+    ContractsTree0 = aec_trees:contracts(Trees1),
+    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
 
     %% Create the init call.
-   Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
+    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
 
     %% Create the contract and insert it into the contract state tree
