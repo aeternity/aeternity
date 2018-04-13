@@ -224,7 +224,7 @@ is_peer(AccountPubKey, SignedState) ->
     Tx = aetx_sign:tx(SignedState),
     case lists:member(AccountPubKey, aetx:signers(Tx)) of
         true  -> ok;
-        false -> {error, account_not_peers}
+        false -> {error, account_not_peer}
     end.
 
 check_channel(ChannelId, StateTx, Height, Trees) ->
@@ -236,9 +236,9 @@ check_channel(ChannelId, StateTx, Height, Trees) ->
                     {error, channel_does_not_exist};
                 {value, Channel} ->
                     Checks =
-                        [fun() -> check_peers_equal(StateTx, Channel) end,
+                        [fun() -> check_solo_closing(Channel, Height) end,
+                         fun() -> check_peers_equal(StateTx, Channel) end,
                          fun() -> check_amounts_equal(StateTx, Channel) end,
-                         fun() -> check_solo_closing(Channel, Height) end,
                          fun() -> check_seq_number(StateTx, Channel) end],
                     aeu_validation:run(Checks)
             end;
@@ -252,7 +252,7 @@ check_peers_equal(State, Channel) ->
         true ->
             ok;
         false ->
-            {error, wrong_state_peers}
+            {error, wrong_channel_peers}
     end.
 
 check_amounts_equal(State, Channel) ->

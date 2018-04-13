@@ -34,6 +34,9 @@
          close_solo_tx_spec/4,
          close_solo_tx_spec/5,
 
+         slash_tx_spec/4,
+         slash_tx_spec/5,
+
          deposit_tx_spec/3,
          deposit_tx_spec/4,
 
@@ -255,6 +258,27 @@ withdraw_tx_spec(ToPubKey, State) ->
     #{amount => 10,
       fee    => 3,
       nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Slash tx
+%%%===================================================================
+
+slash_tx_spec(ChannelId, FromPubKey, Payload, State) ->
+    slash_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+
+slash_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+    Spec = maps:merge(slash_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id  => ChannelId,
+      from        => FromPubKey,
+      payload     => Payload,
+      ttl         => maps:get(ttl, Spec),
+      fee         => maps:get(fee, Spec),
+      nonce       => maps:get(nonce, Spec)}.
+
+slash_tx_default_spec(FromPubKey, State) ->
+    #{ttl     => 100,
+      fee     => 3,
+      nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 
 state_tx(ChannelId, Initiator, Participant) ->

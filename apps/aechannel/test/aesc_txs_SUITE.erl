@@ -18,6 +18,8 @@
          close_solo_negative/1,
          close_mutual/1,
          close_mutual_negative/1,
+         slash/1,
+         slash_negative/1,
          deposit/1,
          deposit_negative/1,
          withdraw/1,
@@ -42,6 +44,8 @@ groups() ->
        close_solo_negative,
        close_mutual,
        close_mutual_negative,
+       slash,
+       slash_negative,
        deposit,
        deposit_negative,
        withdraw]
@@ -673,3 +677,193 @@ get_balances(K1, K2, S) ->
     Acc2 = aesc_test_utils:get_account(K2, S),
     Acc2Balance = aec_accounts:balance(Acc2),
     {Acc1Balance, Acc2Balance}.
+
+%%%===================================================================
+%%% Slash
+%%%===================================================================
+slash(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
+    Height = 2,
+    Fee = 3,
+
+    %% close the channel
+    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
+    Ch = aesc_test_utils:close_solo(Ch0),
+    S   = aesc_test_utils:set_channel(Ch, S0),
+
+    %% Get channel and account funds
+    Trees = aens_test_utils:trees(S),
+
+    {Acc1Balance0, Acc2Balance0} = get_balances(PubKey1, PubKey2, S),
+    ChannelAmount = aesc_channels:total_amount(Ch),
+
+    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
+    %% Create close_solo tx and apply it on state trees
+    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
+                    participant_amount => ParticipantEndBalance,
+                    sequence_number => 12}, % greater than default of 11
+    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
+                                      [PrivKey1, PrivKey2], PayloadSpec),
+    Test =
+        fun(From, FromPrivKey) ->
+            TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
+                                                    #{fee    => Fee}, S),
+            {ok, Tx} = aesc_slash_tx:new(TxSpec),
+            SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
+            {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
+                                        [SignedTx], Trees, Height),
+            S1 = aesc_test_utils:set_trees(Trees1, S),
+
+            {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
+            case From =:= PubKey1 of
+                true ->
+                    Acc1Balance1 = Acc1Balance0 - Fee,
+                    Acc2Balance1 = Acc2Balance0;
+                false ->
+                    Acc1Balance1 = Acc1Balance0,
+                    Acc2Balance1 = Acc2Balance0 - Fee
+            end
+        end,
+    Test(PubKey1, PrivKey1),
+    Test(PubKey2, PrivKey2),
+    ok.
+
+slash_negative(Cfg) ->
+    {PubKey1, PubKey2, ChannelId, S0} = create(Cfg),
+    PrivKey1 = aesc_test_utils:priv_key(PubKey1, S0),
+    PrivKey2 = aesc_test_utils:priv_key(PubKey2, S0),
+
+    %% close the channel
+    Ch0 = aesc_test_utils:get_channel(ChannelId, S0),
+    Ch = aesc_test_utils:close_solo(Ch0),
+    S   = aesc_test_utils:set_channel(Ch, S0),
+    Height = 2,
+
+    %% Get channel and account funds
+    Trees0 = aens_test_utils:trees(S0),
+    Trees = aens_test_utils:trees(S),
+
+    Ch = aesc_test_utils:get_channel(ChannelId, S),
+    ChannelAmount = aesc_channels:total_amount(Ch),
+
+    InitiatorEndBalance = rand:uniform(ChannelAmount + 1) - 1,
+    ParticipantEndBalance = ChannelAmount - InitiatorEndBalance,
+    PayloadSpec = #{initiator_amount => InitiatorEndBalance,
+                    participant_amount => ParticipantEndBalance},
+    Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
+                                      [PrivKey1, PrivKey2], PayloadSpec),
+
+    %% Test not closed channel
+    TxSpec0 = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
+                                                 Payload, S0),
+    {ok, Tx0} = aesc_slash_tx:new(TxSpec0),
+    {error, channel_not_closing} =
+        aetx:check(Tx0, Trees0, Height),
+
+    %% Test bad from account key
+    BadPubKey = <<42:65/unit:8>>,
+    TxSpec1 = aesc_test_utils:slash_tx_spec(ChannelId, BadPubKey,
+                                                 Payload, S),
+    {ok, Tx1} = aesc_slash_tx:new(TxSpec1),
+    {error, account_not_found} =
+        aetx:check(Tx1, Trees, Height),
+
+    %% Test wrong amounts (different than channel balance)
+    TestWrongAmounts =
+        fun(IAmt, PAmt) ->
+            PayloadSpecW = #{initiator_amount => IAmt,
+                            participant_amount => PAmt},
+            PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
+                                      [PrivKey1, PrivKey2], PayloadSpecW),
+            TxSpecW = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
+                                                         PayloadW, S),
+            {ok, TxW} = aesc_slash_tx:new(TxSpecW),
+            {error, wrong_state_amount} =
+                aetx:check(TxW, Trees, Height)
+        end,
+    TestWrongAmounts(InitiatorEndBalance -1, ParticipantEndBalance),
+    TestWrongAmounts(InitiatorEndBalance +1, ParticipantEndBalance),
+    TestWrongAmounts(InitiatorEndBalance, ParticipantEndBalance - 1),
+    TestWrongAmounts(InitiatorEndBalance, ParticipantEndBalance + 1),
+
+    %% Test from account not peer
+    {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
+    PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
+
+    TxSpecNotPeer = aesc_test_utils:slash_tx_spec(ChannelId, PubKey3, Payload, SNotPeer),
+    TreesNotPeer = aesc_test_utils:trees(SNotPeer),
+    {ok, TxNotPeer} = aesc_slash_tx:new(TxSpecNotPeer),
+    {error, account_not_peer} =
+        aetx:check(TxNotPeer, TreesNotPeer, Height),
+
+    %% Test too high from account nonce
+    TxSpecWrongNonce = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
+                                                          Payload, #{nonce => 0}, S),
+    {ok, TxWrongNonce} = aesc_slash_tx:new(TxSpecWrongNonce),
+    {error, account_nonce_too_high} =
+        aetx:check(TxWrongNonce, Trees, Height),
+
+    %% Test payload has different channelId
+    TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(<<"abcdefghi">>, PubKey1,
+                                                          Payload, S),
+    {ok, TxDiffChanId} = aesc_slash_tx:new(TxSpecDiffChanId),
+    {error, bad_state_channel_id} =
+        aetx:check(TxDiffChanId, Trees, Height),
+
+    %% Test channel missing
+    MissingChannelId = <<"abcdefghi">>,
+    PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
+                                                  [PrivKey1, PrivKey2], PayloadSpec),
+    TxSpecNoChan = aesc_test_utils:slash_tx_spec(MissingChannelId, PubKey1,
+                                               PayloadMissingChanId, S),
+    {ok, TxNoChan} = aesc_slash_tx:new(TxSpecNoChan),
+    {error, channel_does_not_exist} =
+        aetx:check(TxNoChan, Trees, Height),
+
+    %% Test reject payload with missing signatures
+    TestPayloadSigners =
+        fun(PrivKeys) ->
+            PayloadMissingS = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
+                                                  PrivKeys, PayloadSpec),
+            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
+                                                      PayloadMissingS, S),
+            {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
+            {error, signature_check_failed} =
+                aetx:check(TxMissingS, Trees, Height)
+        end,
+    TestPayloadSigners([]),
+    TestPayloadSigners([PrivKey1]),
+    TestPayloadSigners([PrivKey2]),
+
+    %% Test reject payload with wrong signers
+    TestPayloadWrongPeers =
+        fun(I, P, PrivKeys) ->
+            PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
+                                                  PrivKeys, PayloadSpec),
+            TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, I,
+                                                      PayloadMissingS, S),
+            {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
+            {error, wrong_channel_peers} =
+                aetx:check(TxMissingS, Trees, Height)
+        end,
+    TestPayloadWrongPeers(PubKey1, PubKey3, [PrivKey1, PrivKey3]),
+    TestPayloadWrongPeers(PubKey2, PubKey3, [PrivKey2, PrivKey3]),
+
+    %% Test existing channel's payload
+    Cfg2 = lists:keyreplace(state, 1, Cfg, {state, S}),
+    {PubKey21, PubKey22, ChannelId2, S2} = create(Cfg2),
+    Trees2 = aens_test_utils:trees(S2),
+    PrivKey21 = aesc_test_utils:priv_key(PubKey21, S2),
+    PrivKey22 = aesc_test_utils:priv_key(PubKey22, S2),
+    Payload2 = aesc_test_utils:payload(ChannelId2, PubKey21, PubKey22,
+                                      [PrivKey21, PrivKey22], PayloadSpec),
+    TxPayload2Spec = aesc_test_utils:slash_tx_spec(ChannelId, PubKey21,
+                                                      Payload2, S2),
+    {ok, TxPayload2} = aesc_slash_tx:new(TxPayload2Spec),
+    {error, bad_state_channel_id} =
+                aetx:check(TxPayload2, Trees2, Height + 2),
+    ok.
+
