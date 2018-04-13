@@ -611,8 +611,12 @@ handle_get_block(S, Msg) ->
 handle_get_block_rsp(S, {get_block, From}, Msg) ->
     case maps:get(block, Msg, undefined) of
         Block0 when is_binary(Block0) ->
-            Block = aec_blocks:deserialize_from_binary(Block0),
-            gen_server:reply(From, {ok, Block});
+            case aec_blocks:deserialize_from_binary(Block0) of
+                {ok, Block} ->
+                    gen_server:reply(From, {ok, Block});
+                Err = {error, _} ->
+                    gen_server:reply(From, Err)
+            end;
         _ ->
             gen_server:reply(From, {error, no_block_in_response})
     end,
@@ -647,7 +651,7 @@ send_send_block(S = #{ status := {connected, _ESock} }, Block) ->
 
 handle_new_block(S, Msg) ->
     try
-        Block = aec_blocks:deserialize_from_binary(maps:get(block, Msg)),
+        {ok, Block} = aec_blocks:deserialize_from_binary(maps:get(block, Msg)),
         Header = aec_blocks:to_header(Block),
         {ok, HH} = aec_headers:hash_header(Header),
         lager:debug("Got new block: ~s", [pp(HH)]),

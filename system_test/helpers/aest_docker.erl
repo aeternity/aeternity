@@ -17,6 +17,8 @@
 -export([get_service_address/2]).
 -export([extract_archive/3]).
 -export([run_cmd_in_node_dir/2]).
+-export([connect_node/2]).
+-export([disconnect_node/2]).
 
 %=== MACROS ====================================================================
 
@@ -31,6 +33,7 @@
 -define(INT_WS_PORT, 3114).
 -define(EPOCH_STOP_TIMEOUT, 30).
 -define(PEER_KEYS_PASSWORD, <<"top secret">>).
+-define(DEFAULT_NETWORKS, [epoch]).
 
 %=== TYPES =====================================================================
 
@@ -40,12 +43,11 @@
 
 %% State of the docker backend
 -type backend_state() :: #{
-    postfix := binary(),        % A unique postfix to add to container names.
+    postfix := binary(),        % A unique postfix to add to container and networks names.
     log_fun := log_fun(),       % Function to use for logging.
     data_dir := binary(),       % The directory where the templates can be found.
-    temp_dir := binary(),       % A temporary directory that can be used to generate
+    temp_dir := binary()        % A temporary directory that can be used to generate
                                 % configuration files and save the log files.
-    net_id := binary()          % Docker network identifier
 }.
 
 %% Node specification
@@ -65,6 +67,7 @@
 %% State of a node
 -type node_state() :: #{
     spec := node_spec(),        % Backup of the spec used when adding the node
+    postfix := binary(),        % A unique postfix to add to container and networks names.
     log_fun := log_fun(),       % Function to use for logging
     hostname := atom(),         % Hostname of the container running the node
     pubkey := binary(),         % Public part of the peer key
@@ -96,14 +99,10 @@ start(Options) ->
     {ok, DataDir} = maps:find(data_dir, Options),
     {ok, TempDir} = maps:find(temp_dir, Options),
     ok = aest_docker_api:start(),
-    NetName = <<"epoch", Postfix/binary>>,
-    #{'Id' := NetId} = aest_docker_api:create_network(#{name => NetName}),
-    log(LogFun, "Network ~p [~s] created", [NetName, NetId]),
     #{postfix => Postfix,
       log_fun => LogFun,
       data_dir => DataDir,
-      temp_dir => TempDir,
-      net_id => NetId
+      temp_dir => TempDir
     }.
 
 -spec stop(backend_state()) -> ok.
@@ -148,8 +147,7 @@ setup_node(Spec, BackendState) ->
     #{log_fun := LogFun,
       postfix := Postfix,
       data_dir := DataDir,
-      temp_dir := TempDir,
-      net_id := NetId} = BackendState,
+      temp_dir := TempDir} = BackendState,
     #{name := Name,
       pubkey := PubKey,
       privkey := PrivKey,
@@ -167,6 +165,7 @@ setup_node(Spec, BackendState) ->
     LocalPorts = allocate_ports([sync, ext_http, int_http, int_ws]),
     NodeState = #{
         spec => spec,
+        postfix => Postfix,
         log_fun => LogFun,
         name => Name,
         hostname => Hostname,
@@ -176,11 +175,14 @@ setup_node(Spec, BackendState) ->
         local_ports => LocalPorts
     },
 
+    NetworkSpecs = maps:get(networks, Spec, ?DEFAULT_NETWORKS),
+    [Network  | OtherNetworks] = setup_networks(NetworkSpecs, NodeState),
+
     ConfigFileName = format("epoch_~s.yaml", [Name]),
     ConfigFilePath = filename:join([TempDir, "config", ConfigFileName]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
-    ct:log("PeerVars: ~p", [PeerVars]),
+    log(LogFun, "PeerVars: ~p", [PeerVars]),
     CuckooMinerVars =
         case maps:find(cuckoo_miner, Spec) of
             error -> #{};
@@ -193,7 +195,7 @@ setup_node(Spec, BackendState) ->
                          node_bits => maps:get(bits, CuckooMiner)
                         }]}
         end,
-    ct:log("CuckooMinerVars: ~p", [CuckooMinerVars]),
+    log(LogFun, "CuckooMinerVars: ~p", [CuckooMinerVars]),
     HardForkVars =
         case maps:find(hard_forks, Spec) of
             error -> #{};
@@ -203,7 +205,7 @@ setup_node(Spec, BackendState) ->
                       lists:map(fun({V, H}) -> #{version => V, height => H} end,
                                 maps:to_list(HardForks))}
         end,
-    ct:log("HardForkVars: ~p", [HardForkVars]),
+    log(LogFun, "HardForkVars: ~p", [HardForkVars]),
     RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
@@ -232,7 +234,7 @@ setup_node(Spec, BackendState) ->
     end, [], ExposedPorts),
     DockerConfig = #{
         hostname => Hostname,
-        network => NetId,
+        network => Network,
         image => Image,
         ulimits => [{nofile, 1024, 1024}],
         command => Command,
@@ -246,6 +248,13 @@ setup_node(Spec, BackendState) ->
     },
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
+
+    lists:map(fun(NetId) ->
+        aest_docker_api:connect_container(ContId, NetId),
+        log(NodeState, "Container [~s] connected to network [~s]",
+            [ContId, NetId])
+    end, OtherNetworks),
+
     NodeState#{
         container_name => Hostname,
         container_id => ContId,
@@ -332,6 +341,23 @@ run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p", [Cmd, Name, ID, Result]),
     {ok, Result, NodeState}.
 
+-spec connect_node(atom(), node_state()) -> node_state().
+connect_node(NetName, NodeState) ->
+    #{container_id := ContId} = NodeState,
+    [NetId] = setup_networks([NetName], NodeState),
+    aest_docker_api:connect_container(ContId, NetId),
+    log(NodeState, "Container [~s] connected to network [~s]", [ContId, NetId]),
+    NodeState.
+
+-spec disconnect_node(atom(), node_state()) -> node_state().
+disconnect_node(NetName, NodeState) ->
+    #{container_id := ContId} = NodeState,
+    [NetId] = setup_networks([NetName], NodeState),
+    aest_docker_api:disconnect_container(ContId, NetId),
+    log(NodeState, "Container [~s] disconnected from network [~s]",
+        [ContId, NetId]),
+    NodeState.
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 keys_dir(DataDir, Name) ->
@@ -417,4 +443,24 @@ maybe_continue_waiting(Id, Timeout, StartTime) ->
         false ->
             timer:sleep(200),
             wait_stopped(Id, Timeout, StartTime)
+    end.
+
+setup_networks(NetworkSpecs, NodeState) ->
+    Networks = maps:from_list(lists:map(
+        fun(#{'Name' := Name, 'Id' := Id}) -> {Name, Id} end,
+        aest_docker_api:get_networks())),
+    setup_networks(NetworkSpecs, NodeState, Networks, []).
+
+setup_networks([], _NodeState, _Networks, Acc) -> lists:reverse(Acc);
+setup_networks([NetName | Rest], NodeState, Networks, Acc) ->
+    #{postfix := Postfix} = NodeState,
+    FullName = format("~s~s", [NetName, Postfix]),
+    case maps:find(FullName, Networks) of
+        {ok, NetId} ->
+            setup_networks(Rest, NodeState, Networks, [NetId | Acc]);
+        error ->
+            NetSpec = #{name => FullName},
+            #{'Id' := NetId} = aest_docker_api:create_network(NetSpec),
+            log(NodeState, "Network ~p [~s] created", [NetName, NetId]),
+            setup_networks(Rest, NodeState, Networks, [NetId | Acc])
     end.
