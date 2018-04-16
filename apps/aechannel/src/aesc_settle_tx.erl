@@ -237,17 +237,16 @@ check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, T
                  fun() -> aesc_utils:check_are_funds_in_channel(ChannelId,
                                 InitiatorAmount + ResponderAmount, Trees) end,
                  %% check individual amounts are what is expected
-                 fun() -> check_peer_amount(Channel, InitiatorAmount,
-                                            fun aesc_channels:initiator_amount/1)
+                 fun() -> check_peer_amount(InitiatorAmount,
+                                            aesc_channels:initiator_amount(Channel))
                  end,
-                 fun() -> check_peer_amount(Channel, ResponderAmount,
-                                            fun aesc_channels:participant_amount/1)
+                 fun() -> check_peer_amount(ResponderAmount,
+                                            aesc_channels:participant_amount(Channel))
                  end],
             aeu_validation:run(Checks)
     end.
 
-check_peer_amount(Channel, ExpectedAmt, GetAmtFun) when is_function(GetAmtFun, 1) ->
-    Amt = GetAmtFun(Channel),
+check_peer_amount(ExpectedAmt, Amt) ->
     case Amt =:= ExpectedAmt of
         true -> ok;
         false -> {error, wrong_amt}
