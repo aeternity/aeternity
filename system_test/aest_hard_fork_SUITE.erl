@@ -24,7 +24,9 @@
          new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol/1,
          new_node_can_receive_short_old_chain_from_other_new_node/1,
          new_node_can_mine_on_old_chain_using_old_protocol/1,
-         new_node_can_mine_on_old_chain_using_new_protocol/1
+         new_node_can_mine_on_old_chain_using_new_protocol/1,
+         new_node_can_mine_spend_tx_on_old_chain_using_old_protocol/1,
+         new_node_can_mine_spend_tx_on_old_chain_using_new_protocol/1
         ]).
 
 %=== INCLUDES ==================================================================
@@ -127,7 +129,8 @@
 all() ->
     [
      {group, assumptions},
-     {group, hard_fork}
+     {group, hard_fork},
+     {group, hard_fork_with_tx}
     ].
 
 groups() ->
@@ -162,6 +165,18 @@ groups() ->
        new_node_can_receive_short_old_chain_from_other_new_node,
        new_node_can_mine_on_old_chain_using_old_protocol,
        new_node_can_mine_on_old_chain_using_new_protocol
+      ]},
+     {hard_fork_with_tx,
+      [sequence],
+      [
+       restore_db_backup_on_old_node,
+       {group, hard_fork_all_with_tx}
+      ]},
+     {hard_fork_all_with_tx,
+      [sequence],
+      [
+       new_node_can_mine_spend_tx_on_old_chain_using_old_protocol,
+       new_node_can_mine_spend_tx_on_old_chain_using_new_protocol
       ]}
     ].
 
@@ -186,7 +201,8 @@ end_per_suite(_Config) ->
 init_per_group(assumptions, Config) -> Config;
 init_per_group(genesis, Config) -> Config;
 init_per_group(hard_fork, Config) -> Config;
-init_per_group(hard_fork_all, Config) ->
+init_per_group(hard_fork_with_tx, Config) -> Config;
+init_per_group(Group, Config) when Group == hard_fork_all; Group == hard_fork_all_with_tx ->
     {_, {restore_db_backup_on_old_node, SavedCfg}} =
         proplists:lookup(saved_config, Config),
     [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
@@ -208,7 +224,9 @@ end_per_group(hard_fork, _) -> ok;
 end_per_group(hard_fork_all, _) -> ok;
 end_per_group(upgrade_flow_smoke_test, Config) ->
     aest_nodes:ct_cleanup(Config),
-    ok.
+    ok;
+end_per_group(hard_fork_with_tx, _) -> ok;
+end_per_group(hard_fork_all_with_tx, _) -> ok.
 
 init_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
     aest_nodes:ct_setup(Config);
@@ -224,7 +242,11 @@ init_per_testcase(restore_db_backup_with_short_chain_on_new_node, Config) -> Con
 init_per_testcase(new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol, Config) -> Config;
 init_per_testcase(new_node_can_receive_short_old_chain_from_other_new_node, Config) -> Config;
 init_per_testcase(new_node_can_mine_on_old_chain_using_old_protocol, Config) -> Config;
-init_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, Config) -> Config.
+init_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, Config) -> Config;
+init_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_old_protocol, Config) ->
+    aest_nodes:ct_setup(Config);
+init_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_new_protocol, Config) ->
+    aest_nodes:ct_setup(Config).
 
 end_per_testcase(old_node_persisting_chain_and_not_mining_has_genesis_as_top, Config) ->
     aest_nodes:ct_cleanup(Config);
@@ -240,7 +262,11 @@ end_per_testcase(restore_db_backup_with_short_chain_on_new_node, _) -> ok;
 end_per_testcase(new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol, _) -> ok;
 end_per_testcase(new_node_can_receive_short_old_chain_from_other_new_node, _) -> ok;
 end_per_testcase(new_node_can_mine_on_old_chain_using_old_protocol, _) -> ok;
-end_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, _) -> ok.
+end_per_testcase(new_node_can_mine_on_old_chain_using_new_protocol, _) -> ok;
+end_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_old_protocol, Config) ->
+    aest_nodes:ct_cleanup(Config);
+end_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_new_protocol, Config) ->
+    aest_nodes:ct_cleanup(Config).
 
 %=== TEST CASES ================================================================
 
@@ -299,7 +325,7 @@ old_node_can_receive_chain_from_other_old_node(Cfg) ->
     start_node(old_node1, Cfg),
     {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
-    aest_nodes:wait_for_height(TopHeight, [old_node1], 5000, Cfg),
+    aest_nodes:wait_for_value({height, TopHeight}, [old_node1], 5000, Cfg),
     wait_for_height_syncing(TopHeight, [old_node2], {{45000, ms}, {200, blocks}}, Cfg),
     B = get_block_by_height(old_node2, TopHeight, Cfg),
     ?assertEqual(TopHash, maps:get(hash, B)),
@@ -351,7 +377,7 @@ new_node_accepts_long_old_chain_from_other_new_node_up_to_height_of_new_protocol
     %% Rather, configure nodes with different heights at which new
     %% protocol enters into effect - so to make new node 1 supply
     %% blocks to new node 2 that are too high old blocks for node 2.
-    aest_nodes:wait_for_height(TopHeight, [new_node1], 5000, Cfg),
+    aest_nodes:wait_for_value({height, TopHeight}, [new_node1], 5000, Cfg),
     HeightOfNewProtocolForValidatingBlocks =
         ?HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(TopHeight),
     start_node(new_node2, Cfg),
@@ -383,7 +409,7 @@ new_node_can_receive_short_old_chain_from_other_new_node(Cfg) ->
     {_, new_node1} = proplists:lookup(new_node_left_running_with_old_chain, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
-    aest_nodes:wait_for_height(TopHeight, [new_node1], 5000, Cfg),
+    aest_nodes:wait_for_value({height, TopHeight}, [new_node1], 5000, Cfg),
     start_node(new_node3, Cfg),
     wait_for_height_syncing(TopHeight, [new_node3], {{45000, ms}, {200, blocks}}, Cfg),
     B = get_block_by_height(new_node3, TopHeight, Cfg),
@@ -443,6 +469,123 @@ new_node_can_mine_on_old_chain_using_new_protocol(Cfg) ->
     ?assertEqual(HashMined, maps:get(hash, get_block_by_height(new_node4, HeightToBeMinedWithNewProtocol, Cfg))),
     aest_nodes:kill_node(new_node4, Cfg),
     aest_nodes:kill_node(new_node3, Cfg),
+    ok.
+
+%% New node can sync the old chain from other new node and can start mining
+%% on the top of the old chain. The new node can mine blocks using the old
+%% protocol and include spend transaction in the blocks.
+new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    % Make sure the chain won't switch to the new protocol during the test.
+    HeightOfNewProtocol = TopHeight + 10000000,
+    aest_nodes:setup_nodes(
+      [?NEW_NODE1(HeightOfNewProtocol),
+       ?NEW_NODE2(HeightOfNewProtocol)], Cfg),
+    % Start new node and restore the old chain.
+    start_node(new_node1, Cfg),
+    {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(new_node1, Cfg),
+    B1 = get_block_by_height(new_node1, TopHeight, Cfg),
+    ?assertEqual(TopHash, maps:get(hash, B1)),
+    %% Make sure balance of new_node1 is 0.
+    PubKey1 = get_public_key(new_node1, Cfg),
+    Balance1 = get_balance(new_node1, PubKey1, Cfg),
+    ?assertEqual(0, Balance1),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, Balance1]),
+    %% Sync the chain on new_node2 from new_node1.
+    start_node(new_node2, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node2], {{45000, ms}, {200, blocks}}, Cfg),
+    B2 = get_block_by_height(new_node2, TopHeight, Cfg),
+    ?assertEqual(TopHash, maps:get(hash, B2)),
+    %% Make sure balance of new_node2 is 0.
+    PubKey2 = get_public_key(new_node2, Cfg),
+    Balance2 = get_balance(new_node2, PubKey2, Cfg),
+    ?assertEqual(0, Balance2),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node2, PubKey2, Balance2]),
+    %% Start mining on new_node2.
+    ok = mock_pow_on_node(new_node1, Cfg),
+    ok = mock_pow_on_node(new_node2, Cfg),
+    run_erl_cmd_on_node(new_node2, "aec_conductor:start_mining().", "ok", Cfg),
+    %% Check that new_node2 got reward for mining.
+    MinedReward = 100,
+    aest_nodes:wait_for_value({balance, PubKey2, MinedReward}, [new_node2], 10000, Cfg),
+    MinedBalance = get_balance(new_node2, PubKey2, Cfg),
+    ?assertMatch(X when X >= MinedReward, MinedBalance),
+    ct:log("Mined balance on ~p with public key ~p is ~p", [new_node2, PubKey2, MinedBalance]),
+    %% Send spend transaction from new_node2 to new_node1.
+    Fee = 5,
+    BalanceToSpend = MinedBalance - Fee,
+    ok = post_spend_tx(new_node2, PubKey1, BalanceToSpend, Fee, Cfg),
+    ct:log("Sent spend tx with balance of ~p from node ~p with public key ~p to node ~p with public key ~p",
+           [BalanceToSpend, new_node2, PubKey2, new_node1, PubKey1]),
+    %% Make sure new_node1 received the balance.
+    aest_nodes:wait_for_value({balance, PubKey1, BalanceToSpend}, [new_node2], 10000, Cfg),
+    ReceivedBalance = get_balance(new_node2, PubKey1, Cfg),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, ReceivedBalance]),
+    ?assertMatch(BalanceToSpend, ReceivedBalance),
+    ok.
+
+%% New node can sync the old chain from other new node and can start mining
+%% on the top of the old chain until a certain height where it switches to the
+%% new protocol. The new node can mine blocks using the new protocol and include
+%% spend transaction in the blocks.
+new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
+    LastHeightOfOldProtocol = HeightOfNewProtocol - 1,
+    aest_nodes:setup_nodes(
+      [?NEW_NODE1(HeightOfNewProtocol),
+       ?NEW_NODE2(HeightOfNewProtocol)], Cfg),
+    %% Start new node and restore the old chain.
+    start_node(new_node1, Cfg),
+    {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(new_node1, Cfg),
+    B1 = get_block_by_height(new_node1, TopHeight, Cfg),
+    ?assertEqual(TopHash, maps:get(hash, B1)),
+    %% Make sure balance of new_node1 is 0.
+    PubKey1 = get_public_key(new_node1, Cfg),
+    Balance1 = get_balance(new_node1, PubKey1, Cfg),
+    ?assertEqual(0, Balance1),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, Balance1]),
+    %% Sync the chain on new_node2 from new_node1.
+    start_node(new_node2, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node2], {{45000, ms}, {200, blocks}}, Cfg),
+    B2 = get_block_by_height(new_node2, TopHeight, Cfg),
+    ?assertEqual(TopHash, maps:get(hash, B2)),
+    %% Make sure balance of new_node2 is 0.
+    PubKey2 = get_public_key(new_node2, Cfg),
+    Balance2 = get_balance(new_node2, PubKey2, Cfg),
+    ?assertEqual(0, Balance2),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node2, PubKey2, Balance2]),
+    %% Start mining on new_node2.
+    ok = mock_pow_on_node(new_node1, Cfg),
+    ok = mock_pow_on_node(new_node2, Cfg),
+    run_erl_cmd_on_node(new_node2, "aec_conductor:start_mining().", "ok", Cfg),
+    %% Check the last block of old protocol has genesis version.
+    wait_for_height_syncing(LastHeightOfOldProtocol, [new_node2], {{10000, ms}, {1000, blocks}}, Cfg),
+    B2OldProtocol = get_block_by_height(new_node2, LastHeightOfOldProtocol, Cfg),
+    ?assertEqual(9, maps:get(version, B2OldProtocol)),
+    %% Check the first block of new protocol has version of the new protocol.
+    wait_for_height_syncing(HeightOfNewProtocol, [new_node2], {{10000, ms}, {1000, blocks}}, Cfg),
+    B2NewProtocol = get_block_by_height(new_node2, HeightOfNewProtocol, Cfg),
+    ?assertEqual(10, maps:get(version, B2NewProtocol)),
+    %% Check that new_node2 got reward for mining.
+    MinedReward = 100,
+    aest_nodes:wait_for_value({balance, PubKey2, MinedReward}, [new_node2], 10000, Cfg),
+    MinedBalance = get_balance(new_node2, PubKey2, Cfg),
+    ?assertMatch(X when X >= MinedReward, MinedBalance),
+    ct:log("Mined balance on ~p with public key ~p is ~p", [new_node2, PubKey2, MinedBalance]),
+    %% Send spend transaction from new_node2 to new_node1.
+    Fee = 5,
+    BalanceToSpend = MinedBalance - Fee,
+    ok = post_spend_tx(new_node2, PubKey1, BalanceToSpend, Fee, Cfg),
+    ct:log("Sent spend tx with balance of ~p from node ~p with public key ~p to node ~p with public key ~p",
+           [BalanceToSpend, new_node2, PubKey2, new_node1, PubKey1]),
+    %% Make sure new_node1 received the balance.
+    aest_nodes:wait_for_value({balance, PubKey1, BalanceToSpend}, [new_node2], 10000, Cfg),
+    ReceivedBalance = get_balance(new_node2, PubKey1, Cfg),
+    ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, ReceivedBalance]),
+    ?assertMatch(BalanceToSpend, ReceivedBalance),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -540,11 +683,30 @@ get_block_by_height(NodeName, Height, Cfg) ->
     {ok, 200, B} = aest_nodes:http_get(NodeName, int_http, [v2, block, height, Height], #{}, Cfg),
     B.
 
+get_public_key(NodeName, Cfg) ->
+    {ok, 200, #{pub_key := PubKey}} = aest_nodes:http_get(NodeName, int_http, [v2, account, 'pub-key'], #{}, Cfg),
+    PubKey.
+
+get_balance(NodeName, PubKey, Cfg) ->
+    case aest_nodes:http_get(NodeName, ext_http, [v2, account, balance, PubKey], #{}, Cfg) of
+        {ok, 404, #{reason := <<"Account not found">>}} -> 0;
+        {ok, 200, #{balance := Balance}} -> Balance
+    end.
+
+post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg) ->
+    Headers = [{<<"Content-Type">>, <<"application/json">>}],
+    Body = jsx:encode(#{
+            recipient_pubkey => Recipient,
+            amount => Amount,
+            fee => Fee}),
+    {ok, 200, #{}} = aest_nodes:http_post(NodeName, int_http, [v2, 'spend-tx'], #{}, Headers, Body, Cfg),
+    ok.
+
 wait_for_height_syncing(MinHeight, NodeNames, {{Timeout, ms}, {Blocks, blocks}}, Cfg) ->
     WaitF =
         fun(H) ->
                 ct:log("Waiting for height ~p for ~p ms on nodes ~p...", [H, Timeout, NodeNames]),
-                aest_nodes:wait_for_height(H, NodeNames, Timeout, Cfg),
+                aest_nodes:wait_for_value({height, H}, NodeNames, Timeout, Cfg),
                 ct:log("Reached height ~p on nodes ~p ...", [H, NodeNames]),
                 ok
         end,

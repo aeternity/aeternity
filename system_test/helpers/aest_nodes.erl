@@ -23,13 +23,14 @@
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
 -export([http_get/5]).
+-export([http_post/7]).
 
 %% Helper function exports
 -export([request/4]).
 -export([get/5]).
 -export([get_block/3]).
 -export([get_top/2]).
--export([wait_for_height/4]).
+-export([wait_for_value/4]).
 
 %% Behaviour gen_server callbacks
 -export([init/1]).
@@ -53,6 +54,8 @@
 -type node_service() :: ext_http | int_http | int_ws.
 -type http_path() :: [atom() | binary() | number()] | binary().
 -type http_query() :: #{atom() | binary() => atom() | binary()}.
+-type http_headers() :: [{binary(), binary()}].
+-type http_body() :: binary().
 -type json_object() :: term().
 -type milliseconds() :: non_neg_integer().
 -type seconds() :: non_neg_integer().
@@ -179,6 +182,12 @@ http_get(NodeName, Service, Path, Query, Ctx) ->
     Addr = get_service_address(NodeName, Service, Ctx),
     http_addr_get(Addr, Path, Query).
 
+-spec http_post(atom(), ext_http | int_http, http_path(), http_query(), http_headers(), http_body(), test_ctx()) ->
+        {ok, pos_integer(), json_object()} | {error, term()}.
+http_post(NodeName, Service, Path, Query, Headers, Body, Ctx) ->
+    Addr = get_service_address(NodeName, Service, Ctx),
+    http_addr_post(Addr, Path, Query, Headers, Body).
+
 %=== HELPER FUNCTIONS ==========================================================
 
 %% @doc Performs an HTTP get request on the node external API.
@@ -217,11 +226,30 @@ get_top(NodeName, Ctx) ->
     end.
 
 %% @doc Waits for each specified nodes to have a block at given heigth.
--spec wait_for_height(non_neg_integer(), [atom()], milliseconds(), test_ctx()) -> ok.
-wait_for_height(MinHeight, NodeNames, Timeout, Ctx) ->
+-spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
+                    ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
+wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
     Expiration = make_expiration(Timeout),
-    wait_for_height(MinHeight, Addrs, [], 500, Expiration).
+    CheckF =
+        fun(Addr) ->
+                case http_addr_get(Addr, [v2, account, balance, PubKey], #{}) of
+                    {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> done;
+                    _ -> wait
+                end
+        end,
+    wait_for_value(CheckF, Addrs, [], 500, Expiration);
+wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
+    Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
+    Expiration = make_expiration(Timeout),
+    CheckF =
+        fun(Addr) ->
+                case http_addr_get(Addr, [v2, 'block-by-height'], #{height => MinHeight}) of
+                    {ok, 200, _} -> done;
+                    _ -> wait
+                end
+        end,
+    wait_for_value(CheckF, Addrs, [], 500, Expiration).
 
 %=== BEHAVIOUR GEN_SERVER CALLBACK FUNCTIONS ===================================
 
@@ -322,26 +350,27 @@ assert_expiration({StartTime, Timeout}) ->
         false -> ok
     end.
 
-wait_for_height(_Height, [], [], _Delay, _Expiration) -> ok;
-wait_for_height(Height, [], Rem, Delay, Expiration) ->
+wait_for_value(_CheckF, [], [], _Delay, _Expiration) -> ok;
+wait_for_value(CheckF, [], Rem, Delay, Expiration) ->
     assert_expiration(Expiration),
     timer:sleep(Delay),
-    wait_for_height(Height, lists:reverse(Rem), [], Delay, Expiration);
-wait_for_height(Height, [Addr | Addrs], Rem, Delay, Expiration) ->
-    case http_addr_get(Addr, [v2, 'block-by-height'], #{height => Height}) of
-        {ok, 200, _} ->
-            wait_for_height(Height, Addrs, Rem, Delay, Expiration);
-        _ ->
-            wait_for_height(Height, Addrs, [Addr | Rem], Delay, Expiration)
+    wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration);
+wait_for_value(CheckF, [Addr | Addrs], Rem, Delay, Expiration) ->
+    case CheckF(Addr) of
+        done -> wait_for_value(CheckF, Addrs, Rem, Delay, Expiration);
+        wait -> wait_for_value(CheckF, Addrs, [Addr | Rem], Delay, Expiration)
     end.
 
 http_addr_get(Addr, Path, Query) ->
-    http_addr_get(Addr, Path, Query, #{}).
+    http_send(get, Addr, Path, Query, [], <<>>, #{}).
 
-http_addr_get(Addr, Path, Query, Opts) ->
+http_addr_post(Addr, Path, Query, Headers, Body) ->
+    http_send(post, Addr, Path, Query, Headers, Body, #{}).
+
+http_send(Method, Addr, Path, Query, Headers, Body, Opts) ->
     Timeout = maps:get(timeout, Opts, ?DEFAULT_HTTP_TIMEOUT),
     HttpOpts = [{recv_timeout, Timeout}],
-    case hackney:request(get, url(Addr, Path, Query), [], <<>>, HttpOpts) of
+    case hackney:request(Method, url(Addr, Path, Query), Headers, Body, HttpOpts) of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
             case hackney_json_body(ClientRef) of
