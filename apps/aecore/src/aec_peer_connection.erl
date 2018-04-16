@@ -47,7 +47,7 @@ accept(TcpSock, Options) ->
     {ok, {Host, _Port}} = inet:peername(TcpSock),
     Options1 = Options#{ tcp_sock => TcpSock
                        , role => responder
-                       , host => inet_parse:ntoa(Host)},
+                       , host => list_to_binary(inet:ntoa(Host))},
     case aec_peer_connection_sup:start_peer_connection(Options1) of
         {ok, Pid} ->
             gen_tcp:controlling_process(TcpSock, Pid),
