@@ -47,7 +47,7 @@ accept(TcpSock, Options) ->
     {ok, {Host, _Port}} = inet:peername(TcpSock),
     Options1 = Options#{ tcp_sock => TcpSock
                        , role => responder
-                       , host => inet_parse:ntoa(Host)},
+                       , host => list_to_binary(inet:ntoa(Host))},
     case aec_peer_connection_sup:start_peer_connection(Options1) of
         {ok, Pid} ->
             gen_tcp:controlling_process(TcpSock, Pid),
@@ -315,11 +315,15 @@ cleanup_connection(State) ->
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
         _                         -> ok
     end,
+    cleanup_requests(State).
+
+cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
     [ gen_server:reply(From, {error, disconnected})
       || {_Request, From} <- Reqs ].
 
 connect_fail(S) ->
+    cleanup_requests(S),
     case aec_peers:connect_fail(peer_id(S), self()) of
         keep ->
             {noreply, S#{ status := error }};
@@ -716,8 +720,5 @@ send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
-peer_id(#{ r_pubkey := PK, host := H, port := P }) when is_binary(H) ->
-    <<PK/binary, P:16, H/binary>>;
-peer_id(#{ r_pubkey := PK, host := H, port := P }) ->
-    <<PK/binary, P:16, (list_to_binary(H))/binary>>.
-
+peer_id(#{ r_pubkey := PK }) ->
+    PK.
