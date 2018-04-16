@@ -1,5 +1,6 @@
 -module(aehttp_integration_SUITE).
 
+-include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
    [
@@ -193,6 +194,11 @@
     ws_oracles/1
    ]).
 
+%% channel websocket endpoints
+-export(
+   [sc_ws_connect/1
+   ]).
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -210,7 +216,8 @@ groups() ->
                                   {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
                                   {group, websocket},
-                                  {group, naming}
+                                  {group, naming},
+                                  {group, channel_websocket}
                                   ]},
      {external_endpoints, [sequence],
       [
@@ -376,6 +383,9 @@ groups() ->
        ws_refused_on_limit_reached,
        ws_tx_on_chain,
        ws_oracles
+      ]},
+     {channel_websocket, [sequence],
+      [sc_ws_connect
       ]}
     ].
 
@@ -2726,7 +2736,7 @@ ws_refused_on_limit_reached(_Config) ->
             %% stop one
             ?WS:stop(Pid),
             %% another one connects in its place and it doesn't matter which one
-            {ok, some_pid} = ?WS:wait_for_connect(some_pid),
+            {ok, _SomePid} = ?WS:wait_for_connect_any(),
             %% total amount of connected WS clients is still the maximum
             MaxWsCount = open_websockets_count()
         end,
@@ -2775,7 +2785,7 @@ ws_tx_on_chain(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the Tx.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -2826,7 +2836,7 @@ ws_oracles(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_query),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
     ws_subscribe(ConnPid, #{ type => oracle_response, query_id => QId }),
@@ -2842,7 +2852,7 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that an event is received
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_response),
 
     %% Check that we can extend the oracle TTL
     ExtendData =
@@ -2860,9 +2870,29 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that the extend tx made it onto the chain
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+%%
+%% Channels
+%%
+sc_ws_connect(_Config) ->
+    {IPubkey, _IPrivkey} = generate_key_pair(),
+    {RPubkey, _RPrivkey} = generate_key_pair(),
+    IStartAmt = 10,
+    RStartAmt = 20,
+    Fee = 1,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, IConnPid} = channel_ws_start_link(initiator, #{host => <<"abc">>,
+                                                       port => 1234}),
+    {ok, RConnPid} = channel_ws_start_link(responder, #{port => 1234}),
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
     ok.
 
 %% changing of another account's balance is checked in pending_transactions test
@@ -2973,14 +3003,14 @@ peers(_Config) ->
 ws_do_request(ConnPid, Target, Action, Args) ->
     ok = ?WS:register_test_for_event(ConnPid, Target, Action),
     ?WS:send(ConnPid, Target, Action, Args),
-    {ok, _, Res} = ?WS:wait_for_event(Target, Action),
+    {ok, _, Res} = ?WS:wait_for_event(ConnPid, Target, Action),
     ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
     Res.
 
 ws_subscribe(ConnPid, PayLoad) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
     ?WS:send(ConnPid, chain, subscribe, PayLoad),
-    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
+    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(ConnPid, chain, subscribe),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
 
 ws_chain_get(ConnPid, PayLoad) ->
@@ -2992,14 +3022,14 @@ ws_chain_get(ConnPid, Tag, PayLoad) ->
         undefined -> ?WS:send(ConnPid, chain, get, PayLoad);
         _         -> ?WS:send(ConnPid, chain, get, Tag, PayLoad)
     end,
-    {ok, Tag1, Res} = ?WS:wait_for_event(chain, requested_data),
+    {ok, Tag1, Res} = ?WS:wait_for_event(ConnPid, chain, requested_data),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
     {Tag1, Res}.
 
 ws_mine_block(ConnPid, Node) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
-    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(chain, mined_block),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(ConnPid, chain, mined_block),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
     {Height, Hash}.
 
@@ -3669,6 +3699,12 @@ ws_host_and_port() ->
                 aehttp, [internal, websocket, port], 8144]),
     {"127.0.0.1", Port}.
 
+channel_ws_host_and_port() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"websocket">>, <<"channel">>, <<"port">>],
+                aehttp, [channel, websocket, port], 8045]),
+    {"localhost", Port}.
+
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
             iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
@@ -3880,6 +3916,10 @@ ws_start_link() ->
     {Host, Port} = ws_host_and_port(),
     ?WS:start_link(Host, Port).
 
+channel_ws_start_link(Role, Opts) ->
+    {Host, Port} = channel_ws_host_and_port(),
+    ?WS:start_link_channel(Host, Port, Role, Opts).
+
 open_websockets_count() ->
     QueueName = ws_handlers_queue,
     % ensure queue exsits
@@ -3906,3 +3946,7 @@ make_params([H | T], Accum) when is_map(H) ->
     make_params(T, maps:to_list(H) ++ Accum);
 make_params([{K, V} | T], Accum) ->
     make_params(T, [{K, V} | Accum]).
+generate_key_pair() ->
+    {_NewPubKey, _NewPrivKey} =
+        crypto:generate_key(?CRYPTO_KEYTYPE, crypto:ec_curve(?CRYPTO_CURVE)).
+
