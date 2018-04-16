@@ -34,7 +34,7 @@
         , logs/1
         , origin/1
         , out/1
-        , prepare_for_call/7
+        , call_contract/6
         , mem/1
         , no_recursion/1
         , number/1
@@ -124,17 +124,17 @@ init_vm(State, Code, Store) ->
           , storage   => Store
           }.
 
-prepare_for_call(Caller, Dest, CallGas, Value, Code, Data, State) ->
-    #{ environment := #{ spec := #{ pre := Pre}}, call_stack := CallStack} = State,
-    Store = init_storage(Dest, Pre),
-    State1 = init_vm(State, Code, Store),
-    State1#{ address    => Dest
-           , gas        => CallGas
-           , value      => Value
-           , data       => Data
-           , caller     => Caller
-           , call_stack => [Caller | CallStack]
-           }.
+call_contract(Caller, Dest, CallGas, Value, Data, State) ->
+    ChainAPI   = chain_api(State),
+    ChainState = chain_state(State),
+    CallStack  = [Caller | call_stack(State)],
+    case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
+        {ok, Res, ChainState1} ->
+            GasSpent = aec_vm_chain_api:gas_spent(Res),
+            Return   = aec_vm_chain_api:return_value(Res),
+            {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
+        {error, Err} -> {error, Err}
+    end.
 
 init_storage(Address, #{} = Pre) ->
     case maps:get(Address, Pre, undefined) of
