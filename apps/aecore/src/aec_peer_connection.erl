@@ -375,13 +375,13 @@ handle_msg(S, MsgType, true, Request, {ok, {MsgType, _Vsn, Msg}}) ->
     end.
 
 handle_request(S, {Request, Args}, From) ->
+    MappedRequest = map_request(Request),
     case get_request(S, Request) of
         none ->
             handle_request(S, Request, Args, From);
-        {Request, _From} ->
+        {MappedRequest, _From} ->
             {reply, {error, request_already_in_progress}, S}
     end.
-
 
 handle_request(S = #{ status := error }, _Req, _Args, _From) ->
     {reply, {error, disconnected}, S};
