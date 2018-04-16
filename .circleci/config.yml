@@ -126,6 +126,26 @@ references:
           owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
           tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
+  fail_notification: &fail_notification
+    run:
+      name: Send failure notification
+      environment:
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s**",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_BUILD_URL:?}")
+        curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+      when: on_fail
+
 jobs:
   build:
     <<: *container_config
@@ -273,6 +293,7 @@ jobs:
       - run:
           name: UAT Tests
           command: |
+            false
             epmd -daemon
             make python-env && make swagger && make multi-build
             make python-uats
@@ -290,6 +311,7 @@ jobs:
       - store_artifacts:
           path: _build/dev3/rel/epoch/log
           destination: node3/
+      - *fail_notification
 
   docker_image_build:
     <<: *container_config
@@ -450,9 +472,6 @@ workflows:
       - uat_tests:
           requires:
             - build
-          filters:
-            branches:
-              only: master
 
       - static_analysis:
           requires:
