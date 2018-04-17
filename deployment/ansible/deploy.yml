@@ -166,23 +166,13 @@
         when: genesis_accounts is defined
         tags: [config]
 
-      - name: "Copy public peer key"
-        copy:
-          src: "{{ public_peer_key }}"
-          dest: "/home/epoch/node/keys/peer_key.pub"
-          mode: 0644
-          owner: epoch
-          group: epoch
-        when: public_peer_key is defined
-
-      - name: "Copy private peer key"
-        copy:
-          src: "{{ private_peer_key }}"
-          dest: "/home/epoch/node/keys/peer_key"
-          mode: 0644
-          owner: epoch
-          group: epoch
-        when: public_peer_key is defined
+       - name: "Copy node keys to {{ project_root }}/{{ config.keypair.dir }}"
+         copy:
+           src: "{{ item }}"
+           dest: "/tmp/{{ project_root }}/{{ config.keypair.dir }}"
+           mode: 0600
+         with_items: "{{ key_pairs }}"
+         when: key_pairs is defined
 
       - name: Start epoch daemon
         command: "{{ project_root }}/bin/epoch start"
