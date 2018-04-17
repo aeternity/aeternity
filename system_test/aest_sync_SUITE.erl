@@ -21,7 +21,7 @@
     connect_node/3, disconnect_node/3,
     http_get/5,
     request/4,
-    wait_for_height/4,
+    wait_for_value/4,
     assert_synchronized/2
 ]).
 
@@ -145,11 +145,11 @@ new_node_joins_network(Cfg) ->
     %% Starts a chain with two nodes
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
-    wait_for_height(0, [old_node1, old_node2], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [old_node1, old_node2], NodeStartupTime, Cfg),
 
     %% Mines for 20 blocks and calculate the average mining time
     StartTime = os:timestamp(),
-    wait_for_height(Length, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Length}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = os:timestamp(),
     %% Average mining time per block plus 50% extra
     MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
@@ -167,11 +167,11 @@ new_node_joins_network(Cfg) ->
 
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
-    wait_for_height(0, [new_node1], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [new_node1], NodeStartupTime, Cfg),
     ct:log("Node 3 ready to go"),
 
     %% Waits enough for node 3 to sync but not for it to build a new chain
-    wait_for_height(Length, [new_node1], MiningTime * 3, Cfg),
+    wait_for_value({height, Length}, [new_node1], MiningTime * 3, Cfg),
     ct:log("Node 3 on same height"),
     Height3 = request(new_node1, [v2, 'block-by-height'], #{height => Length}, Cfg),
     ct:log("Node 3 at height ~p: ~p~n", [Length, Height3]),
@@ -189,11 +189,11 @@ docker_keeps_data(Cfg) ->
     setup_nodes([?STANDALONE_NODE], Cfg),
 
     start_node(standalone_node, Cfg),
-    wait_for_height(0, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
 
     %% Mines for 20 blocks and calculate the average mining time
     StartTime = os:timestamp(),
-    wait_for_height(Length, [standalone_node], Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Length}, [standalone_node], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = os:timestamp(),
     %% Average mining time per block plus 50% extra
     MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
@@ -204,7 +204,7 @@ docker_keeps_data(Cfg) ->
 
     stop_node(standalone_node, infinity, Cfg), %% Is this triggering PT-155851463 ?
     start_node(standalone_node, Cfg),
-    wait_for_height(0, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
 
     ct:log("Node restarted and ready to go"),
 
@@ -227,14 +227,14 @@ docker_keeps_data(Cfg) ->
     ?assertEqual([], Diff),
 
     %% Mines 10 more blocks
-    wait_for_height(Length + 10, [standalone_node], MiningTime * 10, Cfg),
+    wait_for_value({height, Length + 10}, [standalone_node], MiningTime * 10, Cfg),
 
     %% Get all blocks before stopping
     C = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length + 10)],
 
     stop_node(standalone_node, infinity, Cfg),
     start_node(standalone_node, Cfg),
-    wait_for_height(0, [standalone_node], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
 
 
     %% Give it time to read from disk, but not enough to build a new chain of same length
@@ -266,10 +266,10 @@ crash_and_continue_sync(Cfg) ->
     setup_nodes([?OLD_NODE1, ?OLD_NODE2], Cfg),
 
     start_node(old_node1, Cfg),
-    wait_for_height(0, [old_node1], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [old_node1], NodeStartupTime, Cfg),
 
     StartTime = os:timestamp(),
-    wait_for_height(Length, [old_node1], Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Length}, [old_node1], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = os:timestamp(),
     %% Average mining time per block plus 50% extra
     MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
@@ -280,7 +280,7 @@ crash_and_continue_sync(Cfg) ->
 
     %% Start fetching the chain
     start_node(old_node2, Cfg),
-    wait_for_height(0, [old_node2], NodeStartupTime, Cfg),
+    wait_for_value({height, 0}, [old_node2], NodeStartupTime, Cfg),
     ct:log("Node 2 ready to go"),
 
     %% we are fetching blocks crash now
@@ -292,7 +292,7 @@ crash_and_continue_sync(Cfg) ->
          true -> {skip, already_synced_when_crashed};
          false ->
             start_node(old_node1, Cfg),
-            wait_for_height(Length, [old_node2], (Length - Height) * MiningTime, Cfg),
+            wait_for_value({height, Length}, [old_node2], (Length - Height) * MiningTime, Cfg),
             B2 = request(old_node2, [v2, 'block-by-height'], #{height => Length}, Cfg),
             ct:log("Node 2 at height ~p: ~p~n", [Length, B2]),
             ?assertEqual(B1, B2)
@@ -314,7 +314,7 @@ net_split_recovery(Cfg) ->
 
     %% Starts with a net split
 
-    wait_for_height(Length, [net1_node1, net1_node2, net2_node1, net2_node2],
+    wait_for_value({height, Length}, [net1_node1, net1_node2, net2_node1, net2_node2],
                     Length * ?MINING_TIMEOUT, Cfg),
 
     A1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length}, Cfg),
@@ -333,7 +333,7 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
 
-    wait_for_height(Length * 3, [net1_node1, net1_node2, net2_node1, net2_node2],
+    wait_for_value({height, Length * 3}, [net1_node1, net1_node2, net2_node1, net2_node2],
                     Length * 2 * ?MINING_TIMEOUT, Cfg),
 
     B1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 3}, Cfg),
@@ -352,7 +352,7 @@ net_split_recovery(Cfg) ->
     disconnect_node(net2_node1, net1, Cfg),
     disconnect_node(net2_node2, net1, Cfg),
 
-    wait_for_height(Length * 5, [net1_node1, net1_node2, net2_node1, net2_node2],
+    wait_for_value({height, Length * 5}, [net1_node1, net1_node2, net2_node1, net2_node2],
                     Length * 2 * ?MINING_TIMEOUT, Cfg),
 
     C1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 5}, Cfg),
@@ -371,7 +371,7 @@ net_split_recovery(Cfg) ->
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
 
-    wait_for_height(Length * 7, [net1_node1, net1_node2, net2_node1, net2_node2],
+    wait_for_value({height, Length * 7}, [net1_node1, net1_node2, net2_node1, net2_node2],
                     Length * 2 * ?MINING_TIMEOUT, Cfg),
 
     D1 = request(net1_node1, [v2, 'block-by-height'], #{height => Length * 7}, Cfg),
