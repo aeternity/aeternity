@@ -130,7 +130,7 @@ references:
     run:
       name: Send failure notification
       environment:
-        NOTIFY_BRANCH: PT-156197975_failing_master_notifications
+        NOTIFY_BRANCH: master
         HOOK_TEMPLATE: |
           {
             "text": "CircleCI job **%s** failed on branch **%s** by @%s",
