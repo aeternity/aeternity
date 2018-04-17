@@ -21,17 +21,18 @@
     epoch_bin: "{{ ansible_env.HOME }}/node/bin/epoch"
     download_dir: /tmp/mnesia_backups
     backup_suffix: backup
+    backup_filename: "mnesia_{{ ansible_ssh_host|default(ansible_host) }}_{{ backup_suffix }}"
 
   tasks:
     - name: Backup Mnesia database
-      command: "{{ epoch_bin }} eval 'ok = mnesia:backup(\"/tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}\").'"
+      command: "{{ epoch_bin }} eval 'ok = mnesia:backup(\"/tmp/{{ backup_filename }}\").'"
 
     - name: Archive Mnesia backup
       archive:
-        path: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}
-        dest: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}.gz
+        path: /tmp/{{ backup_filename }}
+        dest: /tmp/{{ backup_filename }}.gz
 
     - name: Download the Mnesia backup archive
       fetch:
-        src: /tmp/mnesia_{{ ansible_hostname }}_{{ backup_suffix }}.gz
+        src: /tmp/{{ backup_filename }}.gz
         dest: "{{ download_dir }}"
