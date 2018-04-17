@@ -6,10 +6,20 @@
 %%%=============================================================================
 -module(aec_peer_connection).
 
--export([ accept/2
-        , connect/1
-        , retry/1
+-behaviour(ranch_protocol).
 
+%% Functions for incoming connections
+-export([ start_link/4 % for ranch_protocol behaviour
+        , accept_init/4
+        ]).
+
+%% Functions for outgoing connections
+-export([ connect/1
+        , connect_start_link/2 % for aec_peer_connection_sup
+        ]).
+
+%% API functions
+-export([ retry/1
         , get_block/2
         , get_header_by_hash/2
         , get_header_by_height/2
@@ -18,7 +28,6 @@
         , ping/1
         , send_block/2
         , send_tx/2
-        , start_link/2
         , stop/1
         ]).
 
@@ -37,27 +46,19 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% -- BAHAVIOUR ranch_protocol CALLBACKS -------------------------------------
+
+start_link(Ref, Socket, Transport, Opts) ->
+    Args = [Ref, Socket, Transport, Opts],
+    {ok, proc_lib:spawn_link(?MODULE, accept_init, Args)}.
+
 %% -- API --------------------------------------------------------------------
 
 connect(#{} = Options) ->
     lager:debug("New peer connection to ~p", [Options]),
-    aec_peer_connection_sup:start_peer_connection(Options#{ role => initiator}).
+    aec_peer_connection_sup:start_peer_connection(Options).
 
-accept(TcpSock, Options) ->
-    {ok, {Host, _Port}} = inet:peername(TcpSock),
-    Options1 = Options#{ tcp_sock => TcpSock
-                       , role => responder
-                       , host => list_to_binary(inet:ntoa(Host))},
-    case aec_peer_connection_sup:start_peer_connection(Options1) of
-        {ok, Pid} ->
-            gen_tcp:controlling_process(TcpSock, Pid),
-            gen_server:cast(Pid, give_tcp_socket_ownership),
-            {ok, Pid};
-        Res ->
-            Res
-    end.
-
-start_link(Port, Opts) ->
+connect_start_link(Port, Opts) ->
     Opts1 = Opts#{ext_sync_port => Port},
     gen_server:start_link(?MODULE, [Opts1], []).
 
@@ -120,19 +121,17 @@ cast_or_call(PeerId, Action, CastOrCall) ->
 
 %% -- gen_server callbacks ---------------------------------------------------
 
-init([Opts]) ->
+%% Called when accepting an incoming connection
+accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
+    ok = ranch:accept_ack(Ref),
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
-    {ok, Opts#{ version => Version, genesis => Genesis }, 0}.
-
-handle_call(Request, From, State) ->
-    handle_request(State, Request, From).
-
-handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
-    Self = self(),
-    Pid = spawn(fun() -> try_connect(Self, Host, Port, 1000) end),
-    {noreply, S#{ status => {connecting, Pid} }};
-handle_cast(give_tcp_socket_ownership, S0 = #{ role := responder, tcp_sock := TcpSock }) ->
+    {ok, {Host, _Port}} = inet:peername(TcpSock),
+    S0 = Opts#{ tcp_sock => TcpSock
+              , role => responder
+              , host => list_to_binary(inet:ntoa(Host))
+              , version => Version
+              , genesis => Genesis },
     S = #{ version := Version, genesis := Genesis,
            seckey := SecKey, pubkey := PubKey } = ensure_genesis(S0),
     NoiseOpts = [ {noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}
@@ -149,14 +148,32 @@ handle_cast(give_tcp_socket_ownership, S0 = #{ role := responder, tcp_sock := Tc
             %% Report this to aec_peers!? And possibly fail?
             %% Or, we can't do this yet we don't know the port?!
             TRef = erlang:start_timer(?FIRST_PING_TIMEOUT, self(), first_ping_timeout),
-            {noreply, S#{ status => {connected, ESock}, r_pubkey => RemotePub,
-                          first_ping_tref => TRef }};
+            S1 = S#{ status => {connected, ESock}
+                   , r_pubkey => RemotePub
+                   , first_ping_tref => TRef },
+            gen_server:enter_loop(?MODULE, [], S1);
         {error, Reason} ->
             %% What to do here? Close the socket and stop?
             lager:info("Connection accept failed - ~p was from ~p", [Reason, maps:get(host, S)]),
-            gen_tcp:close(TcpSock),
-            {stop, normal, S}
-    end;
+            gen_tcp:close(TcpSock)
+    end.
+
+%% Called when connecting to a peer
+init([Opts]) ->
+    Version = <<?P2P_PROTOCOL_VSN:64>>,
+    Genesis = aec_chain:genesis_hash(),
+    Opts1 = Opts#{ role => initiator
+                   , version => Version
+                   , genesis => Genesis},
+    {ok, Opts1, 0}.
+
+handle_call(Request, From, State) ->
+    handle_request(State, Request, From).
+
+handle_cast(retry, S = #{ host := Host, port := Port, status := error }) ->
+    Self = self(),
+    Pid = spawn(fun() -> try_connect(Self, Host, Port, 1000) end),
+    {noreply, S#{ status => {connecting, Pid} }};
 handle_cast({send_tx, Hash}, State) ->
     send_send_tx(State, Hash),
     {noreply, State};

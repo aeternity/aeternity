@@ -47,6 +47,16 @@
                     "description" :
                     "Listen port for external sync connections.",
                     "type" : "integer"
+                },
+                "acceptors" : {
+                    "description" : "Number of acceptors in listening pool",
+                    "type" : "integer",
+                    "default": 10,
+                },
+                "max_connections" : {
+                    "description" : "The maximum number of incomming connections",
+                    "type" : "integer",
+                    "default": 100,
                 }
             }
         },

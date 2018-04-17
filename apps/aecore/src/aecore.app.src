@@ -42,7 +42,8 @@
     aetx,
     aeoracle,
     aecontract,
-    aens
+    aens,
+    ranch
   ]},
   {env, [
          {exometer_predefined,
