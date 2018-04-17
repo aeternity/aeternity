@@ -130,9 +130,10 @@ references:
     run:
       name: Send failure notification
       environment:
+        NOTIFY_BRANCH: PT-156197975_failing_master_notifications
         HOOK_TEMPLATE: |
           {
-            "text": "CircleCI job **%s** failed on branch **%s**",
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
             "attachments": [
               {
                 "title": "Build Link",
@@ -142,14 +143,17 @@ references:
             ]
           }
       command: |
-        HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_BUILD_URL:?}")
-        curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:?}" "${CIRCLE_BUILD_URL:?}")
+          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+        fi
       when: on_fail
 
 jobs:
   build:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *restore_rebar_cache
       - run:
@@ -166,10 +170,12 @@ jobs:
           key: *rebar_cache_key
           paths:
             - .cache/rebar3
+      - *fail_notification
 
   test:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -182,10 +188,12 @@ jobs:
           path: _build/test/logs
       - store_artifacts:
           path: _build/test/logs
+      - *fail_notification
 
   eunit:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -194,6 +202,7 @@ jobs:
           command: |
             epmd -daemon
             make eunit
+      - *fail_notification
 
   aevm_tests:
     <<: *container_config
@@ -209,6 +218,7 @@ jobs:
   static_analysis:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -229,10 +239,12 @@ jobs:
       - run: make swagger-check
       - run: make rebar-lock-check
       - run: ./rebar3 xref || true
+      - *fail_notification
 
   linux_package:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *set_package_path
       - *build_package
@@ -248,6 +260,7 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
 
   deploy_api_docs:
     <<: *container_config
@@ -262,6 +275,7 @@ jobs:
       xcode: "9.0"
     working_directory: ~/epoch
     steps:
+      - run: "false"
       - checkout
       - run:
           name: Install required tools
@@ -283,10 +297,12 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
 
   uat_tests:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -340,6 +356,7 @@ jobs:
   docker_push_dev:
     <<: *container_config
     steps:
+      - run: "false"
       - checkout
       - *setup_remote_docker
       - *install_docker_client
@@ -349,6 +366,7 @@ jobs:
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
             ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
+      - *fail_notification
 
   uat_chain_snapshot:
     <<: *container_config
