@@ -174,7 +174,6 @@ jobs:
   test:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -192,7 +191,6 @@ jobs:
   eunit:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -217,7 +215,6 @@ jobs:
   static_analysis:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -243,7 +240,6 @@ jobs:
   linux_package:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *set_package_path
       - *build_package
@@ -274,7 +270,6 @@ jobs:
       xcode: "9.0"
     working_directory: ~/epoch
     steps:
-      - run: "false"
       - checkout
       - run:
           name: Install required tools
@@ -301,7 +296,6 @@ jobs:
   uat_tests:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *restore_rebar_cache
       - *restore_build_cache
@@ -355,7 +349,6 @@ jobs:
   docker_push_dev:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *setup_remote_docker
       - *install_docker_client
