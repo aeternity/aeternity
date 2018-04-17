@@ -153,7 +153,6 @@ jobs:
   build:
     <<: *container_config
     steps:
-      - run: "false"
       - checkout
       - *restore_rebar_cache
       - run:
