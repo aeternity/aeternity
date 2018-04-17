@@ -38,7 +38,7 @@ init([Port]) ->
                 , intensity => 5
                 , period => 10},
     ChildSpecs = [#{ id => aec_peer_connection
-                   , start => {aec_peer_connection, start_link, [Port]}
+                   , start => {aec_peer_connection, connect_start_link, [Port]}
                    , type => worker
                    , restart => temporary
                    , shutdown => 5000

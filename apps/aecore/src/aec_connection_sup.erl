@@ -41,22 +41,36 @@ init([]) ->
     SupFlags = #{ strategy => one_for_all
                 , intensity => 5
                 , period => 10},
-    ChildSpecs = [ aec_peer_connection_sup_spec()
+    ChildSpecs = [ aec_peer_connection_sup_spec() % outgoing connections
                  , worker(aec_peers)
                  , worker(aec_sync)
-                 , aec_connection_listener_spec()
+                 , peer_listener_spec()           % incoming connections
                  ],
     {ok, {SupFlags, ChildSpecs}}.
 
 worker(Mod) ->
     child(Mod, worker, []).
 
+peer_listener_spec() ->
+    NumAcceptors = acceptors(),
+    MaxConnections = max_connections(),
+    {ok, SecKey} = aec_keys:peer_privkey(),
+    {ok, PubKey} = aec_keys:peer_pubkey(),
+    ranch:child_spec(aec_peer, NumAcceptors,
+                     ranch_tcp, [
+                         {port, sync_port()},
+                         {ip, sync_listen_address()},
+                         {max_connections, MaxConnections}
+                     ],
+                     aec_peer_connection, #{
+                         ext_sync_port => ext_sync_port(),
+                         seckey => SecKey,
+                         pubkey => PubKey
+                     }
+                    ).
+
 aec_peer_connection_sup_spec() ->
     child(aec_peer_connection_sup, supervisor, [ext_sync_port()]).
-
-aec_connection_listener_spec() ->
-    child(aec_peer_connection_listener, worker,
-          [sync_port(), sync_listen_address()]).
 
 child(Mod, Type, Args) ->
     #{ id => Mod
@@ -72,6 +86,8 @@ child(Mod, Type, Args) ->
 
 -define(DEFAULT_SYNC_PORT, 3015).
 -define(DEFAULT_SYNC_LISTEN_ADDRESS, <<"0.0.0.0">>).
+-define(DEFAULT_ACCEPTORS, 10).
+-define(DEFAULT_MAX_CONNECTIONS, 100).
 
 sync_port() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"port">>], aecore, sync_port, ?DEFAULT_SYNC_PORT).
@@ -85,3 +101,13 @@ sync_listen_address() ->
                 aecore, sync_listen_address, ?DEFAULT_SYNC_LISTEN_ADDRESS),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
     IpAddress.
+
+acceptors() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"acceptors">>],
+                               aecore, sync_acceptors,
+                               ?DEFAULT_ACCEPTORS).
+
+max_connections() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"max_connections">>],
+                               aecore, sync_max_connections,
+                               ?DEFAULT_MAX_CONNECTIONS).
