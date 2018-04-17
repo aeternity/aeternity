@@ -149,7 +149,7 @@ handle_call({fetch_next, PeerId, HeightIn, HashIn, Result}, _, State) ->
     lager:debug("fetch next from Hashpool ~p", [ [ {H, maps:is_key(block, Map)} || {{H,_}, Map} <- HashPool] ]),
     case update_chain_from_pool(HeightIn, HashIn, HashPool) of
         {error, Reason} ->
-            lager:error("chain update failed ~p", [Reason]),
+            lager:info("chain update failed ~p", [Reason]),
             {reply, {error, sync_stopped}, State#state{hash_pool = HashPool}};
         {ok, NewHeight, NewHash, []} ->
             lager:debug("Got all the blocks in hash pool"),

@@ -492,8 +492,8 @@ handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = Stat
         {value, _, #peer{connection = {_, Pid}}} ->
             %% This was an unexpected process down. Clean it up.
             %% TODO: This should probably be restarted.
-            lager:error("Peer connection died - removing: ~p : ~p",
-                        [Pid, ppp(PeerId)]),
+            lager:warning("Peer connection died - removing: ~p : ~p",
+                          [Pid, ppp(PeerId)]),
             Peers = remove_peer(PeerId, State#state.peers),
             {noreply, State#state{peers = Peers}};
         _ ->

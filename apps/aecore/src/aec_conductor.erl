@@ -400,7 +400,7 @@ handle_worker_reply(Pid, Reply, State) ->
                                 },
             worker_reply(Tag, Reply, State1);
         error ->
-            epoch_mining:error("Got unsolicited worker reply: ~p",
+            epoch_mining:info("Got unsolicited worker reply: ~p",
                                [{Pid, Reply}]),
             State
     end.
@@ -464,6 +464,9 @@ kill_worker(Pid, Info, State) ->
     Blocked = State#state.blocked_tags,
     cleanup_after_worker(Info),
     exit(Pid, shutdown),
+    %% Flush messages from this worker.
+    receive {worker_reply, Pid, _} -> ok
+    after 0 -> ok end,
     State#state{workers = orddict:erase(Pid, Workers),
                 blocked_tags = ordsets:del_element(
                                  Info#worker_info.tag,
