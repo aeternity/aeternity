@@ -551,16 +551,20 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
     ReceivedBalance = get_balance(new_node3, PubKey1, Cfg),
     ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, ReceivedBalance]),
     ?assertEqual(BalanceToSpend, ReceivedBalance),
+    %% new_node1 has one spend transaction.
+    [#{block_hash := SpendTxBlockHash, block_height := SpendTxHeight, tx := TxInfo}] =
+        get_account_txs(new_node3, PubKey1, Cfg),
+    ?assertEqual(ReceivedBalance, maps:get(amount, TxInfo)),
+    ?assertEqual(Fee, maps:get(fee, TxInfo)),
+    ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
+    ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
+    %% Block with spend transaction has genesis version.
+    ?assertEqual(9, maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on new_node4.
     start_node(new_node4, Cfg),
     ok = mock_pow_on_node(new_node4, Cfg),
-    wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
-    #{hash := TopHash} = get_block_by_height(new_node4, TopHeight, Cfg),
-    aest_nodes:wait_for_value({balance, PubKey1, ReceivedBalance}, [new_node4], 20000, Cfg),
-    SyncedBalance = get_balance(new_node4, PubKey1, Cfg),
-    ct:log("Balance of node ~p with public key ~p on synced chain on node ~p is ~p",
-           [new_node1, PubKey1, new_node4, SyncedBalance]),
-    ?assertEqual(ReceivedBalance, SyncedBalance),
+    wait_for_height_syncing(SpendTxHeight, [new_node4], {{100000, ms}, {1000, blocks}}, Cfg),
+    ?assertEqual(SpendTxBlockHash, maps:get(hash, get_block_by_height(new_node4, SpendTxHeight, Cfg))),
     ok.
 
 %% New node can sync the old chain from other new node and can start mining
@@ -619,19 +623,20 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     ReceivedBalance = get_balance(new_node3, PubKey1, Cfg),
     ct:log("Balance of node ~p with public key ~p is ~p", [new_node1, PubKey1, ReceivedBalance]),
     ?assertEqual(BalanceToSpend, ReceivedBalance),
+    %% new_node1 has one spend transaction.
+    [#{block_hash := SpendTxBlockHash, block_height := SpendTxHeight, tx := TxInfo}] =
+        get_account_txs(new_node3, PubKey1, Cfg),
+    ?assertEqual(ReceivedBalance, maps:get(amount, TxInfo)),
+    ?assertEqual(Fee, maps:get(fee, TxInfo)),
+    ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
+    ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
+    %% Block with spend transaction has new protocol version.
+    ?assertEqual(10, maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on new_node4.
     start_node(new_node4, Cfg),
     ok = mock_pow_on_node(new_node4, Cfg),
-    wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
-    #{hash := TopHash} = get_block_by_height(new_node4, TopHeight, Cfg),
-    aest_nodes:wait_for_value({balance, PubKey1, ReceivedBalance}, [new_node4], 20000, Cfg),
-    SyncedBalance = get_balance(new_node4, PubKey1, Cfg),
-    ct:log("Balance of node ~p with public key ~p on synced chain on node ~p is ~p",
-           [new_node1, PubKey1, new_node4, SyncedBalance]),
-    ?assertEqual(ReceivedBalance, SyncedBalance),
-    %% Check new_node4 switched to the new protocol.
-    B4 = aest_nodes:get_top(new_node4, Cfg),
-    ?assertEqual(10, maps:get(version, B4)),
+    wait_for_height_syncing(SpendTxHeight, [new_node4], {{100000, ms}, {1000, blocks}}, Cfg),
+    ?assertEqual(SpendTxBlockHash, maps:get(hash, get_block_by_height(new_node4, SpendTxHeight, Cfg))),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -729,6 +734,10 @@ get_block_by_height(NodeName, Height, Cfg) ->
     {ok, 200, B} = aest_nodes:http_get(NodeName, int_http, [v2, block, height, Height], #{}, Cfg),
     B.
 
+get_block_by_hash(NodeName, Hash, Cfg) ->
+    {ok, 200, B} = aest_nodes:http_get(NodeName, int_http, [v2, block, hash, Hash], #{}, Cfg),
+    B.
+
 get_public_key(NodeName, Cfg) ->
     {ok, 200, #{pub_key := PubKey}} = aest_nodes:http_get(NodeName, int_http, [v2, account, 'pub-key'], #{}, Cfg),
     PubKey.
@@ -738,6 +747,12 @@ get_balance(NodeName, PubKey, Cfg) ->
         {ok, 404, #{reason := <<"Account not found">>}} -> 0;
         {ok, 200, #{balance := Balance}} -> Balance
     end.
+
+get_account_txs(NodeName, PubKey, Cfg) ->
+    Params = #{tx_types => spend_tx, tx_encoding => json},
+    {ok, 200, #{transactions := Txs}} =
+        aest_nodes:http_get(NodeName, ext_http, [v2, account, txs, PubKey], Params, Cfg),
+    Txs.
 
 post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg) ->
     Headers = [{<<"Content-Type">>, <<"application/json">>}],
