@@ -408,13 +408,6 @@ workflows:
             tags:
               only: /^v.*$/
 
-      - uat_chain_snapshot:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-
       - docker_image_build:
           filters:
             branches:
