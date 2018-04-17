@@ -103,7 +103,7 @@ sync_listen_address() ->
     IpAddress.
 
 acceptors() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"accetors">>],
+    aeu_env:user_config_or_env([<<"sync">>, <<"acceptors">>],
                                aecore, sync_acceptors,
                                ?DEFAULT_ACCEPTORS).
 

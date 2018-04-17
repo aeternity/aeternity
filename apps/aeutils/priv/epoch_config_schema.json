@@ -54,10 +54,26 @@
                     "default": 10,
                 },
                 "max_connections" : {
-                    "description" : "The maximum number of incomming connections",
+                    "description" : "The maximum number of incoming connections",
                     "type" : "integer",
-                    "default": 100,
+                    "default": 1000,
+                },
+                "connect_timeout" : {
+                    "description" : "Connection timeout in miliseconds",
+                    "type" : "integer",
+                    "default": 1000,
+                },
+                "first_ping_timeout" : {
+                    "description" : "Maximum time for receiving a ping in miliseconds",
+                    "type" : "integer",
+                    "default": 30000,
+                },
+                "noise_hs_timeout" : {
+                    "description" : "Maximum time for noise handshake in miliseconds",
+                    "type" : "integer",
+                    "default": 5000,
                 }
+
             }
         },
         "http" : {
