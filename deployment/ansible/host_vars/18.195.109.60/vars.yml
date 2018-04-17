@@ -1,2 +1,0 @@
-public_peer_key: files/peer_keys/{{ public_ip }}.pub
-private_peer_key: files/peer_keys/{{ public_ip }}

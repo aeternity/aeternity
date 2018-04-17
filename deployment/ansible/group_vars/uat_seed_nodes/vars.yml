@@ -1,0 +1,3 @@
+key_pairs:
+  - files/peer_keys/{{ public_ip }}.pub
+  - files/peer_keys/{{ public_ip }}

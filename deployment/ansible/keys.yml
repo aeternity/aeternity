@@ -1,0 +1,35 @@
+---
+- name: Ensure aeternity network environments
+  hosts: all
+  remote_user: epoch
+  vars:
+    public_ip: "{{ ansible_ssh_host|default(ansible_host) }}"
+    project_root: "{{ ansible_env.HOME }}/node"
+    config:
+      sync:
+        port: 3015
+      http:
+        external:
+          port: 3013
+        internal:
+          listen_address: "{{ api_internal_listen_address|default('127.0.0.1') }}"
+          port: 3113
+        debug: "{{ http_debug|default(false) }}"
+      websocket:
+        internal:
+          listen_address: "{{ ws_internal_listen_address|default('127.0.0.1') }}"
+          port: 3114
+      chain:
+        persist: true
+        db_path: "./db43"
+      keypair:
+        dir: "keys"
+
+  tasks:
+     - name: "Copy node keys to {{ project_root }}/{{ config.keypair.dir }}"
+       copy:
+         src: "{{ item }}"
+         dest: "/tmp/{{ project_root }}/{{ config.keypair.dir }}"
+         mode: 0600
+       with_items: "{{ key_pairs }}"
+       when: key_pairs is defined
