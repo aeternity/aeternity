@@ -293,7 +293,6 @@ jobs:
       - run:
           name: UAT Tests
           command: |
-            false
             epmd -daemon
             make python-env && make swagger && make multi-build
             make python-uats
@@ -472,6 +471,9 @@ workflows:
       - uat_tests:
           requires:
             - build
+          filters:
+            branches:
+              only: master
 
       - static_analysis:
           requires:
