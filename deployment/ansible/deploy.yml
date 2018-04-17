@@ -169,7 +169,7 @@
        - name: "Copy node keys to {{ project_root }}/{{ config.keypair.dir }}"
          copy:
            src: "{{ item }}"
-           dest: "/tmp/{{ project_root }}/{{ config.keypair.dir }}"
+           dest: "{{ project_root }}/{{ config.keypair.dir }}"
            mode: 0600
          with_items: "{{ key_pairs }}"
          when: key_pairs is defined
