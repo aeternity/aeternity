@@ -341,7 +341,7 @@ jobs:
           command: |
             cd deployment/ansible
             ansible-playbook --limit="tag_role_epoch:&tag_env_uat" \
-              --extra-vars "download_dir=/tmp/chain_snapshots backup_suffix=db_backup_$(date +%s)" \
+              --extra-vars "download_dir=/tmp/chain_snapshots backup_suffix=uat_db_backup_$(date +%s)" \
               mnesia_backup.yml
       - store_artifacts:
           path: /tmp/chain_snapshots
