@@ -47,12 +47,14 @@
 new(#{channel_id  := ChannelId,
       from        := FromPubKey,
       amount      := Amount,
+      ttl         := TTL,
       fee         := Fee,
       nonce       := Nonce}) ->
     Tx = #channel_deposit_tx{
             channel_id  = ChannelId,
             from        = FromPubKey,
             amount      = Amount,
+            ttl         = TTL,
             fee         = Fee,
             nonce       = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -76,10 +78,12 @@ origin(#channel_deposit_tx{from = FromPubKey}) ->
 check(#channel_deposit_tx{channel_id = ChannelId,
                           from       = FromPubKey,
                           amount     = Amount,
+                          ttl        = TTL,
                           fee        = Fee,
                           nonce      = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Amount + Fee) end,
+         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -126,12 +130,14 @@ signers(#channel_deposit_tx{channel_id = ChannelId}) ->
 serialize(#channel_deposit_tx{channel_id  = ChannelId,
                               from        = FromPubKey,
                               amount      = Amount,
+                              ttl         = TTL,
                               fee         = Fee,
                               nonce       = Nonce}) ->
     {version(),
      [ {channel_id  , ChannelId}
      , {from        , FromPubKey}
      , {amount      , Amount}
+     , {ttl         , TTL}
      , {fee         , Fee}
      , {nonce       , Nonce}
      ]}.
@@ -141,11 +147,13 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             [ {channel_id  , ChannelId}
             , {from        , FromPubKey}
             , {amount      , Amount}
+            , {ttl         , TTL}
             , {fee         , Fee}
             , {nonce       , Nonce}]) ->
     #channel_deposit_tx{channel_id  = ChannelId,
                         from        = FromPubKey,
                         amount      = Amount,
+                        ttl         = TTL,
                         fee         = Fee,
                         nonce       = Nonce}.
 
@@ -153,6 +161,7 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
 for_client(#channel_deposit_tx{channel_id   = ChannelId,
                                from        = FromPubKey,
                                amount       = Amount,
+                               ttl          = TTL,
                                fee          = Fee,
                                nonce        = Nonce}) ->
     #{<<"data_schema">>  => <<"ChannelDepositTxJSON">>, % swagger schema name
@@ -160,6 +169,7 @@ for_client(#channel_deposit_tx{channel_id   = ChannelId,
       <<"channel">>      => aec_base58c:encode(channel, ChannelId),
       <<"from">>         => aec_base58c:encode(account_pubkey, FromPubKey),
       <<"amount">>       => Amount,
+      <<"ttl">>          => TTL,
       <<"fee">>          => Fee,
       <<"nonce">>        => Nonce}.
 
@@ -167,6 +177,7 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
     [ {channel_id  , binary}
     , {from        , binary}
     , {amount      , int}
+    , {ttl         , int}
     , {fee         , int}
     , {nonce       , int}
     ].

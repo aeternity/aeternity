@@ -3187,12 +3187,20 @@
     },
     "ChannelDepositTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce" ],
+      "required" : [ "amount", "channel_id", "fee", "from", "nonce", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
+        "from" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
         "amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3211,13 +3219,15 @@
       "example" : {
         "amount" : 0,
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
+        "ttl" : 0,
         "nonce" : 0
       }
     },
     "ChannelWithdrawalTx" : {
       "type" : "object",
-      "required" : [ "amount", "channel_id", "fee", "nonce", "to" ],
+      "required" : [ "amount", "channel_id", "fee", "nonce", "to", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
@@ -3226,6 +3236,11 @@
           "$ref" : "#/definitions/EncodedHash"
         },
         "amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64",
           "minimum" : 0
@@ -3246,6 +3261,7 @@
         "fee" : 0,
         "to" : { },
         "channel_id" : "channel_id",
+        "ttl" : 0,
         "nonce" : 0
       }
     },
