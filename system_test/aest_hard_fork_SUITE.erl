@@ -35,6 +35,8 @@
 
 %=== MACROS ====================================================================
 
+-define(TESTED_DOCKER_IMAGE, "aeternity/epoch:v0.11.0").
+
 -define(DB_BACKUP_DEST_DIR, "/tmp/mnesia_backup").
 
 -define(GENESIS_PROTOCOL_VERSION, 9).
@@ -79,7 +81,7 @@
           name    => new_node1,
           peers   => [],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
           hard_forks => ?PROTOCOLS(H)
          }).
@@ -88,7 +90,7 @@
           name    => new_node2,
           peers   => [new_node1],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
           hard_forks => ?PROTOCOLS(H)
          }).
@@ -97,7 +99,7 @@
           name    => new_node3,
           peers   => [new_node1],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
           hard_forks => ?PROTOCOLS(H)
          }).
@@ -106,7 +108,7 @@
           name    => new_node4,
           peers   => [new_node3],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
           hard_forks => ?PROTOCOLS(H)
          }).
@@ -115,7 +117,7 @@
           name    => fast_new_node1,
           peers   => [],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => 1000,
           cuckoo_miner => ?CUCKOO_MINER(16),
           hard_forks => ?PROTOCOLS(H)
@@ -125,7 +127,7 @@
           name    => fast_new_node2,
           peers   => [fast_new_node1],
           backend => aest_docker,
-          source  => {pull, "aeternity/epoch:local"},
+          source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => 1000,
           cuckoo_miner => ?CUCKOO_MINER(16),
           hard_forks => ?PROTOCOLS(H)
