@@ -553,7 +553,6 @@ workflows:
 
       - deploy_uat:
           requires:
-            - test
             - eunit
             - static_analysis
             - linux_package
@@ -566,7 +565,6 @@ workflows:
 
       - github_release_linux:
           requires:
-            - test
             - eunit
             - static_analysis
             - linux_package
@@ -579,7 +577,6 @@ workflows:
 
       - github_release_osx:
           requires:
-            - test
             - eunit
             - static_analysis
             - osx_package
@@ -592,7 +589,6 @@ workflows:
 
       - docker_push_tag:
           requires:
-            - test
             - eunit
             - static_analysis
             - hodl
