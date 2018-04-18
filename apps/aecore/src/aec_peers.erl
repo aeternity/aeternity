@@ -477,8 +477,8 @@ handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
                                State#state.peers),
             {noreply, State#state{peers = Peers}};
         {value, _Hash, #peer{timer_tref = Ref} = Peer} when Msg == retry ->
-            maybe_retry_peer(Peer),
-            Peers = enter_peer(Peer#peer{timer_tref = undefined},
+            Peer1 = maybe_retry_peer(Peer),
+            Peers = enter_peer(Peer1#peer{timer_tref = undefined},
                                State#state.peers),
             {noreply, State#state{peers = Peers}};
         {value, _, #peer{}} ->
@@ -607,10 +607,11 @@ maybe_ping_peer(PeerId, State) ->
 
 maybe_retry_peer(P = #peer{ connection = {error, PeerCon} }) ->
     lager:debug("Will retry peer ~p", [peer_info(P)]),
-    aec_peer_connection:retry(PeerCon);
+    aec_peer_connection:retry(PeerCon),
+    P#peer{ connection = {pending, PeerCon} };
 maybe_retry_peer(P) ->
     lager:debug("No need to retry peer ~p", [ppp(peer_id(P))]),
-    ok.
+    P.
 
 is_local(PeerId1, #state{local_peer = LocalPeer}) ->
     PeerId2 = peer_id(LocalPeer),
