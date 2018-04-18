@@ -47,7 +47,7 @@ accept(TcpSock, Options) ->
     {ok, {Host, _Port}} = inet:peername(TcpSock),
     Options1 = Options#{ tcp_sock => TcpSock
                        , role => responder
-                       , host => inet_parse:ntoa(Host)},
+                       , host => list_to_binary(inet:ntoa(Host))},
     case aec_peer_connection_sup:start_peer_connection(Options1) of
         {ok, Pid} ->
             gen_tcp:controlling_process(TcpSock, Pid),
@@ -164,8 +164,8 @@ handle_cast({send_block, Hash}, State) ->
     send_send_block(State, Hash),
     {noreply, State};
 handle_cast(stop, State) ->
-    cleanup_connection(State),
-    {stop, normal, State};
+    State1 = cleanup_connection(State),
+    {stop, normal, State1};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -181,8 +181,8 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
         Ref when NonRegAccept ->
             lager:info("Connecting peer never sent ping, stopping"),
             %% Consider blocking this peer
-            cleanup_connection(S),
-            {stop, normal, S};
+            S1 = cleanup_connection(S),
+            {stop, normal, S1};
         _ ->
             lager:debug("Got stale first_ping_timeout", []),
             {noreply, S}
@@ -237,11 +237,12 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     end;
 handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
+    S1 = cleanup_connection(S),
     case is_non_registered_accept(S) of
         true ->
-            {stop, normal, S};
+            {stop, normal, S1};
         false ->
-            connect_fail(S)
+            connect_fail(S1)
     end;
 handle_info(_Msg, S) ->
     {noreply, S}.
@@ -315,11 +316,16 @@ cleanup_connection(State) ->
         TSock when is_port(TSock) -> gen_tcp:close(TSock);
         _                         -> ok
     end,
+    cleanup_requests(State).
+
+cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
     [ gen_server:reply(From, {error, disconnected})
-      || {_Request, From} <- Reqs ].
+      || {_Request, From} <- Reqs ],
+    maps:remove(requests, State).
 
-connect_fail(S) ->
+connect_fail(S0) ->
+    S = cleanup_requests(S0),
     case aec_peers:connect_fail(peer_id(S), self()) of
         keep ->
             {noreply, S#{ status := error }};
@@ -337,8 +343,8 @@ handle_fragment(S = #{ fragments := Fragments }, N, _M, Fragment) when N == leng
     {noreply, S#{ fragments := [Fragment | Fragments] }};
 handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
     lager:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
-    cleanup_connection(S),
-    connect_fail(maps:remove(fragments, S)).
+    S1 = cleanup_connection(S),
+    connect_fail(maps:remove(fragments, S1)).
 
 handle_msg(S, MsgType, IsResponse, Result) ->
     handle_msg(S, MsgType, IsResponse, get_request(S, MsgType), Result).
@@ -371,13 +377,13 @@ handle_msg(S, MsgType, true, Request, {ok, {MsgType, _Vsn, Msg}}) ->
     end.
 
 handle_request(S, {Request, Args}, From) ->
+    MappedRequest = map_request(Request),
     case get_request(S, Request) of
         none ->
             handle_request(S, Request, Args, From);
-        {Request, _From} ->
+        {MappedRequest, _From} ->
             {reply, {error, request_already_in_progress}, S}
     end.
-
 
 handle_request(S = #{ status := error }, _Req, _Args, _From) ->
     {reply, {error, disconnected}, S};
@@ -712,8 +718,5 @@ send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
-peer_id(#{ r_pubkey := PK, host := H, port := P }) when is_binary(H) ->
-    <<PK/binary, P:16, H/binary>>;
-peer_id(#{ r_pubkey := PK, host := H, port := P }) ->
-    <<PK/binary, P:16, (list_to_binary(H))/binary>>.
-
+peer_id(#{ r_pubkey := PK }) ->
+    PK.

@@ -35,7 +35,6 @@
          get_random/2,
          parse_peer_address/1,
          encode_peer_address/1,
-         set_local_peer_info/1,
          get_local_peer_info/0]).
 
 %% API only used in aec_sync
@@ -110,10 +109,9 @@ add_and_ping_peers(Peers, Trusted) ->
 %%------------------------------------------------------------------------------
 %% Block peer
 %%------------------------------------------------------------------------------
--spec block_peer(peer_id()) -> ok | {error, term()}.
-block_peer(Peer) ->
-    gen_server:call(?MODULE, {block, Peer}).
-
+-spec block_peer(peer_info()) -> ok | {error, term()}.
+block_peer(PeerInfo) ->
+    gen_server:call(?MODULE, {block, PeerInfo}).
 
 connect_peer(PeerId, PeerCon) ->
     gen_server:call(?MODULE, {connect_peer, PeerId, PeerCon}).
@@ -128,8 +126,8 @@ accept_peer(PeerInfo, PeerCon) ->
 %% Unblock peer
 %%------------------------------------------------------------------------------
 -spec unblock_peer(peer_id()) -> ok | {error, term()}.
-unblock_peer(Peer) ->
-    gen_server:call(?MODULE, {unblock, Peer}).
+unblock_peer(PeerId) ->
+    gen_server:call(?MODULE, {unblock, PeerId}).
 
 %%------------------------------------------------------------------------------
 %% Check if peer is blocked. Erroneous Peers is by definition blocked.
@@ -149,7 +147,7 @@ remove(Peer) ->
 %%------------------------------------------------------------------------------
 %% Get list of all peers. The list may be big. Use with caution.
 %% Consider using get_random instead.
-%%------------------------------------------------------------------------------
+%------------------------------------------------------------------------------
 -spec all() -> list(peer_info()).
 all() ->
     gen_server:call(?MODULE, all).
@@ -181,16 +179,6 @@ get_random(N, Exclude) when is_list(Exclude),
     N == all orelse (is_integer(N) andalso N >= 0) ->
     gen_server:call(?MODULE, {get_random, N, Exclude}).
 
-%%------------------------------------------------------------------------------
-%% Set our own peer id
-%%------------------------------------------------------------------------------
--spec set_local_peer_info(peer_info()) -> ok.
-set_local_peer_info(Peer) ->
-    gen_server:cast(?MODULE, {set_local_peer_info, Peer}).
-
-%%------------------------------------------------------------------------------
-%% Set our own peer id
-%%------------------------------------------------------------------------------
 -spec get_local_peer_info() -> peer_info().
 get_local_peer_info() ->
     gen_server:call(?MODULE, get_local_peer_info).
@@ -199,8 +187,8 @@ get_connection(PeerId) ->
     gen_server:call(?MODULE, {get_connection, PeerId}).
 
 -spec log_ping(peer_id(), ok | error) -> ok | {error, any()}.
-log_ping(Peer, Result) ->
-    gen_server:cast(?MODULE, {log_ping, Result, Peer, timestamp()}).
+log_ping(PeerId, Result) ->
+    gen_server:cast(?MODULE, {log_ping, Result, PeerId, timestamp()}).
 
 %%------------------------------------------------------------------------------
 %% Check user-provided environment
@@ -218,15 +206,16 @@ unblock_all() ->
 %%%=============================================================================
 
 
--record(state, {peers                   :: gb_trees:tree(binary(), peer()),
-                blocked = gb_sets:new() :: gb_sets:set(peer_id()),
-                local_peer              :: peer_info(),  %% for universal handling of URIs
-                next_unblock = 0        :: integer(), %% Erlang timestamp in ms.
-                peer_monitors           :: ets:tab()
+-record(state, {peers            :: gb_trees:tree(peer_id(), peer()),
+                blocked          :: gb_trees:tree(peer_id(), peer_info()),
+                local_peer       :: peer_info(),  %% for universal handling of URIs
+                next_unblock = 0 :: integer(), %% Erlang timestamp in ms.
+                peer_monitors    :: ets:tab()
                }).
 
 start_link() ->
     gen_server:start_link({local, ?MODULE} ,?MODULE, ok, []).
+
 
 init(ok) ->
     {ok, SecKey} = aec_keys:peer_privkey(),
@@ -234,19 +223,19 @@ init(ok) ->
     LocalPeer = #{seckey => SecKey, pubkey => PubKey},
     PMons = ets:new(aec_peer_monitors, [named_table, protected]),
     lager:info("aec_peers started at ~p", [LocalPeer]),
-    {ok, #state{peers = gb_trees:empty(),
-                local_peer = LocalPeer,
-                peer_monitors = PMons
+    {ok, #state{ peers = gb_trees:empty(),
+                 blocked = gb_trees:empty(),
+                 local_peer = LocalPeer,
+                 peer_monitors = PMons
                }}.
 
-handle_call({set_local_peer_info, Peer}, _From, State) ->
-    {reply, ok, State#state{local_peer = Peer}};
 handle_call(get_local_peer_info, _From, State) ->
     {reply, State#state.local_peer, State};
-handle_call({is_blocked, Peer}, _From, State0) ->
+handle_call({is_blocked, PeerId}, _From, State0) ->
     State = maybe_unblock(State0),
-    {reply, is_blocked(Peer, State), State};
-handle_call({block, PeerId}, _From, State0) ->
+    {reply, is_blocked(PeerId, State), State};
+handle_call({block, PeerInfo}, _From, State0) ->
+    PeerId = peer_id(PeerInfo),
     State = maybe_unblock(State0),
     #state{peers = Peers, blocked = Blocked} = State,
     NewState =
@@ -256,10 +245,10 @@ handle_call({block, PeerId}, _From, State0) ->
                 aec_events:publish(peers, {blocked, PeerId}),
                 stop_connection(Peer),
                 State#state{peers   = remove_peer(PeerId, Peers),
-                            blocked = add_blocked(PeerId, Blocked)};
+                            blocked = add_blocked(PeerId, peer_info(Peer), Blocked)};
             none ->
                 aec_events:publish(peers, {blocked, PeerId}),
-                State#state{blocked = add_blocked(PeerId, Blocked)}
+                State#state{blocked = add_blocked(PeerId, PeerInfo, Blocked)}
         end,
     {reply, ok, NewState};
 handle_call({unblock, PeerId}, _From, #state{blocked = Blocked} = State) ->
@@ -273,12 +262,12 @@ handle_call({unblock, PeerId}, _From, #state{blocked = Blocked} = State) ->
     {reply, ok, NewState};
 %% unblock_all is only available for test
 handle_call(unblock_all, _From, State) ->
-    {reply, ok, State#state{blocked = gb_sets:new(), next_unblock = next_unblock()}};
+    {reply, ok, State#state{blocked = gb_trees:empty(), next_unblock = next_unblock()}};
 handle_call(all, _From, State = #state{peers = Peers}) ->
     PeerIds = [ peer_info(P) || P <- gb_trees:values(Peers) ],
     {reply, PeerIds, State};
-handle_call(blocked, _From, State) ->
-    Peers = [ peer_info(Peer) || Peer <- gb_sets:to_list(State#state.blocked) ],
+handle_call(blocked, _From, State = #state{blocked = Blocked}) ->
+    Peers = [ PeerInfo || PeerInfo <- gb_trees:values(Blocked) ],
     {reply, Peers, State};
 handle_call({get_connection, PeerId}, _From, State) ->
     Res =
@@ -503,8 +492,8 @@ handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = Stat
         {value, _, #peer{connection = {_, Pid}}} ->
             %% This was an unexpected process down. Clean it up.
             %% TODO: This should probably be restarted.
-            lager:error("Peer connection died - removing: ~p : ~p",
-                        [Pid, ppp(PeerId)]),
+            lager:warning("Peer connection died - removing: ~p : ~p",
+                          [Pid, ppp(PeerId)]),
             Peers = remove_peer(PeerId, State#state.peers),
             {noreply, State#state{peers = Peers}};
         _ ->
@@ -541,7 +530,7 @@ metrics(#state{peers = Peers, blocked = Blocked} = State) ->
     aec_metrics:try_update([ae,epoch,aecore,peers,count],
                            gb_trees:size(Peers)),
     aec_metrics:try_update([ae,epoch,aecore,peers,blocked],
-                           gb_sets:size(Blocked)),
+                           gb_trees:size(Blocked)),
     State.
 
 maybe_unblock(State = #state{ next_unblock = 0 }) ->
@@ -549,7 +538,7 @@ maybe_unblock(State = #state{ next_unblock = 0 }) ->
 maybe_unblock(State = #state{ next_unblock = NextT }) ->
     case timestamp() > NextT of
         false -> State;
-        true  -> State#state{ blocked = gb_sets:new(),
+        true  -> State#state{ blocked = gb_trees:empty(),
                               next_unblock = next_unblock() }
     end.
 
@@ -559,19 +548,13 @@ next_unblock() ->
 
 %% Updates if already exists.
 enter_peer(#peer{} = P, Peers) ->
-    gb_trees:enter(hash_peer(P), P, Peers).
+    gb_trees:enter(peer_id(P), P, Peers).
 
 timestamp() ->
     erlang:system_time(millisecond).
 
--spec hash_peer(peer() | binary()) -> binary().
-hash_peer(#peer{} = P) ->
-    hash_peer(peer_id(P));
-hash_peer(<<PK:32/binary, _/binary>>) ->
-    aec_hash:hash(peer_id, PK).
-
 remove_peer(PeerId, Peers) when is_binary(PeerId) ->
-    gb_trees:delete_any(hash_peer(PeerId), Peers).
+    gb_trees:delete_any(PeerId, Peers).
 
 pick_n(all, Xs) -> Xs;
 pick_n(N, Xs) when length(Xs) =< N -> Xs;
@@ -585,16 +568,14 @@ pick_n(N, Xs, L, Acc) ->
     pick_n(N-1, Ys ++ Zs, L-1, [X | Acc]).
 
 lookup_peer(PeerId, #state{peers = Peers}) when is_binary(PeerId) ->
-    Key = hash_peer(PeerId),
-    case gb_trees:lookup(Key, Peers) of
+    case gb_trees:lookup(PeerId, Peers) of
         none -> none;
         {value, P} ->
-            {value, Key, P}
+            {value, PeerId, P}
     end.
 
-is_blocked(<<PubKey:32/binary, _/binary>>, #state{blocked = Blocked}) ->
-    gb_sets:is_element(PubKey, Blocked).
-
+is_blocked(PeerId, #state{blocked = Blocked}) ->
+    gb_trees:is_defined(PeerId, Blocked).
 
 update_ping_metrics(Res) ->
     Name = case Res of
@@ -603,17 +584,16 @@ update_ping_metrics(Res) ->
            end,
     aec_metrics:try_update(Name, 1).
 
-add_blocked(_PeerId = <<PubKey:32/binary, _/binary>>, Blocked) ->
-    gb_sets:add_element(PubKey, Blocked).
+add_blocked(PeerId, PeerInfo, Blocked) ->
+    gb_trees:enter(PeerId, PeerInfo, Blocked).
 
-del_blocked(_PeerId = <<PubKey:32/binary, _/binary>>, Blocked) ->
-    gb_sets:delete_any(PubKey, Blocked).
+del_blocked(PeerId, Blocked) ->
+    gb_trees:delete_any(PeerId, Blocked).
 
 stop_connection(#peer{ connection = Pid }) when is_pid(Pid) ->
     aec_peer_connection:stop(Pid);
 stop_connection(_) ->
     ok.
-
 
 maybe_ping_peer(PeerId, State) ->
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
@@ -632,41 +612,30 @@ maybe_retry_peer(P) ->
     lager:debug("No need to retry peer ~p", [ppp(peer_id(P))]),
     ok.
 
-is_local(Peer, #state{local_peer = LocalPeer}) ->
-    #{ pubkey := PubKey1 } = peer_info(Peer),
-    #{ pubkey := PubKey2 } = peer_info(LocalPeer),
-    PubKey1 == PubKey2.
+is_local(PeerId1, #state{local_peer = LocalPeer}) ->
+    PeerId2 = peer_id(LocalPeer),
+    PeerId1 == PeerId2.
 
 peer_id(PeerId) when is_binary(PeerId) ->
     PeerId;
-peer_id(#{ host := Host, port := Port, pubkey := PubKey }) ->
-    peer_id(PubKey, Host, Port);
-peer_id(#peer{ host = Host, port = Port, pubkey = PubKey }) ->
-    peer_id(PubKey, Host, Port).
+peer_id(#{ pubkey := PubKey }) ->
+    PubKey;
+peer_id(#peer{ pubkey = PubKey }) ->
+    PubKey.
 
 peer_info(PeerId) when is_binary(PeerId) ->
-    split_peer_id(PeerId);
+    #{ host => <<"unknown">>, port => 0, pubkey => PeerId };
 peer_info(#peer{ host = H, port = P, pubkey = PK }) ->
     #{ host => H, port => P, pubkey => PK };
 peer_info(PeerInfo = #{ pubkey := _ }) ->
     PeerInfo.
 
-peer_id(PubKey, Host, Port) when is_binary(Host) ->
-    <<PubKey/binary, Port:16, Host/binary>>;
-peer_id(PubKey, Host, Port) when is_list(Host) ->
-    peer_id(PubKey, list_to_binary(Host), Port).
-
-split_peer_id(<<PubKey:32/binary, Port:16, Host/binary>>) ->
-    #{ pubkey => PubKey, host => Host, port => Port }.
-
-
 ppp(PeerId) when is_binary(PeerId) ->
-    #{ pubkey := PK } = split_peer_id(PeerId),
-    Str = lists:flatten(io_lib:format("~p", [aec_base58c:encode(peer_pubkey, PK)])),
-    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, 48, 8);
+    Str = lists:flatten(io_lib:format("~p", [aec_base58c:encode(peer_pubkey, PeerId)])),
+    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, length(Str) - 9, 7);
 ppp(#{ pubkey := PK }) ->
     Str = lists:flatten(io_lib:format("~p", [aec_base58c:encode(peer_pubkey, PK)])),
-    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, 48, 8);
+    lists:sublist(Str, 4, 10) ++ "..." ++ lists:sublist(Str, length(Str) - 9, 7);
 ppp(X) ->
     X.
 

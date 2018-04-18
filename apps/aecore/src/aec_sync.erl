@@ -109,7 +109,7 @@ init([]) ->
     Peers = parse_peers(aeu_env:user_map_or_env(<<"peers">>, aecore, peers, [])),
     BlockedPeers = parse_peers(aeu_env:user_map_or_env(<<"blocked_peers">>, aecore, blocked_peers, [])),
 
-    [aec_peers:block_peer(aec_peers:peer_id(P)) || P <- BlockedPeers],
+    [aec_peers:block_peer(P) || P <- BlockedPeers],
     aec_peers:add_and_ping_peers(Peers, true),
     {ok, #state{}}.
 
@@ -149,7 +149,7 @@ handle_call({fetch_next, PeerId, HeightIn, HashIn, Result}, _, State) ->
     lager:debug("fetch next from Hashpool ~p", [ [ {H, maps:is_key(block, Map)} || {{H,_}, Map} <- HashPool] ]),
     case update_chain_from_pool(HeightIn, HashIn, HashPool) of
         {error, Reason} ->
-            lager:error("chain update failed ~p", [Reason]),
+            lager:info("chain update failed ~p", [Reason]),
             {reply, {error, sync_stopped}, State#state{hash_pool = HashPool}};
         {ok, NewHeight, NewHash, []} ->
             lager:debug("Got all the blocks in hash pool"),
