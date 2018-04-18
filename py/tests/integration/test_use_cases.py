@@ -137,14 +137,15 @@ def test_node_discovery():
     root_dir = tempfile.mkdtemp()
 
     # Alice's config: no peers
+    alice_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     alice_sys_config = make_peers_config(root_dir, "alice.config",
-                            alice_peer_url, "node1", "3015", '{peers, []},', mining=True)
-    print("\nAlice has address " + alice_peer_url + " and no peers")
+                            alice_peer_url, "node1", "3015", alice_peers, mining=True)
+    print("\nAlice has address " + alice_peer_url + " and peers [" + bob_peer_url + "]")
     # Bob's config: only peer is Alice
-    bob_peers = ' {peers, [<<"aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015">>]}, '
+    bob_peers = '{peers, []},'
     bob_sys_config = make_peers_config(root_dir, "bob.config",
                             bob_peer_url, "node2", "3025", bob_peers, mining=False)
-    print("Bob has address " + bob_peer_url + " and peers [" + alice_peer_url + "]")
+    print("Bob has address " + bob_peer_url + " and no peers")
     # Carol's config: only peer is Bob
     carol_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     carol_sys_config = make_peers_config(root_dir, "carol.config",
@@ -174,10 +175,14 @@ def test_node_discovery():
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
     def carol_peers():
-        peers = carol_int_api.get_peers().peers
-        print("Peers: " + str(peers))
-        return peers
-    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in carol_peers(), timeout_seconds=20, sleep_seconds=1)
+        try:
+            peers = carol_int_api.get_peers().peers
+            print("Peers: " + str(peers))
+            return peers
+        except Exception as e:
+            print("Call to debug/peers failed")
+            return []
+    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in carol_peers(), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -205,7 +210,8 @@ def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, min
                      ' {expected_mine_rate, 100},' + \
                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}'
     else:
-        mining_str = ' {autostart, false}'
+        mining_str = ' {autostart, false},' + \
+                     ' {expected_mine_rate, 100}'
     f = open(sys_config, "w")
     conf ='[{aecore, [' + peers + '{sync_port, ' + sync_port + '}, ' + \
                       ' {keys_dir, "' + key_dir + '"}, ' + \
