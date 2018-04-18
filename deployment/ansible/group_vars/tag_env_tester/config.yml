@@ -1,4 +1,0 @@
-keypair:
-  - files/tester/key
-  - files/tester/key.pub
-log_level: warning
