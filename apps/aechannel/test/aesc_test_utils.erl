@@ -175,11 +175,13 @@ deposit_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
     #{channel_id => ChannelId,
       from       => FromPubKey,
       amount     => maps:get(amount, Spec),
+      ttl        => maps:get(ttl, Spec),
       fee        => maps:get(fee, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 deposit_tx_default_spec(FromPubKey, State) ->
     #{amount => 10,
+      ttl    => 100,
       fee    => 3,
       nonce  => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
@@ -195,10 +197,12 @@ withdraw_tx_spec(ChannelId, ToPubKey, Spec0, State) ->
     #{channel_id => ChannelId,
       to         => ToPubKey,
       amount     => maps:get(amount, Spec),
+      ttl        => maps:get(ttl, Spec),
       fee        => maps:get(fee, Spec),
       nonce      => maps:get(nonce, Spec)}.
 
 withdraw_tx_spec(ToPubKey, State) ->
     #{amount => 10,
+      ttl    => 100,
       fee    => 3,
       nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.

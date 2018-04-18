@@ -47,12 +47,14 @@
 new(#{channel_id := ChannelId,
       to         := ToPubKey,
       amount     := Amount,
+      ttl        := TTL,
       fee        := Fee,
       nonce      := Nonce}) ->
     Tx = #channel_withdraw_tx{
             channel_id = ChannelId,
             to         = ToPubKey,
             amount     = Amount,
+            ttl        = TTL,
             fee        = Fee,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -76,10 +78,12 @@ origin(#channel_withdraw_tx{to = ToPubKey}) ->
 check(#channel_withdraw_tx{channel_id  = ChannelId,
                            to          = ToPubKey,
                            amount      = Amount,
+                           ttl         = TTL,
                            fee         = Fee,
                            nonce       = Nonce}, Trees, Height) ->
     Checks =
         [fun() -> aetx_utils:check_account(ToPubKey, Trees, Height, Nonce, Fee) end,
+         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, Amount, ToPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -128,12 +132,14 @@ signers(#channel_withdraw_tx{channel_id = ChannelId}) ->
 serialize(#channel_withdraw_tx{channel_id = ChannelId,
                                to         = ToPubKey,
                                amount     = Amount,
+                               ttl        = TTL,
                                fee        = Fee,
                                nonce      = Nonce}) ->
     {version(),
      [ {channel_id , ChannelId}
      , {to         , ToPubKey}
      , {amount     , Amount}
+     , {ttl        , TTL}
      , {fee        , Fee}
      , {nonce      , Nonce}
      ]}.
@@ -143,11 +149,13 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
             [ {channel_id , ChannelId}
             , {to         , ToPubKey}
             , {amount     , Amount}
+            , {ttl        , TTL}
             , {fee        , Fee}
             , {nonce      , Nonce}]) ->
     #channel_withdraw_tx{channel_id = ChannelId,
                          to         = ToPubKey,
                          amount     = Amount,
+                         ttl        = TTL,
                          fee        = Fee,
                          nonce      = Nonce}.
 
@@ -155,6 +163,7 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
 for_client(#channel_withdraw_tx{channel_id   = ChannelId,
                                 to   = ToPubKey,
                                 amount       = Amount,
+                                ttl          = TTL,
                                 fee          = Fee,
                                 nonce        = Nonce}) ->
     #{<<"data_schema">> => <<"ChannelWithdrawalTxJSON">>, % swagger schema name
@@ -162,6 +171,7 @@ for_client(#channel_withdraw_tx{channel_id   = ChannelId,
       <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),
       <<"to">>          => aec_base58c:encode(account_pubkey, ToPubKey),
       <<"amount">>      => Amount,
+      <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
       <<"nonce">>       => Nonce}.
 
@@ -169,6 +179,7 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
     [ {channel_id , binary}
     , {to         , binary}
     , {amount     , int}
+    , {ttl        , int}
     , {fee        , int}
     , {nonce      , int}
     ].

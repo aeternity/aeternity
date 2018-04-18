@@ -24,6 +24,7 @@
           channel_id  :: binary(),
           from        :: pubkey(),
           amount      :: non_neg_integer(),
+          ttl         :: non_neg_integer(),
           fee         :: non_neg_integer(),
           nonce       :: non_neg_integer()
          }).
@@ -32,6 +33,7 @@
           channel_id  :: binary(),
           to          :: pubkey(),
           amount      :: non_neg_integer(),
+          ttl         :: non_neg_integer(),
           fee         :: non_neg_integer(),
           nonce       :: non_neg_integer()
          }).

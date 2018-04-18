@@ -308,7 +308,7 @@ handle_request('PostChannelDeposit', #{'ChannelDepositTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, from,
                                        amount,
-                                       fee, nonce]),
+                                       ttl, fee, nonce]),
                  base58_decode([{channel_id, channel_id, channel},
                                 {from, from, account_pubkey}]),
                  unsigned_tx_response(fun aesc_deposit_tx:new/1)
@@ -319,7 +319,7 @@ handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Contex
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([channel_id, to,
                                        amount,
-                                       fee, nonce]),
+                                       ttl, fee, nonce]),
                  base58_decode([{channel_id, channel_id, channel},
                                 {to, to, account_pubkey}]),
                  unsigned_tx_response(fun aesc_withdraw_tx:new/1)
