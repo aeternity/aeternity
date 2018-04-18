@@ -260,12 +260,12 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     end;
 handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
+    S1 = cleanup_connection(S),
     case is_non_registered_accept(S) of
         true ->
-            S1 = cleanup_connection(S),
             {stop, normal, S1};
         false ->
-            connect_fail(S)
+            connect_fail(S1)
     end;
 handle_info(_Msg, S) ->
     {noreply, S}.
