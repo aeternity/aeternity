@@ -196,7 +196,7 @@
 
 %% channel websocket endpoints
 -export(
-   [sc_ws_connect/1
+   [sc_ws_open/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -385,7 +385,7 @@ groups() ->
        ws_oracles
       ]},
      {channel_websocket, [sequence],
-      [sc_ws_connect
+      [sc_ws_open
       ]}
     ].
 
@@ -2877,20 +2877,54 @@ ws_oracles(_Config) ->
 %%
 %% Channels
 %%
-sc_ws_connect(_Config) ->
-    {IPubkey, _IPrivkey} = generate_key_pair(),
-    {RPubkey, _RPrivkey} = generate_key_pair(),
-    IStartAmt = 10,
-    RStartAmt = 20,
+sc_ws_open(_Config) ->
+    {IPubkey, IPrivkey} = generate_key_pair(),
+    {RPubkey, RPrivkey} = generate_key_pair(),
+    IStartAmt = 20,
+    RStartAmt = 10,
     Fee = 1,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, IConnPid} = channel_ws_start_link(initiator, #{host => <<"abc">>,
-                                                       port => 1234}),
-    {ok, RConnPid} = channel_ws_start_link(responder, #{port => 1234}),
+    ChannelOpts =
+        #{port => 1234,
+          initiator => aec_base58c:encode(account_pubkey, IPubkey),
+          responder => aec_base58c:encode(account_pubkey, RPubkey),
+          lock_period => 10,
+          push_amount => 10,
+          initiator_amount => 7,
+          responder_amount => 3,
+          channel_reserve => 2,
+          ttl => 1000
+         },
+    {ok, IConnPid} = channel_ws_start_link(initiator,
+                                           maps:put(host, <<"localhost">>, ChannelOpts)),
+    {ok, RConnPid} = channel_ws_start_link(responder, ChannelOpts),
+
+    %% initiator gets to sign a create_tx
+    SignCreateTx =
+        fun(ConnPid, Privkey, Action) ->
+            ok = ?WS:register_test_for_channel_event(ConnPid, sign),
+            {ok, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
+            ok = ?WS:unregister_test_for_channel_event(ConnPid, sign),
+            {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+            CreateTx = aetx:deserialize_from_binary(CreateBinTx),
+            SignedCreateTx = aetx_sign:sign(CreateTx, Privkey),
+            EncSignedCreateTx = aec_base58c:encode(transaction,
+                                          aetx_sign:serialize_to_binary(SignedCreateTx)),
+            ?WS:send(ConnPid, Action, #{tx => EncSignedCreateTx}) 
+        end,
+    SignCreateTx(IConnPid, IPrivkey, initiator_signed), 
+    SignCreateTx(RConnPid, RPrivkey, responder_signed), 
+
+    % mine the create_tx
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    % mine min depth
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.
