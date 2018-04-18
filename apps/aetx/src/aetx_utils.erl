@@ -52,9 +52,10 @@ check_account(AccountPubKey, Trees, Height, Amount) ->
 -spec check_ttl(non_neg_integer(), non_neg_integer()) -> ok | {error, ttl_expired}.
 check_ttl(TTL, Height) ->
     case TTL >= Height of
-      true -> ok;
-      false -> {error, ttl_expired}
+      	true -> ok;
+      	false -> {error, ttl_expired}
     end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================

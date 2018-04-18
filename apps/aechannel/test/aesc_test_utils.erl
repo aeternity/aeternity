@@ -16,16 +16,37 @@
          set_account_balance/3,
          set_account_nonce/3,
          setup_new_account/1]).
+
 -export([close_solo/1,
+         close_solo/2,
          get_channel/2,
+         lookup_channel/2,
          set_channel/2]).
+
 -export([apply_on_trees_without_sigs_check/3]).
+
 -export([create_tx_spec/3,
          create_tx_spec/4,
+
+         close_mutual_tx_spec/3,
+         close_mutual_tx_spec/4,
+
+         payload/5,
+
+         close_solo_tx_spec/4,
+         close_solo_tx_spec/5,
+
+         slash_tx_spec/4,
+         slash_tx_spec/5,
+
          deposit_tx_spec/3,
          deposit_tx_spec/4,
+
          withdraw_tx_spec/3,
-         withdraw_tx_spec/4]).
+         withdraw_tx_spec/4,
+        
+         settle_tx_spec/3,
+         settle_tx_spec/4]).
 
 -include_lib("apps/aechannel/include/channel_txs.hrl").
 
@@ -106,19 +127,21 @@ set_account(Account, State) ->
 %%%===================================================================
 
 close_solo(Ch) ->
-    {ok, DummyStateTx} = aesc_offchain_tx:new(
-                           #{channel_id         => aesc_channels:id(Ch),
-                             initiator          => aesc_channels:initiator(Ch),
-                             participant        => aesc_channels:participant(Ch),
-                             initiator_amount   => 3,
-                             participant_amount => 4,
-                             state              => <<"state..">>,
-                             sequence_number    => 11}),
+    close_solo(Ch, #{}).
+
+close_solo(Ch, Params) ->
+    DummyStateTx = state_tx(aesc_channels:id(Ch),
+                            aesc_channels:initiator(Ch),
+                            aesc_channels:participant(Ch),
+                            Params),
     {_Type, Tx} = aetx:specialize_type(DummyStateTx),
     aesc_channels:close_solo(Ch, Tx, 11).
 
 get_channel(ChannelId, State) ->
     aesc_state_tree:get(ChannelId, aec_trees:channels(trees(State))).
+
+lookup_channel(ChannelId, State) ->
+    aesc_state_tree:lookup(ChannelId, aec_trees:channels(trees(State))).
 
 set_channel(Channel, State) ->
     Trees  = trees(State),
@@ -164,6 +187,51 @@ create_tx_default_spec(InitiatorPubKey, State) ->
       nonce              => try next_nonce(InitiatorPubKey, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
+%%% Close mutual tx
+%%%===================================================================
+
+close_mutual_tx_spec(ChannelId, FromPubKey, State) ->
+    close_mutual_tx_spec(ChannelId, FromPubKey, #{}, State).
+
+close_mutual_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
+    Spec = maps:merge(close_mutual_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id        => ChannelId,
+      from              => FromPubKey,
+      initiator_amount  => maps:get(initiator_amount, Spec),
+      responder_amount  => maps:get(responder_amount, Spec),
+      ttl               => maps:get(ttl, Spec),
+      fee               => maps:get(fee, Spec),
+      nonce             => maps:get(nonce, Spec)}.
+
+close_mutual_tx_default_spec(FromPubKey, State) ->
+    #{initiator_amount => 10,
+      responder_amount => 10,
+      ttl              => 100,
+      fee              => 3,
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Close solo tx
+%%%===================================================================
+
+close_solo_tx_spec(ChannelId, FromPubKey, Payload, State) ->
+    close_solo_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+
+close_solo_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+    Spec = maps:merge(close_solo_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id  => ChannelId,
+      from        => FromPubKey,
+      payload     => Payload,
+      ttl         => maps:get(ttl, Spec),
+      fee         => maps:get(fee, Spec),
+      nonce       => maps:get(nonce, Spec)}.
+
+close_solo_tx_default_spec(FromPubKey, State) ->
+    #{ttl     => 100,
+      fee     => 3,
+      nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
 %%% Deposit tx
 %%%===================================================================
 
@@ -206,3 +274,75 @@ withdraw_tx_spec(ToPubKey, State) ->
       ttl    => 100,
       fee    => 3,
       nonce  => try next_nonce(ToPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Slash tx
+%%%===================================================================
+
+slash_tx_spec(ChannelId, FromPubKey, Payload, State) ->
+    slash_tx_spec(ChannelId, FromPubKey, Payload, #{}, State).
+
+slash_tx_spec(ChannelId, FromPubKey, Payload, Spec0, State) ->
+    Spec = maps:merge(slash_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id  => ChannelId,
+      from        => FromPubKey,
+      payload     => Payload,
+      ttl         => maps:get(ttl, Spec),
+      fee         => maps:get(fee, Spec),
+      nonce       => maps:get(nonce, Spec)}.
+
+slash_tx_default_spec(FromPubKey, State) ->
+    #{ttl     => 100,
+      fee     => 3,
+      nonce   => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+%%%===================================================================
+%%% Settle tx
+%%%===================================================================
+
+settle_tx_spec(ChannelId, FromPubKey, State) ->
+    settle_tx_spec(ChannelId, FromPubKey, #{}, State).
+
+settle_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
+    Spec = maps:merge(settle_tx_default_spec(FromPubKey, State), Spec0),
+    #{channel_id        => ChannelId,
+      from              => FromPubKey,
+      initiator_amount  => maps:get(initiator_amount, Spec),
+      responder_amount  => maps:get(responder_amount, Spec),
+      ttl               => maps:get(ttl, Spec),
+      fee               => maps:get(fee, Spec),
+      nonce             => maps:get(nonce, Spec)}.
+
+settle_tx_default_spec(FromPubKey, State) ->
+    #{initiator_amount => 10,
+      responder_amount => 10,
+      ttl              => 100,
+      fee              => 3,
+      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+
+
+state_tx(ChannelId, Initiator, Participant) ->
+    state_tx(ChannelId, Initiator, Participant, #{}).
+
+state_tx(ChannelId, Initiator, Participant, Spec0) ->
+    Spec = maps:merge(state_tx_spec(), Spec0),
+    {ok, StateTx} =
+        aesc_offchain_tx:new(
+            #{channel_id         => ChannelId,
+              initiator          => Initiator,
+              participant        => Participant,
+              initiator_amount   => maps:get(initiator_amount, Spec),
+              participant_amount => maps:get(participant_amount, Spec),
+              state              => maps:get(state, Spec),
+              sequence_number    => maps:get(sequence_number, Spec)}),
+    StateTx.
+
+state_tx_spec() ->
+    #{initiator_amount   => 3,
+      participant_amount => 4,
+      state              => <<"state..">>,
+      sequence_number    => 11}.
+
+payload(ChannelId, Initiator, Participant, SignersPrivKeys, Spec) ->
+    StateTx = state_tx(ChannelId, Initiator, Participant, Spec),
+    aetx_sign:serialize_to_binary(aetx_sign:sign(StateTx, SignersPrivKeys)). %% No signatures

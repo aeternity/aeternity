@@ -50,24 +50,28 @@
 
 -record(channel_close_solo_tx, {
           channel_id :: binary(),
-          account    :: pubkey(),
+          from       :: pubkey(),
           payload    :: binary(),
+          ttl        :: non_neg_integer(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
 
 -record(channel_slash_tx, {
           channel_id :: binary(),
-          account    :: pubkey(),
+          from       :: pubkey(),
           payload    :: binary(),
+          ttl        :: non_neg_integer(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
 
 -record(channel_settle_tx, {
           channel_id :: binary(),
-          account    :: pubkey(),
-          party      :: pubkey(),
+          from       :: pubkey(),
+          initiator_amount  :: non_neg_integer(),
+          responder_amount  :: non_neg_integer(),
+          ttl        :: non_neg_integer(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
