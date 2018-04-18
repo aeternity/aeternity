@@ -1173,40 +1173,43 @@ state_channels_close_mutual(ChannelId, SenderPubkey) ->
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
-                payload => <<"hejsan svejsan">>,
+                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                ttl => 100,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => MinerPubkey,
+                        #{from => MinerPubkey,
                           channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_channel_close_solo/1),
+    test_invalid_hash(MinerPubkey,  from, Encoded, fun get_channel_close_solo/1),
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
-                payload => <<"hejsan svejsan">>,
+                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                payload => <<"hejsan svejsan">>, %%TODO proper payload
+                ttl => 100,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => MinerPubkey,
+                        #{from => MinerPubkey,
                           channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
-    test_invalid_hash(MinerPubkey, account, Encoded, fun get_channel_slash/1),
+    test_invalid_hash(MinerPubkey, from, Encoded, fun get_channel_slash/1),
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                account => aec_base58c:encode(account_pubkey, MinerPubkey), 
-                party => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                initiator_amount => 4,
+                responder_amount => 3,
+                ttl => 100,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{account => MinerPubkey,
-                          party => MinerPubkey,
+                        #{from => MinerPubkey,
                           channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_settle/1,
@@ -1215,8 +1218,7 @@ state_channels_settle(ChannelId, MinerPubkey) ->
     {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
                             MinerPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
-    test_invalid_hash(MinerPubkey, account, Encoded1, fun get_channel_settle/1),
-    test_invalid_hash(MinerPubkey, party, Encoded1, fun get_channel_settle/1),
+    test_invalid_hash(MinerPubkey, from, Encoded1, fun get_channel_settle/1),
     ok.
 
 %% tests the following

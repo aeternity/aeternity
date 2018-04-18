@@ -2655,10 +2655,14 @@ definitions:
     properties:
       channel_id:
         type: string
-      account:
+      from:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
       fee:
         type: integer
         format: int64
@@ -2669,18 +2673,23 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - account
+    - from
     - payload
+    - ttl
     - fee
   ChannelSlashTx:
     type: object
     properties:
       channel_id:
         type: string
-      account:
+      from:
         $ref: '#/definitions/EncodedHash'
       payload:
         type: string
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
       fee:
         type: integer
         format: int64
@@ -2691,18 +2700,29 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - account
+    - from
     - payload
+    - ttl
     - fee
   ChannelSettleTx:
     type: object
     properties:
       channel_id:
         type: string
-      account:
+      from:
         $ref: '#/definitions/EncodedHash'
-      party:
-        $ref: '#/definitions/EncodedHash'
+      initiator_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      responder_amount:
+        type: integer
+        format: int64
+        minimum: 0
+      ttl:
+        type: integer
+        format: int64
+        minimum: 0
       fee:
         type: integer
         format: int64
@@ -2713,8 +2733,10 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - account
-    - party
+    - from
+    - initiator_amount
+    - participant_amount
+    - ttl
     - fee
     - nonce
   PubKey:

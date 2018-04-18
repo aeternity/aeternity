@@ -363,36 +363,35 @@ handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Cont
 
 handle_request('PostChannelCloseSolo', #{'ChannelCloseSoloTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, account,
+                 read_required_params([channel_id, from,
                                        payload,
-                                       fee]),
+                                       ttl, fee]),
                  base58_decode([{channel_id, channel_id, channel},
-                                {account, account, account_pubkey}]),
-                 get_nonce(account),
+                                {from, from, account_pubkey}]),
+                 get_nonce(from),
                  unsigned_tx_response(fun aesc_close_solo_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostChannelSlash', #{'ChannelSlashTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, account,
+                 read_required_params([channel_id, from,
                                        payload,
-                                       fee]),
+                                       ttl, fee]),
                  base58_decode([{channel_id, channel_id, channel},
-                                {account, account, account_pubkey}]),
-                 get_nonce(account),
+                                {from, from, account_pubkey}]),
+                 get_nonce(from),
                  unsigned_tx_response(fun aesc_slash_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostChannelSettle', #{'ChannelSettleTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, account,
-                                       party,
-                                       fee, nonce]),
+                 read_required_params([channel_id, from,
+                                       initiator_amount, responder_amount,
+                                       ttl, fee, nonce]),
                  base58_decode([{channel_id, channel_id, channel},
-                                {account, account, account_pubkey},
-                                {party, party, account_pubkey}]),
+                                {from, from, account_pubkey}]),
                  unsigned_tx_response(fun aesc_settle_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

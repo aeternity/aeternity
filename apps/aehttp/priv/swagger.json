@@ -3313,16 +3313,21 @@
     },
     "ChannelCloseSoloTx" : {
       "type" : "object",
-      "required" : [ "account", "channel_id", "fee", "payload" ],
+      "required" : [ "channel_id", "fee", "from", "payload", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "account" : {
+        "from" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "payload" : {
           "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         },
         "fee" : {
           "type" : "integer",
@@ -3338,23 +3343,29 @@
       "example" : {
         "payload" : "payload",
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "account" : { }
+        "ttl" : 0,
+        "nonce" : 0
       }
     },
     "ChannelSlashTx" : {
       "type" : "object",
-      "required" : [ "account", "channel_id", "fee", "payload" ],
+      "required" : [ "channel_id", "fee", "from", "payload", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "account" : {
+        "from" : {
           "$ref" : "#/definitions/EncodedHash"
         },
         "payload" : {
           "type" : "string"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         },
         "fee" : {
           "type" : "integer",
@@ -3370,23 +3381,36 @@
       "example" : {
         "payload" : "payload",
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "account" : { }
+        "ttl" : 0,
+        "nonce" : 0
       }
     },
     "ChannelSettleTx" : {
       "type" : "object",
-      "required" : [ "account", "channel_id", "fee", "nonce", "party" ],
+      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
         },
-        "account" : {
+        "from" : {
           "$ref" : "#/definitions/EncodedHash"
         },
-        "party" : {
-          "$ref" : "#/definitions/EncodedHash"
+        "initiator_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "responder_amount" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64",
+          "minimum" : 0
         },
         "fee" : {
           "type" : "integer",
@@ -3400,11 +3424,13 @@
         }
       },
       "example" : {
+        "responder_amount" : 0,
+        "initiator_amount" : 0,
         "fee" : 0,
+        "from" : { },
         "channel_id" : "channel_id",
-        "nonce" : 0,
-        "account" : { },
-        "party" : null
+        "ttl" : 0,
+        "nonce" : 0
       }
     },
     "PubKey" : {
