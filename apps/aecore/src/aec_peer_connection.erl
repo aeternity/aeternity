@@ -185,8 +185,8 @@ handle_cast({send_block, Hash}, State) ->
     send_send_block(State, Hash),
     {noreply, State};
 handle_cast(stop, State) ->
-    cleanup_connection(State),
-    {stop, normal, State};
+    State1 = cleanup_connection(State),
+    {stop, normal, State1};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -203,8 +203,8 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
         Ref when NonRegAccept ->
             lager:info("Connecting peer never sent ping, stopping"),
             %% Consider blocking this peer
-            cleanup_connection(S),
-            {stop, normal, S};
+            S1 = cleanup_connection(S),
+            {stop, normal, S1};
         _ ->
             lager:debug("Got stale first_ping_timeout", []),
             {noreply, S}
@@ -262,7 +262,8 @@ handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
     case is_non_registered_accept(S) of
         true ->
-            {stop, normal, S};
+            S1 = cleanup_connection(S),
+            {stop, normal, S1};
         false ->
             connect_fail(S)
     end;
@@ -343,10 +344,11 @@ cleanup_connection(State) ->
 cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
     [ gen_server:reply(From, {error, disconnected})
-      || {_Request, From} <- Reqs ].
+      || {_Request, From} <- Reqs ],
+    maps:remove(requests, State).
 
-connect_fail(S) ->
-    cleanup_requests(S),
+connect_fail(S0) ->
+    S = cleanup_requests(S0),
     case aec_peers:connect_fail(peer_id(S), self()) of
         keep ->
             {noreply, S#{ status := error }};
@@ -364,8 +366,8 @@ handle_fragment(S = #{ fragments := Fragments }, N, _M, Fragment) when N == leng
     {noreply, S#{ fragments := [Fragment | Fragments] }};
 handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
     lager:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
-    cleanup_connection(S),
-    connect_fail(maps:remove(fragments, S)).
+    S1 = cleanup_connection(S),
+    connect_fail(maps:remove(fragments, S1)).
 
 handle_msg(S, MsgType, IsResponse, Result) ->
     handle_msg(S, MsgType, IsResponse, get_request(S, MsgType), Result).
