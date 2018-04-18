@@ -126,6 +126,29 @@ references:
           owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
           tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
 
+  fail_notification: &fail_notification
+    run:
+      name: Send failure notification
+      environment:
+        NOTIFY_BRANCH: master
+        HOOK_TEMPLATE: |
+          {
+            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+            "attachments": [
+              {
+                "title": "Build Link",
+                "title_link": "%s",
+                "color": "#FAD6D6"
+              }
+            ]
+          }
+      command: |
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:?}" "${CIRCLE_BUILD_URL:?}")
+          curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+        fi
+      when: on_fail
+
 jobs:
   build:
     <<: *container_config
@@ -146,6 +169,7 @@ jobs:
           key: *rebar_cache_key
           paths:
             - .cache/rebar3
+      - *fail_notification
 
   test:
     <<: *container_config
@@ -162,6 +186,7 @@ jobs:
           path: _build/test/logs
       - store_artifacts:
           path: _build/test/logs
+      - *fail_notification
 
   eunit:
     <<: *container_config
@@ -174,6 +199,7 @@ jobs:
           command: |
             epmd -daemon
             make eunit
+      - *fail_notification
 
   aevm_tests:
     <<: *container_config
@@ -209,6 +235,7 @@ jobs:
       - run: make swagger-check
       - run: make rebar-lock-check
       - run: ./rebar3 xref || true
+      - *fail_notification
 
   linux_package:
     <<: *container_config
@@ -228,6 +255,7 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
 
   deploy_api_docs:
     <<: *container_config
@@ -263,6 +291,7 @@ jobs:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
 
   uat_tests:
     <<: *container_config
@@ -290,6 +319,7 @@ jobs:
       - store_artifacts:
           path: _build/dev3/rel/epoch/log
           destination: node3/
+      - *fail_notification
 
   docker_image_build:
     <<: *container_config
@@ -328,6 +358,7 @@ jobs:
             ~/bin/docker login -u $DOCKER_USER -p $DOCKER_PASS
             ~/bin/docker build -t ${DOCKERHUB_REPO:?}:dev .
             ~/bin/docker push ${DOCKERHUB_REPO:?}:dev
+      - *fail_notification
 
   uat_chain_snapshot:
     <<: *container_config
