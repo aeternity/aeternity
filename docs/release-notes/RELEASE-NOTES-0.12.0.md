@@ -2,6 +2,8 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Regulate the maximum number of concurrent connections (`sync` > `max_connections`) and the number of processes accepting connections (`sync` > `acceptors`).
+* Expose more configuration previously hard-coded, (`sync` > `connect_timeout`), (`sync` > `first_ping_timeout`) and (`sync` > `noise_hs_timeout`).
 * Does this;
 * Does that;
 * TODO Improves the stability of the testnet.
