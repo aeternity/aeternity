@@ -132,7 +132,7 @@ process_response(Response, Options) ->
         end,
         [{sender, fun(SenderPid) -> SenderPid ! {ws_proc_response, Response} end}]),
     ok.
-          
+
 -spec is_ws_alive(pid()) -> boolean().
 is_ws_alive(Pid) ->
     case erlang:process_info(Pid) of
@@ -236,7 +236,7 @@ process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
 
 prepare_handler(Params) ->
     Read =
-        fun(Key, RecordField, Opts) -> 
+        fun(Key, RecordField, Opts) ->
             fun(H) ->
                 case (read_param(Key, RecordField, Opts))(Params) of
                     not_set -> H;
@@ -274,7 +274,7 @@ prepare_handler(Params) ->
 
 read_channel_options(Params) ->
     Read =
-        fun(KeyBin, Key, Opts) -> 
+        fun(KeyBin, Key, Opts) ->
             fun(M) ->
                 case (read_param(KeyBin, Key, Opts))(Params) of
                     not_set -> M;

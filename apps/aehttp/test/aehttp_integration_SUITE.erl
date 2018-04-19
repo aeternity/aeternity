@@ -1183,7 +1183,7 @@ state_channels_close_mutual(ChannelId, SenderPubkey) ->
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 ttl => 100,
                 fee => 1},
@@ -1198,7 +1198,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 ttl => 100,
                 fee => 1},
@@ -1213,7 +1213,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
 
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 4,
                 responder_amount => 3,
                 ttl => 100,
@@ -2883,19 +2883,31 @@ sc_ws_open(_Config) ->
     IStartAmt = 20,
     RStartAmt = 10,
     Fee = 1,
+
+    EnsureBalance =
+        fun(Pubkey, ExpectedBalance) ->
+            Address = aec_base58c:encode(account_pubkey, Pubkey),
+            {ok, 200, #{<<"balance">> := ExpectedBalance}} =
+                get_balance_at_top(Address)
+        end,
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    EnsureBalance(IPubkey, IStartAmt),
+    EnsureBalance(RPubkey, RStartAmt),
+
+    IAmt = 7,
+    RAmt = 3,
     ChannelOpts =
         #{port => 1234,
           initiator => aec_base58c:encode(account_pubkey, IPubkey),
           responder => aec_base58c:encode(account_pubkey, RPubkey),
           lock_period => 10,
           push_amount => 10,
-          initiator_amount => 7,
-          responder_amount => 3,
+          initiator_amount => IAmt,
+          responder_amount => RAmt,
           channel_reserve => 2,
           ttl => 1000
          },
@@ -2920,15 +2932,37 @@ sc_ws_open(_Config) ->
             SignedCreateTx = aetx_sign:sign(CreateTx, Privkey),
             EncSignedCreateTx = aec_base58c:encode(transaction,
                                           aetx_sign:serialize_to_binary(SignedCreateTx)),
-            ?WS:send(ConnPid, Action, #{tx => EncSignedCreateTx}) 
+            ?WS:send(ConnPid, Action, #{tx => EncSignedCreateTx}),
+            CreateTx
         end,
-    SignCreateTx(IConnPid, IPrivkey, initiator_signed), 
+    CrTx = SignCreateTx(IConnPid, IPrivkey, initiator_signed),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    SignCreateTx(RConnPid, RPrivkey, responder_signed), 
+    CrTx = SignCreateTx(RConnPid, RPrivkey, responder_signed),
     {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    IPubkey = aesc_create_tx:initiator(Tx),
+    RPubkey = aesc_create_tx:responder(Tx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
+    TxHash = aec_base58c:encode(tx_hash, aetx:hash(CrTx)),
+
+    %% ensure the tx is in the mempool
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+
+    %% balances hadn't changed yet
+    EnsureBalance(IPubkey, IStartAmt),
+    EnsureBalance(RPubkey, RStartAmt),
 
     % mine the create_tx
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% ensure the tx had been mined
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := BlockHeight}}} = get_tx(TxHash, json),
+    true = BlockHeight =/= -1,
+
+    %% ensure new balances
+    EnsureBalance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    EnsureBalance(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
@@ -3992,6 +4026,7 @@ make_params([H | T], Accum) when is_map(H) ->
     make_params(T, maps:to_list(H) ++ Accum);
 make_params([{K, V} | T], Accum) ->
     make_params(T, [{K, V} | Accum]).
+
 generate_key_pair() ->
     {_NewPubKey, _NewPrivKey} =
         crypto:generate_key(?CRYPTO_KEYTYPE, crypto:ec_curve(?CRYPTO_CURVE)).
