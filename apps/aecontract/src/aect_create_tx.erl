@@ -226,6 +226,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 		Trees1
 	end,
 
+
     {ok, Trees2}.
 
 run_contract(#contract_create_tx{ owner      = Caller
