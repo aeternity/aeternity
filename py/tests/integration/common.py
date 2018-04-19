@@ -174,9 +174,4 @@ def encode_name(name):
     str = base58.b58encode_check(name)
     return "nm$" + str
 
-def is_among_peers(peer, peers):
-    def url_netloc(url):
-        return urlparse.urlsplit(url).netloc
-    return url_netloc(peer) in [url_netloc(p) for p in peers]
-
 logging.getLogger("urllib3").setLevel(logging.ERROR)
