@@ -206,7 +206,7 @@
 
 all() ->
     [
-     {group, all_endpoints}
+     {group, channel_websocket}%all_endpoints}
     ].
 
 groups() ->
@@ -2921,10 +2921,11 @@ sc_ws_open(_Config) ->
     {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
     %% initiator gets to sign a create_tx
     SignCreateTx =
         fun(ConnPid, Privkey, Action) ->
-            ok = ?WS:register_test_for_channel_event(ConnPid, sign),
             {ok, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
             ok = ?WS:unregister_test_for_channel_event(ConnPid, sign),
             {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
