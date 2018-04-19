@@ -1,7 +1,9 @@
 -include("pow.hrl").
 
--define(PROTOCOL_VERSION, 10).
-
+-define(PROTOCOL_VERSION, 11).
+-define(PROTOCOL_HEIGHT, 7000). %% TODO Fine-tune.
+-define(CONSENSUS_V_0_11_0_VERSION, 10). %% Hard Forking Support
+-define(CONSENSUS_V_0_11_0_HEIGHT, 3750).
 -define(GENESIS_VERSION, 9).
 -define(GENESIS_HEIGHT, 0).
 

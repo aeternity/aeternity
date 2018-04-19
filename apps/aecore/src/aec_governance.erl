@@ -21,8 +21,11 @@
 -include("blocks.hrl").
 
 -define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
--define(PROTOCOLS, #{?GENESIS_VERSION => ?GENESIS_HEIGHT,
-                     ?PROTOCOL_VERSION => 3750}).
+-define(PROTOCOLS,
+        #{?GENESIS_VERSION => ?GENESIS_HEIGHT,
+          ?CONSENSUS_V_0_11_0_VERSION => ?CONSENSUS_V_0_11_0_HEIGHT,
+          ?PROTOCOL_VERSION => ?PROTOCOL_HEIGHT
+         }).
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
@@ -33,6 +36,7 @@
 %% version is effective.  The height must be strictly increasing with
 %% the version.
 -type protocols() :: #{?GENESIS_VERSION := ?GENESIS_HEIGHT,
+                       ?CONSENSUS_V_0_11_0_VERSION := non_neg_integer(),
                        ?PROTOCOL_VERSION := non_neg_integer()}.
 
 
