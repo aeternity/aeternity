@@ -16,13 +16,15 @@
 
 all() -> [ execute_identity_fun_from_sophia_file ].
 
-execute_identity_fun_from_sophia_file(_Cfg) ->
-    CodeDir = code:lib_dir(aesophia, test),
-    FileName = filename:join(CodeDir, "contracts/identity.aes"),
+compile_contract(Name) ->
+    CodeDir           = code:lib_dir(aesophia, test),
+    FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])),
     {ok, ContractBin} = file:read_file(FileName),
-    {ok, Code} = aect_sophia:compile(ContractBin, <<>>),
-    CallData = aect_sophia:create_call(Code, <<"main">>, <<"42">>),
-    {ok, #{ out := RetVal}} =
+    {ok, Code}        = aect_sophia:compile(ContractBin, <<>>),
+    Code.
+
+execute_call(Code, CallData) ->
+    {ok, #{ out := RetVal }} =
         aect_evm:execute_call(
           #{ code => Code,
              address => 91210,
@@ -40,5 +42,10 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
              chainState => aevm_dummy_chain:new_state(),
              chainAPI => aevm_dummy_chain},
           true),
-    <<42:256>> = RetVal,
-    ok.
+    RetVal.
+
+execute_identity_fun_from_sophia_file(_Cfg) ->
+    Code     = compile_contract(identity),
+    CallData = aect_sophia:create_call(Code, <<"main">>, <<"42">>),
+    <<42:256>> = execute_call(Code, CallData).
+
