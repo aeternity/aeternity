@@ -1,7 +1,5 @@
 -module(aest_nodes).
 
--behaviour(gen_server).
-
 %=== EXPORTS ===================================================================
 
 %% Common Test API exports
@@ -32,13 +30,6 @@
 -export([get_block/3]).
 -export([get_top/2]).
 -export([wait_for_value/4]).
-
-%% Behaviour gen_server callbacks
--export([init/1]).
--export([handle_call/3]).
--export([handle_cast/2]).
--export([handle_info/2]).
--export([terminate/2]).
 
 %=== MACROS ====================================================================
 
@@ -95,7 +86,10 @@ ct_setup(Config) ->
         [PrivDir, PrivDir]
     ),
     LogFun = fun(Fmt, Args) -> ct:log(Fmt, Args) end,
-    case start(DataDir, PrivDir, LogFun) of
+    case aest_nodes_mgr:start([aest_docker], #{ test_id => uid(),
+                                                log_fun => LogFun,
+                                                data_dir => DataDir,
+                                                temp_dir => PrivDir}) of
         {ok, Pid} -> [{?CT_CONF_KEY, Pid} | Config];
         {error, Reason} ->
             erlang:error({system_test_setup_failed, [{reason, Reason}]})
@@ -116,7 +110,7 @@ ct_cleanup(Ctx) ->
 %% @doc Setups the node manager for Quick Check tests.
 -spec eqc_setup(path(), path()) -> test_ctx().
 eqc_setup(DataDir, TempDir) ->
-    case start(DataDir, TempDir, undefined) of
+    case aest_nodes_mgr:start([aest_docker], #{data_dir => DataDir, temp_dir => TempDir}) of
         {ok, Pid} -> Pid;
         {error, Reason} ->
             erlang:error({system_test_setup_failed, [{reason, Reason}]})
@@ -256,60 +250,7 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
         end,
     wait_for_value(CheckF, Addrs, [], 500, Expiration).
 
-%=== BEHAVIOUR GEN_SERVER CALLBACK FUNCTIONS ===================================
 
-init([DataDir, TempDir, LogFun]) ->
-    process_flag(trap_exit, true), % Make sure terminate always cleans up
-    mgr_setup(DataDir, TempDir, LogFun).
-
-handle_call(Request, From, State) ->
-    try
-        handlex(Request, From, State)
-    catch
-        throw:Reason ->
-            {reply, {'$error', Reason, erlang:get_stacktrace()}, State}
-    end.
-
-handlex({get_service_address, NodeName, Service}, _From, State) ->
-    {reply, mgr_get_service_address(NodeName, Service, State), State};
-handlex({get_node_pubkey, NodeName}, _From, State) ->
-    {reply, mgr_get_node_pubkey(NodeName, State), State};
-handlex({setup_nodes, NodeSpecs}, _From, State) ->
-    {reply, ok, mgr_setup_nodes(NodeSpecs, State)};
-handlex({start_node, NodeName}, _From, State) ->
-    {reply, ok, mgr_start_node(NodeName, State)};
-handlex({stop_node, NodeName, Timeout}, _From, State) ->
-    {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
-handlex({kill_node, NodeName}, _From, State) ->
-    {reply, ok, mgr_kill_node(NodeName, State)};
-handlex({extract_archive, NodeName, Path, Archive}, _From, State) ->
-    {reply, ok, mgr_extract_archive(NodeName, Path, Archive, State)};
-handlex({run_cmd_in_node_dir, NodeName, Cmd}, _From, State) ->
-    {ok, Reply, NewState} = mgr_run_cmd_in_node_dir(NodeName, Cmd, State),
-    {reply, Reply, NewState};
-handlex(dump_logs, _From, State) ->
-    ok = mgr_dump_logs(State),
-    {reply, ok, State};
-handlex({connect_node, NodeName, NetName}, _From, State) ->
-    {reply, ok, mgr_connect_node(NodeName, NetName, State)};
-handlex({disconnect_node, NodeName, NetName}, _From, State) ->
-    {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
-handlex(cleanup, _From, State) ->
-    {reply, ok, mgr_cleanup(State)};
-handlex(stop, _From, State) ->
-    {stop, normal, ok, State};
-handlex(Request, From, _State) ->
-    error({unknown_request, Request, From}).
-
-handle_info(_Msg, State) ->
-    {noreply, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-terminate(_Reason, State) ->
-    mgr_cleanup(State),
-    ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
 
@@ -335,10 +276,6 @@ call(Pid, Msg) ->
         Reply ->
             Reply
     end.
-
-start(DataDir, TempDir, LogFun) ->
-    {ok, _} = application:ensure_all_started(hackney),
-    gen_server:start(?MODULE, [DataDir, TempDir, LogFun], []).
 
 wait_for_exit(Pid, Timeout) ->
     Ref = erlang:monitor(process, Pid),
@@ -411,160 +348,3 @@ decode_json(Data) ->
         error:badarg -> {error, {bad_json, Data}}
     end.
 
-%--- NODE MANAGER PROCESS FUNCTION ---------------------------------------------
-
-mgr_setup(DataDir, TempDir, LogFun) ->
-    TestId = uid(),
-    BackendOpts = #{
-        test_id => TestId,
-        log_fun => LogFun,
-        data_dir => DataDir,
-        temp_dir => TempDir
-    },
-    Backends = mgr_setup_backends(?BACKENDS, BackendOpts),
-    {ok, BackendOpts#{backends => Backends, nodes => #{}}}.
-
-mgr_setup_backends(BackendMods, Opts) ->
-    lists:foldl(fun(Mod, Acc) -> Acc#{Mod => Mod:start(Opts)} end,
-                #{}, BackendMods).
-
-mgr_dump_logs(#{nodes := Nodes1} = State) ->
-    maps:map(fun(Name, {Backend, NodeState}) ->
-        try
-            log(State, "Logs of node ~p:~n~s", [Name, Backend:node_logs(NodeState)])
-        catch
-            _:E ->
-                ST = erlang:get_stacktrace(),
-                log(State, "Error while dumping logs of node ~p: ~p~n~p", [Name, E, ST])
-        end
-    end, Nodes1),
-    ok.
-
-mgr_cleanup(State) ->
-    %% So node cleanup can be disabled for debugging without commenting
-    %% and accidently pushing code without cleanup...
-    case os:getenv("EPOCH_DISABLE_NODE_CLEANUP") of
-        Value when Value =:= "true"; Value =:= "1" ->
-            State;
-        _ ->
-            State2 = mgr_safe_stop_all(?NODE_TEARDOWN_TIMEOUT, State),
-            State3 = mgr_safe_delete_all(State2),
-            mgr_safe_stop_backends(State3)
-    end.
-
-mgr_get_service_address(NodeName, Service, #{nodes := Nodes}) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    Mod:get_service_address(Service, NodeState).
-
-mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    Mod:get_node_pubkey(NodeState).
-
-mgr_setup_nodes(NodeSpecs, State) ->
-    NodeSpecs2 = mgr_prepare_specs(NodeSpecs, State),
-    lists:foldl(fun mgr_setup_node/2, State, NodeSpecs2).
-
-mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, State) ->
-    #{backends := Backends, nodes := Nodes} = State,
-    #{Mod := BackendState} = Backends,
-    NodeState = Mod:setup_node(NodeSpec, BackendState),
-    State#{nodes := Nodes#{Name => {Mod, NodeState}}}.
-
-mgr_start_node(NodeName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:start_node(NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_stop_node(NodeName, Timeout, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    Opts = #{soft_timeout => Timeout},
-    NodeState2 = Mod:stop_node(NodeState, Opts),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_kill_node(NodeName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:kill_node(NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_extract_archive(NodeName, Path, Archive, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:extract_archive(NodeState, Path, Archive),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_run_cmd_in_node_dir(NodeName, Cmd, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    {ok, Result, NodeState2} = Mod:run_cmd_in_node_dir(NodeState, Cmd),
-    {ok, Result, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}}.
-
-mgr_connect_node(NodeName, NetName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:connect_node(NetName, NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_disconnect_node(NodeName, NetName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:disconnect_node(NetName, NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_safe_stop_backends(#{backends := Backends} = State) ->
-    maps:map(fun(Mod, BackendState) ->
-        try
-            Mod:stop(BackendState)
-        catch
-            _:E ->
-                ST = erlang:get_stacktrace(),
-                log(State, "Error while stopping backend ~p: ~p~n~p", [Mod, E, ST])
-        end
-    end, Backends),
-    State#{backends := #{}}.
-
-
-mgr_safe_stop_all(Timeout, #{nodes := Nodes1} = State) ->
-    Opts = #{soft_timeout => Timeout},
-    Nodes2 = maps:map(fun(Name, {Backend, NodeState}) ->
-        try
-            {Backend, Backend:stop_node(NodeState, Opts)}
-        catch
-            _:E ->
-                ST = erlang:get_stacktrace(),
-                log(State, "Error while stopping node ~p: ~p~n~p", [Name, E, ST]),
-                {Backend, NodeState}
-        end
-    end, Nodes1),
-    State#{nodes := Nodes2}.
-
-mgr_safe_delete_all(#{nodes := Nodes1} = State) ->
-    maps:map(fun(Name, {Backend, NodeState}) ->
-        try
-            {Backend, Backend:delete_node(NodeState)}
-        catch
-            _:E ->
-                ST = erlang:get_stacktrace(),
-                log(State, "Error while stopping node ~p: ~p~n~p", [Name, E, ST]),
-                {Backend, NodeState}
-        end
-    end, Nodes1),
-    State#{nodes := #{}}.
-
-mgr_prepare_specs(NodeSpecs, State) ->
-    #{backends := Backends, nodes := Nodes} = State,
-    PrepSpecs = lists:foldl(fun(#{backend := Mod} = S, Acc) ->
-        #{Mod := BackendState} = Backends,
-        [Mod:prepare_spec(S, BackendState) | Acc]
-    end, [], NodeSpecs),
-    CurrAddrs = maps:map(fun(_, {M, S}) -> M:get_peer_address(S) end, Nodes),
-    AllAddrs = lists:foldl(fun(#{backend := Mod, name := Name} = S, Acc) ->
-        #{Mod := BackendState} = Backends,
-        Acc#{Name => Mod:peer_from_spec(S, BackendState)}
-    end, CurrAddrs, PrepSpecs),
-    lists:map(fun(#{peers := Peers} = Spec) ->
-        NewPeers = lists:map(fun
-            (Addr) when is_binary(Addr) -> Addr;
-            (Name) when is_atom(Name) ->
-                case maps:find(Name, AllAddrs) of
-                    {ok, Addr} -> Addr;
-                    _ -> error({peer_not_found, Name})
-                end
-        end, Peers),
-        Spec#{peers := NewPeers}
-    end, PrepSpecs).
