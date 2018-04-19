@@ -117,14 +117,14 @@ def test_persistence():
     common.stop_node(bob_node)
     shutil.rmtree(root_dir)
 
-def test_node_discovery():
+def test_node_discovery_transitively():
     """
-    Test node discovery
+    Test node discovery (transitively)
     Assuming Carol's node only knows about Bob upon startup and that Bob's
     node knows Alice, Carol's node should be able to discover Alice and
     sync with her node.
     """
-    test_settings = settings["test_node_discovery"]
+    test_settings = settings["test_node_discovery_transitively"]
     alice_node = test_settings["nodes"]["alice"]
     bob_node = test_settings["nodes"]["bob"]
     carol_node = test_settings["nodes"]["carol"]
@@ -173,11 +173,73 @@ def test_node_discovery():
 
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
-    def carol_peers():
-        peers = carol_int_api.get_peers().peers
-        print("Peers: " + str(peers))
-        return peers
-    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in carol_peers(), timeout_seconds=20, sleep_seconds=1)
+    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
+
+    # cleanup
+    common.stop_node(alice_node)
+    common.stop_node(bob_node)
+    common.stop_node(carol_node)
+
+    shutil.rmtree(root_dir)
+
+def test_node_discovery_from_common_friend():
+    """
+    Test node discovery (from common friend peer)
+    Assuming Carol's node only knows about Bob upon startup and that Alice's
+    node knows Bob, Carol's node should be able to discover Alice and
+    sync with her node.
+    """
+    test_settings = settings["test_node_discovery_from_common_friend"]
+    alice_node = test_settings["nodes"]["alice"]
+    bob_node = test_settings["nodes"]["bob"]
+    carol_node = test_settings["nodes"]["carol"]
+
+    alice_peer_url = node_peer_url(alice_node)
+    bob_peer_url = node_peer_url(bob_node)
+    carol_peer_url = node_peer_url(carol_node)
+
+    # prepare a dir to hold the configs
+    root_dir = tempfile.mkdtemp()
+
+    # Alice's config: only peer is Bob
+    alice_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
+    alice_sys_config = make_peers_config(root_dir, "alice.config",
+                            alice_peer_url, "node1", "3015", alice_peers, mining=True)
+    print("\nAlice has address " + alice_peer_url + " and peers [" + bob_peer_url + "]")
+    # Bob's config: no peers
+    bob_peers = '{peers, []},'
+    bob_sys_config = make_peers_config(root_dir, "bob.config",
+                            bob_peer_url, "node2", "3025", bob_peers, mining=False)
+    print("Bob has address " + bob_peer_url + " and no peers")
+    # Carol's config: only peer is Bob
+    carol_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
+    carol_sys_config = make_peers_config(root_dir, "carol.config",
+                            carol_peer_url, "node3", "3035", carol_peers, mining=False)
+    print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
+
+    # start Alice's node
+    common.start_node(alice_node, alice_sys_config)
+    alice_api = common.external_api(alice_node)
+
+    # Insert some blocks in Alice's chain
+    blocks_to_mine = test_settings["blocks_to_mine"]
+    common.wait_until_height(alice_api, blocks_to_mine)
+    alice_top = alice_api.get_top()
+    assert_true(alice_top.height >= blocks_to_mine)
+    # Now Alice has at least blocks_to_mine blocks
+
+    # start the other nodes
+    common.start_node(bob_node, bob_sys_config)
+    common.start_node(carol_node, carol_sys_config)
+
+    # Check that Carol syncs with Alice's chain
+    carol_api = common.external_api(carol_node)
+    common.wait_until_height(carol_api, alice_top.height)
+    assert_equals(carol_api.get_block_by_hash(alice_top.hash).height, alice_top.height)
+
+    # Check that Carol discovers Alice as a peer
+    carol_int_api = common.internal_api(carol_node)
+    wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in get_peers(carol_int_api), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
     common.stop_node(alice_node)
@@ -205,7 +267,8 @@ def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, min
                      ' {expected_mine_rate, 100},' + \
                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}'
     else:
-        mining_str = ' {autostart, false}'
+        mining_str = ' {autostart, false},' + \
+                     ' {expected_mine_rate, 100}'
     f = open(sys_config, "w")
     conf ='[{aecore, [' + peers + '{sync_port, ' + sync_port + '}, ' + \
                       ' {keys_dir, "' + key_dir + '"}, ' + \
@@ -256,3 +319,8 @@ def make_no_mining_config(root_dir, file_name):
     f.write(conf)
     f.close()
     return sys_config
+
+def get_peers(int_api):
+    peers = int_api.get_peers().peers
+    print("Peers: " + str(peers))
+    return peers
