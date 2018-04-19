@@ -38,7 +38,7 @@ start(_StartType, _StartArgs) ->
     {ok, _} = ws_task_worker_sup:start_link(),
     ok = start_http_api(),
     ok = start_websocket_internal(),
-    ok = start_channel_websocket_internal(),
+    ok = start_channel_websocket(),
     MaxWsHandlers = get_internal_websockets_acceptors(),
     ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers},
                                             {max_size, ws_handlers_queue_max_size()}]),
@@ -129,7 +129,7 @@ start_websocket_internal() ->
         ),
     ok.
 
-start_channel_websocket_internal() ->
+start_channel_websocket() ->
     Port = get_channel_websockets_port(),
     PoolSize = get_channel_websockets_acceptors(),
     ListenAddress = get_channel_websockets_listen_address(),
