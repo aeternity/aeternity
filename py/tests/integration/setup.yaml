@@ -46,8 +46,8 @@ tests: # test specific settings
         bob: dev1
       blocks_to_mine: 7
     test_node_discovery:
-      # Assuming Carol's node only knows about Bob upon startup and that Bob's
-      # node knows Alice, Carol's node should be able to discover Alice and
+      # Assuming Carol's node only knows about Bob upon startup and that Alice's
+      # node knows Bob, Carol's node should be able to discover Alice and
       # sync with her node.
       nodes:
         alice: dev1

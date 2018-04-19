@@ -120,8 +120,8 @@ def test_persistence():
 def test_node_discovery():
     """
     Test node discovery
-    Assuming Carol's node only knows about Bob upon startup and that Bob's
-    node knows Alice, Carol's node should be able to discover Alice and
+    Assuming Carol's node only knows about Bob upon startup and that Alice's
+    node knows Bob, Carol's node should be able to discover Alice and
     sync with her node.
     """
     test_settings = settings["test_node_discovery"]
@@ -136,12 +136,12 @@ def test_node_discovery():
     # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
-    # Alice's config: no peers
+    # Alice's config: only peer is Bob
     alice_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     alice_sys_config = make_peers_config(root_dir, "alice.config",
                             alice_peer_url, "node1", "3015", alice_peers, mining=True)
     print("\nAlice has address " + alice_peer_url + " and peers [" + bob_peer_url + "]")
-    # Bob's config: only peer is Alice
+    # Bob's config: no peers
     bob_peers = '{peers, []},'
     bob_sys_config = make_peers_config(root_dir, "bob.config",
                             bob_peer_url, "node2", "3025", bob_peers, mining=False)
