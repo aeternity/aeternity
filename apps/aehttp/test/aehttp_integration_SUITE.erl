@@ -2901,7 +2901,13 @@ sc_ws_open(_Config) ->
          },
     {ok, IConnPid} = channel_ws_start_link(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+
     {ok, RConnPid} = channel_ws_start_link(responder, ChannelOpts),
+
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
     %% initiator gets to sign a create_tx
     SignCreateTx =
@@ -2917,14 +2923,20 @@ sc_ws_open(_Config) ->
             ?WS:send(ConnPid, Action, #{tx => EncSignedCreateTx}) 
         end,
     SignCreateTx(IConnPid, IPrivkey, initiator_signed), 
+    {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     SignCreateTx(RConnPid, RPrivkey, responder_signed), 
+    {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
     % mine the create_tx
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     % mine min depth
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
 
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.

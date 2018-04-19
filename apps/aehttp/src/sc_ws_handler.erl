@@ -225,8 +225,9 @@ process_incoming(Msg, _State) ->
     {error, unhandled}.
 
 -spec process_fsm(term()) -> no_reply | {reply, map()} | {error, atom()}.
-process_fsm({info, _}) ->
-    no_reply;
+process_fsm({info, Event}) ->
+    {reply, #{action => <<"info">>,
+              payload => #{event => Event}}};
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
                            orelse Tag =:= funding_created ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
