@@ -81,7 +81,7 @@ init(#{ env  := Env
          , gas_price   => maps:get(gasPrice, Exec)
          , origin      => maps:get(origin, Exec)
          , value       => maps:get(value, Exec)
-         , call_stack  => maps:get(call_stack, Exec, 0)
+         , call_stack  => maps:get(call_stack, Exec, [])
 
          , coinbase   => maps:get(currentCoinbase, Env)
          , difficulty => maps:get(currentDifficulty, Env)
