@@ -267,7 +267,7 @@ trace_format(String, Argument, State) ->
             F = trace_fun(State),
             F("[~4.16.0B] ~8.16.0B : ~w",
               [Account, CP, aevm_opcodes:op_name(OP)]),
-            F(" ~w", [stack(State)]),
+            F(" ~s", [format_stack(stack(State))]),
             F(" ~s", [format_mem(mem(State))]),
             F(" ~p", [gas(State)]),
             F(String, Argument),
@@ -276,7 +276,7 @@ trace_format(String, Argument, State) ->
             State
     end.
 
--define(MAXMEMPOS,5).
+-define(MAXMEMPOS,20).
 
 format_mem(Mem) ->
    lists:flatten(
@@ -285,8 +285,27 @@ format_mem(Mem) ->
      ++ "]").
 format_mem([],_) -> [];
 format_mem( _,0) -> " ...";
-format_mem([{N,V}|Rest], ?MAXMEMPOS) when is_integer(N) ->
-    io_lib:format("~w:~w",[N,V]) ++ format_mem(Rest, ?MAXMEMPOS-1);
-format_mem([{N,V}|Rest],          P) when is_integer(N) ->
-    io_lib:format(", ~w:~w",[N,V]) ++ format_mem(Rest, P-1);
+format_mem([{N,V}|Rest], P) when is_integer(N) ->
+    [ ", " || P < ?MAXMEMPOS ]
+        ++ io_lib:format("~w:~p",[N,format_word(V)])
+        ++ format_mem(Rest, P-1);
 format_mem([_|Rest], P) -> format_mem(Rest, P).
+
+format_stack(S) ->
+    Words = [ format_word(N) || N <- S ],
+    case lists:all(fun(W) -> is_integer(W) end, Words) of
+        true -> io_lib:format("~w", [Words]);   %% Avoid accidental string printing
+        false -> io_lib:format("~1000p", [Words])   %% Nice printing of recovered strings
+    end.
+
+%% Try to find strings and negative numbers
+format_word(N) when <<N:256>> < <<1, 0:248>> -> N;
+format_word(N) ->
+    Bytes = binary_to_list(<<N:256>>),
+    {S, Rest} = lists:splitwith(fun(X) -> X /= 0 end, Bytes),
+    case lists:usort(Rest) of
+        [0] -> S;
+        _   ->
+            <<X:256/signed>> = <<N:256>>,
+            X
+    end.
