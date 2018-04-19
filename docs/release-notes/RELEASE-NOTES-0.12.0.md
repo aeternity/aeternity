@@ -23,11 +23,13 @@ The instructions below describe:
 
 ## Retrieve the software for running a node
 
-You can run a node by using either:
-* The published [release binary][this-release] corresponding to your platform; or
-* The published [Docker image `aeternity/epoch`][docker].
+You can run a node by either:
+* Installing the published [release binary][this-release] corresponding to your platform; or
+* Running the published [Docker image `aeternity/epoch`][docker]; or
+* [Building a release binary from source][build].
 
 [docker]: https://github.com/aeternity/epoch/blob/v0.12.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.12.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
