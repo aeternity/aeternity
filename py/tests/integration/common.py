@@ -46,12 +46,20 @@ def external_api(name):
 def internal_api(name):
     return INT_API[name]
 
-def node_online(api):
-    try:
-        top = api.get_top()
-        return top.height > -1
-    except Exception as e:
-        return False
+def node_online(ext_api, int_api):
+    def is_ext_online():
+        try:
+            top = ext_api.get_top()
+            return top.height > -1
+        except Exception as e:
+            return False
+    def is_int_online():
+        try:
+            key = int_api.get_pub_key()
+            return key.pub_key is not None
+        except Exception as e:
+            return False
+    return is_ext_online() and is_int_online()
 
 def start_node(name, config_filename=None):
     if should_start_node(name):
@@ -67,8 +75,9 @@ def start_node(name, config_filename=None):
         while 1:
             line = p.readline()
             if not line: break
-        api = external_api(name)
-        wait(lambda: node_online(api), timeout_seconds=10, sleep_seconds=0.5)
+        ext_api = external_api(name)
+        int_api = internal_api(name)
+        wait(lambda: node_online(ext_api, int_api), timeout_seconds=10, sleep_seconds=0.5)
 
 def stop_node(name):
     if should_start_node(name):

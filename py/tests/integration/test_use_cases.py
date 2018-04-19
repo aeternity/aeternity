@@ -175,13 +175,9 @@ def test_node_discovery():
     # Check that Carol discovers Alice as a peer
     carol_int_api = common.internal_api(carol_node)
     def carol_peers():
-        try:
-            peers = carol_int_api.get_peers().peers
-            print("Peers: " + str(peers))
-            return peers
-        except Exception as e:
-            print("Call to debug/peers failed")
-            return []
+        peers = carol_int_api.get_peers().peers
+        print("Peers: " + str(peers))
+        return peers
     wait(lambda: 'aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@127.0.0.1:3015' in carol_peers(), timeout_seconds=20, sleep_seconds=1)
 
     # cleanup
