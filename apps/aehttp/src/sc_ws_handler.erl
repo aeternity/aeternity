@@ -47,7 +47,7 @@ websocket_handle({text, MsgBin}, State) ->
         Msg ->
             case process_incoming(Msg, State) of
                 no_reply -> {ok, State};
-                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, State};
+                %{reply, Resp} -> {reply, {text, jsx:encode(Resp)}, State};
                 {error, _} -> {ok, State}
             end
     catch
@@ -73,9 +73,9 @@ websocket_info({aesc_fsm, FsmPid, ChannelId, Msg}, #handler{fsm_pid=FsmPid}=H) -
             ChannelId -> H % assert no channel id change
          end,
     case process_fsm(Msg) of
-        no_reply -> {ok, H1};
-        {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1};
-        {error, _} -> {ok, H1}
+        %no_reply -> {ok, H1};
+        %{error, _} -> {ok, H1}
+        {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
 websocket_info(_Info, State) ->
 	  {ok, State}.
