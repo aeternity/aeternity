@@ -567,7 +567,9 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
     ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
     ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
     %% Block with spend transaction has genesis version.
-    ?assertEqual(9, maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
+    ?assertEqual(
+       ?GENESIS_PROTOCOL_VERSION,
+       maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on new_node4.
     start_node(new_node4, Cfg),
     ok = mock_pow_on_node(new_node4, Cfg),
@@ -609,11 +611,11 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
 %    %% Check the last block of old protocol has genesis version.
     wait_for_height_syncing(LastHeightOfOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
     B3OldProtocol = get_block_by_height(new_node3, LastHeightOfOldProtocol, Cfg),
-    ?assertEqual(9, maps:get(version, B3OldProtocol)),
+    ?assertEqual(?GENESIS_PROTOCOL_VERSION, maps:get(version, B3OldProtocol)),
     %% Check the first block of new protocol has version of the new protocol.
     wait_for_height_syncing(HeightOfNewProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
     B3NewProtocol = get_block_by_height(new_node3, HeightOfNewProtocol, Cfg),
-    ?assertEqual(10, maps:get(version, B3NewProtocol)),
+    ?assertEqual(?NEW_PROTOCOL_VERSION, maps:get(version, B3NewProtocol)),
     %% Check that new_node3 got reward for mining.
     MinedReward = 100,
     aest_nodes:wait_for_value({balance, PubKey3, MinedReward}, [new_node3], 10000, Cfg),
@@ -639,7 +641,9 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
     ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
     %% Block with spend transaction has new protocol version.
-    ?assertEqual(10, maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
+    ?assertEqual(
+       ?NEW_PROTOCOL_VERSION,
+       maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on new_node4.
     start_node(new_node4, Cfg),
     ok = mock_pow_on_node(new_node4, Cfg),
