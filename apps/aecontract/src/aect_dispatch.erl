@@ -97,18 +97,16 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
              pre => #{}},
           #{
 	     trace_fun  => fun(S,A) -> lager:error(S,A) end,
-	     trace => true
+	     trace => false
 	     })
     of
 	InitState ->
-	    lager:error("InitState ~p, ~p~n", [InitState, Gas]),
 
 	    %% TODO: Nicer error handling - do more in check.
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
 		%% Succesful execution
 		{ok, #{ gas := GasLeft, out := ReturnValue } = State} ->
-		    lager:error("Return state ~p~n", [State]),
 		    aect_call:set_gas_used(
 		      Gas - GasLeft,
 		      aect_call:set_return_type(

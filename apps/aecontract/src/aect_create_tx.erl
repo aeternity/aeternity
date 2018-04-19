@@ -164,9 +164,6 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %% Create the contract and add to state tree
     ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
     Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
-    ContractsTree0 = aec_trees:contracts(Trees1),
-    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
 
     %% Create the init call.
     Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
@@ -177,33 +174,44 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    Contract1 =
+    Trees2 =
 	case VmVersion of
 	    ?AEVM_01_Solidity_01 ->
 		%% Execute init call to get the contract bytecode
 		%% as a result. to be used for insertion
-		CallRes = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
-		case aect_call:get_return_type(CallRes) of
+		ContractsTree0a = aec_trees:contracts(Trees1),
+		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
+		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		case aect_call:return_type(CallRes) of
 		    ok ->
-			
-		lager:error("Init call result ~w~n",[_Call]), 
-		Contract;
+			ContractsTree0 = aec_trees:contracts(Trees1),
+			ContractsTree1 = aect_state_tree:insert_call(Call0, ContractsTree0),
+			NewCode = aect_call:return_value(CallRes),
+			Contract1 = aect_contracts:set_code(NewCode, Contract),
+			ContractsTree2 = aect_state_tree:insert_contract(Contract1, ContractsTree1),
+			aec_trees:set_contracts(Trees1, ContractsTree2);
+		    E ->
+			lager:error("Init call error ~w ~w~n",[E, CallRes]), 
+			Trees1
+		end;
 	    _ ->
-		Contract
+		Trees1
 	end,
+
 
     {ok, Trees2}.
 
 run_contract(#contract_create_tx{ owner      = Caller
-				, nonce      = Nonce
+				, nonce      =_Nonce
 				, code       = Code
 				, vm_version = VmVersion
-				, amount     = Amount
+				, amount     =_Amount
 				, gas        = Gas 
 				, gas_price  = GasPrice
 				, call_data  = CallData
-				} = Tx,
-	     Call, Height, Trees, Contract, ContractPubKey)->
+				} =_Tx,
+	     Call, Height, Trees,_Contract, ContractPubKey)->
 
     CallStack = [], %% TODO: should we have a call stack for create_tx also
                     %% when creating a contract in a contract.
