@@ -170,7 +170,12 @@ get_config({DirPath, TestName,_Opts}) ->
     Bin    = get_config_file(DirPath, TestName),
     Json   = jsx:decode(Bin, [return_maps, {labels, attempt_atom}]),
     Config = build_config(Json),
-    maps:get(TestName, Config).
+    TestConfig = maps:get(TestName, Config),
+    DefaultEnv = #{ chainState => aevm_dummy_chain:new_state()
+                  , chainAPI => aevm_dummy_chain
+                  },
+    maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
+                     TestConfig).
 
 get_config_file(DirPath, TestName) ->
     FileName = config_filename(DirPath, TestName),
