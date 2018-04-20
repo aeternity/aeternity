@@ -28,9 +28,11 @@
          initiator_amount/1,
          responder/1,
          responder_amount/1,
-         deposits/1,
-         previous_state/1,
-         sequence_number/1]).
+         updates/1,
+         previous_round/1,
+         round/1]).
+
+-export([set_value/3]).
 
 %%%===================================================================
 %%% Types
@@ -54,20 +56,20 @@ new(#{channel_id         := ChannelId,
       responder          := ResponderPubKey,
       initiator_amount   := InitiatorAmount,
       responder_amount   := ResponderAmount,
-      deposits           := Deposits,
+      updates            := Updates,
       state              := State,
-      previous_state     := Prev,
-      sequence_number    := SequenceNumber}) ->
+      previous_round     := Prev,
+      round              := Round}) ->
     Tx = #channel_offchain_tx{
             channel_id         = ChannelId,
             initiator          = InitiatorPubKey,
             responder          = ResponderPubKey,
             initiator_amount   = InitiatorAmount,
             responder_amount   = ResponderAmount,
-            deposits           = Deposits,
+            updates            = Updates,
             state              = State,
-            previous_state     = Prev,
-            sequence_number    = SequenceNumber},
+            previous_round     = Prev,
+            round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
 
 type() ->
@@ -79,7 +81,7 @@ fee(#channel_offchain_tx{}) ->
     ?CHANNEL_OFFCHAIN_TX_FEE.
 
 -spec nonce(tx()) -> non_neg_integer().
-nonce(#channel_offchain_tx{sequence_number = N}) ->
+nonce(#channel_offchain_tx{round = N}) ->
     N.
 
 -spec origin(tx()) -> pubkey().
@@ -92,10 +94,10 @@ check(#channel_offchain_tx{
          responder          = _ResponderPubKey,
          initiator_amount   = _InitiatorAmount,
          responder_amount   = _ResponderAmount,
-         deposits           = _Deposits,
+         updates            = _Updates,
          state              = _State,
-         previous_state     = _Prev
-         sequence_number    = _SequenceNumber}, Trees, _Height) ->
+         previous_round     = _Prev,
+         round              = _Round}, Trees, _Height) ->
     %% TODO: implement checks relevant to off-chain
     {ok, Trees}.
 
@@ -121,32 +123,32 @@ serialize(#channel_offchain_tx{
              responder          = ResponderPubKey,
              initiator_amount   = InitiatorAmount,
              responder_amount   = ResponderAmount,
-             deposits           = Deposits,
+             updates            = Updates,
              state              = State,
-             previous_state     = Prev,
-             sequence_number    = SequenceNumber}) ->
+             previous_round     = Prev,
+             round              = Round}) ->
     {version(),
      [ {channel_id        , ChannelId}
-     , {previous_state    , Prev}
-     , {sequence_number   , SequenceNumber}
+     , {previous_round    , Prev}
+     , {round             , Round}
      , {initiator         , InitiatorPubKey}
      , {responder         , ResponderPubKey}
      , {initiator_amount  , InitiatorAmount}
      , {responder_amount  , ResponderAmount}
-     , {deposits          , Deposits}
+     , {updates           , Updates}
      , {state             , State}
      ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             [ {channel_id        , ChannelId}
-            , {previous_state    , Prev}
-            , {sequence_number   , SequenceNumber}
+            , {previous_round    , Prev}
+            , {round             , Round}
             , {initiator         , InitiatorPubKey}
             , {responder         , ResponderPubKey}
             , {initiator_amount  , InitiatorAmount}
             , {responder_amount  , ResponderAmount}
-            , {deposits          , Deposits}
+            , {updates           , Updates}
             , {state             , State}]) ->
     #channel_offchain_tx{
        channel_id         = ChannelId,
@@ -154,10 +156,10 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
        responder          = ResponderPubKey,
        initiator_amount   = InitiatorAmount,
        responder_amount   = ResponderAmount,
-       deposits           = Deposits,
+       updates            = Updates,
        state              = State,
-       previous_state     = Prev,
-       sequence_number    = SequenceNumber}.
+       previous_round     = Prev,
+       round              = Round}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_offchain_tx{
@@ -166,32 +168,32 @@ for_client(#channel_offchain_tx{
               responder          = ResponderPubKey,
               initiator_amount   = InitiatorAmount,
               responder_amount   = ResponderAmount,
-              deposits           = Deposits,
+              updates            = Updates,
               state              = State,
-              previous_state     = Prev,
-              sequence_number    = SequenceNumber}) ->
+              previous_round     = Prev,
+              round              = Round}) ->
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
       <<"channel_id">>         => aec_base58c:encode(channel, ChannelId),
-      <<"previous_state">>     => Prev,
-      <<"sequence_number">>    => SequenceNumber,
+      <<"previous_round">>     => Prev,
+      <<"round">>              => Round,
       <<"initiator">>          => aec_base58c:encode(
                                     account_pubkey, InitiatorPubKey),
       <<"responder">>          => aec_base58c:encode(
                                     account_pubkey, ResponderPubKey),
       <<"initiator_amount">>   => InitiatorAmount,
       <<"responder_amount">>   => ResponderAmount,
-      <<"deposits">>           => [deposit_for_client(D) || D <- Deposits],
+      <<"updates">>            => [update_for_client(D) || D <- Updates],
       <<"state">>              => aec_base58c:encode(state, State)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , binary}
-    , {previous_state    , int}
-    , {sequence_number   , int}
+    , {previous_round    , int}
+    , {round             , int}
     , {initiator         , binary}
     , {responder         , binary}
     , {initiator_amount  , int}
     , {responder_amount  , int}
-    , {deposits          , [{int,int}]}
+    , {updates           , [{binary,binary,int}]}
     , {state             , binary}
     ].
 
@@ -219,17 +221,40 @@ responder(#channel_offchain_tx{responder = ResponderPubKey}) ->
 responder_amount(#channel_offchain_tx{responder_amount = ResponderAmount}) ->
     ResponderAmount.
 
--spec deposits(tx()) -> [offchain_deposit()].
-deposits(#channel_offchain_tx{deposits = Deposits}) ->
-    Deposits.
+-spec updates(tx()) -> [offchain_update()].
+updates(#channel_offchain_tx{updates = Updates}) ->
+    Updates.
 
--spec previous_state(tx()) -> non_neg_integer().
-previous_state(#channel_offchain_tx{previous_state = PreviousState}) ->
-    PreviousState.
+-spec previous_round(tx()) -> non_neg_integer().
+previous_round(#channel_offchain_tx{previous_round = PreviousRound}) ->
+    PreviousRound.
 
--spec sequence_number(tx()) -> aesc_channels:seq_number().
-sequence_number(#channel_offchain_tx{sequence_number = SequenceNumber}) ->
-    SequenceNumber.
+-spec round(tx()) -> aesc_channels:seq_number().
+round(#channel_offchain_tx{round = Round}) ->
+    Round.
+
+-type settable_field() :: initiator_amount
+                        | responder_amount
+                        | updates
+                        | previous_round
+                        | round.
+
+-spec set_value(tx(), settable_field(), any()) -> tx().
+set_value(#channel_offchain_tx{} = Tx, initiator_amount, Amt)
+  when is_integer(Amt), Amt >= 0 ->
+    Tx#channel_offchain_tx{initiator_amount = Amt};
+set_value(#channel_offchain_tx{} = Tx, responder_amount, Amt)
+  when is_integer(Amt), Amt >= 0 ->
+    Tx#channel_offchain_tx{responder_amount = Amt};
+set_value(#channel_offchain_tx{} = Tx, updates, Updates) when is_list(Updates) ->
+    Tx#channel_offchain_tx{updates = Updates};
+set_value(#channel_offchain_tx{round = Seq} = Tx, previous_round, N)
+  when is_integer(N), N >= 0, N < Seq ->
+    Tx#channel_offchain_tx{previous_round = N};
+set_value(#channel_offchain_tx{round = Seq} = Tx, round, N)
+  when is_integer(N), N >= 0, N > Seq ->
+    Tx#channel_offchain_tx{round = N}.
+
 
 %%%===================================================================
 %%% Internal functions
@@ -238,9 +263,7 @@ sequence_number(#channel_offchain_tx{sequence_number = SequenceNumber}) ->
 version() ->
     ?CHANNEL_OFFCHAIN_TX_VSN.
 
-deposit_for_client({Code, Amount}) ->
-    Str = case Code of
-              ?DEPOSIT_I2P -> <<"i2p">>;
-              ?DEPOSIT_P2I -> <<"p2i">>
-          end,
-    #{<<"op">> => Str, <<"am">> => Amount}.
+update_for_client({From, To, Amount}) ->
+    #{<<"from">> => From,
+      <<"to">>   => To,
+      <<"am">>   => Amount}.

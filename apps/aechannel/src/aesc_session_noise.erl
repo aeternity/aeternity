@@ -13,8 +13,8 @@
        , funding_signed/2
        , funding_locked/2
        , channel_reestablish/2
-       , update_deposit/2
-       , update_withdrawal/2
+       , update/2
+       , update_ack/2
        , error/2
        , shutdown/2]).
 
@@ -34,15 +34,15 @@ funding_created    (Session, Msg) -> cast(Session, {msg, ?FND_CREATED , Msg}).
 funding_signed     (Session, Msg) -> cast(Session, {msg, ?FND_SIGNED  , Msg}).
 funding_locked     (Session, Msg) -> cast(Session, {msg, ?FND_LOCKED  , Msg}).
 channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL , Msg}).
-update_deposit     (Session, Msg) -> cast(Session, {msg, ?UPD_DEPOSIT , Msg}).
-update_withdrawal  (Session, Msg) -> cast(Session, {msg, ?UPD_WITHDRAW, Msg}).
+update             (Session, Msg) -> cast(Session, {msg, ?UPDATE      , Msg}).
+update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK  , Msg}).
 error              (Session, Msg) -> cast(Session, {msg, ?ERROR       , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN    , Msg}).
 
 close(Session) ->
     cast(Session, close).
 
--define(GEN_SERVER_OPTS, [{debug, [trace]}]).
+-define(GEN_SERVER_OPTS, []).
 
 %% Connection establishment
 

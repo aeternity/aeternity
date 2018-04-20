@@ -31,7 +31,7 @@
 -type chan_id()     :: bin32().
 -type lock_period() :: i2bytes().
 -type depth()       :: i4bytes().
--type length()      :: i2bytes().
+%% -type length()      :: i2bytes().
 -type amount()      :: i8bytes().
 -type pubkey()      :: bin65().
 
@@ -42,7 +42,7 @@ enc(?FND_CREATED  , Msg) -> enc_fnd_created(Msg);
 enc(?FND_SIGNED   , Msg) -> enc_fnd_signed(Msg);
 enc(?FND_LOCKED   , Msg) -> enc_fnd_locked(Msg);
 enc(?UPDATE       , Msg) -> enc_update(Msg);
-enc(?UPDATE_SIGNED, Msg) -> enc_update_signed(Msg);
+enc(?UPDATE_ACK   , Msg) -> enc_update_ack(Msg);
 enc(?ERROR        , Msg) -> enc_error(Msg);
 enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg).
 
@@ -55,7 +55,7 @@ dec(<<?id(?ID_FND_CREATED)  , B/bytes>>) -> {?FND_CREATED , dec_fnd_created(B)};
 dec(<<?id(?ID_FND_SIGNED)   , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
 dec(<<?id(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
 dec(<<?id(?ID_UPDATE)       , B/bytes>>) -> {?UPDATE      , dec_update(B)};
-dec(<<?id(?ID_UPDATE_SIGNED), B/bytes>>) -> {?UPDATE      , dec_update_signed(B)};
+dec(<<?id(?ID_UPDATE_ACK)   , B/bytes>>) -> {?UPDATE_ACK  , dec_update_ack(B)};
 dec(<<?id(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
 dec(<<?id(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)}.
 
@@ -218,7 +218,7 @@ dec_fnd_locked(<< ChanId:32/binary
       channel_id           => OnChainId }.
 
 -type update_msg() :: #{ channel_id := chan_id()
-                       , data       =: binary()}.
+                       , data       := binary()}.
 -spec enc_update(update_msg()) -> binary().
 enc_update(#{ channel_id := ChanId
             , data   := Data }) ->
@@ -236,21 +236,21 @@ dec_update(<< ChanId:32/binary
     #{ channel_id => ChanId
      , data   => Data }.
 
--type update_signed_msg() :: #{ channel_id := chan_id()
-                              , data       =: binary()}.
--spec enc_update_signed(update_signed_msg()) -> binary().
-enc_update_signed(#{ channel_id := ChanId
-                   , data   := Data }) ->
+-type update_ack_msg() :: #{ channel_id := chan_id()
+                           , data       := binary()}.
+-spec enc_update_ack(update_ack_msg()) -> binary().
+enc_update_ack(#{ channel_id := ChanId
+                , data       := Data }) ->
     Length = byte_size(Data),
-    << ?ID_UPDATE:1 /unit:8
-     , ChanId    :32/binary
-     , Length    :2 /unit:8
-     , Data      :Length/bytes >>.
+    << ?ID_UPDATE_ACK:1 /unit:8
+     , ChanId        :32/binary
+     , Length        :2 /unit:8
+     , Data          :Length/bytes >>.
 
--spec dec_update_signed(binary()) -> update_signed_msg().
-dec_update_signed(<< ChanId:32/binary
-                   , Length:2 /unit:8
-                   , Data/bytes >>) ->
+-spec dec_update_ack(binary()) -> update_ack_msg().
+dec_update_ack(<< ChanId:32/binary
+                , Length:2 /unit:8
+                , Data/bytes >>) ->
     Length = byte_size(Data),
     #{ channel_id => ChanId
      , data   => Data }.

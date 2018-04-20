@@ -22,6 +22,8 @@
         , serialize_to_binary/1
         , signers/1
         , specialize_type/1
+        , specialize_callback/1
+        , update_tx/2
         , tx_type/1
         , tx_types/0]).
 
@@ -242,6 +244,13 @@ is_coinbase(#aetx{ type = Type }) ->
 
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
+
+-spec specialize_callback(Tx :: tx()) -> {module(), tx_instance()}.
+specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
+
+-spec update_tx(tx(), tx_instance()) -> tx_instance().
+update_tx(#aetx{} = Tx, NewTxI) ->
+    Tx#aetx{tx = NewTxI}.
 
 -spec tx_types() -> list(tx_type()).
 tx_types() ->

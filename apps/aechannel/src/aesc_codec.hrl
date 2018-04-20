@@ -7,7 +7,7 @@
 -define(FND_SIGNED   , funding_signed).
 -define(FND_LOCKED   , funding_locked).
 -define(UPDATE       , update).
--define(UPDATE_SIGNED, update_signed).
+-define(UPDATE_ACK   , update_ack).
 -define(ERROR        , error).
 -define(SHUTDOWN     , shutdown).
 
@@ -18,7 +18,7 @@
 -define(ID_FND_SIGNED   , 5).
 -define(ID_FND_LOCKED   , 6).
 -define(ID_UPDATE       , 7).
--define(ID_UPDATE_SIGNED, 8).
+-define(ID_UPDATE_ACK   , 8).
 -define(ID_ERROR        , 98).
 -define(ID_SHUTDOWN     , 99).
 
