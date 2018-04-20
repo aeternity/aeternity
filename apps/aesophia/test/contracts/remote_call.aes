@@ -10,7 +10,7 @@ contract RemoteCall =
     function call42(r : address) : int = call(r, 42)
 
     function withdraw() : int =
-        // if(Call.caller == Contract.owner)    // TODO: implement '=='. Also the EVM doesn't have OWNER?
+        // if(Call.caller == Contract.owner)    // TODO: The EVM doesn't have OWNER?
         let amount = Contract.balance
         raw_spend(Call.caller, amount)
         amount

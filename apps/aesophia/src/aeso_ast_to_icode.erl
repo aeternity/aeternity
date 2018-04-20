@@ -99,13 +99,20 @@ ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
     #list{elems = [ast_body(A) || A <- Args]};
-ast_body({app,[_,{format,prefix}],{Op,_},[A]}) ->
-    #unop{op = Op, rand = ast_body(A)};
-ast_body({app,[_,{format,infix}],{Op,_},[A,B]}) ->
-    #binop{op = Op, left = ast_body(A), right = ast_body(B)};
-ast_body({app,_,Fun,Args}) ->
-    #funcall{function=ast_body(Fun),
-	     args=[ast_body(A) || A <- Args]};
+ast_body({app,As,Fun,Args}) ->
+    case aeso_syntax:get_ann(format, As) of
+        infix  ->
+            {Op, _} = Fun,
+            [A, B]  = Args,
+            #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+        prefix ->
+            {Op, _} = Fun,
+            [A]     = Args,
+            #unop{op = Op, rand = ast_body(A)};
+        _ ->
+            #funcall{function=ast_body(Fun),
+	             args=[ast_body(A) || A <- Args]}
+    end;
 ast_body({'if',_,Dec,Then,Else}) ->
     #ifte{decision = ast_body(Dec)
 	 ,then     = ast_body(Then)

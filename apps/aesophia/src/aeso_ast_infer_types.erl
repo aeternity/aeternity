@@ -155,20 +155,23 @@ infer_expr(Env,{typed,As,Body,Type}) ->
     {typed,_,NewBody,NewType} = infer_expr(Env,Body),
     unify(NewType,AnnotType),
     {typed,As,NewBody,AnnotType};
-infer_expr(Env,{app,As=[_,{format,infix}],Op,Args}) ->
-    TypedArgs = [infer_expr(Env,A) || A <- Args],
-    ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
-    {fun_t,_,OperandTypes,ResultType} = infer_infix(Op),
-    unify(ArgTypes,OperandTypes),
-    {typed,As,{app,As,Op,TypedArgs},ResultType};
-%% TODO: prefix operators
 infer_expr(Env,{app,As,Fun,Args}) ->
-    NewFun={typed,_,_,FunType} = infer_expr(Env,Fun),
-    NewArgs = [infer_expr(Env,A) || A <- Args],
-    ArgTypes = [T || {typed,_,_,T} <- NewArgs],
-    ResultType = fresh_uvar(As),
-    unify(FunType,{fun_t,[],ArgTypes,ResultType}),
-    {typed,As,{app,As,NewFun,NewArgs},dereference(ResultType)};
+    case aeso_syntax:get_ann(format, As) of
+        infix ->
+            TypedArgs = [infer_expr(Env,A) || A <- Args],
+            ArgTypes = [T || {typed,_,_,T} <- TypedArgs],
+            {fun_t,_,OperandTypes,ResultType} = infer_infix(Fun),
+            unify(ArgTypes,OperandTypes),
+            {typed,As,{app,As,Fun,TypedArgs},ResultType};
+        %% TODO: prefix operators
+        _ ->
+            NewFun={typed,_,_,FunType} = infer_expr(Env,Fun),
+            NewArgs = [infer_expr(Env,A) || A <- Args],
+            ArgTypes = [T || {typed,_,_,T} <- NewArgs],
+            ResultType = fresh_uvar(As),
+            unify(FunType,{fun_t,[],ArgTypes,ResultType}),
+            {typed,As,{app,As,NewFun,NewArgs},dereference(ResultType)}
+    end;
 infer_expr(Env,{'if',Attrs,Cond,Then,Else}) ->
     NewCond={typed,_,_,CondType} = infer_expr(Env,Cond),
     unify(CondType,{id,Attrs,"bool"}),
@@ -265,7 +268,7 @@ infer_infix({IntOp,As})
 infer_infix({RelOp,As})
   when RelOp=='=='; RelOp=='!=';
        RelOp=='<'; RelOp=='>';
-       RelOp=='<='; RelOp=='>=' ->
+       RelOp=='<='; RelOp=='=<'; RelOp=='>=' ->
     Int = {id,As,"int"},
     Bool = {id,As,"bool"},
     {fun_t,As,[Int,Int],Bool};
