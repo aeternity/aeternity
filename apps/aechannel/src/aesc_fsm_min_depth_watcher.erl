@@ -10,11 +10,14 @@
          terminate/2,
          code_change/3]).
 
+-define(GEN_SERVER_OPTS, []).
+
 start_link(TxHash, ChanId, MinDepth) ->
     gen_server:start_link(?MODULE, #{tx_hash   => TxHash,
                                      chan_id   => ChanId,
                                      fsm       => self(),
-                                     min_depth => MinDepth}, [{debug,[trace]}]).
+                                     min_depth => MinDepth},
+                          ?GEN_SERVER_OPTS).
 
 init(#{} = Arg) ->
     lager:debug("started min_depth watcher for ~p", [maps:get(fsm, Arg)]),
@@ -24,37 +27,6 @@ init(#{} = Arg) ->
     self() ! check_status,
     {ok, Arg}.
 
-%% handle_info({gproc_ps_event, top_changed, #{info := Block}},
-%%             #{chan_id   := ChanId,
-%%               min_depth := MinDepth,
-%%               fsm       := Fsm} = St) ->
-    %% CurHeight = aec_blocks:height(Block),
-    %% lager:debug("got top_changed, block at height ~p", [CurHeight]),
-    %% case maps:find(channel_at, St) of
-    %%     {ok, ChHeight} when CurHeight - ChHeight >= MinDepth ->
-    %%         lager:debug("reached minimum height (~p - ~p >= ~p",
-    %%                     [CurHeight, ChHeight, MinDepth]),
-    %%         aesc_fsm:own_funding_locked(Fsm, ChanId),
-    %%         {stop, normal, St};
-    %%     {ok, ChHeight} when CurHeight - ChHeight < MinDepth ->
-    %%         lager:debug("not yet mininum height (~p - ~p < ~p)",
-    %%                     [CurHeight, ChHeight, MinDepth]),
-    %%         {noreply, St};
-    %%     error ->
-    %%         lager:debug("haven't yet found the tx", []),
-    %%         case block_has_channel(ChanId, Block) of
-    %%             true when MinDepth == 0 ->
-    %%                 lager:debug("block has channel tx, MinDepth = 0", []),
-    %%                 aesc_fsm:own_funding_locked(Fsm, ChanId),
-    %%                 {stop, normal, St};
-    %%             true ->
-    %%                 lager:debug("block has channel tx", []),
-    %%                 {noreply, St#{channel_at => CurHeight}};
-    %%             false ->
-    %%                 lager:debug("block doesn't have channel tx", []),
-    %%                 {noreply, St}
-    %%         end
-    %% end;
 handle_info({gproc_ps_event, top_changed, _}, St) ->
     check_status(St);
 handle_info({gproc_ps_event, block_created, _}, St) ->

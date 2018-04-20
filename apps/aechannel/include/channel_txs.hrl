@@ -76,12 +76,15 @@
           nonce      :: non_neg_integer()
          }).
 
--define(DEPOSIT_I2P, 1).
--define(DEPOSIT_P2I, 2).
+%% -define(DEPOSIT_I2P, 1).
+%% -define(DEPOSIT_P2I, 2).
 
--type deposit_code() :: ?DEPOSIT_I2P | ?DEPOSIT_P2I.
+%% -type deposit_code() :: ?DEPOSIT_I2P | ?DEPOSIT_P2I.
 
--type offchain_deposit() :: {deposit_code(), aesc_channels:amount()}.
+-type from() :: pubkey().
+-type to()   :: pubkey().
+
+-type offchain_update() :: {from(), to(), aesc_channels:amount()}.
 
 -record(channel_offchain_tx, {
           channel_id         :: binary(),
@@ -89,9 +92,9 @@
           responder          :: pubkey(),
           initiator_amount   :: aesc_channels:amount(),
           responder_amount   :: aesc_channels:amount(),
-          deposits           :: [offchain_deposit()],
+          updates            :: [offchain_update()],
           state              :: binary(),
-          previous_state     :: non_neg_integer(),
-          sequence_number    :: non_neg_integer()
+          previous_round     :: non_neg_integer(),
+          round              :: non_neg_integer()
          }).
 

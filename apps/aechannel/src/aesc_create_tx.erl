@@ -51,26 +51,6 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-%% TODO remove first head as soon as participant turns into a responder
-new(#{initiator          := InitiatorPubKey,
-      initiator_amount   := InitiatorAmount,
-      responder          := ResponderPubKey,
-      responder_amount   := ResponderAmount,
-      channel_reserve    := ChannelReserve,
-      lock_period        := LockPeriod,
-      ttl                := TTL,
-      fee                := Fee,
-      nonce              := Nonce}) ->
-    Tx = #channel_create_tx{initiator          = InitiatorPubKey,
-                            responder          = ResponderPubKey,
-                            initiator_amount   = InitiatorAmount,
-                            responder_amount   = ResponderAmount,
-                            channel_reserve    = ChannelReserve,
-                            lock_period        = LockPeriod,
-                            ttl                = TTL,
-                            fee                = Fee,
-                            nonce              = Nonce},
-    {ok, aetx:new(?MODULE, Tx)};
 new(#{initiator          := InitiatorPubKey,
       initiator_amount   := InitiatorAmount,
       responder          := ResponderPubKey,
