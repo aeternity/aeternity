@@ -25,9 +25,6 @@ export AEVM_EXTERNAL_TEST_DIR=aevm_external
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
 
-## Dependency `rocksdb` takes long to build, the others are just to shave off some seconds...
-CLEAN_DEPS_EXCEPTIONS=rocksdb sha3 enacl erlexec
-
 all:	local-build
 
 console:
@@ -246,7 +243,7 @@ clean:
 	@$(MAKE) multi-distclean
 	@rm -rf _build/system_test+test _build/system_test system_test/aest_hard_fork_SUITE_data/db system_test/logs _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
-	@rm -rf $$(ls -d _build/default/lib/* | grep -Ev "$$(sep=""; for d in $(CLEAN_DEPS_EXCEPTIONS); do echo -n "$$sep[^_]$$d"; sep="|"; done)")
+	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 
 distclean: clean
 	( cd apps/aecuckoo && $(MAKE) distclean; )
