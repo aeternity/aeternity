@@ -8,7 +8,7 @@
 
 -module(aeso_test_utils).
 
--export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2]).
+-export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1]).
 
 -export([spend/3, get_balance/2, call_contract/6]).
 
@@ -133,6 +133,22 @@ new_atom() ->
     end,
     ets:insert(names,{index,I+1}),
     list_to_atom([$a+I]).
+
+%% Translate a blob of 256-bit words into readable form. Does a bit of guessing
+%% to recover strings. TODO: strings longer than 32 bytes
+dump_words(Bin) -> dump_words(Bin, []).
+
+dump_words(<<N:256, W:32/binary, Rest/binary>>, Acc) when N < 32 ->
+    NotN = (32 - N) * 8,
+    case W of
+        <<S:N/binary, 0:NotN>> ->
+            dump_words(Rest, [binary_to_list(S), N | Acc]);
+        _ -> dump_words(<<W/binary, Rest/binary>>, [N | Acc])
+    end;
+dump_words(<<N:256/signed, Rest/binary>>, Acc) ->
+    dump_words(Rest, [N | Acc]);
+dump_words(<<>>, Acc) -> lists:reverse(Acc);
+dump_words(Rest, Acc) -> lists:reverse([{error, Rest} | Acc]).
 
 %% -- Chain API for test -----------------------------------------------------
 
