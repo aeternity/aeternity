@@ -26,6 +26,10 @@
         , tx_type/1
         , tx_types/0]).
 
+-ifdef(TEST).
+-export([tx/1]).
+-endif.
+
 %% -- Types ------------------------------------------------------------------
 -record(aetx, { type :: tx_type()
               , cb   :: module()
@@ -249,3 +253,7 @@ is_tx_type(X) when is_binary(X) ->
 is_tx_type(X) when is_atom(X) ->
     lists:member(X, tx_types()).
 
+-ifdef(TEST).
+tx(Tx) ->
+    Tx#aetx.tx.
+-endif.

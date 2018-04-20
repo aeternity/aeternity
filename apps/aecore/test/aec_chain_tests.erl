@@ -278,7 +278,8 @@ broken_chain_invalid_transaction() ->
     BogusSpendTx = aec_test_utils:signed_spend_tx(#{recipient => <<>>,
                                                     amount => 0,
                                                     fee => 0,
-                                                    nonce => 10}),
+                                                    nonce => 10,
+                                                    vsn => 1}), %% No payload - valid at any consensus version.
     BogusTxs = [BogusSpendTx | Txs],
 
     ?assertNotEqual(Txs, BogusTxs),

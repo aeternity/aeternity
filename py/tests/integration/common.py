@@ -2,6 +2,7 @@
 
 from __future__ import absolute_import
 
+import tempfile
 import os
 import sys
 import unittest
@@ -61,16 +62,93 @@ def node_online(ext_api, int_api):
             return False
     return is_ext_online() and is_int_online()
 
+def setup_node(node):
+    # prepare a dir to hold the configs and the keys
+    root_dir = tempfile.mkdtemp()
+
+    # setup the dir with non-mining node
+    user_config = make_no_mining_user_config(root_dir, "epoch.yaml")
+    start_node(node, user_config)
+    api = external_api(node)
+
+    return (root_dir, node, api)
+
+def setup_node_with_tokens(node, blocks_to_mine):
+    # prepare a dir to hold the configs and the keys
+    root_dir = tempfile.mkdtemp()
+
+    # setup the dir with mining node
+    user_config = make_mining_user_config(root_dir, "epoch.yaml")
+    start_node(node, user_config)
+    api = external_api(node)
+
+    # populate the chain so node had mined some blocks and has tokens
+    # to spend
+    wait_until_height(api, blocks_to_mine)
+    top = api.get_top()
+    assert_equals(top.height >= blocks_to_mine, True)
+    # Now the node has at least blocks_to_mine blocks mined
+
+    return (root_dir, node, api, top)
+
+def install_user_config(root_dir, file_name, conf):
+    user_config = os.path.join(root_dir, file_name)
+    f = open(user_config, "w")
+    f.write(conf)
+    f.close()
+    return user_config
+
+def make_no_mining_user_config(root_dir, file_name):
+    conf = """\
+---
+chain:
+    hard_forks:
+        "9": 0
+        "10": 1
+        "11": 2
+
+mining:
+    autostart: false
+    expected_mine_rate: 100
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+"""
+    return install_user_config(root_dir, file_name, conf)
+
+def make_mining_user_config(root_dir, file_name):
+    conf = """\
+---
+chain:
+    hard_forks:
+        "9": 0
+        "10": 1
+        "11": 2
+
+mining:
+    autostart: true
+    expected_mine_rate: 100
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+"""
+    return install_user_config(root_dir, file_name, conf)
+
 def start_node(name, config_filename=None):
     if should_start_node(name):
         print("\nNode " + name + " starting")
         config_prefix = ""
         if config_filename != None:
             if config_filename[0] == "/": # absolute path
-                config_prefix =  'ERL_FLAGS="-config ' + config_filename + '" ' 
+                config_prefix =  'EPOCH_CONFIG="' + config_filename + '" '
             else:
-                config_prefix =  'ERL_FLAGS="-config `pwd`/' + config_filename + '" ' 
+                config_prefix =  'EPOCH_CONFIG="`pwd`/' + config_filename + '" '
 
+        print("Starting node with config prefix " + config_prefix)
         p = os.popen("(cd .. && " + config_prefix + "make " + name + "-start;)","r")
         while 1:
             line = p.readline()
