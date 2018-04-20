@@ -64,11 +64,18 @@ ast_type(T) ->
 
 ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, Value, {typed, _, Arg, ArgT}]}, OutT}) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
+    {Args, ArgTypes} =
+        case Arg of %% Hack: unpack tuples
+            {tuple, _, Elems} ->
+                {tuple_t, _, Ts} = ArgT,
+                {Elems, Ts};
+            _ -> {[Arg], [ArgT]}
+        end,
     #prim_call_contract{ gas      = ast_body(Gas),
                          address  = ast_body(To),
                          value    = ast_body(Value),
-                         arg      = #tuple{cpts = [ast_body(Fun), ast_body(Arg)]},
-                         arg_type = {tuple, [string, ast_typerep(ArgT)]},
+                         arg      = #tuple{cpts = [ast_body(X) || X <- [Fun | Args]]},
+                         arg_type = {tuple, [string | lists:map(fun ast_typerep/1, ArgTypes)]},
                          out_type = ast_typerep(OutT) };
 ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
     %% Implemented as a contract call to the contract with address 0.
