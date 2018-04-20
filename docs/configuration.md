@@ -69,6 +69,8 @@ chain:
 
 The node automatically creates the directory `db_path`, for storing the blockchain, if not present.
 
+Note that YAML files have significant whitespace so make sure that you indent the file correctly and that the file ends with a newline.
+
 You can validate the configuration file before starting the node:
 ```bash
 cd /tmp/node
