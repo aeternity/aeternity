@@ -105,7 +105,7 @@ execute_call(#{ code := CodeAsHexBinString
            pre => #{}},
     TraceSpec =
         #{ trace_fun =>
-               fun(S,A) -> io_lib:format(S,A) end
+               fun(S,A) -> io:format(S,A) end
          , trace => Trace
          },
     State = aevm_eeevm_state:init(Spec, TraceSpec),
