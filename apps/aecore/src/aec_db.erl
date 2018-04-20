@@ -95,8 +95,10 @@
 -record(aec_name_service_cache , {key, value}).
 -record(aec_name_service_state , {key, value}).
 
--define(TAB(Record), {Record, set(Mode, record_info(fields, Record))}).
--define(TAB(Rec, Extra), {Rec, set(Mode, record_info(fields, Rec), Extra)}).
+-define(TAB(Record),
+        {Record, tab(Mode, Record, record_info(fields, Record), [])}).
+-define(TAB(Record, Extra),
+        {Record, tab(Mode, Record, record_info(fields, Record), Extra)}).
 
 %% start a transaction if there isn't already one
 -define(t(Expr), case get(mnesia_activity_state) of undefined ->
@@ -119,6 +121,20 @@ tables(Mode) ->
    , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
     ].
+
+tab(Mode, Record, Attributes, Extra) ->
+    [ tab_copies(Mode)
+    , {type, tab_type(Record)}
+    , {attributes, Attributes}
+    , {user_properties, [{vsn, tab_vsn(Record)}]}
+      | Extra].
+
+tab_vsn(_) -> 1.
+
+tab_type(_) -> set.
+
+tab_copies(disc) -> {rocksdb_copies, [node()]};
+tab_copies(ram ) -> {ram_copies , [node()]}.
 
 clear_db() ->
     ?t([clear_table(T) || {T, _} <- tables(ram)]).
@@ -429,9 +445,9 @@ check_db() ->
                    true  -> disc;
                    false -> ram
                end,
-        ensure_schema_storage_mode(Mode),
+        Storage = ensure_schema_storage_mode(Mode),
         ok = application:ensure_started(mnesia),
-        initialize_db(Mode)
+        initialize_db(Mode, Storage)
     catch
         error:Reason ->
             lager:error("CAUGHT error:~p / ~p",
@@ -439,10 +455,14 @@ check_db() ->
             error(Reason)
     end.
 
-initialize_db(Mode) ->
+%% Test interface
+initialize_db(ram) ->
+    initialize_db(ram, ok).
+
+initialize_db(Mode, Storage) ->
     add_backend_plugins(Mode),
     add_index_plugins(),
-    ensure_mnesia_tables(Mode),
+    ensure_mnesia_tables(Mode, Storage),
     ok.
 
 
@@ -454,23 +474,38 @@ add_backend_plugins(_) ->
 add_index_plugins() ->
     mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx).
 
-ensure_mnesia_tables(Mode) ->
-    Tabs = mnesia:system_info(tables),
-    [{atomic,ok} = mnesia:create_table(T, Spec)
-     || {T, Spec} <- tables(Mode),
-        not lists:member(T, Tabs)],
-    ok.
+ensure_mnesia_tables(Mode, Storage) ->
+    Tables = tables(Mode),
+    case Storage of
+        existing_schema ->
+            case check_mnesia_tables(Tables, []) of
+                [] -> ok;
+                Errors ->
+                    lager:error("Database check failed: ~p", [Errors]),
+                    error({table_check, Errors})
+            end;
+        ok ->
+            [{atomic,ok} = mnesia:create_table(T, Spec)
+             || {T, Spec} <- Tables],
+            ok
+    end.
 
-
-set(Mode, Attrs) ->
-    set(Mode, Attrs, []).
-
--spec set(ram | disc, [atom()], [{atom(), any()}]) -> [{atom(), any()}].
-set(Mode, Attrs, Extra) ->
-    [copies(Mode), {type, set}, {attributes, Attrs} | Extra].
-
-copies(disc) -> {rocksdb_copies, [node()]};
-copies(ram ) -> {ram_copies , [node()]}.
+check_mnesia_tables([{Table, Spec}|Left], Acc) ->
+    NewAcc = try mnesia:table_info(Table, user_properties) of
+                 [{vsn, Vsn}] ->
+                     case proplists:get_value(user_properties, Spec) of
+                         [{vsn, Vsn}] -> Acc;
+                         [{vsn, Old}] -> [{vsn_fail, Table,
+                                           [{expected, Vsn},
+                                            {got, Old}]}
+                                          |Acc]
+                     end;
+                 Other -> [{missing_version, Table, Other}|Acc]
+             catch _:_ -> [{missing_table, Table}|Acc]
+             end,
+    check_mnesia_tables(Left, NewAcc);
+check_mnesia_tables([], Acc) ->
+    Acc.
 
 ensure_schema_storage_mode(ram) ->
     case disc_db_exists() of
@@ -482,7 +517,7 @@ ensure_schema_storage_mode(ram) ->
     end;
 ensure_schema_storage_mode(disc) ->
     case mnesia:create_schema([node()]) of
-        {error, {_, {already_exists, _}}} -> ok;
+        {error, {_, {already_exists, _}}} -> existing_schema;
         ok -> ok
     end.
 
