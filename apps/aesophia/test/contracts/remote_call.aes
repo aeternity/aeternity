@@ -1,16 +1,13 @@
 
-// contract Remote =
-//   function main : int => int
-
-contract MyContract =
-  // function call(r : Remote, x : int) =
-  //   let y = r.main({value = 0, gas = 100}, x)
-  //   y
+contract RemoteCall =
 
     function call(r : address, x : int) : int =
-        let gas   = 100
+        let gas   = 10000
         let value = 10
         raw_call(r, "main", gas, value, x)
+
+    // Multi-argument functions not working yet
+    function call42(r : address) : int = call(r, 42)
 
     function withdraw() : int =
         // if(Call.caller == Contract.owner)    // TODO: implement '=='. Also the EVM doesn't have OWNER?
