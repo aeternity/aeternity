@@ -1064,6 +1064,7 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
+    %% no payload
     Encoded = #{sender => MinerAddress,
                 recipient_pubkey => aec_base58c:encode(account_pubkey,
                                                        RandAddress),
@@ -1072,9 +1073,20 @@ spend_transaction(_Config) ->
     Decoded = maps:merge(Encoded,
                         #{sender => MinerPubkey,
                           recipient => RandAddress}),
-    unsigned_tx_positive_test(Decoded, Encoded,
-                               fun get_spend/1,
-                               fun aec_spend_tx:new/1, MinerPubkey),
+    T = unsigned_tx_positive_test(Decoded, Encoded,
+                                  fun get_spend/1,
+                                  fun aec_spend_tx:new/1, MinerPubkey),
+    {spend_tx, SpendTx} = aetx:specialize_type(T),
+    <<>> = aec_spend_tx:payload(SpendTx),
+
+    EncodedWithPayoad = Encoded#{payload => <<"hejsan svejsan">>},
+    DecodedWithPayoad = Decoded#{payload => <<"hejsan svejsan">>},
+    TWithPayload = unsigned_tx_positive_test(DecodedWithPayoad, EncodedWithPayoad,
+                                              fun get_spend/1,
+                                              fun aec_spend_tx:new/1, MinerPubkey),
+    {spend_tx, SpendTxPayload} = aetx:specialize_type(TWithPayload),
+    <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTxPayload),
+
     test_invalid_hash(MinerPubkey, sender, Encoded, fun get_spend/1),
     test_invalid_hash(MinerPubkey, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
     test_missing_address(sender, Encoded, fun get_spend/1),
@@ -1093,12 +1105,13 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx,
             ct:log("Hashes: Expected ~p~nActual ~p", [TxHash, ActualHash]),
-            ActualHash = TxHash
-
+            ActualHash = TxHash,
+            Tx
         end,
-    Test(NextNonce, Params),
+    Transaction = Test(NextNonce, Params),
     RandomNonce = rand:uniform(999) + 1,
-    Test(RandomNonce, maps:put(nonce, RandomNonce, Params)).
+    Test(RandomNonce, maps:put(nonce, RandomNonce, Params)),
+    Transaction.
 
 
 get_transaction(_Config) ->
