@@ -314,7 +314,7 @@ paths:
         - external
         - dev
       operationId: PostContractCallCompute
-      description: 'Compute the call_data for RING and get contract_call transaction'
+      description: 'Compute the call_data for SOPHIA and get contract_call transaction'
       consumes:
         - application/json
       produces:
@@ -1813,7 +1813,7 @@ paths:
         - external
         - dev
       operationId: 'CompileContract'
-      description: 'Compila a ring contract from source and return byte code'
+      description: 'Compile a sophia contract from source and return byte code'
       consumes:
         - application/json
       produces:
@@ -1840,7 +1840,7 @@ paths:
         - external
         - dev
       operationId: 'CallContract'
-      description: 'Call a ring function with a given name and argument in the given bytecode off chain.'
+      description: 'Call a sophia function with a given name and argument in the given bytecode off chain.'
       consumes:
         - application/json
       produces:
@@ -1867,7 +1867,7 @@ paths:
         - external
         - dev
       operationId: 'EncodeCalldata'
-      description: 'Encode ring data and function name according to ring ABI.'
+      description: 'Encode sophia data and function name according to sophia ABI.'
       consumes:
         - application/json
       produces:
@@ -1875,7 +1875,7 @@ paths:
       parameters:
         - in: body
           name: body
-          description: Arguments in ring
+          description: Arguments in sophia
           required: true
           schema:
             $ref: '#/definitions/ContractCallInput'
