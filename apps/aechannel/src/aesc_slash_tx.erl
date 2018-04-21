@@ -239,7 +239,7 @@ check_channel(ChannelId, StateTx, Height, Trees) ->
                         [fun() -> check_solo_closing(Channel, Height) end,
                          fun() -> check_peers_equal(StateTx, Channel) end,
                          fun() -> check_amounts_equal(StateTx, Channel) end,
-                         fun() -> check_seq_number(StateTx, Channel) end],
+                         fun() -> check_round(StateTx, Channel) end],
                     aeu_validation:run(Checks)
             end;
         false ->
@@ -269,10 +269,10 @@ check_solo_closing(Channel, Height) ->
         false -> {error, channel_not_closing}
     end.
 
-check_seq_number(State, Channel) ->
-    case aesc_channels:sequence_number(Channel) < aesc_offchain_tx:sequence_number(State) of
+check_round(State, Channel) ->
+    case aesc_channels:round(Channel) < aesc_offchain_tx:round(State) of
         true  -> ok;
-        false -> {error, state_seq_number_too_small}
+        false -> {error, state_round_too_small}
     end.
 
 -spec version() -> non_neg_integer().
