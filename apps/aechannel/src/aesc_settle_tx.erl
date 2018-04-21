@@ -110,7 +110,7 @@ process(#channel_settle_tx{channel_id       = ChannelId,
     Initiator       = aesc_channels:initiator(Channel0),
     InitiatorAmount = aesc_channels:initiator_amount(Channel0), % same amt
     TotalAmount     = aesc_channels:total_amount(Channel0),
-    Responder       = aesc_channels:participant(Channel0),
+    Responder       = aesc_channels:responder(Channel0),
     ResponderAmount = TotalAmount - InitiatorAmount, % same amt
 
     InitiatorAccount0       = aec_accounts_trees:get(Initiator, AccountsTree0),
@@ -141,7 +141,7 @@ process(#channel_settle_tx{channel_id       = ChannelId,
 accounts(#channel_settle_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
-            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+            [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)];
         {error, not_found} -> []
     end.
 
@@ -241,7 +241,7 @@ check_channel(ChannelId, FromPubKey, InitiatorAmount, ResponderAmount, Height, T
                                             aesc_channels:initiator_amount(Channel))
                  end,
                  fun() -> check_peer_amount(ResponderAmount,
-                                            aesc_channels:participant_amount(Channel))
+                                            aesc_channels:responder_amount(Channel))
                  end],
             aeu_validation:run(Checks)
     end.

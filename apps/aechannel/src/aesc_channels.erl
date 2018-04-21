@@ -28,10 +28,12 @@
          responder/1,
          total_amount/1,
          initiator_amount/1,
-         participant_amount/1,
+         responder_amount/1,
          channel_reserve/1,
-         sequence_number/1,
+         round/1,
          closes_at/1]).
+
+-compile({no_auto_import, [round/1]}).
 
 %%%===================================================================
 %%% Types
@@ -48,7 +50,7 @@
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
-                  sequence_number  :: seq_number(),
+                  round            :: seq_number(),
                   status           :: status(),
                   lock_period      :: non_neg_integer(),
                   closes_at        :: 'undefined' | height()}).
@@ -78,7 +80,7 @@ close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
                total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
-               sequence_number  = aesc_offchain_tx:sequence_number(State),
+               round  = aesc_offchain_tx:round(State),
                closes_at        = ClosesAt,
                status           = solo_closing}.
 
@@ -97,7 +99,7 @@ deserialize(Bin) ->
      #{<<"total_amount">>     := TotalAmount},
      #{<<"initiator_amount">> := InitiatorAmount},
      #{<<"channel_reserve">>  := ChannelReserve},
-     #{<<"sequence_number">>  := SequenceNumber},
+     #{<<"round">>            := Round},
      #{<<"status">>           := Status},
      #{<<"lock_period">>      := LockPeriod},
      #{<<"closes_at">>        := ClosesAt0}] = List,
@@ -111,7 +113,7 @@ deserialize(Bin) ->
              total_amount     = TotalAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
-             sequence_number  = SequenceNumber,
+             round            = Round,
              status           = binary_to_atom(Status, utf8),
              lock_period      = LockPeriod,
              closes_at        = ClosesAt}.
@@ -148,7 +150,7 @@ new(ChCTx) ->
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
-             sequence_number  = 0,
+             round  = 0,
              status           = active,
              lock_period      = aesc_create_tx:lock_period(ChCTx)}.
 
@@ -170,7 +172,7 @@ serialize(#channel{} = Ch) ->
                   #{<<"total_amount">>     => total_amount(Ch)},
                   #{<<"initiator_amount">> => initiator_amount(Ch)},
                   #{<<"channel_reserve">>  => channel_reserve(Ch)},
-                  #{<<"sequence_number">>  => sequence_number(Ch)},
+                  #{<<"round">>  => round(Ch)},
                   #{<<"status">>           => status(Ch)},
                   #{<<"lock_period">>      => lock_period(Ch)},
                   #{<<"closes_at">>        => ClosesAt}
@@ -181,7 +183,7 @@ slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
                total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
-               sequence_number  = aesc_offchain_tx:sequence_number(State),
+               round  = aesc_offchain_tx:round(State),
                closes_at        = ClosesAt}.
 
 -spec withdraw(channel(), amount()) -> channel().
@@ -216,9 +218,9 @@ total_amount(#channel{total_amount = TotalAmount}) ->
 initiator_amount(#channel{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
 
--spec participant_amount(channel()) -> amount().
-participant_amount(#channel{initiator_amount = InitiatorAmount,
-                            total_amount = TotalAmount}) ->
+-spec responder_amount(channel()) -> amount().
+responder_amount(#channel{initiator_amount = InitiatorAmount,
+                          total_amount = TotalAmount}) ->
     TotalAmount - InitiatorAmount.
 
 -spec channel_reserve(channel()) -> amount().
@@ -229,9 +231,9 @@ channel_reserve(#channel{channel_reserve = ChannelReserve}) ->
 lock_period(#channel{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec sequence_number(channel()) -> non_neg_integer().
-sequence_number(#channel{sequence_number = SeqNumber}) ->
-    SeqNumber.
+-spec round(channel()) -> non_neg_integer().
+round(#channel{round = Round}) ->
+    Round.
 
 -spec status(channel()) -> atom().
 status(#channel{status = Status}) ->

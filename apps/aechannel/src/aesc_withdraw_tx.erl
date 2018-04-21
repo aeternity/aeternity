@@ -123,7 +123,7 @@ accounts(#channel_withdraw_tx{to = ToPubKey}) ->
 signers(#channel_withdraw_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
-            [aesc_channels:initiator(Channel), aesc_channels:participant(Channel)];
+            [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)];
         {error, not_found} ->
             []
     end.

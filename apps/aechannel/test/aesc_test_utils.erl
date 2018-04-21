@@ -132,7 +132,7 @@ close_solo(Ch) ->
 close_solo(Ch, Params) ->
     DummyStateTx = state_tx(aesc_channels:id(Ch),
                             aesc_channels:initiator(Ch),
-                            aesc_channels:participant(Ch),
+                            aesc_channels:responder(Ch),
                             Params),
     {_Type, Tx} = aetx:specialize_type(DummyStateTx),
     aesc_channels:close_solo(Ch, Tx, 11).
@@ -321,28 +321,31 @@ settle_tx_default_spec(FromPubKey, State) ->
       nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
 
 
-state_tx(ChannelId, Initiator, Participant) ->
-    state_tx(ChannelId, Initiator, Participant, #{}).
+state_tx(ChannelId, Initiator, Responder) ->
+    state_tx(ChannelId, Initiator, Responder, #{}).
 
-state_tx(ChannelId, Initiator, Participant, Spec0) ->
+state_tx(ChannelId, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),
     {ok, StateTx} =
         aesc_offchain_tx:new(
             #{channel_id         => ChannelId,
               initiator          => Initiator,
-              participant        => Participant,
+              responder          => Responder,
+              updates            => maps:get(updates, Spec, []),
               initiator_amount   => maps:get(initiator_amount, Spec),
-              participant_amount => maps:get(participant_amount, Spec),
-              state              => maps:get(state, Spec),
-              sequence_number    => maps:get(sequence_number, Spec)}),
+              responder_amount   => maps:get(responder_amount, Spec),
+              state              => maps:get(state, Spec, <<>>),
+              previous_round     => maps:get(previous_round, Spec),
+              round              => maps:get(round, Spec)}),
     StateTx.
 
 state_tx_spec() ->
     #{initiator_amount   => 3,
-      participant_amount => 4,
+      responder_amount   => 4,
       state              => <<"state..">>,
-      sequence_number    => 11}.
+      previous_round     => 10,
+      round              => 11}.
 
-payload(ChannelId, Initiator, Participant, SignersPrivKeys, Spec) ->
-    StateTx = state_tx(ChannelId, Initiator, Participant, Spec),
+payload(ChannelId, Initiator, Responder, SignersPrivKeys, Spec) ->
+    StateTx = state_tx(ChannelId, Initiator, Responder, Spec),
     aetx_sign:serialize_to_binary(aetx_sign:sign(StateTx, SignersPrivKeys)). %% No signatures
