@@ -44,7 +44,8 @@ enc(?FND_LOCKED   , Msg) -> enc_fnd_locked(Msg);
 enc(?UPDATE       , Msg) -> enc_update(Msg);
 enc(?UPDATE_ACK   , Msg) -> enc_update_ack(Msg);
 enc(?ERROR        , Msg) -> enc_error(Msg);
-enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg).
+enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg);
+enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg).
 
 -define(id(C), C:1/unit:8).
 
@@ -57,8 +58,8 @@ dec(<<?id(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
 dec(<<?id(?ID_UPDATE)       , B/bytes>>) -> {?UPDATE      , dec_update(B)};
 dec(<<?id(?ID_UPDATE_ACK)   , B/bytes>>) -> {?UPDATE_ACK  , dec_update_ack(B)};
 dec(<<?id(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
-dec(<<?id(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)}.
-
+dec(<<?id(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
+dec(<<?id(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)}.
 
 -type ch_open_msg() :: #{chain_hash           := hash()
                        , temporary_channel_id := chan_id()
@@ -316,13 +317,42 @@ dec_error(<< ChanId:32/binary
     #{ channel_id => ChanId
      , data       => Data }.
 
--type shutdown_msg() :: #{temporary_channel_id := chan_id()}.
+-type shutdown_msg() :: #{channel_id := chan_id(),
+                          data       := binary() }.
 
 -spec enc_shutdown(shutdown_msg()) -> binary().
-enc_shutdown(#{temporary_channel_id := ChanId}) ->
+enc_shutdown(#{channel_id := ChanId,
+               data       := Data }) ->
+    Length = byte_size(Data),
     << ?ID_SHUTDOWN:1 /unit:8
-     , ChanId      :32/binary >>.
+     , ChanId      :32/binary
+     , Length      :2 /unit:8
+     , Data        :Length/bytes >>.
 
 -spec dec_shutdown(binary()) -> shutdown_msg().
-dec_shutdown(<< ChanId:32/binary >>) ->
-    #{temporary_channel_id => ChanId}.
+dec_shutdown(<< ChanId:32/binary
+              , Length:2 /unit:8
+              , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data                 => Data }.
+
+-type shutdown_ack_msg() :: #{channel_id := chan_id(),
+                              data       := binary() }.
+
+-spec enc_shutdown_ack(shutdown_ack_msg()) -> binary().
+enc_shutdown_ack(#{channel_id := ChanId,
+                   data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_SHUTDOWN_ACK:1 /unit:8
+     , ChanId          :32/binary
+     , Length          :2 /unit:8
+     , Data            :Length/bytes >>.
+
+-spec dec_shutdown_ack(binary()) -> shutdown_ack_msg().
+dec_shutdown_ack(<< ChanId:32/binary
+                  , Length:2 /unit:8
+                  , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.

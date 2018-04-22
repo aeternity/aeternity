@@ -248,7 +248,7 @@ specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
 -spec specialize_callback(Tx :: tx()) -> {module(), tx_instance()}.
 specialize_callback(#aetx{ cb = CB, tx = Tx }) -> {CB, Tx}.
 
--spec update_tx(tx(), tx_instance()) -> tx_instance().
+-spec update_tx(tx(), tx_instance()) -> tx().
 update_tx(#aetx{} = Tx, NewTxI) ->
     Tx#aetx{tx = NewTxI}.
 

@@ -10,6 +10,7 @@
 -define(UPDATE_ACK   , update_ack).
 -define(ERROR        , error).
 -define(SHUTDOWN     , shutdown).
+-define(SHUTDOWN_ACK , shutdown_ack).
 
 -define(ID_CH_OPEN      , 1).
 -define(ID_CH_ACCEPT    , 2).
@@ -19,6 +20,7 @@
 -define(ID_FND_LOCKED   , 6).
 -define(ID_UPDATE       , 7).
 -define(ID_UPDATE_ACK   , 8).
--define(ID_ERROR        , 98).
--define(ID_SHUTDOWN     , 99).
+-define(ID_ERROR        , 97).
+-define(ID_SHUTDOWN     , 98).
+-define(ID_SHUTDOWN_ACK , 99).
 

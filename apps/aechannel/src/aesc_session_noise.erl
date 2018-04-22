@@ -16,7 +16,8 @@
        , update/2
        , update_ack/2
        , error/2
-       , shutdown/2]).
+       , shutdown/2
+       , shutdown_ack/2]).
 
 -export([init/1
        , handle_call/3
@@ -38,6 +39,7 @@ update             (Session, Msg) -> cast(Session, {msg, ?UPDATE      , Msg}).
 update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK  , Msg}).
 error              (Session, Msg) -> cast(Session, {msg, ?ERROR       , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN    , Msg}).
+shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK, Msg}).
 
 close(Session) ->
     cast(Session, close).
@@ -127,7 +129,7 @@ handle_info(Msg, St) ->
         error:Reason ->
             Trace = erlang:get_stacktrace(),
             lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
-            error(Reason, Trace)
+            erlang:error(Reason, Trace)
     end.
 
 handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->

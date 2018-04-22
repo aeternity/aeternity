@@ -4,9 +4,10 @@
 -export([start_link/1]).
 
 %% API
--export([initiate/3,        %% (host(), port(), Opts :: #{})
-         respond/2,         %% (port(), Opts :: #{})
-         upd_transfer/4]).  %% (fsm() , from(), to(), amount())
+-export([initiate/3,     %% (host(), port(), Opts :: #{})
+         respond/2,      %% (port(), Opts :: #{})
+         upd_transfer/4, %% (fsm() , from(), to(), amount())
+         shutdown/1]).   %% (fsm())
 
 %% Used by noise session
 -export([message/2]).
@@ -49,14 +50,8 @@
 
 -define(GEN_STATEM_OPTS, []).  % Use e.g. [{debug, [trace]}] for debugging
 
--record(state, { sequence_number    :: non_neg_integer()
-               , data               :: binary()
-               , initiator_amount   :: aesc_channels:amount()
-               , responder_amount   :: aesc_channels:amount()
-               }).
-
 -record(data, { role                   :: role()
-              , state = []             :: [#state{}]
+              , state = []             :: [aetx_sign:signed_tx()]
               , session                :: pid()
               , client                 :: pid()
               , opts                   :: map()
@@ -121,6 +116,7 @@ message(Fsm, {T, _} = Msg) when T =:= channel_open
                               ; T =:= update_ack
                               ; T =:= disconnect
                               ; T =:= shutdown
+                              ; T =:= shutdown_ack
                               ; T =:= channel_reestablish ->
     lager:debug("message(~p, ~p)", [Fsm, Msg]),
     gen_statem:cast(Fsm, Msg).
@@ -149,9 +145,6 @@ where(ChanId, Role) ->
 %% ======================================================================
 %% Default timer values
 
-timer(Name, Data) ->
-    timer(Name, Name, Data).
-
 timer(Name, Msg, #data{opts = #{timeouts := TOs}}) ->
     timeout_(maps:get(Name, TOs), Msg).
 
@@ -162,12 +155,8 @@ timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
     case maps:find(St, TOs) of
         {ok, T} -> timeout_(T, St);
         error ->
-            case timer_subst(St) of
-                undefined ->
-                    error({no_timer_for_state, St});  %% TODO: perhaps later a default?
-                Alias ->
-                    timer(Alias, St, D)
-            end
+            Alias = timer_subst(St),
+            timer(Alias, St, D)
     end.
 
 timer_subst(open                   ) -> idle;
@@ -180,8 +169,7 @@ timer_subst(accepted               ) -> funding_create;
 timer_subst(half_signed            ) -> funding_sign;
 timer_subst(signed                 ) -> funding_lock;
 timer_subst(initialized            ) -> accept;
-timer_subst(_) ->
-    undefined.
+timer_subst(closing                ) -> accept.
 
 default_timeouts() ->
     #{ open           => 120000
@@ -214,6 +202,10 @@ respond(Port, #{} = Opts0) ->
 upd_transfer(Fsm, From, To, Amount) ->
     lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
     gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
+
+shutdown(Fsm) ->
+    lager:debug("shutdown(~p)", [Fsm]),
+    gen_statem:call(Fsm, shutdown).
 
 start_link(#{} = Arg) ->
     gen_statem:start_link(?MODULE, Arg, ?GEN_STATEM_OPTS).
@@ -338,6 +330,17 @@ awaiting_signature(cast, {signed, update_ack, SignedTx},
     D1 = send_update_ack_msg(NewSignedTx, D),
     D2 = D1#data{state = [NewSignedTx | clean_state(D1#data.state)]},
     {next_state, open, D2};
+awaiting_signature(cast, {signed, shutdown, SignedTx}, D) ->
+    D1 = send_shutdown_msg(SignedTx, D),
+    D2 = D1#data{latest = {shutdown, SignedTx}},
+    {next_state, closing, D2};
+awaiting_signature(cast, {signed, shutdown_ack, SignedTx},
+                   #data{latest = {sign, shutdown_ack, CMTx}} = D) ->
+    NewSignedTx = aetx_sign:add_signatures(
+                    CMTx, aetx_sign:signatures(SignedTx)),
+    D1 = send_shutdown_ack_msg(NewSignedTx, D),
+    D2 = D1#data{latest = undefined},
+    close(close_mutual, D2);
 awaiting_signature(timeout, awaiting_signature = T, D) ->
     close({timeout, T}, D);
 awaiting_signature(cast, {disconnect, _Msg}, D) ->
@@ -491,13 +494,30 @@ open(cast, {update, Msg}, D) ->
     end;
 open({call, From}, Request, D) ->
     handle_call(open, Request, From, D);
-open(cast, {shutdown, _Msg}, D) ->
-    {next_state, closing, D};
+open(cast, {shutdown, Msg}, D) ->
+    case check_shutdown_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            ok = request_signing(shutdown_ack, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, shutdown_ack, SignedTx}},
+            {next_state, awaiting_signature, D2};
+        {error, E} ->
+            close({shutdown_error, E}, D)
+    end;
 open(cast, {disconnect, _Msg}, D) ->
     {next_state, disconnected, D};
 open(timeout, open = T, D) ->
     close({timeout, T}, D).
 
+closing(enter, _OldSt, D) ->
+    {keep_state, D, [timer_for_state(closing, D)]};
+closing(cast, {shutdown_ack, Msg}, D) ->
+    case check_shutdown_ack_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            ok = aec_tx_pool:push(SignedTx),
+            close(close_mutual, D1);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
 closing(cast, {disconnect, _Msg}, D) ->
     {next_state, disconnected, D};
 closing(cast, {closing_signed, _Msg}, D) ->
@@ -538,7 +558,19 @@ handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
             handle_upd_transfer(FromPub, ToPub, Amount, From, D);
         false ->
             {keep_state, D, [{reply, From, {error, invalid_pubkeys}},
-                             timer(idle, D)]}
+                             timer_for_state(open, D)]}
+    end;
+handle_call_(open, shutdown, From, #data{state = State} = D) ->
+    try  {_Round, Latest} = get_latest_state_tx(State),
+         {ok, CloseTx} = close_mutual_tx(Latest, D),
+         ok = request_signing(shutdown, CloseTx, D),
+         gen_statem:reply(From, ok),
+         D1 = D#data{latest = {sign, shutdown, CloseTx}},
+         {next_state, awaiting_signature, D1}
+    catch
+        error:E ->
+            {keep_state, D, [{reply, From, {error, E}},
+                             timer_for_state(open, D)]}
     end;
 handle_call_(St, _Req, From, D) ->
     {keep_state, D, [{reply, From, {error, unknown_request}},
@@ -668,6 +700,51 @@ create_tx_defaults(Initiator) ->
     Fee = aec_governance:minimum_tx_fee(),
     #{ fee   => Fee
      , nonce => Nonce }.
+
+
+close_mutual_tx(LatestSignedTx, D) ->
+    Account = my_account(D),
+    {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
+    close_mutual_tx(Account, Nonce, LatestSignedTx, D).
+
+close_mutual_tx(Account, Nonce, LatestSignedTx,
+                #data{ on_chain_id = ChanId
+                     , opts        = Opts } = D) ->
+    Def = close_mutual_defaults(Account, D),
+    Opts1 = maps:merge(Def, Opts),
+    LatestTx = aetx_sign:tx(LatestSignedTx),
+    IAmt = tx_initiator_amount(LatestTx),
+    RAmt = tx_responder_amount(LatestTx),
+    {IAmt1, RAmt1} = pay_close_mutual_fee(maps:get(fee, Opts1), IAmt, RAmt),
+    #{ttl := TTL, fee := Fee} = Opts1,
+    aesc_close_mutual_tx:new(#{ channel_id       => ChanId
+                              , from             => Account
+                              , initiator_amount => IAmt1
+                              , responder_amount => RAmt1
+                              , ttl              => TTL
+                              , fee              => Fee
+                              , nonce            => Nonce }).
+
+pay_close_mutual_fee(Fee, IAmt, RAmt) ->
+    Ceil  = trunc(math:ceil(Fee/2)),
+    Floor = trunc(math:floor(Fee/2)),
+    if (IAmt + RAmt) < Fee                    -> erlang:error(insufficient_funds);
+       (IAmt >= Ceil) andalso (RAmt >= Floor) -> {IAmt - Ceil, RAmt - Floor};
+       (RAmt >= Ceil) andalso (IAmt >= Floor) -> {IAmt - Floor, RAmt - Ceil};
+       (IAmt > RAmt)                          -> {IAmt - Fee + RAmt, 0};
+       true                                   -> {0, RAmt - Fee + IAmt}
+    end.
+
+close_mutual_defaults(_Account, _D) ->
+    Fee = aec_governance:minimum_tx_fee(),
+    #{ fee   => Fee }.
+
+my_account(#data{role = initiator, opts = #{initiator := I}}) -> I;
+my_account(#data{role = responder, opts = #{responder := R}}) -> R.
+
+other_account(#data{role = initiator, opts = #{responder := R}}) -> R;
+other_account(#data{role = responder, opts = #{initiator := I}}) -> I.
+
 
 send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->
@@ -817,6 +894,62 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{state = State} = D) ->
                              timer_for_state(open, D)]}
     end.
 
+send_shutdown_msg(SignedTx, #data{session = Session} = Data) ->
+    Msg = shutdown_msg(SignedTx, Data),
+    aesc_session_noise:shutdown(Session, Msg),
+    Data.
+
+send_shutdown_ack_msg(SignedTx, #data{session = Session} = Data) ->
+    Msg = shutdown_msg(SignedTx, Data),
+    aesc_session_noise:shutdown_ack(Session, Msg),
+    Data.
+
+shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    #{ channel_id => OnChainId
+     , data       => TxBin }.
+
+
+check_shutdown_msg(#{channel_id := ChanId, data := TxBin} = _Msg,
+                   #data{on_chain_id = ChanId, state = State} = D) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    {_, LatestSignedTx} = get_latest_state_tx(State),
+    OtherAcct = other_account(D),
+    {ok, FakeCloseTx} = close_mutual_tx(OtherAcct, 0, LatestSignedTx, D),
+    RealCloseTx = aetx_sign:tx(SignedTx),
+    {channel_close_mutual_tx, FakeTxI} = aetx:specialize_type(FakeCloseTx),
+    {channel_close_mutual_tx, RealTxI} = aetx:specialize_type(RealCloseTx),
+    case (serialize_close_mutual_tx(FakeTxI) ==
+              serialize_close_mutual_tx(RealTxI)) of
+        true ->
+            {ok, SignedTx, D};
+        false ->
+            {error, shutdown_tx_validation}
+    end.
+
+serialize_close_mutual_tx(Tx) ->
+    {_, Elems} = aesc_close_mutual_tx:serialize(Tx),
+    lists:keydelete(nonce, 1, Elems).
+
+check_shutdown_ack_msg(#{data := TxBin} = _Msg,
+                       #data{latest = {shutdown, MySignedTx}} = D) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    case aetx_sign:signatures(SignedTx) of
+        [_,_] ->
+            check_shutdown_msg_(SignedTx, MySignedTx, D);
+        _ ->
+            {error, not_mutually_signed}
+    end.
+
+check_shutdown_msg_(SignedTx, MySignedTx, D) ->
+    %% TODO: More thorough checking
+    case (aetx_sign:tx(SignedTx) == aetx_sign:tx(MySignedTx)) of
+        true ->
+            {ok, SignedTx, D};
+        false ->
+            {error, shutdown_tx_mismatch}
+    end.
+
 get_latest_state_tx([SignedTx|T]) ->
     case aetx_sign:signatures(SignedTx) of
         [_, _] ->
@@ -836,7 +969,6 @@ clean_state([SignedTx|T]) ->
         [_]   -> clean_state(T);
         []    -> clean_state(T)
     end.
-
 
 check_update_tx(F, SignedTx, State) ->
     lager:debug("check_update_tx(State = ~p)", [State]),
@@ -884,6 +1016,7 @@ tx_responder_amount(Tx) -> call_cb(Tx, responder_amount, []).
 tx_serialize(Tx)        -> call_cb(Tx, serialize, []).
 tx_updates(Tx)          -> call_cb(Tx, updates, []).
 
+-spec call_cb(aetx:tx(), atom(), list()) -> any().
 call_cb(Tx, F, Args) ->
     {Mod, TxI} = specialize_cb(Tx),
     do_apply(Mod, F, [TxI|Args]).

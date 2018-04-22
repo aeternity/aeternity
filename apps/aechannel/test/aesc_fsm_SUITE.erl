@@ -28,6 +28,7 @@
 -include_lib("apps/aechannel/include/channel_txs.hrl").
 
 -define(TIMEOUT, 10000).
+-define(LONG_TIMEOUT, 30000).
 
 all() ->
     [{group, all_tests}].
@@ -110,6 +111,12 @@ upd_transfer(Cfg) ->
     {I1, _} = await_signing_request(update, I),
     {R1, _} = await_signing_request(update_ack, R),
     check_info(100),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    {_I2, _} = await_signing_request(shutdown, I1),
+    {_R2, _} = await_signing_request(shutdown_ack, R1),
+    check_info(100),
+    {ok, [Tx]} = rpc(dev1, aec_tx_pool, peek, [1]),
+    ct:log("From mempool: ~p", [Tx]),
     ok.
 
 create_channel_(Cfg) ->
@@ -171,18 +178,21 @@ await_funding_locked(I, R) ->
     await_initial_state(I, R).
 
 await_initial_state(I, R) ->
-    {I1, _} = await_signing_request(update, I),
+    {I1, _} = await_signing_request(update, I, ?LONG_TIMEOUT),
     {R1, _} = await_signing_request(update_ack, R),
     {I1, R1}.
 
-await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R) ->
+await_signing_request(Tag, R) ->
+    await_signing_request(Tag, R, ?TIMEOUT).
+
+await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout) ->
     check_info(),
     receive {aesc_fsm, Fsm, ChanId, {sign, Tag, Tx}} = Msg ->
             ct:log("await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
             {R#{chan_id => ChanId}, SignedTx}
-    after ?TIMEOUT ->
+    after Timeout ->
             error(timeout)
     end.
 
