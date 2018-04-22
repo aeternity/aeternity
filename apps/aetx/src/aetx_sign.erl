@@ -45,13 +45,12 @@
           signatures = ordsets:new() :: ordsets:ordset(binary())}).
 
 -opaque signed_tx() :: #signed_tx{}.
--type tx() :: aetx:tx().
 -type binary_signed_tx() :: binary().
 
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
--spec sign(tx(), list(binary()) | binary()) -> signed_tx().
+-spec sign(aetx:tx(), list(binary()) | binary()) -> signed_tx().
 sign(Tx, PrivKey) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
@@ -68,7 +67,7 @@ add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
   when is_list(NewSigs) ->
     Tx#signed_tx{signatures = lists:usort(NewSigs ++ OldSigs)}.
 
--spec tx(signed_tx()) -> tx().
+-spec tx(signed_tx()) -> aetx:tx().
 %% @doc Get the original transaction from a signed transaction.
 %% Note that no verification is performed, it just returns the transaction.
 %% We have no type yest for any transaction, and coinbase_tx() | spend_tx()
