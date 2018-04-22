@@ -105,7 +105,7 @@ preclaim_negative(Cfg) ->
     %% Test bad account key
     BadPubKey = <<42:65/unit:8>>,
     TxSpec1 = aens_test_utils:preclaim_tx_spec(BadPubKey, CHash, S1),
-    {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
+    {okaaa, Tx1} = aens_preclaim_tx:new(TxSpec1),
     {error, account_not_found} =
         aetx:check(Tx1, Trees, Height),
 
