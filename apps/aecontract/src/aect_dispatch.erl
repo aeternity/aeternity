@@ -123,13 +123,13 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		%% Gas used, but other state not affected.
 		%% TODO: Use up the right amount of gas depending on error
 		%% TODO: Store errorcode in state tree
-		{error,_Error, #{ gas :=_GasLeft}} ->
-		    lager:error("Return error ~p:~p~n", [error,_Error]),
+		{error, Error, #{ gas :=_GasLeft}} ->
+		    lager:error("Return error ~p:~p~n", [error, Error]),
 		    aect_call:set_gas_used(
 		      Gas,
 		      aect_call:set_return_type(
 			error, 
-			aect_call:set_return_value(_Error, Call)))
+			aect_call:set_return_value(error_to_binary(Error), Call)))
 
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),
@@ -140,3 +140,4 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 	    aect_call:set_return_type(error, Call)
     end.
 
+error_to_binary(out_of_gas) -> <<"out_of_gas">>.
