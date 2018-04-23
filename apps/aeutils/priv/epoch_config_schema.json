@@ -229,7 +229,8 @@
                     "additionalProperties" : false,
                     "required" : [
                         "9",
-                        "10"
+                        "10",
+                        "11"
                     ],
                     "properties" : {
                         "9" : {
@@ -239,6 +240,11 @@
                             "maximum" : 0
                         },
                         "10" : {
+                            "description" : "Minimum height at which protocol is effective",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "11" : {
                             "description" : "Minimum height at which protocol is effective",
                             "type" : "integer",
                             "minimum" : 0
