@@ -206,7 +206,7 @@
 
 all() ->
     [
-     {group, channel_websocket}%all_endpoints}
+     {group, all_endpoints}
     ].
 
 groups() ->

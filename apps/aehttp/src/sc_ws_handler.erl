@@ -73,7 +73,7 @@ websocket_info({aesc_fsm, FsmPid, ChannelId, Msg}, #handler{fsm_pid=FsmPid}=H) -
             ChannelId -> H % assert no channel id change
          end,
     case process_fsm(Msg) of
-        %no_reply -> {ok, H1};
+        no_reply -> {ok, H1};
         %{error, _} -> {ok, H1}
         {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, H1}
     end;
@@ -144,7 +144,7 @@ is_ws_alive(Pid) ->
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
     {ok, _Pid} = aesc_fsm:initiate(Host, Port, Opts);
 start_link_fsm(#handler{role = responder, port=Port}, Opts) ->
-    {ok, _Pid} = aesc_fsm:participate(Port, Opts).
+    {ok, _Pid} = aesc_fsm:respond(Port, Opts).
 
 set_field(H, host, Val) -> H#handler{host = Val};
 set_field(H, role, Val) -> H#handler{role = Val};
@@ -228,6 +228,8 @@ process_incoming(Msg, _State) ->
 process_fsm({info, Event}) ->
     {reply, #{action => <<"info">>,
               payload => #{event => Event}}};
+process_fsm({sign, update, _Tx}) -> %%TODO: send state for signing
+    no_reply;
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
                            orelse Tag =:= funding_created ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
@@ -293,11 +295,11 @@ read_channel_options(Params) ->
         end,
         #{},
         [Read(<<"initiator">>, initiator, #{type => {hash, account_pubkey}}),
-         Read(<<"responder">>, participant, #{type => {hash, account_pubkey}}),
+         Read(<<"responder">>, responder, #{type => {hash, account_pubkey}}),
          Read(<<"lock_period">>, lock_period, #{type => integer}),
          Read(<<"push_amount">>, push_amount, #{type => integer}),
          Read(<<"initiator_amount">>, initiator_amount, #{type => integer}),
-         Read(<<"responder_amount">>, participant_amount, #{type => integer}),
+         Read(<<"responder_amount">>, responder_amount, #{type => integer}),
          Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
          Read(<<"ttl">>, ttl, #{type => integer}),
          Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}]),
