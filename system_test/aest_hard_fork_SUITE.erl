@@ -528,24 +528,11 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
     MinedBalance = get_balance(new_node3, PubKey3, Cfg),
     ?assert(MinedBalance >= MinedReward),
     ct:log("Mined balance on ~p with public key ~p is ~p", [new_node3, PubKey3, MinedBalance]),
-    %% Send spend transaction.
+    %% Send spend transaction and make sure recipient account received the tokens.
     Fee = 5,
     BalanceToSpend = MinedBalance - Fee,
-    ok = post_spend_tx(new_node3, PubKey1, BalanceToSpend, Fee, Cfg),
-    ct:log("Sent spend tx with balance of ~p from node ~p with public key ~p to account with public key ~p",
-           [BalanceToSpend, new_node3, PubKey3, PubKey1]),
-    %% Make sure recipient account received the tokens.
-    aest_nodes:wait_for_value({balance, PubKey1, BalanceToSpend}, [new_node3], 20000, Cfg),
-    ReceivedBalance = get_balance(new_node3, PubKey1, Cfg),
-    ct:log("Balance of account with public key ~p is ~p", [PubKey1, ReceivedBalance]),
-    ?assertEqual(BalanceToSpend, ReceivedBalance),
-    %% Recipient account has one spend transaction.
-    [#{block_hash := SpendTxBlockHash, block_height := SpendTxHeight, tx := TxInfo}] =
-        get_account_txs(new_node3, PubKey1, Cfg),
-    ?assertEqual(ReceivedBalance, maps:get(amount, TxInfo)),
-    ?assertEqual(Fee, maps:get(fee, TxInfo)),
-    ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
-    ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
+    {SpendTxBlockHash, SpendTxHeight} =
+        post_spend_tx_and_wait_in_chain(new_node3, PubKey3, PubKey1, BalanceToSpend, Fee, Cfg),
     %% Block with spend transaction has old version.
     ?assertEqual(
        ?V_0_11_0_PROTOCOL_VERSION,
@@ -602,24 +589,11 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     MinedBalance = get_balance(new_node3, PubKey3, Cfg),
     ?assert(MinedBalance >= MinedReward),
     ct:log("Mined balance on ~p with public key ~p is ~p", [new_node3, PubKey3, MinedBalance]),
-    %% Send spend transaction.
+    %% Send spend transaction and make sure recipient account received the tokens.
     Fee = 5,
     BalanceToSpend = MinedBalance - Fee,
-    ok = post_spend_tx(new_node3, PubKey1, BalanceToSpend, Fee, Cfg),
-    ct:log("Sent spend tx with balance of ~p from node ~p with public key ~p to account with public key ~p",
-           [BalanceToSpend, new_node3, PubKey3, PubKey1]),
-    %% Make sure recipient account received the tokens.
-    aest_nodes:wait_for_value({balance, PubKey1, BalanceToSpend}, [new_node3], 20000, Cfg),
-    ReceivedBalance = get_balance(new_node3, PubKey1, Cfg),
-    ct:log("Balance of account with public key ~p is ~p", [PubKey1, ReceivedBalance]),
-    ?assertEqual(BalanceToSpend, ReceivedBalance),
-    %% Recipient account has one spend transaction.
-    [#{block_hash := SpendTxBlockHash, block_height := SpendTxHeight, tx := TxInfo}] =
-        get_account_txs(new_node3, PubKey1, Cfg),
-    ?assertEqual(ReceivedBalance, maps:get(amount, TxInfo)),
-    ?assertEqual(Fee, maps:get(fee, TxInfo)),
-    ?assertEqual(PubKey3, maps:get(sender, TxInfo)),
-    ?assertEqual(PubKey1, maps:get(recipient, TxInfo)),
+    {SpendTxBlockHash, SpendTxHeight} =
+        post_spend_tx_and_wait_in_chain(new_node3, PubKey3, PubKey1, BalanceToSpend, Fee, Cfg),
     %% Block with spend transaction has new protocol version.
     ?assertEqual(
        ?NEW_PROTOCOL_VERSION,
@@ -759,6 +733,24 @@ get_account_txs(NodeName, PubKey, Cfg) ->
     {ok, 200, #{transactions := Txs}} =
         aest_nodes:http_get(NodeName, ext_http, [v2, account, txs, PubKey], Params, Cfg),
     Txs.
+
+post_spend_tx_and_wait_in_chain(NodeName, Sender, Recipient, Amount, Fee, Cfg) ->
+    ok = post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg),
+    ct:log("Sent spend tx of amount ~p from node ~p with public key ~p to account with public key ~p",
+           [Amount, NodeName, Sender, Recipient]),
+    %% Make sure recipient account received the tokens.
+    aest_nodes:wait_for_value({balance, Recipient, Amount}, [NodeName], 20000, Cfg),
+    ReceivedBalance = get_balance(NodeName, Recipient, Cfg),
+    ct:log("Balance of account with public key ~p is ~p", [Recipient, ReceivedBalance]),
+    ?assertEqual(Amount, ReceivedBalance),
+    %% Recipient account has one spend transaction.
+    [#{block_hash := SpendTxBlockHash, block_height := SpendTxHeight, tx := TxInfo}] =
+        get_account_txs(NodeName, Recipient, Cfg),
+    ?assertEqual(ReceivedBalance, maps:get(amount, TxInfo)),
+    ?assertEqual(Fee, maps:get(fee, TxInfo)),
+    ?assertEqual(Sender, maps:get(sender, TxInfo)),
+    ?assertEqual(Recipient, maps:get(recipient, TxInfo)),
+    {SpendTxBlockHash, SpendTxHeight}.
 
 post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg) ->
     Headers = [{<<"Content-Type">>, <<"application/json">>}],
