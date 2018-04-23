@@ -224,7 +224,7 @@ check_config_({'EXIT', Reason}) ->
     ShortError = pp_error(Reason),
     {error, ShortError};
 check_config_([Vars]) ->
-    {ok, to_tree_(expand_maps(Vars))}.
+    {ok, {Vars, to_tree(Vars)}}.
 
 pp_error({{validation_failed, Errors}, _}) ->
     [pp_error_(E) || E <- Errors],
