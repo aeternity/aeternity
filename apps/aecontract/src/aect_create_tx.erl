@@ -176,6 +176,23 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %%   transactions on a contract account.
     Trees2 =
 	case VmVersion of
+	    ?AEVM_01_Sophia_01 ->
+		%% Execute init call to get the contract state and return value
+		ContractsTree0a = aec_trees:contracts(Trees1),
+		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
+		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		case aect_call:return_type(CallRes) of
+		    ok ->
+			ContractsTree0 = aec_trees:contracts(Trees1),
+			ContractsTree1 = aect_state_tree:insert_call(CallRes, ContractsTree0),
+			_RetVal = aect_call:return_value(CallRes),
+			ContractsTree2 = aect_state_tree:insert_contract(Contract, ContractsTree1),
+			aec_trees:set_contracts(Trees1, ContractsTree2);
+		    E ->
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
+			Trees1
+		end;
 	    ?AEVM_01_Solidity_01 ->
 		%% Execute init call to get the contract bytecode
 		%% as a result. to be used for insertion
@@ -192,7 +209,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			ContractsTree2 = aect_state_tree:insert_contract(Contract1, ContractsTree1),
 			aec_trees:set_contracts(Trees1, ContractsTree2);
 		    E ->
-			lager:error("Init call error ~w ~w~n",[E, CallRes]), 
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
 			Trees1
 		end;
 	    _ ->
