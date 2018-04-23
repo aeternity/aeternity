@@ -27,7 +27,9 @@ compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
-    {ok, Code}        = aect_sophia:compile(ContractBin, <<"pp_ast pp_icode pp_bytecode">>),
+    Options           = <<>>,
+    %% Options           = <<"pp_ast pp_icode pp_bytecode">>,
+    {ok, Code}        = aect_sophia:compile(ContractBin, Options),
     Code.
 
 %% execute_call(Contract, CallData, ChainState) ->
@@ -36,6 +38,7 @@ compile_contract(Name) ->
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := Code} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
+    Trace = false,
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
@@ -53,64 +56,94 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentTimestamp  => 0,
              chainState        => ChainState1,
              chainAPI          => ?MODULE}, Options),
-          true),
+          Trace),
     case Res of
         {ok, #{ out := RetVal }} -> {ok, RetVal};
         Err = {error, _, _}      -> Err
     end.
 
-execute_ok(Contract, Call, Env) ->
-    execute_ok(Contract, Call, Env, #{}).
+make_call(Contract, Fun, Args, Env, Options) ->
+    #{ Contract := Code } = Env,
+    CallData = aect_sophia:create_call(Code,
+                    list_to_binary(atom_to_list(Fun)),
+                    list_to_binary(Args)),
+    execute_call(Contract, CallData, Env, Options).
 
-execute_ok(Contract, Call, Env, Options) ->
-    case execute_call(Contract, Call, Env, Options) of
+successful_call(Contract, Fun, Args, Env) ->
+    successful_call(Contract, Fun, Args, Env, #{}).
+
+successful_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
         {ok, Result} -> aeso_test_utils:dump_words(Result);
-        {error, out_of_gas, S} ->
+        {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
-            exit(fail)
+            exit({error, Err})
+    end.
+
+failing_call(Contract, Fun, Args, Env) ->
+    failing_call(Contract, Fun, Args, Env, #{}).
+
+failing_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
+        {ok, Result} ->
+            Words = aeso_test_utils:dump_words(Result),
+            exit({expected_failure, {ok, Words}});
+        {error, Err, _} ->
+            Err
     end.
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
-    Code     = compile_contract(identity),
-    CallData = aect_sophia:create_call(Code, <<"main">>, <<"42">>),
-    [42]     = execute_ok(101, CallData, #{101 => Code}),
+    Code = compile_contract(identity),
+    Env  = initial_state(#{101 => Code}),
+    [42] = successful_call(101, main, "42", Env),
     ok.
 
 sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
-    CallData   = aect_sophia:create_call(CallerCode, <<"call42">>, <<"1234">>),
-    Env        = #{ 1234 => IdCode, 1 => CallerCode },
-    [42]       = execute_ok(1, CallData, Env),
+    Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }),
+    [42]       = successful_call(1, call42, "1234", Env),
     ok.
 
 sophia_factorial(_Cfg) ->
     Code      = compile_contract(factorial),
-    CallData  = aect_sophia:create_call(Code, <<"main">>, <<"999002">>),
-    Env       = #{ 999001 => Code, 999002 => Code },
-    [3628800] = execute_ok(999001, CallData, Env),
+    Env       = initial_state(#{ 999001 => Code, 999002 => Code }),
+    [3628800] = successful_call(999001, main, "999002", Env),
     ok.
 
 simple_multi_argument_call(_Cfg) ->
     RemoteCode = compile_contract(remote_call),
-    PlusCall   = aect_sophia:create_call(RemoteCode, <<"plus">>, <<"(9900,10011)">>),
-    Env        = #{ 103 => RemoteCode },
-    [19911]    = execute_ok(103, PlusCall, Env),
+    Env        = initial_state(#{ 103 => RemoteCode }),
+    [19911]    = successful_call(103, plus, "(9900,10011)", Env),
     ok.
 
 remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
-    StagedCall = aect_sophia:create_call(RemoteCode, <<"staged_call">>, <<"(103,101,42)">>),
-    Env        = #{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode },
-    [42]       = execute_ok(102, StagedCall, Env),
+    Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
+    [42]       = successful_call(102, staged_call, "(102,101,42)", Env),
     ok.
 
 %% -- Chain API implementation -----------------------------------------------
 
-spend(_, _, S) -> S.
+initial_state(Contracts) ->
+    initial_state(Contracts, #{}).
 
-get_balance(_, _) -> 0.
+initial_state(Contracts, Accounts) ->
+    maps:merge(Contracts, #{accounts => Accounts}).
+
+spend(_To, Amount, _) when Amount < 0 ->
+    {error, negative_spend};
+spend(To, Amount, S = #{ running := From, accounts := Accounts }) ->
+    Balance = get_balance(From, S),
+    case Amount =< Balance of
+        true -> {ok, S#{ accounts := Accounts#{ From => Balance            - Amount,
+                                                To   => get_balance(To, S) + Amount } }};
+        false -> {error, insufficient_funds}
+    end.
+
+get_balance(Account, #{ accounts := Accounts }) ->
+    maps:get(Account, Accounts, 0).
 
 call_contract(Contract, _Gas, _Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
