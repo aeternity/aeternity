@@ -73,7 +73,8 @@
     pubkey := binary(),         % Public part of the peer key
     privkey := binary(),        % Private part of the peer key
     exposed_ports := #{service_label() => pos_integer()},
-    local_ports := #{service_label() => pos_integer()}
+    local_ports := #{service_label() => pos_integer()},
+    sockets := [gen_tcp:socket()] % Reserved socket to prevent port clash
 }.
 
 -type start_options() :: #{
@@ -162,7 +163,7 @@ setup_node(Spec, BackendState) ->
         int_http => ?INT_HTTP_PORT,
         int_ws => ?INT_WS_PORT
     },
-    LocalPorts = allocate_ports([sync, ext_http, int_http, int_ws]),
+    {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, int_ws]),
     NodeState = #{
         spec => spec,
         postfix => Postfix,
@@ -172,7 +173,8 @@ setup_node(Spec, BackendState) ->
         pubkey => PubKey,
         privkey => PrivKey,
         exposed_ports => ExposedPorts,
-        local_ports => LocalPorts
+        local_ports => LocalPorts,
+        sockets => Sockets
     },
 
     NetworkSpecs = maps:get(networks, Spec, ?DEFAULT_NETWORKS),
@@ -268,10 +270,12 @@ delete_node(#{container_id := ID, hostname := Name} = NodeState) ->
     ok.
 
 -spec start_node(node_state()) -> node_state().
-start_node(#{container_id := ID, hostname := Name} = NodeState) ->
+start_node(NodeState) ->
+    #{container_id := ID, hostname := Name, sockets := Sockets} = NodeState,
+    [gen_tcp:close(S) || S <- Sockets],
     aest_docker_api:start_container(ID),
     log(NodeState, "Container ~p [~s] started", [Name, ID]),
-    NodeState.
+    NodeState#{sockets := []}.
 
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
@@ -377,13 +381,14 @@ free_port() ->
     {ok, Socket} = gen_tcp:listen(0, [{reuseaddr, true}]),
     {ok, Port} = inet:port(Socket),
     gen_tcp:close(Socket),
-    Port.
+    {ok, Port, Socket}.
 
-allocate_ports(Labels) -> allocate_ports(Labels, #{}).
+allocate_ports(Labels) -> allocate_ports(Labels, #{}, []).
 
-allocate_ports([], Acc) -> Acc;
-allocate_ports([Label | Labels], Acc) ->
-    allocate_ports(Labels, Acc#{Label => free_port()}).
+allocate_ports([], Ports, Sockets) -> {Ports, Sockets};
+allocate_ports([Label | Labels], Ports, Sockets) ->
+    {ok, Port, Socket} = free_port(),
+    allocate_ports(Labels, Ports#{Label => Port}, [Socket | Sockets]).
 
 
 format(Fmt, Args) ->
