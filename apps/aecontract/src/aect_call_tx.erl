@@ -17,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -88,12 +88,12 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice,
                         call_stack = CallStack
-                       } = CallTx, Context, Trees, Height) ->
+                       } = CallTx, Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         case Context of
             aetx_transaction ->
@@ -119,10 +119,10 @@ accounts(Tx) ->
 signers(Tx) ->
     [caller(Tx)].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
                           fee = Fee, gas_price = GasPrice, amount = Value
-                         } = CallTx, Context, Trees0, Height) ->
+                         } = CallTx, Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
 

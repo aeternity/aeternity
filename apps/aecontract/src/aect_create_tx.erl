@@ -17,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -128,9 +128,9 @@ origin(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
 %% Owner should exist, and have enough funds for the fee
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
-                          fee = Fee}, _Context, Trees, Height) ->
+                          fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, Fee) end],
 
@@ -147,10 +147,10 @@ accounts(#contract_create_tx{owner = OwnerPubKey}) ->
 signers(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
-                            fee   = Fee} = CreateTx, _Context, Trees0, Height) ->
+                            fee   = Fee} = CreateTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
 

@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aeo_register_tx).
 
+-include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -16,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -95,9 +96,9 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
 %% Account should exist, and have enough funds for the fee.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
-                          ttl = TTL, fee = Fee}, _Context, Trees, Height) ->
+                          ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
@@ -116,10 +117,10 @@ accounts(#oracle_register_tx{account = AccountPubKey}) ->
 signers(#oracle_register_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{account       = AccountPubKey,
                             nonce         = Nonce,
-                            fee           = Fee} = RegisterTx, _Context, Trees0, Height) ->
+                            fee           = Fee} = RegisterTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 

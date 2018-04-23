@@ -27,6 +27,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
+-include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 
 %%%===================================================================
@@ -69,23 +71,23 @@ register_oracle_negative(_Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:65/unit:8>>,
     RTx1      = aeo_test_utils:register_tx(BadPubKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight),
+    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aeo_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aeo_test_utils:trees(S2),
     RTx2 = aeo_test_utils:register_tx(PubKey, S1),
     {error, insufficient_funds} =
-        aetx:check(RTx2, Trees2, CurrHeight),
+        aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aeo_test_utils:register_tx(PubKey, #{nonce => 0}, S1),
     {error, account_nonce_too_high} =
-        aetx:check(RTx3, Trees, CurrHeight),
+        aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too low fee
     RTx4 = aeo_test_utils:register_tx(PubKey, #{fee => 0}, S1),
-    {error, too_low_fee} = aetx:check(RTx4, Trees, CurrHeight),
+    {error, too_low_fee} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 register_oracle(_Cfg) ->
@@ -97,7 +99,7 @@ register_oracle(_Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
     Height   = 1,
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
 
@@ -113,12 +115,12 @@ extend_oracle_negative(Cfg) ->
     %% Test registering a bogus account
     BadPubKey = <<42:65/unit:8>>,
     RTx1      = aeo_test_utils:extend_tx(BadPubKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight),
+    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test extending non-existent oracle
     RTx2 = aeo_test_utils:extend_tx(PubKey, S1),
     {error, account_is_not_an_active_oracle} =
-        aetx:check(RTx2, Trees, CurrHeight),
+        aetx:check(RTx2, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Register the oracle
     {OracleKey, S2} = register_oracle(Cfg),
@@ -130,16 +132,16 @@ extend_oracle_negative(Cfg) ->
     Trees3 = aeo_test_utils:trees(S3),
     RTx3 = aeo_test_utils:extend_tx(OracleKey, S3),
     {error, insufficient_funds} =
-        aetx:check(RTx3, Trees3, CurrHeight2),
+        aetx:check(RTx3, Trees3, CurrHeight2, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx4 = aeo_test_utils:extend_tx(OracleKey, #{nonce => 0}, S2),
     {error, account_nonce_too_high} =
-        aetx:check(RTx4, Trees2, CurrHeight2),
+        aetx:check(RTx4, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
 
     %% Test too low fee
     RTx5 = aeo_test_utils:extend_tx(OracleKey, #{fee => 0}, S2),
-    {error, too_low_fee} = aetx:check(RTx5, Trees2, CurrHeight2),
+    {error, too_low_fee} = aetx:check(RTx5, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
     ok.
 
 extend_oracle(Cfg) ->
@@ -154,7 +156,7 @@ extend_oracle(Cfg) ->
     %% Test that ExtendTX is accepted
     Tx       = aeo_test_utils:extend_tx(OracleKey, #{ ttl => {delta, 50} }, S),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S1       = aeo_test_utils:set_trees(Trees1, S),
 
     OTrees1  = aec_trees:oracles(Trees1),
@@ -178,34 +180,34 @@ query_oracle_negative(Cfg) ->
     %% Test bad sender key
     BadSenderKey = <<42:65/unit:8>>,
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleKey, S2),
-    {error, account_not_found} = aetx:check(Q1, Trees, CurrHeight),
+    {error, account_not_found} = aetx:check(Q1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test unsufficient funds.
     S3     = aeo_test_utils:set_account_balance(SenderKey, 0, S2),
     Trees1 = aeo_test_utils:trees(S3),
     Q2     = aeo_test_utils:query_tx(SenderKey, OracleKey, S2),
-    {error, insufficient_funds} = aetx:check(Q2, Trees1, CurrHeight),
+    {error, insufficient_funds} = aetx:check(Q2, Trees1, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high nonce in account
     Q3 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{nonce => 0}, S2),
-    {error, account_nonce_too_high} = aetx:check(Q3, Trees, CurrHeight),
+    {error, account_nonce_too_high} = aetx:check(Q3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too low query fee
     Q4 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{fee => 0}, S2),
-    {error, too_low_fee} = aetx:check(Q4, Trees, CurrHeight),
+    {error, too_low_fee} = aetx:check(Q4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad oracle key
     BadOracleKey = <<42:65/unit:8>>,
     Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleKey, S2),
-    {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight),
+    {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long query ttl
     Q6 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ query_ttl => {block, 200} }, S2),
-    {error, too_long_ttl} = aetx:check(Q6, Trees, CurrHeight),
+    {error, too_long_ttl} = aetx:check(Q6, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long response ttl
     Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 50} }, S2),
-    {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight),
+    {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 query_oracle(Cfg) ->
@@ -219,7 +221,7 @@ query_oracle(Cfg) ->
     %% Test that QueryTX is accepted
     SignedTx = aetx_sign:sign(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
+        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
     ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
@@ -238,23 +240,23 @@ query_response_negative(Cfg) ->
     BadOracleKey = <<42:65/unit:8>>,
     RTx1 = aeo_test_utils:response_tx(BadOracleKey, ID, <<"42">>, S1),
     {error, no_matching_oracle_query} =
-        aetx:check(RTx1, Trees, CurrHeight),
+        aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high nonce for account
     RTx2 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{nonce => 0}, S1),
     {error, account_nonce_too_high} =
-        aetx:check(RTx2, Trees, CurrHeight),
+        aetx:check(RTx2, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test fee too low
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
-    {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight),
+    {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad query id
     OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees)),
     BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
     RTx4 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
     {error, no_matching_oracle_query} =
-        aetx:check(RTx4, Trees, CurrHeight),
+        aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 query_response(Cfg) ->
@@ -267,7 +269,7 @@ query_response(Cfg) ->
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
     SignedTx = aetx_sign:sign(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight),
+        aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 
     %% Test that the query is now closed.

@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aeo_extend_tx).
 
+-include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -16,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialize/1,
@@ -75,9 +76,9 @@ origin(#oracle_extend_tx{oracle = OraclePK}) ->
 
 %% Account should exist, and have enough funds for the fee
 %% Oracle should exist.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce,
-                        ttl = TTL, fee = Fee}, _Context, Trees, Height) ->
+                        ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(OraclePK, Trees, Height, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end,
@@ -96,9 +97,9 @@ accounts(#oracle_extend_tx{oracle = OraclePK}) ->
 signers(#oracle_extend_tx{oracle = OraclePK}) ->
     [OraclePK].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL},
-        _Context, Trees0, Height) ->
+        _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 

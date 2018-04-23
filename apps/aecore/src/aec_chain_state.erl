@@ -123,6 +123,8 @@ prev_hash(#node{header = H}) -> aec_headers:prev_hash(H).
 
 node_height(#node{header = H}) -> aec_headers:height(H).
 
+node_version(#node{header = H}) -> aec_headers:version(H).
+
 node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
 
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
@@ -397,7 +399,8 @@ assert_state_hash_valid(Trees, Node) ->
 apply_node_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
-    case aec_trees:apply_signed_txs_strict(Txs, Trees, Height) of
+    Version = node_version(Node),
+    case aec_trees:apply_signed_txs_strict(Txs, Trees, Height, Version) of
         {ok, _, NewTrees} -> NewTrees;
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.

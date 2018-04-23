@@ -7,6 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 
 -define(TEST_MODULE, aetx).
 
@@ -54,7 +55,7 @@ apply_signed_txs_test_() ->
                SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =
-                  aec_trees:apply_signed_txs(SignedTxs, StateTree0, BlockHeight),
+                  aec_trees:apply_signed_txs(SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
                ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),

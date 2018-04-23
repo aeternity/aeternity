@@ -3,6 +3,7 @@
 %% API
 -export([prev_hash/1,
          height/1,
+         version/1,
          nonce/1,
          target/1,
          set_target/2,
@@ -34,6 +35,9 @@ prev_hash(Header) ->
 
 height(Header) ->
     Header#header.height.
+
+version(Header) ->
+    Header#header.version.
 
 nonce(Header) ->
     Header#header.nonce.

@@ -24,8 +24,8 @@
          set_ns/2
         ]).
 
--export([apply_signed_txs/3,
-         apply_signed_txs_strict/3,
+-export([apply_signed_txs/4,
+         apply_signed_txs_strict/4,
          ensure_account_at_height/3]).
 
 -record(trees, {
@@ -94,16 +94,18 @@ contracts(Trees) ->
 set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
 
--spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
+-spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), non_neg_integer(),
+                              non_neg_integer()) ->
                                  {ok, list(aetx_sign:signed_tx()), trees()}
                                | {'error', atom()}.
-apply_signed_txs_strict(SignedTxs, Trees, Height) ->
-    apply_signed_txs_common(SignedTxs, Trees, Height, true).
+apply_signed_txs_strict(SignedTxs, Trees, Height, ConsensusVersion) ->
+    apply_signed_txs_common(SignedTxs, Trees, Height, ConsensusVersion, true).
 
--spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
+-spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), non_neg_integer(),
+                       non_neg_integer()) ->
                           {ok, list(aetx_sign:signed_tx()), trees()}.
-apply_signed_txs(SignedTxs, Trees, Height) ->
-    {ok, _, _} = apply_signed_txs_common(SignedTxs, Trees, Height, false).
+apply_signed_txs(SignedTxs, Trees, Height, ConsensusVersion) ->
+    {ok, _, _} = apply_signed_txs_common(SignedTxs, Trees, Height, ConsensusVersion, false).
 
 %%%=============================================================================
 %%% Internal functions
@@ -136,9 +138,9 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
-apply_signed_txs_common(SignedTxs, Trees0, Height, Strict) ->
+apply_signed_txs_common(SignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
     Trees1 = aec_trees:perform_pre_transformations(Trees0, Height),
-    case apply_txs_on_state_trees(SignedTxs, Trees1, Height, Strict) of
+    case apply_txs_on_state_trees(SignedTxs, Trees1, Height, ConsensusVersion, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
             Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee, Height),
@@ -146,32 +148,32 @@ apply_signed_txs_common(SignedTxs, Trees0, Height, Strict) ->
         {error, _} = E -> E
     end.
 
-apply_txs_on_state_trees(SignedTxs, Trees, Height, Strict) ->
-    apply_txs_on_state_trees(SignedTxs, [], Trees, Height, Strict).
+apply_txs_on_state_trees(SignedTxs, Trees, Height, ConsensusVersion, Strict) ->
+    apply_txs_on_state_trees(SignedTxs, [], Trees, Height, ConsensusVersion, Strict).
 
-apply_txs_on_state_trees([], FilteredSignedTxs, Trees, _Height,_Strict) ->
+apply_txs_on_state_trees([], FilteredSignedTxs, Trees, _Height,_ConsensusVersion,_Strict) ->
     {ok, lists:reverse(FilteredSignedTxs), Trees};
-apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, Strict) ->
+apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
     case aetx_sign:verify(SignedTx) of
         ok ->
             Tx = aetx_sign:tx(SignedTx),
-            case aetx:check(Tx, Trees0, Height) of
+            case aetx:check(Tx, Trees0, Height, ConsensusVersion) of
                 {ok, Trees1} ->
-                    {ok, Trees2} = aetx:process(Tx, Trees1, Height),
-                    apply_txs_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, Strict);
+                    {ok, Trees2} = aetx:process(Tx, Trees1, Height, ConsensusVersion),
+                    apply_txs_on_state_trees(Rest, [SignedTx | FilteredSignedTxs], Trees2, Height, ConsensusVersion, Strict);
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
                 {error, Reason} when not Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
-                    apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
+                    apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, ConsensusVersion, Strict)
             end;
         {error, signature_check_failed} = E when Strict ->
             lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
             E;
         {error, signature_check_failed} when not Strict ->
             lager:debug("Signed tx ~p is not correctly signed.", [SignedTx]),
-            apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, Strict)
+            apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, ConsensusVersion, Strict)
     end.
 
 calculate_total_fee(SignedTxs) ->

@@ -74,6 +74,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                               height  = Height,
                               account = ContractKey,
                               nonce   = Nonce }) ->
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     VmVersion = 0,  %% TODO
     {ok, CallTx} =
         aect_call_tx:new(#{ caller     => ContractKey,
@@ -86,10 +87,10 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                             gas_price  => 0,
                             call_data  => CallData,
                             call_stack => CallStack }),
-    case aetx:check_from_contract(CallTx, Trees, Height) of
+    case aetx:check_from_contract(CallTx, Trees, Height, ConsensusVersion) of
         Err = {error, _} -> Err;
         {ok, Trees1} ->
-            {ok, Trees2} = aetx:process_from_contract(CallTx, Trees1, Height),
+            {ok, Trees2} = aetx:process_from_contract(CallTx, Trees1, Height, ConsensusVersion),
             CallId  = aect_call:id(ContractKey, Nonce, Target),
             Call    = aect_state_tree:get_call(Target, CallId, aec_trees:contracts(Trees2)),
             GasUsed = aect_call:gas_used(Call),

@@ -17,6 +17,9 @@
 
 -include_lib("common_test/include/ct.hrl").
 
+-include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -63,7 +66,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 

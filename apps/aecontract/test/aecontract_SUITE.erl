@@ -20,6 +20,8 @@
 
 -include_lib("common_test/include/ct.hrl").
 
+-include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aecontract/include/contract_txs.hrl").
 
 %%%===================================================================
@@ -57,19 +59,19 @@ create_contract_negative(_Cfg) ->
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
     {_, [], S1}  = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
-    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight),
+    {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
     {_, [], S2}  = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight),
+    {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
     {_, [], S1}  = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight),
+    {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     ok.
 
@@ -86,7 +88,7 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
