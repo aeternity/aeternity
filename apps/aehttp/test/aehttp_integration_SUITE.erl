@@ -1552,7 +1552,7 @@ account_transactions(_Config) ->
 
 acc_txs_test(Pubkey, Offset, Limit) ->
     acc_txs_test(Pubkey, Offset, Limit, default).
-  
+
 acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
     {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
     TxEncodings = [default, message_pack, json],
@@ -3449,13 +3449,13 @@ external_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"external">>, <<"port">>],
                 aehttp, [external, port], 8043]),
-    aeu_requests:pp_uri({http, "127.0.0.1", Port}). % good enough for requests
+    "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
 
 internal_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"internal">>, <<"port">>],
                 aehttp, [internal, port], 8143]),
-    aeu_requests:pp_uri({http, "127.0.0.1", Port}).
+    "http://127.0.0.1:" ++ integer_to_list(Port).
 
 ws_host_and_port() ->
     Port = rpc(aeu_env, user_config_or_env,

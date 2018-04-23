@@ -532,12 +532,14 @@ new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
     Port = rpc:call(N1, aeu_env, user_config_or_env,
                     [ [<<"http">>, <<"internal">>, <<"port">>],
                       aehttp, [internal, port], 8143], 5000),
-    Uri = aeu_requests:pp_uri({http, "127.0.0.1", Port}),
-    {ok, ok} = aeu_requests:new_spend_tx(
-                 Uri, #{sender_pubkey => PK1,
-                        recipient_pubkey => PK2,
-                        amount => Am,
-                        fee => Fee}),
+    Params = #{sender_pubkey => PK1,
+               recipient_pubkey => PK2,
+               amount => Am,
+               fee => Fee},
+    %% It's internal API so ext_addr is not included here.
+    Cfg = [{int_addr, "http://127.0.0.1:" ++ integer_to_list(Port)},
+           {encode_base58c, true}],
+    {ok, 200, _} = aehttp_client:request('PostSpendTx', Params, Cfg),
     ok.
 
 ensure_new_tx(N, Tx) ->
