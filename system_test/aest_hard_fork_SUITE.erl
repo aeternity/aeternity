@@ -40,16 +40,6 @@
 
 -define(DB_BACKUP_DEST_DIR, "/tmp/mnesia_backup").
 
--define(GENESIS_PROTOCOL_VERSION, 9).
--define(V_0_11_0_PROTOCOL_VERSION, 10).
--define(V_0_11_0_PROTOCOL_HEIGHT, 3750).
--define(NEW_PROTOCOL_VERSION, 11).
--define(PROTOCOLS(H), ?PROTOCOLS(?V_0_11_0_PROTOCOL_HEIGHT, H)).
--define(PROTOCOLS(H1, H2),
-        #{?GENESIS_PROTOCOL_VERSION => 0,
-          ?V_0_11_0_PROTOCOL_VERSION => H1,
-          ?NEW_PROTOCOL_VERSION => H2}).
-
 -define(HEIGHT_OF_NEW_PROTOCOL(OldChainHeight),
         (2 + OldChainHeight)
        ).
@@ -83,61 +73,60 @@
           mine_rate => default
 }).
 
--define(NEW_NODE1, ?NEW_NODE1(1 + ?V_0_11_0_PROTOCOL_HEIGHT)).
--define(NEW_NODE1(H), #{
+-define(NEW_NODE1(Ps), #{
           name    => new_node1,
           peers   => [],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
-          hard_forks => ?PROTOCOLS(H)
+          hard_forks => Ps
          }).
 
--define(NEW_NODE2(H), #{
+-define(NEW_NODE2(Ps), #{
           name    => new_node2,
           peers   => [old_node1],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
-          hard_forks => ?PROTOCOLS(H)
+          hard_forks => Ps
          }).
 
--define(NEW_NODE3(H), #{
+-define(NEW_NODE3(Ps), #{
           name    => new_node3,
           peers   => [old_node1],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
-          hard_forks => ?PROTOCOLS(H)
+          hard_forks => Ps
          }).
 
--define(NEW_NODE4(H), #{
+-define(NEW_NODE4(Ps), #{
           name    => new_node4,
           peers   => [new_node3],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => default,
-          hard_forks => ?PROTOCOLS(H)
+          hard_forks => Ps
          }).
 
--define(FAST_NEW_NODE1(H1, H2), #{
+-define(FAST_NEW_NODE1(Ps), #{
           name    => fast_new_node1,
           peers   => [],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => 1000,
           cuckoo_miner => ?CUCKOO_MINER(16),
-          hard_forks => ?PROTOCOLS(H1, H2)
+          hard_forks => Ps
          }).
 
--define(FAST_NEW_NODE2(H1, H2), #{
+-define(FAST_NEW_NODE2(Ps), #{
           name    => fast_new_node2,
           peers   => [fast_new_node1],
           backend => aest_docker,
           source  => {pull, ?TESTED_DOCKER_IMAGE},
           mine_rate => 1000,
           cuckoo_miner => ?CUCKOO_MINER(16),
-          hard_forks => ?PROTOCOLS(H1, H2)
+          hard_forks => Ps
          }).
 
 -define(is_testcase_in_group_assumptions(C),
@@ -252,26 +241,29 @@ init_per_group(Group, Config)
 init_per_group(upgrade_flow_smoke_test, Config) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
+    Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
     aest_nodes:setup_nodes(
       [?OLD_NODE1,
-       ?NEW_NODE3(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
-       ?NEW_NODE4(?HEIGHT_OF_NEW_PROTOCOL(TopHeight))], NewConfig),
+       ?NEW_NODE3(Ps),
+       ?NEW_NODE4(Ps)], NewConfig),
     NewConfig;
 init_per_group(hard_fork_old_chain_with_tx, Config) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
+    Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL_UNREACHABLE(TopHeight)),
     aest_nodes:setup_nodes(
       [?OLD_NODE1,
-       ?NEW_NODE3(?HEIGHT_OF_NEW_PROTOCOL_UNREACHABLE(TopHeight)),
-       ?NEW_NODE4(?HEIGHT_OF_NEW_PROTOCOL_UNREACHABLE(TopHeight))], NewConfig),
+       ?NEW_NODE3(Ps),
+       ?NEW_NODE4(Ps)], NewConfig),
     NewConfig;
 init_per_group(hard_fork_new_chain_with_tx, Config) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
+    Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
     aest_nodes:setup_nodes(
       [?OLD_NODE1,
-       ?NEW_NODE3(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
-       ?NEW_NODE4(?HEIGHT_OF_NEW_PROTOCOL(TopHeight))], NewConfig),
+       ?NEW_NODE3(Ps),
+       ?NEW_NODE4(Ps)], NewConfig),
     NewConfig.
 
 end_per_group(assumptions, _) -> ok;
@@ -326,7 +318,7 @@ old_node_persisting_chain_and_not_mining_has_genesis_as_top(Cfg) ->
 new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top(Cfg) ->
     {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
     {_, Hash} = proplists:lookup(genesis_hash, SavedCfg),
-    aest_nodes:setup_nodes([?NEW_NODE1], Cfg),
+    aest_nodes:setup_nodes([?NEW_NODE1(protocols(1 + old_protocol_height()))], Cfg),
     start_node(new_node1, Cfg),
     #{height := 0} = get_block_by_height(new_node1, 0, Cfg),
     #{height := 0, hash := NewHash} = aest_nodes:get_top(new_node1, Cfg),
@@ -335,9 +327,10 @@ new_node_persisting_chain_and_not_mining_has_same_old_genesis_as_top(Cfg) ->
     ok.
 
 new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow(Cfg) ->
-    {H1, H2, HCheck} = {20, 30, 45},
-    aest_nodes:setup_nodes([?FAST_NEW_NODE1(H1, H2),
-                            ?FAST_NEW_NODE2(H1, H2)], Cfg),
+    Ps = fast_protocols(15),
+    HCheck = maps:get(new_protocol_version(), Ps),
+    aest_nodes:setup_nodes([?FAST_NEW_NODE1(Ps),
+                            ?FAST_NEW_NODE2(Ps)], Cfg),
     start_node(fast_new_node1, Cfg),
     run_erl_cmd_on_node(fast_new_node1, "aec_conductor:start_mining().", "ok", Cfg), %% It would be better to configure node to autostart mining in the first place.
     wait_for_height_syncing(HCheck, [fast_new_node1], {{45000, ms}, {5, blocks}}, Cfg),
@@ -383,7 +376,7 @@ new_node_accepts_long_old_chain_from_old_node_up_to_height_of_new_protocol(Cfg) 
         ?HEIGHT_OF_NEW_PROTOCOL_FOR_VALIDATING_BLOCKS(TopHeight),
     aest_nodes:setup_nodes(
       [?OLD_NODE1,
-       ?NEW_NODE2(HeightOfNewProtocolForValidatingBlocks)], Cfg),
+       ?NEW_NODE2(protocols(HeightOfNewProtocolForValidatingBlocks))], Cfg),
     start_node(int_http, old_node1, Cfg),
     {ok, {TopHash, TopHeight}} = restore_db_backup_on_node(old_node1, Cfg),
     aest_nodes:wait_for_value({height, TopHeight}, [old_node1], 5000, Cfg),
@@ -449,8 +442,9 @@ new_node_can_mine_on_old_chain_using_old_protocol(Cfg) ->
     {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    OldProtocolVersion = old_protocol_version(),
     HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
-    #{version := ?V_0_11_0_PROTOCOL_VERSION, %% TODO Check mining capability with all protocols - not only the last one.
+    #{version := OldProtocolVersion, %% TODO Check mining capability with all protocols - not only the last one.
       height := TopHeight} = aest_nodes:get_top(new_node3, Cfg),
     HeightToBeMinedWithOldProtocol = - 1 + HeightOfNewProtocol,
     {true, _} = {HeightToBeMinedWithOldProtocol > TopHeight,
@@ -464,7 +458,7 @@ new_node_can_mine_on_old_chain_using_old_protocol(Cfg) ->
     ok = mock_pow_on_node(old_node1, Cfg), %% TODO Make configurable.
     run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
-    #{version := ?V_0_11_0_PROTOCOL_VERSION, %% TODO Check mining capability with all protocols - not only the last one.
+    #{version := OldProtocolVersion, %% TODO Check mining capability with all protocols - not only the last one.
       hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithOldProtocol, Cfg),
     %% Ensure distinct non-mining new node can sync mined block(s).
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
@@ -485,10 +479,11 @@ new_node_can_mine_on_old_chain_using_new_protocol(Cfg) ->
     {_, new_node4} = proplists:lookup(new_node_left_running_with_mined_old_protocol, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    NewProtocolVersion = new_protocol_version(),
     HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
     HeightToBeMinedWithNewProtocol = 1 + HeightOfNewProtocol, %% I.e. two blocks with new protocol.
     wait_for_height_syncing(HeightToBeMinedWithNewProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
-    #{version := ?NEW_PROTOCOL_VERSION,
+    #{version := NewProtocolVersion,
       hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithNewProtocol, Cfg),
     %% Ensure distinct non-mining node can sync mined block(s).
     wait_for_height_syncing(HeightToBeMinedWithNewProtocol, [new_node4], {{45000, ms}, {1000, blocks}}, Cfg),
@@ -508,6 +503,7 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
     {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    OldProtocolVersion = old_protocol_version(),
     start_node(new_node4, Cfg),
     wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
     ok = mock_pow_on_node(new_node3, Cfg),
@@ -535,7 +531,7 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
         post_spend_tx_and_wait_in_chain(new_node3, PubKey3, PubKey1, BalanceToSpend, Fee, Cfg),
     %% Block with spend transaction has old version.
     ?assertEqual(
-       ?V_0_11_0_PROTOCOL_VERSION,
+       OldProtocolVersion,
        maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on an old node.
     wait_for_height_syncing(SpendTxHeight, [old_node1], {{100000, ms}, {1000, blocks}}, Cfg),
@@ -556,6 +552,8 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    OldProtocolVersion = old_protocol_version(),
+    NewProtocolVersion = new_protocol_version(),
     HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
     start_node(new_node4, Cfg),
     wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
@@ -578,11 +576,11 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     %% Check the last block of old protocol has old version.
     wait_for_height_syncing(LastHeightOfOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
     B3OldProtocol = get_block_by_height(new_node3, LastHeightOfOldProtocol, Cfg),
-    ?assertEqual(?V_0_11_0_PROTOCOL_VERSION, maps:get(version, B3OldProtocol)),
+    ?assertEqual(OldProtocolVersion, maps:get(version, B3OldProtocol)),
     %% Check the first block of new protocol has version of the new protocol.
     wait_for_height_syncing(HeightOfNewProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
     B3NewProtocol = get_block_by_height(new_node3, HeightOfNewProtocol, Cfg),
-    ?assertEqual(?NEW_PROTOCOL_VERSION, maps:get(version, B3NewProtocol)),
+    ?assertEqual(NewProtocolVersion, maps:get(version, B3NewProtocol)),
     %% Make sure account meant to be spender of tokens has a sufficient balance by means of mining.
     MinedReward = 100,
     aest_nodes:wait_for_value({balance, PubKey3, MinedReward}, [new_node3], 10000, Cfg),
@@ -596,7 +594,7 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
         post_spend_tx_and_wait_in_chain(new_node3, PubKey3, PubKey1, BalanceToSpend, Fee, Cfg),
     %% Block with spend transaction has new protocol version.
     ?assertEqual(
-       ?NEW_PROTOCOL_VERSION,
+       NewProtocolVersion,
        maps:get(version, get_block_by_hash(new_node3, SpendTxBlockHash, Cfg))),
     %% Sync the chain with the block that includes spend tx on another new node.
     wait_for_height_syncing(SpendTxHeight, [new_node4], {{100000, ms}, {1000, blocks}}, Cfg),
@@ -604,6 +602,28 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
+
+old_protocol_version() ->
+    lists:nth(2, lists:reverse(
+                   [_,_|_] = aec_governance:sorted_protocol_versions())).
+
+old_protocol_height() ->
+    maps:get(old_protocol_version(), aec_governance:protocols()).
+
+new_protocol_version() ->
+    lists:last([_,_|_] = aec_governance:sorted_protocol_versions()).
+
+protocols(NewProtocolHeight) ->
+    maps:update(new_protocol_version(), NewProtocolHeight,
+                aec_governance:protocols()).
+
+fast_protocols(BlocksPerVersion) when is_integer(BlocksPerVersion),
+                                      BlocksPerVersion > 0 ->
+    Vs = aec_governance:sorted_protocol_versions(),
+    Hs = lists:seq(_From = 0,
+                   _To = BlocksPerVersion * (length(Vs) - 1),
+                   BlocksPerVersion),
+    maps:from_list(lists:zip(Vs, Hs)).
 
 db_backup_tar(Cfg) ->
     {_, DataDir} = proplists:lookup(data_dir, Cfg),
