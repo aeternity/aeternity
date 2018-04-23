@@ -102,6 +102,7 @@ serialize(#call{} = I) ->
       , {contract_address, contract_address(I)}
       , {gas_used, gas_used(I)}
       , {return_value, return_value(I)}
+      , {return_type, serialize_return_type(return_type(I))}
      ]).
 
 -spec deserialize(binary()) -> call().
@@ -112,6 +113,7 @@ deserialize(B) ->
     , {contract_address, ContractAddress}
     , {gas_used, GasUsed}
     , {return_value, ReturnValue}
+    , {return_type, ReturnType}
     ] = aec_object_serialization:deserialize(
           ?CONTRACT_INTERACTION_TYPE,
           ?CONTRACT_INTERACTION_VSN,
@@ -123,6 +125,7 @@ deserialize(B) ->
          , contract_address = ContractAddress
          , gas_used         = GasUsed
          , return_value     = ReturnValue
+         , return_type      = deserialize_return_type(ReturnType)
          }.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
@@ -132,7 +135,17 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
     , {contract_address, binary}
     , {gas_used, int}
     , {return_value, binary}
+    , {return_type, int}
     ].
+
+serialize_return_type(ok) -> 0;
+serialize_return_type(error) -> 1;
+serialize_return_type(revert) ->  2.
+     
+deserialize_return_type(0) -> ok;
+deserialize_return_type(1) -> error;
+deserialize_return_type(2) -> revert.
+
 
 
 %%%===================================================================

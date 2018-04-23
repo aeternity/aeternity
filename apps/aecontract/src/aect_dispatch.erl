@@ -129,7 +129,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		      Gas,
 		      aect_call:set_return_type(
 			error, 
-			aect_call:set_return_value(<<>>, Call)))
+			aect_call:set_return_value(_Error, Call)))
 
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),
