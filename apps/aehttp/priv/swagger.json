@@ -366,7 +366,7 @@
     "/tx/contract/call/compute" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Compute the call_data for RING and get contract_call transaction",
+        "description" : "Compute the call_data for SOPHIA and get contract_call transaction",
         "operationId" : "PostContractCallCompute",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],

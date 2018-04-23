@@ -14,7 +14,7 @@ from swagger_client.rest import ApiException
 settings = common.test_settings(__name__.split(".")[-1])
 
 def test_compile_and_call_id():
-    # Alice should be able to compile a ring contract with an identity
+    # Alice should be able to compile a sophia contract with an identity
     # function into bytecode and call it.
     test_settings = settings["test_compile_and_call_id"]
     (root_dir, node, api) = setup_node(test_settings, "alice")
@@ -22,7 +22,7 @@ def test_compile_and_call_id():
     # Read a contract
     currentFile = __file__
     dirPath = os.path.dirname(currentFile)
-    contract_file = open(dirPath + "/identity.aer", "r")
+    contract_file = open(dirPath + "/identity.aes", "r")
     contract_string = contract_file.read()
 
     # Compile contract to bytecode
@@ -31,7 +31,7 @@ def test_compile_and_call_id():
     assert_regexp_matches(compilation_result.bytecode, '0x.*')
 
     # Call contract bytecode
-    call_input = ContractCallInput("ring", compilation_result.bytecode, "main", "42")
+    call_input = ContractCallInput("sophia", compilation_result.bytecode, "main", "42")
     call_result = api.call_contract(call_input)
     assert_regexp_matches(call_result.out, '0x.*')
 
@@ -41,14 +41,14 @@ def test_compile_and_call_id():
 
 def test_encode_id_call():
     # Alice should be able to encode a call to a function in
-    # a ring contract.
+    # a sophia contract.
     
     test_settings = settings["test_encode_id_call"]
     (root_dir, node, api) = setup_node(test_settings, "alice")
 
     bytecode = '0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56'
 
-    call_input = ContractCallInput("ring", bytecode, "main", "42")
+    call_input = ContractCallInput("sophia", bytecode, "main", "42")
     result = api.encode_calldata(call_input)
 
     calldata = '0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000002a00000000000000000000000000000000000000000000000000000000000000046d61696e00000000000000000000000000000000000000000000000000000000'
@@ -67,7 +67,7 @@ def test_id_call():
 
     bytecode = '0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56'
 
-    call_input = ContractCallInput("ring", bytecode, "main", "42")
+    call_input = ContractCallInput("sophia", bytecode, "main", "42")
     result = api.call_contract(call_input)
     print(result)
 
