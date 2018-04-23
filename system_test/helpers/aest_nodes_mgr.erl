@@ -13,7 +13,7 @@
 
 %% API
 -export([start/2, stop/0]).
--export([cleanup/0, dump_logs/0, add_node/1]).
+-export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -54,14 +54,16 @@ dump_logs() ->
 setup_nodes(NodeSpecs) ->
     gen_server:call(?SERVER, {setup_nodes, NodeSpecs}).
 
-add_node(NodeSpec) ->
-    gen_server:call(?SERVER, {add_node, NodeSpec}).
+start_node(NodeName) ->
+    gen_server:call(?SERVER, {start_node, NodeName}).
 
+stop_node(NodeName, Timeout) ->
+    gen_server:call(?SERVER, {stop_node, NodeName, Timeout}).
 
 %=== BEHAVIOUR GEN_SERVER CALLBACK FUNCTIONS ===================================
 
 init([Backends, EnvMap]) ->
-    Opts = EnvMap#{test_id => maps:get(test_id, EnvMap, <<0>>), 
+    Opts = EnvMap#{test_id => maps:get(test_id, EnvMap, <<"quickcheck">>), 
                    log_fun => maps:get(log_fun, EnvMap, undefined)},
     InitialState = Opts,
     %% why keeping dirs twice??
@@ -100,7 +102,7 @@ handle_call({connect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_connect_node(NodeName, NetName, State)};
 handle_call({disconnect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
-handle_call(Request, From, State) ->
+handle_call(Request, From, _State) ->
     erlang:error({unknown_request, Request, From}).
 
 handle_info(_Msg, State) ->
