@@ -15,6 +15,7 @@
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
+-export([get_node_pubkey/1]).
 -export([extract_archive/3]).
 -export([run_cmd_in_node_dir/2]).
 -export([connect_node/2]).
@@ -61,7 +62,8 @@
     cuckoo_miner => default | #{ex := binary(),
                                 args := binary(),
                                 bits := pos_integer()},
-    hard_forks => #{non_neg_integer() => non_neg_integer()} % Consensus protocols (version -> height)
+    hard_forks => #{non_neg_integer() => non_neg_integer()}, % Consensus protocols (version -> height)
+    debug => boolean()
 }.
 
 %% State of a node
@@ -73,7 +75,8 @@
     pubkey := binary(),         % Public part of the peer key
     privkey := binary(),        % Private part of the peer key
     exposed_ports := #{service_label() => pos_integer()},
-    local_ports := #{service_label() => pos_integer()}
+    local_ports := #{service_label() => pos_integer()},
+    sockets := [gen_tcp:socket()] % Reserved socket to prevent port clash
 }.
 
 -type start_options() :: #{
@@ -154,6 +157,7 @@ setup_node(Spec, BackendState) ->
       peers := Peers,
       source := {pull, Image}} = Spec,
     MineRate = maps:get(mine_rate, Spec, ?EPOCH_MINE_RATE),
+    HasDebug = maps:get(debug, Spec, false),
 
     Hostname = format("~s~s", [Name, Postfix]),
     ExposedPorts = #{
@@ -162,7 +166,7 @@ setup_node(Spec, BackendState) ->
         int_http => ?INT_HTTP_PORT,
         int_ws => ?INT_WS_PORT
     },
-    LocalPorts = allocate_ports([sync, ext_http, int_http, int_ws]),
+    {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, int_ws]),
     NodeState = #{
         spec => spec,
         postfix => Postfix,
@@ -172,7 +176,8 @@ setup_node(Spec, BackendState) ->
         pubkey => PubKey,
         privkey => PrivKey,
         exposed_ports => ExposedPorts,
-        local_ports => LocalPorts
+        local_ports => LocalPorts,
+        sockets => Sockets
     },
 
     NetworkSpecs = maps:get(networks, Spec, ?DEFAULT_NETWORKS),
@@ -220,12 +225,18 @@ setup_node(Spec, BackendState) ->
     },
     Context = #{epoch_config => RootVars},
     ok = write_template(TemplateFile, ConfigFilePath, Context),
-    Command =
+    MineCommand =
         case MineRate of
             default -> [];
             _ when is_integer(MineRate), MineRate > 0 ->
                 ["-aecore", "expected_mine_rate", MineRate]
         end,
+    DebugCommand =
+        case HasDebug of
+            true -> ["-aehttp", "enable_debug_endpoints", "true"];
+            _ -> []
+        end,
+    Command = MineCommand ++ DebugCommand,
     LogPath = filename:join(TempDir, format("~s_logs", [Name])),
     ok = filelib:ensure_dir(filename:join(LogPath, "DUMMY")),
     KeysDir = keys_dir(DataDir, Name),
@@ -268,10 +279,12 @@ delete_node(#{container_id := ID, hostname := Name} = NodeState) ->
     ok.
 
 -spec start_node(node_state()) -> node_state().
-start_node(#{container_id := ID, hostname := Name} = NodeState) ->
+start_node(NodeState) ->
+    #{container_id := ID, hostname := Name, sockets := Sockets} = NodeState,
+    [gen_tcp:close(S) || S <- Sockets],
     aest_docker_api:start_container(ID),
     log(NodeState, "Container ~p [~s] started", [Name, ID]),
-    NodeState.
+    NodeState#{sockets := []}.
 
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
@@ -327,6 +340,9 @@ get_service_address(int_ws, NodeState) ->
     #{local_ports := #{int_ws := Port}} = NodeState,
     format("ws://localhost:~w/", [Port]).
 
+-spec get_node_pubkey(node_state()) -> binary().
+get_node_pubkey(#{pubkey := PubKey}) -> PubKey.
+
 extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archive) ->
     ok = aest_docker_api:extract_archive(ID, Path, Archive),
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
@@ -377,13 +393,14 @@ free_port() ->
     {ok, Socket} = gen_tcp:listen(0, [{reuseaddr, true}]),
     {ok, Port} = inet:port(Socket),
     gen_tcp:close(Socket),
-    Port.
+    {ok, Port, Socket}.
 
-allocate_ports(Labels) -> allocate_ports(Labels, #{}).
+allocate_ports(Labels) -> allocate_ports(Labels, #{}, []).
 
-allocate_ports([], Acc) -> Acc;
-allocate_ports([Label | Labels], Acc) ->
-    allocate_ports(Labels, Acc#{Label => free_port()}).
+allocate_ports([], Ports, Sockets) -> {Ports, Sockets};
+allocate_ports([Label | Labels], Ports, Sockets) ->
+    {ok, Port, Socket} = free_port(),
+    allocate_ports(Labels, Ports#{Label => Port}, [Socket | Sockets]).
 
 
 format(Fmt, Args) ->
