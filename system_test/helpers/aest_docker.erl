@@ -15,6 +15,7 @@
 -export([node_logs/1]).
 -export([get_peer_address/1]).
 -export([get_service_address/2]).
+-export([get_node_pubkey/1]).
 -export([extract_archive/3]).
 -export([run_cmd_in_node_dir/2]).
 -export([connect_node/2]).
@@ -330,6 +331,9 @@ get_service_address(Service, NodeState)
 get_service_address(int_ws, NodeState) ->
     #{local_ports := #{int_ws := Port}} = NodeState,
     format("ws://localhost:~w/", [Port]).
+
+-spec get_node_pubkey(node_state()) -> binary().
+get_node_pubkey(#{pubkey := PubKey}) -> PubKey.
 
 extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archive) ->
     ok = aest_docker_api:extract_archive(ID, Path, Archive),

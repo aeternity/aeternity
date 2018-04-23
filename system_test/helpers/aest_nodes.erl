@@ -22,6 +22,7 @@
 -export([connect_node/3]).
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
+-export([get_node_pubkey/2]).
 -export([http_get/5]).
 -export([http_post/7]).
 
@@ -175,6 +176,10 @@ disconnect_node(NodeName, NetName, Ctx) ->
 get_service_address(NodeName, Service, Ctx) ->
     call(ctx2pid(Ctx), {get_service_address, NodeName, Service}).
 
+-spec get_node_pubkey(atom(), test_ctx()) -> binary().
+get_node_pubkey(NodeName, Ctx) ->
+    call(ctx2pid(Ctx), {get_node_pubkey, NodeName}).
+
 %% @doc Performs and HTTP get on a node service (ext_http or int_http).
 -spec http_get(atom(), ext_http | int_http, http_path(), http_query(), test_ctx()) ->
         {ok, pos_integer(), json_object()} | {error, term()}.
@@ -267,6 +272,8 @@ handle_call(Request, From, State) ->
 
 handlex({get_service_address, NodeName, Service}, _From, State) ->
     {reply, mgr_get_service_address(NodeName, Service, State), State};
+handlex({get_node_pubkey, NodeName}, _From, State) ->
+    {reply, mgr_get_node_pubkey(NodeName, State), State};
 handlex({setup_nodes, NodeSpecs}, _From, State) ->
     {reply, ok, mgr_setup_nodes(NodeSpecs, State)};
 handlex({start_node, NodeName}, _From, State) ->
@@ -448,6 +455,10 @@ mgr_cleanup(State) ->
 mgr_get_service_address(NodeName, Service, #{nodes := Nodes}) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     Mod:get_service_address(Service, NodeState).
+
+mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    Mod:get_node_pubkey(NodeState).
 
 mgr_setup_nodes(NodeSpecs, State) ->
     NodeSpecs2 = mgr_prepare_specs(NodeSpecs, State),
