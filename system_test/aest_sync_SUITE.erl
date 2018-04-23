@@ -37,16 +37,14 @@
     name    => old_node1,
     peers   => [old_node2],
     backend => aest_docker,
-    % Change to a compatible fixed version when possible
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/epoch:v0.11.1"}
 }).
 
 -define(OLD_NODE2, #{
     name    => old_node2,
     peers   => [old_node1],
     backend => aest_docker,
-    % Change to a compatible fixed version when possible
-    source  => {pull, "aeternity/epoch:local"}
+    source  => {pull, "aeternity/epoch:v0.11.1"}
 }).
 
 -define(NEW_NODE1, #{
