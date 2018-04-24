@@ -586,7 +586,7 @@ workflows:
     triggers:
       - schedule:
           # run Sun, Tue, Thu at midnight UTC
-          cron: "0 0 * * 0,2,4"
+          cron: "0 0,12 * * *"
           filters:
             branches:
               only:
