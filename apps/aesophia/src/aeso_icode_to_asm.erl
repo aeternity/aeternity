@@ -14,6 +14,8 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
+i(Code) -> aeb_opcodes:mnemonic(Code).
+
 convert(#{ contract_name := _ContractName
          , functions := Functions
               },
@@ -41,26 +43,25 @@ convert(#{ contract_name := _ContractName
     StopLabel = make_ref(),
     MainFunction = lookup_fun(Funs,"_main"),
     DispatchCode = [%% read all call data into memory at address zero
-		    aeb_opcodes:mnemonic(?CALLDATASIZE),
+		    i(?CALLDATASIZE),
 		    push(0),
 		    dup(1),
-		    aeb_opcodes:mnemonic(?CALLDATACOPY),
+		    i(?CALLDATACOPY),
 		    %% push a return address to stop
 		    {push_label,StopLabel},
 		    %% The first word of the calldata is a pointer.
-		    push(0), aeb_opcodes:mnemonic(?MLOAD),
+		    push(0), i(?MLOAD),
 		    {push_label,MainFunction},
-		    aeb_opcodes:mnemonic(?JUMP),
-		    {aeb_opcodes:mnemonic(?JUMPDEST),StopLabel},
+		    i(?JUMP),
+		    {i(?JUMPDEST),StopLabel},
 		    %% A pointer to a binary is on top of the stack
                     %% Get size of data area (it will be the last thing on the
                     %% heap, so we can use MSIZE to compute it).
-                                                    %% Ptr
-                    dup(1),                         %% Ptr Ptr
-                    aeb_opcodes:mnemonic(?MSIZE),   %% MSize Ptr Ptr
-                    aeb_opcodes:mnemonic(?SUB),     %% Size Ptr
-                    swap(1),                        %% Ptr Size
-                    aeb_opcodes:mnemonic(?RETURN)
+                    dup(1),    %% Ptr Ptr
+                    i(?MSIZE), %% MSize Ptr Ptr
+                    i(?SUB),   %% Size Ptr
+                    swap(1),   %% Ptr Size
+                    i(?RETURN)
 		   ],
 
     %% Code is a deep list of instructions, containing labels and
@@ -70,7 +71,7 @@ convert(#{ contract_name := _ContractName
     Code = [assemble_function(Funs,Name,Args,Body)
 	    || {Name,Args,Body,_Type} <- NewFunctions],
     resolve_references(
-        [%% aeb_opcodes:mnemonic(?COMMENT), "CONTRACT: " ++ ContractName,
+        [%% i(?COMMENT), "CONTRACT: " ++ ContractName,
 	 DispatchCode,
 	 Code]).
 
@@ -81,12 +82,12 @@ fun_hash(Name) ->
     {tuple,[{integer,X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
-    [{aeb_opcodes:mnemonic(?JUMPDEST),lookup_fun(Funs,Name)},
+    [{i(?JUMPDEST),lookup_fun(Funs,Name)},
      assemble_expr(Funs, lists:reverse(Args), tail, Body),
      %% swap return value and first argument
      pop_args(length(Args)),
      swap(1),
-     aeb_opcodes:mnemonic(?JUMP)].
+     i(?JUMP)].
 
 assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
     case lists:keymember(Id,1,Stack) of
@@ -98,10 +99,10 @@ assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
 	    %% reach this case.
 	    Eta = make_ref(),
 	    Continue = make_ref(),
-	    [aeb_opcodes:mnemonic(?MSIZE),
+	    [i(?MSIZE),
 	     {push_label,Eta},
 	     dup(2),
-	     aeb_opcodes:mnemonic(?MSTORE),
+	     i(?MSTORE),
 	     {push_label,Continue},
 	     'JUMP',
 	     %% the code of the closure
@@ -126,23 +127,23 @@ assemble_expr(Funs,Stack,_,{tuple,Cpts}) ->
     %% keeping them for a long time on the stack.
     case lists:reverse(Cpts) of
 	[] ->
-	    aeb_opcodes:mnemonic(?MSIZE);
+	    i(?MSIZE);
 	[Last|Rest] ->
 	    [assemble_expr(Funs,Stack,nontail,Last),
 	     %% allocate the tuple memory
-	     aeb_opcodes:mnemonic(?MSIZE),
+	     i(?MSIZE),
 	     %% compute address of last word
-	     push(32*(length(Cpts)-1)), aeb_opcodes:mnemonic(?ADD),
+	     push(32*(length(Cpts)-1)), i(?ADD),
 	     %% Stack: <last-value> <pointer>
 	     %% Write value to memory (allocates the tuple)
-	     swap(1), dup(2), aeb_opcodes:mnemonic(?MSTORE),
+	     swap(1), dup(2), i(?MSTORE),
 	     %% Stack: pointer to last word written
 	     [[%% Update pointer to next word to be written
-	       push(32), swap(1), aeb_opcodes:mnemonic(?SUB),
+	       push(32), swap(1), i(?SUB),
 	       %% Compute element
 	       assemble_expr(Funs,[pointer|Stack],nontail,A),
 	       %% Write element to memory
-	       dup(2), aeb_opcodes:mnemonic(?MSTORE)]
+	       dup(2), i(?MSTORE)]
 	       %% And we leave a pointer to the last word written on
 	       %% the stack
 	      || A <- Rest]]
@@ -150,7 +151,7 @@ assemble_expr(Funs,Stack,_,{tuple,Cpts}) ->
     end;
 assemble_expr(_Funs,_Stack,_,{list,[]}) ->
     %% Use Erik's value of -1 for []
-    [push(0), aeb_opcodes:mnemonic(?NOT)];
+    [push(0), i(?NOT)];
 assemble_expr(Funs,Stack,_,{list,[A|B]}) ->
     assemble_expr(Funs,Stack,nontail,{tuple,[A,{list,B}]});
 assemble_expr(Funs,Stack,_,{unop,'!',A}) ->
@@ -159,7 +160,7 @@ assemble_expr(Funs,Stack,_,{unop,'!',A}) ->
 	    assemble_expr(Funs,Stack,nontail,{ifte,A,{integer,0},{integer,1}});
 	_ ->
 	    [assemble_expr(Funs,Stack,nontail,A),
-	     aeb_opcodes:mnemonic(?ISZERO)
+	     i(?ISZERO)
 	    ]
     end;
 assemble_expr(Funs,Stack,_,{unop,Op,A}) ->
@@ -200,9 +201,9 @@ assemble_expr(Funs,Stack,_,{lambda,Args,Body}) ->
      'JUMP',
      {'JUMPDEST',NoMatch}, %% dead code--raise an exception just in case
      push(0),
-     aeb_opcodes:mnemonic(?NOT),
-     aeb_opcodes:mnemonic(?MLOAD),
-     aeb_opcodes:mnemonic(?STOP),
+     i(?NOT),
+     i(?MLOAD),
+     i(?STOP),
      {'JUMPDEST',Continue}];
 assemble_expr(_,_,_,{label,Label}) ->
     {push_label,Label};
@@ -219,30 +220,30 @@ assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
     %% For unboxed types the encoding is simply the value.
 
       %% First assemble the value to be encoded. This may allocate memory.
-    [ assemble_expr(Funs,Stack,nontail,A),         %% [ value ]
-      %% Allocate space for the first word
-      aeb_opcodes:mnemonic(?MSIZE),                %% [ base value ]
-      push(0),                                     %% [ 0 base value ]
-      dup(2),                                      %% [ base 0 base value ]
-      aeb_opcodes:mnemonic(?MSTORE),               %% [ base value ]
+    [ assemble_expr(Funs,Stack,nontail,A), %% [ value ]
+                                           %% Allocate space for the first word
+      i(?MSIZE),                           %% [ base value ]
+      push(0),                             %% [ 0 base value ]
+      dup(2),                              %% [ base 0 base value ]
+      i(?MSTORE),                          %% [ base value ]
       %% Call the encoder function. This returns a relative pointer for boxed
       %% types, and `value` for unboxed types.
       assemble_expr(Funs,[{"base", "_"}, {"value", "_"} | Stack], nontail,
 	{funcall, {var_ref, encoder_name(TypeRep)},
-        [{var_ref, "base"}, {var_ref, "value"}]}), %% [ result base value ]
-      dup(2),                                      %% [ base result base value ]
-      aeb_opcodes:mnemonic(?MSTORE),               %% [ base value ]    Mem[base] := value
-      pop_args(1)];                                %% [ base ]
+        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value ]
+      dup(2),                                          %% [ base result base value ]
+      i(?MSTORE),                                      %% [ base value ]    Mem[base] := value
+      pop_args(1)];                                    %% [ base ]
 assemble_expr(Funs, Stack0, _Tail, {decode, TypeRep}) ->
     %% Inverse of encoding. Top of the stack should contain a pointer to the
     %% blob.
     [_ | Stack] = Stack0,
-    [ dup(1),                                           %% [ ptr ptr ]
-      aeb_opcodes:mnemonic(?MLOAD),                     %% [ value ptr ]
+    [ dup(1),                                          %% [ ptr ptr ]
+      i(?MLOAD),                                       %% [ value ptr ]
       assemble_expr(Funs, [{"value", "_"}, {"base", "_"} | Stack], nontail,
         {funcall, {var_ref, decoder_name(TypeRep)},
-            [{var_ref, "base"}, {var_ref, "value"}]}),  %% [ decoded value ptr ]
-      pop_args(2) ];                                    %% [ decoded ]
+            [{var_ref, "base"}, {var_ref, "value"}]}), %% [ decoded value ptr ]
+      pop_args(2) ];                                   %% [ decoded ]
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     Return = make_ref(),
     %% This is the obvious code:
@@ -291,7 +292,7 @@ assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
 	     assemble_function(Funs,[],Fun);
 	true ->
 	     %% need to unpack a closure
-	     [dup(1), aeb_opcodes:mnemonic(?MLOAD)]
+	     [dup(1), i(?MLOAD)]
      end,
      'JUMP'];
 assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
@@ -302,13 +303,13 @@ assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
     ThenL  = make_ref(),
     ElseL  = make_ref(),
     [assemble_decision(Funs,Stack,Decision,ThenL,ElseL),
-     {aeb_opcodes:mnemonic(?JUMPDEST),ElseL},
+     {i(?JUMPDEST),ElseL},
      assemble_expr(Funs,Stack,Tail,Else),
      {push_label,Close},
-     aeb_opcodes:mnemonic(?JUMP),
-     {aeb_opcodes:mnemonic(?JUMPDEST),ThenL},
+     i(?JUMP),
+     {i(?JUMPDEST),ThenL},
      assemble_expr(Funs,Stack,Tail,Then),
-     {aeb_opcodes:mnemonic(?JUMPDEST),Close}
+     {i(?JUMPDEST),Close}
     ];
 assemble_expr(Funs,Stack,Tail,{switch,A,Cases}) ->
     Close = make_ref(),
@@ -316,14 +317,14 @@ assemble_expr(Funs,Stack,Tail,{switch,A,Cases}) ->
      assemble_cases(Funs,Stack,Tail,Close,Cases),
      {'JUMPDEST',Close}];
 assemble_expr(_Funs, _Stack, _Tail, prim_contract_address) ->
-    [aeb_opcodes:mnemonic(?ADDRESS)];
+    [i(?ADDRESS)];
 assemble_expr(_Funs, _Stack, _Tail, prim_contract_balance) ->
-    [aeb_opcodes:mnemonic(?ADDRESS),
-     aeb_opcodes:mnemonic(?BALANCE)];
+    [i(?ADDRESS),
+     i(?BALANCE)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_caller) ->
-    [aeb_opcodes:mnemonic(?CALLER)];
+    [i(?CALLER)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_value) ->
-    [aeb_opcodes:mnemonic(?CALLVALUE)];
+    [i(?CALLVALUE)];
 assemble_expr(Funs, Stack, Tail,
               #prim_call_contract{ gas      = Gas
                                  , address  = To
@@ -345,13 +346,13 @@ assemble_expr(Funs, Stack, Tail,
     [ assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
     , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
             nontail, {encode, ArgT, Arg})     %%  IOffset To Gas Value
-    , aeb_opcodes:mnemonic(?MSIZE)            %%  OOffset IOffset To Gas Value
+    , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
     , dup(2), dup(2)                          %%  OOffset IOffset OOffset IOffset To Gas Value
-    , aeb_opcodes:mnemonic(?SUB)              %%  ISize OOffset IOffset To Gas Value
+    , i(?SUB)                                 %%  ISize OOffset IOffset To Gas Value
     , push(OSize)                             %%  OSize ISize OOffset IOffset To Gas Value
     , dup(3)                                  %%  OOffset OSize ISize OOffset IOffset To Gas Value
     , shuffle_stack([1, 2, 4, 3, 5, 7, 8, 6]) %%  Gas To Value IOffset ISize OOffset OSize OOffset
-    , aeb_opcodes:mnemonic(?CALL)             %%  Result OOffset
+    , i(?CALL)                                %%  Result OOffset
     , pop(1)                                  %%  OOffset         -- ignoring result for now
     , assemble_expr(Funs, [pointer | Stack], Tail, {decode, OutT})
                                               %%  ResultPtr
@@ -367,12 +368,12 @@ assemble_exprs(Funs,Stack,[E|Es]) ->
 assemble_decision(Funs,Stack,{binop,'&&',A,B},Then,Else) ->
     Label = make_ref(),
     [assemble_decision(Funs,Stack,A,Label,Else),
-     {aeb_opcodes:mnemonic(?JUMPDEST),Label},
+     {i(?JUMPDEST),Label},
      assemble_decision(Funs,Stack,B,Then,Else)];
 assemble_decision(Funs,Stack,{binop,'||',A,B},Then,Else) ->
     Label = make_ref(),
     [assemble_decision(Funs,Stack,A,Then,Label),
-     {aeb_opcodes:mnemonic(?JUMPDEST),Label},
+     {i(?JUMPDEST),Label},
      assemble_decision(Funs,Stack,B,Then,Else)];
 assemble_decision(Funs,Stack,{unop,'!',A},Then,Else) ->
     assemble_decision(Funs,Stack,A,Else,Then);
@@ -384,8 +385,8 @@ assemble_decision(Funs,Stack,{ifte,A,B,C},Then,Else) ->
      {?JUMPDEST,FalseL},assemble_decision(Funs,Stack,C,Then,Else)];
 assemble_decision(Funs,Stack,Decision,Then,Else) ->
     [assemble_expr(Funs,Stack,nontail,Decision),
-     {push_label,Then}, aeb_opcodes:mnemonic(?JUMPI),
-     {push_label,Else}, aeb_opcodes:mnemonic(?JUMP)].
+     {push_label,Then}, i(?JUMPI),
+     {push_label,Else}, i(?JUMP)].
 
 %% Entered with value to switch on on top of the stack
 %% Evaluate selected case, then jump to Close with result on the
@@ -394,11 +395,11 @@ assemble_cases(_Funs,_Stack,_Tail,_Close,[]) ->
     %% No match! What should be do? There's no real way to raise an
     %% exception, except consuming all the gas.
     %% There should not be enough gas to do this:
-    [push(1), aeb_opcodes:mnemonic(?NOT),
-     aeb_opcodes:mnemonic(?MLOAD),
+    [push(1), i(?NOT),
+     i(?MLOAD),
      %% now stop, so that jump optimizer realizes we will not fall
      %% through this code.
-     aeb_opcodes:mnemonic(?STOP)];
+     i(?STOP)];
 assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
     Succeed = make_ref(),
     Fail = make_ref(),
@@ -445,13 +446,13 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
 %% code.
 assemble_pattern(Succeed,Fail,{integer,N}) ->
     {[],[push(N),
-	 aeb_opcodes:mnemonic(?EQ),
+	 i(?EQ),
 	 {push_label,Succeed},
-	 aeb_opcodes:mnemonic(?JUMPI),
+	 i(?JUMPI),
 	 {push_label,Fail},
 	 'JUMP']};
 assemble_pattern(Succeed,_Fail,{var_ref,"_"}) ->
-    {[],[aeb_opcodes:mnemonic(?POP),{push_label,Succeed},'JUMP']};
+    {[],[i(?POP),{push_label,Succeed},'JUMP']};
 assemble_pattern(Succeed,Fail,{missing_field,_,_}) ->
     %% Missing record fields are quite ok in patterns.
     assemble_pattern(Succeed,Fail,{var_ref,"_"});
@@ -465,7 +466,7 @@ assemble_pattern(Succeed,Fail,{tuple,[A]}) ->
     %% Treat this case specially, because we don't need to save the
     %% pointer to the tuple.
     {AVars,ACode} = assemble_pattern(Succeed,Fail,A),
-    {AVars,[aeb_opcodes:mnemonic(?MLOAD),
+    {AVars,[i(?MLOAD),
 	    ACode]};
 assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
     %% Entered with the address of the tuple on the top of the
@@ -480,13 +481,13 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
     {BVars++reorder_vars(AVars),
      [%% duplicate the pointer so we don't lose it when we match on A
       dup(1),
-      aeb_opcodes:mnemonic(?MLOAD),
+      i(?MLOAD),
       ACode,
       {'JUMPDEST',Continue},
       %% Bring the pointer to the top of the stack--this reorders AVars!
       swap(length(AVars)),
       push(32),
-      aeb_opcodes:mnemonic(?ADD),
+      i(?ADD),
       BCode,
       case AVars of
 	  [] ->
@@ -501,9 +502,9 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
 assemble_pattern(Succeed,Fail,{list,[]}) ->
     %% [] is represented by -1.
     {[],[push(1),
-	 aeb_opcodes:mnemonic(?ADD),
+	 i(?ADD),
 	 {push_label,Fail},
-	 aeb_opcodes:mnemonic(?JUMPI),
+	 i(?JUMPI),
 	 {push_label,Succeed},
 	 'JUMP']};
 assemble_pattern(Succeed,Fail,{list,[A|B]}) ->
@@ -512,8 +513,8 @@ assemble_pattern(Succeed,Fail,{binop,'::',A,B}) ->
     %% Make sure it's not [], then match as tuple.
     NotNil = make_ref(),
     {Vars,Code} = assemble_pattern(Succeed,Fail,{tuple,[A,B]}),
-    {Vars,[dup(1),push(1),aeb_opcodes:mnemonic(?ADD),
-	   {push_label,NotNil},aeb_opcodes:mnemonic(?JUMPI),
+    {Vars,[dup(1),push(1),i(?ADD),
+	   {push_label,NotNil},i(?JUMPI),
 	   {push_label,Fail},'JUMP',
 	   {'JUMPDEST',NotNil},
 	   Code]}.
@@ -526,25 +527,25 @@ reorder_vars([]) ->
 reorder_vars([V|Vs]) ->
     Vs++[V].
 
-assemble_prefix('-') -> [push(0),aeb_opcodes:mnemonic(?SUB)];
-assemble_prefix('bnot') -> aeb_opcodes:mnemonic(?NOT).
+assemble_prefix('-') -> [push(0),i(?SUB)];
+assemble_prefix('bnot') -> i(?NOT).
 
-assemble_infix('+') -> aeb_opcodes:mnemonic(?ADD);
-assemble_infix('-') -> aeb_opcodes:mnemonic(?SUB);
-assemble_infix('*') -> aeb_opcodes:mnemonic(?MUL);
-assemble_infix('/') -> aeb_opcodes:mnemonic(?SDIV);
-assemble_infix('bor') -> aeb_opcodes:mnemonic(?OR);
-assemble_infix('band') -> aeb_opcodes:mnemonic(?AND);
-assemble_infix('bxor') -> aeb_opcodes:mnemonic(?XOR);
-assemble_infix('<') -> aeb_opcodes:mnemonic(?SLT);    %% comparisons are SIGNED
-assemble_infix('>') -> aeb_opcodes:mnemonic(?SGT);
-assemble_infix('==') -> aeb_opcodes:mnemonic(?EQ);
-assemble_infix('<=') -> [aeb_opcodes:mnemonic(?SGT),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('=<') -> [aeb_opcodes:mnemonic(?SGT),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('>=') -> [aeb_opcodes:mnemonic(?SLT),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('!=') -> [aeb_opcodes:mnemonic(?EQ),aeb_opcodes:mnemonic(?ISZERO)];
-assemble_infix('!') -> [aeb_opcodes:mnemonic(?ADD),aeb_opcodes:mnemonic(?MLOAD)].
-%% assemble_infix('::') -> [aeb_opcodes:mnemonic(?MSIZE), write_word(0), write_word(1)].
+assemble_infix('+') -> i(?ADD);
+assemble_infix('-') -> i(?SUB);
+assemble_infix('*') -> i(?MUL);
+assemble_infix('/') -> i(?SDIV);
+assemble_infix('bor') -> i(?OR);
+assemble_infix('band') -> i(?AND);
+assemble_infix('bxor') -> i(?XOR);
+assemble_infix('<') -> i(?SLT);    %% comparisons are SIGNED
+assemble_infix('>') -> i(?SGT);
+assemble_infix('==') -> i(?EQ);
+assemble_infix('<=') -> [i(?SGT),i(?ISZERO)];
+assemble_infix('=<') -> [i(?SGT),i(?ISZERO)];
+assemble_infix('>=') -> [i(?SLT),i(?ISZERO)];
+assemble_infix('!=') -> [i(?EQ),i(?ISZERO)];
+assemble_infix('!') -> [i(?ADD),i(?MLOAD)].
+%% assemble_infix('::') -> [i(?MSIZE), write_word(0), write_word(1)].
 
 %% a function may either refer to a top-level function, in which case
 %% we fetch the code label from Funs, or it may be a lambda-expression
@@ -561,7 +562,7 @@ assemble_function(Funs,Stack,Fun) ->
 	false ->
 	    [assemble_expr(Funs,Stack,nontail,Fun),
 	     dup(1),
-	     aeb_opcodes:mnemonic(?MLOAD)]
+	     i(?MLOAD)]
     end.
 
 free_vars(V={var_ref,_}) ->
@@ -750,7 +751,7 @@ make_copymem() ->
 shuffle_stack([]) ->
     [];
 shuffle_stack([discard|Stack]) ->
-    [aeb_opcodes:mnemonic(?POP) | shuffle_stack(Stack)];
+    [i(?POP) | shuffle_stack(Stack)];
 shuffle_stack([N|Stack]) ->
     case length(Stack)+1 - N of
 	0 ->
@@ -798,12 +799,12 @@ lookup_var(_,Id,[]) ->
 %% to save the top elements of the stack in memory, duplicate the
 %% targetted element, and then repush the values from memory.
 dup(N) when 1=<N, N=<16 ->
-    aeb_opcodes:mnemonic(?DUP1 + N-1).
+    i(?DUP1 + N-1).
 
 push(N) ->
     Bytes = binary:encode_unsigned(N),
     true = size(Bytes) =< 32,
-    [aeb_opcodes:mnemonic(?PUSH1 + size(Bytes)-1) |
+    [i(?PUSH1 + size(Bytes)-1) |
      binary_to_list(Bytes)].
 
 %% Pop N values from UNDER the top element of the stack.
@@ -816,13 +817,13 @@ pop_args(N) ->
 %%    [swap(N),pop(N)].
 
 pop(N) ->
-    [aeb_opcodes:mnemonic(?POP) || _ <- lists:seq(1,N)].
+    [i(?POP) || _ <- lists:seq(1,N)].
 
 swap(0) ->
     %% Doesn't exist, but is logically a no-op.
     [];
 swap(N) when 1=<N, N=<16 ->
-    aeb_opcodes:mnemonic(?SWAP1 + N-1).
+    i(?SWAP1 + N-1).
 
 %% Stack: <N elements> ADDR
 %% Write elements at addresses ADDR, ADDR+32, ADDR+64...
@@ -837,9 +838,9 @@ swap(N) when 1=<N, N=<16 ->
 %%        dup(2),
 %%        %% Stack: elements ADDR e ADDR
 %%        push(32*I),
-%%        aeb_opcodes:mnemonic(?ADD),
+%%        i(?ADD),
 %%        %% Stack: elements ADDR e ADDR+32I
-%%        aeb_opcodes:mnemonic(?MSTORE)].
+%%        i(?MSTORE)].
 
 %% Resolve references, and convert code from deep list to flat list.
 %% List elements are:
@@ -880,7 +881,7 @@ use_labels(Labels,{push_label,Ref}) ->
 	undefined ->
 	    error({undefined_label,Ref});
 	Addr when is_integer(Addr) ->
-	    [aeb_opcodes:mnemonic(?PUSH3),
+	    [i(?PUSH3),
 	     Addr div 65536,(Addr div 256) rem 256, Addr rem 256]
     end;
 use_labels(_,{pop_args,N}) ->
