@@ -36,7 +36,7 @@ websocket_init(Params) ->
                        [Err, Params]),
             {stop, undefined};
         {Handler, ChannelOpts} ->
-            lager:info("Starting Channel WS with params ~p", [Params]),
+            lager:debug("Starting Channel WS with params ~p", [Params]),
             {ok, FsmPid} = start_link_fsm(Handler, ChannelOpts),
             {ok, Handler#handler{fsm_pid = FsmPid}}
     end.
@@ -152,15 +152,14 @@ set_field(H, port, Val) -> H#handler{port = Val}.
 
 -spec read_param(binary(), atom(), map()) -> fun((map()) -> {ok, term()} |
                                                             not_set |
-                                                            {error, atom()}).
+                                                            {error, {atom(), atom()}}).
 read_param(ParamName, RecordField, Options) ->
     fun(Params) ->
-        Mandatorary = maps:get(mandatorary, Options, true),
+        Mandatory = maps:get(mandatory, Options, true),
         case maps:get(ParamName, Params) of
-            undefined when Mandatorary ->
-                ErrAtom = list_to_atom(atom_to_list(RecordField) ++ "_missing"),
-                {error, ErrAtom};
-            undefined when not Mandatorary ->
+            undefined when Mandatory ->
+                {error, {RecordField, missing}};
+            undefined when not Mandatory ->
                 not_set;
             Val0 ->
                 Type = maps:get(type, Options, binary),
@@ -173,9 +172,7 @@ read_param(ParamName, RecordField, Options) ->
                                 case lists:member(Val, AllowedVals) of
                                     true -> {ok, Val};
                                     false ->
-                                        ErrAtom = list_to_atom("invalid_" ++
-                                                               atom_to_list(RecordField)),
-                                        {error, ErrAtom}
+                                        {error, {RecordField, invalid}}
                                 end
                         end
                 end
@@ -193,8 +190,7 @@ parse_by_type(integer, V, _) when is_binary(V) ->
 parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
     case aec_base58c:safe_decode(Type, V) of
         {error, _} ->
-            ErrAtom = list_to_atom("encoding_" ++ atom_to_list(RecordField)),
-            {error, ErrAtom};
+            {error, {RecordField, broken_encoding}};
         {ok, _} = OK -> OK
     end.
 
@@ -253,7 +249,7 @@ prepare_handler(Params) ->
                 {ok, JobId} ->
                     H#handler{job_id = JobId};
                 {error, _} ->
-                    {error, too_much_ws_sockets}
+                    {error, too_many_ws_sockets}
             end
         end,
         Read(<<"role">>, role, #{type => atom,
