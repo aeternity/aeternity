@@ -19,6 +19,11 @@ EUNIT_TEST_FLAGS += --module=$(TEST)
 unexport TEST
 endif
 
+ifdef VERBOSE
+CT_TEST_FLAGS += --verbose
+unexport VERBOSE
+endif
+
 PYTHON_DIR = py
 PYTHON_TESTS = $(PYTHON_DIR)/tests
 PIP = $(PYTHON_BIN)/pip
