@@ -142,7 +142,11 @@ dump_words(<<N:256, W:32/binary, Rest/binary>>, Acc) when N < 32 ->
     NotN = (32 - N) * 8,
     case W of
         <<S:N/binary, 0:NotN>> ->
-            dump_words(Rest, [binary_to_list(S), N | Acc]);
+            Str = binary_to_list(S),
+            case lists:member(0, Str) of
+                true  -> dump_words(<<W/binary, Rest/binary>>, [N | Acc]);   %% Not a string
+                false -> dump_words(Rest, [binary_to_list(S), N | Acc])
+            end;
         _ -> dump_words(<<W/binary, Rest/binary>>, [N | Acc])
     end;
 dump_words(<<N:256/signed, Rest/binary>>, Acc) ->
