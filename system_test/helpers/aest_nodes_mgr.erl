@@ -13,7 +13,8 @@
 
 %% API
 -export([start/2, stop/0]).
--export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2]).
+-export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
+         get_service_address/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -59,6 +60,9 @@ start_node(NodeName) ->
 
 stop_node(NodeName, Timeout) ->
     gen_server:call(?SERVER, {stop_node, NodeName, Timeout}).
+
+get_service_address(NodeName, Service) ->
+    gen_server:call(?SERVER, {get_service_address, NodeName, Service}).
 
 %=== BEHAVIOUR GEN_SERVER CALLBACK FUNCTIONS ===================================
 
