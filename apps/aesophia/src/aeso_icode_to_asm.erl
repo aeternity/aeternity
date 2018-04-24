@@ -599,6 +599,7 @@ all_type_reps([TR|InSource], Found) ->
         false ->
             Nested = case TR of
                          {tuple, TRs} -> TRs;
+                         {list, T}    -> [T];
                          _            -> []
                      end,
             all_type_reps(Nested ++ InSource, [TR|Found])
