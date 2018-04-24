@@ -192,11 +192,11 @@ ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
 ast_typerep({tuple_t,_,Cpts}) ->
-    #tuple{cpts = [ast_typerep(C) || C<-Cpts]};
+    {tuple, [ast_typerep(C) || C<-Cpts]};
 ast_typerep({record_t,Fields}) ->
-    #tuple{cpts = [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
+    {tuple, [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
-    #list{elems=[ast_typerep(Elem)]}; %% Reusing value-level lists
+    {list, ast_typerep(Elem)};
 ast_typerep({fun_t,_,_,_}) ->
     function.
 
