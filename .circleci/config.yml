@@ -482,6 +482,8 @@ workflows:
           requires:
             - build
 
+      - aevm_tests: {}
+
       - static_analysis:
           requires:
             - build
