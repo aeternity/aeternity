@@ -2924,10 +2924,9 @@ sc_ws_open(_Config) ->
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
     ok = ?WS:register_test_for_channel_event(RConnPid, sign),
     %% initiator gets to sign a create_tx
-    SignCreateTx =
+    SignTx =
         fun(ConnPid, Privkey, Action) ->
             {ok, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
-            ok = ?WS:unregister_test_for_channel_event(ConnPid, sign),
             {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
             CreateTx = aetx:deserialize_from_binary(CreateBinTx),
             SignedCreateTx = aetx_sign:sign(CreateTx, Privkey),
@@ -2936,9 +2935,9 @@ sc_ws_open(_Config) ->
             ?WS:send(ConnPid, Action, #{tx => EncSignedCreateTx}),
             CreateTx
         end,
-    CrTx = SignCreateTx(IConnPid, IPrivkey, initiator_signed),
+    CrTx = SignTx(IConnPid, IPrivkey, initiator_signed),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    CrTx = SignCreateTx(RConnPid, RPrivkey, responder_signed),
+    CrTx = SignTx(RConnPid, RPrivkey, responder_signed),
     {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
@@ -2972,6 +2971,15 @@ sc_ws_open(_Config) ->
 
     {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
     {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    SignTx(IConnPid, IPrivkey, update),
+
+    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    SignTx(RConnPid, RPrivkey, update_ack),
+
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.

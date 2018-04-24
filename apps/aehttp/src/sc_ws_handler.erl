@@ -198,11 +198,15 @@ parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
 process_incoming(#{<<"action">> := ActorSigned,
                    <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
     when ActorSigned =:= <<"initiator_signed">> orelse
-         ActorSigned =:= <<"responder_signed">> ->
+         ActorSigned =:= <<"responder_signed">> orelse
+         ActorSigned =:= <<"update">> orelse
+         ActorSigned =:= <<"update_ack">>  ->
     Tag =
         case ActorSigned of
             <<"initiator_signed">> -> create_tx;
-            <<"responder_signed">> -> funding_created
+            <<"responder_signed">> -> funding_created;
+            <<"update">> -> update;
+            <<"update_ack">> -> update_ack
         end,
     case aec_base58c:safe_decode(transaction, EncodedTx) of
         {error, _} ->
@@ -224,10 +228,10 @@ process_incoming(Msg, _State) ->
 process_fsm({info, Event}) ->
     {reply, #{action => <<"info">>,
               payload => #{event => Event}}};
-process_fsm({sign, update, _Tx}) -> %%TODO: send state for signing
-    no_reply;
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
-                           orelse Tag =:= funding_created ->
+                           orelse Tag =:= funding_created
+                           orelse Tag =:= update
+                           orelse Tag =:= update_ack ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
     {reply, #{action => <<"sign">>,
               payload => #{tx => EncTx}}}.
