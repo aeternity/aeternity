@@ -44,38 +44,36 @@ infer_contract(Defs) ->
 
 %% infer_contract takes a proplist mapping global names to types, and
 %% a list of definitions.
-infer_contract(Env, [Def={type_def, _, _, _, _}|Rest]) ->
+infer_contract(Env, Defs) ->
+    Kind = fun({type_def, _, _, _, _})  -> type;
+              ({letfun, _, _, _, _, _}) -> function;
+              ({fun_decl, _, _, _})     -> prototype
+           end,
+    Get = fun(K) -> [ Def || Def <- Defs, Kind(Def) == K ] end,
     %% TODO: handle type defs
-    [Def|infer_contract(Env, Rest)];
-infer_contract(Env, [Fun={letfun, _, _, _, _, _}|Rest]) ->
-    {TypeSig, NewFun} = infer_nonrec(Env, Fun),
-    [NewFun|infer_contract([TypeSig|Env], Rest)];
-infer_contract(Env, [Rec={letrec, _, _}|Rest]) ->
-    {TypeSigs, NewRec} = infer_letrec(Env, Rec),
-    [NewRec|infer_contract(TypeSigs ++ Env, Rest)];
-infer_contract(Env, [Fun={fun_decl, _, _, _} | Rest]) ->
-    TypeSig = check_fundecl(Env, Fun),
-    infer_contract([TypeSig | Env], Rest);
-infer_contract(_, []) ->
-    [].
+    TypeDefs   = Get(type),
+    ProtoSigs = [ check_fundecl(Env, Decl) || Decl <- Get(prototype) ],
+    Env1      = ProtoSigs ++ Env,
+    {_, {letrec, _, Funs}} = infer_letrec(Env1, {letrec, [], Get(function)}),
+    TypeDefs ++ Funs.
 
 check_fundecl(_Env, {fun_decl, _Attrib, {id, _NameAttrib, Name}, {fun_t, _, Args, Ret}}) ->
     {Name, {type_sig, Args, Ret}};  %% TODO: actually check that the type makes sense!
 check_fundecl(_, {fun_decl, _Attrib, {id, _, Name}, Type}) ->
     error({fundecl_must_have_funtype, Name, Type}).
 
-infer_nonrec(Env, LetFun) ->
-    ets:new(type_vars, [set, named_table, public]),
-    create_unification_errors(),
-    create_field_constraints(),
-    NewLetFun = infer_letfun(Env, LetFun),
-    solve_field_constraints(),
-    Result = {TypeSig, _} = instantiate(NewLetFun),
-    destroy_and_report_unification_errors(),
-    destroy_field_constraints(),
-    ets:delete(type_vars),
-    print_typesig(TypeSig),
-    Result.
+%% infer_nonrec(Env, LetFun) ->
+%%     ets:new(type_vars, [set, named_table, public]),
+%%     create_unification_errors(),
+%%     create_field_constraints(),
+%%     NewLetFun = infer_letfun(Env, LetFun),
+%%     solve_field_constraints(),
+%%     Result = {TypeSig, _} = instantiate(NewLetFun),
+%%     destroy_and_report_unification_errors(),
+%%     destroy_field_constraints(),
+%%     ets:delete(type_vars),
+%%     print_typesig(TypeSig),
+%%     Result.
 
 infer_letrec(Env, {letrec, Attrs, Defs}) ->
     ets:new(type_vars, [set, named_table, public]),
@@ -250,6 +248,12 @@ infer_block(_Env, Attrs, [], BlockType) ->
     %% DANG! A block with no value. Interpret it as unit.
     unify({tuple_t, Attrs, []}, BlockType),
     [];
+infer_block(Env, Attrs, [Def={letfun, _, _, _, _, _}|Rest], BlockType) ->
+    NewDef = infer_letfun(Env, Def),
+    [NewDef|infer_block(Env, Attrs, Rest, BlockType)];
+infer_block(Env, Attrs, [Def={letrec, _, _}|Rest], BlockType) ->
+    NewDef = infer_letrec(Env, Def),
+    [NewDef|infer_block(Env, Attrs, Rest, BlockType)];
 infer_block(Env, _, [{letval, Attrs, Pattern, Type, E}|Rest], BlockType) ->
     NewE = {typed, _, _, PatType} = infer_expr(Env, {typed, Attrs, E, arg_type(Type)}),
     {'case', _, NewPattern, {typed, _, {block, _, NewRest}, _}} =
