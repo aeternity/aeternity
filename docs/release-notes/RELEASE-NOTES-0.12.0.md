@@ -4,6 +4,7 @@
 It:
 * Regulate the maximum number of concurrent connections (`sync` > `max_connections`) and the number of processes accepting connections (`sync` > `acceptors`).
 * Expose more configuration previously hard-coded, (`sync` > `connect_timeout`), (`sync` > `first_ping_timeout`) and (`sync` > `noise_hs_timeout`).
+* Improve the chain representation by keeping track of fork points. It reduces the need for block-by-block traversals, which in turn speeds up many chain operations. This impacts the persisted DB.
 * Introduce database table versions and a startup check to handle old versions.
 * Does this;
 * Does that;
