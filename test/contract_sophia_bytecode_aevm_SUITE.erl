@@ -89,17 +89,17 @@ successful_call(Contract, Type, Fun, Args, Env, Options) ->
             exit({error, Err})
     end.
 
-failing_call(Contract, Fun, Args, Env) ->
-    failing_call(Contract, Fun, Args, Env, #{}).
+%% failing_call(Contract, Fun, Args, Env) ->
+%%     failing_call(Contract, Fun, Args, Env, #{}).
 
-failing_call(Contract, Fun, Args, Env, Options) ->
-    case make_call(Contract, Fun, Args, Env, Options) of
-        {ok, Result, _} ->
-            Words = aeso_test_utils:dump_words(Result),
-            exit({expected_failure, {ok, Words}});
-        {error, Err, _} ->
-            Err
-    end.
+%% failing_call(Contract, Fun, Args, Env, Options) ->
+%%     case make_call(Contract, Fun, Args, Env, Options) of
+%%         {ok, Result, _} ->
+%%             Words = aeso_test_utils:dump_words(Result),
+%%             exit({expected_failure, {ok, Words}});
+%%         {error, Err, _} ->
+%%             Err
+%%     end.
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
