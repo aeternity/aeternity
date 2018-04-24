@@ -100,6 +100,8 @@ init([]) ->
 
     [aec_peers:block_peer(P) || P <- BlockedPeers],
     aec_peers:add_and_ping_peers(Peers, true),
+
+    erlang:process_flag(trap_exit, true),
     {ok, #state{}}.
 
 handle_call({sync_in_progress, PeerId}, _, State) ->
@@ -154,14 +156,14 @@ handle_cast({start_sync, PeerId, RemoteHash, _RemoteDifficulty}, State) ->
     run_job(sync_task_workers, fun() -> do_start_sync(PeerId, RemoteHash) end),
     {noreply, State};
 handle_cast({fetch_mempool, PeerId}, State) ->
-    run_job(mempool_workers, fun() -> do_fetch_mempool(PeerId) end),
+    run_job(sync_mempool_workers, fun() -> do_fetch_mempool(PeerId) end),
     {noreply, State};
 handle_cast({schedule_ping, PeerId}, State) ->
     case peer_in_sync(State, PeerId) of
         true ->
             ok;
         false ->
-            run_job(ping_workers, fun() -> ping_peer(PeerId) end)
+            run_job(sync_ping_workers, fun() -> ping_peer(PeerId) end)
     end,
     {noreply, State};
 handle_cast({handle_worker, STId, Action}, State) ->
@@ -188,7 +190,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
         _             -> ignore
     end,
     {noreply, State};
-handle_info({'DOWN', _Ref, process, Pid, Reason}, State) ->
+handle_info({'EXIT', Pid, Reason}, State) ->
     %% It might be one of our syncing workers that crashed
     if Reason =/= normal -> lager:info("worker stopped with reason: ~p", [Reason]);
        true -> ok
@@ -341,7 +343,7 @@ do_handle_worker({new_worker, PeerId, Pid}, ST = #sync_task{ workers = Ws }) ->
         false    -> ok;
         {_, Old} -> lager:info("Peer ~p already has a worker (~p)", [ppp(PeerId), Old])
     end,
-    erlang:monitor(process, Pid),
+    erlang:link(Pid),
     lager:debug("New worker ~p for peer ~p", [Pid, ppp(PeerId)]),
     ST#sync_task{ workers = lists:keystore(PeerId, 1, Ws, {PeerId, Pid}) };
 do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ workers = Ws }) ->
@@ -353,8 +355,10 @@ do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ worke
         {_, AnotherPid} ->
             lager:info("Wrong worker stored for peer ~p (~p)", [ppp(PeerId), AnotherPid])
     end,
-    erlang:monitor(process, NewPid),
-    erlang:demonitor(OldPid, [flush]),
+    erlang:link(NewPid),
+    %% The old worker will terminate right after the call to handle_worker so we can safely
+    %% unlink it.
+    erlang:unlink(OldPid),
     lager:debug("Update worker ~p (was ~p) for peer ~p", [NewPid, OldPid, ppp(PeerId)]),
     ST#sync_task{ workers = lists:keystore(PeerId, 1, Ws, {PeerId, NewPid}) }.
 
@@ -389,10 +393,10 @@ enqueue(Kind, Data, PeerIds) ->
     spawn(fun() ->
     case Kind of
         block ->
-            [ jobs:run(gossip_workers, fun() -> do_forward_block(Data, PId) end)
+            [ jobs:run(sync_gossip_workers, fun() -> do_forward_block(Data, PId) end)
               || PId <- PeerIds ];
         tx ->
-            [ jobs:run(gossip_workers, fun() -> do_forward_tx(Data, PId) end)
+            [ jobs:run(sync_gossip_workers, fun() -> do_forward_tx(Data, PId) end)
               || PId <- PeerIds ]
     end end).
 
