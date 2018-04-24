@@ -158,8 +158,8 @@ system-test:
 	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg $(CT_TEST_FLAGS)
 
 system-test-deps: | system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar
-	docker pull aeternity/epoch:v0.11.0
 	docker pull aeternity/epoch:v0.11.1
+	$(info The downloaded DB backup is not checked for freshness.)
 
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup
 	tar -c -C $(<D) -f $@ $(<F)
@@ -167,8 +167,11 @@ system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz
 	zcat <$< >$@
 
+TESTNET_DB_BACKUP_FILE = mnesia_54.202.11.197_uat_db_backup_1524096130.gz
+TESTNET_DB_BACKUP_BASE_URL = https://8271-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp
+
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz:
-	curl -fsS --create-dirs -o $@ https://7305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp/mnesia_ip-172-31-36-149_db_backup_1523491249.gz
+	curl -fsS --create-dirs -o $@ $(TESTNET_DB_BACKUP_BASE_URL)/$(TESTNET_DB_BACKUP_FILE)
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
