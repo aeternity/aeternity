@@ -5,15 +5,18 @@ CT_TEST_FLAGS =
 EUNIT_TEST_FLAGS =
 ifdef SUITE
 CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
+unexport SUITE
 endif
 
 ifdef GROUP
 CT_TEST_FLAGS += --group=$(GROUP)
+unexport GROUP
 endif
 
 ifdef TEST
 CT_TEST_FLAGS += --case=$(TEST)
 EUNIT_TEST_FLAGS += --module=$(TEST)
+unexport TEST
 endif
 
 PYTHON_DIR = py
