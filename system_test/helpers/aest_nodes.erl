@@ -22,6 +22,7 @@
 -export([connect_node/3]).
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
+-export([get_node_pubkey/2]).
 -export([http_get/5]).
 -export([http_post/7]).
 
@@ -77,7 +78,14 @@
     % Public/private peer key can be specified explicity for the node.
     % Both are required and will be saved, overriding any present keys.
     pubkey => binary(),
-    privkey => binary()
+    privkey => binary(),
+    mine_rate => default | pos_integer(),
+    cuckoo_miner => default | #{ex := binary(),
+                                args := binary(),
+                                bits := pos_integer()},
+    % Consensus protocols (version -> height)
+    hard_forks => #{non_neg_integer() => non_neg_integer()},
+    debug => boolean()
 }.
 
 %=== COMMON TEST API FUNCTIONS =================================================
@@ -139,15 +147,19 @@ setup_nodes(NodeSpecs, Ctx) ->
     call(ctx2pid(Ctx), {setup_nodes, NodeSpecs}).
 
 %% @doc Starts a node previously setup.
--spec start_node(atom(), test_ctx()) -> ok.
-start_node(NodeName, Ctx) ->
-    call(ctx2pid(Ctx), {start_node, NodeName}).
+-spec start_node(atom() | [atom()], test_ctx()) -> ok.
+start_node(NodeName, Ctx) when is_atom(NodeName) ->
+    start_node([NodeName], Ctx);
+start_node(NodeNames, Ctx) when is_list(NodeNames) ->
+    call(ctx2pid(Ctx), {start_nodes, NodeNames}).
 
 %% @doc Stops a node previously started with explicit timeout (in seconds)
 %% after which the node will be killed.
--spec stop_node(atom(), seconds() | infinity, test_ctx()) -> ok.
-stop_node(NodeName, Timeout, Ctx) ->
-    call(ctx2pid(Ctx), {stop_node, NodeName, Timeout}).
+-spec stop_node(atom() | [atom()], seconds() | infinity, test_ctx()) -> ok.
+stop_node(NodeName, Timeout, Ctx) when is_atom(NodeName) ->
+    stop_node([NodeName], Timeout, Ctx);
+stop_node(NodeNames, Timeout, Ctx) when is_list(NodeNames) ->
+    call(ctx2pid(Ctx), {stop_node, NodeNames, Timeout}).
 
 %% @doc Kills a node.
 -spec kill_node(atom(), test_ctx()) -> ok.
@@ -174,6 +186,10 @@ disconnect_node(NodeName, NetName, Ctx) ->
 -spec get_service_address(atom(), node_service(), test_ctx()) -> binary().
 get_service_address(NodeName, Service, Ctx) ->
     call(ctx2pid(Ctx), {get_service_address, NodeName, Service}).
+
+-spec get_node_pubkey(atom(), test_ctx()) -> binary().
+get_node_pubkey(NodeName, Ctx) ->
+    call(ctx2pid(Ctx), {get_node_pubkey, NodeName}).
 
 %% @doc Performs and HTTP get on a node service (ext_http or int_http).
 -spec http_get(atom(), ext_http | int_http, http_path(), http_query(), test_ctx()) ->
@@ -267,12 +283,14 @@ handle_call(Request, From, State) ->
 
 handlex({get_service_address, NodeName, Service}, _From, State) ->
     {reply, mgr_get_service_address(NodeName, Service, State), State};
+handlex({get_node_pubkey, NodeName}, _From, State) ->
+    {reply, mgr_get_node_pubkey(NodeName, State), State};
 handlex({setup_nodes, NodeSpecs}, _From, State) ->
     {reply, ok, mgr_setup_nodes(NodeSpecs, State)};
-handlex({start_node, NodeName}, _From, State) ->
-    {reply, ok, mgr_start_node(NodeName, State)};
-handlex({stop_node, NodeName, Timeout}, _From, State) ->
-    {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
+handlex({start_nodes, NodeNames}, _From, State) ->
+    {reply, ok, mgr_start_nodes(NodeNames, State)};
+handlex({stop_nodes, NodeNames, Timeout}, _From, State) ->
+    {reply, ok, mgr_stop_nodes(NodeNames, Timeout, State)};
 handlex({kill_node, NodeName}, _From, State) ->
     {reply, ok, mgr_kill_node(NodeName, State)};
 handlex({extract_archive, NodeName, Path, Archive}, _From, State) ->
@@ -449,6 +467,10 @@ mgr_get_service_address(NodeName, Service, #{nodes := Nodes}) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     Mod:get_service_address(Service, NodeState).
 
+mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    Mod:get_node_pubkey(NodeState).
+
 mgr_setup_nodes(NodeSpecs, State) ->
     NodeSpecs2 = mgr_prepare_specs(NodeSpecs, State),
     lists:foldl(fun mgr_setup_node/2, State, NodeSpecs2).
@@ -459,16 +481,22 @@ mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, State) ->
     NodeState = Mod:setup_node(NodeSpec, BackendState),
     State#{nodes := Nodes#{Name => {Mod, NodeState}}}.
 
-mgr_start_node(NodeName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:start_node(NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
+mgr_start_nodes(NodeNames, State0) ->
+    lists:foldl(fun(NodeName, State) ->
+        #{nodes := Nodes} = State,
+        #{NodeName := {Mod, NodeState}} = Nodes,
+        NodeState2 = Mod:start_node(NodeState),
+        State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}
+    end, State0, NodeNames).
 
-mgr_stop_node(NodeName, Timeout, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    Opts = #{soft_timeout => Timeout},
-    NodeState2 = Mod:stop_node(NodeState, Opts),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
+mgr_stop_nodes(NodeNames, Timeout, State0) ->
+    lists:foldl(fun(NodeName, State) ->
+        #{nodes := Nodes} = State,
+        #{NodeName := {Mod, NodeState}} = Nodes,
+        Opts = #{soft_timeout => Timeout},
+        NodeState2 = Mod:stop_node(NodeState, Opts),
+        State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}
+    end, State0, NodeNames).
 
 mgr_kill_node(NodeName, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
