@@ -26,12 +26,13 @@ convert(#{ contract_name := _ContractName
 		     || {FName,Args,_,TypeRep} <- Functions]},
 		   word},
     %% Find the type-reps we need encoders for
-    TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions] ++
-                             remote_call_type_reps(Functions)),
-    io:format("TypeReps: ~p\n", [TypeReps]),
+    {InTypes, OutTypes} = remote_call_type_reps(Functions),
+    TypeReps = all_type_reps([TypeRep || {_,_,_,TypeRep} <- Functions] ++ InTypes),
+    OutTypeReps = all_type_reps(OutTypes),
     Encoders = [make_encoder(T) || T <- TypeReps],
+    Decoders = [make_decoder(T) || T <- OutTypeReps],
     Library = [make_copymem()],
-    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Library,
+    NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Decoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
     	    || {Name, Args, _Body, _Type} <- NewFunctions],
@@ -232,6 +233,16 @@ assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
       dup(2),                                      %% [ base result base value ]
       aeb_opcodes:mnemonic(?MSTORE),               %% [ base value ]    Mem[base] := value
       pop_args(1)];                                %% [ base ]
+assemble_expr(Funs, Stack0, _Tail, {decode, TypeRep}) ->
+    %% Inverse of encoding. Top of the stack should contain a pointer to the
+    %% blob.
+    [_ | Stack] = Stack0,
+    [ dup(1),                                           %% [ ptr ptr ]
+      aeb_opcodes:mnemonic(?MLOAD),                     %% [ value ptr ]
+      assemble_expr(Funs, [{"value", "_"}, {"base", "_"} | Stack], nontail,
+        {funcall, {var_ref, decoder_name(TypeRep)},
+            [{var_ref, "base"}, {var_ref, "value"}]}),  %% [ decoded value ptr ]
+      pop_args(2) ];                                    %% [ decoded ]
 assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     Return = make_ref(),
     %% This is the obvious code:
@@ -274,7 +285,7 @@ assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
     %% Copy arguments back down the stack to the start of the frame
     ShuffleSpec = lists:seq(length(ArgsAndFun),1,-1)++[discard || _ <- Stack],
     Shuffle = shuffle_stack(ShuffleSpec),
-    X=[ComputeArgsAndFun,Shuffle,
+    [ComputeArgsAndFun,Shuffle,
      if IsTopLevel ->
 	     %% still need to compute function
 	     assemble_function(Funs,[],Fun);
@@ -282,12 +293,7 @@ assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
 	     %% need to unpack a closure
 	     [dup(1), aeb_opcodes:mnemonic(?MLOAD)]
      end,
-     'JUMP'],
-    io:format("Compiling ~p\n"
-	      " in stack ~p\n"
-	      "       to ~p\n",
-	      [{funcall,Fun,Args},Stack,lists:flatten(X)]),
-    X;
+     'JUMP'];
 assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
     %% This compilation scheme introduces a lot of labels and
     %% jumps. Unnecessary ones are removed later in
@@ -318,7 +324,7 @@ assemble_expr(_Funs, _Stack, _Tail, prim_call_caller) ->
     [aeb_opcodes:mnemonic(?CALLER)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_value) ->
     [aeb_opcodes:mnemonic(?CALLVALUE)];
-assemble_expr(Funs, Stack, _Tail,
+assemble_expr(Funs, Stack, Tail,
               #prim_call_contract{ gas      = Gas
                                  , address  = To
                                  , value    = Value
@@ -347,19 +353,10 @@ assemble_expr(Funs, Stack, _Tail,
     , shuffle_stack([1, 2, 4, 3, 5, 7, 8, 6]) %%  Gas To Value IOffset ISize OOffset OSize OOffset
     , aeb_opcodes:mnemonic(?CALL)             %%  Result OOffset
     , pop(1)                                  %%  OOffset         -- ignoring result for now
-    , abi_decode(OutT)                        %%  ResultPtr
+    , assemble_expr(Funs, [pointer | Stack], Tail, {decode, OutT})
+                                              %%  ResultPtr
     ].
 
-%% Gets a pointer to an ABI encoded chunk of memory on top of the stack (TODO:
-%% different ABIs) and decodes it, replacing the top of the stack with the
-%% pointer to the decoded heap object.
-abi_decode(word) ->                 %% MemPtr
-    [ aeb_opcodes:mnemonic(?MLOAD)  %% N
-    ];
-abi_decode({tuple, []}) ->
-    [];
-abi_decode(Type) ->
-    error({todo, abi_decode, Type}).
 
 assemble_exprs(_Funs,_Stack,[]) ->
     [];
@@ -588,9 +585,10 @@ free_vars(_) ->
 %% Type-directed encoders
 
 %% We need encoding functions for the argument types of remote contract calls.
-remote_call_type_reps(X) -> remote_call_type_reps(X, []).
+remote_call_type_reps(X) -> remote_call_type_reps(X, {[], []}).
 
-remote_call_type_reps(#prim_call_contract{ arg_type = ArgT }, Acc) -> [ArgT | Acc];
+remote_call_type_reps(#prim_call_contract{ arg_type = ArgT, out_type = OutT }, {In, Out}) ->
+    {[ArgT | In], [OutT | Out]};
 remote_call_type_reps([H | T], Acc) ->
     remote_call_type_reps(T, remote_call_type_reps(H, Acc));
 remote_call_type_reps(T, Acc) when is_tuple(T) ->
@@ -636,8 +634,14 @@ all_type_reps([TR|InSource],Found) ->
 encoder_name(TR) ->
     "_encode_" ++ lists:flatten(io_lib:write(TR)).
 
+decoder_name(TR) ->
+    "_decode_" ++ lists:flatten(io_lib:write(TR)).
+
 make_encoder(TR) ->
     {encoder_name(TR),[{"base","_"},{"value","_"}],make_encoder_body(TR),word}.
+
+make_decoder(TR) ->
+    {decoder_name(TR), [{"base", "_"}, {"value", "_"}], make_decoder_body(TR), TR}.
 
 make_encoder_body(word) ->
     {var_ref,"value"};
@@ -659,7 +663,7 @@ make_encoder_body(string) ->
        ]}
       }]};
 make_encoder_body({tuple,TRs}) ->
-    Vars = [{var_ref,"_v"++integer_to_list(I)} || I <- lists:seq(1,length(TRs))],
+    Vars = make_vars(length(TRs)),
     {switch,{var_ref,"value"},
      [{{tuple,Vars},
        {binop,'-',
@@ -681,6 +685,40 @@ make_encoder_body({list,TR}) ->
 make_encoder_body(function) ->
     {integer,33333333333333333}.
 
+%% TODO: update pointers in-place so save memory!
+make_decoder_body(word) ->
+    {var_ref, "value"};
+make_decoder_body({tuple, []}) ->
+    {integer, 0};
+make_decoder_body(string) ->
+    %% the value is a relative pointer to the string, so add base to it
+    {binop, '+', {var_ref, "value"}, {var_ref, "base"}};
+make_decoder_body({tuple, TRs}) ->
+    %% value: relative pointer to tuple cell
+    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
+    Vars = make_vars(length(TRs)),
+    Body = {tuple, [ {funcall, {var_ref, decoder_name(TR)}, [{var_ref, "base"}, X]}
+                     || {X, TR} <- lists:zip(Vars, TRs) ]},
+    {switch, Ptr, [{{tuple, Vars}, Body}]};
+make_decoder_body({list, TR}) ->
+    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
+    Head = {var_ref, "head"},
+    Tail = {var_ref, "tail"},
+    Nil  = {list, []},
+    Decode = fun(T, V) ->
+                {funcall, {var_ref, decoder_name(T)},
+                          [{var_ref, "base"}, V]}
+             end,
+    {switch, {var_ref, "value"},
+        [{Nil, Nil},
+         {{var_ref, "_"},
+            {switch, Ptr, [{{tuple, [Head, Tail]},
+                {tuple, [Decode(TR, Head), Decode({list, TR}, Tail)]}}]}}]};
+make_decoder_body(function) ->
+    error(cannot_decode_function_types).
+
+make_vars(N) ->
+    [{var_ref, "_v" ++ integer_to_list(I)} || I <- lists:seq(1, N)].
 
 %% Generates a definition of a function to copy N bytes from address A
 %% to the heap pointer, and return the final argument.
