@@ -351,4 +351,3 @@ decode_json(Data) ->
     catch
         error:badarg -> {error, {bad_json, Data}}
     end.
-

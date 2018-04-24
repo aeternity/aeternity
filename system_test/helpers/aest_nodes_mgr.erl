@@ -148,7 +148,7 @@ mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
     Mod:get_node_pubkey(NodeState).
 
 mgr_start_node(NodeName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
     NodeState2 = Mod:start_node(NodeState),
     State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
 
