@@ -47,6 +47,9 @@ from_binary(T,Heap= <<V:256,_/binary>>) ->
 
 from_binary(word,_,V) ->
     V;
+from_binary(signed_word, _, V) ->
+    <<N:256/signed>> = <<V:256>>,
+    N;
 from_binary(string,Heap,V) ->
     StringSize = heap_word(Heap,V),
     BitAddr = 8*(V+32),

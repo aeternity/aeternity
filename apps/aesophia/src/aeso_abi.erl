@@ -40,6 +40,7 @@ encode_call1(FunctionHandle, ArgumentAsts) ->
     Data.
 
 ast_to_erlang({int, _, N}) -> N;
+ast_to_erlang({string, _, Bin}) -> Bin;
 ast_to_erlang({unit, _}) -> {};
 ast_to_erlang({tuple, _, Elems}) ->
     list_to_tuple(lists:map(fun ast_to_erlang/1, Elems));
