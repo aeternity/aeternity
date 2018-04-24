@@ -48,12 +48,11 @@ convert(#{ contract_name := _ContractName
 		    dup(1),
 		    i(?CALLDATACOPY),
 		    %% push a return address to stop
-		    {push_label,StopLabel},
+		    push_label(StopLabel),
 		    %% The first word of the calldata is a pointer.
 		    push(0), i(?MLOAD),
-		    {push_label,MainFunction},
-		    i(?JUMP),
-		    {i(?JUMPDEST),StopLabel},
+                    jump(MainFunction),
+		    jumpdest(StopLabel),
 		    %% A pointer to a binary is on top of the stack
                     %% Get size of data area (it will be the last thing on the
                     %% heap, so we can use MSIZE to compute it).
@@ -82,7 +81,7 @@ fun_hash(Name) ->
     {tuple,[{integer,X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
 assemble_function(Funs,Name,Args,Body) ->
-    [{i(?JUMPDEST),lookup_fun(Funs,Name)},
+    [jumpdest(lookup_fun(Funs,Name)),
      assemble_expr(Funs, lists:reverse(Args), tail, Body),
      %% swap return value and first argument
      pop_args(length(Args)),
@@ -100,18 +99,16 @@ assemble_expr(Funs,Stack,_TailPosition,{var_ref,Id}) ->
 	    Eta = make_ref(),
 	    Continue = make_ref(),
 	    [i(?MSIZE),
-	     {push_label,Eta},
+	     push_label(Eta),
 	     dup(2),
 	     i(?MSTORE),
-	     {push_label,Continue},
-	     'JUMP',
+             jump(Continue),
 	     %% the code of the closure
-	     {'JUMPDEST',Eta},
+	     jumpdest(Eta),
 	     %% pop the pointer to the function
 	     pop(1),
-	     {push_label,lookup_fun(Funs,Id)},
-	     'JUMP',
-	     {'JUMPDEST',Continue}]
+             jump(lookup_fun(Funs,Id)),
+	     jumpdest(Continue)]
     end;
 assemble_expr(_,_,_,{missing_field,Format,Args}) ->
     io:format(Format,Args),
@@ -189,24 +186,23 @@ assemble_expr(Funs,Stack,_,{lambda,Args,Body}) ->
     {NewVars,MatchingCode} = assemble_pattern(FunBody,NoMatch,{tuple,[{var_ref,"_"}|FreeVars]}),
     BodyCode = assemble_expr(Funs,NewVars++lists:reverse(Args),tail,Body),
     [assemble_expr(Funs,Stack,nontail,{tuple,[{label,Function}|FreeVars]}),
-     {push_label,Continue},
-     'JUMP',  %% will be optimized away
-     {'JUMPDEST',Function},
+     jump(Continue), %% will be optimized away
+     jumpdest(Function),
      %% A pointer to the closure is on the stack
      MatchingCode,
-     {'JUMPDEST',FunBody},
+     jumpdest(FunBody),
      BodyCode,
      pop_args(length(Args)+length(NewVars)),
      swap(1),
-     'JUMP',
-     {'JUMPDEST',NoMatch}, %% dead code--raise an exception just in case
+     i(?JUMP),
+     jumpdest(NoMatch), %% dead code--raise an exception just in case
      push(0),
      i(?NOT),
      i(?MLOAD),
      i(?STOP),
-     {'JUMPDEST',Continue}];
+     jumpdest(Continue)];
 assemble_expr(_,_,_,{label,Label}) ->
-    {push_label,Label};
+    push_label(Label);
 assemble_expr(Funs,Stack,_,{encode,TypeRep,A}) ->
     %% Encode a value A of type TypeRep as a binary. Leaves a pointer to the
     %% binary on top of the stack.
@@ -262,20 +258,20 @@ assemble_expr(Funs,Stack,nontail,{funcall,Fun,Args}) ->
     %% either case a JUMP is the right way to call it.
     case Args of
 	[] ->
-	    [{push_label,Return},
+	    [push_label(Return),
 	     assemble_function(Funs,[return_address|Stack],Fun),
-	     'JUMP',
-	     {'JUMPDEST',Return}];
+	     i(?JUMP),
+	     jumpdest(Return)];
 	_ ->
 	    {Init,[Last]} = lists:split(length(Args)-1,Args),
 	    [assemble_exprs(Funs,Stack,[Last|Init]),
 	     %% Put the return address in the right place, which also
 	     %% reorders the args correctly.
-	     {push_label,Return},
+	     push_label(Return),
 	     swap(length(Args)),
 	     assemble_function(Funs,[dummy || _ <- Args]++[return_address|Stack],Fun),
-	     'JUMP',
-	     {'JUMPDEST',Return}]
+	     i(?JUMP),
+             jumpdest(Return)]
     end;
 assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
     IsTopLevel = is_top_level_fun(Funs,Stack,Fun),
@@ -294,22 +290,21 @@ assemble_expr(Funs,Stack,tail,{funcall,Fun,Args}) ->
 	     %% need to unpack a closure
 	     [dup(1), i(?MLOAD)]
      end,
-     'JUMP'];
+     i(?JUMP)];
 assemble_expr(Funs,Stack,Tail,{ifte,Decision,Then,Else}) ->
     %% This compilation scheme introduces a lot of labels and
     %% jumps. Unnecessary ones are removed later in
     %% resolve_references.
     Close = make_ref(),
-    ThenL  = make_ref(),
-    ElseL  = make_ref(),
+    ThenL = make_ref(),
+    ElseL = make_ref(),
     [assemble_decision(Funs,Stack,Decision,ThenL,ElseL),
-     {i(?JUMPDEST),ElseL},
+     jumpdest(ElseL),
      assemble_expr(Funs,Stack,Tail,Else),
-     {push_label,Close},
-     i(?JUMP),
-     {i(?JUMPDEST),ThenL},
+     jump(Close),
+     jumpdest(ThenL),
      assemble_expr(Funs,Stack,Tail,Then),
-     {i(?JUMPDEST),Close}
+     jumpdest(Close)
     ];
 assemble_expr(Funs,Stack,Tail,{switch,A,Cases}) ->
     Close = make_ref(),
@@ -368,25 +363,24 @@ assemble_exprs(Funs,Stack,[E|Es]) ->
 assemble_decision(Funs,Stack,{binop,'&&',A,B},Then,Else) ->
     Label = make_ref(),
     [assemble_decision(Funs,Stack,A,Label,Else),
-     {i(?JUMPDEST),Label},
+     jumpdest(Label),
      assemble_decision(Funs,Stack,B,Then,Else)];
 assemble_decision(Funs,Stack,{binop,'||',A,B},Then,Else) ->
     Label = make_ref(),
     [assemble_decision(Funs,Stack,A,Then,Label),
-     {i(?JUMPDEST),Label},
+     jumpdest(Label),
      assemble_decision(Funs,Stack,B,Then,Else)];
 assemble_decision(Funs,Stack,{unop,'!',A},Then,Else) ->
     assemble_decision(Funs,Stack,A,Else,Then);
 assemble_decision(Funs,Stack,{ifte,A,B,C},Then,Else) ->
-    TrueL = make_ref(),
+    TrueL  = make_ref(),
     FalseL = make_ref(),
     [assemble_decision(Funs,Stack,A,TrueL,FalseL),
-     {?JUMPDEST,TrueL},assemble_decision(Funs,Stack,B,Then,Else),
-     {?JUMPDEST,FalseL},assemble_decision(Funs,Stack,C,Then,Else)];
+     jumpdest(TrueL),  assemble_decision(Funs,Stack,B,Then,Else),
+     jumpdest(FalseL), assemble_decision(Funs,Stack,C,Then,Else)];
 assemble_decision(Funs,Stack,Decision,Then,Else) ->
     [assemble_expr(Funs,Stack,nontail,Decision),
-     {push_label,Then}, i(?JUMPI),
-     {push_label,Else}, i(?JUMP)].
+     jump_if(Then), jump(Else)].
 
 %% Entered with value to switch on on top of the stack
 %% Evaluate selected case, then jump to Close with result on the
@@ -410,7 +404,7 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
     %% success. The code is simpler if this IS the last case.
     [[dup(1) || Cases/=[]],   %% save value for next case, if there is one
      MatchingCode,
-     {'JUMPDEST',Succeed},
+     jumpdest(Succeed),
      %% Discard saved value, if we saved one
      [case NewVars of
 	  [] ->
@@ -433,9 +427,8 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
      %% (a) the NewVars will be popped before the tailcall
      %% (b) the code below will be deleted since it is dead
      pop_args(length(NewVars)),
-     {push_label,Close},
-     'JUMP',
-     {'JUMPDEST',Fail},
+     jump(Close),
+     jumpdest(Fail),
      assemble_cases(Funs,Stack,Tail,Close,Cases)].
 
 %% Entered with value to match on top of the stack.
@@ -447,21 +440,17 @@ assemble_cases(Funs,Stack,Tail,Close,[{Pattern,Body}|Cases]) ->
 assemble_pattern(Succeed,Fail,{integer,N}) ->
     {[],[push(N),
 	 i(?EQ),
-	 {push_label,Succeed},
-	 i(?JUMPI),
-	 {push_label,Fail},
-	 'JUMP']};
+         jump_if(Succeed),
+         jump(Fail)]};
 assemble_pattern(Succeed,_Fail,{var_ref,"_"}) ->
-    {[],[i(?POP),{push_label,Succeed},'JUMP']};
+    {[],[i(?POP),jump(Succeed)]};
 assemble_pattern(Succeed,Fail,{missing_field,_,_}) ->
     %% Missing record fields are quite ok in patterns.
     assemble_pattern(Succeed,Fail,{var_ref,"_"});
 assemble_pattern(Succeed,_Fail,{var_ref,Id}) ->
-    {[{Id,"_"}],
-     [{push_label,Succeed},'JUMP']};
+    {[{Id,"_"}], jump(Succeed)};
 assemble_pattern(Succeed,_Fail,{tuple,[]}) ->
-    {[],
-     [pop(1), {push_label,Succeed}, 'JUMP']};
+    {[], [pop(1), jump(Succeed)]};
 assemble_pattern(Succeed,Fail,{tuple,[A]}) ->
     %% Treat this case specially, because we don't need to save the
     %% pointer to the tuple.
@@ -483,7 +472,7 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
       dup(1),
       i(?MLOAD),
       ACode,
-      {'JUMPDEST',Continue},
+      jumpdest(Continue),
       %% Bring the pointer to the top of the stack--this reorders AVars!
       swap(length(AVars)),
       push(32),
@@ -491,9 +480,9 @@ assemble_pattern(Succeed,Fail,{tuple,[A|B]}) ->
       BCode,
       case AVars of
 	  [] ->
-	      [{'JUMPDEST',Pop1Fail},pop(1),
-	       {'JUMPDEST',PopNFail},
-	       {push_label,Fail},'JUMP'];
+	      [jumpdest(Pop1Fail), pop(1),
+	       jumpdest(PopNFail),
+               jump(Fail)];
 	  _ ->
 	      [{'JUMPDEST',PopNFail},pop(length(AVars)-1),
 	       {'JUMPDEST',Pop1Fail},pop(1),
@@ -503,10 +492,8 @@ assemble_pattern(Succeed,Fail,{list,[]}) ->
     %% [] is represented by -1.
     {[],[push(1),
 	 i(?ADD),
-	 {push_label,Fail},
-	 i(?JUMPI),
-	 {push_label,Succeed},
-	 'JUMP']};
+         jump_if(Fail),
+	 jump(Succeed)]};
 assemble_pattern(Succeed,Fail,{list,[A|B]}) ->
     assemble_pattern(Succeed,Fail,{binop,'::',A,{list,B}});
 assemble_pattern(Succeed,Fail,{binop,'::',A,B}) ->
@@ -514,9 +501,9 @@ assemble_pattern(Succeed,Fail,{binop,'::',A,B}) ->
     NotNil = make_ref(),
     {Vars,Code} = assemble_pattern(Succeed,Fail,{tuple,[A,B]}),
     {Vars,[dup(1),push(1),i(?ADD),
-	   {push_label,NotNil},i(?JUMPI),
-	   {push_label,Fail},'JUMP',
-	   {'JUMPDEST',NotNil},
+	   jump_if(NotNil),
+           jump(Fail),
+           jumpdest(NotNil),
 	   Code]}.
 
 %% When Vars are on the stack, with a value we want to discard
@@ -824,6 +811,12 @@ swap(0) ->
     [];
 swap(N) when 1=<N, N=<16 ->
     i(?SWAP1 + N-1).
+
+jumpdest(Label)   -> {i(?JUMPDEST), Label}.
+push_label(Label) -> {push_label, Label}.
+
+jump(Label)    -> [push_label(Label), i(?JUMP)].
+jump_if(Label) -> [push_label(Label), i(?JUMPI)].
 
 %% Stack: <N elements> ADDR
 %% Write elements at addresses ADDR, ADDR+32, ADDR+64...
