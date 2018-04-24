@@ -224,7 +224,6 @@ get_top(NodeName, Ctx) ->
         {error, Reason} -> error({http_error, Reason})
     end.
 
-%% @doc Waits for each specified nodes to have a block at given heigth.
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
