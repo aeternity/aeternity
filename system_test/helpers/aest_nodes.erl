@@ -238,6 +238,7 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
         end,
     wait_for_value(CheckF, Addrs, [], 500, Expiration);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
+    Start = erlang:system_time(millisecond),
     Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
     Expiration = make_expiration(Timeout),
     CheckF =
@@ -247,7 +248,11 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, Addrs, [], 500, Expiration).
+    wait_for_value(CheckF, Addrs, [], 500, Expiration),
+    Duration = (erlang:system_time(millisecond) - Start) / 1000,
+    ct:log("Height ~p reached on nodes ~p after ~.2f seconds",
+        [MinHeight, NodeNames, Duration]
+    ).
 
 
 
