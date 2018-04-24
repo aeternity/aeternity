@@ -12,6 +12,7 @@
    , remote_multi_argument_call/1
    , spend_tests/1
    , complex_types/1
+   , environment/1
    ]).
 
 %% chain API exports
@@ -25,7 +26,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            simple_multi_argument_call,
            remote_multi_argument_call,
            spend_tests,
-           complex_types ].
+           complex_types,
+           environment ].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -76,6 +78,10 @@ make_call(Contract, Fun, Args, Env, Options) ->
 
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
+    Res.
+
+successful_call_(Contract, Type, Fun, Args, Env, Options) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env, Options),
     Res.
 
 successful_call(Contract, Type, Fun, Args, Env) ->
@@ -165,13 +171,66 @@ complex_types(_Cfg) ->
     Squares = successful_call_(101, {list, {tuple, [word, word]}}, remote_squares, integer_to_list(N), Env),
     ok.
 
+environment(_Cfg) ->
+    Code          = compile_contract(environment),
+    Address       = 1001,
+    Address2      = 1002,
+    Balance       = 9999,
+    CallerBalance = 500,
+    Caller        = 1,
+    Origin        = 11,
+    Value         = 100,
+    GasPrice      = 3,
+    Coinbase      = 22022,
+    Timestamp     = 1234,
+    BlockHeight   = 701,
+    Difficulty    = 18,
+    GasLimit      = 1000001,
+    ChainEnv      =
+              #{ origin            => Origin
+               , gasPrice          => GasPrice
+               , currentCoinbase   => Coinbase
+               , currentTimestamp  => Timestamp
+               , currentNumber     => BlockHeight
+               , currentDifficulty => Difficulty
+               , currentGasLimit   => GasLimit
+               },
+    State = initial_state(#{Address => Code, Address2 => Code, environment => ChainEnv},
+                          #{Address => Balance, Caller => CallerBalance}),
+    Options = maps:merge(#{ caller => Caller, value  => Value }, ChainEnv),
+    Call1   = fun(Fun, Arg) -> successful_call_(Address, word, Fun, integer_to_list(Arg), State, Options) end,
+    Call    = fun(Fun)      -> successful_call_(Address, word, Fun, "()", State, Options) end,
+
+    Address  = Call(contract_address),
+    Address2 = Call1(nested_address, Address2),
+    Balance  = Call(contract_balance),
+
+    Origin   = Call(call_origin),
+    Origin   = Call(nested_origin),
+    Caller   = Call(call_caller),
+    Address  = Call(nested_caller),
+    Value    = Call(call_value),
+    99       = Call1(nested_value, 99),
+    GasPrice = Call(call_gas_price),
+
+    CallerBalance = Call1(get_balance, Caller),
+    0             = Call1(block_hash, BlockHeight), %% TODO: BLOCKHASH not implemented in EVM
+    Coinbase      = Call(coinbase),
+    Timestamp     = Call(timestamp),
+    BlockHeight   = Call(block_height),
+    Difficulty    = Call(difficulty),
+    GasLimit      = Call(gas_limit),
+
+    ok.
+
 %% -- Chain API implementation -----------------------------------------------
 
 initial_state(Contracts) ->
     initial_state(Contracts, #{}).
 
 initial_state(Contracts, Accounts) ->
-    maps:merge(Contracts, #{accounts => Accounts}).
+    maps:merge(#{environment => #{}},
+        maps:merge(Contracts, #{accounts => Accounts})).
 
 spend(_To, Amount, _) when Amount < 0 ->
     {error, negative_spend};
@@ -199,12 +258,13 @@ call_contract(0, _Gas, Value, CallData, _, S) ->
             end;
         _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
     end;
-call_contract(Contract, _Gas, _Value, CallData, _, S = #{running := Caller}) ->
+call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
               [Contract, aeso_test_utils:dump_words(CallData)]),
     case maps:is_key(Contract, S) of
         true ->
-            Env = #{address => Contract, caller => Caller},
+            #{environment := Env0} = S,
+            Env = maps:merge(Env0, #{address => Contract, caller => Caller, value => Value}),
             Res = execute_call(Contract, CallData, S, Env),
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
