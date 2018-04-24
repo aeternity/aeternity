@@ -28,6 +28,7 @@
 -include("common.hrl").
 
 -define(SPEND_TX_VSN, 2).
+-define(SPEND_TX_NO_PAYLOAD_VSN, 1).
 -define(SPEND_TX_TYPE, spend_tx).
 
 -ifdef(TEST).
@@ -139,7 +140,7 @@ serialize(#spend_tx{sender = Sender,
                     amount = Amount,
                     fee = Fee,
                     nonce = Nonce,
-                    vsn = Vsn}) when Vsn =:= 1 ->
+                    vsn = Vsn = ?SPEND_TX_NO_PAYLOAD_VSN}) ->
     {Vsn,
      [ {sender, Sender}
      , {recipient, Recipient}
@@ -152,8 +153,9 @@ serialize(#spend_tx{sender = Sender,
                     amount = Amount,
                     fee = Fee,
                     nonce = Nonce,
-                    payload = Payload}) ->
-    {version(),
+                    payload = Payload,
+                    vsn = Vsn = ?SPEND_TX_VSN}) ->
+    {Vsn,
      [ {sender, Sender}
      , {recipient, Recipient}
      , {amount, Amount}
@@ -162,7 +164,7 @@ serialize(#spend_tx{sender = Sender,
      , {payload, Payload}
      ]}.
 
-deserialize(1, % no payload version
+deserialize(Vsn = ?SPEND_TX_NO_PAYLOAD_VSN,
             [ {sender, Sender}
             , {recipient, Recipient}
             , {amount, Amount}
@@ -173,8 +175,8 @@ deserialize(1, % no payload version
               amount = Amount,
               fee = Fee,
               nonce = Nonce,
-              vsn = 1};
-deserialize(?SPEND_TX_VSN,
+              vsn = Vsn};
+deserialize(Vsn = ?SPEND_TX_VSN,
             [ {sender, Sender}
             , {recipient, Recipient}
             , {amount, Amount}
@@ -187,9 +189,9 @@ deserialize(?SPEND_TX_VSN,
               fee = Fee,
               nonce = Nonce,
               payload = Payload,
-              vsn = ?SPEND_TX_VSN}.
+              vsn = Vsn}.
 
-serialization_template(1) -> % no payload version
+serialization_template(?SPEND_TX_NO_PAYLOAD_VSN) ->
     [ {sender, binary}
     , {recipient, binary}
     , {amount, int}
