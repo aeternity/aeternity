@@ -233,7 +233,14 @@ process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
                            orelse Tag =:= update
                            orelse Tag =:= update_ack ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
+    Tag1 =
+        case Tag of
+            create_tx -> <<"initiator_signed">>;
+            funding_created -> <<"responder_signed">>;
+            T -> T
+        end,
     {reply, #{action => <<"sign">>,
+              tag => Tag1,
               payload => #{tx => EncTx}}}.
 
 prepare_handler(Params) ->
