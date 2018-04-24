@@ -439,12 +439,15 @@ handle_ping(S, none, RemotePingObj) ->
     {PeerOk, S1} = handle_first_ping(S, RemotePingObj),
 
     Response =
-        case {PeerOk, handle_ping_msg(S1, RemotePingObj)} of
-            {ok, ok} ->
-                {ok, ping_obj_rsp(S1, RemotePingObj)};
-            {{error, Reason}, _} ->
-                {error, Reason};
-            {_, {error, Reason}} ->
+        case PeerOk of
+            ok ->
+                case handle_ping_msg(S1, RemotePingObj) of
+                    ok ->
+                        {ok, ping_obj_rsp(S1, RemotePingObj)};
+                    {error, Reason} ->
+                        {error, Reason}
+                end;
+            {error, Reason} ->
                 {error, Reason}
         end,
     send_response(S, ping, Response),
@@ -713,7 +716,6 @@ handle_new_tx(S, Msg) ->
 
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
-    lager:debug("Sending ~p - ~p", [Type, Msg]),
     do_send(ESock, <<(aec_peer_messages:tag(Type)):16, Msg/binary>>).
 
 send_response(S, Type, Response) ->
