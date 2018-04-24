@@ -172,8 +172,8 @@ system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz
 	zcat <$< >$@
 
-TESTNET_DB_BACKUP_FILE = mnesia_54.202.11.197_uat_db_backup_1524096130.gz
-TESTNET_DB_BACKUP_BASE_URL = https://8271-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/54.202.11.197/tmp
+TESTNET_DB_BACKUP_FILE = mnesia_18.196.250.42_uat_db_backup_1524700922.gz
+TESTNET_DB_BACKUP_BASE_URL = https://9305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/18.196.250.42/tmp
 
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz:
 	curl -fsS --create-dirs -o $@ $(TESTNET_DB_BACKUP_BASE_URL)/$(TESTNET_DB_BACKUP_FILE)
