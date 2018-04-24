@@ -39,7 +39,7 @@
     project_root: "{{ ansible_env.HOME }}/node"
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
     is_remote_package: false
-    public_ip: "{{ ansible_ssh_host|default(ansible_host) }}"
+    public_ip: "{{ ansible_ssh_host|default(ansible_host)|default(inventory_hostname) }}"
 
     # Label used for datadog tagging and ENV file planting
     env: unknown
@@ -165,6 +165,15 @@
           dest: "{{ genesis_accounts_path }}"
         when: genesis_accounts is defined
         tags: [config]
+
+       - name: "Copy node peer keys to {{ project_root }}/{{ config.keypair.dir }}"
+         copy:
+           src: "{{ item }}"
+           dest: "{{ project_root }}/{{ config.keypair.dir }}"
+           mode: 0600
+         with_items: "{{ peer_keypairs }}"
+         when: peer_keypairs is defined
+         tags: [config]
 
       - name: Start epoch daemon
         command: "{{ project_root }}/bin/epoch start"
