@@ -37,3 +37,14 @@ contract ComplexTypes =
   function remote_pair(n : int, s : string) : (int, string) =
     raw_call(Contract.address, "pair", 10000, 0, (n, s))
 
+  function map(f, xs) =
+    switch(xs)
+      []      => []
+      x :: xs => f(x) :: map(f, xs)
+
+  function squares(n) =
+    map((i) => (i, i * i), up_to(n))
+
+  function remote_squares(n) : list((int, int)) =
+    raw_call(Contract.address, "squares", 10000, 0, n)
+

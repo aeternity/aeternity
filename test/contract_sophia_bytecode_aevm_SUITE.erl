@@ -158,6 +158,11 @@ complex_types(_Cfg) ->
     {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, "(101,6)", Env),
     <<"string">>            = successful_call_(101, string, remote_string, "()", Env),
     {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, "(99,\"luftballons\")", Env),
+
+    N       = 10,
+    Squares = [ {I, I * I} || I <- lists:seq(1, N) ],
+    Squares = successful_call_(101, {list, {tuple, [word, word]}}, squares, integer_to_list(N), Env),
+    Squares = successful_call_(101, {list, {tuple, [word, word]}}, remote_squares, integer_to_list(N), Env),
     ok.
 
 %% -- Chain API implementation -----------------------------------------------
