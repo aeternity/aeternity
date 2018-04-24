@@ -29,10 +29,10 @@ compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
-    Options           = <<>>,
-    %% Options           = <<"pp_ast pp_icode pp_bytecode">>,
-    {ok, Code}        = aect_sophia:compile(ContractBin, Options),
-    Code.
+    Options           = [],
+    %% Options           = [pp_ast, pp_icode, pp_bytecode],
+    Code = aeso_compiler:from_string(binary_to_list(ContractBin), Options),
+    aeu_hex:hexstring_encode(Code).
 
 %% execute_call(Contract, CallData, ChainState) ->
 %%     execute_call(Contract, CallData, ChainState, #{}).
@@ -72,16 +72,16 @@ make_call(Contract, Fun, Args, Env, Options) ->
                     list_to_binary(Args)),
     execute_call(Contract, CallData, Env, Options).
 
-successful_call_(Contract, Fun, Args, Env) ->
-    {Res, _Env1} = successful_call(Contract, Fun, Args, Env),
+successful_call_(Contract, Type, Fun, Args, Env) ->
+    {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
     Res.
 
-successful_call(Contract, Fun, Args, Env) ->
-    successful_call(Contract, Fun, Args, Env, #{}).
+successful_call(Contract, Type, Fun, Args, Env) ->
+    successful_call(Contract, Type, Fun, Args, Env, #{}).
 
-successful_call(Contract, Fun, Args, Env, Options) ->
+successful_call(Contract, Type, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
-        {ok, Result, Env1} -> {aeso_test_utils:dump_words(Result), Env1};
+        {ok, Result, Env1} -> {aeso_data:from_binary(Type, Result), Env1};
         {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
             exit({error, Err})
@@ -102,48 +102,48 @@ failing_call(Contract, Fun, Args, Env, Options) ->
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
     Env  = initial_state(#{101 => Code}),
-    [42] = successful_call_(101, main, "42", Env),
+    42   = successful_call_(101, word, main, "42", Env),
     ok.
 
 sophia_remote_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     CallerCode = compile_contract(remote_call),
     Env        = initial_state(#{ 1234 => IdCode, 1 => CallerCode }),
-    [42]       = successful_call_(1, call42, "1234", Env),
+    42         = successful_call_(1, word, call42, "1234", Env),
     ok.
 
 sophia_factorial(_Cfg) ->
-    Code      = compile_contract(factorial),
-    Env       = initial_state(#{ 999001 => Code, 999002 => Code }),
-    [3628800] = successful_call_(999001, main, "999002", Env),
+    Code    = compile_contract(factorial),
+    Env     = initial_state(#{ 999001 => Code, 999002 => Code }),
+    3628800 = successful_call_(999001, word, main, "999002", Env),
     ok.
 
 simple_multi_argument_call(_Cfg) ->
     RemoteCode = compile_contract(remote_call),
     Env        = initial_state(#{ 103 => RemoteCode }),
-    [19911]    = successful_call_(103, plus, "(9900,10011)", Env),
+    19911      = successful_call_(103, word, plus, "(9900,10011)", Env),
     ok.
 
 remote_multi_argument_call(_Cfg) ->
     IdCode     = compile_contract(identity),
     RemoteCode = compile_contract(remote_call),
     Env        = initial_state(#{ 101 => IdCode, 102 => RemoteCode, 103 => RemoteCode }),
-    [42]       = successful_call_(102, staged_call, "(102,101,42)", Env),
+    42         = successful_call_(102, word, staged_call, "(102,101,42)", Env),
     ok.
 
 spend_tests(_Cfg) ->
     Code = compile_contract(spend_test),
     Env  = initial_state(#{ 101 => Code, 102 => Code },
                          #{ 101 => 1000, 102 => 2000, 1 => 10000 }),
-    {[900], Env1}  = successful_call(101, withdraw, "100", Env, #{caller => 102}),
-    {[900], Env2}  = successful_call(101, get_balance, "()", Env1),
-    {[2100], Env3} = successful_call(102, get_balance, "()", Env2),
+    {900, Env1}  = successful_call(101, word, withdraw, "100", Env, #{caller => 102}),
+    {900, Env2}  = successful_call(101, word, get_balance, "()", Env1),
+    {2100, Env3} = successful_call(102, word, get_balance, "()", Env2),
     %% The call doesn't fail, but the spend transaction is not executed.
-    {[-100], Env4} = successful_call(101, withdraw, "1000", Env3, #{caller => 102}),
-    [900]          = successful_call_(101, get_balance, "()", Env4),
-    [2100]         = successful_call_(102, get_balance, "()", Env4),
+    {-100, Env4} = successful_call(101, signed_word, withdraw, "1000", Env3, #{caller => 102}),
+    900          = successful_call_(101, word, get_balance, "()", Env4),
+    2100         = successful_call_(102, word, get_balance, "()", Env4),
     %% Spending in nested call
-    {[900], Env5}  = successful_call(101, withdraw_from, "(102,1000)", Env4, #{caller => 1}),
+    {900, Env5}  = successful_call(101, word, withdraw_from, "(102,1000)", Env4, #{caller => 1}),
     #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env5),
     ok.
 
@@ -171,15 +171,15 @@ get_balance(Account, #{ accounts := Accounts }) ->
 -define(PRIM_CALL_SPEND, 1).
 
 call_contract(0, _Gas, Value, CallData, _, S) ->
-    case aeso_test_utils:dump_words(CallData) of
-        [?PRIM_CALL_SPEND, To] ->
+    case aeso_data:from_binary({tuple, [word, word]}, CallData) of
+        {?PRIM_CALL_SPEND, To} ->
             case spend(To, Value, S) of
                 {ok, S1} ->
                     io:format("Spent ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
                     {ok, aec_vm_chain_api:call_result(<<>>, 0), S1};
-                Err      -> Err
+                Err -> Err
             end;
-        Args -> {error, {bad_prim_call, Args}}
+        _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
     end;
 call_contract(Contract, _Gas, _Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
