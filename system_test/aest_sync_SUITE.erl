@@ -288,7 +288,7 @@ stop_and_continue_sync(Cfg) ->
     ct:log("Node 2 ready to go"),
 
     %% we are fetching blocks stop node1 now
-    stop_node(old_node1, 2000, Cfg),
+    kill_node(old_node1, Cfg),
     Top2 = request(old_node2, [v2, 'top'], #{}, Cfg),
     ct:log("Node 2 top: ~p~n", [Top2]),
     Height = maps:get(height, Top2),
@@ -388,7 +388,7 @@ net_split_recovery(Cfg) ->
     ?assertEqual(D1, D3),
     ?assertEqual(D1, D4),
 
-    ok.
+    ok.  
 
 %=== INTERNAL FUNCTIONS ========================================================
 

@@ -27,6 +27,7 @@
 -define(EPOCH_CONFIG_FILE, "/home/epoch/epoch.yaml").
 -define(EPOCH_LOG_FOLDER, "/home/epoch/node/log").
 -define(EPOCH_KEYS_FOLDER, "/home/epoch/node/keys").
+-define(EPOCH_GENESIS_FILE, "/home/epoch/node/data/aecore/.genesis/accounts.json").
 -define(EPOCH_MINE_RATE, 1000).
 -define(EXT_HTTP_PORT, 3013).
 -define(EXT_SYNC_PORT, 3015).
@@ -235,6 +236,7 @@ setup_node(Spec, BackendState) ->
     PortMapping = maps:fold(fun(Label, Port, Acc) ->
         [{tcp, maps:get(Label, LocalPorts), Port} | Acc]
     end, [], ExposedPorts),
+    Genesis = maps:get(genesis, Spec, undefined),
     DockerConfig = #{
         hostname => Hostname,
         network => Network,
@@ -245,8 +247,8 @@ setup_node(Spec, BackendState) ->
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
-            {rw, LogPath, ?EPOCH_LOG_FOLDER}
-        ],
+            {rw, LogPath, ?EPOCH_LOG_FOLDER}] ++ 
+            [ {ro, Genesis, ?EPOCH_GENESIS_FILE} || Genesis =/= undefined ],
         ports => PortMapping
     },
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
