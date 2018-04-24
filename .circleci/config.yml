@@ -585,7 +585,7 @@ workflows:
   chain_snapshots:
     triggers:
       - schedule:
-          # run Sun, Tue, Thu at midnight UTC
+          # run At minute 0 past hour 0 and 12. UTC
           cron: "0 0,12 * * *"
           filters:
             branches:
