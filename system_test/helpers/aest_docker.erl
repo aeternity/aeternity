@@ -186,7 +186,6 @@ setup_node(Spec, BackendState) ->
     ConfigFilePath = filename:join([TempDir, "config", ConfigFileName]),
     TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
-    log(LogFun, "PeerVars: ~p", [PeerVars]),
     CuckooMinerVars =
         case maps:find(cuckoo_miner, Spec) of
             error -> #{};
@@ -199,7 +198,6 @@ setup_node(Spec, BackendState) ->
                          node_bits => maps:get(bits, CuckooMiner)
                         }]}
         end,
-    log(LogFun, "CuckooMinerVars: ~p", [CuckooMinerVars]),
     HardForkVars =
         case maps:find(hard_forks, Spec) of
             error -> #{};
@@ -209,7 +207,6 @@ setup_node(Spec, BackendState) ->
                       lists:map(fun({V, H}) -> #{version => V, height => H} end,
                                 maps:to_list(HardForks))}
         end,
-    log(LogFun, "HardForkVars: ~p", [HardForkVars]),
     RootVars = (maps:merge(CuckooMinerVars, HardForkVars))#{
         hostname => Name,
         ext_addr => format("http://~s:~w/", [Hostname, ?EXT_HTTP_PORT]),
