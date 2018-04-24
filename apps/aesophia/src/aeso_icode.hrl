@@ -20,6 +20,9 @@
     , arg_type :: type()
     , out_type :: type() }).
 
+-record(prim_balance,    { address :: expr() }).
+-record(prim_block_hash, { height :: expr() }).
+
 -record(integer, {value :: integer()}).
 
 -record(tuple,   {cpts  :: [expr()]}).

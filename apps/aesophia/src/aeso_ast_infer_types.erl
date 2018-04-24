@@ -16,6 +16,7 @@ global_env() ->
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
     Unit    = {tuple, Ann, []},
+    Fun     = fun(S, T) -> {type_sig, [S], T} end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
@@ -24,10 +25,19 @@ global_env() ->
      {"raw_spend", {type_sig, [Address, Int], Unit}},
      %% Environment variables
      %% {["Contract", "owner"],   Int},    %% Not in EVM?
-     {["Contract", "address"], Address},
-     {["Contract", "balance"], Int},
-     {["Call",     "caller"],  Address},
-     {["Call",     "value"],   Int}
+     {["Contract", "address"],      Address},
+     {["Contract", "balance"],      Int},
+     {["Call",     "origin"],       Address},
+     {["Call",     "caller"],       Address},
+     {["Call",     "value"],        Int},
+     {["Call",     "gas_price"],    Int},
+     {["Chain",    "balance"],      Fun(Address, Int)},
+     {["Chain",    "block_hash"],   Fun(Int, Int)},
+     {["Chain",    "coinbase"],     Address},
+     {["Chain",    "timestamp"],    Int},
+     {["Chain",    "block_height"], Int},
+     {["Chain",    "difficulty"],   Int},
+     {["Chain",    "gas_limit"],    Int}
     ].
 
 infer([{contract, Attribs, ConName, Code}|Rest]) ->

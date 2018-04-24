@@ -86,10 +86,26 @@ ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
                                                    ast_body(To)]},
                          arg_type = {tuple, [word, word]},
                          out_type = {tuple, []} };
-ast_body({qid, _, ["Contract", "address"]}) -> prim_contract_address;
-ast_body({qid, _, ["Contract", "balance"]}) -> prim_contract_balance;
-ast_body({qid, _, ["Call", "caller"]})      -> prim_call_caller;
-ast_body({qid, _, ["Call", "value"]})       -> prim_call_value;
+ast_body({app, _, {typed, _, {qid, _, ["Chain", "balance"]}, _}, [Address]}) ->
+    #prim_balance{ address = ast_body(Address) };
+ast_body({app, _, {typed, _, {qid, _, ["Chain", "block_hash"]}, _}, [Height]}) ->
+    #prim_block_hash{ height = ast_body(Height) };
+ast_body({qid, _, ["Contract", "address"]})      -> prim_contract_address;
+ast_body({qid, _, ["Contract", "balance"]})      -> #prim_balance{ address = prim_contract_address };
+ast_body({qid, _, ["Call",     "origin"]})       -> prim_call_origin;
+ast_body({qid, _, ["Call",     "caller"]})       -> prim_caller;
+ast_body({qid, _, ["Call",     "value"]})        -> prim_call_value;
+ast_body({qid, _, ["Call",     "gas_price"]})    -> prim_gas_price;
+ast_body({qid, _, ["Chain",    "coinbase"]})     -> prim_coinbase;
+ast_body({qid, _, ["Chain",    "timestamp"]})    -> prim_timestamp;
+ast_body({qid, _, ["Chain",    "block_height"]}) -> prim_block_height;
+ast_body({qid, _, ["Chain",    "difficulty"]})   -> prim_difficulty;
+ast_body({qid, _, ["Chain",    "gas_limit"]})    -> prim_gas_limit;
+%% TODO: eta expand!
+ast_body({qid, _, ["Chain", "balance"]}) ->
+    error({underapplied_primitive, 'Chain.balance'});
+ast_body({qid, _, ["Chain", "block_hash"]}) ->
+    error({underapplied_primitive, 'Chain.block_hash'});
 ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
 ast_body({id, _, "raw_spend"}) ->

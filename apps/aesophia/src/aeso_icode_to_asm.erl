@@ -313,13 +313,30 @@ assemble_expr(Funs, Stack, Tail, {switch, A, Cases}) ->
      {'JUMPDEST', Close}];
 assemble_expr(_Funs, _Stack, _Tail, prim_contract_address) ->
     [i(?ADDRESS)];
-assemble_expr(_Funs, _Stack, _Tail, prim_contract_balance) ->
-    [i(?ADDRESS),
-     i(?BALANCE)];
-assemble_expr(_Funs, _Stack, _Tail, prim_call_caller) ->
+assemble_expr(_Funs, _Stack, _Tail, prim_call_origin) ->
+    [i(?ORIGIN)];
+assemble_expr(_Funs, _Stack, _Tail, prim_caller) ->
     [i(?CALLER)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_value) ->
     [i(?CALLVALUE)];
+assemble_expr(_Funs, _Stack, _Tail, prim_gas_price) ->
+    [i(?GASPRICE)];
+assemble_expr(_Funs, _Stack, _Tail, prim_coinbase) ->
+    [i(?COINBASE)];
+assemble_expr(_Funs, _Stack, _Tail, prim_timestamp) ->
+    [i(?TIMESTAMP)];
+assemble_expr(_Funs, _Stack, _Tail, prim_block_height) ->
+    [i(?NUMBER)];
+assemble_expr(_Funs, _Stack, _Tail, prim_difficulty) ->
+    [i(?DIFFICULTY)];
+assemble_expr(_Funs, _Stack, _Tail, prim_gas_limit) ->
+    [i(?GASLIMIT)];
+assemble_expr(Funs, Stack, _Tail, #prim_balance{ address = Addr }) ->
+    [assemble_expr(Funs, Stack, nontail, Addr),
+     i(?BALANCE)];
+assemble_expr(Funs, Stack, _Tail, #prim_block_hash{ height = Height }) ->
+    [assemble_expr(Funs, Stack, nontail, Height),
+     i(?BLOCKHASH)];
 assemble_expr(Funs, Stack, Tail,
               #prim_call_contract{ gas      = Gas
                                  , address  = To
