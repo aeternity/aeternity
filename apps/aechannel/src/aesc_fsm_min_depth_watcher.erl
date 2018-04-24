@@ -87,7 +87,7 @@ determine_depth(BHash, MinDepth) ->
     end.
 
 determine_depth_(Height, MinDepth) ->
-    case aec_chain:top_block_header() of
+    case aec_chain:top_header() of
         undefined ->
             undefined;
         TopHdr ->

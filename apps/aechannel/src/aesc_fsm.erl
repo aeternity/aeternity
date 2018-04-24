@@ -173,12 +173,12 @@ timer_subst(closing                ) -> accept.
 
 default_timeouts() ->
     #{ open           => 120000
-     , accept         => 2000
-     , funding_create => 2000
-     , funding_sign   => 2000
+     , accept         => 10000
+     , funding_create => 10000
+     , funding_sign   => 10000
      , funding_lock   => 30000
      , idle           => 60000
-     , sign           => 5000
+     , sign           => 10000
      }.
 
 %%
