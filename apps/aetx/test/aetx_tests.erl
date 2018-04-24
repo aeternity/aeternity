@@ -70,17 +70,8 @@ apply_signed_txs_test_() ->
 
 backwards_compatibility_test_() ->
     {foreach,
-      fun() ->
-          TmpKeysDir = aec_test_utils:aec_keys_setup(),
-          ok = meck:new(aec_spend_tx, [passthrough]),
-          meck:expect(aec_spend_tx, version, 0, 1), %% test old version
-          TmpKeysDir
-      end,
-      fun(TmpKeysDir) ->
-          ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
-          meck:unload(aec_spend_tx),
-          ok
-      end,
+     fun aec_test_utils:aec_keys_setup/0,
+     fun aec_test_utils:aec_keys_cleanup/1,
     [{"Spend transaction backwards compatibility",
       fun() ->
           {ok, MinerPubkey} = aec_keys:pubkey(),
@@ -89,7 +80,9 @@ backwards_compatibility_test_() ->
                               recipient => ?RECIPIENT_PUBKEY,
                               amount => 40,
                               fee => 9,
-                              nonce => 1}),
+                              nonce => 1,
+                              vsn => 1}),
+          1 = aec_spend_tx:version(aetx:tx(SpendTx)),
           Bin = aetx:serialize_to_binary(SpendTx),
           %% serialization of old transaction works
           ?assertEqual(SpendTx, aetx:deserialize_from_binary(Bin)),

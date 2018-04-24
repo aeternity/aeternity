@@ -26,13 +26,19 @@
 -behavior(aetx).
 
 -include("common.hrl").
+-include("blocks.hrl").
 
 -define(SPEND_TX_VSN, 2).
 -define(SPEND_TX_NO_PAYLOAD_VSN, 1).
 -define(SPEND_TX_TYPE, spend_tx).
 
+-define(is_tx_vsn_applicable_at_consensus_vsn(TxV, CV),
+        ( ((TxV =:= ?SPEND_TX_NO_PAYLOAD_VSN) and (CV =< ?CONSENSUS_V_0_11_0_VERSION))
+          or ((TxV =:= ?SPEND_TX_VSN) and (CV > ?CONSENSUS_V_0_11_0_VERSION))
+        )).
+
 -ifdef(TEST).
--export([version/0]).
+-export([version/1]).
 -endif.
 
 -record(spend_tx, {
@@ -59,14 +65,19 @@ new(#{sender := SenderPubkey,
                               is_binary(SenderPubkey),
                               is_binary(RecipientPubkey)
                               ->
-    Payload = maps:get(payload, M, <<>>),
+    Vsn = maps:get(vsn, M, ?SPEND_TX_VSN),
+    Payload =
+        case Vsn of
+            ?SPEND_TX_NO_PAYLOAD_VSN -> <<>>;
+            ?SPEND_TX_VSN -> maps:get(payload, M, <<>>)
+        end,
     Tx = #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
                    fee = Fee,
                    nonce = Nonce,
                    payload = Payload,
-                   vsn = version()},
+                   vsn = Vsn},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -93,8 +104,16 @@ recipient(#spend_tx{recipient = Recipient}) ->
 payload(#spend_tx{payload = Payload}) ->
     Payload.
 
+-ifdef(TEST).
+-spec version(tx()) -> non_neg_integer().
+version(#spend_tx{vsn = Vsn}) ->
+    Vsn.
+-endif.
+
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#spend_tx{recipient = RecipientPubkey} = SpendTx, _Context, Trees0, Height, _ConsensusVersion) ->
+check(#spend_tx{vsn = Vsn} = SpendTx, _Context, Trees0, Height, ConsensusVersion)
+  when ?is_tx_vsn_applicable_at_consensus_vsn(Vsn, ConsensusVersion) ->
+    RecipientPubkey = recipient(SpendTx),
     Checks = [fun check_tx_fee/3,
               fun check_sender_account/3],
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
@@ -107,7 +126,10 @@ check(#spend_tx{recipient = RecipientPubkey} = SpendTx, _Context, Trees0, Height
             end;
         {error, _Reason} = Error ->
             Error
-    end.
+    end;
+check(#spend_tx{vsn = Vsn} = SpendTx, _Context, Trees0, Height, ConsensusVersion)
+  when not ?is_tx_vsn_applicable_at_consensus_vsn(Vsn, ConsensusVersion) ->
+    {error, tx_version_not_applicable_at_consensus_version}.
 
 -spec accounts(tx()) -> [pubkey()].
 accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
@@ -121,7 +143,9 @@ process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
                   amount = Amount,
                   fee = Fee,
-                  nonce = Nonce}, _Context, Trees0, Height, _ConsensusVersion) ->
+                  nonce = Nonce,
+                  vsn = Vsn}, _Context, Trees0, Height, ConsensusVersion)
+  when ?is_tx_vsn_applicable_at_consensus_vsn(Vsn, ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
@@ -222,9 +246,6 @@ for_client(#spend_tx{sender = Sender,
       <<"nonce">> => Nonce,
       <<"payload">> => Payload,
       <<"vsn">> => Vsn}.
-
-version() ->
-    ?SPEND_TX_VSN.
 
 %% Internals
 
