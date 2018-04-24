@@ -135,13 +135,6 @@
           or (C =:= new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow)
         )).
 
--define(is_testcase_in_group_upgrade_flow_smoke_test(C),
-        ( (C =:= new_node_can_receive_short_old_chain_from_old_node)
-          or (C =:= old_chain_has_no_contracts_in_top_block_state)
-          or (C =:= new_node_can_mine_on_old_chain_using_old_protocol)
-          or (C =:= new_node_can_mine_on_old_chain_using_new_protocol)
-        )).
-
 %=== COMMON TEST FUNCTIONS =====================================================
 
 all() ->
@@ -228,9 +221,6 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(assumptions, Config) -> Config;
-init_per_group(genesis, Config) -> Config;
-init_per_group(Group, Config) when Group =:= hard_fork; Group =:= hard_fork_with_tx -> Config;
 init_per_group(Group, Config)
   when Group =:= hard_fork_all; Group =:= hard_fork_all_with_tx ->
     {_, {restore_db_backup_on_old_node, SavedCfg}} =
@@ -264,12 +254,9 @@ init_per_group(hard_fork_new_chain_with_tx, Config) ->
       [?OLD_NODE1,
        ?NEW_NODE3(Ps),
        ?NEW_NODE4(Ps)], NewConfig),
-    NewConfig.
+    NewConfig;
+init_per_group(_, Config) -> Config.
 
-end_per_group(assumptions, _) -> ok;
-end_per_group(genesis, _) -> ok;
-end_per_group(Group, _) when Group =:= hard_fork; Group =:= hard_fork_with_tx -> ok;
-end_per_group(Group, _) when Group =:= hard_fork_all; Group =:= hard_fork_all_with_tx -> ok;
 end_per_group(upgrade_flow_smoke_test, Config) ->
     aest_nodes:ct_cleanup(Config),
     ok;
@@ -278,31 +265,24 @@ end_per_group(hard_fork_old_chain_with_tx, Config) ->
     ok;
 end_per_group(hard_fork_new_chain_with_tx, Config) ->
     aest_nodes:ct_cleanup(Config),
-    ok.
+    ok;
+end_per_group(_, _) -> ok.
 
-init_per_testcase(TC, Config) when ?is_testcase_in_group_assumptions(TC) ->
+init_per_testcase(TC, Config) when
+      ?is_testcase_in_group_assumptions(TC);
+      TC =:= restore_db_backup_on_old_node;
+      TC =:= old_node_can_receive_chain_from_other_old_node;
+      TC =:= new_node_accepts_long_old_chain_from_old_node_up_to_height_of_new_protocol ->
     aest_nodes:ct_setup(Config);
-init_per_testcase(restore_db_backup_on_old_node, Config) ->
-    aest_nodes:ct_setup(Config);
-init_per_testcase(old_node_can_receive_chain_from_other_old_node, Config) ->
-    aest_nodes:ct_setup(Config);
-init_per_testcase(new_node_accepts_long_old_chain_from_old_node_up_to_height_of_new_protocol, Config) ->
-    aest_nodes:ct_setup(Config);
-init_per_testcase(TC, Config) when ?is_testcase_in_group_upgrade_flow_smoke_test(TC) -> Config;
-init_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_old_protocol, Config) -> Config;
-init_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_new_protocol, Config) -> Config.
+init_per_testcase(_, Config) -> Config.
 
-end_per_testcase(TC, Config) when ?is_testcase_in_group_assumptions(TC) ->
+end_per_testcase(TC, Config) when
+      ?is_testcase_in_group_assumptions(TC);
+      TC =:= restore_db_backup_on_old_node;
+      TC =:= old_node_can_receive_chain_from_other_old_node;
+      TC =:= new_node_accepts_long_old_chain_from_old_node_up_to_height_of_new_protocol ->
     aest_nodes:ct_cleanup(Config);
-end_per_testcase(restore_db_backup_on_old_node, Config) ->
-    aest_nodes:ct_cleanup(Config);
-end_per_testcase(old_node_can_receive_chain_from_other_old_node, Config) ->
-    aest_nodes:ct_cleanup(Config);
-end_per_testcase(new_node_accepts_long_old_chain_from_old_node_up_to_height_of_new_protocol, Config) ->
-    aest_nodes:ct_cleanup(Config);
-end_per_testcase(TC, _) when ?is_testcase_in_group_upgrade_flow_smoke_test(TC) -> ok;
-end_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_old_protocol, _) -> ok;
-end_per_testcase(new_node_can_mine_spend_tx_on_old_chain_using_new_protocol, _) -> ok.
+end_per_testcase(_, _) -> ok.
 
 %=== TEST CASES ================================================================
 
