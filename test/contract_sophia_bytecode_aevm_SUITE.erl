@@ -11,6 +11,7 @@
    , simple_multi_argument_call/1
    , remote_multi_argument_call/1
    , spend_tests/1
+   , complex_types/1
    ]).
 
 %% chain API exports
@@ -23,7 +24,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            sophia_factorial,
            simple_multi_argument_call,
            remote_multi_argument_call,
-           spend_tests ].
+           spend_tests,
+           complex_types ].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -145,6 +147,17 @@ spend_tests(_Cfg) ->
     %% Spending in nested call
     {900, Env5}  = successful_call(101, word, withdraw_from, "(102,1000)", Env4, #{caller => 1}),
     #{1 := 11000, 101 := 900, 102 := 1100} = maps:get(accounts, Env5),
+    ok.
+
+complex_types(_Cfg) ->
+    Code = compile_contract(complex_types),
+    Env  = initial_state(#{101 => Code}),
+    21                      = successful_call_(101, word, sum, "[1,2,3,4,5,6]", Env),
+    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, up_to, "6", Env),
+    [1, 2, 3, 4, 5, 6]      = successful_call_(101, {list, word}, remote_list, "6", Env),
+    {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, "(101,6)", Env),
+    <<"string">>            = successful_call_(101, string, remote_string, "()", Env),
+    {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, "(99,\"luftballons\")", Env),
     ok.
 
 %% -- Chain API implementation -----------------------------------------------
