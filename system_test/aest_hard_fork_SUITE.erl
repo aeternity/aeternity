@@ -638,9 +638,10 @@ restore_db_backup_on_node(NodeName, TarBin, Content, DestDir, Cfg) ->
     ct:log("Restoring DB backup of byte size ~p on node ~s",
            [byte_size(TarBin), NodeName]),
     _ = aest_nodes:run_cmd_in_node_dir(NodeName, ["mkdir", DestDir], Cfg),
-    "" = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
+    {_, ""} = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
     ok = aest_nodes:extract_archive(NodeName, DestDir, TarBin, Cfg),
-    Content = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
+    {_, Output} = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
+    ?assertEqual(Content, string:trim(Output)),
     Dest = DestDir ++ "/" ++ Content,
     ErlCmd =
         "{atomic, [_|_] = Tabs} = mnesia:restore(\"" ++ Dest ++ "\", []), ok.",
@@ -695,8 +696,9 @@ to_forms(DotEndingTokenLists) ->
 run_erl_cmd_on_node(NodeName, ErlCmd, ExpectedOutput, Cfg) ->
     ct:log("Running Erlang command on node ~s:~n~s~nExpecting: ~s",
            [NodeName, ErlCmd, ExpectedOutput]),
-    Cmd = ["bin/epoch", "eval", "'" ++ ErlCmd ++ "'"],
-    ExpectedOutput = aest_nodes:run_cmd_in_node_dir(NodeName, Cmd, Cfg),
+    Cmd = ["bin/epoch", "eval", ErlCmd],
+    {_, Output} = aest_nodes:run_cmd_in_node_dir(NodeName, Cmd, Cfg),
+    ?assertEqual(ExpectedOutput, string:trim(Output)),
     ct:log("Run Erlang command on node ~s", [NodeName]),
     ok.
 

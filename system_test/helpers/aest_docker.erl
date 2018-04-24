@@ -344,10 +344,14 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
 %% supports stdout.
 run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
     log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
-    Cmd1 = lists:flatten(io_lib:format("docker exec ~s ~s", [ID, lists:join($ , Cmd)])),
-    Result = lib:nonl(os:cmd(Cmd1)),
-    log(NodeState, "Run command ~p on container ~p [~s] with result ~p", [Cmd, Name, ID, Result]),
-    {ok, Result, NodeState}.
+    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{}),
+    log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
+        [Cmd, Name, ID, Result]),
+    case Result of
+        undefined -> {ok, {Status, ""}, NodeState};
+        Str when is_binary(Result) ->
+            {ok, {Status, binary_to_list(Result)}, NodeState}
+    end.
 
 -spec connect_node(atom(), node_state()) -> node_state().
 connect_node(NetName, NodeState) ->
@@ -432,7 +436,7 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        {ok, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
+        {ok, _, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
         log(NodeState, "Command executed on container ~p [~s]: ~s",
             [Name, ID, CmdStr])
     catch
