@@ -17,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/3,
-         process/3,
+         check/4,
+         process/4,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -34,8 +34,10 @@
          amount/1,
          gas/1,
          gas_price/1,
-         call_data/1]).
+         call_data/1,
+         call_stack/1]).
 
+-define(PUB_SIZE, 65).
 
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
@@ -54,7 +56,8 @@ new(#{caller     := CallerPubKey,
       amount     := Amount,
       gas        := Gas,
       gas_price  := GasPrice,
-      call_data  := CallData}) ->
+      call_data  := CallData} = Args) ->
+    CallStack = maps:get(call_stack, Args, []),
     Tx = #contract_call_tx{caller     = CallerPubKey,
                            nonce      = Nonce,
                            contract   = Contract,
@@ -63,7 +66,8 @@ new(#{caller     := CallerPubKey,
                            amount     = Amount,
                            gas        = Gas,
                            gas_price  = GasPrice,
-                           call_data  = CallData},
+                           call_data  = CallData,
+                           call_stack = CallStack},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -84,16 +88,23 @@ origin(#contract_call_tx{caller = CallerPubKey}) ->
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
-                        fee = Fee,
-                        gas = GasLimit, gas_price = GasPrice
-                       } = CallTx, Trees, Height) ->
-    RequiredAmount = Fee + GasLimit * GasPrice,
+                        fee = Fee, amount = Value,
+                        gas = GasLimit, gas_price = GasPrice,
+                        call_stack = CallStack
+                       } = CallTx, Context, Trees, Height) ->
     Checks =
-        [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
-         fun() -> check_call(CallTx, Trees, Height) end
-        ],
+        case Context of
+            aetx_transaction ->
+                RequiredAmount = Fee + GasLimit * GasPrice + Value,
+                [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
+                 fun() -> check_call(CallTx, Trees, Height) end,
+                 fun() -> aect_utils:check(CallStack == [], nonempty_call_stack) end];
+            aetx_contract ->
+                [fun() -> aect_utils:check_balance(CallerPubKey, Trees, Value) end,
+                 fun() -> check_call(CallTx, Trees, Height) end]
+        end,
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -108,15 +119,14 @@ accounts(Tx) ->
 signers(Tx) ->
     [caller(Tx)].
 
--spec process(tx(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
-process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
-                          gas_price = GasPrice
-                         } = CallTx, Trees0, Height) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
+                          fee = Fee, gas_price = GasPrice, amount = Value
+                         } = CallTx, Context, Trees0, Height) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
     ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Create the call.
-    %% gas used.
     Call0 = aect_call:new(CallTx, Height),
 
     %% Run the contract code. Also computes the amount of gas left and updates
@@ -124,19 +134,34 @@ process(#contract_call_tx{caller = CallerPubKey, nonce = Nonce, fee = Fee,
     %% TODO: handle transactions performed by the contract code
     Call = run_contract(CallTx, Call0, Height, Trees0),
 
-    %% Charge the fee and the used gas to the caller
-    Amount         = Fee + aect_call:gas_used(Call) * GasPrice,
-    Caller0        = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
-    {ok, Caller1}  = aec_accounts:spend(Caller0, Amount, Nonce, Height),
-    AccountsTree1  = aec_accounts_trees:enter(Caller1, AccountsTree0),
+    %% Charge the fee and the used gas to the caller (not if called from another contract!)
+    {AccountsTree1, ContractsTree1} =
+        case Context of
+            aetx_contract    ->
+                %% When calling from another contract we only charge the 'amount'
+                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree0),
+                Caller1 = aect_contracts:spend(Value, Caller0),
+                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree0)};
+            aetx_transaction ->
+                %% When calling from the top-level we charge Fee and Gas as well.
+                Amount        = Fee + aect_call:gas_used(Call) * GasPrice + Value,
+                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
+                {ok, Caller1} = aec_accounts:spend(Caller0, Amount, Nonce, Height),
+                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree0}
+        end,
+
+    %% Credit the attached funds to the callee
+    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree1),
+    Callee1 = aect_contracts:earn(Value, Callee0),
+    ContractsTree2 = aect_state_tree:enter_contract(Callee1, ContractsTree1),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
-    ContractsTree1 = aect_state_tree:insert_call(Call, ContractsTree0),
+    ContractsTree3 = aect_state_tree:insert_call(Call, ContractsTree2),
 
     %% Update the state tree
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
+    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree3),
 
     {ok, Trees2}.
 
@@ -149,6 +174,9 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
                             gas        = Gas,
                             gas_price  = GasPrice,
                             call_data  = CallData}) ->
+    %% Note that the call_stack is not serialized. This is ok since we don't
+    %% serialize transactions originating from contract execution, and for
+    %% top-level transactions the call_stack is always empty.
     {version(),
      [ {caller, CallerPubKey}
      , {nonce, Nonce}
@@ -241,14 +269,25 @@ gas_price(C) -> C#contract_call_tx.gas_price.
 -spec call_data(tx()) -> binary().
 call_data(C) -> C#contract_call_tx.call_data.
 
+-spec call_stack(tx()) -> [non_neg_integer()].
+call_stack(C) -> C#contract_call_tx.call_stack.
+
 %% -- Local functions  -------------------------------------------------------
 
 %% Check that the contract exists and has the right VM version.
 check_call(#contract_call_tx{ contract   = ContractPubKey,
-                              vm_version = VmVersion },
+                              vm_version = VmVersion,
+                              amount     = Value},
                Trees, _Height) ->
     ContractsTree = aec_trees:contracts(Trees),
+    %% Dialyzer, in its infinite wisdom, complains if it thinks we're checking
+    %% that something of type non_neg_integer() is negative. Since Dialyzer
+    %% doesn't _actually_ guarantee that this isn't the case, we do need the
+    %% check and this is the least convoluted way of writing it that Dialyzer's
+    %% static analysis cannot see through.
+    NegativeAmount = -Value > 0,
     case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
+        _ when NegativeAmount -> {error, negative_amount};
         {value, C} ->
             case aect_contracts:vm_version(C) == VmVersion of
                 true  -> ok;
@@ -263,12 +302,13 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
 %% used.
 -spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
 run_contract(#contract_call_tx
-             { caller    = Caller
-             , contract  = ContractPubKey
-             , gas       = Gas
-             , gas_price = GasPrice
-             , call_data = CallData
-             , amount    = Value
+             { caller     = Caller
+             , contract   = ContractPubKey
+             , gas        = Gas
+             , gas_price  = GasPrice
+             , call_data  = CallData
+             , amount     = Value
+             , call_stack = CallStack
              } = _Tx, Call, Height, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
@@ -277,21 +317,26 @@ run_contract(#contract_call_tx
     %% TODO: Handle different VMs and ABIs.
     %% TODO: Move init and execution to a separate moidule to be re used by
     %% both on chain and off chain calls.
+    ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
+    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
     try aevm_eeevm_state:init(
-	  #{ exec => #{ code     => Code,
-			address  => 0,        %% We start executing at address 0
-			caller   => Caller,
-			data     => CallData,
-			gas      => Gas,
-			gasPrice => GasPrice,
-			origin   => Caller,
-			value    => Value },
+	  #{ exec => #{ code       => Code,
+			address    => Address,
+			caller     => Caller,
+			data       => CallData,
+			gas        => Gas,
+			gasPrice   => GasPrice,
+			origin     => Caller,
+			value      => Value,
+                        call_stack => CallStack },
              %% TODO: set up the env properly
              env => #{currentCoinbase   => 0,
                       currentDifficulty => 0,
                       currentGasLimit   => Gas,
                       currentNumber     => Height,
-                      currentTimestamp  => 0},
+                      currentTimestamp  => 0,
+                      chainState        => ChainState,
+                      chainAPI          => aec_vm_chain},
              pre => #{}},
           #{trace => false})
     of
@@ -310,7 +355,7 @@ run_contract(#contract_call_tx
 		{error,_Error, #{ gas :=_GasLeft}} ->
 		    aect_call:set_gas_used(Gas,
 					   aect_call:set_return_value(<<>>, Call))
-		    
+
 	    catch _:_ -> Call
 	    end
     catch _:_ ->

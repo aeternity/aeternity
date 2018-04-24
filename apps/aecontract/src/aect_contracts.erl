@@ -13,12 +13,14 @@
 -export([ deserialize/1
         , id/1
         , new/3
+        , new/7 %% For use without transaction
         , serialize/1
         , compute_contract_pubkey/2
           %% Getters
         , pubkey/1
         , balance/1
         , height/1
+        , nonce/1
         , owner/1
         , vm_version/1
         , code/1
@@ -28,9 +30,12 @@
         , referers/1
         , deposit/1
           %% Setters
+        , spend/2
+        , earn/2
         , set_pubkey/2
         , set_balance/2
         , set_height/2
+        , set_nonce/2
         , set_owner/2
         , set_vm_version/2
         , set_code/2
@@ -52,6 +57,7 @@
         pubkey     :: pubkey(),
         balance    :: amount(),
         height     :: height(),
+        nonce      :: non_neg_integer(),
         %% Contract-specific fields
         owner      :: pubkey(),
         vm_version :: vm_version(),
@@ -92,18 +98,29 @@ id(C) ->
 
 -spec new(pubkey(), aect_create_tx:tx(), height()) -> contract().
 new(ContractPubKey, RTx, BlockHeight) ->
+    new(ContractPubKey, BlockHeight,
+        aect_create_tx:amount(RTx),
+        aect_create_tx:owner(RTx),
+        aect_create_tx:vm_version(RTx),
+        aect_create_tx:code(RTx),
+        aect_create_tx:deposit(RTx)).
+
+-spec new(pubkey(), height(), amount(), pubkey(), integer(), binary(), amount()) -> contract().
+%% NOTE: Should only be used for contract execution without transaction
+new(ContractPubKey, BlockHeight, Amount, Owner, VmVersion, Code, Deposit) ->
     C = #contract{ pubkey     = ContractPubKey,
-                   balance    = aect_create_tx:amount(RTx),
+                   balance    = Amount,
                    height     = BlockHeight,
+                   nonce      = 0,
                    %% Contract-specific fields
-                   owner      = aect_create_tx:owner(RTx),
-                   vm_version = aect_create_tx:vm_version(RTx),
-                   code       = aect_create_tx:code(RTx),
+                   owner      = Owner,
+                   vm_version = VmVersion,
+                   code       = Code,
                    state      = <<>>,
                    log        = <<>>,
                    active     = true,
                    referers   = [],
-                   deposit    = aect_create_tx:deposit(RTx)
+                   deposit    = Deposit
                  },
     C = assert_fields(C),
     %% TODO: call the init function to initialise the state
@@ -118,6 +135,7 @@ serialize(#contract{} = C) ->
       [ {pubkey, pubkey(C)}
       , {balance, balance(C)}
       , {height, height(C)}
+      , {nonce, nonce(C)}
       , {owner, owner(C)}
       , {vm_version, vm_version(C)}
       , {code, code(C)}
@@ -133,6 +151,7 @@ deserialize(Bin) ->
     [ {pubkey, Pubkey}
     , {balance, Balance}
     , {height, Height}
+    , {nonce, Nonce}
     , {owner, Owner}
     , {vm_version, VmVersion}
     , {code, Code}
@@ -150,6 +169,7 @@ deserialize(Bin) ->
     #contract{ pubkey     = Pubkey
              , balance    = Balance
              , height     = Height
+             , nonce      = Nonce
              , owner      = Owner
              , vm_version = VmVersion
              , code       = Code
@@ -164,6 +184,7 @@ serialization_template(?CONTRACT_VSN) ->
     [ {pubkey, binary}
     , {balance, int}
     , {height, int}
+    , {nonce, int}
     , {owner, binary}
     , {vm_version, int}
     , {code, binary}
@@ -196,6 +217,10 @@ balance(C) -> C#contract.balance.
 %% The block height of the last transaction on the contract.
 -spec height(contract()) -> height().
 height(C) -> C#contract.height.
+
+%% The nonce of the contract account
+-spec nonce(contract()) -> non_neg_integer().
+nonce(C) -> C#contract.nonce.
 
 %% The owner of the contract is (initially) the account that created it.
 -spec owner(contract()) -> pubkey().
@@ -232,6 +257,14 @@ deposit(C) -> C#contract.deposit.
 %%%===================================================================
 %%% Setters
 
+-spec spend(amount(), contract()) -> contract().
+spend(Amount, C) ->
+    C#contract{balance = assert_field(balance, C#contract.balance - Amount)}.
+
+-spec earn(amount(), contract()) -> contract().
+earn(Amount, C) ->
+    C#contract{balance = assert_field(balance, C#contract.balance + Amount)}.
+
 -spec set_pubkey(pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
     C#contract{pubkey = assert_field(pubkey, X)}.
@@ -243,6 +276,10 @@ set_balance(X, C) ->
 -spec set_height(height(), contract()) -> contract().
 set_height(X, C) ->
     C#contract{height = assert_field(height, X)}.
+
+-spec set_nonce(non_neg_integer(), contract()) -> contract().
+set_nonce(X, C) ->
+    C#contract{nonce = assert_field(nonce, X)}.
 
 -spec set_owner(pubkey(), contract()) -> contract().
 set_owner(X, C) ->
@@ -284,6 +321,7 @@ assert_fields(C) ->
     List = [ {pubkey,     C#contract.pubkey}
            , {balance,    C#contract.balance}
            , {height,     C#contract.height}
+           , {nonce,      C#contract.nonce}
            , {owner,      C#contract.owner}
            , {vm_version, C#contract.vm_version}
            , {code,       C#contract.code}
@@ -303,6 +341,7 @@ assert_fields(C) ->
 assert_field(pubkey, <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(balance, X)    when is_integer(X), X >= 0   -> X;
 assert_field(height, X)     when is_integer(X), X > 0    -> X;
+assert_field(nonce, X)      when is_integer(X), X >= 0   -> X;
 assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(vm_version, X) when is_integer(X), X >= 0   -> X;
 assert_field(code, X)       when is_binary(X)            -> X;

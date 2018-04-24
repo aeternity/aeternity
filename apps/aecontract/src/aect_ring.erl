@@ -52,6 +52,18 @@ simple_call(Code, Function, Argument) ->
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
+            %% TODO: proper setup of chain state!
+            Owner = <<123456:65/unit:8>>,
+            DummyPubKey = aect_contracts:compute_contract_pubkey(Owner, 1),
+            {Block, Trees} = aec_chain:top_block_with_state(),
+            BlockHeight = aec_blocks:height(Block) + 1,
+            Amount = 0,
+            VmVersion = 1,
+            Deposit = 0,
+            Contract = aect_contracts:new(DummyPubKey, BlockHeight, Amount,
+                                          Owner, VmVersion, Code, Deposit),
+            Trees1 = insert_contract(Contract, Trees),
+            ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
             Spec = #{ code => Code
                     , address => 0
                     , caller => 0
@@ -59,12 +71,14 @@ simple_call(Code, Function, Argument) ->
                     , gas => 1000000
                     , gasPrice => 1
                     , origin => 0
-                    , value => 0
+                    , value => Amount
                     , currentCoinbase => 1
                     , currentDifficulty => 1
                     , currentGasLimit => 1000000
                     , currentNumber => 1
                     , currentTimestamp => 1
+                    , chainAPI => aec_vm_chain
+                    , chainState => ChainState
                     },
             case aect_evm:execute_call(Spec, false) of
                 {ok, #{ out := Out }} ->
@@ -72,6 +86,11 @@ simple_call(Code, Function, Argument) ->
                 E -> {error, list_to_binary(io_lib:format("~p", [E]))}
             end
     end.
+
+insert_contract(Contract, Trees) ->
+    CTrees = aec_trees:contracts(Trees),
+    CTrees1 = aect_state_tree:insert_contract(Contract, CTrees),
+    aec_trees:set_contracts(Trees, CTrees1).
 
 -spec encode_call_data(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
 encode_call_data(Contract, Function, Argument) ->
