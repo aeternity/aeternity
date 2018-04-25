@@ -70,29 +70,32 @@ def test_persistence():
 
     # prepare a dir to hold the config and DB files
     root_dir = tempfile.mkdtemp()
-    persistance_mining_sys_config = os.path.join(root_dir, "p_m_sys.config")
-    only_persistance_sys_config = os.path.join(root_dir, "p_sys.config")
-    f = open(persistance_mining_sys_config, "w")
+    p_m_conf = """\
+---
+chain:
+    persist: true
+    db_path: \"""" + root_dir + """\"
 
-    # this should be moved to an YAML once we have YAML node configuration
-    f.write('[{aecore, [{db_path, "' + root_dir + '"},' + \
-                      ' {persist, true},' + \
-                      ' {autostart, true},' + \
-                      ' {expected_mine_rate, 100},' + \
-                      ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}' + \
-                      ']}].')
-    f.close()
-
-    f = open(only_persistance_sys_config, "w")
-
-    # this should be moved to an YAML once we have YAML node configuration
-    f.write('[{aecore, [{db_path, "' + root_dir + '"},' + \
-                      ' {persist, true}' + \
-                      ']}].')
-    f.close()
+mining:
+    autostart: true
+    expected_mine_rate: 100
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+"""
+    p_conf = """\
+---
+chain:
+    persist: true
+    db_path: \"""" + root_dir + """\"
+"""
+    persistence_mining_user_config = common.install_user_config(root_dir, "p_m_epoch.yaml", p_m_conf)
+    only_persistence_user_config = common.install_user_config(root_dir, "p_epoch.yaml", p_conf)
 
     bob_node = test_settings["nodes"]["bob"]
-    common.start_node(bob_node, persistance_mining_sys_config)
+    common.start_node(bob_node, persistence_mining_user_config)
     bob_api = common.external_api(bob_node)
 
     # Insert some blocks in Bob's chain
@@ -104,7 +107,7 @@ def test_persistence():
 
     common.stop_node(bob_node)
 
-    common.start_node(bob_node, only_persistance_sys_config)
+    common.start_node(bob_node, only_persistence_user_config)
     bob_new_top = bob_api.get_top()
     if(bob_new_top.height > bob_top.height):
         # Bob's node had mined another block(s) before being stopped
@@ -259,8 +262,6 @@ def copy_peer_keys(root_dir, keys):
 
 def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, mining=False):
     key_dir = copy_peer_keys(root_dir, keys)
-
-    sys_config = os.path.join(root_dir, file_name)
     mining_str = ""
     if mining:
         mining_str = ' {autostart, true},' + \
@@ -269,15 +270,12 @@ def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, min
     else:
         mining_str = ' {autostart, false},' + \
                      ' {expected_mine_rate, 100}'
-    f = open(sys_config, "w")
     conf ='[{aecore, [' + peers + '{sync_port, ' + sync_port + '}, ' + \
                       ' {keys_dir, "' + key_dir + '"}, ' + \
                       ' {password, <<"top secret">>}, ' + \
                       mining_str + ']},' +\
           '{aehttp, [{enable_debug_endpoints, true}, {local_peer_address, "' + node_url + '"}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+    return common.install_user_config(root_dir, file_name, conf)
 
 def node_peer_url(node_name):
     host = common.node_config(node_name)["host"]
