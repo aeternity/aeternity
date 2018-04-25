@@ -166,14 +166,14 @@
         when: genesis_accounts is defined
         tags: [config]
 
-       - name: "Copy node peer keys to {{ project_root }}/{{ config.keypair.dir }}"
-         copy:
-           src: "{{ item }}"
-           dest: "{{ project_root }}/{{ config.keypair.dir }}"
-           mode: 0600
-         with_items: "{{ peer_keypairs }}"
-         when: peer_keypairs is defined
-         tags: [config]
+      - name: "Copy node peer keys to {{ project_root }}/{{ config.keypair.dir }}"
+        copy:
+          src: "{{ item }}"
+          dest: "{{ project_root }}/{{ config.keypair.dir }}"
+          mode: 0600
+        with_items: "{{ peer_keypairs }}"
+        when: peer_keypairs is defined
+        tags: [config]
 
       - name: Start epoch daemon
         command: "{{ project_root }}/bin/epoch start"
