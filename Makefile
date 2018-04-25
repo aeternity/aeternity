@@ -160,7 +160,6 @@ system-test:
 system-test-deps: | system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar
 	$(info The downloaded DB backup is not checked for freshness.)
 	docker pull aeternity/epoch:v0.11.1
-	docker build . -t aeternity/epoch:local
 
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup
 	tar -c -C $(<D) -f $@ $(<F)
