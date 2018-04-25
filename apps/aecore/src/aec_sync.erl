@@ -298,9 +298,13 @@ delete_sync_task(STId, S = #state{ sync_tasks = STs }) ->
     S#state{ sync_tasks = lists:keydelete(STId, #sync_task.id, STs) }.
 
 add_chain_info(Chain = #{ chain_id := CId }, S) ->
-    {ok, ST = #sync_task{ chain = Chain2 }} = get_sync_task(CId, S),
-    ST1 = ST#sync_task{ chain = merge_chains(Chain, Chain2) },
-    set_sync_task(ST1, S).
+    case get_sync_task(CId, S) of
+        {ok, ST = #sync_task{ chain = Chain2 }} ->
+            ST1 = ST#sync_task{ chain = merge_chains(Chain, Chain2) },
+            set_sync_task(ST1, S);
+        {error, not_found} ->
+            S
+    end.
 
 init_sync_task(Chain) ->
     #sync_task{ id = maps:get(chain_id, Chain), chain = Chain }.
@@ -379,13 +383,12 @@ do_terminate_worker(Pid, ST = #sync_task{ workers = Ws }) ->
 %%%=============================================================================
 delayed_run_job(PeerId, Task, Queue, Fun, Delay) ->
     OldWorker = self(),
-    proc_lib:spawn(
+    NewWorker = proc_lib:spawn(
         fun() ->
-            NewWorker = self(),
-            handle_worker(Task, {change_worker, PeerId, OldWorker, NewWorker}),
             timer:sleep(Delay),
             jobs:run(Queue, Fun)
-        end).
+        end),
+    handle_worker(Task, {change_worker, PeerId, OldWorker, NewWorker}).
 
 run_job(Queue, Fun) ->
     proc_lib:spawn(jobs, run, [Queue, Fun]).
