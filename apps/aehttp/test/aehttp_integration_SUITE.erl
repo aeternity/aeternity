@@ -1,5 +1,11 @@
 -module(aehttp_integration_SUITE).
 
+%%
+%% Each test assumes that the chain is at least at the height where the latest
+%% consensus protocol applies hence each test reinitializing the chain should
+%% take care of that at the end of the test.
+%%
+
 %% common_test exports
 -export(
    [
@@ -391,10 +397,16 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
+    Forks = #{<<"9">> => 0,
+              <<"10">> => 1,
+              <<"11">> => 2},
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
-                                                 #{<<"persist">> => true}}),
+                                                 #{<<"persist">> => true,
+                                                   <<"hard_forks">> => Forks}}),
+    LatestForkHeight = lists:max(maps:values(Forks)),
     aecore_suite_utils:make_multi(Config1, [?NODE]),
-    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config1].
+    [{nodes, [aecore_suite_utils:node_tuple(?NODE)]},
+     {latest_fork, LatestForkHeight}]  ++ Config1.
 
 end_per_suite(_Config) ->
     ok.
@@ -404,6 +416,9 @@ init_per_group(all_endpoints, Config) ->
 init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    ToMine = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ToMine),
     Config.
 
 end_per_group(all_endpoints, _Config) ->
@@ -427,7 +442,7 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 %% Test cases
 %% ============================================================
-get_top_empty_chain(_Config) ->
+get_top_empty_chain(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, HeaderMap} = get_top(),
     ct:log("~p returned header = ~p", [?NODE, HeaderMap]),
@@ -436,6 +451,10 @@ get_top_empty_chain(_Config) ->
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     HeaderMap = ExpectedMap,
+
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     ok.
 
 get_top_non_empty_chain(_Config) ->
@@ -449,13 +468,13 @@ get_top_non_empty_chain(_Config) ->
     true = Height > 0,
     ok.
 
-block_by_height(_Config) ->
+block_by_height(Config) ->
     GetExpectedBlockFun =
         fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
     CallApiFun = fun get_block_by_height/2,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun, Config).
 
-block_not_found_by_height(_Config) ->
+block_not_found_by_height(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     lists:foreach(
         fun(H) ->
@@ -467,6 +486,10 @@ block_not_found_by_height(_Config) ->
                 [default, message_pack, json])
         end,
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
+
+    ToMine = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ToMine),
     ok.
 
 block_by_height_deprecated(_Config) ->
@@ -560,7 +583,7 @@ block_not_found_by_broken_hash_deprecated(_Config) ->
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
-block_by_hash(_Config) ->
+block_by_hash(Config) ->
     GetExpectedBlockFun =
         fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
     CallApiFun =
@@ -568,7 +591,7 @@ block_by_hash(_Config) ->
             {ok, Hash} = block_hash_by_height(H),
             get_block_by_hash(Hash, Opts)
         end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun, Config).
 
 block_by_hash_deprecated(_Config) ->
     BlocksToCheck = 4,
@@ -611,6 +634,9 @@ contract_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     % contract_create_tx positive test
     Code = <<"0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56">>,
@@ -842,7 +868,6 @@ oracle_transactions(_Config) ->
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
                                fun get_oracle_response/1,
                                fun aeo_response_tx:new/1, MinerPubkey),
-
     {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
     sign_and_post_tx(ResponseTx),
     % mine a block to include it
@@ -1196,7 +1221,8 @@ pending_transactions(_Config) ->
                                    BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
-    Bal0 = InitialBalance + BlocksToMine * MineReward,
+    {Bal0, _, _} = {InitialBalance + BlocksToMine * MineReward, Bal0,
+                 {InitialBalance, BlocksToMine, MineReward, Fee}},
     true = (is_integer(Bal0) andalso Bal0 > AmountToSpent + Fee),
 
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % still empty
@@ -1233,11 +1259,11 @@ pending_transactions(_Config) ->
                  get_balance_at_top(aec_base58c:encode(account_pubkey, ReceiverPubKey)),
     ok.
 
-post_correct_blocks(_Config) ->
+post_correct_blocks(Config) ->
     ok = rpc(aec_conductor, stop_mining, []),
     ok = rpc(aec_conductor, reinit_chain, []),
     timer:sleep(100),
-    BlocksToPost = ?DEFAULT_TESTS_COUNT,
+    BlocksToPost = max(?DEFAULT_TESTS_COUNT, ?config(latest_fork, Config)),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToPost),
     Blocks =
@@ -1260,6 +1286,10 @@ post_correct_blocks(_Config) ->
             BH = HH % block accepted
         end,
         Blocks),
+
+    ToMine = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ToMine),
     ok.
 
 post_broken_blocks(Config) ->
@@ -1368,13 +1398,17 @@ post_broken_base58_tx(_Config) ->
         lists:seq(1, NumberOfChecks)), % number
     ok.
 
-all_accounts_balances(_Config) ->
+all_accounts_balances(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
     Receivers = ?DEFAULT_TESTS_COUNT,
     AmountToSpent = 1,
-    {BlocksToMine, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
+    {BlocksToMine0, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
+
+    ForkHeight = ?config(latest_fork, Config),
+    BlocksToMine = max(BlocksToMine0, ForkHeight),
+
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToMine),
     ReceiversAccounts = [{random_hash(), AmountToSpent} || _Idx <- lists:seq(1, Receivers)],
@@ -1406,7 +1440,7 @@ all_accounts_balances(_Config) ->
             Balances),
     ok.
 
-all_accounts_balances_empty(_Config) ->
+all_accounts_balances_empty(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
@@ -1419,6 +1453,10 @@ all_accounts_balances_empty(_Config) ->
                 Account = {AccDec, Bal},
                 lists:member(Account, GenesisAccounts) end,
             Balances),
+
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     ok.
 
 all_accounts_balances_disabled(_Config) ->
@@ -1444,22 +1482,27 @@ info_disabled(_Config) ->
     {ok, 403, #{<<"reason">> := <<"Info not enabled">>}} = get_info(),
     ok.
 
-info_empty(_Config) ->
+info_empty(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     ExpectedEmpty = #{<<"last_30_blocks_time">> => [ #{<<"difficulty">> => 1.0,
                                                        <<"height">> => 0,
                                                        <<"time">>  => 0}]},
     {ok, 200, ExpectedEmpty} = get_info(),
+
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     ok.
 
-info_more_than_30(_Config) ->
-    test_info(40).
+info_more_than_30(Config) ->
+    test_info(40, Config).
 
-info_less_than_30(_Config) ->
-    test_info(20).
+info_less_than_30(Config) ->
+    test_info(20, Config).
 
-test_info(BlocksToMine) ->
+test_info(BlocksToMine, Config) ->
+    true = ?config(latest_fork, Config) < BlocksToMine,
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
     ExpectedMineRate = 100,
@@ -1496,10 +1539,15 @@ test_info(BlocksToMine) ->
 
 
 %% positive test of spend_tx is handled in pending_transactions test
-broken_spend_tx(_Config) ->
+broken_spend_tx(Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 404, #{<<"reason">> := <<"Account not found">>}} = get_balance_at_top(),
     ReceiverPubKey = random_hash(),
     {ok, 404, _} = post_spend_tx(ReceiverPubKey, 42, 2),
+
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     ok.
 
 miner_pub_key(_Config) ->
@@ -1518,7 +1566,7 @@ peer_pub_key(_Config) ->
     {ok, PeerPubKey} = aec_base58c:safe_decode(peer_pubkey, EncodedPubKey),
     ok.
 
-account_transactions(_Config) ->
+account_transactions(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
     %% no transactions but no account either
@@ -1530,7 +1578,9 @@ account_transactions(_Config) ->
     acc_txs_test(EncodedPubKey, 0, 20),
 
     %% prepare some coinbases and spends
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   max(5, ForkHeight)),
     add_spend_txs(), % in mempool
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
@@ -1646,8 +1696,9 @@ acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
         end,
         [{E, T} || E <- TxEncodings, T <- AllTestedTxTypes]).
 
-block_number(_Config) ->
+block_number(Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
+    ForkHeight = ?config(latest_fork, Config),
     TopHeader = rpc(aec_chain, top_header, []),
     0 = aec_headers:height(TopHeader),
     {ok, 200, #{<<"height">> := 0}} = get_block_number(),
@@ -1657,10 +1708,10 @@ block_number(_Config) ->
             {ok, 200, #{<<"height">> := Num}} = get_block_number(),
             ExpectedNum = Num
         end,
-        lists:seq(1, ?DEFAULT_TESTS_COUNT)),
+        lists:seq(1, max(?DEFAULT_TESTS_COUNT, ForkHeight))),
     ok.
 
-block_genesis(_Config) ->
+block_genesis(Config) ->
     GetExpectedBlockFun =
         fun(_H) ->
             GenesisBlock = rpc(aec_chain, genesis_block, []),
@@ -1670,9 +1721,9 @@ block_genesis(_Config) ->
         fun(_H, Opts) ->
             get_internal_block_preset("genesis", Opts)
         end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun, Config).
 
-block_latest(_Config) ->
+block_latest(Config) ->
     GetExpectedBlockFun =
         fun(_H) ->
             TopBlock = rpc(aec_chain, top_block, []),
@@ -1682,7 +1733,7 @@ block_latest(_Config) ->
         fun(_H, Opts) ->
             get_internal_block_preset("latest", Opts)
         end,
-    internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
+    internal_get_block_generic(GetExpectedBlockFun, CallApiFun, Config).
 
 %% we need really slow mining; since mining speed is not modified for the
 %% first X blocks, we need to premine them before the test
@@ -1748,12 +1799,14 @@ block_pending(_Config) ->
     rpc(aec_conductor, stop_mining, []),
     ok.
 
-internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
+internal_get_block_generic(GetExpectedBlockFun, CallApiFun, Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     BlocksToCheck = 4,
-    lists:foreach(
+    CheckAtHeight =
         fun(Height) ->
-            {ok, 200, #{<<"height">> := Height}} = get_top(),
             {ok, ExpectedBlock} = GetExpectedBlockFun(Height),
             Specific =
                 fun(DataSchema) ->
@@ -1776,15 +1829,18 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             ct:log("ExpectedBlockMapTxsObjects ~p, BlockMap2: ~p",
                    [ExpectedBlockMapTxsObjects, BlockMap2]),
             true = equal_block_maps(BlockMap, ExpectedBlockMapTxsObjects),
-            true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects),
+            true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects)
+        end,
+    CheckAtHeight(0), % genesis
+    lists:foreach(
+        fun(Height) ->
+            {ok, 200, #{<<"height">> := Height}} = get_top(),
+            CheckAtHeight(Height),
             % prepare the next block
-            case Height of
-                0 -> pass; % no token to spend yet
-                _ -> add_spend_txs()
-            end,
+            add_spend_txs(),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1)
         end,
-        lists:seq(0, BlocksToCheck)), % from genesis
+        lists:seq(ForkHeight, ForkHeight + BlocksToCheck)), % from latest fork
     ok.
 
 block_txs_count_by_height(_Config) ->
@@ -1893,22 +1949,23 @@ block_txs_count_by_broken_hash(_Config) ->
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
-block_tx_index_by_height(_Config) ->
-    generic_block_tx_index_test(fun get_block_tx_by_index_height/3).
+block_tx_index_by_height(Config) ->
+    generic_block_tx_index_test(fun get_block_tx_by_index_height/3, Config).
 
-block_tx_index_by_hash(_Config) ->
+block_tx_index_by_hash(Config) ->
     CallApiFun =
         fun(H, Index, Opts) ->
             {ok, Hash} = block_hash_by_height(H),
             get_block_tx_by_index_hash(Hash, Index, Opts)
         end,
-    generic_block_tx_index_test(CallApiFun).
+    generic_block_tx_index_test(CallApiFun, Config).
 
-block_tx_index_latest(_Config) ->
+block_tx_index_latest(Config) ->
     generic_block_tx_index_test(
         fun(_, Index, Opts) ->
             get_block_tx_by_index_latest(Index, Opts)
-        end).
+        end,
+        Config).
 
 block_tx_index_not_founds(_Config) ->
     InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
@@ -1954,8 +2011,11 @@ block_tx_index_not_founds(_Config) ->
     ok.
 
 
-generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
+generic_block_tx_index_test(CallApi, Config) when is_function(CallApi, 3)->
     ok = rpc(aec_conductor, reinit_chain, []),
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
     BlocksToMine = ?DEFAULT_TESTS_COUNT,
     lists:foreach(
         fun(Height) ->
@@ -1987,7 +2047,7 @@ generic_block_tx_index_test(CallApi) when is_function(CallApi, 3)->
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
             add_spend_txs()
         end,
-        lists:seq(0, BlocksToMine)), % from genesis
+        lists:seq(ForkHeight, ForkHeight + BlocksToMine)), % from latest fork
     ok.
 
 block_txs_list_by_height(_Config) ->
@@ -2312,13 +2372,15 @@ naming_system_manage_name(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_name(Name),
     ok.
 
-naming_system_broken_txs(_Config) ->
+naming_system_broken_txs(Config) ->
     Name        = <<"fooo.test">>,
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),
     Fee         = 2,
 
+    % these tests require that no accounts are present
+    ok = rpc(aec_conductor, reinit_chain, []),
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -2340,7 +2402,11 @@ naming_system_broken_txs(_Config) ->
         post_name_revoke_tx(NHash, Fee),
 
     %% Check mempool still empty
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]).
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    ForkHeight = ?config(latest_fork, Config),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ForkHeight),
+    ok.
 
 list_oracles(_Config) ->
     %% Mine some blocks to get some funds
