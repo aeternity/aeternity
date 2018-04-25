@@ -28,6 +28,8 @@
          validate/1,
          cointains_coinbase_tx/1]).
 
+-import(aec_hard_forks, [protocol_effective_at_height/1]).
+
 -ifdef(TEST).
 -compile([export_all, nowarn_export_all]).
 -endif.
@@ -111,7 +113,7 @@ new_with_state(LastBlock, Txs, Trees0) ->
     %% Let's hardcode this expectation for now.
     Txs = aetx_sign:filter_invalid_signatures(Txs),
 
-    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees0, Height),
+    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees0, Height, Version),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
         #block{height = Height,
@@ -123,9 +125,6 @@ new_with_state(LastBlock, Txs, Trees0) ->
                time = aeu_time:now_in_msecs(),
                version = Version},
     {NewBlock, Trees}.
-
-protocol_effective_at_height(H) ->
-    aec_hard_forks:protocol_effective_at_height(H, aec_hard_forks:protocols(aec_governance:protocols())).
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,

@@ -7,8 +7,8 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 -export([ accounts/1
-        , check/3
-        , check_from_contract/3
+        , check/4
+        , check_from_contract/4
         , deserialize_from_binary/1
         , fee/1
         , hash/1
@@ -17,8 +17,8 @@
         , new/2
         , nonce/1
         , origin/1
-        , process/3
-        , process_from_contract/3
+        , process/4
+        , process_from_contract/4
         , serialize_for_client/1
         , serialize_to_binary/1
         , signers/1
@@ -93,11 +93,13 @@
     [pubkey()].
 
 -callback check(Tx :: tx_instance(), Context :: tx_context(),
-                Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+                Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+                ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 
 -callback process(Tx :: tx_instance(), Context :: tx_context(),
-                  Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+                  Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+                  ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
 
 -callback serialize(Tx :: tx_instance()) ->
@@ -150,25 +152,29 @@ accounts(#aetx{ cb = CB, tx = Tx }) ->
 signers(#aetx{ cb = CB, tx = Tx }) ->
     CB:signers(Tx).
 
--spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+-spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+            ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
-    CB:check(Tx, aetx_transaction, Trees, Height).
+check(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
+    CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion).
 
--spec check_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+-spec check_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+                          ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
-    CB:check(Tx, aetx_contract, Trees, Height).
+check_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
+    CB:check(Tx, aetx_contract, Trees, Height, ConsensusVersion).
 
--spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+-spec process(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+              ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
-process(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
-    CB:process(Tx, aetx_transaction, Trees, Height).
+process(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
+    CB:process(Tx, aetx_transaction, Trees, Height, ConsensusVersion).
 
--spec process_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer()) ->
+-spec process_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
+                            ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()}.
-process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height) ->
-    CB:process(Tx, aetx_contract, Trees, Height).
+process_from_contract(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
+    CB:process(Tx, aetx_contract, Trees, Height, ConsensusVersion).
 
 -spec serialize_for_client(Tx :: tx()) -> map().
 serialize_for_client(#aetx{ cb = CB, type = Type, tx = Tx }) ->

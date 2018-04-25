@@ -20,14 +20,14 @@ check_test_() ->
               {ok, SpendTx} = spend_tx(#{fee => 0}), %% minimum governance fee = 1
               StateTree = aec_test_utils:create_state_tree(),
               ?assertEqual({error, too_low_fee},
-                           aetx:check(SpendTx, StateTree, 10))
+                           aetx:check(SpendTx, StateTree, 10, ?PROTOCOL_VERSION))
       end},
      {"Sender account does not exist in state trees",
       fun() ->
               {ok, SpendTx} = spend_tx(#{fee => 10, sender => <<42>>}),
               StateTree = aec_test_utils:create_state_tree(),
               ?assertEqual({error, account_not_found},
-                           aetx:check(SpendTx, StateTree, 10))
+                           aetx:check(SpendTx, StateTree, 10, ?PROTOCOL_VERSION))
       end},
      {"Sender account has insufficient funds to cover tx fee + amount",
       fun() ->
@@ -44,7 +44,7 @@ check_test_() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 55, nonce => 5, height => 10}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, insufficient_funds},
-                           aetx:check(SpendTx, StateTree, 20))
+                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
       end},
      {"Sender account has nonce higher than tx nonce",
       fun() ->
@@ -56,7 +56,7 @@ check_test_() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce, height => 10}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, account_nonce_too_high},
-                           aetx:check(SpendTx, StateTree, 20))
+                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
       end},
      {"Sender account has height higher than tx height",
       fun() ->
@@ -69,7 +69,7 @@ check_test_() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => AccountHeight}),
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, sender_account_height_too_big},
-                           aetx:check(SpendTx, StateTree, BlockHeight))
+                           aetx:check(SpendTx, StateTree, BlockHeight, ?PROTOCOL_VERSION))
       end},
      {"Recipient account has height higher than tx height",
       fun() ->
@@ -86,7 +86,7 @@ check_test_() ->
               RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, height => RecipientAccountHeight}),
               StateTree = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
               ?assertEqual({error, recipient_account_height_too_big},
-                           aetx:check(SpendTx, StateTree, BlockHeight))
+                           aetx:check(SpendTx, StateTree, BlockHeight, ?PROTOCOL_VERSION))
       end}].
 
 process_test_() ->
@@ -101,8 +101,8 @@ process_test_() ->
                                                  amount => 50,
                                                  fee => 10,
                                                  nonce => 11}),
-              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20),
+              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
@@ -125,8 +125,8 @@ process_test_() ->
                                                  amount => 50,
                                                  fee => 10,
                                                  nonce => 11}),
-              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20),
-              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20),
+              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
 
               ResultAccountsTree = aec_trees:accounts(StateTree),
               {value, ResultAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),

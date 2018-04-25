@@ -23,6 +23,8 @@
         , trees/1
         ]).
 
+-include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aeoracle/include/oracle_txs.hrl").
 
 %%%===================================================================

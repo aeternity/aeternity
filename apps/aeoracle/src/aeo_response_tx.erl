@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aeo_response_tx).
 
+-include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -16,8 +17,8 @@
          fee/1,
          nonce/1,
          origin/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -83,9 +84,9 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
-                          query_id = QId, fee = Fee}, _Context, Trees, Height) ->
+                          query_id = QId, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     case fetch_query(OraclePubKey, QId, Trees) of
         {value, I} ->
             ResponseTTL = aeo_query:response_ttl(I),
@@ -113,10 +114,10 @@ accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
 signers(#oracle_response_tx{oracle = OraclePubKey}) ->
     [OraclePubKey].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                             query_id = QId, response = Response,
-                            fee = Fee}, _Context, Trees0, Height) ->
+                            fee = Fee}, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 

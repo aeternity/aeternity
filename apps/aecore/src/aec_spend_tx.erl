@@ -11,8 +11,8 @@
          nonce/1,
          origin/1,
          recipient/1,
-         check/4,
-         process/4,
+         check/5,
+         process/5,
          accounts/1,
          signers/1,
          serialization_template/1,
@@ -76,8 +76,8 @@ origin(#spend_tx{sender = Sender}) ->
 recipient(#spend_tx{recipient = Recipient}) ->
     Recipient.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#spend_tx{recipient = RecipientPubkey} = SpendTx, _Context, Trees0, Height) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+check(#spend_tx{recipient = RecipientPubkey} = SpendTx, _Context, Trees0, Height, _ConsensusVersion) ->
     Checks = [fun check_tx_fee/3,
               fun check_sender_account/3],
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
@@ -99,12 +99,12 @@ accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
 -spec signers(tx()) -> [pubkey()].
 signers(#spend_tx{sender = SenderPubKey}) -> [SenderPubKey].
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
                   amount = Amount,
                   fee = Fee,
-                  nonce = Nonce}, _Context, Trees0, Height) ->
+                  nonce = Nonce}, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),

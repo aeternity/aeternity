@@ -37,7 +37,7 @@ coinbase_tx_existing_account_test_() ->
                        ?assertEqual(undefined, aetx:origin(CoinbaseTx)),
                        ?assertEqual(undefined, aetx:nonce(CoinbaseTx)),
                        ?assertEqual(0, aetx:fee(CoinbaseTx)),
-                       ?assertEqual({ok, Trees0}, aetx:check(CoinbaseTx, Trees0, 9))
+                       ?assertEqual({ok, Trees0}, aetx:check(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -46,7 +46,7 @@ coinbase_tx_existing_account_test_() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey,
                                                                 block_height => 3}),
                        ?assertEqual({error, account_height_too_big},
-                                    aetx:check(CoinbaseTx, Trees0, 3))
+                                    aetx:check(CoinbaseTx, Trees0, 3, ?PROTOCOL_VERSION))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -56,9 +56,9 @@ coinbase_tx_existing_account_test_() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey,
                                                                 block_height => Height}),
                        ?assertEqual({error, wrong_height},
-                                    aetx:check(CoinbaseTx, Trees0, Height - 1)),
+                                    aetx:check(CoinbaseTx, Trees0, Height - 1, ?PROTOCOL_VERSION)),
                        ?assertEqual({error, wrong_height},
-                                    aetx:check(CoinbaseTx, Trees0, Height + 1))
+                                    aetx:check(CoinbaseTx, Trees0, Height + 1, ?PROTOCOL_VERSION))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -72,9 +72,9 @@ coinbase_tx_existing_account_test_() ->
                        CoinbaseTxSmallerReward = {aetx, coinbase_tx, aec_coinbase_tx,
                                       {coinbase_tx, PubKey, Height, Reward - 1}},
                        ?assertEqual({error, wrong_reward},
-                                    aetx:check(CoinbaseTxBiggerReward, Trees0, Height)),
+                                    aetx:check(CoinbaseTxBiggerReward, Trees0, Height, ?PROTOCOL_VERSION)),
                        ?assertEqual({error, wrong_reward},
-                                    aetx:check(CoinbaseTxSmallerReward, Trees0, Height))
+                                    aetx:check(CoinbaseTxSmallerReward, Trees0, Height, ?PROTOCOL_VERSION))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -82,7 +82,7 @@ coinbase_tx_existing_account_test_() ->
                fun() ->
                        {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey,
                                                                 block_height => 9}),
-                       {ok, Trees} = aetx:process(CoinbaseTx, Trees0, 9),
+                       {ok, Trees} = aetx:process(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION),
 
                        AccountsTree = aec_trees:accounts(Trees),
                        {value, Account} = aec_accounts_trees:lookup(PubKey, AccountsTree),
@@ -113,7 +113,7 @@ create_coinbase_tx_no_account_test() ->
      [fun({PubKey, Trees0, CoinbaseTx}) ->
               {"Check coinbase trx without existing account in state: shall create account",
                fun() ->
-                       {Succ, Trees} = aec_coinbase_tx:check(CoinbaseTx, Trees0, 9),
+                       {Succ, Trees} = aec_coinbase_tx:check(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION),
                        ?assertEqual(ok, Succ),
                        AccountsTrees = aec_trees:accounts(Trees),
                        Account = aec_accounts:set_nonce(aec_accounts:new(PubKey, 0, 0), 9),
@@ -123,7 +123,7 @@ create_coinbase_tx_no_account_test() ->
       end,
       fun({_PubKey, Trees0, CoinbaseTx}) ->
               {"Process coinbase trx without existing account in state: shall fail",
-               ?assertEqual({error, account_not_found}, aec_coinbase_tx:process(CoinbaseTx, Trees0, 9))}
+               ?assertEqual({error, account_not_found}, aec_coinbase_tx:process(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION))}
       end
      ]
     }.

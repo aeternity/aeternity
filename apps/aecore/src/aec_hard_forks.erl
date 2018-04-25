@@ -3,6 +3,7 @@
 -export([check_env/0]).
 -export([protocols/1,
          is_known_protocol/2,
+         protocol_effective_at_height/1,
          protocol_effective_at_height/2]).
 
 -include("common.hrl").
@@ -33,6 +34,10 @@ protocols(M) ->
 -spec is_known_protocol(version(), aec_governance:protocols()) -> boolean().
 is_known_protocol(V, Protocols) when ?is_version(V) ->
     maps:is_key(V, Protocols).
+
+-spec protocol_effective_at_height(height()) -> version().
+protocol_effective_at_height(H) ->
+    protocol_effective_at_height(H, protocols(aec_governance:protocols())).
 
 -spec protocol_effective_at_height(height(), aec_governance:protocols()) ->
                                           version().
