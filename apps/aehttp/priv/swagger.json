@@ -2478,11 +2478,20 @@
         "nonce" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "payload" : {
+          "type" : "string"
+        },
+        "vsn" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
+        "vsn" : 5,
         "amount" : 0,
         "sender" : null,
+        "payload" : "payload",
         "fee" : 6,
         "recipient_pubkey" : { },
         "nonce" : 1

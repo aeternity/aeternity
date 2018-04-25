@@ -481,9 +481,8 @@ workflows:
       - uat_tests:
           requires:
             - build
-          filters:
-            branches:
-              only: master
+
+      - aevm_tests: {}
 
       - static_analysis:
           requires:

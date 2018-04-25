@@ -69,7 +69,7 @@ read_optional_params(Params) ->
             Val =
                 %% swagger puts an 'undefined' value for missing not reqired
                 %% params
-                case maps:get(Name, Req) of
+                case maps:get(Name, Req, undefined) of
                     undefined -> DefaultValue;
                     V -> V
                 end,
