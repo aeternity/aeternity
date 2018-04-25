@@ -68,7 +68,7 @@ contract Greeter =
        just demonstrating return of some global variable */
     function getBlockNumber() = blockheight()
 
-    /* There is no suicide functionallity in Ring */
+    /* There is no suicide functionallity in Sophia */
     function kill() =
       if ((caller() == creator()) /* only allow this action if the account sending the signal is the creator */
           && (balance() > 0)) /* only creata a transaction if there is something to send */

@@ -103,9 +103,9 @@ def test_contract_call():
     call_contract = test_settings["contract_call"]
     assert_equals(alice_balance0, alice_balance + create_settings["create_contract"]["fee"])
 
-    call_input = ContractCallInput("ring", create_settings["create_contract"]["code"],\
-                                           call_contract["data"]["function"],\
-                                           call_contract["data"]["argument"])
+    call_input = ContractCallInput("sophia", create_settings["create_contract"]["code"],\
+                                             call_contract["data"]["function"],\
+                                             call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller=test_settings["alice"]["pubkey"],

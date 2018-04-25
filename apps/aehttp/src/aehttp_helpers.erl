@@ -306,7 +306,7 @@ compute_contract_call_data() ->
         #{contract_code := Code,
             function := Function,
             arguments := Argument} = State,
-        case aect_dispatch:encode_call_data(<<"ring">>,
+        case aect_dispatch:encode_call_data(<<"sophia">>,
                       Code, Function, Argument) of
           {ok, HexCallData} ->
               CallData = aeu_hex:hexstring_decode(HexCallData),

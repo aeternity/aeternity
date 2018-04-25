@@ -62,13 +62,13 @@ id_local:    JUMPDEST
              JUMP
 
 ;; Test the code from the shell
-;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => list_to_binary(aeb_asm:file("apps/aering/test/contracts/identity.aesm", [])), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{})).
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => list_to_binary(aeb_asm:file("apps/aesophia/test/contracts/identity.aesm", [])), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{})).
 
 ;; Test the code from the shell with tracing.
-;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aering/test/contracts/identity.aesm", []), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aesophia/test/contracts/identity.aesm", []), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
 
 
 ;; Test the code from the shell with tracing.
-;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aering/test/contracts/identity.aesm", [pp_tokens, pp_opcodes, pp_patched_code, pp_hex_string]), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
+;; aevm_eeevm:eval(aevm_eeevm_state:init(#{ exec => #{ code => aeb_asm:file("apps/aesophia/test/contracts/identity.aesm", [pp_tokens, pp_opcodes, pp_patched_code, pp_hex_string]), address => 0, caller => 0, data => <<0:256, 42:256>>, gas => 1000000, gasPrice => 1, origin => 0, value => 0 }, env => #{currentCoinbase => 0, currentDifficulty => 0, currentGasLimit => 10000, currentNumber => 0, currentTimestamp => 0}, pre => #{}}, #{ trace => true})).
 
 ;; aec_conductor:stop_mining().
