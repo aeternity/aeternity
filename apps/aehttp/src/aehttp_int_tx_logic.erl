@@ -4,7 +4,7 @@
 
 -export([sender_and_hash/1]).
 
--export([ spend/3
+-export([ spend/4
        ]).
 
 -export([ oracle_register/6
@@ -23,11 +23,11 @@
        ]).
 
 sender_and_hash(Tx) ->
-    Sender = aetx:origin(Tx), 
+    Sender = aetx:origin(Tx),
     TxHash = aetx:hash(Tx),
     {Sender, TxHash}.
 
-spend(EncodedRecipient, Amount, Fee) ->
+spend(EncodedRecipient, Amount, Fee, Payload) ->
     create_tx(
         fun(SenderPubkey, Nonce) ->
             case aec_chain:resolve_name(account_pubkey, EncodedRecipient) of
@@ -36,6 +36,7 @@ spend(EncodedRecipient, Amount, Fee) ->
                       #{sender    => SenderPubkey,
                         recipient => DecodedRecipientPubkey,
                         amount    => Amount,
+                        payload   => Payload,
                         fee       => Fee,
                         nonce     => Nonce});
                 {error, _} ->

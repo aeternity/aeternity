@@ -21,39 +21,51 @@
          for_client/1
         ]).
 
+-export([payload/1]).
+
 -behavior(aetx).
 
 -include("common.hrl").
 
+-define(SPEND_TX_VSN, 2).
+-define(SPEND_TX_TYPE, spend_tx).
+
+-ifdef(TEST).
+-export([version/0]).
+-endif.
+
 -record(spend_tx, {
-          sender    = <<>> :: pubkey(),
-          recipient = <<>> :: pubkey(),
-          amount    = 0    :: non_neg_integer(),
-          fee       = 0    :: non_neg_integer(),
-          nonce     = 0    :: non_neg_integer()}).
+          sender    = <<>>          :: pubkey(),
+          recipient = <<>>          :: pubkey(),
+          amount    = 0             :: non_neg_integer(),
+          fee       = 0             :: non_neg_integer(),
+          nonce     = 0             :: non_neg_integer(),
+          payload   = <<>>          :: binary(),
+          vsn       = ?SPEND_TX_VSN :: non_neg_integer()}).
+
 -opaque tx() :: #spend_tx{}.
 
 -export_type([tx/0]).
-
--define(SPEND_TX_VSN, 1).
--define(SPEND_TX_TYPE, spend_tx).
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
       fee := Fee,
-      nonce := Nonce}) when is_integer(Amount), Amount >= 0,
-                            is_integer(Nonce), Nonce >= 0,
-                            is_integer(Fee), Fee >= 0,
-                            is_binary(SenderPubkey),
-                            is_binary(RecipientPubkey)
-                            ->
+      nonce := Nonce}=M) when is_integer(Amount), Amount >= 0,
+                              is_integer(Nonce), Nonce >= 0,
+                              is_integer(Fee), Fee >= 0,
+                              is_binary(SenderPubkey),
+                              is_binary(RecipientPubkey)
+                              ->
+    Payload = maps:get(payload, M, <<>>),
     Tx = #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
                    fee = Fee,
-                   nonce = Nonce},
+                   nonce = Nonce,
+                   payload = Payload,
+                   vsn = version()},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -75,6 +87,10 @@ origin(#spend_tx{sender = Sender}) ->
 -spec recipient(tx()) -> pubkey().
 recipient(#spend_tx{recipient = Recipient}) ->
     Recipient.
+
+-spec payload(tx()) -> binary().
+payload(#spend_tx{payload = Payload}) ->
+    Payload.
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{recipient = RecipientPubkey} = SpendTx, _Context, Trees0, Height) ->
@@ -122,16 +138,31 @@ serialize(#spend_tx{sender = Sender,
                     recipient = Recipient,
                     amount = Amount,
                     fee = Fee,
-                    nonce = Nonce}) ->
+                    nonce = Nonce,
+                    vsn = Vsn}) when Vsn =:= 1 ->
+    {Vsn,
+     [ {sender, Sender}
+     , {recipient, Recipient}
+     , {amount, Amount}
+     , {fee, Fee}
+     , {nonce, Nonce}
+     ]};
+serialize(#spend_tx{sender = Sender,
+                    recipient = Recipient,
+                    amount = Amount,
+                    fee = Fee,
+                    nonce = Nonce,
+                    payload = Payload}) ->
     {version(),
      [ {sender, Sender}
      , {recipient, Recipient}
      , {amount, Amount}
      , {fee, Fee}
      , {nonce, Nonce}
+     , {payload, Payload}
      ]}.
 
-deserialize(?SPEND_TX_VSN,
+deserialize(1, % no payload version
             [ {sender, Sender}
             , {recipient, Recipient}
             , {amount, Amount}
@@ -141,28 +172,54 @@ deserialize(?SPEND_TX_VSN,
               recipient = Recipient,
               amount = Amount,
               fee = Fee,
-              nonce = Nonce}.
+              nonce = Nonce,
+              vsn = 1};
+deserialize(?SPEND_TX_VSN,
+            [ {sender, Sender}
+            , {recipient, Recipient}
+            , {amount, Amount}
+            , {fee, Fee}
+            , {nonce, Nonce}
+            , {payload, Payload}]) ->
+    #spend_tx{sender = Sender,
+              recipient = Recipient,
+              amount = Amount,
+              fee = Fee,
+              nonce = Nonce,
+              payload = Payload,
+              vsn = ?SPEND_TX_VSN}.
 
+serialization_template(1) -> % no payload version
+    [ {sender, binary}
+    , {recipient, binary}
+    , {amount, int}
+    , {fee, int}
+    , {nonce, int}
+    ];
 serialization_template(?SPEND_TX_VSN) ->
     [ {sender, binary}
     , {recipient, binary}
     , {amount, int}
     , {fee, int}
     , {nonce, int}
+    , {payload, binary}
     ].
 
 for_client(#spend_tx{sender = Sender,
                      recipient = Recipient,
                      amount = Amount,
                      fee = Fee,
-                     nonce = Nonce}) ->
+                     nonce = Nonce,
+                     payload = Payload,
+                     vsn = Vsn}) ->
     #{<<"sender">> => aec_base58c:encode(account_pubkey, Sender),
       <<"data_schema">> => <<"SpendTxJSON">>, % swagger schema name
       <<"recipient">> => aec_base58c:encode(account_pubkey, Recipient),
       <<"amount">> => Amount,
       <<"fee">> => Fee,
       <<"nonce">> => Nonce,
-      <<"vsn">> => ?SPEND_TX_VSN}.
+      <<"payload">> => Payload,
+      <<"vsn">> => Vsn}.
 
 version() ->
     ?SPEND_TX_VSN.
