@@ -47,7 +47,7 @@ websocket_handle({text, MsgBin}, State) ->
         Msg ->
             case process_incoming(Msg, State) of
                 no_reply -> {ok, State};
-                %{reply, Resp} -> {reply, {text, jsx:encode(Resp)}, State};
+                {reply, Resp} -> {reply, {text, jsx:encode(Resp)}, State};
                 {error, _} -> {ok, State}
             end
     catch
@@ -195,6 +195,21 @@ parse_by_type({hash, Type}, V, RecordField) when is_binary(V) ->
     end.
 
 -spec process_incoming(map(), handler()) -> no_reply | {reply, map()} | {error, atom()}.
+process_incoming(#{<<"action">> := <<"update">>,
+                   <<"tag">> := <<"new">>,
+                   <<"payload">> := #{<<"from">>    := FromB,
+                                      <<"to">>      := ToB,
+                                      <<"amount">>  := Amount}} = R, State) ->
+    case {aec_base58c:safe_decode(account_pubkey, FromB),
+          aec_base58c:safe_decode(account_pubkey, ToB)} of
+        {{ok, From}, {ok, To}} ->
+            case aesc_fsm:upd_transfer(fsm_pid(State), From, To, Amount) of
+                ok -> no_reply;
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        _ -> {reply, error_response(R, broken_encoding)}
+    end;
 process_incoming(#{<<"action">> := ActorSigned,
                    <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
     when ActorSigned =:= <<"initiator_signed">> orelse
@@ -313,3 +328,8 @@ read_channel_options(Params) ->
          Put(report_info, true)
         ]).
 
+error_response(Req, Reason) ->
+    #{<<"action">>  => <<"result">>,
+      <<"tag">>     => <<"error">>,
+      <<"payload">> => #{<<"request">> => Req,
+                         <<"reason">> => Reason}}.

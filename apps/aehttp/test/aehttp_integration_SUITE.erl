@@ -196,7 +196,9 @@
 
 %% channel websocket endpoints
 -export(
-   [sc_ws_open/1
+   [sc_ws_open/1,
+    sc_ws_update/1,
+    sc_ws_close/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -385,7 +387,9 @@ groups() ->
        ws_oracles
       ]},
      {channel_websocket, [sequence],
-      [sc_ws_open
+      [sc_ws_open,
+       sc_ws_update,
+       sc_ws_close
       ]}
     ].
 
@@ -413,6 +417,30 @@ end_per_suite(_Config) ->
 
 init_per_group(all_endpoints, Config) ->
     Config;
+init_per_group(channel_websocket, Config) ->
+    aecore_suite_utils:start_node(?NODE, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    %% prepare participants
+    {IPubkey, IPrivkey} = generate_key_pair(),
+    {RPubkey, RPrivkey} = generate_key_pair(),
+    IStartAmt = 20,
+    RStartAmt = 10,
+    Fee = 1,
+
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    assert_balance(IPubkey, IStartAmt),
+    assert_balance(RPubkey, RStartAmt),
+    Participants = #{initiator => #{pub_key => IPubkey,
+                                    priv_key => IPrivkey,
+                                    start_amt => IStartAmt},
+                     responder => #{pub_key => RPubkey,
+                                    priv_key => RPrivkey,
+                                    start_amt => RStartAmt}},
+    [{participants, Participants} | Config];
 init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
@@ -2877,29 +2905,31 @@ ws_oracles(_Config) ->
 %%
 %% Channels
 %%
-sc_ws_open(_Config) ->
-    {IPubkey, IPrivkey} = generate_key_pair(),
-    {RPubkey, RPrivkey} = generate_key_pair(),
-    IStartAmt = 20,
-    RStartAmt = 10,
-    Fee = 1,
+assert_balance(Pubkey, ExpectedBalance) ->
+    Address = aec_base58c:encode(account_pubkey, Pubkey),
+    {ok, 200, #{<<"balance">> := ExpectedBalance}} = get_balance_at_top(Address).
 
-    EnsureBalance =
-        fun(Pubkey, ExpectedBalance) ->
-            Address = aec_base58c:encode(account_pubkey, Pubkey),
-            {ok, 200, #{<<"balance">> := ExpectedBalance}} =
-                get_balance_at_top(Address)
-        end,
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+channel_sign_tx(ConnPid, Privkey, Tag) ->
+    {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
+    {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+    Tx = aetx:deserialize_from_binary(CreateBinTx),
+    SignedCreateTx = aetx_sign:sign(Tx, Privkey),
+    EncSignedCreateTx = aec_base58c:encode(transaction,
+                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
+    ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
+    Tx.
 
-    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
-    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    EnsureBalance(IPubkey, IStartAmt),
-    EnsureBalance(RPubkey, RStartAmt),
+sc_ws_open(Config) ->
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey,
+                    start_amt := IStartAmt},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey,
+                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
 
     IAmt = 7,
     RAmt = 3,
+
     ChannelOpts =
         #{port => 1234,
           initiator => aec_base58c:encode(account_pubkey, IPubkey),
@@ -2911,11 +2941,11 @@ sc_ws_open(_Config) ->
           channel_reserve => 2,
           ttl => 1000
          },
-    {ok, IConnPid} = channel_ws_start_link(initiator,
+    {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
 
-    {ok, RConnPid} = channel_ws_start_link(responder, ChannelOpts),
+    {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
 
     ok = ?WS:register_test_for_channel_event(RConnPid, info),
     {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
@@ -2924,20 +2954,10 @@ sc_ws_open(_Config) ->
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
     ok = ?WS:register_test_for_channel_event(RConnPid, sign),
     %% initiator gets to sign a create_tx
-    SignTx =
-        fun(ConnPid, Privkey, Tag) ->
-            {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
-            {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
-            CreateTx = aetx:deserialize_from_binary(CreateBinTx),
-            SignedCreateTx = aetx_sign:sign(CreateTx, Privkey),
-            EncSignedCreateTx = aec_base58c:encode(transaction,
-                                          aetx_sign:serialize_to_binary(SignedCreateTx)),
-            ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
-            CreateTx
-        end,
-    CrTx = SignTx(IConnPid, IPrivkey, <<"initiator_signed">>),
+    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_signed">>),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    CrTx = SignTx(RConnPid, RPrivkey, <<"responder_signed">>),
+    %% responder gets to sign a create_tx
+    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_signed">>),
     {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
@@ -2950,8 +2970,8 @@ sc_ws_open(_Config) ->
     {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
 
     %% balances hadn't changed yet
-    EnsureBalance(IPubkey, IStartAmt),
-    EnsureBalance(RPubkey, RStartAmt),
+    assert_balance(IPubkey, IStartAmt),
+    assert_balance(RPubkey, RStartAmt),
 
     % mine the create_tx
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
@@ -2961,8 +2981,8 @@ sc_ws_open(_Config) ->
     true = BlockHeight =/= -1,
 
     %% ensure new balances
-    EnsureBalance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
-    EnsureBalance(RPubkey, RStartAmt - RAmt),
+    assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    assert_balance(RPubkey, RStartAmt - RAmt),
 
     % mine min depth
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
@@ -2972,14 +2992,64 @@ sc_ws_open(_Config) ->
     {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
     {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
 
-    SignTx(IConnPid, IPrivkey, <<"update">>),
+    UpdateTx = channel_sign_tx(IConnPid, IPrivkey, <<"update">>),
 
     {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    SignTx(RConnPid, RPrivkey, <<"update_ack">>),
+    UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
 
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
 
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
+
+    ChannelClients = #{initiator => IConnPid,
+                       responder => RConnPid},
+    {save_config, [{channel_clients, ChannelClients} | Config]}.
+
+sc_ws_update(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
+
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+
+    SendTokens =
+        fun(SenderPid, ReceiverPid, SenderPubkey, SenderPrivkey,
+                                    ReceiverPubkey, ReceiverPrivkey, Amount) ->
+            ?WS:send_tagged(SenderPid, <<"update">>, <<"new">>,
+                #{from => aec_base58c:encode(account_pubkey, SenderPubkey),
+                  to => aec_base58c:encode(account_pubkey, ReceiverPubkey),
+                  amount => Amount}),
+            UpdateTx = channel_sign_tx(SenderPid, SenderPrivkey, <<"update">>),
+            ct:log("Update tx ~p", [UpdateTx]),
+            {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(ReceiverPid, info),
+            UpdateTx = channel_sign_tx(ReceiverPid, ReceiverPrivkey, <<"update_ack">>),
+            %% consume wrong event message
+            {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(SenderPid, info),
+            {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(ReceiverPid, info),
+            ok
+        end,
+    SendTokens(IConnPid, RConnPid, IPubkey, IPrivkey, RPubkey, RPrivkey, 2),
+    SendTokens(RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey, 2),
+    {save_config, ConfigList}.
+
+sc_ws_close(Config) ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.
@@ -4005,9 +4075,9 @@ ws_start_link() ->
     {Host, Port} = ws_host_and_port(),
     ?WS:start_link(Host, Port).
 
-channel_ws_start_link(Role, Opts) ->
+channel_ws_start(Role, Opts) ->
     {Host, Port} = channel_ws_host_and_port(),
-    ?WS:start_link_channel(Host, Port, Role, Opts).
+    ?WS:start_channel(Host, Port, Role, Opts).
 
 open_websockets_count() ->
     QueueName = ws_handlers_queue,

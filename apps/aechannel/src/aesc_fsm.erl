@@ -173,12 +173,12 @@ timer_subst(closing                ) -> accept.
 
 default_timeouts() ->
     #{ open           => 120000
-     , accept         => 10000
-     , funding_create => 10000
-     , funding_sign   => 10000
-     , funding_lock   => 30000
-     , idle           => 60000
-     , sign           => 10000
+     , accept         => 120000
+     , funding_create => 120000
+     , funding_sign   => 120000
+     , funding_lock   => 360000
+     , idle           => 600000
+     , sign           => 500000
      }.
 
 %%
@@ -431,7 +431,7 @@ awaiting_initial_state(Evt, Msg, D) ->
 
 awaiting_update_ack(enter, _OldSt, D) ->
     {keep_state, D, [timer_for_state(awaiting_update_ack, D)]};
-awaiting_update_ack(cast, {update_ack, Msg}, #data{role = initiator} = D) ->
+awaiting_update_ack(cast, {update_ack, Msg}, #data{} = D) ->
     case check_update_ack_msg(Msg, D) of
         {ok, D1} ->
             {next_state, open, D1};
