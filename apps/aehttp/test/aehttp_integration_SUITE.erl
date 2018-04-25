@@ -616,7 +616,7 @@ contract_transactions(_Config) ->
     Code = <<"0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56">>,
     Function = <<"main">>,
     Argument = <<"42">>,
-    {ok, EncodedCallData} = aect_ring:encode_call_data(Code, Function,
+    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
                                                        Argument),
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
