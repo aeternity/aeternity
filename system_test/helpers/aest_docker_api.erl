@@ -151,9 +151,6 @@ inspect(ID) ->
         _ -> undefined
     end.
 
-%% Returning stdout is not working because hackney doesn't support results
-%% without content length. Should be fixed by:
-%%   https://github.com/benoitc/hackney/pull/481
 exec(ID, Cmd, Opts) ->
     ExecCreateBody = #{
         'AttachStdout' => true,
@@ -175,7 +172,14 @@ exec(ID, Cmd, Opts) ->
             case
                 docker_post([exec, ExecId, start], #{}, ExecStartBody, PostOpts)
             of
-                {ok, 200, Result} -> {ok, Result};
+                {ok, 200, Result} ->
+                    case docker_get([exec, ExecId, json]) of
+                        {ok, 200, #{'ExitCode' := ExitCode}} ->
+                            {ok, ExitCode, Result};
+                        {ok, 404, _} -> throw({exec_not_found, ExecId});
+                        {ok, 500, Response} ->
+                            throw({docker_error, maps:get(message, Response)})
+                    end;
                 {ok, 404, _} -> throw({exec_not_found, ExecId});
                 {ok, 500, Response} ->
                     throw({docker_error, maps:get(message, Response)});

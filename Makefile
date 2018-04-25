@@ -158,8 +158,8 @@ system-test:
 	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg $(CT_TEST_FLAGS)
 
 system-test-deps: | system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar
-	docker pull aeternity/epoch:v0.11.1
 	$(info The downloaded DB backup is not checked for freshness.)
+	docker pull aeternity/epoch:v0.11.1
 
 system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup
 	tar -c -C $(<D) -f $@ $(<F)
