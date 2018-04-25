@@ -129,27 +129,20 @@ def test_node_discovery_transitively():
     bob_node = test_settings["nodes"]["bob"]
     carol_node = test_settings["nodes"]["carol"]
 
-    alice_peer_url = node_peer_url(alice_node)
-    bob_peer_url = node_peer_url(bob_node)
-    carol_peer_url = node_peer_url(carol_node)
-
     # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
     # Alice's config: no peers
     alice_sys_config = make_peers_config(root_dir, "alice.config",
-                            alice_peer_url, "node1", "3015", '{peers, []},', mining=True)
-    print("\nAlice has address " + alice_peer_url + " and no peers")
+                            "node1", "3015", '{peers, []},', mining=True)
     # Bob's config: only peer is Alice
     bob_peers = ' {peers, [<<"aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015">>]}, '
     bob_sys_config = make_peers_config(root_dir, "bob.config",
-                            bob_peer_url, "node2", "3025", bob_peers, mining=False)
-    print("Bob has address " + bob_peer_url + " and peers [" + alice_peer_url + "]")
+                            "node2", "3025", bob_peers, mining=False)
     # Carol's config: only peer is Bob
     carol_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     carol_sys_config = make_peers_config(root_dir, "carol.config",
-                            carol_peer_url, "node3", "3035", carol_peers, mining=False)
-    print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
+                            "node3", "3035", carol_peers, mining=False)
 
     # start Alice's node
     common.start_node(alice_node, alice_sys_config)
@@ -194,28 +187,21 @@ def test_node_discovery_from_common_friend():
     bob_node = test_settings["nodes"]["bob"]
     carol_node = test_settings["nodes"]["carol"]
 
-    alice_peer_url = node_peer_url(alice_node)
-    bob_peer_url = node_peer_url(bob_node)
-    carol_peer_url = node_peer_url(carol_node)
-
     # prepare a dir to hold the configs
     root_dir = tempfile.mkdtemp()
 
     # Alice's config: only peer is Bob
     alice_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     alice_sys_config = make_peers_config(root_dir, "alice.config",
-                            alice_peer_url, "node1", "3015", alice_peers, mining=True)
-    print("\nAlice has address " + alice_peer_url + " and peers [" + bob_peer_url + "]")
+                            "node1", "3015", alice_peers, mining=True)
     # Bob's config: no peers
     bob_peers = '{peers, []},'
     bob_sys_config = make_peers_config(root_dir, "bob.config",
-                            bob_peer_url, "node2", "3025", bob_peers, mining=False)
-    print("Bob has address " + bob_peer_url + " and no peers")
+                            "node2", "3025", bob_peers, mining=False)
     # Carol's config: only peer is Bob
     carol_peers = ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, '
     carol_sys_config = make_peers_config(root_dir, "carol.config",
-                            carol_peer_url, "node3", "3035", carol_peers, mining=False)
-    print("Carol has address " + carol_peer_url + " and peers [" + bob_peer_url + "]")
+                            "node3", "3035", carol_peers, mining=False)
 
     # start Alice's node
     common.start_node(alice_node, alice_sys_config)
@@ -257,7 +243,7 @@ def copy_peer_keys(root_dir, keys):
     shutil.copy(os.path.join(curr_dir, "tests", "peer_keys", keys, "peer_key.pub"), key_dir)
     return key_dir
 
-def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, mining=False):
+def make_peers_config(root_dir, file_name, keys, sync_port, peers, mining=False):
     key_dir = copy_peer_keys(root_dir, keys)
 
     sys_config = os.path.join(root_dir, file_name)
@@ -274,15 +260,10 @@ def make_peers_config(root_dir, file_name, node_url, keys, sync_port, peers, min
                       ' {keys_dir, "' + key_dir + '"}, ' + \
                       ' {password, <<"top secret">>}, ' + \
                       mining_str + ']},' +\
-          '{aehttp, [{enable_debug_endpoints, true}, {local_peer_address, "' + node_url + '"}]}].'
+          '{aehttp, [{enable_debug_endpoints, true}]}].'
     f.write(conf)
     f.close()
     return sys_config
-
-def node_peer_url(node_name):
-    host = common.node_config(node_name)["host"]
-    port = common.node_config(node_name)["ports"]["external_api"]
-    return "http://" + host + ":" + str(port) + "/"
 
 def make_fast_mining_config(root_dir, file_name):
     sys_config = os.path.join(root_dir, file_name)
