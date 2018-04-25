@@ -20,12 +20,12 @@ def test_syncing():
     test_settings = settings["test_syncing"]
 
     root_dir = tempfile.mkdtemp()
-    mining_sys_config = make_fast_mining_config(root_dir, "mining_sys.config")
-    no_mining_sys_config = make_no_mining_config(root_dir, "no_mining_sys.config")
+    mining_user_config = make_fast_mining_user_config(root_dir, "mining_epoch.yaml")
+    no_mining_user_config = make_no_mining_user_config(root_dir, "no_mining_epoch.yaml")
 
     # start Bob's node
     bob_node = test_settings["nodes"]["bob"]
-    common.start_node(bob_node, mining_sys_config)
+    common.start_node(bob_node, mining_user_config)
     bob_api = common.external_api(bob_node)
 
     # Insert some blocks in Bob's chain
@@ -40,7 +40,7 @@ def test_syncing():
     # start Alice's node and let it connect with Bob's
     # note: Alice doesn't mine blocks
     alice_node = test_settings["nodes"]["alice"]
-    common.start_node(alice_node, no_mining_sys_config)
+    common.start_node(alice_node, no_mining_user_config)
     print("Alice is not mining")
     alice_api = common.external_api(alice_node)
     common.wait_until_height(alice_api, blocks_to_mine)
@@ -284,41 +284,67 @@ def node_peer_url(node_name):
     port = common.node_config(node_name)["ports"]["external_api"]
     return "http://" + host + ":" + str(port) + "/"
 
-def make_fast_mining_config(root_dir, file_name):
-    sys_config = os.path.join(root_dir, file_name)
-    f = open(sys_config, "w")
-    # if autostart is not true - there will be no miner
-
+def make_fast_mining_user_config(root_dir, file_name):
     key_dir = copy_peer_keys(root_dir, "node1")
+    conf = """\
+---
+peers:
+    - "aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025"
 
-    conf ='[{aecore, [' + \
-                    ' {sync_port, 3015},' + \
-                    ' {peers, [<<"aenode://pp$28uQUgsPcsy7TQwnRxhF8GMKU4ykFLKsgf4TwDwPMNaSCXwWV8@localhost:3025">>]}, ' + \
-                    ' {keys_dir, "' + key_dir + '"}, ' + \
-                    ' {password, <<"top secret">>}, ' + \
-                    ' {autostart, true},' + \
-                    ' {expected_mine_rate, 100},' + \
-                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+sync:
+    port: 3015
 
-def make_no_mining_config(root_dir, file_name):
-    sys_config = os.path.join(root_dir, file_name)
-    f = open(sys_config, "w")
-    # if autostart is not true - there will be no miner
+keys:
+    dir: \"""" + key_dir + """\"
+    password: "top secret"
+
+chain:
+    hard_forks:
+        "9": 0
+        "10": 1
+        "11": 2
+
+mining:
+    autostart: true
+    expected_mine_rate: 100
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+"""
+    return common.install_user_config(root_dir, file_name, conf)
+
+def make_no_mining_user_config(root_dir, file_name):
     key_dir = copy_peer_keys(root_dir, "node2")
-    conf ='[{aecore, [' + \
-                    ' {sync_port, 3025},' + \
-                    ' {peers, [<<"aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015">>]}, ' + \
-                    ' {keys_dir, "' + key_dir + '"}, ' + \
-                    ' {password, <<"top secret">>}, ' + \
-                    ' {autostart, false},' + \
-                    ' {expected_mine_rate, 100},' + \
-                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
+    conf = """\
+---
+peers:
+    - "aenode://pp$HdcpgTX2C1aZ5sjGGysFEuup67K9XiFsWqSPJs4RahEcSyF7X@localhost:3015"
+
+sync:
+    port: 3025
+
+keys:
+    dir: \"""" + key_dir + """\"
+    password: "top secret"
+
+chain:
+    hard_forks:
+        "9": 0
+        "10": 1
+        "11": 2
+
+mining:
+    autostart: false
+    expected_mine_rate: 100
+    cuckoo:
+        miner:
+            executable: mean16s-generic
+            extra_args: "-t 5"
+            node_bits: 16
+"""
+    return common.install_user_config(root_dir, file_name, conf)
 
 def get_peers(int_api):
     peers = int_api.get_peers().peers
