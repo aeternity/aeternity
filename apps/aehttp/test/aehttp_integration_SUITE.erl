@@ -835,13 +835,18 @@ oracle_transactions(_Config) ->
                         query_id => aec_base58c:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
-                        fee => 1},
+                        fee => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle => MinerPubkey,
                                 query_id => QueryId}),
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
                                fun get_oracle_response/1,
                                fun aeo_response_tx:new/1, MinerPubkey),
+
+    {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
+    sign_and_post_tx(ResponseTx),
+    % mine a block to include it
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     %% negative tests
 
