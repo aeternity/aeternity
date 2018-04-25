@@ -1,5 +1,6 @@
 -module(aehttp_integration_SUITE).
 
+-include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
    [
@@ -193,6 +194,11 @@
     ws_oracles/1
    ]).
 
+%% channel websocket endpoints
+-export(
+   [sc_ws_open/1
+   ]).
+
 -include_lib("common_test/include/ct.hrl").
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
@@ -200,7 +206,7 @@
 
 all() ->
     [
-     {group, all_endpoints}
+     {group, channel_websocket}%all_endpoints}
     ].
 
 groups() ->
@@ -210,7 +216,8 @@ groups() ->
                                   {group, swagger_validation},
                                   {group, wrong_http_method_endpoints},
                                   {group, websocket},
-                                  {group, naming}
+                                  {group, naming},
+                                  {group, channel_websocket}
                                   ]},
      {external_endpoints, [sequence],
       [
@@ -376,6 +383,9 @@ groups() ->
        ws_refused_on_limit_reached,
        ws_tx_on_chain,
        ws_oracles
+      ]},
+     {channel_websocket, [sequence],
+      [sc_ws_open
       ]}
     ].
 
@@ -1173,7 +1183,7 @@ state_channels_close_mutual(ChannelId, SenderPubkey) ->
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 ttl => 100,
                 fee => 1},
@@ -1188,7 +1198,7 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
 
 state_channels_slash(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
                 ttl => 100,
                 fee => 1},
@@ -1203,7 +1213,7 @@ state_channels_slash(ChannelId, MinerPubkey) ->
 
 state_channels_settle(ChannelId, MinerPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, MinerPubkey), 
+                from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 4,
                 responder_amount => 3,
                 ttl => 100,
@@ -2726,7 +2736,7 @@ ws_refused_on_limit_reached(_Config) ->
             %% stop one
             ?WS:stop(Pid),
             %% another one connects in its place and it doesn't matter which one
-            {ok, some_pid} = ?WS:wait_for_connect(some_pid),
+            {ok, _SomePid} = ?WS:wait_for_connect_any(),
             %% total amount of connected WS clients is still the maximum
             MaxWsCount = open_websockets_count()
         end,
@@ -2775,7 +2785,7 @@ ws_tx_on_chain(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the Tx.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := TxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -2826,7 +2836,7 @@ ws_oracles(_Config) ->
     %% Mine a block and check that an event is receieved corresponding to
     %% the query.
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_query),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_query),
 
     %% Subscribe to responses to the query.
     ws_subscribe(ConnPid, #{ type => oracle_response, query_id => QId }),
@@ -2842,7 +2852,7 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that an event is received
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(chain, new_oracle_response),
+    {ok, #{<<"query_id">> := QId }} = ?WS:wait_for_event(ConnPid, chain, new_oracle_response),
 
     %% Check that we can extend the oracle TTL
     ExtendData =
@@ -2860,9 +2870,118 @@ ws_oracles(_Config) ->
 
     %% Mine a block and check that the extend tx made it onto the chain
     ws_mine_block(ConnPid, ?NODE),
-    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(chain, tx_chain),
+    {ok, #{<<"tx_hash">> := ExtendTxHash }} = ?WS:wait_for_event(ConnPid, chain, tx_chain),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
+    ok.
+%%
+%% Channels
+%%
+sc_ws_open(_Config) ->
+    {IPubkey, IPrivkey} = generate_key_pair(),
+    {RPubkey, RPrivkey} = generate_key_pair(),
+    IStartAmt = 20,
+    RStartAmt = 10,
+    Fee = 1,
+
+    EnsureBalance =
+        fun(Pubkey, ExpectedBalance) ->
+            Address = aec_base58c:encode(account_pubkey, Pubkey),
+            {ok, 200, #{<<"balance">> := ExpectedBalance}} =
+                get_balance_at_top(Address)
+        end,
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    EnsureBalance(IPubkey, IStartAmt),
+    EnsureBalance(RPubkey, RStartAmt),
+
+    IAmt = 7,
+    RAmt = 3,
+    ChannelOpts =
+        #{port => 1234,
+          initiator => aec_base58c:encode(account_pubkey, IPubkey),
+          responder => aec_base58c:encode(account_pubkey, RPubkey),
+          lock_period => 10,
+          push_amount => 10,
+          initiator_amount => IAmt,
+          responder_amount => RAmt,
+          channel_reserve => 2,
+          ttl => 1000
+         },
+    {ok, IConnPid} = channel_ws_start_link(initiator,
+                                           maps:put(host, <<"localhost">>, ChannelOpts)),
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+
+    {ok, RConnPid} = channel_ws_start_link(responder, ChannelOpts),
+
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+    %% initiator gets to sign a create_tx
+    SignTx =
+        fun(ConnPid, Privkey, Tag) ->
+            {ok, Tag, #{<<"tx">> := EncCreateTx}} = ?WS:wait_for_channel_event(ConnPid, sign),
+            {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+            CreateTx = aetx:deserialize_from_binary(CreateBinTx),
+            SignedCreateTx = aetx_sign:sign(CreateTx, Privkey),
+            EncSignedCreateTx = aec_base58c:encode(transaction,
+                                          aetx_sign:serialize_to_binary(SignedCreateTx)),
+            ?WS:send(ConnPid, Tag, #{tx => EncSignedCreateTx}),
+            CreateTx
+        end,
+    CrTx = SignTx(IConnPid, IPrivkey, <<"initiator_signed">>),
+    {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    CrTx = SignTx(RConnPid, RPrivkey, <<"responder_signed">>),
+    {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+
+    {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
+    IPubkey = aesc_create_tx:initiator(Tx),
+    RPubkey = aesc_create_tx:responder(Tx),
+    ChannelCreateFee = aesc_create_tx:fee(Tx),
+    TxHash = aec_base58c:encode(tx_hash, aetx:hash(CrTx)),
+
+    %% ensure the tx is in the mempool
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+
+    %% balances hadn't changed yet
+    EnsureBalance(IPubkey, IStartAmt),
+    EnsureBalance(RPubkey, RStartAmt),
+
+    % mine the create_tx
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    %% ensure the tx had been mined
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := BlockHeight}}} = get_tx(TxHash, json),
+    true = BlockHeight =/= -1,
+
+    %% ensure new balances
+    EnsureBalance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    EnsureBalance(RPubkey, RStartAmt - RAmt),
+
+    % mine min depth
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    SignTx(IConnPid, IPrivkey, <<"update">>),
+
+    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    SignTx(RConnPid, RPrivkey, <<"update_ack">>),
+
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
     ok.
 
 %% changing of another account's balance is checked in pending_transactions test
@@ -2973,14 +3092,14 @@ peers(_Config) ->
 ws_do_request(ConnPid, Target, Action, Args) ->
     ok = ?WS:register_test_for_event(ConnPid, Target, Action),
     ?WS:send(ConnPid, Target, Action, Args),
-    {ok, _, Res} = ?WS:wait_for_event(Target, Action),
+    {ok, _, Res} = ?WS:wait_for_event(ConnPid, Target, Action),
     ok = ?WS:unregister_test_for_event(ConnPid, Target, Action),
     Res.
 
 ws_subscribe(ConnPid, PayLoad) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, subscribe),
     ?WS:send(ConnPid, chain, subscribe, PayLoad),
-    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(chain, subscribe),
+    {ok, _, #{<<"result">> := <<"ok">>}} = ?WS:wait_for_event(ConnPid, chain, subscribe),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, subscribe).
 
 ws_chain_get(ConnPid, PayLoad) ->
@@ -2992,14 +3111,14 @@ ws_chain_get(ConnPid, Tag, PayLoad) ->
         undefined -> ?WS:send(ConnPid, chain, get, PayLoad);
         _         -> ?WS:send(ConnPid, chain, get, Tag, PayLoad)
     end,
-    {ok, Tag1, Res} = ?WS:wait_for_event(chain, requested_data),
+    {ok, Tag1, Res} = ?WS:wait_for_event(ConnPid, chain, requested_data),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, requested_data),
     {Tag1, Res}.
 
 ws_mine_block(ConnPid, Node) ->
     ok = ?WS:register_test_for_event(ConnPid, chain, mined_block),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
-    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(chain, mined_block),
+    {ok, #{<<"height">> := Height, <<"hash">> := Hash}} = ?WS:wait_for_event(ConnPid, chain, mined_block),
     ok = ?WS:unregister_test_for_event(ConnPid, chain, mined_block),
     {Height, Hash}.
 
@@ -3669,6 +3788,12 @@ ws_host_and_port() ->
                 aehttp, [internal, websocket, port], 8144]),
     {"127.0.0.1", Port}.
 
+channel_ws_host_and_port() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"websocket">>, <<"channel">>, <<"port">>],
+                aehttp, [channel, websocket, port], 8045]),
+    {"localhost", Port}.
+
 http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
             iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
@@ -3880,6 +4005,10 @@ ws_start_link() ->
     {Host, Port} = ws_host_and_port(),
     ?WS:start_link(Host, Port).
 
+channel_ws_start_link(Role, Opts) ->
+    {Host, Port} = channel_ws_host_and_port(),
+    ?WS:start_link_channel(Host, Port, Role, Opts).
+
 open_websockets_count() ->
     QueueName = ws_handlers_queue,
     % ensure queue exsits
@@ -3906,3 +4035,8 @@ make_params([H | T], Accum) when is_map(H) ->
     make_params(T, maps:to_list(H) ++ Accum);
 make_params([{K, V} | T], Accum) ->
     make_params(T, [{K, V} | Accum]).
+
+generate_key_pair() ->
+    {_NewPubKey, _NewPrivKey} =
+        crypto:generate_key(?CRYPTO_KEYTYPE, crypto:ec_curve(?CRYPTO_CURVE)).
+

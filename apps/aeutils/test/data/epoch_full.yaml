@@ -59,6 +59,11 @@ websocket:
         port: 3114
         # Number of acceptors in WebSocket HTTP server pool
         acceptors: 10
+    channel:
+        listen_address: 0.0.0.0
+        port: 3014
+        # Number of acceptors in channels WebSocket HTTP server pool
+        acceptors: 10
 
 keys:
     dir: keys
