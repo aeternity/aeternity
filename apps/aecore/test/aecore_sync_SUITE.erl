@@ -194,20 +194,7 @@ test_subscription(Config) ->
     aecore_suite_utils:subscribe(N, app_started),
     Debug0 = aecore_suite_utils:call_proxy(N, debug),
     ct:log("After subscription (~p, app_started): ~p", [self(), Debug0]),
-    true = rpc:call(N, setup, patch_app, [sasl], 5000),
-    {ok, _} = rpc:call(N, setup, reload_app, [sasl], 5000),
-    ok = rpc:call(N, application, start, [sasl], 5000),
-    receive
-        {app_started, #{info := sasl}} ->
-            ct:log("got app_started: sasl", []),
-            ok
-    after 1000 ->
-            Debug = aecore_suite_utils:call_proxy(N, debug),
-            Since = aecore_suite_utils:events_since(N, app_started, 0),
-            ct:log("Debug = ~p~n"
-                   "Since = ~p", [Debug, Since]),
-            ok
-    end.
+    ok.
 
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
