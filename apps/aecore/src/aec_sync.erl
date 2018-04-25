@@ -379,14 +379,16 @@ do_terminate_worker(Pid, ST = #sync_task{ workers = Ws }) ->
 %%%=============================================================================
 delayed_run_job(PeerId, Task, Queue, Fun, Delay) ->
     OldWorker = self(),
-    spawn(fun() -> NewWorker = self(),
-                   handle_worker(Task, {change_worker, PeerId, OldWorker, NewWorker}),
-                   timer:sleep(Delay),
-                   jobs:run(Queue, Fun)
-          end).
+    proc_lib:spawn(
+        fun() ->
+            NewWorker = self(),
+            handle_worker(Task, {change_worker, PeerId, OldWorker, NewWorker}),
+            timer:sleep(Delay),
+            jobs:run(Queue, Fun)
+        end).
 
 run_job(Queue, Fun) ->
-    spawn(jobs, run, [Queue, Fun]).
+    proc_lib:spawn(jobs, run, [Queue, Fun]).
 
 %% Gossip Tx or Block - spawn a process and call jobs from there.
 enqueue(Kind, Data, PeerIds) ->
