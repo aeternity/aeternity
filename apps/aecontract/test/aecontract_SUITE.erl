@@ -119,7 +119,7 @@ call_contract(_Cfg) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CallData     = aer_abi:create_calldata(IdContract, "main", "42"),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
     Overrides    = #{ code => IdContract
 		    , call_data => CallData
 		    , gas => 1000
