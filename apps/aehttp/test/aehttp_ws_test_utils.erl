@@ -4,7 +4,9 @@
 %% API
 -export([start_link/2,
          start_link_channel/4,
+         start_channel/4,
          send/3, send/4, send/5,
+         send_tagged/4,
          register_test_for_event/3,
          unregister_test_for_event/3,
          register_test_for_channel_event/2,
@@ -37,15 +39,25 @@ start_link(Host, Port) ->
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
     wait_for_connect(Pid).
 
-start_link_channel(Host, Port, RoleA, Opts0) when is_atom(RoleA) ->
+start_link_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     Role = atom_to_binary(RoleA, utf8),
-    Opts = maps:put(role, Role, Opts0),
-    Params = encode_params(Opts),
-    WsAddress = "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++
-                        "/channel" ++ Params,
+    WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
     {ok, Pid} = websocket_client:start_link(WsAddress, ?MODULE, self()),
     wait_for_connect(Pid).
+
+start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
+    Role = atom_to_binary(RoleA, utf8),
+    WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
+    ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
+    {ok, Pid} = websocket_client:start(WsAddress, ?MODULE, self()),
+    wait_for_connect(Pid).
+
+
+make_channel_connect_address(Host, Port, Role, Opts0) ->
+    Opts = maps:put(role, Role, Opts0),
+    Params = encode_params(Opts),
+    "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/channel" ++ Params.
 
 wait_for_connect_any() ->
     case wait_for_event_any(websocket, connected) of
@@ -71,6 +83,9 @@ stop(ConnPid) ->
 
 send(ConnPid, Action, Payload) ->
     send_(ConnPid, none, Action, Payload, #{}).
+
+send_tagged(ConnPid, Action, Tag, Payload) ->
+    send_(ConnPid, none, Action, Payload, #{tag => Tag}).
 
 send(ConnPid, Target, Action, Tag, Payload) ->
     send_(ConnPid, Target, Action, Payload, #{tag => Tag}).
