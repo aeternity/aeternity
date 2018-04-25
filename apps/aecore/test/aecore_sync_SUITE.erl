@@ -12,7 +12,6 @@
 %% test case exports
 -export(
    [
-    test_subscription/1,
     start_first_node/1,
     start_second_node/1,
     start_third_node/1,
@@ -47,7 +46,6 @@ groups() ->
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
-       test_subscription,
        mine_on_first,
        start_second_node,
        tx_first_pays_second,
@@ -62,7 +60,6 @@ groups() ->
        crash_syncing_worker]},
      {three_nodes, [sequence],
       [start_first_node,
-       test_subscription,
        mine_on_first,
        start_second_node,
        start_third_node,
@@ -187,14 +184,6 @@ start_third_node(Config) ->
     ct:log("Peers on dev3: ~p", [rpc:call(N3, aec_peers, all, [], 5000)]),
     ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
-
-test_subscription(Config) ->
-    [ Dev1 | _ ] = proplists:get_value(devs, Config),
-    N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:subscribe(N, app_started),
-    Debug0 = aecore_suite_utils:call_proxy(N, debug),
-    ct:log("After subscription (~p, app_started): ~p", [self(), Debug0]),
-    ok.
 
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
