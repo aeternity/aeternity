@@ -57,7 +57,7 @@ setup_chain() ->
 
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aer"),
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
     CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract, amount => 2000}, S),
     {SignedTx, [SignedTx], S1} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S),
     {aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)), S1}.
@@ -81,8 +81,8 @@ get_contract_balance(Contract, S) ->
     aect_contracts:balance(aect_state_tree:get_contract(Contract, Contracts)).
 
 call_data(Arg) ->
-    Code = aect_test_utils:compile_contract("contracts/identity.aer"),
-    aect_ring:create_call(Code, <<"main">>, Arg).
+    Code = aect_test_utils:compile_contract("contracts/identity.aes"),
+    aect_sophia:create_call(Code, <<"main">>, Arg).
 
 %%%===================================================================
 %%% Spend tests

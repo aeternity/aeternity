@@ -121,7 +121,7 @@ call_contract(_Cfg) ->
     GasPrice      = 2,
     Value         = 52,
     Arg           = <<"42">>,
-    CallData = aect_ring:create_call(IdContract, <<"main">>, Arg),
+    CallData = aect_sophia:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => GasPrice,

@@ -5,7 +5,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 
--module(aect_ring).
+-module(aect_sophia).
 
 -export([ compile/2
         , create_call/3
@@ -30,8 +30,8 @@ parse_options(OptionsBinString) ->
 
 parse_options(<<" ", Rest/binary>>, Acc) ->
     parse_options(Rest, Acc);
-parse_options(<<"pp_ring_code", Rest/binary>>, Acc) ->
-    parse_options(Rest, [pp_ring_code | Acc]);
+parse_options(<<"pp_sophia_code", Rest/binary>>, Acc) ->
+    parse_options(Rest, [pp_sophia_code | Acc]);
 parse_options(<<"pp_ast", Rest/binary>>, Acc) ->
     parse_options(Rest, [pp_ast | Acc]);
 parse_options(<<"pp_icode", Rest/binary>>, Acc) ->

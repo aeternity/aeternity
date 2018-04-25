@@ -711,8 +711,8 @@ contract_transactions(_Config) ->
                              function => Function,
                              arguments => Argument},
 
-    {ok, EncodedCallData} = aect_ring:encode_call_data(Code, Function,
-                                                       Argument),
+    {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
+                                                         Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller => MinerPubkey,
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
