@@ -41,7 +41,6 @@
 
 -type id()     :: binary().
 -type amount() :: non_neg_integer().
--type status()     :: 'active' | 'solo_closing'.
 -type seq_number() :: non_neg_integer().
 
 -record(channel, {id               :: id(),
@@ -51,9 +50,8 @@
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
                   round            :: seq_number(),
-                  status           :: status(),
                   lock_period      :: non_neg_integer(),
-                  closes_at        :: 'undefined' | height()}).
+                  closes_at        :: height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -80,9 +78,8 @@ close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
                total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
-               round  = aesc_offchain_tx:round(State),
-               closes_at        = ClosesAt,
-               status           = solo_closing}.
+               round            = aesc_offchain_tx:round(State),
+               closes_at        = ClosesAt}.
 
 -spec deposit(channel(), amount()) -> channel().
 deposit(#channel{total_amount = TotalAmount} = Ch, Amount) ->
@@ -100,13 +97,8 @@ deserialize(Bin) ->
      #{<<"initiator_amount">> := InitiatorAmount},
      #{<<"channel_reserve">>  := ChannelReserve},
      #{<<"round">>            := Round},
-     #{<<"status">>           := Status},
      #{<<"lock_period">>      := LockPeriod},
-     #{<<"closes_at">>        := ClosesAt0}] = List,
-    ClosesAt = case ClosesAt0 of
-                   0                    -> undefined;
-                   H when is_integer(H) -> H
-               end,
+     #{<<"closes_at">>        := ClosesAt}] = List,
     #channel{id               = Id,
              initiator        = InitiatorPubKey,
              responder        = ResponderPubKey,
@@ -114,21 +106,20 @@ deserialize(Bin) ->
              initiator_amount = InitiatorAmount,
              channel_reserve  = ChannelReserve,
              round            = Round,
-             status           = binary_to_atom(Status, utf8),
              lock_period      = LockPeriod,
              closes_at        = ClosesAt}.
 
 -spec is_active(channel()) -> boolean().
-is_active(#channel{status = Status}) ->
-    Status =:= active.
+is_active(#channel{closes_at = ClosesAt}) ->
+    ClosesAt =:= 0.
 
 -spec is_solo_closed(channel(), height()) -> boolean().
-is_solo_closed(#channel{status = Status, closes_at = ClosesAt}, Height) ->
-    Status =:= solo_closing andalso ClosesAt =< Height.
+is_solo_closed(#channel{closes_at = ClosesAt}, Height) ->
+    ClosesAt =/= 0 andalso ClosesAt =< Height.
 
 -spec is_solo_closing(channel(), height()) -> boolean().
-is_solo_closing(#channel{status = Status, closes_at = ClosesAt}, Height) ->
-    Status =:= solo_closing andalso ClosesAt > Height.
+is_solo_closing(#channel{closes_at = ClosesAt}, Height) ->
+    ClosesAt > Height.
 
 -spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
 id(InitiatorPubKey, Nonce, ResponderPubKey) ->
@@ -150,8 +141,8 @@ new(ChCTx) ->
              total_amount     = InitiatorAmount + ResponderAmount,
              initiator_amount = InitiatorAmount,
              channel_reserve  = aesc_create_tx:channel_reserve(ChCTx),
-             round  = 0,
-             status           = active,
+             round            = 0,
+             closes_at        = 0,
              lock_period      = aesc_create_tx:lock_period(ChCTx)}.
 
 -spec peers(channel()) -> list(pubkey()).
@@ -160,10 +151,6 @@ peers(#channel{} = Ch) ->
 
 -spec serialize(channel()) -> binary().
 serialize(#channel{} = Ch) ->
-    ClosesAt = case closes_at(Ch) of
-                   undefined            -> 0;
-                   H when is_integer(H) -> H
-               end,
     msgpack:pack([#{<<"type">>             => ?CHANNEL_TYPE},
                   #{<<"vsn">>              => ?CHANNEL_VSN},
                   #{<<"id">>               => id(Ch)},
@@ -172,10 +159,9 @@ serialize(#channel{} = Ch) ->
                   #{<<"total_amount">>     => total_amount(Ch)},
                   #{<<"initiator_amount">> => initiator_amount(Ch)},
                   #{<<"channel_reserve">>  => channel_reserve(Ch)},
-                  #{<<"round">>  => round(Ch)},
-                  #{<<"status">>           => status(Ch)},
+                  #{<<"round">>            => round(Ch)},
                   #{<<"lock_period">>      => lock_period(Ch)},
-                  #{<<"closes_at">>        => ClosesAt}
+                  #{<<"closes_at">>        => closes_at(Ch)}
                  ]).
 
 -spec slash(channel(), aesc_offchain_tx:tx(), height()) -> channel().
@@ -183,7 +169,7 @@ slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
                total_amount     = aesc_offchain_tx:initiator_amount(State) + aesc_offchain_tx:responder_amount(State),
-               round  = aesc_offchain_tx:round(State),
+               round            = aesc_offchain_tx:round(State),
                closes_at        = ClosesAt}.
 
 -spec withdraw(channel(), amount()) -> channel().
@@ -234,7 +220,3 @@ lock_period(#channel{lock_period = LockPeriod}) ->
 -spec round(channel()) -> non_neg_integer().
 round(#channel{round = Round}) ->
     Round.
-
--spec status(channel()) -> atom().
-status(#channel{status = Status}) ->
-    Status.
