@@ -17,6 +17,7 @@
 -export([kill_node/2]).
 -export([extract_archive/4]).
 -export([run_cmd_in_node_dir/3]).
+-export([run_cmd_in_node_dir/4]).
 -export([connect_node/3]).
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
@@ -153,7 +154,10 @@ extract_archive(NodeName, Path, Archive, Ctx) ->
     call(ctx2pid(Ctx), {extract_archive, NodeName, Path, Archive}).
 
 run_cmd_in_node_dir(NodeName, Cmd, Ctx) ->
-    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd}).
+    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd, 5000}).
+
+run_cmd_in_node_dir(NodeName, Cmd, Timeout, Ctx) ->
+    call(ctx2pid(Ctx), {run_cmd_in_node_dir, NodeName, Cmd, Timeout}).
 
 %% @doc Connect a node to a network.
 -spec connect_node(atom(), atom(), test_ctx()) -> ok.

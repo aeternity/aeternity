@@ -99,8 +99,8 @@ handle_call({kill_node, NodeName}, _From, State) ->
     {reply, ok, mgr_kill_node(NodeName, State)};
 handle_call({extract_archive, NodeName, Path, Archive}, _From, State) ->
     {reply, ok, mgr_extract_archive(NodeName, Path, Archive, State)};
-handle_call({run_cmd_in_node_dir, NodeName, Cmd}, _From, State) ->
-    {ok, Reply, NewState} = mgr_run_cmd_in_node_dir(NodeName, Cmd, State),
+handle_call({run_cmd_in_node_dir, NodeName, Cmd, Timeout}, _From, State) ->
+    {ok, Reply, NewState} = mgr_run_cmd_in_node_dir(NodeName, Cmd, Timeout, State),
     {reply, Reply, NewState};
 handle_call({connect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_connect_node(NodeName, NetName, State)};
@@ -168,9 +168,9 @@ mgr_extract_archive(NodeName, Path, Archive, #{nodes := Nodes} = State) ->
     NodeState2 = Mod:extract_archive(NodeState, Path, Archive),
     State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
 
-mgr_run_cmd_in_node_dir(NodeName, Cmd, #{nodes := Nodes} = State) ->
+mgr_run_cmd_in_node_dir(NodeName, Cmd, Timeout, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
-    {ok, Result, NodeState2} = Mod:run_cmd_in_node_dir(NodeState, Cmd),
+    {ok, Result, NodeState2} = Mod:run_cmd_in_node_dir(NodeState, Cmd, Timeout),
     {ok, Result, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}}.
 
 mgr_connect_node(NodeName, NetName, #{nodes := Nodes} = State) ->
