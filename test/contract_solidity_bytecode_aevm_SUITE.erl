@@ -129,6 +129,7 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
 
     ok = unmock_genesis(Cfg),
     ok = application:stop(aecore),
+    ok = application:stop(mnesia),
     ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
     ok.
 
