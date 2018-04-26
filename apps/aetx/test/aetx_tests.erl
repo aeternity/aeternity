@@ -67,3 +67,29 @@ apply_signed_txs_test_() ->
                ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
        end
       }]}.
+
+backwards_compatibility_test_() ->
+    {foreach,
+     fun aec_test_utils:aec_keys_setup/0,
+     fun aec_test_utils:aec_keys_cleanup/1,
+    [{"Spend transaction backwards compatibility",
+      fun() ->
+          {ok, MinerPubkey} = aec_keys:pubkey(),
+          {ok, SpendTx} = aec_spend_tx:new(
+                            #{sender => MinerPubkey,
+                              recipient => ?RECIPIENT_PUBKEY,
+                              amount => 40,
+                              fee => 9,
+                              nonce => 1,
+                              vsn => 1}),
+          1 = aec_spend_tx:version(aetx:tx(SpendTx)),
+          Bin = aetx:serialize_to_binary(SpendTx),
+          %% serialization of old transaction works
+          ?assertEqual(SpendTx, aetx:deserialize_from_binary(Bin)),
+
+          %% existing old version signatures are still valid
+          {ok, SignedSpendTx} = aec_keys:sign(SpendTx),
+          ?assertEqual(ok, aetx_sign:verify(SignedSpendTx)),
+          ok
+      end}]}.
+

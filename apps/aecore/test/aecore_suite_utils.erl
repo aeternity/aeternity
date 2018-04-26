@@ -19,7 +19,9 @@
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
          mine_blocks/2,
-         mine_blocks/3]).
+         mine_blocks/3,
+         forks/0,
+         latest_fork_height/0]).
 
 -export([node_tuple/1,
          node_name/1,
@@ -180,6 +182,14 @@ mine_blocks_loop(Blocks, BlocksToMine) ->
                   "~p", [process_info(self(), messages)]),
             {error, timeout_waiting_for_block}
     end.
+
+forks() ->
+    #{<<"9">> => 0,
+      <<"10">> => 1,
+      <<"11">> => 2}.
+
+latest_fork_height() ->
+    lists:max(maps:values(forks())).
 
 top_dir(DataDir) ->
     %% Split the DataDir path at "_build"

@@ -307,6 +307,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
                  read_required_params([sender,
                                        {recipient_pubkey, recipient},
                                        amount, fee]),
+                 read_optional_params([{payload, payload, <<>>}]),
                  base58_decode([{sender, sender, account_pubkey},
                                 {recipient, recipient, account_pubkey}]),
                  get_nonce(sender),

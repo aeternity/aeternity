@@ -1,6 +1,5 @@
 # coding: utf-8
 
-import tempfile
 import os
 import shutil
 from nose.tools import assert_equals, assert_not_equals, with_setup
@@ -141,38 +140,10 @@ def test_send_by_name():
     common.stop_node(node)
     shutil.rmtree(root_dir)
 
-def make_mining_config(root_dir, file_name):
-    sys_config = os.path.join(root_dir, file_name)
-    f = open(sys_config, "w")
-    # if autostart is not true - there will be no miner
-    conf ='[{aecore, [{autostart, true},' + \
-                    ' {expected_mine_rate, 100},' + \
-                    ' {aec_pow_cuckoo, {"mean16s-generic", "-t 5", 16}}]}].'
-    f.write(conf)
-    f.close()
-    return sys_config
-
 def setup_node_with_tokens(test_settings, node_name):
-    # prepare a dir to hold the configs and the keys
-    root_dir = tempfile.mkdtemp()
+    return common.setup_node_with_tokens(test_settings["nodes"][node_name], test_settings["blocks_to_mine"])
 
-    # setup the dir with mining node
-    node = test_settings["nodes"][node_name]
-    sys_config = make_mining_config(root_dir, "sys.config")
-    common.start_node(node, sys_config)
-    api = common.external_api(node)
-
-    # populate the chain so node had mined some blocks and has tokens
-    # to spend
-    blocks_to_mine = test_settings["blocks_to_mine"]
-    common.wait_until_height(api, blocks_to_mine)
-    top = api.get_top()
-    assert_equals(top.height >= blocks_to_mine, True)
-    # Now the node has at least blocks_to_mine blocks mined
-
-    return (root_dir, node, api, top)
-
-def miner_send_tokens(address, amount, internal_api, external_api): 
+def miner_send_tokens(address, amount, internal_api, external_api):
     spend_tx_obj = SpendTx(
         recipient_pubkey=address,
         amount=amount,
