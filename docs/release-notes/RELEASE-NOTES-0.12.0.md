@@ -2,7 +2,7 @@
 
 [This release][this-release] is focused on faster sync - approx. 10 times faster.
 It:
-* Changes the sync strategy, making it possible to more efficiently sync a chain from multiple nodes.
+* Changes the sync strategy, making it possible to sync a chain much more efficiently by focusing the sync on syncing with individual forks instead of simply syncing with individual peers.
 * Regulates the maximum number of concurrent connections (`sync` > `max_connections`) and the number of processes accepting connections (`sync` > `acceptors`).
 * Exposes more configuration previously hard-coded, (`sync` > `connect_timeout`), (`sync` > `first_ping_timeout`) and (`sync` > `noise_hs_timeout`).
 * Adds a payload to spend transactions. This impacts consensus.
