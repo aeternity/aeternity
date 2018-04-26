@@ -7,6 +7,7 @@ It:
 * Improve the chain representation by keeping track of fork points. It reduces the need for block-by-block traversals, which in turn speeds up many chain operations. This impacts the persisted DB.
 * Changes the sync strategy, making it possible to more efficiently sync a chain from multiple nodes.
 * Introduce database table versions and a startup check to handle old versions.
+* Add a payload to spend transactions
 * Does this;
 * Does that;
 * TODO Improves the stability of the testnet.
