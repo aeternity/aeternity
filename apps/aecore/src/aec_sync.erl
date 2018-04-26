@@ -259,7 +259,7 @@ get_next_work_item(ST = #sync_task{ pool = [{_, _, {_, _}} | _] = Pool, adding =
     {ToBeAdded, NewPool} = split_pool(Pool),
     case Add of
         [] ->
-            {{post_blocks, ToBeAdded}, ST#sync_task{ pool = NewPool, adding = [ToBeAdded] }};
+            {{post_blocks, ToBeAdded}, ST#sync_task{ pool = NewPool, adding = ToBeAdded }};
         _ when length(Pend) < 10 orelse NewPool /= [] ->
             get_next_work_item(ST#sync_task{ pool = NewPool, pending = Pend ++ [ToBeAdded] });
         _ ->
