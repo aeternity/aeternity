@@ -17,7 +17,7 @@
 -export([get_service_address/2]).
 -export([get_node_pubkey/1]).
 -export([extract_archive/3]).
--export([run_cmd_in_node_dir/2]).
+-export([run_cmd_in_node_dir/3]).
 -export([connect_node/2]).
 -export([disconnect_node/2]).
 
@@ -339,11 +339,9 @@ extract_archive(#{container_id := ID, hostname := Name} = NodeState, Path, Archi
     log(NodeState, "Extracted archive of size ~p in container ~p [~s] at path ~p", [byte_size(Archive), Name, ID, Path]),
     NodeState.
 
-%% This is meant to be changed or removed once `aest_docker_api:exec`
-%% supports stdout.
-run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd) ->
+run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Timeout) ->
     log(NodeState, "Running command ~p on container ~p [~s]", [Cmd, Name, ID]),
-    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{}),
+    {ok, Status, Result} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
     log(NodeState, "Run command ~p on container ~p [~s] with result ~p",
         [Cmd, Name, ID, Result]),
     case Result of
