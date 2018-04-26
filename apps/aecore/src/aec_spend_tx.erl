@@ -127,7 +127,7 @@ check(#spend_tx{vsn = Vsn} = SpendTx, _Context, Trees0, Height, ConsensusVersion
         {error, _Reason} = Error ->
             Error
     end;
-check(#spend_tx{vsn = Vsn} = SpendTx, _Context, Trees0, Height, ConsensusVersion)
+check(#spend_tx{vsn = Vsn}, _Context, _Trees0, _Height, ConsensusVersion)
   when not ?is_tx_vsn_applicable_at_consensus_vsn(Vsn, ConsensusVersion) ->
     {error, tx_version_not_applicable_at_consensus_version}.
 
