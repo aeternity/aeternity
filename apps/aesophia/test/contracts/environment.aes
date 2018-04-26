@@ -1,0 +1,58 @@
+
+// Testing primitives for accessing the block chain environment
+
+contract Environment =
+
+  // -- Information about the this contract ---
+
+  // Address
+  function contract_address() : address = Contract.address
+  function nested_address(who) : address =
+    raw_call(who, "contract_address", 1000, 0, ())
+
+  // Balance
+  function contract_balance() : int = Contract.balance
+
+  // -- Information about the current call ---
+
+  // Origin
+  function call_origin()   : address = Call.origin
+  function nested_origin() : address =
+    raw_call(Contract.address, "call_origin", 1000, 0, ())
+
+  // Caller
+  function call_caller() : address = Call.caller
+  function nested_caller() : address =
+    raw_call(Contract.address, "call_caller", 1000, 0, ())
+
+  // Value
+  function call_value() : int = Call.value
+  function nested_value(value : int) : int =
+    raw_call(Contract.address, "call_value", 1000, value, ())
+
+  // Gas price
+  function call_gas_price() : int = Call.gas_price
+
+  // -- Information about the chain ---
+
+  // Account balances
+  function get_balance(acct : address) : int = Chain.balance(acct)
+
+  // Block hash
+  function block_hash(height : int) : int = Chain.block_hash(height)
+
+  // Coinbase
+  function coinbase() : address = Chain.coinbase
+
+  // Block timestamp
+  function timestamp() : int = Chain.timestamp
+
+  // Block height
+  function block_height() : int = Chain.block_height
+
+  // Difficulty
+  function difficulty() : int = Chain.difficulty
+
+  // Gas limit
+  function gas_limit() : int = Chain.gas_limit
+

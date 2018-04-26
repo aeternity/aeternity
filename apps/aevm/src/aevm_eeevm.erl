@@ -29,6 +29,13 @@
 %% Main eval loop.
 %%
 %%
+eval(State = #{ address := 0 }) ->
+    %% Primitive call. Used for transactions. Once contract calls go through
+    %% the chain API we won't get here!
+    <<TxType:256, _/binary>> = aevm_eeevm_state:data(State),
+    Trace = aevm_eeevm_state:trace_fun(State),
+    Trace("  PrimCall ~p\n", [TxType]),
+    {ok, State};
 eval(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
@@ -1436,7 +1443,7 @@ recursive_call1(StateIn, Op) ->
     {IOffset, State4} = pop(State3),
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
-    {OSize, State7}   = pop(State6),
+    {_OSize, State7}   = pop(State6),   %% NOTE: we don't need the OSize!
     Dest              = case Op of
                             ?CALL -> To;
                             ?CALLCODE -> aevm_eeevm_state:address(State6);
@@ -1444,7 +1451,6 @@ recursive_call1(StateIn, Op) ->
                         end,
     {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
-    Code              = aevm_eeevm_state:extcode(To, State8),
 
     %% "The child message of a nonzero-value CALL operation (NOT the
     %% top-level message arising from a transaction!) gains an
@@ -1468,8 +1474,6 @@ recursive_call1(StateIn, Op) ->
                  ?CALLCODE -> aevm_eeevm_state:address(State8);
                  ?DELEGATECALL -> aevm_eeevm_state:caller(State8)
              end,
-    CallState = aevm_eeevm_state:prepare_for_call(Caller, Dest, CallGas, Value,
-                                                  Code, State8),
     case aevm_eeevm_state:no_recursion(State8) of
         true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,
@@ -1481,26 +1485,30 @@ recursive_call1(StateIn, Op) ->
 							}, State9),
             {1, State10};
         false ->
-            CallState1 =
+            State9 =
 		aevm_eeevm_state:add_callcreates(#{ data => I
 						  , destination => Dest
 						  , gasLimit => CallGas
 						  , value => Value
-						  }, CallState),
-            {OutGas, OutState, R} =
-                case eval(CallState1) of
-                    {ok, OutState2} -> {aevm_eeevm_state:gas(OutState2), OutState2, 1};
-                    {error, out_of_gas,_RState2} -> {0, CallState1, 1}
+						  }, State8),
+            {OutGas, ReturnState, R} =
+                case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State9) of
+                    {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
+                    {error, _Err} -> %% Invalid call
+                        {0, State9, {error, invalid_call}}
                 end,
-            CallTrace = aevm_eeevm_state:trace(OutState),
-            %% Go back to the caller state.
-            ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State8),
+            %% TODO: how to handle trace of call?
+            %% CallTrace = aevm_eeevm_state:trace(OutState),
+            %% ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State9),
             GasAfterCall = GasAfterSpend  + max(0, OutGas - Stipend),
-            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState1),
-            {Message,_}  = aevm_eeevm_memory:get_area(0, OSize, OutState),
-            ReturnState3 = aevm_eeevm_memory:write_area(OOffset, Message,
-                                                        ReturnState2),
-            {R, ReturnState3}
+            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
+            ReturnState3 =
+                case R of
+                    {ok, Message} ->
+                        aevm_eeevm_memory:write_area(OOffset, Message, ReturnState2);
+                    {error, _} -> ReturnState2
+                end,
+            {1, ReturnState3}
     end.
 
 %% ------------------------------------------------------------------------

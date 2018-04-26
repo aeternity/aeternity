@@ -34,7 +34,7 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
-                          address => 0,
+                          address => 91210,
                           caller => 0,
                           data => CallData,
                           gas => 1000000,
@@ -64,7 +64,7 @@ execute_identity_fun_from_bytecode(_Cfg) ->
         aevm_eeevm:eval(
           aevm_eeevm_state:init(
             #{ exec => #{ code => Code,
-                          address => 0,
+                          address => 91210,
                           caller => 0,
                           data => <<0:256, 42:256>>,
                           gas => 1000000,

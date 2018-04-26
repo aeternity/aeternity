@@ -110,7 +110,7 @@ type400() ->
 
 typeAtom() ->
     ?LAZY_P(choice(
-    [ id(), token(qid), tvar()
+    [ id(), token(con), token(qcon), token(qid), tvar()
     , ?RULE(keyword('('), comma_sep(type()), tok(')'), tuple_t(_1, _2))
     ])).
 
