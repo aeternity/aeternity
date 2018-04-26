@@ -106,6 +106,8 @@
     block_txs_list_by_height_invalid_range/1,
     block_txs_list_by_hash_invalid_range/1,
 
+    naming_spend_to_name/1,
+
     naming_system_manage_name/1,
     naming_system_broken_txs/1,
 
@@ -370,8 +372,9 @@ groups() ->
         wrong_http_method_list_oracle_queries,
         wrong_http_method_peers
      ]},
-     {naming, [sequence],
-      [naming_system_manage_name
+     {naming, [sequence], [
+       naming_spend_to_name,
+       naming_system_manage_name
       ]},
      {websocket, [sequence],
       [ws_get_genesis,
@@ -2267,10 +2270,47 @@ block_txs_list_by_hash_invalid_range(_Config) ->
         ]),
     ok.
 
-naming_system_manage_name(_Config) ->
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+naming_spend_to_name(_Config) ->
+    Amount        = 5,
+    MineReward    = rpc(aec_governance, block_mine_reward, []),
+    NamePubKey    = random_hash(),
+    NamePubKeyEnc = aec_base58c:encode(account_pubkey, NamePubKey),
+    Name          = <<"test.test"/utf8>>,
+    Fee           = 1,
+
+    naming_pre_claim_claim_update(_Config, Name, NamePubKey),
+
+    {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(EncodedPubKey),
+
+    post_spend_tx(Name, Amount, Fee),
+
+    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    % checks if spend tx to name is included in mined block
+    [OneTransactionWithName] = lists:filter(
+        fun(SignTx) ->
+            Tx0 = aetx_sign:tx(SignTx),
+            case aetx:specialize_type(Tx0) of
+                {spend_tx, Tx} -> aec_spend_tx:recipient(Tx) =:= Name;
+                _ -> false
+            end
+        end,
+        aec_blocks:txs(Block)),
+    ct:log("OneTransactionWithName: ~p", [OneTransactionWithName]),
+
+    ExpectedBalance = Balance - Amount + MineReward,
+    {ok, 200, #{<<"balance">> := ExpectedBalance}} = get_balance_at_top(EncodedPubKey),
+
+    % checks that the name was resolved and the pointer account was credited balance from spend tx
+    {ok, 200, #{<<"balance">> := Amount}} = get_balance_at_top(NamePubKeyEnc),
+
+    ok.
+
+naming_pre_claim_claim_update(_Config, Name, PubKey) ->
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
-    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     NameSalt    = 12345,
     NameTTL     = 60000,
     Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
@@ -2341,22 +2381,18 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"name">>     := Name,
                 <<"name_ttl">> := NameTTL,
                 <<"pointers">> := Pointers}} = get_name(Name),
+    ok.
 
-    {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
-    Host = internal_address(),
-    {ok, 200, _} = http_request(Host, post, "spend-tx",
-                                #{recipient_pubkey => Name,
-                                  amount           => 77,
-                                  fee              => 50,
-                                  payload          => <<"foo">>}),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+naming_system_manage_name(_Config) ->
+    {ok, PubKey} = rpc(aec_keys, pubkey, []),
 
-    %% Nothing gets lost as recipient = sender = miner
-    %% This tests 'resolve_name' because recipient is expressed by name label
-    %% This tests passes with 1 block confirmation due to lack of miner's reward delay
-    FinalBalance = Balance3+MineReward,
-    {ok, 200, #{<<"balance">> := FinalBalance}} = get_balance_at_top(),
+    PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
+    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+    {ok, NHash} = aens:get_name_hash(Name),
+    Fee         = 2,
+
+    naming_pre_claim_claim_update(_Config, Name, PubKey),
+
 
     %% Submit name transfer tx and check it is in mempool
     {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),

@@ -134,7 +134,7 @@ name_entry(Name) ->
                                         {error, atom()}.
 resolve_name(Type, Name) ->
     case get_top_state() of
-        {ok, Trees} -> aens:resolve(Type, Name, aec_trees:ns(Trees));
+        {ok, Trees} -> aens:resolve_encoded(Type, Name, aec_trees:ns(Trees));
         error -> {error, no_state_trees}
     end.
 
