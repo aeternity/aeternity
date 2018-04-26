@@ -24,15 +24,28 @@ create_calldata(Contract, Function, Argument) ->
             {error, argument_syntax_error}
     end.
 
-encode_call(FunctionHandle, ArgumentAst) ->
-    Argument = ast_to_erlang(ArgumentAst),
-    Call = {FunctionHandle, Argument},
-    {0, Data} = aeso_data:to_binary(Call),
-    _ArgumentType = get_type(Argument),
+%% Use a tuple to pass multiple arguments. TODO: impossible to pass a single
+%% tuple argument.
+encode_call(FunctionHandle, {tuple, _, Elems}) ->
+    encode_call1(FunctionHandle, Elems);
+encode_call(FunctionHandle, Arg) ->
+    encode_call1(FunctionHandle, [Arg]).
+
+encode_call1(FunctionHandle, ArgumentAsts) ->
+    Arguments = lists:map(fun ast_to_erlang/1, ArgumentAsts),
+    Call = list_to_tuple([FunctionHandle | Arguments]),
+    Data = aeso_data:to_binary(Call),
+    _ArgumentTypes = lists:map(fun get_type/1, Arguments),
     %% TODO: Verify that the type matches the function signature.
     Data.
 
-ast_to_erlang({int, _, N}) -> N.
+ast_to_erlang({int, _, N}) -> N;
+ast_to_erlang({string, _, Bin}) -> Bin;
+ast_to_erlang({unit, _}) -> {};
+ast_to_erlang({tuple, _, Elems}) ->
+    list_to_tuple(lists:map(fun ast_to_erlang/1, Elems));
+ast_to_erlang({list, _, Elems}) ->
+    lists:map(fun ast_to_erlang/1, Elems).
 
 encode_function(_Contract, Function) ->
      << <<X>> || X <- Function>>.
@@ -47,7 +60,7 @@ get_type(B) when is_binary(B) ->
 get_type([]) -> nil;
 get_type([E|_]) ->
     {list, get_type(E)}.
-    
+
 
 
 

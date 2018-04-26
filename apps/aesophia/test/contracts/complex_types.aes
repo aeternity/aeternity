@@ -1,0 +1,50 @@
+
+contract ComplexTypes =
+
+  function sum_acc(xs, n) =
+    switch(xs)
+      []      => n
+      x :: xs => sum_acc(xs, x + n)
+
+  // Sum a list of integers
+  function sum(xs : list(int)) =
+    sum_acc(xs, 0)
+
+  function up_to_acc(n, xs) =
+    switch(n)
+      0 => xs
+      _ => up_to_acc(n - 1, n :: xs)
+
+  function up_to(n) = up_to_acc(n, [])
+
+  type answer('a) = {label : string, result : 'a}
+
+  function remote_triangle(worker, n) : answer(int) =
+    let xs = raw_call(worker, "up_to", 100000, 0, n) : list(int)
+    let t  = raw_call(worker, "sum",   100000, 0, xs)
+    { label = "answer:", result = t }
+
+  function remote_list(n) : list(int) =
+    raw_call(Contract.address, "up_to", 100000, 0, n)
+
+  function some_string() = "string"
+
+  function remote_string() : string =
+    raw_call(Contract.address, "some_string", 10000, 0, ())
+
+  function pair(x : int, y : string) = (x, y)
+
+  function remote_pair(n : int, s : string) : (int, string) =
+    raw_call(Contract.address, "pair", 10000, 0, (n, s))
+
+  function map(f, xs) =
+    switch(xs)
+      []      => []
+      x :: xs => f(x) :: map(f, xs)
+
+  function squares(n) =
+    map((i) => (i, i * i), up_to(n))
+
+  function remote_squares(n) : list((int, int)) =
+    raw_call(Contract.address, "squares", 10000, 0, n)
+

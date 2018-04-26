@@ -32,8 +32,8 @@ file(Filename, Options) ->
     from_string(C, Options).
 
 from_string(ContractString, Options) ->
-    ok = pp_sophia_code(ContractString, Options),
     Ast = parse(ContractString, Options),
+    ok = pp_sophia_code(Ast, Options),
     ok = pp_ast(Ast, Options),
     ICode = to_icode(Ast, Options),
     ok = pp_icode(ICode, Options),
@@ -46,7 +46,7 @@ from_string(ContractString, Options) ->
 
 parse(C,_Options) ->
     parse_string(C).
-    
+
 to_icode(Ast, Options) ->
     aeso_ast_to_icode:convert(Ast, Options).
 
@@ -62,8 +62,9 @@ to_bytecode([], _) -> [].
 
 
 
-pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code,
-                            fun (X) -> io:format("~s~n",[X]) end).
+pp_sophia_code(C, Opts)->  pp(C, Opts, pp_sophia_code, fun(Code) ->
+                                io:format("~s\n", [prettypr:format(aeso_pretty:decls(Code))])
+                            end).
 pp_ast(C, Opts)      ->  pp(C, Opts, pp_ast, fun aeso_ast:pp/1).
 pp_icode(C, Opts)    ->  pp(C, Opts, pp_icode, fun aeso_icode:pp/1).
 pp_assembler(C, Opts)->  pp(C, Opts, pp_assembler, fun aeb_asm:pp/1).
@@ -76,7 +77,7 @@ pp(Code, Options, Option, PPFun) ->
         none ->
             ok
     end.
-    
+
 
 %% -------------------------------------------------------------------
 %% TODO: Tempoary parser hook below...
@@ -106,7 +107,7 @@ solidity_id_contract() ->
 test() ->
     io:format(aeb_disassemble:pp(solidity_id_contract()),[]).
 
- 
+
 binint_to_bin(<<"0x", Bin/binary>>) ->
     << <<(hex_to_int(X)):4>> || <<X:8>> <= Bin>>;
 binint_to_bin(<<"0", _/binary>> = Bin) ->

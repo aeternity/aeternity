@@ -3,7 +3,8 @@
 -export([to_binary/1,binary_to_words/1,from_binary/2]).
 
 to_binary(Data) ->
-    to_binary(Data,0).
+    {Address, Memory} = to_binary(Data, 32),
+    <<Address:256, Memory/binary>>.
 
 %% Allocate the data in memory, from the given address.  Return a pair
 %% of memory contents from that address and the value representing the
@@ -18,7 +19,7 @@ to_binary(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
     {Address,<< ElemsBin/binary, Memory/binary >>};
-to_binary([],Address) ->
+to_binary([],_Address) ->
     <<Nil:256>> = <<(-1):256>>,
     {Nil,<<>>};
 to_binary([H|T],Address) ->
@@ -46,6 +47,9 @@ from_binary(T,Heap= <<V:256,_/binary>>) ->
 
 from_binary(word,_,V) ->
     V;
+from_binary(signed_word, _, V) ->
+    <<N:256/signed>> = <<V:256>>,
+    N;
 from_binary(string,Heap,V) ->
     StringSize = heap_word(Heap,V),
     BitAddr = 8*(V+32),

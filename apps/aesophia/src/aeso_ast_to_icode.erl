@@ -11,6 +11,7 @@
 
 -export([convert/2]).
 
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aeso_icode.hrl").
 
 convert(Tree, Options) ->
@@ -58,10 +59,57 @@ ast_args([{arg, _, Name, Type}|Rest], Acc) ->
     ast_args(Rest, [{ast_id(Name), ast_type(Type)}| Acc]);
 ast_args([], Acc) -> lists:reverse(Acc).
 
-%% ICode is untyped, surely?
 ast_type(T) ->
-    T.
+    ast_typerep(T).
 
+ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, Value, {typed, _, Arg, ArgT}]}, OutT}) ->
+    %% TODO: temp hack before we have contract calls properly in the type checker
+    {Args, ArgTypes} =
+        case Arg of %% Hack: unpack tuples
+            {tuple, _, Elems} ->
+                {tuple_t, _, Ts} = ArgT,
+                {Elems, Ts};
+            _ -> {[Arg], [ArgT]}
+        end,
+    #prim_call_contract{ gas      = ast_body(Gas),
+                         address  = ast_body(To),
+                         value    = ast_body(Value),
+                         arg      = #tuple{cpts = [ast_body(X) || X <- [Fun | Args]]},
+                         arg_type = {tuple, [string | lists:map(fun ast_typerep/1, ArgTypes)]},
+                         out_type = ast_typerep(OutT) };
+ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
+    %% Implemented as a contract call to the contract with address 0.
+    #prim_call_contract{ gas      = #integer{ value = 0 },
+                         address  = #integer{ value = 0 },
+                         value    = ast_body(Amount),
+                         arg      = #tuple{cpts = [ast_body({int, [], ?PRIM_CALL_SPEND}),
+                                                   ast_body(To)]},
+                         arg_type = {tuple, [word, word]},
+                         out_type = {tuple, []} };
+ast_body({app, _, {typed, _, {qid, _, ["Chain", "balance"]}, _}, [Address]}) ->
+    #prim_balance{ address = ast_body(Address) };
+ast_body({app, _, {typed, _, {qid, _, ["Chain", "block_hash"]}, _}, [Height]}) ->
+    #prim_block_hash{ height = ast_body(Height) };
+ast_body({qid, _, ["Contract", "address"]})      -> prim_contract_address;
+ast_body({qid, _, ["Contract", "balance"]})      -> #prim_balance{ address = prim_contract_address };
+ast_body({qid, _, ["Call",     "origin"]})       -> prim_call_origin;
+ast_body({qid, _, ["Call",     "caller"]})       -> prim_caller;
+ast_body({qid, _, ["Call",     "value"]})        -> prim_call_value;
+ast_body({qid, _, ["Call",     "gas_price"]})    -> prim_gas_price;
+ast_body({qid, _, ["Chain",    "coinbase"]})     -> prim_coinbase;
+ast_body({qid, _, ["Chain",    "timestamp"]})    -> prim_timestamp;
+ast_body({qid, _, ["Chain",    "block_height"]}) -> prim_block_height;
+ast_body({qid, _, ["Chain",    "difficulty"]})   -> prim_difficulty;
+ast_body({qid, _, ["Chain",    "gas_limit"]})    -> prim_gas_limit;
+%% TODO: eta expand!
+ast_body({qid, _, ["Chain", "balance"]}) ->
+    error({underapplied_primitive, 'Chain.balance'});
+ast_body({qid, _, ["Chain", "block_hash"]}) ->
+    error({underapplied_primitive, 'Chain.block_hash'});
+ast_body({id, _, "raw_call"}) ->
+    error({underapplied_primitive, raw_call});
+ast_body({id, _, "raw_spend"}) ->
+    error({underapplied_primitive, raw_spend});
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -74,13 +122,20 @@ ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
     #list{elems = [ast_body(A) || A <- Args]};
-ast_body({app,[_,{format,prefix}],{Op,_},[A]}) ->
-    #unop{op = Op, rand = ast_body(A)};
-ast_body({app,[_,{format,infix}],{Op,_},[A,B]}) ->
-    #binop{op = Op, left = ast_body(A), right = ast_body(B)};
-ast_body({app,_,Fun,Args}) ->
-    #funcall{function=ast_body(Fun),
-	     args=[ast_body(A) || A <- Args]};
+ast_body({app,As,Fun,Args}) ->
+    case aeso_syntax:get_ann(format, As) of
+        infix  ->
+            {Op, _} = Fun,
+            [A, B]  = Args,
+            #binop{op = Op, left = ast_body(A), right = ast_body(B)};
+        prefix ->
+            {Op, _} = Fun,
+            [A]     = Args,
+            #unop{op = Op, rand = ast_body(A)};
+        _ ->
+            #funcall{function=ast_body(Fun),
+	             args=[ast_body(A) || A <- Args]}
+    end;
 ast_body({'if',_,Dec,Then,Else}) ->
     #ifte{decision = ast_body(Dec)
 	 ,then     = ast_body(Then)
@@ -110,14 +165,14 @@ ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     #tuple{cpts =
 	       [case proplists:get_value(Name,NamedFields) of
 		    undefined ->
-			[{line,Line}] = Attrs,
+			Line = aeso_syntax:get_ann(line, Attrs),
 			#missing_field{format = "Missing field in record: ~s (on line ~p)\n",
 				       args = [Name,Line]};
 		    E ->
 			ast_body(E)
 		end
 		|| {field_t,_,_,{id,_,Name},_} <- DefFields]};
-ast_body({typed,_,{record,Attrs,Fields},T}) ->
+ast_body({typed,_,{record,Attrs,_Fields},T}) ->
     error({record_has_bad_type,Attrs,T});
 ast_body({proj,_,{typed,_,Record,{record_t,Fields}},{id,_,FieldName}}) ->
     [Index] = [I
@@ -147,15 +202,17 @@ ast_typerep({id,_,"int"}) ->
     word;
 ast_typerep({id,_,"string"}) ->
     string;
+ast_typerep({id,_,"address"}) ->
+    word;   %% except addresses are 65 bytes..?
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
 ast_typerep({tuple_t,_,Cpts}) ->
-    #tuple{cpts = [ast_typerep(C) || C<-Cpts]};
+    {tuple, [ast_typerep(C) || C<-Cpts]};
 ast_typerep({record_t,Fields}) ->
-    #tuple{cpts = [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
+    {tuple, [ast_typerep(T) || {field_t,_,_,_,T} <- Fields]};
 ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
-    #list{elems=[ast_typerep(Elem)]}; %% Reusing value-level lists
+    {list, ast_typerep(Elem)};
 ast_typerep({fun_t,_,_,_}) ->
     function.
 
@@ -164,13 +221,6 @@ ast_typerep({fun_t,_,_,_}) ->
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],
     set_functions(NewFuns, Icode).
-
-%% -------------------------------------------------------------------
-%% AST
-%% -------------------------------------------------------------------
-%% get_line(Attribs) -> %% TODO: use AST primitives.
-%%      proplists:get_value(line, Attribs).
-
 
 %% -------------------------------------------------------------------
 %% Icode

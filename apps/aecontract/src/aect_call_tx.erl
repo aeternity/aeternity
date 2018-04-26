@@ -129,41 +129,51 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     %% Create the call.
     Call0 = aect_call:new(CallTx, Height),
 
+    %% Transfer the attached funds to the callee (before calling the contract!)
+    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree0),
+    Callee1 = aect_contracts:earn(Value, Callee0),
+    ContractsTree1 = aect_state_tree:enter_contract(Callee1, ContractsTree0),
+    Trees1 = aec_trees:set_contracts(Trees0, ContractsTree1),
+    {AccountsTree1, ContractsTree2} =
+        %% TODO: contract accounts should live in the account tree
+        case Context of
+            aetx_contract    ->
+                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree1),
+                Caller1 = aect_contracts:spend(Value, Caller0),
+                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree1)};
+            aetx_transaction ->
+                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
+                {ok, Caller1} = aec_accounts:spend(Caller0, Value, Nonce, Height),
+                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree1}
+        end,
+
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = run_contract(CallTx, Call0, Height, Trees0),
+    Call = run_contract(CallTx, Call0, Height, Trees1),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
-    {AccountsTree1, ContractsTree1} =
+    AccountsTree2 =
         case Context of
             aetx_contract    ->
-                %% When calling from another contract we only charge the 'amount'
-                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree0),
-                Caller1 = aect_contracts:spend(Value, Caller0),
-                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree0)};
+                AccountsTree1;
             aetx_transaction ->
                 %% When calling from the top-level we charge Fee and Gas as well.
-                Amount        = Fee + aect_call:gas_used(Call) * GasPrice + Value,
-                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
-                {ok, Caller1} = aec_accounts:spend(Caller0, Amount, Nonce, Height),
-                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree0}
+                Amount        = Fee + aect_call:gas_used(Call) * GasPrice,
+                Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree1),
+                {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
+                aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
-
-    %% Credit the attached funds to the callee
-    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree1),
-    Callee1 = aect_contracts:earn(Value, Callee0),
-    ContractsTree2 = aect_state_tree:enter_contract(Callee1, ContractsTree1),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     ContractsTree3 = aect_state_tree:insert_call(Call, ContractsTree2),
 
     %% Update the state tree
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree3),
+    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree2),
+    Trees3 = aec_trees:set_contracts(Trees2, ContractsTree3),
 
-    {ok, Trees2}.
+    {ok, Trees3}.
 
 serialize(#contract_call_tx{caller     = CallerPubKey,
                             nonce      = Nonce,
