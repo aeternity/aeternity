@@ -97,13 +97,15 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
+    Forks = aecore_suite_utils:forks(), 
     DefCfg = #{<<"metrics">> =>
                    #{<<"rules">> =>
                          [#{<<"name">> => <<"ae.epoch.system.**">>,
                             <<"actions">> => <<"log">>},
                           #{<<"name">> => <<"ae.epoch.aecore.**">>,
                             <<"actions">> => <<"log,send">>}]},
-              <<"chain">> => #{<<"persist">> => true}},
+              <<"chain">> => #{<<"persist">> => true,
+                               <<"hard_forks">> => Forks}},
     Config2 = aec_metrics_test_utils:make_port_map([dev1, dev2, dev3], Config1),
     aecore_suite_utils:create_configs(Config2, DefCfg, [{add_peers, true}]),
     aecore_suite_utils:make_multi(Config2),
@@ -188,7 +190,7 @@ start_third_node(Config) ->
 mine_on_first(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
-    aecore_suite_utils:mine_blocks(N, 1),
+    aecore_suite_utils:mine_blocks(N, aecore_suite_utils:latest_fork_height()),
     ok.
 
 start_blocked_second(Config) ->
