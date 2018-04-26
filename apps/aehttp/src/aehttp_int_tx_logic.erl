@@ -31,18 +31,14 @@ sender_and_hash(STx) ->
 spend(EncodedRecipient, Amount, Fee, Payload) ->
     create_tx(
         fun(SenderPubkey, Nonce) ->
-            case aec_chain:resolve_name(account_pubkey, EncodedRecipient) of
-                {ok, DecodedRecipientPubkey} ->
-                    aec_spend_tx:new(
-                      #{sender    => SenderPubkey,
-                        recipient => DecodedRecipientPubkey,
-                        amount    => Amount,
-                        payload   => Payload,
-                        fee       => Fee,
-                        nonce     => Nonce});
-                {error, _} ->
-                    {error, invalid_key}
-            end
+            {_Type, DecodedRecipient} = aec_base58c:decode(EncodedRecipient),
+            aec_spend_tx:new(
+                #{sender    => SenderPubkey,
+                  recipient => DecodedRecipient,
+                  amount    => Amount,
+                  payload   => Payload,
+                  fee       => Fee,
+                  nonce     => Nonce})
         end).
 
 oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue) ->
@@ -69,26 +65,23 @@ oracle_extend(Fee, TTLType, TTLValue) ->
           end).
 
 oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
-             QueryTTLValue, ResponseTTLValue, Fee) ->
+    QueryTTLValue, ResponseTTLValue, Fee) ->
     create_tx(
         fun(Pubkey, Nonce) ->
-            case aec_chain:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
-                {ok, DecodedOraclePubkey} ->
-                    {ok, Tx} =
-                        aeo_query_tx:new(
-                          #{sender       => Pubkey,
-                            nonce        => Nonce,
-                            oracle       => DecodedOraclePubkey,
-                            query        => Query,
-                            query_fee    => QueryFee,
-                            query_ttl    => {QueryTTLType, QueryTTLValue},
-                            response_ttl => {delta, ResponseTTLValue},
-                            fee          => Fee}),
-                    QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
-                    {ok, Tx, QId};
-                {error, _} -> {error, invalid_key}
-              end
-          end).
+            {_Type, DecodedOraclePubkey} = aec_base58c:decode(EncodedOraclePubkey),
+            {ok, Tx} =
+                aeo_query_tx:new(
+                    #{sender       => Pubkey,
+                      nonce        => Nonce,
+                      oracle       => DecodedOraclePubkey,
+                      query        => Query,
+                      query_fee    => QueryFee,
+                      query_ttl    => {QueryTTLType, QueryTTLValue},
+                      response_ttl => {delta, ResponseTTLValue},
+                      fee          => Fee}),
+            QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
+            {ok, Tx, QId}
+        end).
 
 oracle_response(DecodedQueryId, Response, Fee) ->
     create_tx(
