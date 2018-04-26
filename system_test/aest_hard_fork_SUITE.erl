@@ -186,7 +186,7 @@ groups() ->
      {hard_fork_all_with_tx,
       [sequence],
       [
-       {group, hard_fork_old_chain_with_tx},
+       %% {group, hard_fork_old_chain_with_tx}, Not applicable as is in 0.12.0 because new node's user API creates only new spend tx.
        {group, hard_fork_new_chain_with_tx}
       ]},
      {hard_fork_old_chain_with_tx,
