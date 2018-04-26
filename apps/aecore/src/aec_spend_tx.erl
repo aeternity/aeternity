@@ -33,7 +33,7 @@
 -define(SPEND_TX_TYPE, spend_tx).
 
 -define(is_tx_vsn_applicable_at_consensus_vsn(TxV, CV),
-        ( ((TxV =:= ?SPEND_TX_NO_PAYLOAD_VSN) and (CV =< ?CONSENSUS_V_0_11_0_VERSION))
+        ( (TxV =:= ?SPEND_TX_NO_PAYLOAD_VSN)
           or ((TxV =:= ?SPEND_TX_VSN) and (CV > ?CONSENSUS_V_0_11_0_VERSION))
         )).
 
