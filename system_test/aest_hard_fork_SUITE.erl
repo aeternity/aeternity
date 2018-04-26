@@ -403,14 +403,12 @@ old_chain_has_no_contracts_in_top_block_state(Cfg) ->
     {_, _TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     ErlCmd =
-        lists:flatten(
-          io_lib:format(
-            "{{ok, H}, _} = {aec_base58c:safe_decode(block_hash, ~w), decode_hash},~n"
-            "{{_, Ts}, _} = {aec_chain:get_block_state(H), get_state},~n"
-            "{{contract_tree, CT}, _} = {aec_trees:contracts(Ts), get_contract_tree},~n"
-            "{Cs, _} = {aeu_mtrees:to_list(CT), get_contract_list},~n"
-            "length(Cs).",
-            [TopHash])),
+        make_erl_cmd(
+          "{{ok, H}, _} = {aec_base58c:safe_decode(block_hash, ~w), decode_hash},~n"
+          "{{_, Ts}, _} = {aec_chain:get_block_state(H), get_state},~n"
+          "{{contract_tree, CT}, _} = {aec_trees:contracts(Ts), get_contract_tree},~n"
+          "{Cs, _} = {aeu_mtrees:to_list(CT), get_contract_list},~n"
+          "length(Cs).", [TopHash]),
     0 = run_erl_cmd_on_node(new_node3, ErlCmd, 30000, Cfg),
     {save_config,
      [{old_node_left_running_with_old_chain, old_node1},
@@ -705,8 +703,7 @@ restore_db_backup_on_node(NodeName, TarBin, Content, DestDir, Cfg) ->
     {0, Output} = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
     ?assertEqual(Content, string:trim(Output)),
     Dest = DestDir ++ "/" ++ Content,
-    ErlCmd =
-        "{atomic, [_|_] = Tabs} = mnesia:restore(\"" ++ Dest ++ "\", []), ok.",
+    ErlCmd = make_erl_cmd("{atomic, [_|_] = Tabs} = mnesia:restore(~p, []), ok.", [Dest]),
     ok = run_erl_cmd_on_node(NodeName, ErlCmd, 45000, Cfg),
     Top = #{height := TopHeight,
             hash := TopHash} = aest_nodes:get_top(NodeName, Cfg),
@@ -731,10 +728,9 @@ load_module_on_node(NodeName, Module, String, Cfg) ->
     {ok, Module, Binary, []} = compile:forms(Forms, [return_errors,
                                                      return_warnings]),
     ErlCmd =
-        lists:flatten(
-          io_lib:format(
-            "{module, _} = code:load_binary(~s, \"Dummy Filename\", ~w), ok.",
-            [Module, Binary])),
+        make_erl_cmd(
+          "{module, _} = code:load_binary(~s, \"Dummy Filename\", ~w), ok.",
+          [Module, Binary]),
     ok = run_erl_cmd_on_node(NodeName, ErlCmd, 30000, Cfg).
 
 dot_ending_token_lists(Chars) ->
@@ -753,6 +749,9 @@ dot_ending_token_lists(Chars) ->
 to_forms(DotEndingTokenLists) ->
     lists:map(fun(Ts) -> {ok, F} = erl_parse:parse_form(Ts), F end,
               DotEndingTokenLists).
+
+make_erl_cmd(Fmt, Params) ->
+    lists:flatten(io_lib:format(Fmt, Params)).
 
 run_erl_cmd_on_node(NodeName, ErlCmd, Timeout, Cfg) ->
     ct:log("Running Erlang command on node ~s:~n~s", [NodeName, ErlCmd]),
