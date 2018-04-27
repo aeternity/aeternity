@@ -97,7 +97,7 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    Forks = aecore_suite_utils:forks(), 
+    Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"metrics">> =>
                    #{<<"rules">> =>
                          [#{<<"name">> => <<"ae.epoch.system.**">>,
@@ -515,7 +515,7 @@ new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
                amount => Am,
                fee => Fee},
     %% It's internal API so ext_addr is not included here.
-    Cfg = [{int_addr, "http://127.0.0.1:" ++ integer_to_list(Port)},
+    Cfg = [{int_http, "http://127.0.0.1:" ++ integer_to_list(Port)},
            {encode_base58c, true}],
     {ok, 200, _} = aehttp_client:request('PostSpendTx', Params, Cfg),
     ok.

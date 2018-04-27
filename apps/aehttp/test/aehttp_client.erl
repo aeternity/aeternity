@@ -9,7 +9,7 @@
 %% API
 %%=============================================================================
 
-%% Required config values: int_addr, ext_addr
+%% Required config values: int_http, ext_http
 %% Optional config values: encode_base58c
 request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
@@ -72,8 +72,8 @@ operation_interface(#{tags := Tags}) ->
     IsExt = lists:member(<<"external">>, Tags),
     IsInt = lists:member(<<"internal">>, Tags),
     case {IsExt, IsInt} of
-        {true, _} -> ext_addr;
-        {_, true} -> int_addr
+        {true, _} -> ext_http;
+        {_, true} -> int_http
     end.
 
 operation_path(Method, OpId, Params) ->
