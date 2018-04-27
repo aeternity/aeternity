@@ -494,9 +494,10 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     {true, _} = {HeightToBeMinedWithOldProtocol > TopHeight,
                  {check_at_least_a_block_to_mine_using_old_protocol,
                   HeightToBeMinedWithOldProtocol}},
-    run_erl_cmd_on_node(old_node1, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    ok = run_erl_cmd_on_node(old_node1, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [old_node1], {{10000, ms}, {1000, blocks}}, Cfg),
-    %% TODO Stopping conductor times out. It is fine to leave node running as anyway blocks above height of new consensus are ignored by new nodes. %% run_erl_cmd_on_node(old_node1, "aec_conductor:stop_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    %% TODO Stopping conductor times out. It is fine to leave node running as anyway blocks above height of new consensus are ignored by new nodes.
+    %% ok = run_erl_cmd_on_node(old_node1, "aec_conductor:stop_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     %% Check new node synced chain fully mined with old protocol.
     %% TODO Check new node in sync with old node - for catching errors earlier.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
@@ -514,7 +515,7 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     RecipientBalanceAtLastBlockWithOldProtocol = get_balance(new_node3, Recipient, Cfg),
     ok = post_spend_tx(old_node1, Recipient, SpendTxAmount, SpendTxFee, Cfg),
     %% Make new node to mine.
-    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     %% Check spend tx processed.
     {SpendTxBlockHash, SpendTxHeight} =
         wait_spend_tx_in_chain(new_node3, Sender, Recipient, SpendTxAmount, SpendTxFee, Cfg),
