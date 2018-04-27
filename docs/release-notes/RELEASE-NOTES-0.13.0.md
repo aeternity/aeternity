@@ -1,21 +1,16 @@
 # About this release
 
-[This release][this-release] is focused on faster sync - approx. 10 times faster.
+[This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Changes the sync strategy, making it possible to sync a chain much more efficiently by focusing the sync on syncing with individual forks instead of simply syncing with individual peers.
-* Regulates the maximum number of concurrent connections (`sync` > `max_connections`) and the number of processes accepting connections (`sync` > `acceptors`).
-* Exposes more configuration previously hard-coded, (`sync` > `connect_timeout`), (`sync` > `first_ping_timeout`) and (`sync` > `noise_hs_timeout`).
-* Adds a payload to spend transactions. This impacts consensus.
-* Improves the chain representation by keeping track of fork points. It reduces the need for block-by-block traversals, which in turn speeds up many chain operations. This impacts the persisted DB.
-* Introduces database table versions and a startup check to handle old versions.
-* Relocates user APIs for querying block by height or hash from the internal to the external endpoint.
-* Improves the stability of the testnet.
+* Does this. This impacts consensus.
+* Does that.
+* TODO Improves the stability of the testnet.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.12.0
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
 
-This release introduce a new consensus protocol version at height 7450 while the genesis block is unchanged from the previous releases "v0.11.x" and "v0.10.1", therefore:
-* Ensure you keep your account key pair: after upgrading your node, you shall have your previous balance as of approx. Thu 26th Apr 2018;
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.11.x".
+This release introduce a new consensus protocol version at height TODO while the genesis block is unchanged from the previous releases "v0.12.0", "v0.11.x" and "v0.10.1", therefore:
+* Ensure you keep your account key pair: after upgrading your node, you shall have your previous balance as of approx. TODO;
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.12.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -32,8 +27,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.12.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v0.12.0/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.13.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.13.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -45,9 +40,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.12.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.12.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.12.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.13.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.13.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.13.0/epoch/api/README.md
 
 ## Install node
 
