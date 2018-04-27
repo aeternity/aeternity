@@ -481,6 +481,7 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     start_node(new_node4, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
     ok = mock_pow_on_node(old_node1, Cfg), %% TODO Make configurable.
     ok = mock_pow_on_node(new_node3, Cfg), %% TODO Make configurable.
     ok = mock_pow_on_node(new_node4, Cfg), %% TODO Make configurable.
