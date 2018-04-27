@@ -100,7 +100,7 @@ check_test_() ->
       end}].
 
 process_test_() ->
-    [{"Check and process valid spend tx",
+    [{"Check and process valid spend tx with payload in new consensus",
       fun() ->
               SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => 10}),
               RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12, height => 11}),
@@ -110,7 +110,37 @@ process_test_() ->
                                                  recipient => ?RECIPIENT_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
-                                                 nonce => 11}),
+                                                 nonce => 11,
+                                                 payload => <<"foo">>}),
+              2 = aec_spend_tx:version(aetx:tx(SpendTx)),
+              <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
+              {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+              {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
+
+              ResultAccountsTree = aec_trees:accounts(StateTree),
+              {value, ResultSenderAccount} = aec_accounts_trees:lookup(?SENDER_PUBKEY, ResultAccountsTree),
+              {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
+
+              ?assertEqual(100 - 50 - 10, aec_accounts:balance(ResultSenderAccount)),
+              ?assertEqual(11, aec_accounts:nonce(ResultSenderAccount)),
+              ?assertEqual(20, aec_accounts:height(ResultSenderAccount)),
+              ?assertEqual(80 + 50, aec_accounts:balance(ResultRecipientAccount)),
+              ?assertEqual(12, aec_accounts:nonce(ResultRecipientAccount)),
+              ?assertEqual(20, aec_accounts:height(ResultRecipientAccount))
+      end},
+      {"Check and process valid spend tx without payload in new consensus",
+      fun() ->
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => 10}),
+              RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, balance => 80, nonce => 12, height => 11}),
+              StateTree0 = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
+
+              {ok, SpendTx} = ?TEST_MODULE:new(#{sender => ?SENDER_PUBKEY,
+                                                 recipient => ?RECIPIENT_PUBKEY,
+                                                 amount => 50,
+                                                 fee => 10,
+                                                 nonce => 11,
+                                                 vsn => 1}),
+              1 = aec_spend_tx:version(aetx:tx(SpendTx)),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
               {ok, StateTree} = aetx:process(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
 
