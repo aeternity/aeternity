@@ -34,18 +34,14 @@ request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts) ->
 %%=============================================================================
 
 process_response({ok, {{_, Code, _State}, _Head, Body}}) ->
-    try
-        case iolist_to_binary(Body) of
-            <<>> ->
-                ct:log("Return code: ~p", [Code]),
-                {ok, Code, #{}};
-            B ->
-                B1 = jsx:decode(B, [return_maps]),
-                ct:log("Return code: ~p, body: ~p", [Code, B1]),
-                {ok, Code, B1}
-        end
-    catch
-        error:E -> {error, {parse_error, [E, erlang:get_stacktrace()]}}
+    case iolist_to_binary(Body) of
+        <<>> ->
+            ct:log("Return code: ~p", [Code]),
+            {ok, Code, #{}};
+        Body1 ->
+            Body2 = jsx:decode(Body1, [{labels, attempt_atom}, return_maps]),
+            ct:log("Return code: ~p, body: ~p", [Code, Body2]),
+            {ok, Code, Body2}
     end;
 process_response({error, _} = Error) ->
     Error.
