@@ -10,14 +10,12 @@
 %%=============================================================================
 
 %% Required config values: int_http, ext_http
-%% Optional config values: encode_base58c
 request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
     {Method, Interface} = operation_spec(Op),
     BaseUrl = proplists:get_value(Interface, Cfg),
-    Params1 = maybe_encode_params(Params, Cfg),
-    Path = operation_path(Method, OpId, Params1),
-    request(Method, BaseUrl, Path, Params1, [], [], []).
+    Path = operation_path(Method, OpId, Params),
+    request(Method, BaseUrl, Path, Params, [], [], []).
 
 request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts) ->
     Url = make_url(BaseUrl, Path, QueryParams),
@@ -51,17 +49,6 @@ process_response({ok, {{_, Code, _State}, _Head, Body}}) ->
     end;
 process_response({error, _} = Error) ->
     Error.
-
-maybe_encode_params(Params, Cfg) ->
-    case proplists:get_value(encode_base58c, Cfg) of
-        true -> encode_params(Params);
-        _ -> Params
-    end.
-
-%% TODO: add more params.
-encode_params(#{recipient_pubkey := PubKey} = Params) ->
-    EncPubKey = aec_base58c:encode(account_pubkey, PubKey),
-    maps:update(recipient_pubkey, EncPubKey, Params).
 
 operation_spec(#{get := GetSpec}) ->
     {get, operation_interface(GetSpec)};
