@@ -238,7 +238,8 @@ init_per_group(Group, Config)
      | Config];
 init_per_group(Group, Config)
   when Group =:= upgrade_flow_smoke_test;
-       Group =:= old_spend_tx_in_new_protocol_smoke_test ->
+       Group =:= old_spend_tx_in_new_protocol_smoke_test;
+       Group =:= hard_fork_new_chain_with_tx ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
     Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
@@ -256,26 +257,15 @@ init_per_group(hard_fork_old_chain_with_tx, Config) ->
        ?NEW_NODE3(Ps),
        ?NEW_NODE4(Ps)], NewConfig),
     NewConfig;
-init_per_group(hard_fork_new_chain_with_tx, Config) ->
-    {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
-    NewConfig = aest_nodes:ct_setup(Config),
-    Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
-    aest_nodes:setup_nodes(
-      [?OLD_NODE1,
-       ?NEW_NODE3(Ps),
-       ?NEW_NODE4(Ps)], NewConfig),
-    NewConfig;
 init_per_group(_, Config) -> Config.
 
 end_per_group(Group, Config)
   when Group =:= upgrade_flow_smoke_test;
-       Group =:= old_spend_tx_in_new_protocol_smoke_test ->
+       Group =:= old_spend_tx_in_new_protocol_smoke_test;
+       Group =:= hard_fork_new_chain_with_tx ->
     aest_nodes:ct_cleanup(Config),
     ok;
 end_per_group(hard_fork_old_chain_with_tx, Config) ->
-    aest_nodes:ct_cleanup(Config),
-    ok;
-end_per_group(hard_fork_new_chain_with_tx, Config) ->
     aest_nodes:ct_cleanup(Config),
     ok;
 end_per_group(_, _) -> ok.
