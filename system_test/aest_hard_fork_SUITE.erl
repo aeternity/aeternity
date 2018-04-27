@@ -526,6 +526,7 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
                  get_balance(new_node3, Recipient, Cfg)),
     %% Check other new node syncs.
     wait_for_height_syncing(SpendTxHeight, [new_node4], {{10000, ms}, {1000, blocks}}, Cfg),
+    ?assertEqual(SpendTxBlockHash, maps:get(hash, get_block_by_height(new_node4, SpendTxHeight, Cfg))),
     aest_nodes:kill_node(new_node4, Cfg),
     aest_nodes:kill_node(new_node3, Cfg),
     aest_nodes:kill_node(old_node1, Cfg),
