@@ -14,7 +14,7 @@ request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
     {Method, Interface} = operation_spec(Op),
     BaseUrl = proplists:get_value(Interface, Cfg),
-    Path = operation_path(Method, OpId, Params),
+    Path = operation_path(Method, OpId, convert_params(Params)),
     request(Method, BaseUrl, Path, Params, [], [], []).
 
 request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts) ->
@@ -65,6 +65,19 @@ operation_interface(#{tags := Tags}) ->
 
 operation_path(Method, OpId, Params) ->
     endpoints:path(Method, OpId, Params).
+
+%% Swagger spec requires keys to be of type list and non-numeric values
+%% must be converted to list as well.
+convert_params(Params) ->
+    ConvF =
+        fun(K, V, Acc) when is_binary(V) ->
+                maps:put(atom_to_list(K), binary_to_list(V), Acc);
+           (K, V, Acc) when is_atom(V) ->
+                maps:put(atom_to_list(K), atom_to_list(V), Acc);
+           (K, V, Acc) ->
+                maps:put(atom_to_list(K), V, Acc)
+        end,
+    maps:fold(ConvF, #{}, Params).
 
 make_url(BaseUrl, Path, Params) ->
     Url = [BaseUrl, Path, make_query(maps:to_list(Params))],
