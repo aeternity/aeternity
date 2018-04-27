@@ -25,6 +25,7 @@
          old_chain_has_no_contracts_in_top_block_state/1,
          new_node_can_mine_on_old_chain_using_old_protocol/1,
          new_node_can_mine_on_old_chain_using_new_protocol/1,
+         new_node_can_mine_old_spend_tx_without_payload_using_new_protocol/1,
          new_node_can_mine_spend_tx_on_old_chain_using_old_protocol/1,
          new_node_can_mine_spend_tx_on_old_chain_using_new_protocol/1
         ]).
@@ -186,8 +187,15 @@ groups() ->
      {hard_fork_all_with_tx,
       [sequence],
       [
+       {group, old_spend_tx_in_new_protocol_smoke_test},
        %% {group, hard_fork_old_chain_with_tx}, Not applicable as is in 0.12.0 because new node's user API creates only new spend tx.
        {group, hard_fork_new_chain_with_tx}
+      ]},
+     {old_spend_tx_in_new_protocol_smoke_test,
+      [sequence],
+      [
+       new_node_can_receive_short_old_chain_from_old_node,
+       new_node_can_mine_old_spend_tx_without_payload_using_new_protocol
       ]},
      {hard_fork_old_chain_with_tx,
       [sequence],
@@ -228,7 +236,10 @@ init_per_group(Group, Config)
     [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
      {_, _} = proplists:lookup(db_backup_top_hash, SavedCfg)
      | Config];
-init_per_group(upgrade_flow_smoke_test, Config) ->
+init_per_group(Group, Config)
+  when Group =:= upgrade_flow_smoke_test;
+       Group =:= old_spend_tx_in_new_protocol_smoke_test;
+       Group =:= hard_fork_new_chain_with_tx ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
     Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
@@ -246,24 +257,15 @@ init_per_group(hard_fork_old_chain_with_tx, Config) ->
        ?NEW_NODE3(Ps),
        ?NEW_NODE4(Ps)], NewConfig),
     NewConfig;
-init_per_group(hard_fork_new_chain_with_tx, Config) ->
-    {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
-    NewConfig = aest_nodes:ct_setup(Config),
-    Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
-    aest_nodes:setup_nodes(
-      [?OLD_NODE1,
-       ?NEW_NODE3(Ps),
-       ?NEW_NODE4(Ps)], NewConfig),
-    NewConfig;
 init_per_group(_, Config) -> Config.
 
-end_per_group(upgrade_flow_smoke_test, Config) ->
+end_per_group(Group, Config)
+  when Group =:= upgrade_flow_smoke_test;
+       Group =:= old_spend_tx_in_new_protocol_smoke_test;
+       Group =:= hard_fork_new_chain_with_tx ->
     aest_nodes:ct_cleanup(Config),
     ok;
 end_per_group(hard_fork_old_chain_with_tx, Config) ->
-    aest_nodes:ct_cleanup(Config),
-    ok;
-end_per_group(hard_fork_new_chain_with_tx, Config) ->
     aest_nodes:ct_cleanup(Config),
     ok;
 end_per_group(_, _) -> ok.
@@ -471,6 +473,66 @@ new_node_can_mine_on_old_chain_using_new_protocol(Cfg) ->
     aest_nodes:kill_node(new_node4, Cfg),
     aest_nodes:kill_node(new_node3, Cfg),
     ok.
+
+new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, old_node1} = proplists:lookup(old_node_left_running_with_old_chain, SavedCfg),
+    {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    start_node(new_node4, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node4], {{45000, ms}, {200, blocks}}, Cfg),
+    ok = mock_pow_on_node(old_node1, Cfg), %% TODO Make configurable.
+    ok = mock_pow_on_node(new_node3, Cfg), %% TODO Make configurable.
+    ok = mock_pow_on_node(new_node4, Cfg), %% TODO Make configurable.
+    %% Mine on old node - so to accrue enough tokens to send spend tx
+    %% from there.  Stop mining on old node when sufficient tokens for
+    %% a spend tx (assumptions: spend tx with fee 1 and amount 1 is
+    %% ok, block mined reward is at least 2).
+    SpendTxFee = 1,
+    SpendTxAmount = 1,
+    HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
+    HeightToBeMinedWithOldProtocol = - 1 + HeightOfNewProtocol,
+    {true, _} = {HeightToBeMinedWithOldProtocol > TopHeight,
+                 {check_at_least_a_block_to_mine_using_old_protocol,
+                  HeightToBeMinedWithOldProtocol}},
+    run_erl_cmd_on_node(old_node1, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [old_node1], {{10000, ms}, {1000, blocks}}, Cfg),
+    %% TODO Stopping conductor times out. It is fine to leave node running as anyway blocks above height of new consensus are ignored by new nodes. %% run_erl_cmd_on_node(old_node1, "aec_conductor:stop_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    %% Check new node synced chain fully mined with old protocol.
+    %% TODO Check new node in sync with old node - for catching errors earlier.
+    wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
+    %% Check that new node sees mining reward of old node.
+    Sender = get_public_key(old_node1, Cfg),
+    SenderBalanceAtLastBlockWithOldProtocol = get_balance(new_node3, Sender, Cfg),
+    ?assertMatch(
+       {true, _},
+       {SenderBalanceAtLastBlockWithOldProtocol > (SpendTxFee + SpendTxAmount),
+        SenderBalanceAtLastBlockWithOldProtocol}),
+    %% Post spend tx on old node.
+    %% TODO Ensure in mempool of old node - for catching errors earlier.
+    %% TODO Ensure in mempool of new node - for catching errors earlier.
+    Recipient = get_public_key(new_node4, Cfg),
+    RecipientBalanceAtLastBlockWithOldProtocol = get_balance(new_node3, Recipient, Cfg),
+    ok = post_spend_tx(old_node1, Recipient, SpendTxAmount, SpendTxFee, Cfg),
+    %% Make new node to mine.
+    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    %% Check spend tx processed.
+    {SpendTxBlockHash, SpendTxHeight} =
+        wait_spend_tx_in_chain(new_node3, Sender, Recipient, SpendTxAmount, SpendTxFee, Cfg),
+    NewProtocolVersion = new_protocol_version(),
+    #{version := NewProtocolVersion,
+      hash := SpendTxBlockHash} = get_block_by_height(new_node3, SpendTxHeight, Cfg),
+    ?assertEqual(SpendTxAmount + RecipientBalanceAtLastBlockWithOldProtocol,
+                 get_balance(new_node3, Recipient, Cfg)),
+    %% Check other new node syncs.
+    wait_for_height_syncing(SpendTxHeight, [new_node4], {{10000, ms}, {1000, blocks}}, Cfg),
+    ?assertEqual(SpendTxBlockHash, maps:get(hash, get_block_by_height(new_node4, SpendTxHeight, Cfg))),
+    aest_nodes:kill_node(new_node4, Cfg),
+    aest_nodes:kill_node(new_node3, Cfg),
+    aest_nodes:kill_node(old_node1, Cfg),
+    ok.
+
 
 %% New node can sync the old chain from old node and can start mining
 %% on the top of the old chain. The new node can mine blocks using the
@@ -740,6 +802,9 @@ post_spend_tx_and_wait_in_chain(NodeName, Sender, Recipient, Amount, Fee, Cfg) -
     ok = post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg),
     ct:log("Sent spend tx of amount ~p from node ~p with public key ~p to account with public key ~p",
            [Amount, NodeName, Sender, Recipient]),
+    {_SpendTxBlockHash, _SpendTxHeight} = wait_spend_tx_in_chain(NodeName, Sender, Recipient, Amount, Fee, Cfg).
+
+wait_spend_tx_in_chain(NodeName, Sender, Recipient, Amount, Fee, Cfg) ->
     %% Make sure recipient account received the tokens.
     aest_nodes:wait_for_value({balance, Recipient, Amount}, [NodeName], 20000, Cfg),
     ReceivedBalance = get_balance(NodeName, Recipient, Cfg),
