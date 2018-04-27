@@ -334,9 +334,11 @@ match_chains([#{ height := N1 } | C1], [#{ height := N2 } | _] = C2) when N1 > N
 match_chains([#{ height := N1 } | _] = C1, [#{ height := N2 } | C2]) when N1 < N2 ->
     match_chains(C1, C2);
 match_chains([], [#{ height := N } | _]) ->
-    {snd, N};
-match_chains([#{ height := N } | _], []) ->
+    %% we need more info from first chain
     {fst, N};
+match_chains([#{ height := N } | _], []) ->
+    %% we need more info from second chain
+    {snd, N};
 match_chains([#{ hash := H } | _], [#{ hash := H } | _]) ->
     equal;
 match_chains(_, _) ->
