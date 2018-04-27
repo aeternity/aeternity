@@ -13,7 +13,7 @@
 request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
     {Method, Interface} = operation_spec(Op),
-    BaseUrl = proplists:get_value(Interface, Cfg),
+    BaseUrl = make_base_url(proplists:get_value(Interface, Cfg)),
     Path = operation_path(Method, OpId, convert_params(Params)),
     request(Method, BaseUrl, Path, Params, [], [], []).
 
@@ -63,9 +63,6 @@ operation_interface(#{tags := Tags}) ->
         {_, true} -> int_http
     end.
 
-operation_path(Method, OpId, Params) ->
-    endpoints:path(Method, OpId, Params).
-
 %% Swagger spec requires keys to be of type list and non-numeric values
 %% must be converted to list as well.
 convert_params(Params) ->
@@ -78,6 +75,24 @@ convert_params(Params) ->
                 maps:put(atom_to_list(K), V, Acc)
         end,
     maps:fold(ConvF, #{}, Params).
+
+%% Remove the '/' at the end of base URL.
+make_base_url(BaseUrl) when is_binary(BaseUrl) ->
+    make_base_url(binary_to_list(BaseUrl));
+make_base_url(BaseUrl) ->
+    case lists:last(BaseUrl) of
+        $/ -> lists:droplast(BaseUrl);
+        _ -> BaseUrl
+    end.
+
+operation_path(Method, OpId, Params) ->
+    %% The path includes the leading '/'.
+    case endpoints:path(Method, OpId, Params) of
+        <<Path/binary>> ->
+            Path;
+        [<<Part1/binary>>, Part2, Part3] ->
+            iolist_to_binary([Part1, Part2, Part3])
+    end.
 
 make_url(BaseUrl, Path, Params) ->
     Url = [BaseUrl, Path, make_query(maps:to_list(Params))],
