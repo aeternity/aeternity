@@ -65,7 +65,7 @@ simple_call(Code, Function, Argument) ->
             Trees1 = insert_contract(Contract, Trees),
             ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
             Spec = #{ code => Code
-                    , address => 0
+                    , address => 1 %% Address 0 is for primcals.
                     , caller => 0
                     , data => CallData
                     , gas => 1000000
@@ -80,8 +80,8 @@ simple_call(Code, Function, Argument) ->
                     , chainAPI => aec_vm_chain
                     , chainState => ChainState
                     },
-            case aect_evm:execute_call(Spec, false) of
-                {ok, #{ out := Out }} ->
+            case aect_evm:execute_call(Spec, true) of
+                {ok, #{ out := Out } = _RetState} ->
                     {ok, aeu_hex:hexstring_encode(Out)};
                 E -> {error, list_to_binary(io_lib:format("~p", [E]))}
             end
