@@ -2,7 +2,7 @@
 
 -export([
          request/3,
-         request/7
+         request/8
         ]).
 
 %%=============================================================================
@@ -10,41 +10,48 @@
 %%=============================================================================
 
 %% Required config values: int_http, ext_http
+%% Optional config values: ct_log (true by default)
 request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
     {Method, Interface} = operation_spec(Op),
     BaseUrl = make_base_url(proplists:get_value(Interface, Cfg)),
     Path = operation_path(Method, OpId, convert_params(Params)),
-    request(Method, BaseUrl, Path, Params, [], [], []).
+    request(Method, BaseUrl, Path, Params, [], [], [], Cfg).
 
-request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts) ->
+request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, QueryParams),
-    ct:log("GET ~p", [Url]),
+    log("GET ~p", [Url], Cfg),
     Resp = httpc:request(get, {Url, Headers}, HttpOpts, Opts),
-    process_response(Resp);
-request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts) ->
+    process_response(Resp, Cfg);
+request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, #{}),
     {ContentType, Body} = make_body(BodyParams, Path),
-    ct:log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams]),
+    log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams], Cfg),
     Resp = httpc:request(post, {Url, Headers, ContentType, Body}, HttpOpts, Opts),
-    process_response(Resp).
+    process_response(Resp, Cfg).
 
 %%=============================================================================
 %% Internal functions
 %%=============================================================================
 
-process_response({ok, {{_, Code, _State}, _Head, Body}}) ->
+process_response({ok, {{_, Code, _State}, _Head, Body}}, Cfg) ->
     case iolist_to_binary(Body) of
         <<>> ->
-            ct:log("Return code: ~p", [Code]),
+            log("Return code: ~p", [Code], Cfg),
             {ok, Code, #{}};
         Body1 ->
             Body2 = jsx:decode(Body1, [{labels, attempt_atom}, return_maps]),
-            ct:log("Return code: ~p, body: ~p", [Code, Body2]),
+            log("Return code: ~p, body: ~p", [Code, Body2], Cfg),
             {ok, Code, Body2}
     end;
-process_response({error, _} = Error) ->
+process_response({error, _} = Error, _Cfg) ->
     Error.
+
+log(Fmt, Params, Cfg) ->
+    case proplists:get_value(ct_log, Cfg, true) of
+        true -> ct:log(Fmt, Params);
+        false -> ok
+    end.
 
 operation_spec(#{get := GetSpec}) ->
     {get, operation_interface(GetSpec)};
