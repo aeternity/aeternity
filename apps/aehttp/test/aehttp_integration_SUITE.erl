@@ -613,7 +613,10 @@ contract_transactions(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     % contract_create_tx positive test
-    Code = <<"0x36600080376200002160008080805180516004146200003057505b5060011951005b60005260206000f35b80905090565b602001517f6d61696e000000000000000000000000000000000000000000000000000000001462000061576200001a565b602001519050809150506200002a56">>,
+    Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
+	     "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
+	     "6000f35b8090509056">>,
+
     Function = <<"main">>,
     Argument = <<"42">>,
     {ok, EncodedCallData} = aect_sophia:encode_call_data(Code, Function,
@@ -623,7 +626,7 @@ contract_transactions(_Config) ->
                       vm_version => 1,
                       deposit => 5,
                       amount => 10,
-                      gas => 10000,
+                      gas => 30,
                       gas_price => 3,
                       fee => 1,
                       call_data => EncodedCallData},
