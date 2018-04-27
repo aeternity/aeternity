@@ -15,7 +15,17 @@
 -define(RECIPIENT_PUBKEY, <<"recipient_pubkey">>).
 
 check_test_() ->
-    [{"Tx fee lower than minimum fee defined in governance",
+    [{"Version of tx with payload is not valid in old consensuses",
+      fun() ->
+              {ok, SpendTx} = spend_tx(#{}),
+              2 = aec_spend_tx:version(aetx:tx(SpendTx)),
+              StateTree = aec_test_utils:create_state_tree(),
+              ?assertEqual({error, tx_version_not_applicable_at_consensus_version},
+                           aetx:check(SpendTx, StateTree, 123, ?CONSENSUS_V_0_11_0_VERSION)),
+              ?assertEqual({error, tx_version_not_applicable_at_consensus_version},
+                           aetx:check(SpendTx, StateTree, 123, ?GENESIS_VERSION))
+      end},
+     {"Tx fee lower than minimum fee defined in governance",
       fun() ->
               {ok, SpendTx} = spend_tx(#{fee => 0}), %% minimum governance fee = 1
               StateTree = aec_test_utils:create_state_tree(),
