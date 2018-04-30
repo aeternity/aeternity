@@ -81,8 +81,12 @@ websocket_info(_Info, State) ->
 	  {ok, State}.
 
 terminate(_Reason, _PartialReq, #{} = _State) ->
+    % not initialized yet
     ok;
 terminate(_Reason, _PartialReq, State) ->
+    FsmPid = fsm_pid(State),
+    true = unlink(FsmPid),
+    ok = aesc_fsm:client_died(FsmPid),
     jobs:done(job_id(State)),
     ok.
 
