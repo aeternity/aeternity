@@ -168,17 +168,6 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %% Create the init call.
     Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
-    %% Create the contract and add to state tree
-    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
-    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
-    ContractsTree0 = aec_trees:contracts(Trees1),
-    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
-
-    %% Create the init call.
-    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
-
-
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key. Though, even if
@@ -204,9 +193,8 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
 
 			ContractsTree0 = aec_trees:contracts(Trees2),
-			ContractsTree1 = aect_state_tree:insert_call(CallRes, ContractsTree0),
-			ContractsTree2 = aect_state_tree:insert_contract(Contract, ContractsTree1),
-			aec_trees:set_contracts(Trees2, ContractsTree2);
+			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+			aec_trees:set_contracts(Trees2, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
 			Trees1
