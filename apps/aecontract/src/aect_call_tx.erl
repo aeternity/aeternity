@@ -149,10 +149,14 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
                 {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree1}
         end,
 
+    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree1),
+    Trees3 = aec_trees:set_contracts(Trees2, ContractsTree2),
+
+
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = run_contract(CallTx, Call0, Height, Trees1),
+    Call = run_contract(CallTx, Call0, Height, Trees3),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree2 =
@@ -166,16 +170,16 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
                 {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
                 aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
+    Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
-    ContractsTree3 = aect_state_tree:insert_call(Call, ContractsTree2),
+    %% Each block starts with an empty calls tree.
+    CallsTree0 = aec_trees:calls(Trees4),
+    CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
+    Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
 
-    %% Update the state tree
-    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree2),
-    Trees3 = aec_trees:set_contracts(Trees2, ContractsTree3),
-
-    {ok, Trees3}.
+    {ok, Trees5}.
 
 run_contract(#contract_call_tx{	caller = Caller
 			      , nonce  = _Nonce
