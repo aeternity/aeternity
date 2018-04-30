@@ -194,9 +194,8 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
 
 			ContractsTree0 = aec_trees:contracts(Trees2),
-			ContractsTree1 = aect_state_tree:insert_call(CallRes, ContractsTree0),
-			ContractsTree2 = aect_state_tree:insert_contract(Contract, ContractsTree1),
-			aec_trees:set_contracts(Trees2, ContractsTree2);
+			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+			aec_trees:set_contracts(Trees2, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
 			Trees1
