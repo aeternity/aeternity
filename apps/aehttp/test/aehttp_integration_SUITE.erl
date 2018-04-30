@@ -3014,6 +3014,10 @@ sc_ws_open(Config) ->
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants, Config),
 
+    {ok, 200, #{<<"balance">> := IStartAmt}} =
+                 get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+    {ok, 200, #{<<"balance">> := RStartAmt}} =
+                 get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
     IAmt = 7,
     RAmt = 3,
 
