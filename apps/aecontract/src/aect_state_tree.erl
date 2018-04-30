@@ -11,9 +11,7 @@
 -export([ commit_to_db/1
         , empty/0
         , empty_with_backend/0
-        , get_call/3
         , get_contract/2
-        , insert_call/2
         , insert_contract/2
         , enter_contract/2
         , lookup_contract/2
@@ -73,27 +71,6 @@ lookup_contract(Id, Tree) ->
         {value, Val} -> {value, aect_contracts:deserialize(Val)};
         none         -> none
     end.
-
-%% -- Calls --
-
--spec insert_call(aect_call:call(), tree()) -> tree().
-insert_call(Call, Tree = #contract_tree{ contracts = CtTree}) ->
-    %% Construct the Id to store in the tree.
-    CtId       = aect_call:contract_address(Call),
-    CallId     = aect_call:id(Call),
-    CallTreeId = <<CtId/binary, CallId/binary>>,
-
-    %% Insert the new call into the history
-    Serialized = aect_call:serialize(Call),
-    CtTree1    = aeu_mtrees:insert(CallTreeId, Serialized, CtTree),
-
-    %% Update the contract tree
-    Tree#contract_tree{ contracts = CtTree1}.
-
--spec get_call(aect_contracts:id(), aect_call:id(), tree()) -> aect_call:call().
-get_call(CtId, CallId, #contract_tree{ contracts = CtTree }) ->
-    CallTreeId = <<CtId/binary, CallId/binary>>,
-    aect_call:deserialize(aeu_mtrees:get(CallTreeId, CtTree)).
 
 %% -- Hashing --
 

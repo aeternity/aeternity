@@ -143,7 +143,7 @@ call_contract(_Cfg) ->
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
-    Call = aect_state_tree:get_call(ContractKey, CallId, aect_test_utils:contracts(S4)),
+    Call = aect_call_state_tree:get_call(ContractKey, CallId, aect_test_utils:calls(S4)),
     <<42:256>> = aect_call:return_value(Call),
 
     %% ...and that we got charged the right amount for gas and fee.
@@ -195,8 +195,8 @@ insert_contract(Account, Code, S) ->
 insert_call(Sender, Contract, Fun, S) ->
     ContractId = aect_contracts:id(Contract),
     Call       = make_call(Sender, ContractId, Fun, S),
-    Contracts  = aect_state_tree:insert_call(Call, aect_test_utils:contracts(S)),
-    {Call, aect_test_utils:set_contracts(Contracts, S)}.
+    CallTree   = aect_call_state_tree:insert_call(Call, aect_test_utils:calls(S)),
+    {Call, aect_test_utils:set_calls(CallTree, S)}.
 
 get_contract(Contract0, S) ->
     ContractKey = aect_contracts:id(Contract0),
@@ -207,8 +207,8 @@ get_contract(Contract0, S) ->
 get_call(Contract0, Call0, S) ->
     CallId     = aect_call:id(Call0),
     ContractId = aect_contracts:id(Contract0),
-    Contracts  = aect_test_utils:contracts(S),
-    Call       = aect_state_tree:get_call(ContractId, CallId, Contracts),
+    CallTree   = aect_test_utils:calls(S),
+    Call       = aect_call_state_tree:get_call(ContractId, CallId, CallTree),
     {Call, S}.
 
 state_tree(_Cfg) ->
