@@ -184,7 +184,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    Trees2 =
+    Trees3 =
 	case VmVersion of
 	    ?AEVM_01_Sophia_01 ->
 		%% Execute init call to get the contract state and return value
@@ -194,11 +194,19 @@ process(#contract_create_tx{owner = OwnerPubKey,
 		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
-			ContractsTree0 = aec_trees:contracts(Trees1),
+			%% Insert the call into the state tree.
+			%% This is mainly to remember what the
+			%% return value was so that the caller
+			%% can access it easily.
+			%% Each block starts with an empty calls tree.
+			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
+			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
+
+			ContractsTree0 = aec_trees:contracts(Trees2),
 			ContractsTree1 = aect_state_tree:insert_call(CallRes, ContractsTree0),
-			_RetVal = aect_call:return_value(CallRes),
 			ContractsTree2 = aect_state_tree:insert_contract(Contract, ContractsTree1),
-			aec_trees:set_contracts(Trees1, ContractsTree2);
+			aec_trees:set_contracts(Trees2, ContractsTree2);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
 			Trees1
@@ -212,12 +220,21 @@ process(#contract_create_tx{owner = OwnerPubKey,
 		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
-			ContractsTree0 = aec_trees:contracts(Trees1),
-			ContractsTree1 = aect_state_tree:insert_call(Call0, ContractsTree0),
+			%% Insert the call into the state tree.
+			%% This is mainly to remember what the
+			%% return value was so that the caller
+			%% can access it easily.
+			%% Each block starts with an empty calls tree.
+			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
+			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
+
+			%% Update contract
+			ContractsTree0 = aec_trees:contracts(Trees2),
 			NewCode = aect_call:return_value(CallRes),
 			Contract1 = aect_contracts:set_code(NewCode, Contract),
-			ContractsTree2 = aect_state_tree:insert_contract(Contract1, ContractsTree1),
-			aec_trees:set_contracts(Trees1, ContractsTree2);
+			ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
+			aec_trees:set_contracts(Trees2, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
 			Trees1
@@ -227,7 +244,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 	end,
 
 
-    {ok, Trees2}.
+    {ok, Trees3}.
 
 run_contract(#contract_create_tx{ owner      = Caller
 				, nonce      =_Nonce
