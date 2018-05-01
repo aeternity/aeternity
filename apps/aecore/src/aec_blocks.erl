@@ -113,7 +113,9 @@ new_with_state(LastBlock, Txs, Trees0) ->
     %% Let's hardcode this expectation for now.
     Txs = aetx_sign:filter_invalid_signatures(Txs),
 
-    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees0, Height, Version),
+    %% Initialize the tree with rules for starting a new block.
+    Trees1 = aec_trees:new_block(Trees0),
+    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees1, Height, Version),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
         #block{height = Height,

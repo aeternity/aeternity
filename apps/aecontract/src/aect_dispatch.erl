@@ -40,11 +40,8 @@ encode_call_data(_, _, _, _) ->
 
 %% -- Running contract code on chain ---------------------------------------
 
-
 %% Call the contract and update the call object with the return value and gas
 %% used.
-
-
 
 -spec run(byte(), map()) -> aect_call:call().
 run(?AEVM_01_Sophia_01, CallDef) ->
@@ -130,7 +127,6 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		      aect_call:set_return_type(
 			error, 
 			aect_call:set_return_value(error_to_binary(Error), Call)))
-
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),
 		    aect_call:set_return_type(error, Call)
