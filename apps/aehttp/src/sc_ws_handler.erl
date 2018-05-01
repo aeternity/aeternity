@@ -212,16 +212,20 @@ process_incoming(#{<<"action">> := <<"update">>,
     end;
 process_incoming(#{<<"action">> := ActorSigned,
                    <<"payload">> := #{<<"tx">> := EncodedTx}}, State)
-    when ActorSigned =:= <<"initiator_signed">> orelse
-         ActorSigned =:= <<"responder_signed">> orelse
+    when ActorSigned =:= <<"initiator_sign">> orelse
+         ActorSigned =:= <<"responder_sign">> orelse
+         ActorSigned =:= <<"shutdown_sign">> orelse
+         ActorSigned =:= <<"shutdown_sign_ack">> orelse
          ActorSigned =:= <<"update">> orelse
          ActorSigned =:= <<"update_ack">>  ->
     Tag =
         case ActorSigned of
-            <<"initiator_signed">> -> create_tx;
-            <<"responder_signed">> -> funding_created;
+            <<"initiator_sign">> -> create_tx;
+            <<"responder_sign">> -> funding_created;
             <<"update">> -> update;
-            <<"update_ack">> -> update_ack
+            <<"update_ack">> -> update_ack;
+            <<"shutdown_sign">> -> shutdown;
+            <<"shutdown_sign_ack">> -> shutdown_ack
         end,
     case aec_base58c:safe_decode(transaction, EncodedTx) of
         {error, _} ->
@@ -232,6 +236,10 @@ process_incoming(#{<<"action">> := ActorSigned,
              aesc_fsm:signing_response(fsm_pid(State), Tag, SignedTx),
              no_reply
     end;
+process_incoming(#{<<"action">> := <<"shutdown">>}, State) ->
+    lager:warning("Channel WS: closing channel message received"),
+    aesc_fsm:shutdown(fsm_pid(State)),
+    no_reply;
 process_incoming(#{<<"action">> := Unhandled}, _State) ->
     lager:warning("Channel WS: unhandled action received ~p", [Unhandled]),
     {error, unhandled};
@@ -244,14 +252,18 @@ process_fsm({info, Event}) ->
     {reply, #{action => <<"info">>,
               payload => #{event => Event}}};
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
+                           orelse Tag =:= shutdown
+                           orelse Tag =:= shutdown_ack
                            orelse Tag =:= funding_created
                            orelse Tag =:= update
                            orelse Tag =:= update_ack ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
-            create_tx -> <<"initiator_signed">>;
-            funding_created -> <<"responder_signed">>;
+            create_tx -> <<"initiator_sign">>;
+            funding_created -> <<"responder_sign">>;
+            shutdown -> <<"shutdown_sign">>;
+            shutdown_ack -> <<"shutdown_sign_ack">>;
             T -> T
         end,
     {reply, #{action => <<"sign">>,
