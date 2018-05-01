@@ -314,7 +314,7 @@ new_nodes_can_mine_and_sync_fast_minimal_chain_with_pow(Cfg) ->
     aest_nodes:setup_nodes([?FAST_NEW_NODE1(Ps),
                             ?FAST_NEW_NODE2(Ps)], Cfg),
     start_node(fast_new_node1, Cfg),
-    run_erl_cmd_on_node(fast_new_node1, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to configure node to autostart mining in the first place.
+    ok = run_erl_cmd_on_node(fast_new_node1, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to configure node to autostart mining in the first place.
     wait_for_height_syncing(HCheck, [fast_new_node1], {{45000, ms}, {5, blocks}}, Cfg),
     start_node(fast_new_node2, Cfg),
     #{hash := HashMined} = get_block_by_height(fast_new_node1, HCheck, Cfg),
@@ -403,15 +403,13 @@ old_chain_has_no_contracts_in_top_block_state(Cfg) ->
     {_, _TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
     {_, TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
     ErlCmd =
-        lists:flatten(
-          io_lib:format(
-            "{{ok, H}, _} = {aec_base58c:safe_decode(block_hash, ~w), decode_hash},~n"
-            "{{_, Ts}, _} = {aec_chain:get_block_state(H), get_state},~n"
-            "{{contract_tree, CT}, _} = {aec_trees:contracts(Ts), get_contract_tree},~n"
-            "{Cs, _} = {aeu_mtrees:to_list(CT), get_contract_list},~n"
-            "length(Cs).",
-            [TopHash])),
-    run_erl_cmd_on_node(new_node3, ErlCmd, "0", 30000, Cfg),
+        make_erl_cmd(
+          "{{ok, H}, _} = {aec_base58c:safe_decode(block_hash, ~w), decode_hash},~n"
+          "{{_, Ts}, _} = {aec_chain:get_block_state(H), get_state},~n"
+          "{{contract_tree, CT}, _} = {aec_trees:contracts(Ts), get_contract_tree},~n"
+          "{Cs, _} = {aeu_mtrees:to_list(CT), get_contract_list},~n"
+          "length(Cs).", [TopHash]),
+    0 = run_erl_cmd_on_node(new_node3, ErlCmd, 30000, Cfg),
     {save_config,
      [{old_node_left_running_with_old_chain, old_node1},
       {new_node_left_running_with_synced_old_chain, new_node3}]}.
@@ -438,7 +436,7 @@ new_node_can_mine_on_old_chain_using_old_protocol(Cfg) ->
     ok = mock_pow_on_node(new_node3, Cfg), %% TODO Make configurable.
     ok = mock_pow_on_node(new_node4, Cfg), %% TODO Make configurable.
     ok = mock_pow_on_node(old_node1, Cfg), %% TODO Make configurable.
-    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
     #{version := OldProtocolVersion, %% TODO Check mining capability with all protocols - not only the last one.
       hash := HashMined} = get_block_by_height(new_node3, HeightToBeMinedWithOldProtocol, Cfg),
@@ -496,9 +494,10 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     {true, _} = {HeightToBeMinedWithOldProtocol > TopHeight,
                  {check_at_least_a_block_to_mine_using_old_protocol,
                   HeightToBeMinedWithOldProtocol}},
-    run_erl_cmd_on_node(old_node1, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    ok = run_erl_cmd_on_node(old_node1, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [old_node1], {{10000, ms}, {1000, blocks}}, Cfg),
-    %% TODO Stopping conductor times out. It is fine to leave node running as anyway blocks above height of new consensus are ignored by new nodes. %% run_erl_cmd_on_node(old_node1, "aec_conductor:stop_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    %% TODO Stopping conductor times out. It is fine to leave node running as anyway blocks above height of new consensus are ignored by new nodes.
+    %% ok = run_erl_cmd_on_node(old_node1, "aec_conductor:stop_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     %% Check new node synced chain fully mined with old protocol.
     %% TODO Check new node in sync with old node - for catching errors earlier.
     wait_for_height_syncing(HeightToBeMinedWithOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
@@ -516,7 +515,7 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     RecipientBalanceAtLastBlockWithOldProtocol = get_balance(new_node3, Recipient, Cfg),
     ok = post_spend_tx(old_node1, Recipient, SpendTxAmount, SpendTxFee, Cfg),
     %% Make new node to mine.
-    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg), %% It would be better to: stop container, reinstantiate config template, start container.
     %% Check spend tx processed.
     {SpendTxBlockHash, SpendTxHeight} =
         wait_spend_tx_in_chain(new_node3, Sender, Recipient, SpendTxAmount, SpendTxFee, Cfg),
@@ -560,7 +559,7 @@ new_node_can_mine_spend_tx_on_old_chain_using_old_protocol(Cfg) ->
     PubKey3 = get_public_key(new_node3, Cfg),
     Balance3 = get_balance(new_node3, PubKey3, Cfg),
     ct:log("Balance of account with public key ~p is ~p", [PubKey3, Balance3]),
-    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg),
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg),
     MinedReward = 100,
     aest_nodes:wait_for_value({balance, PubKey3, MinedReward}, [new_node3], 10000, Cfg),
     MinedBalance = get_balance(new_node3, PubKey3, Cfg),
@@ -613,7 +612,7 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     Balance3 = get_balance(new_node3, PubKey3, Cfg),
     ct:log("Balance of account with public key ~p is ~p", [PubKey3, Balance3]),
     %% Reach height of switch to new protocol.
-    run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", "ok", 10000, Cfg),
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg),
     LastHeightOfOldProtocol = HeightOfNewProtocol - 1,
     %% Check the last block of old protocol has old version.
     wait_for_height_syncing(LastHeightOfOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
@@ -705,9 +704,8 @@ restore_db_backup_on_node(NodeName, TarBin, Content, DestDir, Cfg) ->
     {0, Output} = aest_nodes:run_cmd_in_node_dir(NodeName, ["ls", DestDir], Cfg),
     ?assertEqual(Content, string:trim(Output)),
     Dest = DestDir ++ "/" ++ Content,
-    ErlCmd =
-        "{atomic, [_|_] = Tabs} = mnesia:restore(\"" ++ Dest ++ "\", []), ok.",
-    run_erl_cmd_on_node(NodeName, ErlCmd, "ok", 45000, Cfg),
+    ErlCmd = make_erl_cmd("{atomic, [_|_] = Tabs} = mnesia:restore(~p, []), ok.", [Dest]),
+    ok = run_erl_cmd_on_node(NodeName, ErlCmd, 45000, Cfg),
     Top = #{height := TopHeight,
             hash := TopHash} = aest_nodes:get_top(NodeName, Cfg),
     ct:log("Restored DB backup on node ~s, whose top is now~n~p",
@@ -731,12 +729,10 @@ load_module_on_node(NodeName, Module, String, Cfg) ->
     {ok, Module, Binary, []} = compile:forms(Forms, [return_errors,
                                                      return_warnings]),
     ErlCmd =
-        lists:flatten(
-          io_lib:format(
-            "{module, _} = code:load_binary(~s, \"Dummy Filename\", ~w), ok.",
-            [Module, Binary])),
-    run_erl_cmd_on_node(NodeName, ErlCmd, "ok", 30000, Cfg),
-    ok.
+        make_erl_cmd(
+          "{module, _} = code:load_binary(~s, \"Dummy Filename\", ~w), ok.",
+          [Module, Binary]),
+    ok = run_erl_cmd_on_node(NodeName, ErlCmd, 30000, Cfg).
 
 dot_ending_token_lists(Chars) ->
     (fun
@@ -755,14 +751,22 @@ to_forms(DotEndingTokenLists) ->
     lists:map(fun(Ts) -> {ok, F} = erl_parse:parse_form(Ts), F end,
               DotEndingTokenLists).
 
-run_erl_cmd_on_node(NodeName, ErlCmd, ExpectedOutput, Timeout, Cfg) ->
-    ct:log("Running Erlang command on node ~s:~n~s~nExpecting: ~s",
-           [NodeName, ErlCmd, ExpectedOutput]),
+make_erl_cmd(Fmt, Params) ->
+    lists:flatten(io_lib:format(Fmt, Params)).
+
+run_erl_cmd_on_node(NodeName, ErlCmd, Timeout, Cfg) ->
+    ct:log("Running Erlang command on node ~s:~n~s", [NodeName, ErlCmd]),
     Cmd = ["bin/epoch", "eval", ErlCmd],
     {0, Output} = aest_nodes:run_cmd_in_node_dir(NodeName, Cmd, Timeout, Cfg),
-    ?assertEqual(ExpectedOutput, string:trim(Output)),
-    ct:log("Run Erlang command on node ~s", [NodeName]),
-    ok.
+    Result = eval_expression(Output),
+    ct:log("Run Erlang command on node ~s with result: ~p", [NodeName, Result]),
+    Result.
+
+eval_expression(Expr) ->
+    {ok, Tokens, _} = erl_scan:string(lists:concat([Expr, "."])),
+    {ok, Parsed} = erl_parse:parse_exprs(Tokens),
+    {value, Result, _} = erl_eval:exprs(Parsed, []),
+    Result.
 
 get_version(NodeName, Cfg) ->
     {ok, 200, B} = aest_nodes:http_get(NodeName, ext_http, [v2, version], #{}, Cfg),
