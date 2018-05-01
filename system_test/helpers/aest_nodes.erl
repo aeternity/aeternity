@@ -299,6 +299,7 @@ get_top(NodeName, Ctx) ->
     end.
 
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
+                    ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
     Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
@@ -308,6 +309,29 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
                 case http_addr_get(Addr, [v2, account, balance, PubKey], #{}) of
                     {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> done;
                     _ -> wait
+                end
+        end,
+    wait_for_value(CheckF, Addrs, [], 500, Expiration);
+wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, Ctx) ->
+    Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
+    Expiration = make_expiration(Timeout),
+    Params = #{tx_encoding => json},
+    CheckF =
+        fun(Addr) ->
+                case http_addr_get(Addr, [v2, account, txs, SenderPubKey], Params) of
+                    {ok, 200, #{transactions := Txs}} ->
+                        case lists:any(
+                               fun(#{block_hash := BH, tx := #{nonce := N}})
+                                     when BH =/= <<"none">>, N =:= Nonce ->
+                                       true;
+                                  (_) ->
+                                       false
+                                end, Txs) of
+                            true -> done;
+                            false -> wait
+                        end;
+                    _ ->
+                        wait
                 end
         end,
     wait_for_value(CheckF, Addrs, [], 500, Expiration);
