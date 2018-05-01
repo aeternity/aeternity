@@ -62,7 +62,7 @@ start_node(NodeName) ->
     gen_server:call(?SERVER, {start_node, NodeName}).
 
 stop_node(NodeName, Timeout) ->
-    gen_server:call(?SERVER, {stop_node, NodeName, Timeout}).
+    gen_server:call(?SERVER, {stop_node, NodeName, Timeout}, 60000).
 
 get_service_address(NodeName, Service) ->
     gen_server:call(?SERVER, {get_service_address, NodeName, Service}).
