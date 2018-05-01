@@ -96,7 +96,8 @@ sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict([SignedTx], Trees, Height),
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
