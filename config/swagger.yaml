@@ -2086,9 +2086,6 @@ definitions:
         format: int64
       payload:
         type: string
-      vsn:
-        type: integer
-        format: int64
     required:
     - recipient_pubkey
     - amount
