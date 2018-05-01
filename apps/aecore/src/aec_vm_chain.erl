@@ -75,7 +75,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                               account = ContractKey,
                               nonce   = Nonce }) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    VmVersion = 0,  %% TODO
+    VmVersion = 1,  %% TODO
     {ok, CallTx} =
         aect_call_tx:new(#{ caller     => ContractKey,
                             nonce      => Nonce,

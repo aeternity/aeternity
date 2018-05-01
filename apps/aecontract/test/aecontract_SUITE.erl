@@ -92,6 +92,16 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
+sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    Trees    = aect_test_utils:trees(S1),
+    Height   = 1,
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
+    S2       = aect_test_utils:set_trees(Trees1, S1),
+    {SignedTx, AcceptedTxs, S2}.
+
+
 %%%===================================================================
 %%% Call contract
 %%%===================================================================
@@ -110,13 +120,18 @@ call_contract(_Cfg) ->
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract}, S2),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    Overrides    = #{ code => IdContract
+		    , call_data => CallData
+		    , gas => 1000
+		    }, 
+    CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
 
     %% Test that the create transaction is accepted
-    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S2),
+    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
-    %% Now call check that we can call it.
+    %% Now check that we can call it.
     Fee           = 107,
     GasPrice      = 2,
     Value         = 52,
@@ -152,9 +167,7 @@ make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     aect_contracts:new(ContractKey, CTx, 1).
 
 make_call(PubKey, ContractKey, Call, S) ->
-    Tx = aect_test_utils:call_tx(PubKey, ContractKey, #{ call => Call }, S),
-    {contract_call_tx, CTx} = aetx:specialize_type(Tx),
-    aect_call:new(CTx, 1).
+    aect_call:new(PubKey, 0, ContractKey, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).

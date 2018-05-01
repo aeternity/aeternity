@@ -87,7 +87,7 @@ create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => <<"NOT PROPER BYTE CODE">>
-     , vm_version => 0
+     , vm_version => 1
      , deposit    => 10
      , amount     => 200
      , gas        => 10
@@ -119,7 +119,7 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 call_tx_default_spec(PubKey, State) ->
     #{ fee         => 5
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , vm_version  => 0
+     , vm_version  => 1
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1
