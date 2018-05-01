@@ -1511,17 +1511,17 @@ recursive_call1(StateIn, Op) ->
 							}, State9),
             {1, State10};
         false ->
-            State9 =
-		aevm_eeevm_state:add_callcreates(#{ data => I
-						  , destination => Dest
-						  , gasLimit => CallGas
-						  , value => Value
-						  }, State8),
+             %% State9 =
+	     %% 	aevm_eeevm_state:add_callcreates(#{ data => I
+	     %% 					  , destination => Dest
+	     %% 					  , gasLimit => CallGas
+	     %% 					  , value => Value
+	     %% 					  }, State8),
             {OutGas, ReturnState, R} =
-                case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State9) of
+                case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
                     {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
                     {error, _Err} -> %% Invalid call
-                        {0, State9, {error, invalid_call}}
+                        {0, State8, {error, invalid_call}}
                 end,
             %% TODO: how to handle trace of call?
             %% CallTrace = aevm_eeevm_state:trace(OutState),
