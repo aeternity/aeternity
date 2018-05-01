@@ -24,7 +24,9 @@
          serialize/1,
          deserialize/2,
          for_client/1,
-         is_verifiable/1
+         is_verifiable/1,
+         initiator_amount/1,
+         responder_amount/1
         ]).
 
 %%%===================================================================
@@ -108,7 +110,7 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
                 end,
                 fun() -> % check amounts
                     ChannelAmt = aesc_channels:total_amount(Channel),
-                    ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount,
+                    ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
                                 wrong_amounts)
                 end,
                 fun() -> % check TTL
@@ -126,8 +128,8 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  from             = _From,
-                                 initiator_amount = InitiatorAmount0,
-                                 responder_amount = ResponderAmount0,
+                                 initiator_amount = InitiatorAmount,
+                                 responder_amount = ResponderAmount,
                                  ttl              = _TTL,
                                  fee              = Fee,
                                  nonce            = _Nonce}, _Context, Trees, Height,
@@ -138,13 +140,6 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
     Channel      = aesc_state_tree:get(ChannelId, ChannelsTree0),
     InitiatorPubKey = aesc_channels:initiator(Channel),
     ResponderPubKey = aesc_channels:responder(Channel),
-
-    CFee = ceil(Fee / 2),
-    FFee = floor(Fee / 2),
-
-    {InitiatorAmount, ResponderAmount} = subtract_fee(InitiatorAmount0,
-                                                      ResponderAmount0,
-                                                      CFee, FFee),
 
     InitiatorAccount0         = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
     {ok, InitiatorAccount}    = aec_accounts:earn(InitiatorAccount0,
@@ -246,27 +241,20 @@ is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
         {error, not_found} -> false
     end.
 
+-spec initiator_amount(tx()) -> integer().
+initiator_amount(#channel_close_mutual_tx{initiator_amount  = Amount}) ->
+    Amount.
+
+-spec responder_amount(tx()) -> integer().
+responder_amount(#channel_close_mutual_tx{responder_amount  = Amount}) ->
+    Amount.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
 ok_or_error(false, ErrMsg) -> {error, ErrMsg};
 ok_or_error(true, _) -> ok.
-
--spec subtract_fee(InitiatorAmount0  :: non_neg_integer(),
-                   ResponderAmount0  :: non_neg_integer(),
-                   CeilFee     :: non_neg_integer(),
-                   FloorFee     :: non_neg_integer()) ->
-    {InitiatorAmount :: non_neg_integer(),
-     ResponderAmount :: non_neg_integer()}.
-subtract_fee(IAmt, PAmt, CFee, FFee) when IAmt >= CFee andalso PAmt >= FFee ->
-    {IAmt - CFee, PAmt - FFee};
-subtract_fee(IAmt, PAmt, CFee, FFee) when PAmt >= CFee andalso IAmt >= FFee ->
-    {IAmt - FFee, PAmt - CFee};
-subtract_fee(IAmt, PAmt, CFee, FFee) when IAmt > PAmt ->
-    {IAmt + PAmt - FFee - CFee, 0};
-subtract_fee(IAmt, PAmt, CFee, FFee) ->
-    {0, IAmt + PAmt - FFee - CFee}.
 
 -spec version() -> non_neg_integer().
 version() ->
