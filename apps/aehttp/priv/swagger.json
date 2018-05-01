@@ -2458,7 +2458,7 @@
     },
     "SpendTx" : {
       "type" : "object",
-      "required" : [ "amount", "fee", "recipient_pubkey" ],
+      "required" : [ "amount", "fee", "payload", "recipient_pubkey" ],
       "properties" : {
         "recipient_pubkey" : {
           "$ref" : "#/definitions/EncodedHash"

@@ -299,9 +299,7 @@ keys:
 
 chain:
     hard_forks:
-        "9": 0
-        "10": 1
-        "11": 2
+        "12": 0
 
 mining:
     autostart: true
@@ -330,9 +328,7 @@ keys:
 
 chain:
     hard_forks:
-        "9": 0
-        "10": 1
-        "11": 2
+        "12": 0
 
 mining:
     autostart: false

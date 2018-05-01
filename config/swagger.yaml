@@ -2090,6 +2090,7 @@ definitions:
     - recipient_pubkey
     - amount
     - fee
+    - payload
   OracleRegisterTx:
     type: object
     properties:

@@ -8,8 +8,8 @@ It:
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
 
-This release introduce a new consensus protocol version at height TODO while the genesis block is unchanged from the previous releases "v0.12.0", "v0.11.x" and "v0.10.1", therefore:
-* Ensure you keep your account key pair: after upgrading your node, you shall have your previous balance as of approx. TODO;
+This release introduces backward incompatible changes in the chain format:
+* After upgrading your node, you will not have your previous balance (even if you keep your key pair);
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.12.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).

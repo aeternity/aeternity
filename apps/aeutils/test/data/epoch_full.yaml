@@ -71,9 +71,7 @@ chain:
     db_path: .
     # Hard forks
     hard_forks:
-      "9": 0
-      "10": 5000
-      "11": 8000
+      "12": 0
 
 mining:
     # Start mining automatically.
