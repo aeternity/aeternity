@@ -2,66 +2,56 @@
 
 -export([
          request/3,
-         request/7
+         request/8
         ]).
 
 %%=============================================================================
 %% API
 %%=============================================================================
 
-%% Required config values: int_addr, ext_addr
-%% Optional config values: encode_base58c
+%% Required config values: int_http, ext_http
+%% Optional config values: ct_log (true by default)
 request(OpId, Params, Cfg) ->
     Op = endpoints:operation(OpId),
     {Method, Interface} = operation_spec(Op),
-    BaseUrl = proplists:get_value(Interface, Cfg),
-    Params1 = maybe_encode_params(Params, Cfg),
-    Path = operation_path(Method, OpId, Params1),
-    request(Method, BaseUrl, Path, Params1, [], [], []).
+    BaseUrl = make_base_url(proplists:get_value(Interface, Cfg)),
+    Path = operation_path(Method, OpId, convert_params(Params)),
+    request(Method, BaseUrl, Path, Params, [], [], [], Cfg).
 
-request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts) ->
+request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, QueryParams),
-    ct:log("GET ~p", [Url]),
+    log("GET ~p", [Url], Cfg),
     Resp = httpc:request(get, {Url, Headers}, HttpOpts, Opts),
-    process_response(Resp);
-request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts) ->
+    process_response(Resp, Cfg);
+request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, #{}),
     {ContentType, Body} = make_body(BodyParams, Path),
-    ct:log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams]),
+    log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams], Cfg),
     Resp = httpc:request(post, {Url, Headers, ContentType, Body}, HttpOpts, Opts),
-    process_response(Resp).
+    process_response(Resp, Cfg).
 
 %%=============================================================================
 %% Internal functions
 %%=============================================================================
 
-process_response({ok, {{_, Code, _State}, _Head, Body}}) ->
-    try
-        case iolist_to_binary(Body) of
-            <<>> ->
-                ct:log("Return code: ~p", [Code]),
-                {ok, Code, #{}};
-            B ->
-                B1 = jsx:decode(B, [return_maps]),
-                ct:log("Return code: ~p, body: ~p", [Code, B1]),
-                {ok, Code, B1}
-        end
-    catch
-        error:E -> {error, {parse_error, [E, erlang:get_stacktrace()]}}
+process_response({ok, {{_, Code, _State}, _Head, Body}}, Cfg) ->
+    case iolist_to_binary(Body) of
+        <<>> ->
+            log("Return code: ~p", [Code], Cfg),
+            {ok, Code, #{}};
+        Body1 ->
+            Body2 = jsx:decode(Body1, [{labels, attempt_atom}, return_maps]),
+            log("Return code: ~p, body: ~p", [Code, Body2], Cfg),
+            {ok, Code, Body2}
     end;
-process_response({error, _} = Error) ->
+process_response({error, _} = Error, _Cfg) ->
     Error.
 
-maybe_encode_params(Params, Cfg) ->
-    case proplists:get_value(encode_base58c, Cfg) of
-        true -> encode_params(Params);
-        _ -> Params
+log(Fmt, Params, Cfg) ->
+    case proplists:get_value(ct_log, Cfg, true) of
+        true -> ct:log(Fmt, Params);
+        false -> ok
     end.
-
-%% TODO: add more params.
-encode_params(#{recipient_pubkey := PubKey} = Params) ->
-    EncPubKey = aec_base58c:encode(account_pubkey, PubKey),
-    maps:update(recipient_pubkey, EncPubKey, Params).
 
 operation_spec(#{get := GetSpec}) ->
     {get, operation_interface(GetSpec)};
@@ -72,12 +62,40 @@ operation_interface(#{tags := Tags}) ->
     IsExt = lists:member(<<"external">>, Tags),
     IsInt = lists:member(<<"internal">>, Tags),
     case {IsExt, IsInt} of
-        {true, _} -> ext_addr;
-        {_, true} -> int_addr
+        {true, _} -> ext_http;
+        {_, true} -> int_http
+    end.
+
+%% Swagger spec requires keys to be of type list and non-numeric values
+%% must be converted to list as well.
+convert_params(Params) ->
+    ConvF =
+        fun(K, V, Acc) when is_binary(V) ->
+                maps:put(atom_to_list(K), binary_to_list(V), Acc);
+           (K, V, Acc) when is_atom(V) ->
+                maps:put(atom_to_list(K), atom_to_list(V), Acc);
+           (K, V, Acc) ->
+                maps:put(atom_to_list(K), V, Acc)
+        end,
+    maps:fold(ConvF, #{}, Params).
+
+%% Remove the '/' at the end of base URL.
+make_base_url(BaseUrl) when is_binary(BaseUrl) ->
+    make_base_url(binary_to_list(BaseUrl));
+make_base_url(BaseUrl) ->
+    case lists:last(BaseUrl) of
+        $/ -> lists:droplast(BaseUrl);
+        _ -> BaseUrl
     end.
 
 operation_path(Method, OpId, Params) ->
-    endpoints:path(Method, OpId, Params).
+    %% The path includes the leading '/'.
+    case endpoints:path(Method, OpId, Params) of
+        <<Path/binary>> ->
+            Path;
+        [<<Part1/binary>>, Part2, Part3] ->
+            iolist_to_binary([Part1, Part2, Part3])
+    end.
 
 make_url(BaseUrl, Path, Params) ->
     Url = [BaseUrl, Path, make_query(maps:to_list(Params))],
