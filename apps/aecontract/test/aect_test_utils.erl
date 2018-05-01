@@ -6,6 +6,8 @@
 -module(aect_test_utils).
 
 -export([ new_state/0
+        , calls/1
+        , set_calls/2
         , contracts/1
         , set_contracts/2
         , priv_key/2
@@ -53,6 +55,13 @@ priv_key(PubKey, State) ->
 %%%===================================================================
 %%% Info API
 %%%===================================================================
+
+calls(State) ->
+    aec_trees:calls(trees(State)).
+
+set_calls(Calls, State) ->
+    Trees = trees(State),
+    set_trees(aec_trees:set_calls(Trees, Calls), State).
 
 contracts(State) ->
     aec_trees:contracts(trees(State)).

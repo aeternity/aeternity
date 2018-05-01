@@ -92,7 +92,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process_from_contract(CallTx, Trees1, Height, ConsensusVersion),
             CallId  = aect_call:id(ContractKey, Nonce, Target),
-            Call    = aect_state_tree:get_call(Target, CallId, aec_trees:contracts(Trees2)),
+            Call    = aect_call_state_tree:get_call(Target, CallId, aec_trees:calls(Trees2)),
             GasUsed = aect_call:gas_used(Call),
             Result  = case aect_call:return_value(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
