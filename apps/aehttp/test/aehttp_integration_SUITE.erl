@@ -204,7 +204,8 @@
 -export(
    [sc_ws_open/1,
     sc_ws_update/1,
-    sc_ws_close/1
+    sc_ws_close/1,
+    sc_ws_close_mutual/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -395,7 +396,7 @@ groups() ->
      {channel_websocket, [sequence],
       [sc_ws_open,
        sc_ws_update,
-       sc_ws_close
+       sc_ws_close_mutual
       ]}
     ].
 
@@ -3031,10 +3032,10 @@ sc_ws_open(Config) ->
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
     ok = ?WS:register_test_for_channel_event(RConnPid, sign),
     %% initiator gets to sign a create_tx
-    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_signed">>),
+    CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     %% responder gets to sign a create_tx
-    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_signed">>),
+    CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_sign">>),
     {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
@@ -3120,6 +3121,11 @@ sc_ws_update(Config) ->
         end,
     SendTokens(IConnPid, RConnPid, IPubkey, IPrivkey, RPubkey, RPrivkey, 2),
     SendTokens(RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey, 2),
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
     {save_config, ConfigList}.
 
 sc_ws_close(Config) ->
@@ -3127,8 +3133,61 @@ sc_ws_close(Config) ->
 
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+
+
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
+    ok.
+
+sc_ws_close_mutual(Config) ->
+    {sc_ws_update, ConfigList} = ?config(saved_config, Config),
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey}} = proplists:get_value(participants,
+                                                                 ConfigList),
+
+    Balances =
+        fun() ->
+            {ok, 200, #{<<"balance">> := BalI}} =
+                get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+            {ok, 200, #{<<"balance">> := BalR}} =
+                get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
+            {BalI, BalR}
+        end,
+    {IStartB, RStartB} = Balances(),
+    #{initiator := IConnPid,
+      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = ?WS:register_test_for_channel_event(RConnPid, info),
+
+    ?WS:send(IConnPid, <<"shutdown">>, #{}),
+
+    ShutdownTx = channel_sign_tx(IConnPid, IPrivkey, <<"shutdown_sign">>),
+    ShutdownTx = channel_sign_tx(RConnPid, RPrivkey, <<"shutdown_sign_ack">>),
+    {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
+
+    timer:sleep(100), % as aesc_fsm_SUITE
+    TxHash = aec_base58c:encode(tx_hash, aetx:hash(ShutdownTx)),
+
+    %% ensure the tx is in the mempool
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+    assert_balance(IPubkey, IStartB),
+    assert_balance(RPubkey, RStartB),
+
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := Block}}} = get_tx(TxHash, json),
+    true = Block =/= -1,
+
+    IChange = aesc_close_mutual_tx:initiator_amount(MutualTx),
+    RChange = aesc_close_mutual_tx:responder_amount(MutualTx),
+
+    assert_balance(IPubkey, IStartB + IChange),
+    assert_balance(RPubkey, RStartB + RChange),
+
     ok.
 
 %% changing of another account's balance is checked in pending_transactions test

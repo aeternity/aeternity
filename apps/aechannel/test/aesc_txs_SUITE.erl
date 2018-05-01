@@ -367,10 +367,10 @@ close_mutual(Cfg) ->
 
     %% Create close_mutual tx and apply it on state trees
     Test =
-        fun(From, IAmt0, PAmt0, Fee) ->
+        fun(From, IAmt, PAmt, Fee) ->
             TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId, From,
-                                                    #{initiator_amount => IAmt0,
-                                                      responder_amount => PAmt0,
+                                                    #{initiator_amount => IAmt,
+                                                      responder_amount => PAmt,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),
             SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
@@ -378,12 +378,11 @@ close_mutual(Cfg) ->
                                         [SignedTx], Trees, Height, ?CONSENSUS_V_0_11_0_VERSION),
             S1 = aesc_test_utils:set_trees(Trees1, S),
 
-            {IAmt, PAmt} = calc_mutual_amounts(IAmt0, PAmt0, Fee),
             {Acc1Balance1, Acc2Balance1} = get_balances(PubKey1, PubKey2, S1),
             % ensure balances are updated
-            {_, {_, _, _, Acc1Balance1, _}, {_, _, _, Acc2Balance1, _}} =
-             {Fee,  {Acc1Balance0, IAmt0, IAmt, Acc1Balance0 + IAmt, Acc1Balance1},
-                    {Acc2Balance0, PAmt0, PAmt, Acc2Balance0 + PAmt, Acc2Balance1}},
+            {_, {_, _, Acc1Balance1, _}, {_, _, Acc2Balance1, _}} =
+             {Fee,  {Acc1Balance0, IAmt, Acc1Balance0 + IAmt, Acc1Balance1},
+                    {Acc2Balance0, PAmt, Acc2Balance0 + PAmt, Acc2Balance1}},
             none = aesc_test_utils:lookup_channel(ChannelId, S1),
             {IAmt, PAmt}
         end,
@@ -391,58 +390,21 @@ close_mutual(Cfg) ->
     lists:foreach(
         fun(From) ->
             Fee = 10,
-            FalfFee = trunc(Fee/2),
             % normal cases
-            {45, 45} = Test(From, 50, ChannelAmount - 50, Fee),
-            {15, 75} = Test(From, 20, ChannelAmount - 20, Fee),
+            {45, 45} = Test(From, 45, ChannelAmount - 45 - Fee, Fee),
+            {15, 75} = Test(From, 15, ChannelAmount - 15 - Fee, Fee),
             % fee edge cases
 
             % amount - HalfFee = 0
-            {0, 90} = Test(From, FalfFee, ChannelAmount - FalfFee, Fee),
-            {90, 0} = Test(From, ChannelAmount - FalfFee, FalfFee, Fee),
+            {0, 90} = Test(From, 0, ChannelAmount - Fee, Fee),
+            {90, 0} = Test(From, ChannelAmount - Fee, 0, Fee),
 
             % amount - HalfFee < 0
-            {0, 90} = Test(From, FalfFee - 1 , ChannelAmount - FalfFee + 1, Fee),
-            {90, 0} = Test(From, ChannelAmount - FalfFee + 1, FalfFee - 1, Fee),
-
-            {0, 90} = Test(From, 0, ChannelAmount, Fee),
-            {90, 0} = Test(From, ChannelAmount, 0, Fee),
-
-            OddFee = 11,
-            SmallerFee = 5,
-            BiggerFee = 6,
-
-            {0, 89} = Test(From, SmallerFee, ChannelAmount - SmallerFee, OddFee),
-            {0, 89} = Test(From, SmallerFee - 1, ChannelAmount - SmallerFee + 1, OddFee),
-
-            {89, 0} = Test(From, ChannelAmount - SmallerFee, SmallerFee, OddFee),
-            {89, 0} = Test(From, ChannelAmount - SmallerFee + 1, SmallerFee - 1, OddFee),
-
-            {0, 89} = Test(From, BiggerFee, ChannelAmount - BiggerFee, OddFee),
-            {88, 1} = Test(From, ChannelAmount - BiggerFee, BiggerFee, OddFee),
-
-            {44, 45} = Test(From, 50, 50, OddFee),
-            {54, 35} = Test(From, 60, 40, OddFee),
-
-            {39, 0} = Test(From, 90, 10, 61),
-            {0, 39} = Test(From, 10, 90, 61)
+            {1, 89} = Test(From, 1 , ChannelAmount - Fee - 1, Fee),
+            {89, 1} = Test(From, ChannelAmount - Fee - 1, 1, Fee)
         end,
         [PubKey1, PubKey2]),
     ok.
-
-calc_mutual_amounts(IAmt, PAmt, Fee) ->
-    CFee = ceil(Fee / 2),
-    FFee = floor(Fee / 2),
-    case 1 of
-        _ when IAmt >= CFee andalso PAmt >= FFee ->
-            {IAmt - CFee, PAmt - FFee};
-        _ when IAmt >= FFee andalso PAmt >= CFee ->
-            {IAmt - FFee, PAmt - CFee};
-        _ when IAmt > PAmt ->
-            {IAmt + PAmt - Fee, 0};
-        _ ->
-            {0, IAmt + PAmt - Fee}
-    end.
 
 
 close_mutual_negative(Cfg) ->
