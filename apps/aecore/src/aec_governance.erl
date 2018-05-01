@@ -35,9 +35,7 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocols() :: #{?GENESIS_VERSION := ?GENESIS_HEIGHT,
-                       ?CONSENSUS_V_0_11_0_VERSION := non_neg_integer(),
-                       ?PROTOCOL_VERSION := non_neg_integer()}.
+-type protocols() :: #{Version::non_neg_integer() => height()}.
 
 
 sorted_protocol_versions() ->

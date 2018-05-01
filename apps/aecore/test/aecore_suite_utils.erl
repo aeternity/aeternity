@@ -184,9 +184,9 @@ mine_blocks_loop(Blocks, BlocksToMine) ->
     end.
 
 forks() ->
-    #{<<"9">> => 0,
-      <<"10">> => 1,
-      <<"11">> => 2}.
+    Vs = aec_governance:sorted_protocol_versions(),
+    Hs = lists:seq(0, (length(Vs) - 1)),
+    maps:from_list(lists:zip(Vs, Hs)).
 
 latest_fork_height() ->
     lists:max(maps:values(forks())).
