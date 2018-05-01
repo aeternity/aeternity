@@ -103,7 +103,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
 		%% Succesful execution
-		{ok, #{ gas := GasLeft, out := ReturnValue } = State} ->
+		{ok, #{ gas := GasLeft, out := ReturnValue } =_State} ->
 		    aect_call:set_gas_used(
 		      Gas - GasLeft,
 		      aect_call:set_return_type(
