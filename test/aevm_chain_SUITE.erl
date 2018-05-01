@@ -58,7 +58,12 @@ setup_chain() ->
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
     IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
-    CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract, amount => 2000}, S),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    Overrides    = #{ code => IdContract
+		    , call_data => CallData
+		    , gas => 10000
+		    , amount => 2000},
+    CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S),
     {SignedTx, [SignedTx], S1} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S),
     {aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)), S1}.
 

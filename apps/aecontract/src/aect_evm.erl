@@ -36,7 +36,7 @@ call(Code, CallData) ->
     Trees1 = insert_contract(Contract, Trees),
     ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
     Spec = #{ code => Code
-            , address => 0
+            , address => 1 %% Address 0 is for primcalls
             , caller => 0
             , data => Data
             , gas => 1000000000000000000000000
