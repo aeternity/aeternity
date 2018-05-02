@@ -230,7 +230,6 @@ tx_first_pays_second_(Config, AmountFun) ->
     N2 = aecore_suite_utils:node_name(Dev2),
     {ok, PK1} = get_pubkey(N1),
     ct:log("PK1 = ~p", [PK1]),
-    {ok, PK2} = get_pubkey(N2),
     {ok, Bal1} = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
     true = (is_integer(Bal1) andalso Bal1 > 0),
@@ -240,8 +239,6 @@ tx_first_pays_second_(Config, AmountFun) ->
     ok = new_tx(#{node1  => N1,
                   node2  => N2,
                   amount => AmountFun(Bal1),
-                  sender    => PK1,
-                  recipient => PK2,
                   fee    => 1}),
     {ok, Pool12} = get_pool(N1),
     [NewTx] = Pool12 -- Pool11,
@@ -505,8 +502,8 @@ get_pool(N) ->
     rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
 
 new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
-    PK1 = maps_get(pk1, M, fun() -> ok(get_pubkey(N1)) end),
-    PK2 = maps_get(pk2, M, fun() -> ok(get_pubkey(N2)) end),
+    PK1 = ok(get_pubkey(N1)),
+    PK2 = ok(get_pubkey(N2)),
     Port = rpc:call(N1, aeu_env, user_config_or_env,
                     [ [<<"http">>, <<"internal">>, <<"port">>],
                       aehttp, [internal, port], 8143], 5000),
@@ -529,13 +526,6 @@ ensure_new_tx_(N, Tx) ->
 
 ok({ok, V}) ->
     V.
-
-maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
-    case maps:find(K, M) of
-        {ok, V} -> V;
-        error ->
-             Def()
-    end.
 
 preblock_second(Config) ->
     [Dev1, Dev2 | _] = proplists:get_value(devs, Config),
