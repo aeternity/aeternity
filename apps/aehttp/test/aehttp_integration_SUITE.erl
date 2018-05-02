@@ -202,9 +202,9 @@
 
 %% channel websocket endpoints
 -export(
-   [sc_ws_open/1,
+   [sc_ws_timeout_open/1,
+    sc_ws_open/1,
     sc_ws_update/1,
-    sc_ws_close/1,
     sc_ws_close_mutual/1
    ]).
 
@@ -394,7 +394,8 @@ groups() ->
        ws_oracles
       ]},
      {channel_websocket, [sequence],
-      [sc_ws_open,
+      [sc_ws_timeout_open,
+       sc_ws_open,
        sc_ws_update,
        sc_ws_close_mutual
       ]}
@@ -1474,7 +1475,7 @@ pending_transactions(_Config) ->
 post_correct_blocks(_Config) ->
     ok = rpc(aec_conductor, stop_mining, []),
     ok = rpc(aec_conductor, reinit_chain, []),
-    timer:sleep(100),
+    timer:sleep(200),
     BlocksToPost = max(?DEFAULT_TESTS_COUNT, aecore_suite_utils:latest_fork_height()),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
                                    BlocksToPost),
@@ -3029,17 +3030,7 @@ sc_ws_open(Config) ->
     IAmt = 7,
     RAmt = 3,
 
-    ChannelOpts =
-        #{port => 1234,
-          initiator => aec_base58c:encode(account_pubkey, IPubkey),
-          responder => aec_base58c:encode(account_pubkey, RPubkey),
-          lock_period => 10,
-          push_amount => 10,
-          initiator_amount => IAmt,
-          responder_amount => RAmt,
-          channel_reserve => 2,
-          ttl => 1000
-         },
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
@@ -3047,11 +3038,62 @@ sc_ws_open(Config) ->
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
 
     ok = ?WS:register_test_for_channel_event(RConnPid, info),
-    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
     ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+
+    channel_send_conn_open_infos(RConnPid, IConnPid),
+
+    ChannelCreateFee = channel_create(Config, IConnPid, RConnPid),
+
+    %% ensure new balances
+    assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+    assert_balance(RPubkey, RStartAmt - RAmt),
+
+    % mine min depth
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    channel_send_locking_infos(IConnPid, RConnPid),
+
+    UpdateTx = channel_sign_tx(IConnPid, IPrivkey, <<"update">>),
+
+    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
+
+    channel_send_chan_open_infos(RConnPid, IConnPid),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
+
+    ChannelClients = #{initiator => IConnPid,
+                       responder => RConnPid},
+    {save_config, [{channel_clients, ChannelClients} | Config]}.
+
+
+channel_send_conn_open_infos(RConnPid, IConnPid) ->
+    {ok, #{<<"event">> := <<"channel_open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+    {ok, #{<<"event">> := <<"channel_accept">>}} = ?WS:wait_for_channel_event(IConnPid, info).
+
+channel_send_locking_infos(IConnPid, RConnPid) ->
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
+
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info).
+
+channel_send_chan_open_infos(RConnPid, IConnPid) ->
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info).
+
+channel_create(Config, IConnPid, RConnPid) ->
+    #{initiator := #{pub_key := IPubkey,
+                    priv_key := IPrivkey,
+                    start_amt := IStartAmt},
+      responder := #{pub_key := RPubkey,
+                    priv_key := RPrivkey,
+                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
     %% initiator gets to sign a create_tx
     CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
@@ -3078,36 +3120,9 @@ sc_ws_open(Config) ->
     %% ensure the tx had been mined
     {ok, 200, #{<<"transaction">> := #{<<"block_height">> := BlockHeight}}} = get_tx(TxHash, json),
     true = BlockHeight =/= -1,
+    ChannelCreateFee.
 
-    %% ensure new balances
-    assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
-    assert_balance(RPubkey, RStartAmt - RAmt),
 
-    % mine min depth
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"own_funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-
-    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"funding_locked">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-
-    UpdateTx = channel_sign_tx(IConnPid, IPrivkey, <<"update">>),
-
-    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
-
-    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
-    {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
-
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
-
-    ChannelClients = #{initiator => IConnPid,
-                       responder => RConnPid},
-    {save_config, [{channel_clients, ChannelClients} | Config]}.
 
 sc_ws_update(Config) ->
     {sc_ws_open, ConfigList} = ?config(saved_config, Config),
@@ -3210,6 +3225,35 @@ sc_ws_close_mutual(Config) ->
     assert_balance(RPubkey, RStartB + RChange),
 
     ok.
+
+sc_ws_timeout_open(Config) ->
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+
+    IAmt = 8,
+    RAmt = 4,
+
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                  #{timeout_accept => 100}),
+    {ok, IConnPid} = channel_ws_start(initiator, maps:put(host, <<"localhost">>, ChannelOpts)),
+    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    {ok, #{<<"event">> := <<"died">>}} = ?WS:wait_for_channel_event(IConnPid, info),
+    ok.
+
+channel_options(IPubkey, RPubkey, IAmt, RAmt) ->
+    channel_options(IPubkey, RPubkey, IAmt, RAmt, #{}).
+
+channel_options(IPubkey, RPubkey, IAmt, RAmt, Other) ->
+    maps:merge(#{ port => 12340,
+                  initiator => aec_base58c:encode(account_pubkey, IPubkey),
+                  responder => aec_base58c:encode(account_pubkey, RPubkey),
+                  lock_period => 10,
+                  push_amount => 10,
+                  initiator_amount => IAmt,
+                  responder_amount => RAmt,
+                  channel_reserve => 2,
+                  ttl => 1000
+                }, Other).
 
 %% changing of another account's balance is checked in pending_transactions test
 balance(_Config) ->

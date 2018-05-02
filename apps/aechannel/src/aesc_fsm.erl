@@ -39,6 +39,8 @@
          closing/3,
          disconnected/3]).
 
+-export([timeouts/0]).
+
 -include_lib("apps/aecore/include/common.hrl").
 
 -type role() :: initiator | responder.
@@ -180,6 +182,9 @@ default_timeouts() ->
      , idle           => 600000
      , sign           => 500000
      }.
+
+timeouts() ->
+    maps:keys(default_timeouts()).
 
 %%
 %% ======================================================================
@@ -526,6 +531,9 @@ closing(cast, {closing_signed, _Msg}, D) ->
 disconnected(cast, {channel_reestablish, _Msg}, D) ->
     {next_state, closing, D}.
 
+
+close(close_mutual, D) ->
+    {stop, normal, D};
 close(Reason, D) ->
     try send_error_msg(Reason, D)
     catch error:_ -> ignore
@@ -588,7 +596,8 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(_Reason, _State, _Data) ->
+terminate(_Reason, _State, Data) ->
+    report_info(died, Data),
     ok.
 
 code_change(_OldVsn, OldState, OldData, _Extra) ->
