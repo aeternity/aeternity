@@ -396,8 +396,7 @@ assert_state_hash_valid(Trees, Node) ->
             internal_error({root_hash_mismatch, RootHash, Expected})
     end.
 
-apply_node_transactions(Node, Trees0) ->
-    Trees = aec_trees:new_block(Trees0),
+apply_node_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
     Version = node_version(Node),

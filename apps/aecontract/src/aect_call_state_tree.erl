@@ -14,6 +14,7 @@
         , get_call/3
         , insert_call/2
         , lookup_call/2
+        , prune/2
         , root_hash/1]).
 
 -export_type([tree/0]).
@@ -42,6 +43,12 @@ empty() ->
 empty_with_backend() ->
     CtTree = aeu_mtrees:empty_with_backend(aec_db_backends:calls_backend()),
     #call_tree{calls = CtTree}.
+
+%% A new block always starts with an empty calls tree.
+%% Calls and return values are only keept for one block.
+-spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
+prune(_,Trees) ->
+    Trees#trees{calls = empty_with_backend()}.
 
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
