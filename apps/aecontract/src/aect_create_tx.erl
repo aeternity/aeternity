@@ -153,6 +153,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
 			    vm_version = VmVersion,
                             fee   = Fee} = CreateTx, _Context, Trees0, Height, _ConsensusVersion) ->
+
     AccountsTree0  = aec_trees:accounts(Trees0),
 
     %% Charge the fee to the contract owner (caller)
@@ -173,14 +174,14 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    Trees3 =
+    Trees5 =
 	case VmVersion of
 	    ?AEVM_01_Sophia_01 ->
 		%% Execute init call to get the contract state and return value
 		ContractsTree0a = aec_trees:contracts(Trees1),
 		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
-		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
-		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		{CallRes, Trees3} = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
 			%% Insert the call into the state tree.
@@ -188,24 +189,25 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			%% return value was so that the caller
 			%% can access it easily.
 			%% Each block starts with an empty calls tree.
-			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree0 = aec_trees:calls(Trees3),
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
-			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
+			Trees4 = aec_trees:set_calls(Trees3, CallsTree1),
 
-			ContractsTree0 = aec_trees:contracts(Trees2),
+			ContractsTree0 = aec_trees:contracts(Trees4),
 			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
-			aec_trees:set_contracts(Trees2, ContractsTree1);
+			aec_trees:set_contracts(Trees4, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees1
+			Trees2
 		end;
 	    ?AEVM_01_Solidity_01 ->
+
 		%% Execute init call to get the contract bytecode
 		%% as a result. to be used for insertion
 		ContractsTree0a = aec_trees:contracts(Trees1),
 		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
-		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
-		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		{CallRes, Trees3} = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
 			%% Insert the call into the state tree.
@@ -213,26 +215,26 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			%% return value was so that the caller
 			%% can access it easily.
 			%% Each block starts with an empty calls tree.
-			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree0 = aec_trees:calls(Trees3),
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
-			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
+			Trees4 = aec_trees:set_calls(Trees3, CallsTree1),
 
 			%% Update contract
-			ContractsTree0 = aec_trees:contracts(Trees2),
+			ContractsTree0 = aec_trees:contracts(Trees4),
 			NewCode = aect_call:return_value(CallRes),
 			Contract1 = aect_contracts:set_code(NewCode, Contract),
-			ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
-			aec_trees:set_contracts(Trees2, ContractsTree1);
+			ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
+			aec_trees:set_contracts(Trees4, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees1
+			Trees3
 		end;
 	    _ ->
 		Trees1
 	end,
 
 
-    {ok, Trees3}.
+    {ok, Trees5}.
 
 run_contract(#contract_create_tx{ owner      = Caller
 				, nonce      =_Nonce
@@ -259,6 +261,7 @@ run_contract(#contract_create_tx{ owner      = Caller
 	       , height     => Height
 	       , trees      => Trees
 	       },
+
     aect_dispatch:run(VmVersion, CallDef).
 
 

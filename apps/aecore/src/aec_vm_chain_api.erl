@@ -44,6 +44,9 @@
                         State     :: chain_state()) ->
                     {ok, call_result(), chain_state()} | {error, term()}.
 
+-callback get_store(chain_state()) -> binary().
+-callback set_store(Store::binary(), chain_state()) -> chain_state().
+
 %% -- Call results -----------------------------------------------------------
 
 -spec call_result(binary(), non_neg_integer()) -> call_result().

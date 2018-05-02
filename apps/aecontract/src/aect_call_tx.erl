@@ -156,7 +156,7 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = run_contract(CallTx, Call0, Height, Trees3),
+    {Call, Trees4} = run_contract(CallTx, Call0, Height, Trees3),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree2 =
@@ -170,16 +170,16 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
                 {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
                 aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
-    Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
+    Trees5 = aec_trees:set_accounts(Trees4, AccountsTree2),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     %% Each block starts with an empty calls tree.
-    CallsTree0 = aec_trees:calls(Trees4),
+    CallsTree0 = aec_trees:calls(Trees5),
     CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
-    Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
+    Trees6 = aec_trees:set_calls(Trees5, CallsTree1),
 
-    {ok, Trees5}.
+    {ok, Trees6}.
 
 run_contract(#contract_call_tx{	caller = Caller
 			      , nonce  = _Nonce

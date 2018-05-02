@@ -43,7 +43,7 @@ encode_call_data(_, _, _, _) ->
 %% Call the contract and update the call object with the return value and gas
 %% used.
 
--spec run(byte(), map()) -> aect_call:call().
+-spec run(byte(), map()) -> {aect_call:call(), aec_trees:trees()}.
 run(?AEVM_01_Sophia_01, CallDef) ->
     call_AEVM_01_Sophia_01(CallDef);
 run(?AEVM_01_Solidity_01, CallDef) ->
@@ -98,42 +98,49 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 	     })
     of
 	InitState ->
-
 	    %% TODO: Nicer error handling - do more in check.
 	    %% Update gas_used depending on exit type.x
 	    try aevm_eeevm:eval(InitState) of
 		%% Succesful execution
-		{ok, #{ gas := GasLeft, out := ReturnValue } =_State} ->
-		    aect_call:set_gas_used(
-		      Gas - GasLeft,
-		      aect_call:set_return_type(
-			ok,
-			aect_call:set_return_value(ReturnValue, Call)));
-		{revert, #{ gas := GasLeft, out := ReturnValue } = State} ->
+		{ok, #{ gas := GasLeft
+		      , out := ReturnValue
+		      , chain_state := ChainState1
+		      } =_State} ->
+		    {aect_call:set_gas_used(
+		       Gas - GasLeft,
+		       aect_call:set_return_type(
+			 ok,
+			 aect_call:set_return_value(ReturnValue, Call))),
+		     aec_vm_chain:get_trees(ChainState1)};
+		{revert, #{ gas := GasLeft
+			  , out := ReturnValue
+			  , chain_state := ChainState1
+			  } = State} ->
 		    lager:error("Return state ~p~n", [State]),
-		    aect_call:set_gas_used(
-		      Gas - GasLeft,
-		      aect_call:set_return_type(
-			revert,
-			aect_call:set_return_value(ReturnValue, Call)));
+		    {aect_call:set_gas_used(
+		       Gas - GasLeft,
+		       aect_call:set_return_type(
+			 revert,
+			 aect_call:set_return_value(ReturnValue, Call))),
+		     aec_vm_chain:get_trees(ChainState1)};
 		%% Execution resulting in VM exeception.
 		%% Gas used, but other state not affected.
 		%% TODO: Use up the right amount of gas depending on error
 		%% TODO: Store errorcode in state tree
 		{error, Error, #{ gas :=_GasLeft}} ->
 		    lager:error("Return error ~p:~p~n", [error, Error]),
-		    aect_call:set_gas_used(
-		      Gas,
-		      aect_call:set_return_type(
-			error,
-			aect_call:set_return_value(error_to_binary(Error), Call)))
+		    {aect_call:set_gas_used(
+		       Gas,
+		       aect_call:set_return_type(
+			 error,
+			 aect_call:set_return_value(error_to_binary(Error), Call))), Trees}
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),
-		    aect_call:set_return_type(error, Call)
+		    {aect_call:set_return_type(error, Call), Trees}
 	    end
     catch T:E ->
 	    lager:error("Return error ~p:~p~n", [T,E]),
-	    aect_call:set_return_type(error, Call)
+	    {aect_call:set_return_type(error, Call), Trees}
     end.
 
 error_to_binary(out_of_gas) -> <<"out_of_gas">>.

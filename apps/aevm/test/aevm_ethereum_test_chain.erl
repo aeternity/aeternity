@@ -14,6 +14,8 @@
 
 %% aec_vm_chain_api callbacks
 -export([get_balance/2,
+	 get_store/1,
+	 set_store/2,
          spend/3,
          call_contract/6]).
 
@@ -23,6 +25,17 @@ get_balance(A, #{ pre := Chain} = S) ->
     Account = maps:get(A, Chain, #{}),
     Balance = maps:get(balance, Account, 0),
     Balance.
+get_store(#{ env := Env,
+	     exec := Exec,
+	     pre := Pre }) ->
+    Address = maps:get(address, Exec),
+    case maps:get(Address, Pre, undefined) of
+        undefined -> <<>>;
+        #{storage := S} -> S
+    end.
+set_store(Store, State) ->
+    maps:set(store, State).
+
 spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 call_contract(_, _, _, _, _, _) -> {error, cant_call_contracts_with_dummy_chain}.
 

@@ -14,6 +14,8 @@
 
 %% aec_vm_chain_api callbacks
 -export([get_balance/2,
+	 get_store/1,
+	 set_store/2,
          spend/3,
          call_contract/6]).
 
@@ -55,6 +57,20 @@ get_trees(#state{ trees = Trees, account = Key, nonce = Nonce }) ->
 -spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
 get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
+
+%% @doc Get the contract state store of the contract account.
+-spec get_store(chain_state()) -> binary().
+get_store(#state{ account = PubKey,
+		    trees = Trees }) ->
+    do_get_store(PubKey, Trees).
+
+%% @doc Set the contract state store of the contract account.
+-spec set_store(Store::binary(), chain_state()) -> chain_state().
+set_store(Store,  #state{ account = PubKey,
+			  trees = Trees } = State) ->
+    Trees1 = do_set_store(Store, PubKey, Trees),
+    State#state{ trees = Trees1 }.
+
 
 %% @doc Spend money from the contract account.
 -spec spend(pubkey(), non_neg_integer(), chain_state()) ->
@@ -119,6 +135,22 @@ do_get_balance(PubKey, Trees) ->
                 {value, Account} -> aec_accounts:balance(Account)
             end
     end.
+
+
+do_get_store(PubKey, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+        {value, Contract} -> aect_contracts:state(Contract);
+        none              -> <<>>
+    end.
+
+do_set_store(Store, PubKey, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    NewContract =
+	case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+	    {value, Contract} -> aect_contracts:set_state(Store, Contract)
+	end,
+    aect_state_tree:enter_contract(NewContract, ContractsTree).
 
 %% TODO: can only spend to proper accounts. Not other contracts.
 %% Note that we cannot use an aec_spend_tx here, since we are spending from a
