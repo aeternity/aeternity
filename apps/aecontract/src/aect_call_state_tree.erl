@@ -19,6 +19,8 @@
 
 -export_type([tree/0]).
 
+-include_lib("aecore/include/common.hrl").
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -46,9 +48,9 @@ empty_with_backend() ->
 
 %% A new block always starts with an empty calls tree.
 %% Calls and return values are only keept for one block.
--spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
+-spec prune(height(), aec_trees:trees()) -> aec_trees:trees().
 prune(_,Trees) ->
-    Trees#trees{calls = empty_with_backend()}.
+    aec_trees:set_calls(Trees, empty_with_backend()).
 
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
