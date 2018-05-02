@@ -10,7 +10,8 @@
 %% test case exports
 -export(
    [
-     execute_identity_fun_from_solidity_binary/1
+    execute_counter_fun_from_bytecode/1, 
+    execute_identity_fun_from_solidity_binary/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -27,7 +28,7 @@
 	 aeu_env_meck %% by test
         ]).
 
-init_per_testcase(_, Cfg) ->
+init_per_testcase(TC, Cfg) ->
     lager_common_test_backend:bounce(error),
     Apps = application:which_applications(),
     Names = registered(),
@@ -36,14 +37,21 @@ init_per_testcase(_, Cfg) ->
     Amount = 100000000000000000000,
     Preset = [{MyPubKey, Amount}],
 
+    Code = tc_to_code(TC),
+
     [ {running_apps, Apps}
     , {regnames, Names}
     , {my_pub_key, MyPubKey}
     , {my_priv_key, MyPrivKey}
     , {preset, Preset}
     , {vm_version, 2} %% AEVM/Solidity
-    , {code, id_bytecode()}
+    , {code, Code}
       | Cfg].
+
+tc_to_code(execute_identity_fun_from_solidity_binary) ->
+     id_bytecode();
+tc_to_code(execute_counter_fun_from_bytecode) ->
+     counter_bytecode().
 
 end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
@@ -93,9 +101,8 @@ all() -> [
 	  %% but not with "make test" where other tests have run before.
 	  %% Taken out of test suite for now.
 	  %% TODO: Turn into a "dev1" node test.
-
-	  %% execute_identity_fun_from_solidity_binary
-
+	  execute_counter_fun_from_bytecode,
+	  execute_identity_fun_from_solidity_binary
 	 ].
 
 execute_identity_fun_from_solidity_binary(Cfg) ->
@@ -142,6 +149,58 @@ id_bytecode() ->
 	"8082815260200191505060405180910390f35b60008190509190505600a165627a"
 	"7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
 	"e405cbf70029">>).
+
+execute_counter_fun_from_bytecode(Cfg) ->
+    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
+    ok = mock_genesis(Cfg),
+    ok = application:start(aecore),
+
+    Tx = create_tx(#{}, Cfg),
+    PrivKey = ?config(my_priv_key, Cfg),
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    ok = aec_tx_pool:push(SignedTx),
+    TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+
+    wait_for_it(fun () ->  
+    			none =/= 
+    			    aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
+     		end, true),
+
+    %% lager:error("TxBin ~w~n",[TxHash]),    
+
+    wait_for_it(fun () ->  
+			case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+			    'none' -> false;
+			    {'mempool', _} -> false;
+			    {_Bin, _TX} -> true
+			end
+     		end, true),
+
+
+    {Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
+
+    ok = unmock_genesis(Cfg),
+    ok = application:stop(aecore),
+    ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
+    ok.
+
+
+counter_bytecode() ->
+    aeu_hex:hexstring_decode(
+      <<"0x608060405234801561001057600080fd5b5060008060006101000a81548163"
+	"ffffffff021916908363ffffffff160217905550610129806100416000396000"
+	"f3006080604052600436106049576000357c01000000000000000000000000000"
+	"00000000000000000000000000000900463ffffffff1680633fa4f24514604e578"
+	"063dd5d5211146082575b600080fd5b348015605957600080fd5b50606060b25"
+	"65b604051808263ffffffff1663ffffffff16815260200191505060405180910"
+	"390f35b348015608d57600080fd5b5060b0600480360381019080803563ffffff"
+	"ff169060200190929190"
+	"50505060c7565b005b6000809054906101000a900463ffffffff1681565b80600"
+	"0809054906101000a900"
+	"463ffffffff16016000806101000a81548163ffffffff021916908363ffffffff"
+	"160217905550505600a165627a7a72305820ec60a98f58782e07d413180c539f5"
+	"b87800236b702bbbbb97ac1ebd1938cc0100029">>).
+
 
 
 %% ------------------------------------------------------------------------
