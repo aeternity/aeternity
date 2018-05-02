@@ -351,9 +351,7 @@ setup_node(N, Top, Epoch, Config) ->
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
-    RelD = filename:dirname(
-             hd(filelib:wildcard(
-                    filename:join([DDir, "releases", Version, "epoch.rel"])))),
+    RelD = filename:dirname(filename:join([DDir, "releases", Version, "epoch.rel"])),
     cp_file(filename:join(CfgD, "sys.config"),
             filename:join(RelD, "sys.config")),
     cp_file(filename:join(CfgD, "vm.args"),
