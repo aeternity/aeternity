@@ -252,7 +252,12 @@ process_incoming(Msg, _State) ->
     {error, unhandled}.
 
 -spec process_fsm(term()) -> no_reply | {reply, map()} | {error, atom()}.
-process_fsm({info, Event}) ->
+process_fsm({info, Event0}) ->
+    Event =
+        case Event0 of
+            {died, _} -> died;
+            _ -> Event0
+        end,
     {reply, #{action => <<"info">>,
               payload => #{event => Event}}};
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx

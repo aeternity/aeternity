@@ -602,10 +602,10 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(_Reason, _State, Data) ->
+terminate(Reason, _State, Data) ->
     #data{session = Sn} = Data,
     aesc_session_noise:close(Sn),
-    report_info(died, Data),
+    report_info({died, Reason}, Data),
     ok.
 
 code_change(_OldVsn, OldState, OldData, _Extra) ->
