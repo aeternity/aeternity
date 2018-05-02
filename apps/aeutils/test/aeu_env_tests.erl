@@ -25,13 +25,13 @@ extra_checks_test_() ->
     {setup,
      fun() -> ok = meck:new(setup, [passthrough]), setup() end,
      fun(R) -> teardown(R), ok = meck:unload(setup) end,
-     [{"Example user configuration files pass checks further to the schema", %% For enabling files to be linked from wiki as examples.
-       [fun() ->
-                {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
-                ok = mock_user_config(UserMap, UserConfig),
-                ?assertEqual(ok, aec_hard_forks:check_env())
-        end || Config <- test_data_config_files()]
-       }]
+     [{"Example user configuration file passes checks further to the schema: " ++ Config, %% For enabling files to be linked from wiki as examples.
+       fun() ->
+               {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+               ok = mock_user_config(UserMap, UserConfig),
+               ?assertEqual(ok, aec_hard_forks:check_env())
+       end
+      } || Config <- test_data_config_files()]
     }.
 
 test_data_config_files() ->
