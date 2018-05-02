@@ -156,7 +156,7 @@ set_field(H, port, Val) -> H#handler{port = Val}.
 read_param(ParamName, RecordField, Options) ->
     fun(Params) ->
         Mandatory = maps:get(mandatory, Options, true),
-        case maps:get(ParamName, Params) of
+        case maps:get(ParamName, Params, undefined) of
             undefined when Mandatory ->
                 {error, {RecordField, missing}};
             undefined when not Mandatory ->
@@ -323,6 +323,21 @@ read_channel_options(Params) ->
         fun(K, V) ->
             fun(M) -> maps:put(K, V, M) end
         end,
+    TimeoutOpts = #{type => integer,
+                    mandatory => false},
+    ReadTimeout =
+        fun(TimeoutName) ->
+            TmBin = atom_to_binary(TimeoutName, utf8),
+            Key = <<"timeout_", TmBin/binary>>,
+            fun(M) ->
+                Timeouts0 = maps:get(timeouts, M, #{}),
+                case (read_param(Key, TimeoutName, TimeoutOpts))(Params) of
+                    not_set -> M;
+                    {ok, Val} -> maps:put(timeouts, maps:put(TimeoutName, Val, Timeouts0), M);
+                    {error, _} = Err -> Err
+                end
+            end
+        end,
     lists:foldl(
         fun(_, {error, _} = Err) -> Err;
             (Fun, Accum) -> Fun(Accum)
@@ -338,7 +353,8 @@ read_channel_options(Params) ->
          Read(<<"ttl">>, ttl, #{type => integer}),
          Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}]),
          Put(report_info, true)
-        ]).
+        ] ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
+                                                            initialized])).
 
 error_response(Req, Reason) ->
     #{<<"action">>  => <<"result">>,
