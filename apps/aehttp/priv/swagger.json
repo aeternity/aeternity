@@ -2458,7 +2458,7 @@
     },
     "SpendTx" : {
       "type" : "object",
-      "required" : [ "amount", "fee", "recipient_pubkey" ],
+      "required" : [ "amount", "fee", "payload", "recipient_pubkey" ],
       "properties" : {
         "recipient_pubkey" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2481,14 +2481,9 @@
         },
         "payload" : {
           "type" : "string"
-        },
-        "vsn" : {
-          "type" : "integer",
-          "format" : "int64"
         }
       },
       "example" : {
-        "vsn" : 5,
         "amount" : 0,
         "sender" : null,
         "payload" : "payload",

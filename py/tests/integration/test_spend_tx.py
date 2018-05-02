@@ -49,7 +49,8 @@ def test_not_enough_tokens():
     spend_tx_obj = SpendTx(
         recipient_pubkey=test_settings["spend_tx"]["alice_pubkey"],
         amount=spend_tx_amt,
-        fee=spend_tx_fee)
+        fee=spend_tx_fee,
+        payload="foo")
     print("Bob's spend_tx is " + str(spend_tx_obj))
     bob_internal_api.post_spend_tx(spend_tx_obj)
     print("Transaction sent")
@@ -147,7 +148,8 @@ def miner_send_tokens(address, amount, internal_api, external_api):
     spend_tx_obj = SpendTx(
         recipient_pubkey=address,
         amount=amount,
-        fee=1)
+        fee=1,
+        payload="sending tokens")
 
     # populate account
     internal_api.post_spend_tx(spend_tx_obj)
@@ -204,7 +206,7 @@ def send_tokens_to_name(name, tokens, sender_address, private_key, external_api)
 
     unsigned_spend = common.base58_decode(\
         external_api.post_spend(\
-            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1)).tx)
+            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1, payload="foo")).tx)
     signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 
     external_api.post_tx(Tx(tx=signed_spend))

@@ -22,9 +22,7 @@
 
 -define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
 -define(PROTOCOLS,
-        #{?GENESIS_VERSION => ?GENESIS_HEIGHT,
-          ?CONSENSUS_V_0_11_0_VERSION => ?CONSENSUS_V_0_11_0_HEIGHT,
-          ?PROTOCOL_VERSION => ?PROTOCOL_HEIGHT
+        #{?PROTOCOL_VERSION => ?GENESIS_HEIGHT
          }).
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
@@ -35,9 +33,7 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocols() :: #{?GENESIS_VERSION := ?GENESIS_HEIGHT,
-                       ?CONSENSUS_V_0_11_0_VERSION := non_neg_integer(),
-                       ?PROTOCOL_VERSION := non_neg_integer()}.
+-type protocols() :: #{Version::non_neg_integer() => height()}.
 
 
 sorted_protocol_versions() ->

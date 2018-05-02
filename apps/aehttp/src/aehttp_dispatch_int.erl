@@ -19,8 +19,8 @@
 handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
       <<"amount">>           := Amount,
-      <<"fee">>              := Fee} = SpendTxObj,
-    Payload = maps:get(<<"payload">>, SpendTxObj, <<>>),
+      <<"fee">>              := Fee,
+      <<"payload">>          := Payload} = SpendTxObj,
     case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, Payload) of
         {ok, _} -> {200, [], #{}};
         {error, invalid_key} ->

@@ -218,12 +218,18 @@ suite() ->
     ].
 
 init_per_suite(Config) ->
-    %% Skip gracefully if DB backup absent.
-    Tar = db_backup_tar(Config),
-    ct:log("Attempting to read DB backup ~s", [Tar]),
-    case file:read_file(Tar) of
-        {error, enoent} -> {skip, {missing_db_backup, Tar}};
-        {ok, _TarBin} -> Config
+    %% Skip gracefully if no hard forks - without need to delete test suite.
+    case aec_governance:sorted_protocol_versions() of
+        [_] = ConsensusVersions ->
+            {skip, {no_hard_forks, ConsensusVersions}};
+        [_,_|_] ->
+            %% Skip gracefully if DB backup absent.
+            Tar = db_backup_tar(Config),
+            ct:log("Attempting to read DB backup ~s", [Tar]),
+            case file:read_file(Tar) of
+                {error, enoent} -> {skip, {missing_db_backup, Tar}};
+                {ok, _TarBin} -> Config
+            end
     end.
 
 end_per_suite(_Config) ->

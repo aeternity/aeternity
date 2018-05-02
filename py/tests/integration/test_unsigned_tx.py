@@ -178,7 +178,8 @@ def test_spend():
             sender=alice_address,
             recipient_pubkey=bob_address,
             amount=test_settings["spend_tx"]["amount"],
-            fee=test_settings["spend_tx"]["fee"])
+            fee=test_settings["spend_tx"]["fee"],
+            payload="foo")
     unsigned_spend_obj = external_api.post_spend(spend_data_obj)
     unsigned_spend_enc = unsigned_spend_obj.tx
     tx_hash = unsigned_spend_obj.tx_hash
@@ -232,7 +233,8 @@ def send_tokens_to_user_(address, tokens, fee, external_api, internal_api):
     spend_tx_obj = SpendTx(
         recipient_pubkey=address,
         amount=tokens,
-        fee=fee)
+        fee=fee,
+        payload="sending tokens")
     internal_api.post_spend_tx(spend_tx_obj)
     wait(lambda: get_balance(address) == (bal0 + tokens),
          timeout_seconds=120, sleep_seconds=0.25)

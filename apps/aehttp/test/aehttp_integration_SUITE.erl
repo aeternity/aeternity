@@ -1097,12 +1097,12 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
     RandAddress = random_hash(),
-    %% no payload
     Encoded = #{sender => MinerAddress,
                 recipient_pubkey => aec_base58c:encode(account_pubkey,
                                                        RandAddress),
                 amount => 2,
-                fee => 1},
+                fee => 1,
+                payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
                         #{sender => MinerPubkey,
                           recipient => RandAddress}),
@@ -1110,15 +1110,7 @@ spend_transaction(_Config) ->
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
-    <<>> = aec_spend_tx:payload(SpendTx),
-
-    EncodedWithPayoad = Encoded#{payload => <<"hejsan svejsan">>},
-    DecodedWithPayoad = Decoded#{payload => <<"hejsan svejsan">>},
-    TWithPayload = unsigned_tx_positive_test(DecodedWithPayoad, EncodedWithPayoad,
-                                              fun get_spend/1,
-                                              fun aec_spend_tx:new/1, MinerPubkey),
-    {spend_tx, SpendTxPayload} = aetx:specialize_type(TWithPayload),
-    <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTxPayload),
+    <<"hejsan svejsan">> = aec_spend_tx:payload(SpendTx),
 
     test_invalid_hash(MinerPubkey, sender, Encoded, fun get_spend/1),
     test_invalid_hash(MinerPubkey, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
@@ -1181,7 +1173,8 @@ get_transaction(_Config) ->
                 recipient_pubkey => aec_base58c:encode(account_pubkey,
                                                        RandAddress),
                 amount => 2,
-                fee => 1},
+                fee => 1,
+                payload => <<"foo">>},
     {ok, 200, #{<<"tx">> := EncodedSpendTx,
                 <<"tx_hash">> := TxHash}} = get_spend(Encoded),
     {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
@@ -1349,7 +1342,8 @@ post_correct_tx(_Config) ->
             recipient => random_hash(),
             amount => Amount,
             fee => Fee,
-            nonce => Nonce}),
+            nonce => Nonce,
+            payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
@@ -1365,7 +1359,8 @@ post_broken_tx(_Config) ->
             recipient => random_hash(),
             amount => Amount,
             fee => Fee,
-            nonce => Nonce}),
+            nonce => Nonce,
+            payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
     SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
     BrokenTxBin = case SignedTxBin of
@@ -1391,7 +1386,8 @@ post_broken_base58_tx(_Config) ->
                     recipient => random_hash(),
                     amount => Amount,
                     fee => Fee,
-                    nonce => Nonce}),
+                    nonce => Nonce,
+                    payload => <<"foo">>}),
             {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
             <<_, BrokenHash/binary>> =
                 aec_base58c:encode(transaction,
@@ -1835,6 +1831,16 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects)
         end,
     CheckAtHeight(0), % genesis
+    % ensure at least one block mine reward - for later adding spend txs
+    MinBlockHeightToCheck =
+        case ForkHeight of
+            0 ->
+                aecore_suite_utils:mine_blocks(
+                  aecore_suite_utils:node_name(?NODE), 1),
+                1; % from first block with reward
+            _ when is_integer(ForkHeight), ForkHeight > 0 ->
+                ForkHeight % from latest fork
+        end,
     lists:foreach(
         fun(Height) ->
             {ok, 200, #{<<"height">> := Height}} = get_top(),
@@ -1843,7 +1849,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             add_spend_txs(),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1)
         end,
-        lists:seq(ForkHeight, ForkHeight + BlocksToCheck)), % from latest fork
+        lists:seq(MinBlockHeightToCheck, ForkHeight + BlocksToCheck)),
     ok.
 
 block_txs_count_by_height(_Config) ->
@@ -2341,7 +2347,8 @@ naming_system_manage_name(_Config) ->
     {ok, 200, _} = http_request(Host, post, "spend-tx",
                                 #{recipient_pubkey => Name,
                                   amount           => 77,
-                                  fee              => 50}),
+                                  fee              => 50,
+                                  payload          => <<"foo">>}),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -3003,12 +3010,16 @@ get_tx(TxHash, TxEncoding) ->
     http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
 
 post_spend_tx(Recipient, Amount, Fee) ->
+    post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
+
+post_spend_tx(Recipient, Amount, Fee, Payload) ->
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
                  #{recipient_pubkey => aec_base58c:encode(
                                          account_pubkey, Recipient),
                    amount => Amount,
-                   fee => Fee}).
+                   fee => Fee,
+                   payload => Payload}).
 
 post_name_preclaim_tx(Commitment, Fee) ->
     Host = internal_address(),
@@ -3269,7 +3280,8 @@ swagger_validation_schema(_Config) ->
         }}} = http_request(Host, post, "spend-tx", #{
                    recipient_pubkey => <<"">>,
                    amount => 0,
-                   fee => <<"wrong_fee_data">>}),
+                   fee => <<"wrong_fee_data">>,
+                   payload => <<"">>}),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"body">>,
@@ -3279,7 +3291,8 @@ swagger_validation_schema(_Config) ->
                         <<"path">> := []
         }}} = http_request(Host, post, "spend-tx", #{
                    amount => 0,
-                   fee => <<"fee">>}),
+                   fee => <<"fee">>,
+                   payload => <<"">>}),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"body">>,
@@ -3290,7 +3303,8 @@ swagger_validation_schema(_Config) ->
         }}} = http_request(Host, post, "spend-tx", #{
                    recipient_pubkey => <<"">>,
                    amount => -1,
-                   fee => <<"fee">>}).
+                   fee => <<"fee">>,
+                   payload => <<"">>}).
 
 swagger_validation_types(_Config) ->
     Host = internal_address(),

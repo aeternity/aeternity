@@ -185,7 +185,8 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
                                   recipient => acct(Recipient),
                                   amount => 0,
-                                  nonce => Nonce, fee => Fee}),
+                                  nonce => Nonce, fee => Fee,
+                                  payload => <<"">>}),
     {ok, STx} = sign(Sender, Tx),
     STx.
 

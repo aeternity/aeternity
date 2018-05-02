@@ -40,7 +40,8 @@ all_test_() ->
                                                recipient => RecipientPubkey,
                                                amount => 10,
                                                fee => 2,
-                                               nonce => 3}),
+                                               nonce => 3,
+                                               payload => <<"">>}),
                         {ok, SignedTx} = aec_keys:sign(Tx),
                         ?assertEqual(Tx, aetx_sign:tx(SignedTx))
                 end},

@@ -279,7 +279,7 @@ broken_chain_invalid_transaction() ->
                                                     amount => 0,
                                                     fee => 0,
                                                     nonce => 10,
-                                                    vsn => 1}), %% No payload - valid at any consensus version.
+                                                    payload => <<"">>}),
     BogusTxs = [BogusSpendTx | Txs],
 
     ?assertNotEqual(Txs, BogusTxs),

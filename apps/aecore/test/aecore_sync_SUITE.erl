@@ -16,6 +16,7 @@
     start_second_node/1,
     start_third_node/1,
     start_blocked_second/1,
+    mine_on_first_up_to_latest_consensus_protocol/1,
     mine_on_first/1,
     mine_on_second/1,
     mine_on_third/1,
@@ -46,6 +47,7 @@ groups() ->
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
        tx_first_pays_second,
@@ -71,6 +73,7 @@ groups() ->
        check_metrics_logged]},
      {semantically_invalid_tx, [sequence],
       [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
        ensure_tx_pools_empty,
@@ -187,10 +190,16 @@ start_third_node(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
 
-mine_on_first(Config) ->
+mine_on_first_up_to_latest_consensus_protocol(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:mine_blocks(N, aecore_suite_utils:latest_fork_height()),
+    ok.
+
+mine_on_first(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N = aecore_suite_utils:node_name(Dev1),
+    aecore_suite_utils:mine_blocks(N, 1),
     ok.
 
 start_blocked_second(Config) ->
@@ -230,7 +239,6 @@ tx_first_pays_second_(Config, AmountFun) ->
     N2 = aecore_suite_utils:node_name(Dev2),
     {ok, PK1} = get_pubkey(N1),
     ct:log("PK1 = ~p", [PK1]),
-    {ok, PK2} = get_pubkey(N2),
     {ok, Bal1} = get_balance(N1),
     ct:log("Balance on dev1: ~p", [Bal1]),
     true = (is_integer(Bal1) andalso Bal1 > 0),
@@ -240,8 +248,6 @@ tx_first_pays_second_(Config, AmountFun) ->
     ok = new_tx(#{node1  => N1,
                   node2  => N2,
                   amount => AmountFun(Bal1),
-                  sender    => PK1,
-                  recipient => PK2,
                   fee    => 1}),
     {ok, Pool12} = get_pool(N1),
     [NewTx] = Pool12 -- Pool11,
@@ -505,15 +511,16 @@ get_pool(N) ->
     rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
 
 new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
-    PK1 = maps_get(pk1, M, fun() -> ok(get_pubkey(N1)) end),
-    PK2 = maps_get(pk2, M, fun() -> ok(get_pubkey(N2)) end),
+    PK1 = ok(get_pubkey(N1)),
+    PK2 = ok(get_pubkey(N2)),
     Port = rpc:call(N1, aeu_env, user_config_or_env,
                     [ [<<"http">>, <<"internal">>, <<"port">>],
                       aehttp, [internal, port], 8143], 5000),
     Params = #{sender_pubkey => PK1,
                recipient_pubkey => aec_base58c:encode(account_pubkey, PK2),
                amount => Am,
-               fee => Fee},
+               fee => Fee,
+               payload => <<"foo">>},
     %% It's internal API so ext_addr is not included here.
     Cfg = [{int_http, "http://127.0.0.1:" ++ integer_to_list(Port)}],
     {ok, 200, _} = aehttp_client:request('PostSpendTx', Params, Cfg),
@@ -529,13 +536,6 @@ ensure_new_tx_(N, Tx) ->
 
 ok({ok, V}) ->
     V.
-
-maps_get(K, #{} = M, Def) when is_function(Def, 0) ->
-    case maps:find(K, M) of
-        {ok, V} -> V;
-        error ->
-             Def()
-    end.
 
 preblock_second(Config) ->
     [Dev1, Dev2 | _] = proplists:get_value(devs, Config),
