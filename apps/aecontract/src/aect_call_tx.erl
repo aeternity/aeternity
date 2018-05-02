@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aect_call_tx).
 
+-include("aecontract.hrl").
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -36,8 +37,6 @@
          gas_price/1,
          call_data/1,
          call_stack/1]).
-
--define(PUB_SIZE, 65).
 
 -define(CONTRACT_CALL_TX_VSN, 1).
 -define(CONTRACT_CALL_TX_TYPE, contract_call_tx).
@@ -127,43 +126,87 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Create the call.
-    Call0 = aect_call:new(CallTx, Height),
+    Call0 = aect_call:new(aect_call_tx:caller(CallTx),
+			  aect_call_tx:nonce(CallTx),
+			  aect_call_tx:contract(CallTx),
+			  Height),
+
+    %% Transfer the attached funds to the callee (before calling the contract!)
+    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree0),
+    Callee1 = aect_contracts:earn(Value, Callee0),
+    ContractsTree1 = aect_state_tree:enter_contract(Callee1, ContractsTree0),
+    Trees1 = aec_trees:set_contracts(Trees0, ContractsTree1),
+    {AccountsTree1, ContractsTree2} =
+        %% TODO: contract accounts should live in the account tree
+        case Context of
+            aetx_contract    ->
+                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree1),
+                Caller1 = aect_contracts:spend(Value, Caller0),
+                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree1)};
+            aetx_transaction ->
+                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
+                {ok, Caller1} = aec_accounts:spend(Caller0, Value, Nonce, Height),
+                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree1}
+        end,
+
+    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree1),
+    Trees3 = aec_trees:set_contracts(Trees2, ContractsTree2),
+
 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    Call = run_contract(CallTx, Call0, Height, Trees0),
+    Call = run_contract(CallTx, Call0, Height, Trees3),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
-    {AccountsTree1, ContractsTree1} =
+    AccountsTree2 =
         case Context of
             aetx_contract    ->
-                %% When calling from another contract we only charge the 'amount'
-                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree0),
-                Caller1 = aect_contracts:spend(Value, Caller0),
-                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree0)};
+                AccountsTree1;
             aetx_transaction ->
                 %% When calling from the top-level we charge Fee and Gas as well.
-                Amount        = Fee + aect_call:gas_used(Call) * GasPrice + Value,
-                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
-                {ok, Caller1} = aec_accounts:spend(Caller0, Amount, Nonce, Height),
-                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree0}
+                Amount        = Fee + aect_call:gas_used(Call) * GasPrice,
+                Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree1),
+                {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
+                aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
-
-    %% Credit the attached funds to the callee
-    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree1),
-    Callee1 = aect_contracts:earn(Value, Callee0),
-    ContractsTree2 = aect_state_tree:enter_contract(Callee1, ContractsTree1),
+    Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
-    ContractsTree3 = aect_state_tree:insert_call(Call, ContractsTree2),
+    %% Each block starts with an empty calls tree.
+    CallsTree0 = aec_trees:calls(Trees4),
+    CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
+    Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
 
-    %% Update the state tree
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree3),
+    {ok, Trees5}.
 
-    {ok, Trees2}.
+run_contract(#contract_call_tx{	caller = Caller
+			      , nonce  = _Nonce
+			      , contract = ContractPubKey
+			      , vm_version = VmVersion
+			      , amount     = Amount
+			      , gas        = Gas 
+			      , gas_price  = GasPrice
+			      , call_data  = CallData
+			      , call_stack = CallStack
+			      } = _Tx, Call, Height, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
+    Code          = aect_contracts:code(Contract),
+    CallDef = #{ caller     => Caller
+	       , contract   => ContractPubKey
+	       , gas        => Gas
+	       , gas_price  => GasPrice
+	       , call_data  => CallData
+	       , amount     => Amount
+	       , call_stack => CallStack
+	       , code       => Code
+	       , call       => Call
+	       , height     => Height
+	       , trees      => Trees
+	       },
+    aect_dispatch:run(VmVersion, CallDef).
 
 serialize(#contract_call_tx{caller     = CallerPubKey,
                             nonce      = Nonce,
@@ -295,70 +338,3 @@ check_call(#contract_call_tx{ contract   = ContractPubKey,
             end;
         none -> {error, contract_does_not_exist}
     end.
-
-%% -- Running contract code --------------------------------------------------
-
-%% Call the contract and update the call object with the return value and gas
-%% used.
--spec run_contract(tx(), aect_call:call(), height(), aec_trees:trees()) -> aect_call:call().
-run_contract(#contract_call_tx
-             { caller     = Caller
-             , contract   = ContractPubKey
-             , gas        = Gas
-             , gas_price  = GasPrice
-             , call_data  = CallData
-             , amount     = Value
-             , call_stack = CallStack
-             } = _Tx, Call, Height, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractPubKey, ContractsTree),
-    Code          = aect_contracts:code(Contract),
-
-    %% TODO: Handle different VMs and ABIs.
-    %% TODO: Move init and execution to a separate moidule to be re used by
-    %% both on chain and off chain calls.
-    ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
-    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
-    try aevm_eeevm_state:init(
-	  #{ exec => #{ code       => Code,
-			address    => Address,
-			caller     => Caller,
-			data       => CallData,
-			gas        => Gas,
-			gasPrice   => GasPrice,
-			origin     => Caller,
-			value      => Value,
-                        call_stack => CallStack },
-             %% TODO: set up the env properly
-             env => #{currentCoinbase   => 0,
-                      currentDifficulty => 0,
-                      currentGasLimit   => Gas,
-                      currentNumber     => Height,
-                      currentTimestamp  => 0,
-                      chainState        => ChainState,
-                      chainAPI          => aec_vm_chain},
-             pre => #{}},
-          #{trace => false})
-    of
-	InitState ->
-	    %% TODO: Nicer error handling - do more in check.
-	    %% Update gas_used depending on exit type.x
-	    try aevm_eeevm:eval(InitState) of
-		%% Succesful execution
-		{ok, #{ gas := GasLeft, out := ReturnValue }} ->
-		    aect_call:set_gas_used(Gas - GasLeft,
-					   aect_call:set_return_value(ReturnValue, Call));
-		%% Executinon reulting in VM exeception.
-		%% Gas used, but other state not affected.
-		%% TODO: Use up the right amount of gas depending on error
-		%% TODO: Store errorcode in state tree
-		{error,_Error, #{ gas :=_GasLeft}} ->
-		    aect_call:set_gas_used(Gas,
-					   aect_call:set_return_value(<<>>, Call))
-
-	    catch _:_ -> Call
-	    end
-    catch _:_ ->
-	    Call
-    end.
-

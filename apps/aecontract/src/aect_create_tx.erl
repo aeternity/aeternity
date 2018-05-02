@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aect_create_tx).
 
+-include("aecontract.hrl").
 -include("contract_txs.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -150,28 +151,116 @@ signers(#contract_create_tx{owner = OwnerPubKey}) ->
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
+			    vm_version = VmVersion,
                             fee   = Fee} = CreateTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0  = aec_trees:accounts(Trees0),
-    ContractsTree0 = aec_trees:contracts(Trees0),
 
     %% Charge the fee to the contract owner (caller)
     Owner0        = aec_accounts_trees:get(OwnerPubKey, AccountsTree0),
     {ok, Owner1}  = aec_accounts:spend(Owner0, Fee, Nonce, Height),
     AccountsTree1 = aec_accounts_trees:enter(Owner1, AccountsTree0),
+    Trees1        = aec_trees:set_accounts(Trees0, AccountsTree1),
+
+    %% Create the contract and add to state tree
+    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+
+    %% Create the init call.
+    Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
     %% Create the contract and insert it into the contract state tree
     %%   The public key for the contract is generated from the owners pubkey
     %%   and the nonce, so that no one has the private key. Though, even if
     %%   someone did have the private key, we should not accept spend
     %%   transactions on a contract account.
-    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
-    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
-    ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+    Trees3 =
+	case VmVersion of
+	    ?AEVM_01_Sophia_01 ->
+		%% Execute init call to get the contract state and return value
+		ContractsTree0a = aec_trees:contracts(Trees1),
+		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
+		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		case aect_call:return_type(CallRes) of
+		    ok ->
+			%% Insert the call into the state tree.
+			%% This is mainly to remember what the
+			%% return value was so that the caller
+			%% can access it easily.
+			%% Each block starts with an empty calls tree.
+			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
+			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
 
-    Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
-    Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1),
+			ContractsTree0 = aec_trees:contracts(Trees2),
+			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
+			aec_trees:set_contracts(Trees2, ContractsTree1);
+		    E ->
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
+			Trees1
+		end;
+	    ?AEVM_01_Solidity_01 ->
+		%% Execute init call to get the contract bytecode
+		%% as a result. to be used for insertion
+		ContractsTree0a = aec_trees:contracts(Trees1),
+		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
+		CallTree = aec_trees:set_contracts(Trees1, ContractsTree1a),
+		CallRes = run_contract(CreateTx, Call0, Height, CallTree, Contract, ContractPubKey),
+		case aect_call:return_type(CallRes) of
+		    ok ->
+			%% Insert the call into the state tree.
+			%% This is mainly to remember what the
+			%% return value was so that the caller
+			%% can access it easily.
+			%% Each block starts with an empty calls tree.
+			CallsTree0 = aec_trees:calls(Trees1),
+			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
+			Trees2 = aec_trees:set_calls(Trees1, CallsTree1),
 
-    {ok, Trees2}.
+			%% Update contract
+			ContractsTree0 = aec_trees:contracts(Trees2),
+			NewCode = aect_call:return_value(CallRes),
+			Contract1 = aect_contracts:set_code(NewCode, Contract),
+			ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
+			aec_trees:set_contracts(Trees2, ContractsTree1);
+		    E ->
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
+			Trees1
+		end;
+	    _ ->
+		Trees1
+	end,
+
+
+    {ok, Trees3}.
+
+run_contract(#contract_create_tx{ owner      = Caller
+				, nonce      =_Nonce
+				, code       = Code
+				, vm_version = VmVersion
+				, amount     =_Amount
+				, gas        = Gas 
+				, gas_price  = GasPrice
+				, call_data  = CallData
+				} =_Tx,
+	     Call, Height, Trees,_Contract, ContractPubKey)->
+    CallStack = [], %% TODO: should we have a call stack for create_tx also
+                    %% when creating a contract in a contract.
+
+    CallDef = #{ caller     => Caller
+	       , contract   => ContractPubKey
+	       , gas        => Gas
+	       , gas_price  => GasPrice
+	       , call_data  => CallData
+	       , amount     => 0 %% Initial call takes no amount
+	       , call_stack => CallStack
+	       , code       => Code
+	       , call       => Call
+	       , height     => Height
+	       , trees      => Trees
+	       },
+    aect_dispatch:run(VmVersion, CallDef).
+
 
 serialize(#contract_create_tx{owner      = OwnerPubKey,
                               nonce      = Nonce,

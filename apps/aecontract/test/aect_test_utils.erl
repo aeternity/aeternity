@@ -6,6 +6,8 @@
 -module(aect_test_utils).
 
 -export([ new_state/0
+        , calls/1
+        , set_calls/2
         , contracts/1
         , set_contracts/2
         , priv_key/2
@@ -54,6 +56,13 @@ priv_key(PubKey, State) ->
 %%% Info API
 %%%===================================================================
 
+calls(State) ->
+    aec_trees:calls(trees(State)).
+
+set_calls(Calls, State) ->
+    Trees = trees(State),
+    set_trees(aec_trees:set_calls(Trees, Calls), State).
+
 contracts(State) ->
     aec_trees:contracts(trees(State)).
 
@@ -87,7 +96,7 @@ create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => <<"NOT PROPER BYTE CODE">>
-     , vm_version => 0
+     , vm_version => 1
      , deposit    => 10
      , amount     => 200
      , gas        => 10
@@ -119,7 +128,7 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 call_tx_default_spec(PubKey, State) ->
     #{ fee         => 5
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , vm_version  => 0
+     , vm_version  => 1
      , amount      => 100
      , gas         => 10000
      , gas_price   => 1
@@ -157,11 +166,11 @@ set_account(Account, State) ->
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
 compile_contract(File) ->
-    CodeDir = code:lib_dir(aering, test),
+    CodeDir = code:lib_dir(aesophia, test),
     FileName = filename:join(CodeDir, File),
     {ok, ContractBin} = file:read_file(FileName),
     Contract = binary_to_list(ContractBin),
-    aer_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]).
+    aeso_compiler:from_string(Contract, [pp_icode, pp_assembler, pp_bytecode]).
 
 %%%===================================================================
 %%% Keys TODO: Should move

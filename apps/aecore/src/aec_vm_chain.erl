@@ -13,7 +13,7 @@
 -export([new_state/3, get_trees/1]).
 
 %% aec_vm_chain_api callbacks
--export([get_balance/1,
+-export([get_balance/2,
          spend/3,
          call_contract/6]).
 
@@ -50,8 +50,8 @@ get_trees(#state{ trees = Trees, account = Key, nonce = Nonce }) ->
 
 
 %% @doc Get the balance of the contract account.
--spec get_balance(chain_state()) -> non_neg_integer().
-get_balance(#state{ trees = Trees, account = PubKey }) ->
+-spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
+get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
 %% @doc Spend money from the contract account.
@@ -75,7 +75,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
                               account = ContractKey,
                               nonce   = Nonce }) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    VmVersion = 0,  %% TODO
+    VmVersion = 1,  %% TODO
     {ok, CallTx} =
         aect_call_tx:new(#{ caller     => ContractKey,
                             nonce      => Nonce,
@@ -92,7 +92,7 @@ call_contract(Target, Gas, Value, CallData, CallStack,
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process_from_contract(CallTx, Trees1, Height, ConsensusVersion),
             CallId  = aect_call:id(ContractKey, Nonce, Target),
-            Call    = aect_state_tree:get_call(Target, CallId, aec_trees:contracts(Trees2)),
+            Call    = aect_call_state_tree:get_call(Target, CallId, aec_trees:calls(Trees2)),
             GasUsed = aect_call:gas_used(Call),
             Result  = case aect_call:return_value(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
@@ -106,10 +106,17 @@ call_contract(Target, Gas, Value, CallData, CallStack,
 
 %% -- Internal functions -----------------------------------------------------
 
-do_get_balance(ContractKey, Trees) ->
+do_get_balance(PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
-    Contract      = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    aect_contracts:balance(Contract).
+    AccountsTree  = aec_trees:accounts(Trees),
+    case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+        {value, Contract} -> aect_contracts:balance(Contract);
+        none              ->
+            case aec_accounts_trees:lookup(PubKey, AccountsTree) of
+                none             -> 0;
+                {value, Account} -> aec_accounts:balance(Account)
+            end
+    end.
 
 %% TODO: can only spend to proper accounts. Not other contracts.
 %% Note that we cannot use an aec_spend_tx here, since we are spending from a

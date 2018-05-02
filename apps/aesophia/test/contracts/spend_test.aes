@@ -1,0 +1,17 @@
+
+contract SpendTest =
+
+  function spend(to, amount) =
+    let total = Contract.balance
+    raw_spend(to, amount)
+    total - amount
+
+  function withdraw(amount) : int =
+    spend(Call.caller, amount)
+
+  function withdraw_from(account, amount) =
+    raw_call(account, "withdraw", 10000, 0, amount)
+    withdraw(amount)
+
+  function get_balance() = Contract.balance
+

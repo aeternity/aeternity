@@ -11,11 +11,12 @@
 -export([ deserialize/1
         , id/1
         , id/3
-        , new/2
+        , new/4
         , contract_address/1
         , caller_address/1
         , caller_nonce/1
         , height/1
+        , return_type/1
         , return_value/1
         , gas_used/1
         , serialize/1
@@ -23,6 +24,7 @@
         , set_caller_address/2
         , set_caller_nonce/2
         , set_height/2
+        , set_return_type/2
         , set_return_value/2
         , set_gas_used/2
         ]).
@@ -42,6 +44,7 @@
               , contract_address :: pubkey()
               , gas_used         :: amount()
               , return_value     :: binary()
+	      , return_type      :: ok | error | revert			    
               }).
 
 -opaque call() :: #call{}.
@@ -61,14 +64,16 @@
 %%% API
 %%%===================================================================
 
--spec new(aect_call_tx:tx(), height()) -> call().
-new(CallTx, BlockHeight) ->
-    C = #call{ caller_address   = aect_call_tx:caller(CallTx)
-             , caller_nonce     = aect_call_tx:nonce(CallTx)
+-spec new(Caller::pubkey(), Nonce::non_neg_integer(), Address::pubkey(),
+	  height()) -> call().
+new(Caller, Nonce, Address, BlockHeight) ->
+    C = #call{ caller_address   = Caller
+             , caller_nonce     = Nonce
              , height           = BlockHeight
-             , contract_address = aect_call_tx:contract(CallTx)
+             , contract_address = Address
              , gas_used         = 0     %% These are filled later
              , return_value     = <<>>  %% in aect_call_tx:process()
+             , return_type      = ok
              },
     assert_fields(C).
 
@@ -97,6 +102,7 @@ serialize(#call{} = I) ->
       , {contract_address, contract_address(I)}
       , {gas_used, gas_used(I)}
       , {return_value, return_value(I)}
+      , {return_type, serialize_return_type(return_type(I))}
      ]).
 
 -spec deserialize(binary()) -> call().
@@ -107,6 +113,7 @@ deserialize(B) ->
     , {contract_address, ContractAddress}
     , {gas_used, GasUsed}
     , {return_value, ReturnValue}
+    , {return_type, ReturnType}
     ] = aec_object_serialization:deserialize(
           ?CONTRACT_INTERACTION_TYPE,
           ?CONTRACT_INTERACTION_VSN,
@@ -118,6 +125,7 @@ deserialize(B) ->
          , contract_address = ContractAddress
          , gas_used         = GasUsed
          , return_value     = ReturnValue
+         , return_type      = deserialize_return_type(ReturnType)
          }.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
@@ -127,7 +135,17 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
     , {contract_address, binary}
     , {gas_used, int}
     , {return_value, binary}
+    , {return_type, int}
     ].
+
+serialize_return_type(ok) -> 0;
+serialize_return_type(error) -> 1;
+serialize_return_type(revert) ->  2.
+     
+deserialize_return_type(0) -> ok;
+deserialize_return_type(1) -> error;
+deserialize_return_type(2) -> revert.
+
 
 
 %%%===================================================================
@@ -144,6 +162,9 @@ height(I) -> I#call.height.
 
 -spec contract_address(call()) -> pubkey().
 contract_address(I) -> I#call.contract_address.
+
+-spec return_type(call()) -> ok | error | revert.
+return_type(I) -> I#call.return_type.
 
 -spec return_value(call()) -> binary().
 return_value(I) -> I#call.return_value.
@@ -174,9 +195,15 @@ set_contract_address(X, I) ->
 set_return_value(X, I) ->
     I#call{return_value = assert_field(return_value, X)}.
 
+-spec set_return_type(ok | error | revert, call()) -> call().
+set_return_type(ok, I) -> I#call{return_type = ok };
+set_return_type(error, I) -> I#call{return_type = error };
+set_return_type(revert, I) -> I#call{return_type = revert }.
+
 -spec set_gas_used(integer(), call()) -> call().
 set_gas_used(X, I) ->
     I#call{gas_used = assert_field(gas_used, X)}.
+
 
 %%%===================================================================
 %%% Internal functions

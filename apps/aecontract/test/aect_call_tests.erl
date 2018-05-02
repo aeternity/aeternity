@@ -14,7 +14,7 @@
                    , gas_used/1
                    , height/1
                    , id/1
-                   , new/2
+                   , new/4
                    , contract_address/1
                    , caller_address/1
                    , caller_nonce/1
@@ -34,12 +34,12 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    C = new(call_tx(), 1),
+    C = new_call(call_tx(), 1),
     ?assertEqual(C, deserialize(serialize(C))),
     ok.
 
 basic_getters() ->
-    I = new(call_tx(), 1),
+    I = new_call(call_tx(), 1),
     ?assert(is_binary(id(I))),
     ?assert(is_binary(contract_address(I))),
     ?assert(is_binary(caller_address(I))),
@@ -50,7 +50,7 @@ basic_getters() ->
     ok.
 
 basic_setters() ->
-    I = aect_call:new(call_tx(), 1),
+    I = new_call(call_tx(), 1),
     ?assertError({illegal, _, _}, set_return_value(foo, I)),
     _ = set_return_value(<<"123">>, I),
     ?assertError({illegal, _, _}, set_gas_used(foo, I)),
@@ -64,6 +64,12 @@ basic_setters() ->
     ?assertError({illegal, _, _}, set_height(-1, I)),
     _ = set_height(1, I),
     ok.
+
+new_call(Tx, Height) ->
+    Caller = aect_call_tx:caller(Tx),
+    Nonce  = aect_call_tx:nonce(Tx),
+    Address = aect_call_tx:contract(Tx),
+    new(Caller, Nonce, Address, Height).
 
 call_tx() ->
     call_tx(#{}).

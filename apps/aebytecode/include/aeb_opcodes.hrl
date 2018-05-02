@@ -147,3 +147,8 @@
 -define(        'SUICIDE', 16#ff).
 
 -define(        'COMMENT', comment).
+
+%% Transactions are implemented as contract calls to address zero, with the
+%% first argument encoding the transaction type according to the below.
+-define(PRIM_CALL_SPEND, 1).
+

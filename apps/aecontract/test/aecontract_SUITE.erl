@@ -92,6 +92,16 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
+sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    Trees    = aect_test_utils:trees(S1),
+    Height   = 1,
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
+    S2       = aect_test_utils:set_trees(Trees1, S1),
+    {SignedTx, AcceptedTxs, S2}.
+
+
 %%%===================================================================
 %%% Call contract
 %%%===================================================================
@@ -109,19 +119,24 @@ call_contract(_Cfg) ->
 
     CallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S2)),
 
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aer"),
-    CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract}, S2),
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    Overrides    = #{ code => IdContract
+		    , call_data => CallData
+		    , gas => 1000
+		    }, 
+    CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
 
     %% Test that the create transaction is accepted
-    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S2),
+    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
-    %% Now call check that we can call it.
+    %% Now check that we can call it.
     Fee           = 107,
     GasPrice      = 2,
     Value         = 52,
     Arg           = <<"42">>,
-    CallData = aect_ring:create_call(IdContract, <<"main">>, Arg),
+    CallData = aect_sophia:create_call(IdContract, <<"main">>, Arg),
     CallTx = aect_test_utils:call_tx(Caller, ContractKey,
                                      #{call_data => CallData,
                                        gas_price => GasPrice,
@@ -131,12 +146,13 @@ call_contract(_Cfg) ->
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
-    Call = aect_state_tree:get_call(ContractKey, CallId, aect_test_utils:contracts(S4)),
+    Call = aect_call_state_tree:get_call(ContractKey, CallId, aect_test_utils:calls(S4)),
     <<42:256>> = aect_call:return_value(Call),
 
     %% ...and that we got charged the right amount for gas and fee.
-    NewCallerBalance = aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
-    NewCallerBalance = CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value,
+    {NewCallerBalance, NewCallerBalance} =
+        {aec_accounts:balance(aect_test_utils:get_account(Caller, S4)),
+         CallerBalance - Fee - GasPrice * aect_call:gas_used(Call) - Value},
 
     {ok, S4}.
 
@@ -151,9 +167,7 @@ make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     aect_contracts:new(ContractKey, CTx, 1).
 
 make_call(PubKey, ContractKey, Call, S) ->
-    Tx = aect_test_utils:call_tx(PubKey, ContractKey, #{ call => Call }, S),
-    {contract_call_tx, CTx} = aetx:specialize_type(Tx),
-    aect_call:new(CTx, 1).
+    aect_call:new(PubKey, 0, ContractKey, 1).
 
 state()  -> get(the_state).
 state(S) -> put(the_state, S).
@@ -184,8 +198,8 @@ insert_contract(Account, Code, S) ->
 insert_call(Sender, Contract, Fun, S) ->
     ContractId = aect_contracts:id(Contract),
     Call       = make_call(Sender, ContractId, Fun, S),
-    Contracts  = aect_state_tree:insert_call(Call, aect_test_utils:contracts(S)),
-    {Call, aect_test_utils:set_contracts(Contracts, S)}.
+    CallTree   = aect_call_state_tree:insert_call(Call, aect_test_utils:calls(S)),
+    {Call, aect_test_utils:set_calls(CallTree, S)}.
 
 get_contract(Contract0, S) ->
     ContractKey = aect_contracts:id(Contract0),
@@ -196,8 +210,8 @@ get_contract(Contract0, S) ->
 get_call(Contract0, Call0, S) ->
     CallId     = aect_call:id(Call0),
     ContractId = aect_contracts:id(Contract0),
-    Contracts  = aect_test_utils:contracts(S),
-    Call       = aect_state_tree:get_call(ContractId, CallId, Contracts),
+    CallTree   = aect_test_utils:calls(S),
+    Call       = aect_call_state_tree:get_call(ContractId, CallId, CallTree),
     {Call, S}.
 
 state_tree(_Cfg) ->

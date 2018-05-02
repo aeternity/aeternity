@@ -16,10 +16,12 @@
          new/0,
          ns/1,
          oracles/1,
+	 calls/1,
          contracts/1,
          perform_pre_transformations/2,
          set_accounts/2,
          set_oracles/2,
+	 set_calls/2,
          set_contracts/2,
          set_ns/2
         ]).
@@ -32,6 +34,7 @@
           accounts  :: aec_accounts_trees:tree(),
           oracles   :: aeo_state_tree:tree(),
           ns        :: aens_state_tree:tree(),
+          calls     :: aect_call_state_tree:tree(),
           contracts :: aect_state_tree:tree()}).
 
 -opaque trees() :: #trees{}.
@@ -45,6 +48,7 @@
 new() ->
     #trees{accounts  = aec_accounts_trees:empty_with_backend(),
            oracles   = aeo_state_tree:empty_with_backend(),
+           calls     = aect_call_state_tree:empty_with_backend(),
            contracts = aect_state_tree:empty_with_backend(),
            ns        = aens_state_tree:empty_with_backend()
           }.
@@ -83,8 +87,17 @@ set_oracles(Trees, Oracles) ->
 
 -spec perform_pre_transformations(trees(), non_neg_integer()) -> trees().
 perform_pre_transformations(Trees, Height) ->
-    Trees1 = aeo_state_tree:prune(Height, Trees),
+    Trees0 = aect_call_state_tree:prune(Height, Trees),
+    Trees1 = aeo_state_tree:prune(Height, Trees0),
     set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))).
+
+-spec calls(trees()) -> aect_call_state_tree:tree().
+calls(Trees) ->
+    Trees#trees.calls.
+
+-spec set_calls(trees(), aect_call_state_tree:tree()) -> trees().
+set_calls(Trees, Calls) ->
+    Trees#trees{calls = Calls}.
 
 -spec contracts(trees()) -> aect_state_tree:tree().
 contracts(Trees) ->
@@ -113,10 +126,12 @@ apply_signed_txs(SignedTxs, Trees, Height, ConsensusVersion) ->
 
 internal_hash(Trees) ->
     AccountsHash = pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
+    CallsHash = pad_empty(aect_call_state_tree:root_hash(calls(Trees))),
     ContractsHash = pad_empty(aect_state_tree:root_hash(contracts(Trees))),
     OraclesHash = pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
     NamingSystemHash = pad_empty(aens_state_tree:root_hash(ns(Trees))),
     List = lists:sort([ {<<"accounts"/utf8>> , AccountsHash}
+                      , {<<"calls"/utf8>>    , CallsHash}
                       , {<<"contracts"/utf8>>, ContractsHash}
                       , {<<"oracles"/utf8>>  , OraclesHash}
                       , {<<"ns"/utf8>>       , NamingSystemHash}
@@ -133,6 +148,7 @@ pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
 
 internal_commit_to_db(Trees) ->
     Trees#trees{ contracts = aect_state_tree:commit_to_db(contracts(Trees))
+	       , calls     = aect_call_state_tree:commit_to_db(calls(Trees))
                , ns        = aens_state_tree:commit_to_db(ns(Trees))
                , oracles   = aeo_state_tree:commit_to_db(oracles(Trees))
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))

@@ -22,7 +22,6 @@
         , cp/1
         , data/1
         , difficulty/1
-        , extbalance/2
         , extcode/2
         , extcode/4
         , extcodesize/2
@@ -35,7 +34,7 @@
         , logs/1
         , origin/1
         , out/1
-        , prepare_for_call/6
+        , call_contract/6
         , mem/1
         , no_recursion/1
         , number/1
@@ -58,6 +57,7 @@
         , timestamp/1
         , trace/1
         , trace_format/3
+        , trace_fun/1
         , value/1
         ]).
 
@@ -89,7 +89,6 @@ init(#{ env  := Env
          , number     => maps:get(currentNumber, Env)
          , timestamp  => maps:get(currentTimestamp, Env)
 
-         , balances        => get_balances(Pre)
          , ext_code_blocks => get_ext_code_blocks(Pre)
          , ext_code_sizes  => get_ext_code_sizes(Pre)
          , block_hash_fun  => BlockHashFun
@@ -125,16 +124,17 @@ init_vm(State, Code, Store) ->
           , storage   => Store
           }.
 
-prepare_for_call(Caller, Dest, CallGas, Value, Code, State) ->
-    #{ environment := #{ spec := #{ pre := Pre}}, call_stack := CallStack} = State,
-    Store = init_storage(Dest, Pre),
-    State1 = init_vm(State, Code, Store),
-    State1#{ address => Dest
-           , gas => CallGas
-           , value => Value
-           , caller    => Caller
-           , call_stack => [Caller | CallStack]
-           }.
+call_contract(Caller, Dest, CallGas, Value, Data, State) ->
+    ChainAPI   = chain_api(State),
+    ChainState = chain_state(State),
+    CallStack  = [Caller | call_stack(State)],
+    case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
+        {ok, Res, ChainState1} ->
+            GasSpent = aec_vm_chain_api:gas_spent(Res),
+            Return   = aec_vm_chain_api:return_value(Res),
+            {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
+        {error, Err} -> {error, Err}
+    end.
 
 init_storage(Address, #{} = Pre) ->
     case maps:get(Address, Pre, undefined) of
@@ -156,11 +156,6 @@ get_ext_code_sizes(#{} = Pre) ->
 get_ext_code_blocks(#{} = Pre) ->
     maps:from_list(
       [{Address, C} || {Address, #{code := C}} <-maps:to_list(Pre)]).
-
-get_balances(#{} = Pre) ->
-    maps:from_list(
-      [{Address, B} || {Address, #{balance := B}}
-                           <- maps:to_list(Pre)]).
 
 get_blockhash_fun(Opts, Env, H) ->
     case maps:get(blockhash, Opts, default) of
@@ -191,7 +186,9 @@ init_trace_fun(Opts) ->
 
 
 accountbalance(Address, State) ->
-    maps:get(Address band ?MASK160, maps:get(balances, State), 0).
+    Chain = chain_api(State),
+    ChainState = chain_state(State),
+    Chain:get_balance(Address band ?MASK160, ChainState).
 address(State)     -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
 calldepth(State) -> length(call_stack(State)).
@@ -212,9 +209,6 @@ extcode(Account, Start, Length, State) ->
 extcode(Account, State) ->
     maps:get(Account band ?MASK160,
              maps:get(ext_code_blocks, State), <<>>).
-extbalance(Account, State) ->
-    maps:get(Account band ?MASK160,
-             maps:get(balances, State), <<>>).
 no_recursion(State) ->
     maps:get(no_recursion, State).
 
@@ -273,7 +267,7 @@ trace_format(String, Argument, State) ->
             F = trace_fun(State),
             F("[~4.16.0B] ~8.16.0B : ~w",
               [Account, CP, aevm_opcodes:op_name(OP)]),
-            F(" ~w", [stack(State)]),
+            F(" ~s", [format_stack(stack(State))]),
             F(" ~s", [format_mem(mem(State))]),
             F(" ~p", [gas(State)]),
             F(String, Argument),
@@ -282,7 +276,7 @@ trace_format(String, Argument, State) ->
             State
     end.
 
--define(MAXMEMPOS,5).
+-define(MAXMEMPOS,20).
 
 format_mem(Mem) ->
    lists:flatten(
@@ -291,8 +285,27 @@ format_mem(Mem) ->
      ++ "]").
 format_mem([],_) -> [];
 format_mem( _,0) -> " ...";
-format_mem([{N,V}|Rest], ?MAXMEMPOS) when is_integer(N) ->
-    io_lib:format("~w:~w",[N,V]) ++ format_mem(Rest, ?MAXMEMPOS-1);
-format_mem([{N,V}|Rest],          P) when is_integer(N) ->
-    io_lib:format(", ~w:~w",[N,V]) ++ format_mem(Rest, P-1);
+format_mem([{N,V}|Rest], P) when is_integer(N) ->
+    [ ", " || P < ?MAXMEMPOS ]
+        ++ io_lib:format("~w:~p",[N,format_word(V)])
+        ++ format_mem(Rest, P-1);
 format_mem([_|Rest], P) -> format_mem(Rest, P).
+
+format_stack(S) ->
+    Words = [ format_word(N) || N <- S ],
+    case lists:all(fun(W) -> is_integer(W) end, Words) of
+        true -> io_lib:format("~w", [Words]);   %% Avoid accidental string printing
+        false -> io_lib:format("~1000p", [Words])   %% Nice printing of recovered strings
+    end.
+
+%% Try to find strings and negative numbers
+format_word(N) when <<N:256>> < <<1, 0:248>> -> N;
+format_word(N) ->
+    Bytes = binary_to_list(<<N:256>>),
+    {S, Rest} = lists:splitwith(fun(X) -> X /= 0 end, Bytes),
+    case lists:usort(Rest) of
+        [0] -> S;
+        _   ->
+            <<X:256/signed>> = <<N:256>>,
+            X
+    end.

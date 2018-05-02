@@ -57,8 +57,13 @@ setup_chain() ->
 
 create_contract(Owner, S) ->
     OwnerPrivKey = aect_test_utils:priv_key(Owner, S),
-    IdContract   = aect_test_utils:compile_contract("contracts/identity.aer"),
-    CreateTx     = aect_test_utils:create_tx(Owner, #{code => IdContract, amount => 2000}, S),
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    Overrides    = #{ code => IdContract
+		    , call_data => CallData
+		    , gas => 10000
+		    , amount => 2000},
+    CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S),
     {SignedTx, [SignedTx], S1} = sign_and_apply_transaction(CreateTx, OwnerPrivKey, S),
     {aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)), S1}.
 
@@ -70,33 +75,23 @@ sign_and_apply_transaction(Tx, PrivKey, S1) ->
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
-get_account_balance(Acc, S) ->
-    Trees    = aec_vm_chain:get_trees(S),
-    Accounts = aec_trees:accounts(Trees),
-    aec_accounts:balance(aec_accounts_trees:get(Acc, Accounts)).
-
-get_contract_balance(Contract, S) ->
-    Trees     = aec_vm_chain:get_trees(S),
-    Contracts = aec_trees:contracts(Trees),
-    aect_contracts:balance(aect_state_tree:get_contract(Contract, Contracts)).
-
 call_data(Arg) ->
-    Code = aect_test_utils:compile_contract("contracts/identity.aer"),
-    aect_ring:create_call(Code, <<"main">>, Arg).
+    Code = aect_test_utils:compile_contract("contracts/identity.aes"),
+    aect_sophia:create_call(Code, <<"main">>, Arg).
 
 %%%===================================================================
 %%% Spend tests
 %%%===================================================================
 
 spend(_Cfg) ->
-    {[Acc, _Acc2, _Contract1, _Contract2], S} = setup_chain(),
-    AccBal1  = get_account_balance(Acc, S),
-    Bal1     = aec_vm_chain:get_balance(S),
+    {[Acc, _Acc2, Contract1, _Contract2], S} = setup_chain(),
+    AccBal1  = aec_vm_chain:get_balance(Acc, S),
+    Bal1     = aec_vm_chain:get_balance(Contract1, S),
     Amount   = 50,
     {ok, S1} = aec_vm_chain:spend(Acc, Amount, S),
-    Bal2     = aec_vm_chain:get_balance(S1),
+    Bal2     = aec_vm_chain:get_balance(Contract1, S1),
     Bal2     = Bal1 - Amount,
-    AccBal2  = get_account_balance(Acc, S1),
+    AccBal2  = aec_vm_chain:get_balance(Acc, S1),
     AccBal2  = AccBal1 + Amount,
     {error, insufficient_funds}
              = aec_vm_chain:spend(Acc, 1000000, S1),
@@ -107,14 +102,14 @@ spend(_Cfg) ->
 %%%===================================================================
 
 contracts(_Cfg) ->
-    {[_Acc, _Acc2, _Contract1, Contract2], S} = setup_chain(),
-    _S1 = lists:foldl(fun({Value, Arg}, S0) -> make_call(Contract2, Value, Arg, S0) end,
+    {[_Acc, _Acc2, Contract1, Contract2], S} = setup_chain(),
+    _S1 = lists:foldl(fun({Value, Arg}, S0) -> make_call(Contract1, Contract2, Value, Arg, S0) end,
                       S, [{(I - 3) * 100, I + 100} || I <- lists:seq(1, 10)]),
     ok.
 
-make_call(To, Value, Arg, S) ->
-    C1Bal1    = aec_vm_chain:get_balance(S),
-    C2Bal1    = get_contract_balance(To, S),
+make_call(From, To, Value, Arg, S) ->
+    C1Bal1    = aec_vm_chain:get_balance(From, S),
+    C2Bal1    = aec_vm_chain:get_balance(To, S),
     CallData  = call_data(integer_to_binary(Arg)),
     Gas       = 10000,
     CallStack = [],
@@ -129,9 +124,9 @@ make_call(To, Value, Arg, S) ->
             {ok, <<Arg:256>>} = aec_vm_chain_api:return_value(Res),
             true     = GasUsed > 0,
             true     = GasUsed =< Gas,
-            C1Bal2   = aec_vm_chain:get_balance(S1),
+            C1Bal2   = aec_vm_chain:get_balance(From, S1),
             C1Bal2   = C1Bal1 - Value,
-            C2Bal2   = get_contract_balance(To, S1),
+            C2Bal2   = aec_vm_chain:get_balance(To, S1),
             C2Bal2   = C2Bal1 + Value,
             S1;
         false ->

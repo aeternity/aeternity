@@ -39,12 +39,14 @@
 
 %% MP trees backend
 -export([ find_accounts_node/1
+        , find_calls_node/1
         , find_contracts_node/1
         , find_ns_node/1
         , find_ns_cache_node/1
         , find_oracles_node/1
         , find_oracles_cache_node/1
         , write_accounts_node/2
+        , write_calls_node/2
         , write_contracts_node/2
         , write_ns_node/2
         , write_ns_cache_node/2
@@ -86,6 +88,7 @@
 -record(aec_blocks             , {key, txs}).
 -record(aec_headers            , {key, value, height}).
 -record(aec_contract_state     , {key, value}).
+-record(aec_call_state         , {key, value}).
 -record(aec_tx                 , {key, tx}).
 -record(aec_chain_state        , {key, value}).
 -record(aec_block_state        , {key, value, difficulty, fork_id}).
@@ -114,6 +117,7 @@ tables(Mode) ->
    , ?TAB(aec_tx, [{index, [{acct2tx}]}])
    , ?TAB(aec_chain_state)
    , ?TAB(aec_contract_state)
+   , ?TAB(aec_call_state)
    , ?TAB(aec_block_state)
    , ?TAB(aec_oracle_cache)
    , ?TAB(aec_oracle_state)
@@ -249,6 +253,9 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId) ->
 write_accounts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_account_state{key = Hash, value = Node})).
 
+write_calls_node(Hash, Node) ->
+    ?t(mnesia:write(#aec_call_state{key = Hash, value = Node})).
+
 write_contracts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_contract_state{key = Hash, value = Node})).
 
@@ -320,6 +327,11 @@ find_oracles_cache_node(Hash) ->
         [] -> none
     end.
 
+find_calls_node(Hash) ->
+    case ?t(mnesia:read(aec_call_state, Hash)) of
+        [#aec_call_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
 
 find_contracts_node(Hash) ->
     case ?t(mnesia:read(aec_contract_state, Hash)) of

@@ -26,15 +26,35 @@
 -include("aevm_eeevm.hrl").
 -include("aevm_gas.hrl").
 
+-define(AEVM_SIGNAL(___SIGNAL___, ___STATE___),
+	{aevm_signal, ___SIGNAL___, ___STATE___}).
+
+-define(REVERT_SIGNAL(___State___),
+        ?AEVM_SIGNAL(revert, ___State___)).
+
+
 %% Main eval loop.
 %%
 %%
+eval(State = #{ address := 0 }) ->
+    %% Primitive call. Used for transactions. Once contract calls go through
+    %% the chain API we won't get here!
+    <<TxType:256, _/binary>> = aevm_eeevm_state:data(State),
+    Trace = aevm_eeevm_state:trace_fun(State),
+    Trace("  PrimCall ~p\n", [TxType]),
+    {ok, State};
 eval(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
-            {error, What, StateOut}
+            {error, What, StateOut};
+	throw:?AEVM_SIGNAL(Signal, StateOut) ->
+	    handle_signal(Signal, State, StateOut)
     end.
+
+handle_signal(revert, StateIn, StateOut) -> 
+    {revert, aevm_eeevm_state:set_storage(
+	       aevm_eeevm_state:storage(StateIn), StateOut)}.
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
@@ -373,7 +393,6 @@ loop(StateIn) ->
 		    next_instruction(OP, State, State1);
 		?BALANCE ->
 		    %% 0x31 BALANCE δ=1 α=1
-		    %%  Get balance of the given account.
 		    %%  Get balance of the given account.
 		    %% µ's[0] ≡ σ[µs[0]]b if σ[µs[0] mod 2^160] =/= ∅
 		    %%          0  otherwise
@@ -1125,7 +1144,21 @@ loop(StateIn) ->
 		16#fa -> eval_error({illegal_instruction, OP}, State0);
 		16#fb -> eval_error({illegal_instruction, OP}, State0);
 		16#fc -> eval_error({illegal_instruction, OP}, State0);
-		16#fd -> eval_error({illegal_instruction, OP}, State0);
+		?REVERT ->
+		    %% 0xfd REVERT δ=2 α=∅
+		    %% Halt execution reverting state changes but returning data and remaining gas.
+		    %% For the gas calculation, we use the memory expansion function,
+		    %% µ'i ≡ M(µi, µs[0], µs[1])
+		    %% X(σ, µ, A, I) = (∅, µ', A0, I, o)
+		    %%  Where
+		    %%   o ≡ H(µ, I)
+		    %%   µ' ≡ µ except: µ'g ≡ µg − C(σ, µ, I)
+		    {Us0, State1} = pop(State0),
+		    {Us1, State2} = pop(State1),
+		    {Out, State3} = aevm_eeevm_memory:get_area(Us0, Us1, State2),
+		    State4 = aevm_eeevm_state:set_out(Out, State3),
+                    State5 = spend_mem_gas(State, State4),
+		    throw(?REVERT_SIGNAL(State5));
 		?INVALID ->
 		    %% 0xfe INVALID δ=∅ α=∅
 		    %% Designated invalid instruction.
@@ -1436,7 +1469,7 @@ recursive_call1(StateIn, Op) ->
     {IOffset, State4} = pop(State3),
     {ISize, State5}   = pop(State4),
     {OOffset, State6} = pop(State5),
-    {OSize, State7}   = pop(State6),
+    {_OSize, State7}   = pop(State6),   %% NOTE: we don't need the OSize!
     Dest              = case Op of
                             ?CALL -> To;
                             ?CALLCODE -> aevm_eeevm_state:address(State6);
@@ -1444,7 +1477,6 @@ recursive_call1(StateIn, Op) ->
                         end,
     {I, State8}       = aevm_eeevm_memory:get_area(IOffset, ISize, State7),
     GasAfterSpend     = aevm_eeevm_state:gas(State8),
-    Code              = aevm_eeevm_state:extcode(To, State8),
 
     %% "The child message of a nonzero-value CALL operation (NOT the
     %% top-level message arising from a transaction!) gains an
@@ -1468,8 +1500,6 @@ recursive_call1(StateIn, Op) ->
                  ?CALLCODE -> aevm_eeevm_state:address(State8);
                  ?DELEGATECALL -> aevm_eeevm_state:caller(State8)
              end,
-    CallState = aevm_eeevm_state:prepare_for_call(Caller, Dest, CallGas, Value,
-                                                  Code, State8),
     case aevm_eeevm_state:no_recursion(State8) of
         true  -> %% Just set up a call for testing without actually calling.
             GasOut = GasAfterSpend + CallGas,
@@ -1481,26 +1511,30 @@ recursive_call1(StateIn, Op) ->
 							}, State9),
             {1, State10};
         false ->
-            CallState1 =
-		aevm_eeevm_state:add_callcreates(#{ data => I
-						  , destination => Dest
-						  , gasLimit => CallGas
-						  , value => Value
-						  }, CallState),
-            {OutGas, OutState, R} =
-                case eval(CallState1) of
-                    {ok, OutState2} -> {aevm_eeevm_state:gas(OutState2), OutState2, 1};
-                    {error, out_of_gas,_RState2} -> {0, CallState1, 1}
+             %% State9 =
+	     %% 	aevm_eeevm_state:add_callcreates(#{ data => I
+	     %% 					  , destination => Dest
+	     %% 					  , gasLimit => CallGas
+	     %% 					  , value => Value
+	     %% 					  }, State8),
+            {OutGas, ReturnState, R} =
+                case aevm_eeevm_state:call_contract(Caller, Dest, CallGas, Value, I, State8) of
+                    {ok, Res, GasSpent, OutState1} -> {CallGas - GasSpent, OutState1, Res};
+                    {error, _Err} -> %% Invalid call
+                        {0, State8, {error, invalid_call}}
                 end,
-            CallTrace = aevm_eeevm_state:trace(OutState),
-            %% Go back to the caller state.
-            ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State8),
+            %% TODO: how to handle trace of call?
+            %% CallTrace = aevm_eeevm_state:trace(OutState),
+            %% ReturnState1 = aevm_eeevm_state:add_trace(CallTrace, State9),
             GasAfterCall = GasAfterSpend  + max(0, OutGas - Stipend),
-            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState1),
-            {Message,_}  = aevm_eeevm_memory:get_area(0, OSize, OutState),
-            ReturnState3 = aevm_eeevm_memory:write_area(OOffset, Message,
-                                                        ReturnState2),
-            {R, ReturnState3}
+            ReturnState2 = aevm_eeevm_state:set_gas(GasAfterCall, ReturnState),
+            ReturnState3 =
+                case R of
+                    {ok, Message} ->
+                        aevm_eeevm_memory:write_area(OOffset, Message, ReturnState2);
+                    {error, _} -> ReturnState2
+                end,
+            {1, ReturnState3}
     end.
 
 %% ------------------------------------------------------------------------
