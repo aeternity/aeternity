@@ -28,7 +28,7 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
--define(SPEND_TX_VSN, 2).
+-define(SPEND_TX_VSN, 1).
 -define(SPEND_TX_TYPE, spend_tx).
 
 -record(spend_tx, {
