@@ -1835,6 +1835,16 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             true = equal_block_maps(BlockMap2, ExpectedBlockMapTxsObjects)
         end,
     CheckAtHeight(0), % genesis
+    % ensure at least one block mine reward - for later adding spend txs
+    MinBlockHeightToCheck =
+        case ForkHeight of
+            0 ->
+                aecore_suite_utils:mine_blocks(
+                  aecore_suite_utils:node_name(?NODE), 1),
+                1; % from first block with reward
+            _ when is_integer(ForkHeight), ForkHeight > 0 ->
+                ForkHeight % from latest fork
+        end,
     lists:foreach(
         fun(Height) ->
             {ok, 200, #{<<"height">> := Height}} = get_top(),
@@ -1843,7 +1853,7 @@ internal_get_block_generic(GetExpectedBlockFun, CallApiFun) ->
             add_spend_txs(),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1)
         end,
-        lists:seq(ForkHeight, ForkHeight + BlocksToCheck)), % from latest fork
+        lists:seq(MinBlockHeightToCheck, ForkHeight + BlocksToCheck)),
     ok.
 
 block_txs_count_by_height(_Config) ->
