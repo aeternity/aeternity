@@ -16,6 +16,7 @@
     start_second_node/1,
     start_third_node/1,
     start_blocked_second/1,
+    mine_on_first_up_to_latest_consensus_protocol/1,
     mine_on_first/1,
     mine_on_second/1,
     mine_on_third/1,
@@ -46,6 +47,7 @@ groups() ->
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
        tx_first_pays_second,
@@ -71,6 +73,7 @@ groups() ->
        check_metrics_logged]},
      {semantically_invalid_tx, [sequence],
       [start_first_node,
+       mine_on_first_up_to_latest_consensus_protocol,
        mine_on_first,
        start_second_node,
        ensure_tx_pools_empty,
@@ -187,10 +190,16 @@ start_third_node(Config) ->
     ok = aecore_suite_utils:check_for_logs([dev3], Config),
     true = expect_same(T0, Config).
 
-mine_on_first(Config) ->
+mine_on_first_up_to_latest_consensus_protocol(Config) ->
     [ Dev1 | _ ] = proplists:get_value(devs, Config),
     N = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:mine_blocks(N, aecore_suite_utils:latest_fork_height()),
+    ok.
+
+mine_on_first(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N = aecore_suite_utils:node_name(Dev1),
+    aecore_suite_utils:mine_blocks(N, 1),
     ok.
 
 start_blocked_second(Config) ->
