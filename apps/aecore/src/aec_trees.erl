@@ -14,7 +14,6 @@
          commit_to_db/1,
          hash/1,
          new/0,
-         new_block/1,
          ns/1,
          oracles/1,
 	 calls/1,
@@ -54,12 +53,6 @@ new() ->
            ns        = aens_state_tree:empty_with_backend()
           }.
 
--spec new_block(trees()) -> trees().
-%% A new block always starts with an empty calls tree.
-%% Calls and return values are only keept for one block.
-new_block(Tree) ->
-    Tree#trees{calls = aect_call_state_tree:empty_with_backend()}.
-
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
     %% Make this in a transaction to get atomicity.
@@ -94,7 +87,8 @@ set_oracles(Trees, Oracles) ->
 
 -spec perform_pre_transformations(trees(), non_neg_integer()) -> trees().
 perform_pre_transformations(Trees, Height) ->
-    Trees1 = aeo_state_tree:prune(Height, Trees),
+    Trees0 = aect_call_state_tree:prune(Height, Trees),
+    Trees1 = aeo_state_tree:prune(Height, Trees0),
     set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
