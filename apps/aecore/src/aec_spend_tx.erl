@@ -49,13 +49,13 @@ new(#{sender := SenderPubkey,
       amount := Amount,
       fee := Fee,
       nonce := Nonce,
-      payload := Payload}=M) when is_integer(Amount), Amount >= 0,
-                                  is_integer(Nonce), Nonce >= 0,
-                                  is_integer(Fee), Fee >= 0,
-                                  is_binary(SenderPubkey),
-                                  is_binary(RecipientPubkey),
-                                  is_binary(Payload)
-                                  ->
+      payload := Payload}) when is_integer(Amount), Amount >= 0,
+                                is_integer(Nonce), Nonce >= 0,
+                                is_integer(Fee), Fee >= 0,
+                                is_binary(SenderPubkey),
+                                is_binary(RecipientPubkey),
+                                is_binary(Payload)
+                                ->
     Tx = #spend_tx{sender = SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
