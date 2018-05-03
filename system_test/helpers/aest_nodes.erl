@@ -24,6 +24,7 @@
 -export([get_node_pubkey/2]).
 -export([http_get/5]).
 -export([http_post/7]).
+-export([export/3]).
 
 %% Helper function exports
 -export([request/4]).
@@ -260,6 +261,9 @@ http_get(NodeName, Service, Path, Query, Ctx) ->
 http_post(NodeName, Service, Path, Query, Headers, Body, Ctx) ->
     Addr = get_service_address(NodeName, Service, Ctx),
     http_addr_post(Addr, Path, Query, Headers, Body).
+
+export(NodeName, Name, Ctx) ->
+    call(ctx2pid(Ctx), {export, NodeName, Name}).
 
 %=== HELPER FUNCTIONS ==========================================================
 

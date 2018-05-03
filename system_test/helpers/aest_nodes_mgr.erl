@@ -116,6 +116,9 @@ handle_call({disconnect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
 handle_call({log, Format, Params}, _From, State) ->
     {reply, ok, mgr_log(Format, Params, State)};
+handle_call({export, NodeName, Name}, _From, State) ->
+    {ok, Reply, NewState} = mgr_export_node(NodeName, Name, State),
+    {reply, Reply, NewState};
 handle_call(Request, From, _State) ->
     erlang:error({unknown_request, Request, From}).
 
@@ -238,3 +241,7 @@ mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, Backends) ->
 mgr_log(Format, Params, #{log_fun := LogFun} = State) ->
     log(LogFun, Format, Params),
     State.
+
+mgr_export_node(NodeName, Name, #{nodes := Nodes} = State) ->
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
+    {ok, Mod:export(NodeState, Name), State}.
