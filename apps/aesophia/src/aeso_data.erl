@@ -2,8 +2,11 @@
 
 -export([to_binary/1,binary_to_words/1,from_binary/2]).
 
+%% Encode the data as a heap fragment starting at address 64. The first word is
+%% a pointer into the heap fragment. The reason we store it at address 64 is to
+%% leave room for the state pointer at address 0.
 to_binary(Data) ->
-    {Address, Memory} = to_binary(Data, 32),
+    {Address, Memory} = to_binary(Data, 64),
     <<Address:256, Memory/binary>>.
 
 %% Allocate the data in memory, from the given address.  Return a pair

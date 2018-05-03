@@ -24,7 +24,7 @@ convert(#{ contract_name := _ContractName
     DispatchFun = {"_main", [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
                     [{{tuple, [fun_hash(FName)|make_args(Args)]},
-                      {encode, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}}
+                      {encode, 0, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}}
                      || {FName, Args, _, TypeRep} <- Functions]},
                    word},
     %% Find the type-reps we need encoders for
@@ -42,15 +42,16 @@ convert(#{ contract_name := _ContractName
     %% taken from the stack
     StopLabel = make_ref(),
     MainFunction = lookup_fun(Funs, "_main"),
-    DispatchCode = [%% read all call data into memory at address zero
+    DispatchCode = [%% read all call data into memory at address 32
                     i(?CALLDATASIZE),
-                    push(0),
-                    dup(1),
+                    push(0), push(32),
                     i(?CALLDATACOPY),
                     %% push a return address to stop
                     push_label(StopLabel),
-                    %% The first word of the calldata is a pointer.
-                    push(0), i(?MLOAD),
+                    %% The second word of the calldata is a pointer to the
+                    %% actual calldata (the first is a pointer to the contract
+                    %% state).
+                    push(32), i(?MLOAD),
                     jump(MainFunction),
                     jumpdest(StopLabel),
                     %% A pointer to a binary is on top of the stack
@@ -203,33 +204,37 @@ assemble_expr(Funs, Stack, _, {lambda, Args, Body}) ->
      jumpdest(Continue)];
 assemble_expr(_, _, _, {label, Label}) ->
     push_label(Label);
-assemble_expr(Funs, Stack, _, {encode, TypeRep, A}) ->
+assemble_expr(Funs, Stack, _, {encode, Base, TypeRep, A}) ->
     %% Encode a value A of type TypeRep as a binary. Leaves a pointer to the
     %% binary on top of the stack.
     %%
     %% For boxed types the encoding is a relative pointer into a following heap fragment
-    %% with relative addresses.
-    %% For instance the tuple ("pink", (99, "apple")) would be encoded as
+    %% with relative addresses. `Base` is the relative address of the start of the binary,
+    %% so that if the binary were written to address `Base` it would be a valid
+    %% heap object.
+    %% For instance with Pad = 0, the tuple ("pink", (99, "apple")) would be encoded as
     %%    Offset   0   32   64     96     128    160   192     224    256
     %%    Word   160   99   96      5  "apple"   224    32       4  "pink"
     %%
     %% For unboxed types the encoding is simply the value.
 
+    SubBase = [ [push(Base), swap(1), i(?SUB)] || Base /= 0 ],
+
       %% First assemble the value to be encoded. This may allocate memory.
     [ assemble_expr(Funs, Stack, nontail, A), %% [ value ]
                                            %% Allocate space for the first word
-      i(?MSIZE),                           %% [ base value ]
-      push(0),                             %% [ 0 base value ]
-      dup(2),                              %% [ base 0 base value ]
-      i(?MSTORE),                          %% [ base value ]
+      i(?MSIZE),                           %% [ addr value ]
+      push(0),                             %% [ 0 addr value ]
+      dup(2),                              %% [ addr 0 addr value ]
+      i(?MSTORE),                          %% [ addr value ]    -- allocate
+      swap(1), dup(2), SubBase,            %% [ base value addr ]
       %% Call the encoder function. This returns a relative pointer for boxed
       %% types, and `value` for unboxed types.
       assemble_expr(Funs, [{"base", "_"}, {"value", "_"} | Stack], nontail,
         {funcall, {var_ref, encoder_name(TypeRep)},
-        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value ]
-      dup(2),                                          %% [ base result base value ]
-      i(?MSTORE),                                      %% [ base value ]    Mem[base] := value
-      pop_args(1)];                                    %% [ base ]
+        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value addr ]
+      dup(4), i(?MSTORE),                              %% [ base value addr ]  Mem[addr] := result
+      pop(2)];                                         %% [ addr ]
 assemble_expr(Funs, Stack0, _Tail, {decode, TypeRep}) ->
     %% Inverse of encoding. Top of the stack should contain a pointer to the
     %% blob.
@@ -357,7 +362,7 @@ assemble_expr(Funs, Stack, Tail,
     Exprs = [Value, Gas, To],                 %% Stack
     [ assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
     , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
-            nontail, {encode, ArgT, Arg})     %%  IOffset To Gas Value
+            nontail, {encode, 32, ArgT, Arg}) %%  IOffset To Gas Value
     , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
     , dup(2), dup(2)                          %%  OOffset IOffset OOffset IOffset To Gas Value
     , i(?SUB)                                 %%  ISize OOffset IOffset To Gas Value
