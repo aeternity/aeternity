@@ -34,6 +34,8 @@
 -include_lib("apps/aecontract/include/contract_txs.hrl").
 -include_lib("apps/aecontract/src/aecontract.hrl").
 
+-define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -80,22 +82,24 @@ create_contract_negative(_Cfg) ->
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
-    {error, MaybeS1Mined} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
-    aect_test_utils:assert_state_equal(S1, MaybeS1Mined),
+    {error, MaybeS1Mined} = sign_and_apply_transaction(RTx1, BadPrivKey, S1, ?MINER_PUBKEY),
+    S1Mined = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S1),
+    aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
-    {error, MaybeS2Mined} = sign_and_apply_transaction(RTx2, PrivKey, S2),
-    aect_test_utils:assert_state_equal(S2, MaybeS2Mined),
+    {error, MaybeS2Mined} = sign_and_apply_transaction(RTx2, PrivKey, S2, ?MINER_PUBKEY),
+    S2Mined = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S2),
+    aect_test_utils:assert_state_equal(S2Mined, MaybeS2Mined),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
-    {error, MaybeS1Mined2} = sign_and_apply_transaction(RTx3, PrivKey, S1),
-    aect_test_utils:assert_state_equal(S1, MaybeS1Mined2),
+    {error, MaybeS1Mined2} = sign_and_apply_transaction(RTx3, PrivKey, S1, ?MINER_PUBKEY),
+    aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined2),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     ok.
@@ -106,26 +110,26 @@ create_contract(_Cfg) ->
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     %% Test that the create transaction is accepted
-    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1),
+    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
     {PubKey, S2}.
 
-sign_and_apply_transaction(Tx, PrivKey, S1) ->
+sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs(Miner, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     case AcceptedTxs of
         [SignedTx] -> {ok, S2};
         []         -> {error, S2}
     end.
 
-sign_and_apply_transaction_strict(Tx, PrivKey, S1) ->
+sign_and_apply_transaction_strict(Tx, PrivKey, S1, Miner) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aect_test_utils:trees(S1),
     Height   = 1,
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict([SignedTx], Trees, Height, ConsensusVersion),
+    {ok, AcceptedTxs, Trees1} = aec_trees:apply_signed_txs_strict(Miner, [SignedTx], Trees, Height, ConsensusVersion),
     S2       = aect_test_utils:set_trees(Trees1, S1),
     {SignedTx, AcceptedTxs, S2}.
 
@@ -156,7 +160,7 @@ call_contract(_Cfg) ->
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
 
     %% Test that the create transaction is accepted
-    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2),
+    {SignedTx, [SignedTx], S3} = sign_and_apply_transaction_strict(CreateTx, OwnerPrivKey, S2, ?MINER_PUBKEY),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, aetx:nonce(CreateTx)),
 
     %% Now check that we can call it.
@@ -170,7 +174,7 @@ call_contract(_Cfg) ->
                                        gas_price => GasPrice,
                                        amount    => Value,
                                        fee       => Fee}, S3),
-    {ok, S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3),
+    {ok, S4} = sign_and_apply_transaction(CallTx, CallerPrivKey, S3, ?MINER_PUBKEY),
     CallId = aect_call:id(Caller, aetx:nonce(CallTx), ContractKey),
 
     %% Check that it got stored and that we got the right return value
@@ -285,7 +289,7 @@ create_contract(Owner, Name, Args, Options, S) ->
                      , amount     => 0
                      , gas        => 10000 }, Options), S),
     PrivKey     = aect_test_utils:priv_key(Owner, S),
-    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S),
+    {ok, S1} = sign_and_apply_transaction(CreateTx, PrivKey, S, ?MINER_PUBKEY),
     ContractKey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     {ContractKey, S1}.
 
@@ -305,7 +309,7 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
                  , gas        => 30000
                  }, Options), S),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
-    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S),
+    {ok, S1} = sign_and_apply_transaction(CallTx, PrivKey, S, ?MINER_PUBKEY),
     CallKey  = aect_call:id(Caller, Nonce, ContractKey),
     CallTree = aect_test_utils:calls(S1),
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),

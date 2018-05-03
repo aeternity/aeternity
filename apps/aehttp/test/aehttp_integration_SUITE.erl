@@ -1445,7 +1445,8 @@ post_broken_blocks(Config) ->
          {<<"time">>, 42},
          {<<"version">>, 42},
          {<<"pow">>, lists:seq(1, 42)},
-         {<<"transactions">>, []}
+         {<<"transactions">>, []},
+         {<<"miner">>, aec_base58c:encode(account_pubkey, <<"foo">>)}
         ]),
 
     lists:foreach(
@@ -1530,7 +1531,8 @@ post_broken_base58_tx(_Config) ->
 all_accounts_balances(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
+    GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
+    GenesisAccounts = [{aec_block_genesis:miner(), aec_governance:block_mine_reward()} | GenesisPresetAccounts],
     Receivers = ?DEFAULT_TESTS_COUNT,
     AmountToSpent = 1,
     {BlocksToMine0, Fee} = minimal_fee_and_blocks_to_mine(AmountToSpent, Receivers),
@@ -1574,7 +1576,8 @@ all_accounts_balances(_Config) ->
 all_accounts_balances_empty(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     rpc(application, set_env, [aehttp, enable_debug_endpoints, true]),
-    GenesisAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
+    GenesisPresetAccounts = rpc(aec_genesis_block_settings, preset_accounts, []),
+    GenesisAccounts = [{aec_block_genesis:miner(), aec_governance:block_mine_reward()} | GenesisPresetAccounts],
     {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
     true = length(Balances) =:= length(GenesisAccounts),
     true =

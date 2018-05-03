@@ -15,6 +15,9 @@
 -include("common.hrl").
 -include("blocks.hrl").
 
+-define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
+-define(FAKE_TXS_TREE_HASH, <<0:?TXS_HASH_BYTES/unit:8>>).
+
 conversion_test_() ->
     {setup,
      fun setup/0,
@@ -201,7 +204,7 @@ setup_target() ->
     meck:new(aec_txs_trees, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
     meck:expect(aec_txs_trees, from_txs, fun([]) -> fake_txs_tree end),
-    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, <<>>} end).
+    meck:expect(aec_txs_trees, root_hash, fun(fake_txs_tree) -> {ok, ?FAKE_TXS_TREE_HASH} end).
 
 teardown_target(X) ->
     meck:unload(aec_txs_trees),
@@ -218,7 +221,7 @@ mine_chain_with_state(Chain, N, PC) ->
 
 %% PoWCapacity = number of solutions per minute
 mining_step(Chain = [{Top, TopState} | _], PoWCapacity) ->
-    {Block, BlockState} = aec_blocks:new_with_state(Top, [], TopState),
+    {Block, BlockState} = aec_blocks:new_with_state(Top, ?MINER_PUBKEY, [], TopState),
     MiningTime = mining_time(Chain, PoWCapacity),
     {ok, NewBlock} =
         aec_mining:adjust_target(
