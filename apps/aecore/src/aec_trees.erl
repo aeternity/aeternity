@@ -18,7 +18,6 @@
          oracles/1,
 	 calls/1,
          contracts/1,
-         perform_pre_transformations/2,
          set_accounts/2,
          set_oracles/2,
 	 set_calls/2,
@@ -155,7 +154,7 @@ internal_commit_to_db(Trees) ->
                }.
 
 apply_signed_txs_common(SignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
-    Trees1 = aec_trees:perform_pre_transformations(Trees0, Height),
+    Trees1 = perform_pre_transformations(Trees0, Height),
     case apply_txs_on_state_trees(SignedTxs, Trees1, Height, ConsensusVersion, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
