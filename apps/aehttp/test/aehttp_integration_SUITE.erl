@@ -205,7 +205,9 @@
    [sc_ws_timeout_open/1,
     sc_ws_open/1,
     sc_ws_update/1,
-    sc_ws_close_mutual/1
+    sc_ws_close/1,
+    sc_ws_close_mutual_inititator/1,
+    sc_ws_close_mutual_responder/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -397,7 +399,15 @@ groups() ->
       [sc_ws_timeout_open,
        sc_ws_open,
        sc_ws_update,
-       sc_ws_close_mutual
+       sc_ws_close,
+      % initiator can start close mutual
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_close_mutual_inititator,
+       % responder can start close mutual
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_close_mutual_responder
       ]}
     ].
 
@@ -3014,14 +3024,14 @@ channel_sign_tx(ConnPid, Privkey, Tag) ->
 
 sc_ws_open(Config) ->
     #{initiator := #{pub_key := IPubkey,
-                    priv_key := IPrivkey,
-                    start_amt := IStartAmt},
+                    priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
-                    priv_key := RPrivkey,
-                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
+                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
 
     IAmt = 7,
     RAmt = 3,
+
+    {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
     {ok, IConnPid} = channel_ws_start(initiator,
@@ -3080,14 +3090,21 @@ channel_send_chan_open_infos(RConnPid, IConnPid) ->
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info).
 
+channel_participants_balances(IPubkey, RPubkey) ->
+    {ok, 200, #{<<"balance">> := BalI}} =
+        get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+    {ok, 200, #{<<"balance">> := BalR}} =
+        get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
+    {BalI, BalR}.
+
 channel_create(Config, IConnPid, RConnPid) ->
     #{initiator := #{pub_key := IPubkey,
-                    priv_key := IPrivkey,
-                    start_amt := IStartAmt},
+                    priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
-                    priv_key := RPrivkey,
-                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
+                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
     %% initiator gets to sign a create_tx
+    {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
+
     CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     %% responder gets to sign a create_tx
@@ -3168,23 +3185,22 @@ sc_ws_close(Config) ->
     ok = ?WS:stop(RConnPid),
     ok.
 
-sc_ws_close_mutual(Config) ->
+
+sc_ws_close_mutual_inititator(Config) ->
+    sc_ws_close_mutual(Config, initiator).
+
+sc_ws_close_mutual_responder(Config) ->
+    sc_ws_close_mutual(Config, responder).
+
+sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
+                                 orelse Closer =:= responder ->
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),
     #{initiator := #{pub_key := IPubkey,
                     priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants,
                                                                  ConfigList),
-
-    Balances =
-        fun() ->
-            {ok, 200, #{<<"balance">> := BalI}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
-            {ok, 200, #{<<"balance">> := BalR}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
-            {BalI, BalR}
-        end,
-    {IStartB, RStartB} = Balances(),
+    {IStartB, RStartB} = channel_participants_balances(IPubkey, RPubkey),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
@@ -3193,10 +3209,19 @@ sc_ws_close_mutual(Config) ->
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
     ok = ?WS:register_test_for_channel_event(RConnPid, info),
 
-    ?WS:send(IConnPid, <<"shutdown">>, #{}),
+    CloseMutual =
+        fun(CloserConn, CloserPrivkey, OtherConn, OtherPrivkey) ->
+            ?WS:send(CloserConn, <<"shutdown">>, #{}),
 
-    ShutdownTx = channel_sign_tx(IConnPid, IPrivkey, <<"shutdown_sign">>),
-    ShutdownTx = channel_sign_tx(RConnPid, RPrivkey, <<"shutdown_sign_ack">>),
+            ShTx = channel_sign_tx(CloserConn, CloserPrivkey, <<"shutdown_sign">>),
+            ShTx = channel_sign_tx(OtherConn, OtherPrivkey, <<"shutdown_sign_ack">>)
+        end,
+    ShutdownTx =
+        case Closer of
+            initiator -> CloseMutual(IConnPid, IPrivkey, RConnPid, RPrivkey);
+            responder -> CloseMutual(RConnPid, RPrivkey, IConnPid, IPrivkey)
+        end,
+
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
 
     timer:sleep(100), % as aesc_fsm_SUITE
@@ -3217,6 +3242,30 @@ sc_ws_close_mutual(Config) ->
     assert_balance(IPubkey, IStartB + IChange),
     assert_balance(RPubkey, RStartB + RChange),
 
+    %% There is an issue in the mempool processing mutual close transactions
+    %% remove after mempool refactoring 
+    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
+    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
+    aecore_suite_utils:stop_node(?NODE, Config),
+    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
+
+    aecore_suite_utils:start_node(?NODE, Config),
+    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    ToMine = aecore_suite_utils:latest_fork_height(),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
+                                   ToMine),
+    %% prepare participants
+    IStartAmt = 20,
+    RStartAmt = 10,
+    Fee = 1,
+
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
+
+    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
+    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    assert_balance(IPubkey, IStartAmt),
+    assert_balance(RPubkey, RStartAmt),
     ok.
 
 sc_ws_timeout_open(Config) ->

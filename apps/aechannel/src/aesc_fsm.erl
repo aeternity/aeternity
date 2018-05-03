@@ -7,7 +7,8 @@
 -export([initiate/3,     %% (host(), port(), Opts :: #{})
          respond/2,      %% (port(), Opts :: #{})
          upd_transfer/4, %% (fsm() , from(), to(), amount())
-         shutdown/1]).   %% (fsm())
+         shutdown/1,     %% (fsm())
+         client_died/1]).%% (fsm())
 
 %% Used by noise session
 -export([message/2]).
@@ -211,6 +212,11 @@ upd_transfer(Fsm, From, To, Amount) ->
 shutdown(Fsm) ->
     lager:debug("shutdown(~p)", [Fsm]),
     gen_statem:call(Fsm, shutdown).
+
+client_died(Fsm) ->
+    %TODO: possibility for reconnect
+    lager:debug("client died(~p)", [Fsm]),
+    ok = gen_statem:stop(Fsm).
 
 start_link(#{} = Arg) ->
     gen_statem:start_link(?MODULE, Arg, ?GEN_STATEM_OPTS).
@@ -596,8 +602,8 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(_Reason, _State, Data) ->
-    report_info(died, Data),
+terminate(Reason, _State, Data) ->
+    report_info({died, Reason}, Data),
     ok.
 
 code_change(_OldVsn, OldState, OldData, _Extra) ->

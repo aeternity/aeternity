@@ -131,7 +131,7 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  initiator_amount = InitiatorAmount,
                                  responder_amount = ResponderAmount,
                                  ttl              = _TTL,
-                                 fee              = Fee,
+                                 fee              = _Fee,
                                  nonce            = _Nonce}, _Context, Trees, Height,
                                                   _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
