@@ -316,6 +316,15 @@ assemble_expr(Funs, Stack, Tail, {switch, A, Cases}) ->
     [assemble_expr(Funs, Stack, nontail, A),
      assemble_cases(Funs, Stack, Tail, Close, Cases),
      {'JUMPDEST', Close}];
+%% State primitives
+%%  (A pointer to) the contract state is stored at address 0.
+assemble_expr(_Funs, _Stack, _Tail, prim_state) ->
+    [push(0), i(?MLOAD)];
+assemble_expr(Funs, Stack, _Tail, #prim_put{ state = State }) ->
+    [assemble_expr(Funs, Stack, nontail, State),
+     push(0), i(?MSTORE),   %% We need something for the unit value on the stack,
+     i(?MSIZE)];            %% MSIZE is the cheapest instruction.
+%% Environment primitives
 assemble_expr(_Funs, _Stack, _Tail, prim_contract_address) ->
     [i(?ADDRESS)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_origin) ->
