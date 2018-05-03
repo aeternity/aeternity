@@ -49,6 +49,11 @@
         , remove_tx_location/1
         ]).
 
+%% Only to be used from aec_tx_pool:init/1
+-export([ fold_mempool/2
+        ]).
+
+
 %% MP trees backend
 -export([ find_accounts_node/1
         , find_calls_node/1
@@ -437,7 +442,11 @@ is_in_tx_pool(TxHash) ->
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(delete(aec_tx_pool, TxHash)).
 
-
+fold_mempool(FunIn, InitAcc) ->
+    Fun = fun(#aec_tx_pool{key = Hash}, Acc) ->
+                  FunIn(Hash, Acc)
+          end,
+    ?t(mnesia:foldl(Fun, InitAcc, aec_tx_pool)).
 
 -spec find_transaction_in_main_chain_or_mempool(binary()) ->
                                                        'none'

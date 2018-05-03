@@ -127,7 +127,25 @@ tx_pool_test_() ->
 
                  NotExistingSender = aec_tx_pool:get_max_nonce(PK3),
                  ?assertEqual(undefined, NotExistingSender)
-             end}
+             end},
+      {"Ensure persistence",
+       fun() ->
+               %% Prepare a few txs.
+               STx1 = a_signed_tx(me, new_pubkey(), 1, 1),
+               STx2 = a_signed_tx(me, new_pubkey(), 2, 1),
+               ?assertEqual(ok, aec_tx_pool:push(STx1)),
+               ?assertEqual(ok, aec_tx_pool:push(STx2)),
+               {ok, PoolTxs} = aec_tx_pool:peek(infinity),
+               ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
+
+               %% Stop the mempool and start it again to see that it reinits
+               ok        = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               {ok, PoolTxs2} = aec_tx_pool:peek(infinity),
+               ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs2)),
+               unlink(Pid), %% Leave it for the cleanup
+               ok
+       end}
      ]}.
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->

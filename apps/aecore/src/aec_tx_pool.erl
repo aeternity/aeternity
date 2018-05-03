@@ -96,8 +96,13 @@ size() ->
 init([]) ->
     %% TODO: Traverse db table to init tx pool
     {ok, Db} = pool_db_open(),
-    State = #state{db = Db},
-    {ok, State}.
+    Handled  = ets:new(init_tx_pool, [private]),
+    InitF  = fun(TxHash, _) ->
+                     update_pool_on_tx_hash(TxHash, Db, Handled),
+                     ok
+             end,
+    ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
+    {ok, #state{db = Db}}.
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
