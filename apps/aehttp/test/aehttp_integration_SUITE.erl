@@ -397,6 +397,9 @@ groups() ->
       ]},
      {channel_websocket, [sequence],
       [sc_ws_timeout_open,
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_close,
       % initiator can start close mutual
        sc_ws_open,
        sc_ws_update,
@@ -3014,15 +3017,7 @@ sc_ws_open(Config) ->
     IAmt = 7,
     RAmt = 3,
 
-    Balances =
-        fun() ->
-            {ok, 200, #{<<"balance">> := BalI}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
-            {ok, 200, #{<<"balance">> := BalR}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
-            {BalI, BalR}
-        end,
-    {IStartAmt, RStartAmt} = Balances(),
+    {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
     {ok, IConnPid} = channel_ws_start(initiator,
@@ -3081,14 +3076,21 @@ channel_send_chan_open_infos(RConnPid, IConnPid) ->
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(IConnPid, info),
     {ok, #{<<"event">> := <<"open">>}} = ?WS:wait_for_channel_event(RConnPid, info).
 
+channel_participants_balances(IPubkey, RPubkey) ->
+    {ok, 200, #{<<"balance">> := BalI}} =
+        get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
+    {ok, 200, #{<<"balance">> := BalR}} =
+        get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
+    {BalI, BalR}.
+
 channel_create(Config, IConnPid, RConnPid) ->
     #{initiator := #{pub_key := IPubkey,
-                    priv_key := IPrivkey,
-                    start_amt := IStartAmt},
+                    priv_key := IPrivkey},
       responder := #{pub_key := RPubkey,
-                    priv_key := RPrivkey,
-                    start_amt := RStartAmt}} = proplists:get_value(participants, Config),
+                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
     %% initiator gets to sign a create_tx
+    {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
+
     CrTx = channel_sign_tx(IConnPid, IPrivkey, <<"initiator_sign">>),
     {ok, #{<<"event">> := <<"funding_created">>}} = ?WS:wait_for_channel_event(RConnPid, info),
     %% responder gets to sign a create_tx
@@ -3184,15 +3186,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
       responder := #{pub_key := RPubkey,
                     priv_key := RPrivkey}} = proplists:get_value(participants,
                                                                  ConfigList),
-    Balances =
-        fun() ->
-            {ok, 200, #{<<"balance">> := BalI}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, IPubkey)),
-            {ok, 200, #{<<"balance">> := BalR}} =
-                get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
-            {BalI, BalR}
-        end,
-    {IStartB, RStartB} = Balances(),
+    {IStartB, RStartB} = channel_participants_balances(IPubkey, RPubkey),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
