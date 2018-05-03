@@ -249,13 +249,17 @@ get_balance(Account, #{ accounts := Accounts }) ->
 -define(PRIM_CALL_SPEND, 1).
 
 call_contract(0, _Gas, Value, CallData, _, S) ->
-    case aeso_data:from_binary({tuple, [word, word]}, CallData) of
-        {?PRIM_CALL_SPEND, To} ->
+    io:format("primitive call with data ~p\n", [aeso_test_utils:dump_words(CallData)]),
+    %% TODO: aeso_data:from_binary/2 should take an offset
+    case aeso_test_utils:dump_words(CallData) of
+        [64, ?PRIM_CALL_SPEND, To] ->
             case spend(To, Value, S) of
                 {ok, S1} ->
                     io:format("Spent ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
                     {ok, aec_vm_chain_api:call_result(<<>>, 0), S1};
-                Err -> Err
+                Err ->
+                    io:format("Bad spend ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
+                    Err
             end;
         _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
     end;
