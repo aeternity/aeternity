@@ -162,8 +162,6 @@ init(Options) ->
     State4 = State3#state{consensus = Consensus},
     epoch_mining:info("Miner process initilized ~p", [State4]),
 
-    %% TODO: re-arrange ng stuff to separate field like candidate & get timeout from gov
-
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
     {ok, State4}.
@@ -172,6 +170,7 @@ init_chain_state() ->
     case aec_chain:genesis_hash() of
         undefined ->
             {GB, _GBState} = aec_block_genesis:genesis_block_with_state(),
+            %%% TODO: fix NG-genesis flow
             ok = aec_chain_state:insert_block(GB);
         Hash when is_binary(Hash) ->
             ok
@@ -760,10 +759,9 @@ create_key_block_candidate(#state{keys_ready = false} = State) ->
 create_key_block_candidate(State) ->
     epoch_mining:info("Creating block candidate"),
     Fun = fun() ->
-                  {TopBlock, TopBlockState} = aec_chain:top_block_with_state(),
-                  AdjChain = get_adjustment_headers(TopBlock),
-                  {aec_mining:create_key_block_candidate(TopBlock, TopBlockState,
-                                                         AdjChain),
+                  {TopBlock, CurrentKeyBlock, TopBlockState} = aec_chain:get_top_and_key_with_state(),
+                  AdjChain = get_adjustment_headers(CurrentKeyBlock),
+                  {aec_mining:create_key_block_candidate(TopBlock, CurrentKeyBlock, TopBlockState, AdjChain),
                    State#state.seen_top_block_hash}
           end,
     dispatch_worker(create_key_block_candidate, Fun, State).
@@ -808,8 +806,8 @@ create_micro_block_candidate(#state{keys_ready = false} = State) ->
 create_micro_block_candidate(State) ->
     epoch_mining:info("Creating block candidate"),
     Fun = fun() ->
-        {TopBlock, TopBlockState} = aec_chain:top_block_with_state(),
-        {aec_mining:create_micro_block_candidate(TopBlock, TopBlockState),
+        {TopBlock, CurrentKeyBlock, TopBlockState} = aec_chain:get_top_and_key_with_state(),
+        {aec_mining:create_micro_block_candidate(TopBlock, CurrentKeyBlock, TopBlockState),
             State#state.seen_top_block_hash}
     end,
     dispatch_worker(create_micro_block_candidate, Fun, State).
@@ -866,7 +864,7 @@ handle_signed_block(Block, State) ->
 as_hex(S) ->
     [io_lib:format("~2.16.0b", [X]) || <<X:8>> <= S].
 
-handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} = State, {_EntryPoint, Type} = Origin) ->
+handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} = State, {_EntryPoint, _Type} = Origin) ->
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
     case aec_chain:has_block(Hash) of
@@ -875,8 +873,8 @@ handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} =
             {ok, State};
         false ->
             case aec_validate:block(Block, LeaderKey) of
-                {ok, Type} ->
-                    case aec_chain_state:insert_block(Block, Type) of
+                {ok, ok} ->
+                    case aec_chain_state:insert_block(Block) of
                         ok ->
                             maybe_publish_block(Origin, Block),
                             case preempt_if_new_top(State, Origin) of

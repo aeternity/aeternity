@@ -26,13 +26,22 @@
 %%% API
 %%%===================================================================
 
--spec from_txs([aetx_sign:signed_tx(), ...]) -> txs_tree().
+-spec from_txs([aetx_sign:signed_tx(), ...] | []) -> txs_tree().
+
+from_txs([]) ->
+    %% NG-INFO: its fine to have empty transaction list
+    %%          - it happens for key blocks
+    %%          - it happens for microblocks during slow time
+    %%            (when microblock has to be triggered to comply with governance,
+    %%             but there are no transactions)
+    aeu_mtrees:empty();
 from_txs(Txs = [_|_]) ->
     from_txs(Txs, 0, aeu_mtrees:empty()).
 
 -spec root_hash(txs_tree()) -> {ok, root_hash()}.
 root_hash(TxsTree) ->
-    {ok, <<_:?TXS_HASH_BYTES/unit:8>>} = aeu_mtrees:root_hash(TxsTree).
+    RT = <<_:?TXS_HASH_BYTES/unit:8>> = aeu_mtrees:pad_empty(aeu_mtrees:root_hash(TxsTree)),
+    {ok, RT}.
 
 %%%===================================================================
 %%% Internal functions

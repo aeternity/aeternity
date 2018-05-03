@@ -18,7 +18,8 @@
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
          root_hash/1,
-         validate/2]).
+         validate/2,
+         type/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -223,3 +224,6 @@ validate_time({#header{time = Time}, _}) ->
         false ->
             {error, block_from_the_future}
     end.
+
+type(#header{key = undefined, pow_evidence = no_value, height = H}) when H > 0 -> micro;
+type(_) -> key.

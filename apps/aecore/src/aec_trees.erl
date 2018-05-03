@@ -112,10 +112,10 @@ apply_signed_txs(SignedTxs, Trees, Height, ConsensusVersion) ->
 %%%=============================================================================
 
 internal_hash(Trees) ->
-    AccountsHash = pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
-    ContractsHash = pad_empty(aect_state_tree:root_hash(contracts(Trees))),
-    OraclesHash = pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
-    NamingSystemHash = pad_empty(aens_state_tree:root_hash(ns(Trees))),
+    AccountsHash = aeu_mtrees:pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
+    ContractsHash = aeu_mtrees:pad_empty(aect_state_tree:root_hash(contracts(Trees))),
+    OraclesHash = aeu_mtrees:pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
+    NamingSystemHash = aeu_mtrees:pad_empty(aens_state_tree:root_hash(ns(Trees))),
     List = lists:sort([ {<<"accounts"/utf8>> , AccountsHash}
                       , {<<"contracts"/utf8>>, ContractsHash}
                       , {<<"oracles"/utf8>>  , OraclesHash}
@@ -127,9 +127,6 @@ internal_hash(Trees) ->
                          aeu_mtrees:empty(), List),
     {ok, Hash} = aeu_mtrees:root_hash(TopTree),
     Hash.
-
-pad_empty({ok, H}) when is_binary(H) -> H;
-pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
 
 internal_commit_to_db(Trees) ->
     Trees#trees{ contracts = aect_state_tree:commit_to_db(contracts(Trees))
