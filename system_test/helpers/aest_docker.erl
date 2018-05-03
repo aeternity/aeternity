@@ -315,7 +315,7 @@ node_logs(#{container_id := ID} = _NodeState) ->
 get_peer_address(NodeState) ->
     #{hostname := Hostname,
       exposed_ports := #{sync := Port},
-      sync_pubkey := Key} = NodeState,
+      pubkey := Key} = NodeState,
     aec_peers:encode_peer_address(#{host => Hostname,
                                     port => Port,
                                     pubkey => Key}).

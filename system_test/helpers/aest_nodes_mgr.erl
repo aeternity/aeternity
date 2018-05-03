@@ -90,11 +90,12 @@ handle_call(stop, _From, State) ->
 handle_call(dump_logs, _From, #{nodes := Nodes} = State) ->
     [ Backend:node_logs(Node) || {Backend, Node} <- maps:values(Nodes) ],
     {reply, ok, State};
-handle_call({setup_nodes, NodeSpecs}, _From, #{backends := Backends} = State) ->
-    %% Overwrite possibly already defined nodes.
-    NodeSpecs2 = mgr_prepare_specs(NodeSpecs, State),
-    Nodes = maps:from_list([ mgr_setup_node(NodeSpec, Backends) || NodeSpec <- NodeSpecs2 ]),
-    {reply, ok, State#{nodes => Nodes}};
+handle_call({setup_nodes, NodeSpecs}, _From, State) ->
+    #{backends := Backends, nodes := Nodes} = State,
+    PreparedSpecs = mgr_prepare_specs(NodeSpecs, State),
+    SetupNodes = [mgr_setup_node(Spec, Backends) || Spec <- PreparedSpecs],
+    NewNodes = add_nodes(SetupNodes, Nodes),
+    {reply, ok, State#{nodes => NewNodes}};
 handle_call({get_node_pubkey, NodeName}, _From, State) ->
     {reply, mgr_get_node_pubkey(NodeName, State), State};
 handle_call({get_service_address, NodeName, Service}, _From, State) ->
@@ -245,3 +246,11 @@ mgr_log(Format, Params, #{log_fun := LogFun} = State) ->
 mgr_export_node(NodeName, Name, #{nodes := Nodes} = State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),
     {ok, Mod:export(NodeState, Name), State}.
+
+add_nodes(New, Old) ->
+    lists:foldl(fun({N, S}, Ns) ->
+        case maps:is_key(N, Ns) of
+            true  -> error({duplicate_node, N});
+            false -> maps:put(N, S, Ns)
+        end
+    end, Old, New).

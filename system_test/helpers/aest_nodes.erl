@@ -202,7 +202,7 @@ eqc_cleanup(Ctx) ->
 %% @doc Creates and setups a list of nodes.
 %% The nodes are not started, use `start_node/2` for that.
 -spec setup_nodes([node_spec()], test_ctx()) -> ok.
-setup_nodes(NodeSpecs, Ctx) ->
+setup_nodes(NodeSpecs, Ctx) when is_list(NodeSpecs) ->
     call(ctx2pid(Ctx), {setup_nodes, NodeSpecs}).
 
 %% @doc Starts a node previously setup.
@@ -355,8 +355,6 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     ct:log("Height ~p reached on nodes ~p after ~.2f seconds",
         [MinHeight, NodeNames, Duration]
     ).
-
-
 
 %=== INTERNAL FUNCTIONS ========================================================
 
