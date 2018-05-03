@@ -31,7 +31,8 @@
          lookup_with_proof/2,
          verify_proof/4,
          commit_to_db/1,
-         empty_with_backend/1
+         empty_with_backend/1,
+         pad_empty/1
         ]).
 
 %% For internal functional db
@@ -50,6 +51,7 @@
 -define(HASH_BYTES, 32).
 -define(IS_KEY(K), is_binary(K)).
 -define(IS_VALUE(V), is_binary(V)).
+-define(STATE_HASH_BYTES, 32). %% TODO NG move to proper hrl
 
 -type key() :: binary().
 -type value() :: binary().
@@ -176,6 +178,9 @@ commit_to_db(Tree) ->
         {ok, Tree1}   -> Tree1;
         {error, What} -> error({failed_commit, What})
     end.
+
+pad_empty({ok, H}) when is_binary(H) -> H;
+pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
 
 %%%===================================================================
 %%% Internal functions

@@ -32,6 +32,7 @@
         , top_block_hash/0
         , top_block_with_state/0
         , top_header/0
+        , get_top_and_key_with_state/0
         ]).
 
 %%% Accounts API
@@ -286,6 +287,17 @@ top_block_with_state() ->
         undefined -> undefined;
         Hash -> {aec_db:get_block(Hash), aec_db:get_block_state(Hash)}
     end.
+
+get_top_and_key_with_state() ->
+    {TopBlock, TopBlockState} = top_block_with_state(),
+    CurrentKeyBlock = case aec_blocks:type(TopBlock) of
+                          micro -> case aec_db:get_header(aec_blocks:key_hash(TopBlock)) of
+                                       none -> error_missing_block;
+                                       Header -> Header
+                                   end;
+                          key -> TopBlock
+                      end,
+    {TopBlock, CurrentKeyBlock, TopBlockState}.
 
 -spec genesis_hash() -> 'undefined' | binary().
 genesis_hash() ->

@@ -52,7 +52,7 @@
 %% parameters.
 
 %% TODO: fix outgoing format. Microblock needs spec
--spec sign(tx()|binary(), list(binary()) | binary()) -> signed_tx() | tuple().
+-spec sign(aetx:tx()|binary(), list(binary()) | binary()) -> signed_tx() | tuple().
 sign(Tx, PrivKey) when is_binary(PrivKey) ->
     sign(Tx, [PrivKey]);
 sign(Bin, PrivKey) when is_binary(Bin) ->
