@@ -15,7 +15,7 @@ global_env() ->
     Int     = {id, Ann, "int"},
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
-    Unit    = {tuple, Ann, []},
+    Unit    = {tuple_t, Ann, []},
     Fun     = fun(S, T) -> {type_sig, [S], T} end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
      %% Placeholder for inter-contract calls until we get proper type checking
