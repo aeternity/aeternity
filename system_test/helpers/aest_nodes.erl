@@ -41,6 +41,68 @@
 -define(NODE_TEARDOWN_TIMEOUT, 0).
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
 
+%% AWK script to keep only error, critical, alert and emergency log lines with
+%% all the extra lines following the log lines.
+%% In addition, it filter out the error lines caused by eper/watchdog.
+%% Update when https://www.pivotaltracker.com/story/show/157215253 is fixed.
+-define(EPOCH_LOG_SCAN_AWK_SCRIPT, "
+    /^.*\\[(error|critical|alert|emergency)\\].*$/ {
+      matched = 1
+      buff = $0
+    }
+    /{badarg,\\[{erlang,process_flag,\\[<[0-9.]*>,save_calls,16\\],\\[\\]},{prfPrc,/ {
+      matched = 1
+      buff = \"\"
+    }
+    /^.*\\[(debug|info|notice|warning)\\].*$/ {
+      matched = 1
+      if (buff != \"\") {
+        print buff
+        buff = \"\"
+      }
+    }
+    {
+      if (!matched && (buff != \"\")) {
+        buff = buff \"\\n\" $0
+      }
+      matched = 0
+    }"
+).
+
+%% AWK script to filter out the crash from eper/watchdog
+%% Update when https://www.pivotaltracker.com/story/show/157215253 is fixed.
+-define(CRASH_LOG_SCAN_AWK_SCRIPT, "
+    /^[-0-9: ]*=ERROR REPORT====$/ {
+        matched = 1
+        state = 1
+        if (buff != \"\") print buff
+        buff = $0
+    }
+    /^Error in process <[0-9.]*> on node epoch@localhost with exit value:$/ {
+        if (state == 1) {
+            matched = 1
+            state = 2
+            buff = buff \"\\n\" $0
+        }
+    }
+    /^{badarg,\\[{erlang,process_flag,\\[<[0-9.]*>,save_calls,16],\\[\\]},{prfPrc,/ {
+        if (state == 2) {
+            matched = 1
+            state = 0
+            buff = \"\"
+        }
+    }
+    {
+        if (!matched) {
+            if (buff != \"\") print buff
+            print $0
+            buff = \"\"
+            state = 0
+        }
+        matched = 0
+    }"
+).
+
 %=== TYPES ====================================================================
 
 -type test_ctx() :: pid() | proplists:proplist().
@@ -51,7 +113,6 @@
 -type http_body() :: binary().
 -type json_object() :: term().
 -type milliseconds() :: non_neg_integer().
--type seconds() :: non_neg_integer().
 -type path() :: binary() | string().
 -type peer_spec() :: atom() | binary().
 
@@ -100,11 +161,16 @@ ct_setup(Config) ->
 -spec ct_cleanup(test_ctx()) -> ok.
 ct_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
+    Result = validate_logs(),
     call(Pid, dump_logs),
     call(Pid, cleanup),
     call(Pid, stop),
     wait_for_exit(Pid, 120000),
-    ok.
+    case Result of
+        {error, Reason} -> erlang:error(Reason);
+        ok -> ok
+    end.
+
 
 %=== QICKCHECK API FUNCTIONS ===================================================
 
@@ -121,10 +187,14 @@ eqc_setup(DataDir, TempDir) ->
 -spec eqc_cleanup(test_ctx()) -> ok.
 eqc_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
+    Result = validate_logs(),
     call(Pid, cleanup),
     call(Pid, stop),
     wait_for_exit(Pid, 120000),
-    ok.
+    case Result of
+        {error, Reason} -> erlang:error(Reason);
+        ok -> ok
+    end.
 
 %=== GENERIC API FUNCTIONS =====================================================
 
@@ -139,9 +209,9 @@ setup_nodes(NodeSpecs, Ctx) ->
 start_node(NodeName, Ctx) ->
     call(ctx2pid(Ctx), {start_node, NodeName}).
 
-%% @doc Stops a node previously started with explicit timeout (in seconds)
+%% @doc Stops a node previously started with explicit timeout (in milliseconds)
 %% after which the node will be killed.
--spec stop_node(atom(), seconds() | infinity, test_ctx()) -> ok.
+-spec stop_node(atom(), milliseconds() | infinity, test_ctx()) -> ok.
 stop_node(NodeName, Timeout, Ctx) ->
     call(ctx2pid(Ctx), {stop_node, NodeName, Timeout}).
 
@@ -262,9 +332,6 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
-log(#{log_fun := undefined}, _Fmt, _Args) -> ok;
-log(#{log_fun := LogFun}, Fmt, Args) -> LogFun(Fmt, Args).
-
 uid() ->
     iolist_to_binary([[io_lib:format("~2.16.0B",[X])
                        || <<X:8>> <= crypto:strong_rand_bytes(8) ]]).
@@ -354,4 +421,45 @@ decode_json(Data) ->
         JsonObj -> {ok, JsonObj}
     catch
         error:badarg -> {error, {bad_json, Data}}
+    end.
+
+validate_logs() ->
+    Logs = aest_nodes_mgr:get_log_paths(),
+    maps:fold(fun(NodeName, LogPath, Result) ->
+        Result1 = check_crash_log(NodeName, LogPath, Result),
+        check_log_for_errors(NodeName, LogPath, Result1)
+    end, ok, Logs).
+
+check_crash_log(NodeName, LogPath, Result) ->
+    LogFile = binary_to_list(filename:join(LogPath, "crash.log")),
+    case filelib:is_file(LogFile) of
+        false -> Result;
+        true ->
+            case filelib:file_size(LogFile) of
+                0 -> Result;
+                _ ->
+                    Command = "awk '" ?CRASH_LOG_SCAN_AWK_SCRIPT "' '" ++ LogFile ++ "'",
+                    case os:cmd(Command) of
+                        "" -> Result;
+                        ErrorLines ->
+                            aest_nodes_mgr:log("Node ~p's crash logs is not empty:~n~s",
+                                               [NodeName, ErrorLines]),
+                            {error, crash_log_not_empty}
+                    end
+            end
+    end.
+
+check_log_for_errors(NodeName, LogPath, Result) ->
+    LogFile = binary_to_list(filename:join(LogPath, "epoch.log")),
+    case filelib:is_file(LogFile) of
+        false -> Result;
+        true ->
+            Command = "awk '" ?EPOCH_LOG_SCAN_AWK_SCRIPT "' '" ++ LogFile ++ "'",
+            case os:cmd(Command) of
+                "" -> Result;
+                ErrorLines ->
+                    aest_nodes_mgr:log("Node ~p's logs contains errors:~n~s",
+                                       [NodeName, ErrorLines]),
+                    {error, log_has_errors}
+            end
     end.

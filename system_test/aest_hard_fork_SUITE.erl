@@ -269,11 +269,9 @@ end_per_group(Group, Config)
   when Group =:= upgrade_flow_smoke_test;
        Group =:= old_spend_tx_in_new_protocol_smoke_test;
        Group =:= hard_fork_new_chain_with_tx ->
-    aest_nodes:ct_cleanup(Config),
-    ok;
+    aest_nodes:ct_cleanup(Config);
 end_per_group(hard_fork_old_chain_with_tx, Config) ->
-    aest_nodes:ct_cleanup(Config),
-    ok;
+    aest_nodes:ct_cleanup(Config);
 end_per_group(_, _) -> ok.
 
 init_per_testcase(TC, Config) when

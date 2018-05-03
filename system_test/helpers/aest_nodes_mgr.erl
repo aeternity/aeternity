@@ -14,7 +14,7 @@
 %% API
 -export([start/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
-         get_service_address/2]).
+         get_service_address/2, get_log_paths/0, log/2]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -52,6 +52,9 @@ cleanup() ->
 dump_logs() ->
     gen_server:call(?SERVER, dump_logs).
 
+get_log_paths() ->
+    gen_server:call(?SERVER, get_log_paths).
+
 setup_nodes(NodeSpecs) ->
     gen_server:call(?SERVER, {setup_nodes, NodeSpecs}).
 
@@ -64,6 +67,9 @@ stop_node(NodeName, Timeout) ->
 get_service_address(NodeName, Service) ->
     gen_server:call(?SERVER, {get_service_address, NodeName, Service}).
 
+log(Format, Params) ->
+    gen_server:call(?SERVER, {log, Format, Params}).
+
 %=== BEHAVIOUR GEN_SERVER CALLBACK FUNCTIONS ===================================
 
 init([Backends, EnvMap]) ->
@@ -74,6 +80,8 @@ init([Backends, EnvMap]) ->
     {ok, InitialState#{backends => [{Backend, Backend:start(Opts)} || Backend <- Backends ],
                        nodes => #{} }}.
 
+handle_call(get_log_paths, _From, State) ->
+    {reply, mgr_get_log_paths(State), State};
 handle_call(cleanup, _From, State) ->
     CleanState = mgr_cleanup(State),
     {reply, ok, CleanState};
@@ -106,6 +114,8 @@ handle_call({connect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_connect_node(NodeName, NetName, State)};
 handle_call({disconnect_node, NodeName, NetName}, _From, State) ->
     {reply, ok, mgr_disconnect_node(NodeName, NetName, State)};
+handle_call({log, Format, Params}, _From, State) ->
+    {reply, ok, mgr_log(Format, Params, State)};
 handle_call(Request, From, _State) ->
     erlang:error({unknown_request, Request, From}).
 
@@ -124,8 +134,19 @@ code_change(_OldVsn, State, _Extra) ->
 
 %=== INTERNAL FUNCTIONS ========================================================
 
+log(LogFun, Format, Params) when is_function(LogFun) ->
+    LogFun(Format, Params);
+log(#{log_fun := LogFun}, Format, Params) when is_function(LogFun) ->
+    LogFun(Format, Params);
+log(_, _, _) -> ok.
+
+mgr_get_log_paths(#{nodes := Nodes}) ->
+    maps:fold(fun(NodeName, {Mod, NodeState}, Acc) ->
+        Acc#{NodeName => Mod:get_log_path(NodeState)}
+    end, #{}, Nodes).
+
 mgr_cleanup(State) ->
-    %% Node cleanup can be disabled for debugging
+    %% Node cleanup can be disabled for debugging,
     %% then we keep dockers running
     case os:getenv("EPOCH_DISABLE_NODE_CLEANUP") of
         Value when Value =:= "true"; Value =:= "1" ->
@@ -213,3 +234,7 @@ mgr_setup_node(#{backend := Mod, name := Name} = NodeSpec, Backends) ->
             NodeState = Mod:setup_node(NodeSpec, BackendState),
             {Name, {Mod, NodeState}}
     end.
+
+mgr_log(Format, Params, #{log_fun := LogFun} = State) ->
+    log(LogFun, Format, Params),
+    State.

@@ -20,6 +20,7 @@
 -export([run_cmd_in_node_dir/3]).
 -export([connect_node/2]).
 -export([disconnect_node/2]).
+-export([get_log_path/1]).
 
 %=== MACROS ====================================================================
 
@@ -33,7 +34,7 @@
 -define(EXT_SYNC_PORT, 3015).
 -define(INT_HTTP_PORT, 3113).
 -define(INT_WS_PORT, 3114).
--define(EPOCH_STOP_TIMEOUT, 30).
+-define(EPOCH_STOP_TIMEOUT, 30000).
 -define(PEER_KEYS_PASSWORD, <<"top secret">>).
 -define(DEFAULT_NETWORKS, [epoch]).
 
@@ -76,7 +77,8 @@
     privkey := binary(),        % Private part of the peer key
     exposed_ports := #{service_label() => pos_integer()},
     local_ports := #{service_label() => pos_integer()},
-    sockets := [gen_tcp:socket()] % Reserved socket to prevent port clash
+    sockets := [gen_tcp:socket()], % Reserved socket to prevent port clash
+    log_path := binary()        % Path where the node logs are
 }.
 
 -type start_options() :: #{
@@ -260,7 +262,8 @@ setup_node(Spec, BackendState) ->
     NodeState#{
         container_name => Hostname,
         container_id => ContId,
-        config_path => ConfigFilePath
+        config_path => ConfigFilePath,
+        log_path => LogPath
     }.
 
 -spec delete_node(node_state()) -> ok.
@@ -280,13 +283,12 @@ start_node(NodeState) ->
 -spec stop_node(node_state(), stop_node_options()) -> node_state().
 stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
     Timeout = maps:get(soft_timeout, Opts, ?EPOCH_STOP_TIMEOUT),
-    TimeoutMs = case Timeout of infinity -> infinity; _ -> Timeout * 1000 end,
     case is_running(ID) of
         false ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
-            attempt_epoch_stop(NodeState, TimeoutMs),
-            case wait_stopped(ID, Timeout) of %% TODO Fix this call that has timeout actual parameter as seconds but handled inside function definition as milliseconds.
+            attempt_epoch_stop(NodeState, Timeout),
+            case wait_stopped(ID, Timeout) of
                 timeout ->
                     aest_docker_api:stop_container(ID, Opts);
                 ok ->
@@ -346,8 +348,8 @@ run_cmd_in_node_dir(#{container_id := ID, hostname := Name} = NodeState, Cmd, Ti
         [Cmd, Name, ID, Result]),
     case Result of
         undefined -> {ok, {Status, ""}, NodeState};
-        Str when is_binary(Result) ->
-            {ok, {Status, binary_to_list(Result)}, NodeState}
+        Str when is_binary(Str) ->
+            {ok, {Status, binary_to_list(Str)}, NodeState}
     end.
 
 -spec connect_node(atom(), node_state()) -> node_state().
@@ -366,6 +368,10 @@ disconnect_node(NetName, NodeState) ->
     log(NodeState, "Container [~s] disconnected from network [~s]",
         [ContId, NetId]),
     NodeState.
+
+-spec get_log_path(node_state()) -> binary().
+get_log_path(#{log_path := LogPath}) -> LogPath.
+
 
 %=== INTERNAL FUNCTIONS ========================================================
 

@@ -27,8 +27,8 @@
 %=== MACROS ====================================================================
 
 -define(BASE_URL, <<"http+unix://%2Fvar%2Frun%2Fdocker.sock/">>).
--define(CONTAINER_STOP_TIMEOUT, 30).
--define(CONTAINER_KILL_TIMEOUT_EXTRA, 5).
+-define(CONTAINER_STOP_TIMEOUT, 30000).
+-define(CONTAINER_KILL_TIMEOUT_EXTRA, 5000).
 -define(DEFAULT_TIMEOUT, 5000).
 %% It seems there is no way to disable the killing timout,
 %% it just default to 10 seconds. So we just set a big one...
@@ -117,14 +117,13 @@ start_container(ID) ->
 
 stop_container(ID, Opts) ->
     STDefault = ?CONTAINER_STOP_TIMEOUT,
-    {Query, HTDefault} = case maps:get(soft_timeout, Opts, STDefault) of
+    {Query, ReqTimeout} = case maps:get(soft_timeout, Opts, STDefault) of
         infinity -> {#{t => ?CONTAINER_STOP_INFINTY}, infinity};
-        STSecs ->
-            {#{t => STSecs}, STSecs + ?CONTAINER_KILL_TIMEOUT_EXTRA}
-    end,
-    ReqTimeout = case maps:get(hard_timeout, Opts, HTDefault) of
-        infinity -> infinity;
-        HTSecs -> HTSecs * 1000
+        TimeoutMs ->
+            HTDefault = TimeoutMs + ?CONTAINER_KILL_TIMEOUT_EXTRA,
+            TimeoutRem = if (TimeoutMs rem 1000) > 0 -> 1; true -> 0 end,
+            TimeoutSec = (TimeoutMs div 1000) + TimeoutRem,
+            {#{t => TimeoutSec}, maps:get(hard_timeout, Opts, HTDefault)}
     end,
     PostOpts = #{timeout => ReqTimeout},
     case docker_post([containers, ID, stop], Query, undefined, PostOpts) of
