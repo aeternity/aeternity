@@ -139,8 +139,7 @@ create_channel_(Cfg) ->
              ttl              => 100,
              client           => self(),
              noise            => [{noise, Proto}],
-             timeouts         => #{idle => 20000,
-                                   awaiting_locked => 10000},
+             timeouts         => #{idle => 20000},
              report_info      => true},
 
     {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec]),
