@@ -27,6 +27,7 @@
        , code_change/3]).
 
 -record(st, {parent :: pid()
+           , parent_mon_ref :: reference()
            , econn }).
 
 channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN     , Msg}).
@@ -58,7 +59,9 @@ accept(Port, Opts) ->
 
 init({Parent, Op}) ->
     proc_lib:init_ack(Parent, {ok, self()}),
-    St = establish(Op, #st{parent = Parent}),
+    ParentMonRef = monitor(process, Parent),
+    St = establish(Op, #st{parent = Parent,
+                           parent_mon_ref = ParentMonRef}),
     gen_server:enter_loop(?MODULE, ?GEN_SERVER_OPTS, St).
 
 establish({accept, Port, Opts}, St) ->
@@ -123,6 +126,10 @@ handle_cast_(close, St) ->
 handle_cast_(_Msg, St) ->
     {noreply, St}.
 
+%% FSM had died
+handle_info({'DOWN', Ref, process, Pid, _Reason},
+            #st{parent_mon_ref=Ref, parent=Pid}=St) ->
+    {stop, close, St};
 handle_info(Msg, St) ->
     try handle_info_(Msg, St)
     catch
