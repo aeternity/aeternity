@@ -21,6 +21,7 @@
 -export([connect_node/2]).
 -export([disconnect_node/2]).
 -export([get_log_path/1]).
+-export([export/2]).
 
 %=== MACROS ====================================================================
 
@@ -372,6 +373,9 @@ disconnect_node(NetName, NodeState) ->
 -spec get_log_path(node_state()) -> binary().
 get_log_path(#{log_path := LogPath}) -> LogPath.
 
+export(#{container_id := ID} = _NodeState, Name) ->
+    #{'Id' := ImageID} = aest_docker_api:commit(ID, Name),
+    {pull, ImageID}.
 
 %=== INTERNAL FUNCTIONS ========================================================
 

@@ -23,6 +23,7 @@
 -export([exec/3]).
 -export([extract_archive/3]).
 -export([container_logs/1]).
+-export([commit/2]).
 
 %=== MACROS ====================================================================
 
@@ -205,6 +206,11 @@ container_logs(ID) ->
         {ok, 404, _} -> throw({container_not_found, ID});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, decode_json(Response))})
+    end.
+
+commit(ID, Tag) ->
+    case docker_post([commit], #{container => ID, repo => "aeternity/epoch", tag => Tag}, #{}, #{}) of
+        {ok, 201, Response} -> Response
     end.
 
 %=== INTERNAL FUNCTIONS ========================================================
