@@ -1,0 +1,37 @@
+//
+// Dutch auction example
+//
+contract DutchAuction =
+
+  type state = { start_amount : uint,
+                 start_height : uint,
+                 dec          : unit,
+                 beneficiary  : address,
+                 sold         : bool }
+
+  // Add to work around current lack of predefined abort function
+  private function abort(err) = abort(err)
+
+  private function require(b : bool, err : string) =
+    if( !b ) abort(err)
+
+  // TTL set by user on posting contract, typically (start - end ) div dec
+  public function init(beneficiary, start, decrease) : state =
+    { start_amount = start,
+      start_height = chain.height,
+      beneficiary  = beneficiary,
+      dec          = decrease,
+      sold         = false }
+
+  // -- API
+
+  // We are the buyer... interesting case to buy for someone else and keep 10%
+  public stateful function bid() =
+    require( !(state.sold) )
+    let cost =
+      state.start_amount - (chain.height - state.start_height) * state.dec
+      require( self.balance >= cost)
+
+      transaction(SpendTx({recipient = state.beneficiary,
+                           amount    = cost }))  // or self.balance ** burn money **
+    put(state{sold = true})
