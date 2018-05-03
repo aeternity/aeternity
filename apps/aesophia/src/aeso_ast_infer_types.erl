@@ -136,6 +136,8 @@ lookup_name(Env, As, Name) ->
             Type
     end.
 
+infer_expr(_Env, Body={bool, As, _}) ->
+    {typed, As, Body, {id, As, "bool"}};
 infer_expr(_Env, Body={int, As, _}) ->
     {typed, As, Body, {id, As, "int"}};
 infer_expr(_Env, Body={string, As, _}) ->
@@ -172,12 +174,9 @@ infer_expr(Env, {typed, As, Body, Type}) ->
 infer_expr(Env, {app, As, Fun, Args}) ->
     case aeso_syntax:get_ann(format, As) of
         infix ->
-            TypedArgs = [infer_expr(Env, A) || A <- Args],
-            ArgTypes = [T || {typed, _, _, T} <- TypedArgs],
-            {fun_t, _, OperandTypes, ResultType} = infer_infix(Fun),
-            unify(ArgTypes, OperandTypes),
-            {typed, As, {app, As, Fun, TypedArgs}, ResultType};
-        %% TODO: prefix operators
+	    infer_op(Env, As, Fun, Args, fun infer_infix/1);
+	prefix ->
+	    infer_op(Env, As, Fun, Args, fun infer_prefix/1);
         _ ->
             NewFun={typed, _, _, FunType} = infer_expr(Env, Fun),
             NewArgs = [infer_expr(Env, A) || A <- Args],
@@ -231,6 +230,13 @@ infer_expr(Env, {lam, Attrs, Args, Body}) ->
     NewArgs = [{arg, As, NewPat, NewT} || {typed, As, NewPat, NewT} <- NewArgPatterns],
     {typed, Attrs, {lam, Attrs, NewArgs, NewBody}, {fun_t, Attrs, ArgTypes, ResultType}}.
 
+infer_op(Env, As, Op, Args, InferOp) ->
+    TypedArgs = [infer_expr(Env, A) || A <- Args],
+    ArgTypes = [T || {typed, _, _, T} <- TypedArgs],
+    {fun_t, _, OperandTypes, ResultType} = InferOp(Op),
+    unify(ArgTypes, OperandTypes),
+    {typed, As, {app, As, Op, TypedArgs}, ResultType}.
+
 infer_case(Env, Attrs, Pattern, ExprType, Branch, SwitchType) ->
     Line = line_number(Attrs),
     Vars = free_vars(Pattern),
@@ -276,6 +282,10 @@ infer_block(Env, _, [E], BlockType) ->
 infer_block(Env, Attrs, [E|Rest], BlockType) ->
     [infer_expr(Env, E)|infer_block(Env, Attrs, Rest, BlockType)].
 
+infer_infix({BoolOp, As})
+  when BoolOp =:= '&&'; BoolOp =:= '||' ->
+    Bool = {id, As, "bool"},
+    {fun_t, As, [Bool,Bool], Bool};
 infer_infix({IntOp, As})
   when IntOp == '+';    IntOp == '-';   IntOp == '*'; IntOp == '/';
        IntOp == 'band'; IntOp == 'bor'; IntOp == 'bxor' ->
@@ -292,6 +302,14 @@ infer_infix({'::', As}) ->
     ElemType = fresh_uvar(As),
     ListType = {app_t, As, {id, As, "list"}, [ElemType]},
     {fun_t, As, [ElemType, ListType], ListType}.
+
+infer_prefix({'!',As}) ->
+    Bool = {id, As, "bool"},
+    {fun_t, As, [Bool], Bool};
+infer_prefix({IntOp,As})
+  when IntOp =:= '-'; IntOp =:= 'bnot' ->
+    Int = {id, As, "int"},
+    {fun_t, As, [Int], Int}.
 
 free_vars({int, _, _}) ->
     [];
