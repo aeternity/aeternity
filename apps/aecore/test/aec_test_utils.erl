@@ -36,6 +36,7 @@
         , genesis_block_with_state/0
         , genesis_block_with_state/1
         , preset_accounts/0
+        , genesis_accounts_balances/1
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
@@ -61,6 +62,10 @@
 
 preset_accounts() ->
   ?PRESET_ACCOUNTS.
+
+genesis_accounts_balances(PresetAccounts) ->
+    [{aec_block_genesis:miner(), aec_governance:block_mine_reward()}
+     | PresetAccounts].
 
 mock_time() ->
     meck:new(aeu_time, [passthrough]),
@@ -218,7 +223,7 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, []) ->
 gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
     Height = aec_blocks:height(PreviousBlock) + 1,
     Txs = [signed_coinbase_tx(MinerAccount, Height)],
-    {B, S} = aec_blocks:new_with_state(PreviousBlock, Txs, Trees),
+    {B, S} = aec_blocks:new_with_state(PreviousBlock, MinerAccount, Txs, Trees),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
@@ -244,7 +249,7 @@ blocks_only_chain(Chain) ->
 next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) ->
     Height = aec_blocks:height(PrevBlock) + 1,
     Txs = TxsFun(Height),
-    {B, S} = aec_blocks:new_with_state(PrevBlock, [signed_coinbase_tx(MinerAcc, Height) | Txs], Trees),
+    {B, S} = aec_blocks:new_with_state(PrevBlock, MinerAcc, [signed_coinbase_tx(MinerAcc, Height) | Txs], Trees),
     {B#block{ target = Target, nonce  = Nonce,
               time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
      S}.

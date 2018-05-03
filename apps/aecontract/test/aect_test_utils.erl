@@ -19,6 +19,7 @@
         , set_trees/2
         , setup_new_account/1
         , setup_new_account/2
+        , setup_miner_account/2
         , get_account/2
         , next_nonce/2
         , trees/1
@@ -165,6 +166,10 @@ setup_new_account(Balance, State) ->
     State1            = insert_key_pair(PubKey, PrivKey, State),
     State2            = set_account(aec_accounts:new(PubKey, Balance), State1),
     {PubKey, State2}.
+
+setup_miner_account(PubKey, State) ->
+    A = aec_accounts:new(PubKey, aec_governance:block_mine_reward()),
+    set_account(A, State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),

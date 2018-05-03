@@ -32,6 +32,8 @@
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
+-define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -79,7 +81,8 @@ create(Cfg) ->
     TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees,
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY,
+                                                          [SignedTx], Trees,
                                                           Height,
                                                           ?PROTOCOL_VERSION),
     S3 = aesc_test_utils:set_trees(Trees1, S2),

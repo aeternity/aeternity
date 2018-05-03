@@ -27,8 +27,8 @@
          set_oracles/2
         ]).
 
--export([apply_signed_txs/4,
-         apply_signed_txs_strict/4,
+-export([apply_signed_txs/5,
+         apply_signed_txs_strict/5,
          ensure_account/2]).
 
 -record(trees, {
@@ -118,18 +118,18 @@ contracts(Trees) ->
 set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
 
--spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), height(),
-                              non_neg_integer()) ->
+-spec apply_signed_txs_strict(pubkey(), list(aetx_sign:signed_tx()),
+                              trees(), height(), non_neg_integer()) ->
                                  {ok, list(aetx_sign:signed_tx()), trees()}
                                | {'error', atom()}.
-apply_signed_txs_strict(SignedTxs, Trees, Height, ConsensusVersion) ->
-    apply_signed_txs_common(SignedTxs, Trees, Height, ConsensusVersion, true).
+apply_signed_txs_strict(Miner, SignedTxs, Trees, Height, ConsensusVersion) ->
+    apply_signed_txs_common(Miner, SignedTxs, Trees, Height, ConsensusVersion, true).
 
--spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), height(),
-                       non_neg_integer()) ->
+-spec apply_signed_txs(pubkey(), list(aetx_sign:signed_tx()),
+                       trees(), height(), non_neg_integer()) ->
                           {ok, list(aetx_sign:signed_tx()), trees()}.
-apply_signed_txs(SignedTxs, Trees, Height, ConsensusVersion) ->
-    {ok, _, _} = apply_signed_txs_common(SignedTxs, Trees, Height, ConsensusVersion, false).
+apply_signed_txs(Miner, SignedTxs, Trees, Height, ConsensusVersion) ->
+    {ok, _, _} = apply_signed_txs_common(Miner, SignedTxs, Trees, Height, ConsensusVersion, false).
 
 %%%=============================================================================
 %%% Internal functions
@@ -168,13 +168,14 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
-apply_signed_txs_common(SignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
+apply_signed_txs_common(Miner, SignedTxs0, Trees0, Height, ConsensusVersion, Strict) ->
+    {CoinbaseTxs, SignedTxs} = lists:partition(fun aetx_sign:is_coinbase/1, SignedTxs0), %% TODO Delete once coinbase removed.
     Trees1 = perform_pre_transformations(Trees0, Height),
     case apply_txs_on_state_trees(SignedTxs, Trees1, Height, ConsensusVersion, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
-            Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee),
-            {ok, SignedTxs1, Trees3};
+            Trees3 = grant_fee_to_miner(Miner, Trees2, TotalFee),
+            {ok, CoinbaseTxs ++ SignedTxs1, Trees3};
         {error, _} = E -> E
     end.
 
@@ -207,34 +208,25 @@ apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, C
     end.
 
 calculate_total_fee(SignedTxs) ->
-    lists:foldl(
-      fun(SignedTx, TotalFee) ->
-              Fee = aetx:fee(aetx_sign:tx(SignedTx)),
-              TotalFee + Fee
-      end, 0, SignedTxs).
+    TxsFee =
+        lists:foldl(
+          fun(SignedTx, TotalFee) ->
+                  Fee = aetx:fee(aetx_sign:tx(SignedTx)),
+                  TotalFee + Fee
+          end, 0, SignedTxs),
+    aec_governance:block_mine_reward() + TxsFee.
 
--spec grant_fee_to_miner(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
+-spec grant_fee_to_miner(pubkey(), trees(), non_neg_integer()) ->
                                 trees().
-grant_fee_to_miner([], Trees, 0) ->
-    lager:info("Empty block -- no fee"),
-    Trees;
-grant_fee_to_miner(SignedTxs, Trees0, TotalFee) ->
-    CoinbaseTxs = lists:filter(fun aetx_sign:is_coinbase/1, SignedTxs),
-    case CoinbaseTxs of
-        [] ->
-            lager:info("Invalid coinbase_tx transaction in block -- no fee"),
-            Trees0;
-        [SignedCoinbaseTx] ->
-            CoinbaseTx = aetx_sign:tx(SignedCoinbaseTx),
-            [MinerPubkey] = aetx:accounts(CoinbaseTx),
-            AccountsTrees0 = accounts(Trees0),
+grant_fee_to_miner(MinerPubkey, Trees0, TotalFee) ->
+    Trees1 = ensure_account(MinerPubkey, Trees0),
+    AccountsTrees1 = accounts(Trees1),
 
-            {value, Account0} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees0),
-            {ok, Account} = aec_accounts:earn(Account0, TotalFee),
+    {value, Account1} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees1),
+    {ok, Account} = aec_accounts:earn(Account1, TotalFee),
 
-            AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
-            set_accounts(Trees0, AccountsTrees)
-    end.
+    AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),
+    set_accounts(Trees1, AccountsTrees).
 
 -spec ensure_account(pubkey(), trees()) -> trees().
 ensure_account(AccountPubkey, Trees0) ->

@@ -68,12 +68,13 @@ get_txs_to_mine_in_pool(TopHash) ->
                            {error, term()}.
 create_block_candidate(TxsToMineInPool, TopBlock, TopBlockTrees, AdjHeaders) ->
     Height = aec_blocks:height(TopBlock) + 1,
-    case create_signed_coinbase_tx(Height) of
+    case aec_keys:pubkey() of
         {error, _} = Error ->
             Error;
-        {ok, SignedCoinbaseTx} ->
+        {ok, Miner} ->
+            {ok, SignedCoinbaseTx} = create_signed_coinbase_tx(Height),
             Txs = [SignedCoinbaseTx | TxsToMineInPool],
-            Block = aec_blocks:new(TopBlock, Txs, TopBlockTrees),
+            Block = aec_blocks:new(TopBlock, Miner, Txs, TopBlockTrees),
             case aec_blocks:cointains_coinbase_tx(Block) of
                 true ->
                     case adjust_target(Block, AdjHeaders) of

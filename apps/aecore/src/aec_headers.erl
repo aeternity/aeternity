@@ -10,6 +10,7 @@
          difficulty/1,
          time_in_secs/1,
          time_in_msecs/1,
+         miner/1,
          serialize_to_binary/1,
          serialize_to_map/1,
          deserialize_from_binary/1,
@@ -61,6 +62,9 @@ time_in_secs(Header) ->
 time_in_msecs(Header) ->
     Header#header.time.
 
+miner(Header) ->
+    Header#header.miner.
+
 -spec serialize_to_map(header()) -> {ok, map()}.
 serialize_to_map(H = #header{}) ->
     Serialized =
@@ -72,7 +76,8 @@ serialize_to_map(H = #header{}) ->
         <<"time">> => H#header.time,
         <<"pow">> => H#header.pow_evidence,
         <<"version">> => H#header.version,
-        <<"txs_hash">> => H#header.txs_hash
+        <<"txs_hash">> => H#header.txs_hash,
+        <<"miner">> => H#header.miner
       },
     {ok, Serialized}.
 
@@ -87,7 +92,8 @@ deserialize_from_map(H = #{}) ->
       <<"time">> := Time,
       <<"version">> := Version,
       <<"pow">> := PowEvidence,
-      <<"txs_hash">> := TxsHash
+      <<"txs_hash">> := TxsHash,
+      <<"miner">> := Miner
     } = H,
     #header{ height = Height,
              prev_hash = PrevHash,
@@ -97,7 +103,8 @@ deserialize_from_map(H = #{}) ->
              time = Time,
              version = Version,
              pow_evidence = PowEvidence,
-             txs_hash = TxsHash}.
+             txs_hash = TxsHash,
+             miner = Miner}.
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(H) ->
@@ -111,7 +118,8 @@ serialize_to_binary(H) ->
       (H#header.target):64,
       PowEvidence/binary,
       (H#header.nonce):64,
-      (H#header.time):64
+      (H#header.time):64,
+      (H#header.miner):?MINER_PUB_BYTES/binary
     >>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
@@ -122,7 +130,8 @@ deserialize_from_binary(Bin) ->
       RootHash:32/binary,
       Target:64,
       PowEvidenceBin:168/binary,
-      Nonce:64, Time:64 >> = Bin,
+      Nonce:64, Time:64,
+      Miner:?MINER_PUB_BYTES/binary >> = Bin,
     PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
     #header{ height = Height,
              prev_hash = PrevHash,
@@ -132,7 +141,8 @@ deserialize_from_binary(Bin) ->
              time = Time,
              version = Version,
              pow_evidence = PowEvidence,
-             txs_hash = TxsHash }.
+             txs_hash = TxsHash,
+             miner = Miner }.
 
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
