@@ -34,6 +34,8 @@
 -type amount()      :: i8bytes().
 -type pubkey()      :: bin32().
 
+-define(PUBKEY_SIZE, 32).
+
 enc(?CH_OPEN      , Msg) -> enc_ch_open(Msg);
 enc(?CH_ACCEPT    , Msg) -> enc_ch_accept(Msg);
 enc(?CH_REESTABL  , Msg) -> enc_ch_reestabl(Msg);
@@ -42,9 +44,11 @@ enc(?FND_SIGNED   , Msg) -> enc_fnd_signed(Msg);
 enc(?FND_LOCKED   , Msg) -> enc_fnd_locked(Msg);
 enc(?UPDATE       , Msg) -> enc_update(Msg);
 enc(?UPDATE_ACK   , Msg) -> enc_update_ack(Msg);
+enc(?UPDATE_ERR   , Msg) -> enc_update_err(Msg);
 enc(?ERROR        , Msg) -> enc_error(Msg);
 enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg);
-enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg).
+enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg);
+enc(?INBAND_MSG   , Msg) -> enc_inband_msg(Msg).
 
 -define(id(C), C:1/unit:8).
 
@@ -56,9 +60,11 @@ dec(<<?id(?ID_FND_SIGNED)   , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
 dec(<<?id(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
 dec(<<?id(?ID_UPDATE)       , B/bytes>>) -> {?UPDATE      , dec_update(B)};
 dec(<<?id(?ID_UPDATE_ACK)   , B/bytes>>) -> {?UPDATE_ACK  , dec_update_ack(B)};
+dec(<<?id(?ID_UPDATE_ERR)   , B/bytes>>) -> {?UPDATE_ERR  , dec_update_err(B)};
 dec(<<?id(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
 dec(<<?id(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
-dec(<<?id(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)}.
+dec(<<?id(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
+dec(<<?id(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
 
 -type ch_open_msg() :: #{chain_hash           := hash()
                        , temporary_channel_id := chan_id()
@@ -255,6 +261,21 @@ dec_update_ack(<< ChanId:32/binary
     #{ channel_id => ChanId
      , data   => Data }.
 
+-type update_err_msg() :: #{ channel_id := chan_id()
+                           , round      := non_neg_integer() }.
+
+-spec enc_update_err(update_err_msg()) -> binary().
+enc_update_err(#{ channel_id := ChanId
+                , round      := Round }) ->
+    << ?ID_UPDATE_ERR:1 /unit:8
+     , ChanId        :32/binary
+     , Round         :4 /unit:8 >>.
+
+-spec dec_update_err(binary()) -> update_err_msg().
+dec_update_err(<< ChanId:32/binary
+                , Round :4/unit:8 >>) ->
+    #{ channel_id => ChanId
+     , round      => Round }.
 
 %% -type upd_deposit_msg() :: #{temporary_channel_id := chan_id()
 %%                            , data                 := binary()}.
@@ -355,3 +376,43 @@ dec_shutdown_ack(<< ChanId:32/binary
     Length = byte_size(Data),
     #{ channel_id => ChanId
      , data       => Data }.
+
+-type inband_msg() :: #{channel_id := chan_id(),
+                        from       := binary(),
+                        to         := binary(),
+                        info       := binary()}.
+
+-spec enc_inband_msg(inband_msg()) -> binary().
+enc_inband_msg(#{ channel_id := ChanId
+                , from       := From
+                , to         := To
+                , info       := Info }) ->
+    assert_max_length(?PUBKEY_SIZE, byte_size(From), from),
+    assert_max_length(?PUBKEY_SIZE, byte_size(To), to),
+    Length = byte_size(Info),
+    assert_max_length(16#ff, Length, msg),
+    << ?ID_INBAND_MSG:1 /unit:8
+     , ChanId        :32/binary
+     , From          :?PUBKEY_SIZE/binary
+     , To            :?PUBKEY_SIZE/binary
+     , Length        :2 /unit:8
+     , Info          :Length/bytes >>.
+
+dec_inband_msg(<< ChanId:32/binary
+                , From  :?PUBKEY_SIZE/binary
+                , To    :?PUBKEY_SIZE/binary
+                , Length:2 /unit:8
+                , Info/binary >>) ->
+    Length = byte_size(Info),
+    #{ channel_id => ChanId
+     , from       => From
+     , to         => To
+     , info       => Info }.
+
+
+assert_max_length(Max, L, Field) ->
+    if L > Max ->
+            erlang:error({max_length_exceeded, Field});
+       true ->
+            ok
+    end.

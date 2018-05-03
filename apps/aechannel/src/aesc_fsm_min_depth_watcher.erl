@@ -50,6 +50,8 @@ terminate(_Reason, _St) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
+check_status(#{funding_locked := true} = St) ->
+    watch_for_chain_transaction(St);
 check_status(#{fsm := Fsm, chan_id := ChanId,
                tx_hash := TxHash, min_depth := MinDepth} = St) ->
     lager:debug("check_status(~p)", [Fsm]),
@@ -57,11 +59,15 @@ check_status(#{fsm := Fsm, chan_id := ChanId,
         true ->
             lager:debug("min_depth achieved", []),
             aesc_fsm:own_funding_locked(Fsm, ChanId),
-            {stop, normal, St};
+            {noreply, St#{funding_locked => true}};
         _ ->
             lager:debug("min_depth not yet achieved", []),
             {noreply, St, 5000}
     end.
+
+watch_for_chain_transaction(St) ->
+    lager:debug("watch_for_chain_transaction(~p)", [St]),
+    {noreply, St, 5000}.
 
 min_depth_achieved(TxHash, MinDepth) ->
     case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of

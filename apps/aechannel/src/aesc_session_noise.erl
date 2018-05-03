@@ -15,7 +15,9 @@
        , channel_reestablish/2
        , update/2
        , update_ack/2
+       , update_error/2
        , error/2
+       , inband_msg/2
        , shutdown/2
        , shutdown_ack/2]).
 
@@ -38,12 +40,17 @@ funding_locked     (Session, Msg) -> cast(Session, {msg, ?FND_LOCKED  , Msg}).
 channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL , Msg}).
 update             (Session, Msg) -> cast(Session, {msg, ?UPDATE      , Msg}).
 update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK  , Msg}).
+update_error       (Session, Msg) -> cast(Session, {msg, ?UPDATE_ERR  , Msg}).
 error              (Session, Msg) -> cast(Session, {msg, ?ERROR       , Msg}).
+inband_msg         (Session, Msg) -> cast(Session, {msg, ?INBAND_MSG  , Msg}).
 shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN    , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK, Msg}).
 
 close(Session) ->
-    cast(Session, close).
+    try call(Session, close)
+    catch
+        error:_ -> ok
+    end.
 
 -define(GEN_SERVER_OPTS, []).
 
@@ -106,6 +113,9 @@ get_reconnect_params() ->
     {10000, 30}.
 
 
+handle_call(close, _From, #st{econn = EConn} = St) ->
+    close_econn(EConn),
+    {stop, normal, ok, St};
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_call}, St}.
 
@@ -121,8 +131,6 @@ handle_cast(Msg, St) ->
 handle_cast_({msg, M, Info}, #st{econn = EConn} = St) ->
     enoise:send(EConn, aesc_codec:enc(M, Info)),
     {noreply, St};
-handle_cast_(close, St) ->
-    {stop, close, St};
 handle_cast_(_Msg, St) ->
     {noreply, St}.
 
@@ -147,15 +155,26 @@ handle_info_({noise, EConn, Data}, #st{econn = EConn} = St) ->
 handle_info_(_Msg, St) ->
     {noreply, St}.
 
-terminate(_Reason, _St) ->
+terminate(_Reason, #st{econn = EConn}) ->
+    close_econn(EConn),
     ok.
 
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
+close_econn(undefined) ->
+    ok;
+close_econn(EConn) ->
+    enoise:close(EConn).
+
+
 cast(P, Msg) ->
     lager:debug("to noise session ~p: ~p", [P, Msg]),
     gen_server:cast(P, Msg).
+
+call(P, Msg) ->
+    lager:debug("Call to noise session ~p: ~p", [P, Msg]),
+    gen_server:call(P, Msg).
 
 tell_fsm({_, _} = Msg, #st{parent = Parent}) ->
     aesc_fsm:message(Parent, Msg).
