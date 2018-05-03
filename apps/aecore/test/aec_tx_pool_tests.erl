@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%%-------------------------------------------------------------------
@@ -77,26 +78,21 @@ tx_pool_test_() ->
                %% Prepare a few txs.
                STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
                STx2 = a_signed_tx(PubKey1, new_pubkey(), 2, 1),
-
-               %% Some txs received from peers.
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
                {ok, PoolTxs} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
-               %% A block inserted in chain.
+               %% Insert a block in chain.
                {ok, Candidate1,_Nonce} =
                    aec_mining:create_block_candidate(TopBlock, TopState, []),
                {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
-
-               [_|Included] = aec_blocks:txs(Candidate1),
-
-               %% Check that we use all the txs in mempool
-               ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
-
-               %% Insert the block
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(CHash1, aec_chain:top_block_hash()),
+
+               %% Check that we uses all the txs in mempool
+               [_|Included] = aec_blocks:txs(Candidate1),
+               ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
 
                %% Ping tx_pool for top change
                aec_tx_pool:top_change(TopBlockHash, CHash1),
@@ -183,6 +179,42 @@ tx_pool_test_() ->
                {ok, PoolTxs2} = aec_tx_pool:peek(infinity),
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs2)),
                unlink(Pid), %% Leave it for the cleanup
+               ok
+       end},
+      {"Test rejection of transactions",
+       fun() ->
+               %% Prepare and insert the genesis block with some funds
+               PubKey1 = new_pubkey(),
+               PubKey2 = new_pubkey(),
+               aec_test_utils:mock_genesis([{PubKey1, 100}, {PubKey2, 100}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               ok = aec_chain_state:insert_block(GenesisBlock),
+               {TopBlock, TopState} = aec_chain:top_block_with_state(),
+
+               %% Add a transaction to the chain
+               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
+               ?assertEqual(ok, aec_tx_pool:push(STx1)),
+               {ok, Candidate1,_Nonce} =
+                   aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
+               ok = aec_chain_state:insert_block(Candidate1),
+               ?assertEqual(Top, aec_chain:top_block_hash()),
+
+               %% Now we should reject the same transaction since it
+               %% is already in the chain
+               ?assertEqual({error, already_accepted},
+                            aec_tx_pool:push(STx1)),
+
+               %% A transaction with too low nonce should be rejected
+               STx2 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
+               ?assertEqual({error, too_low_nonce},
+                            aec_tx_pool:push(STx2)),
+
+               %% A transaction with too high nonce should _NOT_ be rejected
+               STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 1),
+               ?assertEqual(ok,
+                            aec_tx_pool:push(STx3)),
+
                ok
        end}
      ]}.

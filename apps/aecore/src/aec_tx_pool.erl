@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Memory pool of unconfirmed transactions.
@@ -59,16 +60,17 @@ stop() ->
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
--spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
+-spec push(aetx_sign:signed_tx()) -> ok.
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx()), event()) -> ok.
-push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, Txs, Event});
-push([], _) -> ok;
+-spec push(aetx_sign:signed_tx(), event()) -> ok.
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, [Tx], Event}).
+    %% Verify that this is a signed transaction.
+    try aetx_sign:tx(Tx)
+    catch _:_ -> error({illegal_transaction, Tx})
+    end,
+    gen_server:call(?SERVER, {push, Tx, Event}).
 
 -spec get_max_nonce(pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
@@ -94,7 +96,6 @@ size() ->
 %%%===================================================================
 
 init([]) ->
-    %% TODO: Traverse db table to init tx pool
     {ok, Db} = pool_db_open(),
     Handled  = ets:new(init_tx_pool, [private]),
     InitF  = fun(TxHash, _) ->
@@ -106,13 +107,8 @@ init([]) ->
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
-handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
-    lists:foreach(
-        fun(Tx) ->
-            pool_db_put(Mempool, pool_db_key(Tx), Tx, Event)
-        end,
-        Txs),
-    {reply, ok, State};
+handle_call({push, Tx, Event}, _From, #state{db = Mempool} = State) ->
+    {reply, pool_db_put(Mempool, pool_db_key(Tx), Tx, Event), State};
 handle_call({top_change, OldHash, NewHash}, _From,
             #state{db = Mempool} = State) ->
     do_top_change(OldHash, NewHash, Mempool),
@@ -236,31 +232,53 @@ update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
                          'ok' | {'error', atom()}.
 pool_db_put(_, undefined, _, _) ->
     %% TODO: This is probably not needed anymore
-    false; %% Ignore coinbase
+    {error, coinbase};
 pool_db_put(Mempool, Key, Tx, Event) ->
     Hash = aetx_sign:hash(Tx),
-    case aetx_sign:verify(Tx) of
-        {error, _} = E ->
-            lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
-            E;
-        ok ->
-            case aec_db:find_transaction_in_main_chain_or_mempool(Hash) of
-                {Location, _} when is_binary(Location); Location =:= mempool ->
-                    lager:debug("Already have tx: ~p in ~p", [Hash, Location]),
-                    ok;
-                none ->
-                    lager:debug("Adding tx", [Hash]),
-                    %% TODO: Check nonce and origin to decide if this
-                    %% is an orphan or a pending transaction.
-                    case ets:member(Mempool, Key) of
-                        true ->
-                            lager:debug("Pool db key already present (~p)", [Key]),
-                            %% TODO: We should make a decision whether to switch the tx.
-                            ok;
-                        false ->
-                            aec_events:publish(Event, Tx),
-                            aec_db:add_tx(Tx),
-                            ets:insert(Mempool, {Key, Tx})
+    case aec_db:find_tx_location(Hash) of
+        BlockHash when is_binary(BlockHash) ->
+            lager:debug("Already have tx: ~p in ~p", [Hash, BlockHash]),
+            {error, already_accepted};
+        mempool ->
+            lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
+            ok;
+        none ->
+            case aetx_sign:verify(Tx) of
+                {error, _} = E ->
+                    lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
+                    E;
+                ok ->
+                    Unsigned = aetx_sign:tx(Tx),
+                    Nonce = aetx:nonce(Unsigned),
+                    case check_nonce(aetx:origin(Unsigned), Nonce) of
+                        {error, _} = E -> E;
+                        ok ->
+                            lager:debug("Adding tx", [Hash]),
+                            case ets:member(Mempool, Key) of
+                                true ->
+                                    lager:debug("Pool db key already present (~p)", [Key]),
+                                    %% TODO: We should make a decision whether to switch the tx.
+                                    ok;
+                                false ->
+                                    aec_events:publish(Event, Tx),
+                                    aec_db:add_tx(Tx),
+                                    ets:insert(Mempool, {Key, Tx}),
+                                    ok
+                            end
                     end
             end
+    end.
+
+check_nonce(Pubkey, TxNonce) ->
+    %% Check is conservative and only rejects certain cases
+    case aec_chain:get_account(Pubkey) of
+        {value, Account} ->
+            case aec_accounts:nonce(Account) < TxNonce of
+                true  -> ok;
+                false -> {error, too_low_nonce}
+            end;
+        {error, no_state_trees} ->
+            ok;
+        none ->
+            ok
     end.

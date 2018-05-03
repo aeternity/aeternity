@@ -44,7 +44,8 @@
         , add_tx/1
         , add_tx_hash_to_mempool/1
         , is_in_tx_pool/1
-        , find_transaction_in_main_chain_or_mempool/1
+        , find_transaction_in_main_chain_or_mempool/1 %% NOTE: Legacy tx hash
+        , find_tx_location/1
         , remove_tx_from_mempool/1
         , remove_tx_location/1
         ]).
@@ -420,6 +421,16 @@ add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
     ?t(delete(aec_tx_location, TxHash)).
+
+find_tx_location(STxHash) ->
+    ?t(case mnesia:read(aec_tx_location, STxHash) of
+           [] ->
+               case mnesia:read(aec_tx_pool, STxHash) of
+                   [] -> none;
+                   [_] -> mempool
+               end;
+           [#aec_tx_location{value = BlockHash}] -> BlockHash
+       end).
 
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),

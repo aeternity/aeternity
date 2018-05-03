@@ -624,7 +624,7 @@ do_fetch_mempool(PeerId) ->
         {ok, Txs} ->
             lager:debug("Mempool (~p) received, size: ~p",
                         [ppp(PeerId), length(Txs)]),
-            aec_tx_pool:push(Txs),
+            lists:foreach(fun aec_tx_pool:push/1, Txs),
             aec_events:publish(mempool_sync, {fetched, PeerId});
         Other ->
             lager:debug("Error fetching mempool from ~p: ~p",
