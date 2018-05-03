@@ -1167,7 +1167,7 @@ make_contract_tx(contract_call_compute_tx, PubKey, DecPubKey, ContractPubKey, Cf
           function   => ContractFunction,
           arguments  => ContractArguments},
     {ok, EncContractCallData} =
-        aect_ring:encode_call_data(ContractCode, ContractFunction, ContractArguments),
+        aect_sophia:encode_call_data(ContractCode, ContractFunction, ContractArguments),
     DecContractCallData1 = aeu_hex:hexstring_decode(EncContractCallData),
     DecContractCallCompute =
         ContractCallCompute#{caller    => DecPubKey,
