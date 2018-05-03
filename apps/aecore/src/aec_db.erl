@@ -90,6 +90,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
+-include("aec_db.hrl").
 
 %% - transactions
 %% - headers
@@ -101,24 +102,6 @@
 %% - name_service_state
 %% - name_service_cache
 %% - one per state tree
-
--record(aec_blocks             , {key, txs}).
--record(aec_headers            , {key, value, height}).
--record(aec_contract_state     , {key, value}).
--record(aec_call_state         , {key, value}).
--record(aec_chain_state        , {key, value}).
--record(aec_block_state        , {key, value, difficulty, fork_id}).
--record(aec_oracle_cache       , {key, value}).
--record(aec_oracle_state       , {key, value}).
--record(aec_account_state      , {key, value}).
--record(aec_channel_state      , {key, value}).
--record(aec_name_service_cache , {key, value}).
--record(aec_name_service_state , {key, value}).
-
--record(aec_signed_tx          , {key, value}).
--record(aec_tx_location        , {key, value}).
--record(aec_tx_pool            , {key, value}).
-
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -589,10 +572,20 @@ initialize_db(ram) ->
 
 initialize_db(Mode, Storage) ->
     add_backend_plugins(Mode),
+    run_hooks('$aec_db_add_plugins', Mode),
     add_index_plugins(),
+    run_hooks('$aec_db_add_index_plugins', Mode),
     ensure_mnesia_tables(Mode, Storage),
     ok.
 
+run_hooks(Hook, Mode) ->
+    [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
+
+fold_hooks(Hook, Acc0) ->
+    lists:foldl(
+      fun({_App, {M,F}}, Acc) ->
+              M:F(Acc)
+      end, Acc0, setup:find_env_vars(Hook)).
 
 add_backend_plugins(disc) ->
     mnesia_rocksdb:register();
@@ -616,6 +609,7 @@ ensure_mnesia_tables(Mode, Storage) ->
         ok ->
             [{atomic,ok} = mnesia:create_table(T, Spec)
              || {T, Spec} <- Tables],
+            run_hooks('$aec_db_create_tables', Mode),
             ok
     end.
 
@@ -634,7 +628,7 @@ check_mnesia_tables([{Table, Spec}|Left], Acc) ->
              end,
     check_mnesia_tables(Left, NewAcc);
 check_mnesia_tables([], Acc) ->
-    Acc.
+    fold_hooks('$aec_db_check_tables', Acc).
 
 ensure_schema_storage_mode(ram) ->
     case disc_db_exists() of

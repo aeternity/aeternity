@@ -1,3 +1,4 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 {application, aechannel,
  [{description, "AE State Channels"},
   {vsn, "0.1.0"},
@@ -10,7 +11,9 @@
     aetx,
     sext
    ]},
-  {env,[]},
+  {env,[
+        {'$aec_db_add_index_plugins', {aesc_chan_db, add_index_plugins}}
+       ]},
   {modules, []},
   {maintainers, []},
   {licenses, []},
