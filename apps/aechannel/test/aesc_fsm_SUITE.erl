@@ -21,6 +21,7 @@
 -export([
           create_channel/1
         , upd_transfer/1
+        , inband_msgs/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -38,7 +39,9 @@ groups() ->
      {all_tests, [sequence], [{group, transactions}]},
      {transactions, [sequence],
       [ create_channel
-      , upd_transfer ]
+      , inband_msgs
+      , upd_transfer
+      ]
      }
     ].
 
@@ -98,7 +101,11 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
-    #{} = _Ch = create_channel_([{port, 9325}|Cfg]),
+    #{ i := #{fsm := FsmI}
+     , r := #{fsm := FsmR} } = _Ch = create_channel_([{port, 9325}|Cfg]),
+    rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+    check_info(1000),
     ok.
 
 upd_transfer(Cfg) ->
@@ -117,6 +124,19 @@ upd_transfer(Cfg) ->
     check_info(100),
     {ok, [Tx]} = rpc(dev1, aec_tx_pool, peek, [1]),
     ct:log("From mempool: ~p", [Tx]),
+    ok.
+
+inband_msgs(Cfg) ->
+    #{ i := #{fsm := FsmI} = _I
+     , r := #{fsm := FsmR} = R
+     , spec := #{ initiator := _PubI
+                , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
+    check_info(),
+    ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
+    receive_from_fsm(message, R, fun(#{info := <<"i2r hello">>}) -> ok end, 1000),
+    rpc(dev1, erlang, exit, [FsmI, kill]),
+    rpc(dev1, erlang, exit, [FsmR, kill]),
+    check_info(1000),
     ok.
 
 create_channel_(Cfg) ->
@@ -195,22 +215,34 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout) ->
             error(timeout)
     end.
 
-receive_info(#{role := Role, fsm := Fsm}, Msg) ->
+receive_info(R, Msg) ->
+    receive_from_fsm(info, R, Msg, ?TIMEOUT).
+
+receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Msg, Timeout) ->
     receive
-        {aesc_fsm, Fsm, _ChanId, {info, Msg}} ->
-            ct:log("~p: received info:~p", [Role, Msg]),
-            ok
-    after ?TIMEOUT ->
+        {aesc_fsm, Fsm, _ChanId, {Tag, Msg1}} ->
+            ct:log("~p: received ~p:~p", [Role, Tag, Msg1]),
+            match_msgs(Msg, Msg1)
+    after Timeout ->
             error(timeout)
     end.
+
+match_msgs(F, Msg) when is_function(F, 1) ->
+    F(Msg);
+match_msgs(M, M) ->
+    ok;
+match_msgs(A, B) ->
+    ct:log("Messages don't match: ~p / ~p", [A, B]),
+    erlang:error({message_mismatch, [A, B]}).
+
 
 check_info() ->
     check_info(0).
 
 check_info(Timeout) ->
     receive
-        {aesc_fsm, Fsm, ChanId, {info, Msg}} = Info ->
-            ct:log("Received info: ~p", [Info]),
+        {aesc_fsm, Fsm, ChanId, {Tag, Msg}} = Info ->
+            ct:log("Received ~p: ~p", [Tag, Info]),
             [{Fsm, ChanId, Msg}|check_info(Timeout)]
     after Timeout ->
             []
@@ -220,7 +252,7 @@ prep_account(Role, Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
     {ok, PrivKey} = rpc(Node, aec_keys, privkey, []),
     ct:log("~p: Pubkey = ~p", [Role, PubKey]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 6),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 9),
     ct:log("~p: 6 blocks mined on ~p", [Role, Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => Role,
