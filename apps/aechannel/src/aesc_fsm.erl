@@ -298,7 +298,7 @@ check_rpt_opt(Opts) ->
                                   lists:member(K, report_tags())
                                       andalso
                                       is_boolean(V)],
-                    maps:to_list(L);
+                    maps:from_list(L);
                 error ->
                     case maps:find(report_info, Opts) of  %% bw compatibility
                         {ok, V} when is_boolean(V) ->
@@ -1106,6 +1106,10 @@ get_latest_state_tx(State) ->
     [SignedTx|_] = drop_until_mutually_signed(State),
     {tx_round(aetx_sign:tx(SignedTx)), SignedTx}.
 
+get_fallback_state(State) ->
+    [SignedTx|_] = L = drop_until_mutually_signed(State),
+    {tx_round(aetx_sign:tx(SignedTx)), L}.
+
 fallback_to_stable_state(#data{state = State} = D) ->
     [_|_] = NewState = drop_until_mutually_signed(State),
     D#data{state = NewState}.
@@ -1261,7 +1265,7 @@ send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
 send_update_err_msg(#data{ state = [SignedTx|_]
                          , on_chain_id = ChanId
                          , session     = Sn } = Data) ->
-    Round = tx_round(aec_tx_sign:tx(SignedTx)),
+    Round = tx_round(aetx_sign:tx(SignedTx)),
     Msg = #{ channel_id => ChanId
            , round      => Round },
     aesc_session_noise:update_error(Sn, Msg),
@@ -1274,7 +1278,7 @@ check_update_err_msg(#{ channel_id := ChanId
                            state = State} = D) ->
     case ChanId == ChanId0 of
         true ->
-            case get_latest_state_tx(State) of
+            case get_fallback_state(State) of
                 {Round, State1} ->
                     {ok, D#data{state = State1}};
                 _Other ->
