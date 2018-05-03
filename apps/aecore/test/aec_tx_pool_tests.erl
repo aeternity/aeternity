@@ -51,27 +51,32 @@ tx_pool_test_() ->
                %% One tx to serve to peers.
                ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(1)),
 
+               %% Add it again and see that it is not added twice
+               ?assertEqual(ok, aec_tx_pool:push(STx1, tx_received)),
+               ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(1)),
+
                %% Other tx received from a peer.
                STx2 = a_signed_tx(new_pubkey(), me, 1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx2, tx_received)),
 
                %% Two tx2 to serve to peers.
-               ?assertEqual({ok, [STx2]}, aec_tx_pool:peek(1)),
-               ?assertEqual({ok, [STx2, STx1]}, aec_tx_pool:peek(2))
+               {ok, PoolTxs} = aec_tx_pool:peek(infinity),
+               ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs))
        end},
-      {"Mempool follows chain insertion",
+      {"Mempool follows chain insertions and forks",
        fun() ->
                %% Prepare and insert the genesis block with some funds
-               PubKey = new_pubkey(),
-               aec_test_utils:mock_genesis([{PubKey, 100}]),
+               PubKey1 = new_pubkey(),
+               PubKey2 = new_pubkey(),
+               aec_test_utils:mock_genesis([{PubKey1, 100}, {PubKey2, 100}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                ok = aec_chain_state:insert_block(GenesisBlock),
                {TopBlock, TopState} = aec_chain:top_block_with_state(),
                TopBlockHash = aec_chain:top_block_hash(),
 
                %% Prepare a few txs.
-               STx1 = a_signed_tx(PubKey, new_pubkey(), 1, 1),
-               STx2 = a_signed_tx(PubKey, new_pubkey(), 2, 1),
+               STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
+               STx2 = a_signed_tx(PubKey1, new_pubkey(), 2, 1),
 
                %% Some txs received from peers.
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
@@ -80,26 +85,60 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
                %% A block inserted in chain.
-               {ok, Candidate,_Nonce} =
+               {ok, Candidate1,_Nonce} =
                    aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
 
-               [_|Included] = aec_blocks:txs(Candidate),
+               [_|Included] = aec_blocks:txs(Candidate1),
 
                %% Check that we use all the txs in mempool
                ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
 
                %% Insert the block
-               ok = aec_chain_state:insert_block(Candidate),
+               ok = aec_chain_state:insert_block(Candidate1),
+               ?assertEqual(CHash1, aec_chain:top_block_hash()),
 
                %% Ping tx_pool for top change
-               aec_tx_pool:top_change(TopBlockHash, aec_chain:top_block_hash()),
+               aec_tx_pool:top_change(TopBlockHash, CHash1),
 
                %% The mempool should now be empty
                ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
-               aec_test_utils:unmock_genesis()
+
+               %% Create a fork
+               STx3 = a_signed_tx(PubKey2, new_pubkey(), 1, 1),
+               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
+               ?assertEqual(ok, aec_tx_pool:push(STx3)),
+               ?assertEqual(ok, aec_tx_pool:push(STx4)),
+               {ok, Candidate2,_Nonce2} =
+                   aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, CHash2} = aec_blocks:hash_internal_representation(Candidate2),
+
+               %% Ensure that the new fork takes over by
+               %% increasing the difficulty
+               meck:new(aec_blocks, [passthrough]),
+               meck:expect(aec_headers, difficulty,
+                           fun(B) -> meck:passthrough([B]) * 2 end),
+
+               ok = aec_chain_state:insert_block(Candidate2),
+
+               %% The new fork took over
+               ?assertEqual(CHash2, aec_chain:top_block_hash()),
+
+               %% Ping tx_pool for top change
+               aec_tx_pool:top_change(CHash1, CHash2),
+
+               %% The old transactions should now be back in the pool
+               {ok, PoolTxs2} = aec_tx_pool:peek(infinity),
+               Sorted2 = lists:sort(PoolTxs2),
+               ?assertEqual(lists:sort([STx1, STx2]), Sorted2),
+
+
+               aec_test_utils:unmock_genesis(),
+               meck:unload(aec_headers),
+               ok
        end},
       {"Ensure ordering",
-             fun() ->
+       fun() ->
                  %% We should sort by fee, but preserve the order of nonces for each sender
                  PK1 = new_pubkey(),
                  PK2 = new_pubkey(),
