@@ -319,7 +319,7 @@ block_candidate_test_() ->
           TmpKeysDir = setup_common(),
           {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
           meck:new(aec_mining, [passthrough]),
-          meck:expect(aec_mining, create_block_candidate,
+          meck:expect(aec_mining, create_key_block_candidate,
               fun(TopBlock, TopBlockState, AdjChain) ->
                   timer:sleep(100),
                   meck:passthrough([TopBlock, TopBlockState, AdjChain])
