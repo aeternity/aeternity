@@ -12,8 +12,7 @@
     new_node_joins_network/1,
     docker_keeps_data/1,
     stop_and_continue_sync/1,
-    net_split_recovery/1,
-    sync_speed/1
+    net_split_recovery/1
 ]).
 
 -import(aest_nodes, [
@@ -119,8 +118,7 @@ all() -> [
     new_node_joins_network,
     docker_keeps_data,
     stop_and_continue_sync,
-    net_split_recovery,
-    sync_speed
+    net_split_recovery
 ].
 
 init_per_testcase(_TC, Config) ->
@@ -393,56 +391,9 @@ net_split_recovery(Cfg) ->
     ?assertEqual(D1, D3),
     ?assertEqual(D1, D4),
 
-    ok.  
-
-sync_speed(Cfg) ->
-    InitialNodes = [node_name(I) || I <- lists:seq(1, 4)],
-    NextNodes = [node_name(I) || I <- lists:seq(5, 6)],
-    Height = 1000,
-
-    MineRate = 100,
-    MiningTimeout = MineRate * 2,
-    Spec = #{
-        backend => aest_docker,
-        source => {pull, "aeternity/epoch:local"},
-        mine_rate => 100
-    },
-
-    InitialNodeSpecs = [
-        maps:merge(#{name => N, peers => InitialNodes -- [N]}, Spec)
-        || N <- InitialNodes
-    ],
-    NextNodeSpecs = [
-        maps:merge(#{name => N, peers => InitialNodes}, Spec)
-        || N <- NextNodes
-    ],
-
-    setup_nodes(InitialNodeSpecs ++ NextNodeSpecs, Cfg),
-    [start_node(N, Cfg) || N <- InitialNodes],
-    wait_for_value({height, Height}, InitialNodes, MiningTimeout * Height, Cfg),
-
-    InitialBlocks = [
-        request(N, [v2, 'block-by-height'], #{height => Height}, Cfg)
-        || N <- InitialNodes
-    ],
-
-    start_node(node_name(5), Cfg),
-    wait_for_value({height, 0}, [node_name(5)], ?STARTUP_TIMEOUT, Cfg),
-    wait_for_value({height, Height}, [node_name(5)], ?SYNC_TIMEOUT * Height, Cfg),
-    N5Block = request(node_name(5), [v2, 'block-by-height'], #{height => Height}, Cfg),
-
-    start_node(node_name(6), Cfg),
-    wait_for_value({height, 0}, [node_name(6)], ?STARTUP_TIMEOUT, Cfg),
-    wait_for_value({height, Height}, [node_name(6)], ?SYNC_TIMEOUT * Height, Cfg),
-    N6Block = request(node_name(6), [v2, 'block-by-height'], #{height => Height}, Cfg),
-
-    AllBlocks = InitialBlocks ++ [N5Block, N6Block],
-
-    [?assertEqual(A, B) || A <- AllBlocks, B <- AllBlocks, A =/= B].
+    ok.
 
 %=== INTERNAL FUNCTIONS ========================================================
-
-node_name(I) -> list_to_atom("node" ++ integer_to_list(I)).
 
 get_block(NodeName, Height, Cfg) ->
     Query = #{height => Height},
