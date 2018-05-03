@@ -162,8 +162,6 @@ init(Options) ->
     State4 = State3#state{consensus = Consensus},
     epoch_mining:info("Miner process initilized ~p", [State4]),
 
-    %% TODO: re-arrange ng stuff to separate field like candidate & get timeout from gov
-
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
     {ok, State4}.

@@ -37,8 +37,11 @@
           key = undefined         :: binary() | undefined,
           signature = undefined   :: binary() | undefined}).
 
+
+%% TODO: maybe distinguish micro and regular headers
 -record(header, {
           height = 0              :: height(),
+          key_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           root_hash = <<>>        :: state_hash(),
