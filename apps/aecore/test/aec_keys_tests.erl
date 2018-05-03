@@ -34,7 +34,7 @@ all_test_() ->
                {"Sign spend transaction",
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),
-                        {RecipientPubkey, _PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
+                        #{ public := RecipientPubkey } = enacl:sign_keypair(),
                         {ok, Tx} =
                             aec_spend_tx:new(#{sender => PubKey,
                                                recipient => RecipientPubkey,
@@ -47,15 +47,15 @@ all_test_() ->
                 end},
                {"Keys validation (positive case)",
                 fun() ->
-                        {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-                        ValidPair = aec_keys:check_key_pair(Pubkey, PrivKey),
+                        #{ public := Pubkey, secret := PrivKey} = enacl:sign_keypair(),
+                        ValidPair = aec_keys:check_sign_keys(Pubkey, PrivKey),
                         ?assertEqual(true, ValidPair)
                 end},
                {"Keys validation (negative case)",
                 fun() ->
-                        Pubkey = <<"invalid">>,
-                        Privkey = <<"key pair">>,
-                        ValidPair = aec_keys:check_key_pair(Pubkey, Privkey),
+                        Pubkey = <<42:32/unit:8>>,
+                        Privkey = <<42:64/unit:8>>,
+                        ValidPair = aec_keys:check_sign_keys(Pubkey, Privkey),
                         ?assertEqual(false, ValidPair)
                 end},
                 {"Peer key validation (positive case)",

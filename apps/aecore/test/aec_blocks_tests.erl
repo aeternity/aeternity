@@ -108,7 +108,7 @@ validate_test_malformed_txs_root_hash() ->
     SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
     {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"malformed_account">>,
                                                  block_height => 1}),
-    MalformedTxs = [SignedCoinbase, aetx_sign:sign(BadCoinbaseTx, <<"pubkey">>)],
+    MalformedTxs = [SignedCoinbase, aetx_sign:sign(BadCoinbaseTx, <<0:64/unit:8>>)],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
     {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
     Block = #block{txs = [SignedCoinbase], txs_hash = MalformedRootHash,

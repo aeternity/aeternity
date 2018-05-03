@@ -90,12 +90,8 @@ setup_new_account(Balance, Height, State) ->
     {PubKey, State2}.
 
 new_key_pair() ->
-    {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-    {Pubkey, pad_privkey(PrivKey)}.
-
-pad_privkey(Bin) ->
-    Pad = ?PRIV_SIZE - size(Bin),
-    <<0:(Pad*8), Bin/binary>>.
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    {PubKey, PrivKey}.
 
 set_account(Account, State) ->
     Trees   = trees(State),

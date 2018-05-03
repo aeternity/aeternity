@@ -56,9 +56,9 @@ basic_setters() ->
     ?assertError({illegal, _, _}, set_gas_used(foo, I)),
     _ = set_gas_used(123, I),
     ?assertError({illegal, _, _}, set_contract_address(foo, I)),
-    _ = set_contract_address(<<123:65/unit:8>>, I),
+    _ = set_contract_address(<<123:32/unit:8>>, I),
     ?assertError({illegal, _, _}, set_caller_address(foo, I)),
-    _ = set_caller_address(<<123:65/unit:8>>, I),
+    _ = set_caller_address(<<123:32/unit:8>>, I),
     ?assertError({illegal, _, _}, set_caller_nonce(-1, I)),
     _ = set_caller_nonce(1, I),
     ?assertError({illegal, _, _}, set_height(-1, I)),
@@ -75,9 +75,9 @@ call_tx() ->
     call_tx(#{}).
 
 call_tx(Override) ->
-    Map = #{ caller     => <<42:65/unit:8>>
+    Map = #{ caller     => <<42:32/unit:8>>
            , nonce      => 42
-           , contract   => <<4711:65/unit:8>>
+           , contract   => <<4711:32/unit:8>>
            , fee        => 100
            , vm_version => 1
            , amount     => 100

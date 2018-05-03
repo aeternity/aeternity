@@ -188,20 +188,7 @@ set_account(Account, State) ->
     AccTree = aec_accounts_trees:enter(Account, aec_trees:accounts(Trees)),
     set_trees(aec_trees:set_accounts(Trees, AccTree), State).
 
-%%%===================================================================
-%%% Keys TODO: Should move
-%%%===================================================================
-
--define(PUB_SIZE, 65).
--define(PRIV_SIZE, 32).
-
 new_key_pair() ->
-    {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-    {Pubkey, pad_privkey(PrivKey)}.
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    {PubKey, PrivKey}.
 
-%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed to fit the
-%% private key. It does not pad with zeros.
-
-pad_privkey(Bin) ->
-    Pad = ?PRIV_SIZE - size(Bin),
-    <<0:(Pad*8), Bin/binary>>.

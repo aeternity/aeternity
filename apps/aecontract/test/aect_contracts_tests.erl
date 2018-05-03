@@ -25,13 +25,13 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    ContractPubKey = <<12345:65/unit:8>>,
+    ContractPubKey = <<12345:32/unit:8>>,
     C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assertEqual(C, deserialize(serialize(C))),
     ok.
 
 basic_getters() ->
-    ContractPubKey = <<12345:65/unit:8>>,
+    ContractPubKey = <<12345:32/unit:8>>,
     C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assert(is_binary(id(C))),
     ?assert(is_binary(owner(C))),
@@ -39,10 +39,10 @@ basic_getters() ->
     ok.
 
 basic_setters() ->
-    ContractPubKey = <<12345:65/unit:8>>,
+    ContractPubKey = <<12345:32/unit:8>>,
     C = aect_contracts:new(ContractPubKey, create_tx(), 1),
     ?assertError({illegal, _, _}, set_owner(<<4711:64/unit:8>>, C)),
-    _ = set_owner(<<42:65/unit:8>>, C),
+    _ = set_owner(<<42:32/unit:8>>, C),
     ok.
 
 
@@ -50,7 +50,7 @@ create_tx() ->
     create_tx(#{}).
 
 create_tx(Override) ->
-    Map = #{ owner      => <<4711:65/unit:8>>
+    Map = #{ owner      => <<4711:32/unit:8>>
            , nonce      => 42
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version => 1

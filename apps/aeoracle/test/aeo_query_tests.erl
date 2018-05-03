@@ -59,13 +59,13 @@ basic_setters() ->
     ?assertError({illegal, _, _}, set_fee(foo, I)),
     _ = set_fee(123, I),
     ?assertError({illegal, _, _}, set_oracle_address(foo, I)),
-    _ = set_oracle_address(<<123:65/unit:8>>, I),
+    _ = set_oracle_address(<<123:32/unit:8>>, I),
     ?assertError({illegal, _, _}, set_response(true, I)),
     _ = set_response(<<"true">>, I),
     ?assertError({illegal, _, _}, set_response_ttl({block, 100}, I)),
     _ = set_response_ttl({delta, 10}, I),
     ?assertError({illegal, _, _}, set_sender_address(foo, I)),
-    _ = set_sender_address(<<123:65/unit:8>>, I),
+    _ = set_sender_address(<<123:32/unit:8>>, I),
     ?assertError({illegal, _, _}, set_sender_nonce(-1, I)),
     _ = set_sender_nonce(1, I),
     ok.
@@ -74,9 +74,9 @@ query_tx() ->
     query_tx(#{}).
 
 query_tx(Override) ->
-    Map = #{ sender        => <<42:65/unit:8>>
+    Map = #{ sender        => <<42:32/unit:8>>
            , nonce         => 42
-           , oracle        => <<4711:65/unit:8>>
+           , oracle        => <<4711:32/unit:8>>
            , query         => <<"{foo: bar}"/utf8>>
            , query_fee     => 10
            , query_ttl     => {delta, 100}

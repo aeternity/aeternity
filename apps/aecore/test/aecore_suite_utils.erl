@@ -461,8 +461,8 @@ write_peer_keys(Node, Config) ->
     {Node, {PrivKey, PubKey}} = lists:keyfind(Node, 1, peer_keys()),
     ok = filelib:ensure_dir(filename:join(Path, "foo")),
     ct:log("Writing peer keys to ~p (~p)", [Path, filelib:is_dir(Path)]),
-    ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_peerkey(Pwd, PubKey)),
-    ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_peerkey(Pwd, PrivKey)),
+    ok = file:write_file(filename:join(Path, "peer_key.pub"), aec_keys:encrypt_key(Pwd, PubKey)),
+    ok = file:write_file(filename:join(Path, "peer_key"), aec_keys:encrypt_key(Pwd, PrivKey)),
     ok.
 
 write_config(F, Config) ->

@@ -98,7 +98,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_blocks, new, 3,
                              #block{height = BlockHeight,
                                     target = ?HIGHEST_TARGET_SCI,
-                                    txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
+                                    txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
                                     time = Now,
                                     version = ?PROTOCOL_VERSION}),
                  Chain = lists:duplicate(10, #header{height = 20,
@@ -136,7 +136,7 @@ difficulty_recalculation_test_() ->
                  meck:expect(aec_blocks, new, 3,
                              #block{height = BlockHeight,
                                     target = PastTarget,
-                                    txs = [aetx_sign:sign(CoinbaseTx, <<"sig1">>)],
+                                    txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
                                     time = Now,
                                     version = ?PROTOCOL_VERSION}),
 

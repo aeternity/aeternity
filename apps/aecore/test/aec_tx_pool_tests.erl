@@ -200,7 +200,7 @@ sign(PubKey, Tx) ->
         {ok, aetx_sign:sign(Tx, PrivKey)}
     catch
         error:Err ->
-            erlang:error({Err, erlang:stacktrace()})
+            erlang:error({Err, erlang:get_stacktrace()})
     end.
 
 acct(me) ->
@@ -215,4 +215,5 @@ new_pubkey() ->
     Pub.
 
 keypair() ->
-    crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)).
+    #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
+    {Pub, Priv}.
