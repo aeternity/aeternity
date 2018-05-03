@@ -603,8 +603,6 @@ error_binary(E) when is_atom(E) ->
 
 
 terminate(Reason, _State, Data) ->
-    #data{session = Sn} = Data,
-    aesc_session_noise:close(Sn),
     report_info({died, Reason}, Data),
     ok.
 
