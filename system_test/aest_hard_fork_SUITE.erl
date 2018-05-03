@@ -34,6 +34,7 @@
 
 %=== INCLUDES ==================================================================
 
+-include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
 %=== MACROS ====================================================================
@@ -586,7 +587,6 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     aest_nodes:kill_node(old_node1, Cfg),
     ok.
 
-
 %% New node can sync the old chain from old node and can start mining
 %% on the top of the old chain. The new node can mine blocks using the
 %% old protocol and include spend transaction in the blocks. The block
@@ -1124,46 +1124,46 @@ wait_contract_tx_in_chain(NodeName, Sender, Nonce, ContractPubKey, TxType, Cfg) 
 make_contract_tx(contract_create_tx, PubKey, DecPubKey, Cfg) ->
     ContractCreate =
         #{owner      => PubKey,
-          code       => proplists:get_value(contract_code, Cfg),
-          vm_version => proplists:get_value(contract_tx_vm_version, Cfg),
-          deposit    => proplists:get_value(contract_tx_deposit, Cfg),
-          amount     => proplists:get_value(contract_tx_amount, Cfg),
-          gas        => proplists:get_value(contract_tx_gas, Cfg),
-          gas_price  => proplists:get_value(contract_tx_gas_price,Cfg),
-          fee        => proplists:get_value(contract_tx_fee, Cfg),
-          call_data  => proplists:get_value(contract_call_data, Cfg)},
+          code       => ?config(contract_code, Cfg),
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          deposit    => ?config(contract_tx_deposit, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
+          call_data  => ?config(contract_call_data, Cfg)},
     DecContractCreate =
         ContractCreate#{owner     => DecPubKey,
-                        code      => proplists:get_value(decoded_contract_code, Cfg),
-                        call_data => proplists:get_value(decoded_contract_call_data, Cfg)},
+                        code      => ?config(decoded_contract_code, Cfg),
+                        call_data => ?config(decoded_contract_call_data, Cfg)},
     {ContractCreate, DecContractCreate}.
 
 make_contract_tx(contract_call_tx, PubKey, DecPubKey, ContractPubKey, Cfg) ->
     ContractCall =
         #{caller     => PubKey,
           contract   => ContractPubKey,
-          vm_version => proplists:get_value(contract_tx_vm_version, Cfg),
-          amount     => proplists:get_value(contract_tx_amount, Cfg),
-          gas        => proplists:get_value(contract_tx_gas, Cfg),
-          gas_price  => proplists:get_value(contract_tx_gas_price,Cfg),
-          fee        => proplists:get_value(contract_tx_fee, Cfg),
-          call_data  => proplists:get_value(contract_call_data, Cfg)},
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
+          call_data  => ?config(contract_call_data, Cfg)},
     DecContractCall =
         ContractCall#{caller    => DecPubKey,
-                      call_data => proplists:get_value(decoded_contract_call_data, Cfg)},
+                      call_data => ?config(decoded_contract_call_data, Cfg)},
     {ContractCall, DecContractCall};
 make_contract_tx(contract_call_compute_tx, PubKey, DecPubKey, ContractPubKey, Cfg) ->
-    ContractCode = proplists:get_value(contract_code, Cfg),
-    ContractFunction = proplists:get_value(contract_function, Cfg),
-    ContractArguments = proplists:get_value(contract_arguments, Cfg),
+    ContractCode = ?config(contract_code, Cfg),
+    ContractFunction = ?config(contract_function, Cfg),
+    ContractArguments = ?config(contract_arguments, Cfg),
     ContractCallCompute =
         #{caller     => PubKey,
           contract   => ContractPubKey,
-          vm_version => proplists:get_value(contract_tx_vm_version, Cfg),
-          amount     => proplists:get_value(contract_tx_amount, Cfg),
-          gas        => proplists:get_value(contract_tx_gas, Cfg),
-          gas_price  => proplists:get_value(contract_tx_gas_price,Cfg),
-          fee        => proplists:get_value(contract_tx_fee, Cfg),
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
           function   => ContractFunction,
           arguments  => ContractArguments},
     {ok, EncContractCallData} =
@@ -1177,16 +1177,16 @@ make_contract_tx(contract_call_compute_tx, PubKey, DecPubKey, ContractPubKey, Cf
 check_mined_contract_tx(contract_create_tx, Sender, _ContractPubKey, TxInfo, Cfg) ->
     check_mined_contract_tx_common(TxInfo, Cfg),
     ?assertEqual(Sender, maps:get(owner, TxInfo)),
-    ?assertEqual(proplists:get_value(contract_code, Cfg), list_to_binary(maps:get(code, TxInfo))),
-    ?assertEqual(proplists:get_value(contract_tx_deposit, Cfg), maps:get(deposit, TxInfo)),
-    ?assertEqual(proplists:get_value(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
+    ?assertEqual(?config(contract_code, Cfg), list_to_binary(maps:get(code, TxInfo))),
+    ?assertEqual(?config(contract_tx_deposit, Cfg), maps:get(deposit, TxInfo)),
+    ?assertEqual(?config(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
     ok;
 check_mined_contract_tx(contract_call_tx, Sender, ContractPubKey, TxInfo, Cfg) ->
     check_mined_contract_tx_common(TxInfo, Cfg),
     {ok, TxInfoContractPubKey} = aec_base58c:safe_decode(account_pubkey, maps:get(contract, TxInfo)),
     ?assertEqual(Sender, maps:get(caller, TxInfo)),
     ?assertEqual(ContractPubKey, TxInfoContractPubKey),
-    ?assertEqual(proplists:get_value(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
+    ?assertEqual(?config(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
     ok;
 check_mined_contract_tx(contract_call_compute_tx, Sender, ContractPubKey, TxInfo, Cfg) ->
     check_mined_contract_tx_common(TxInfo, Cfg),
@@ -1196,11 +1196,11 @@ check_mined_contract_tx(contract_call_compute_tx, Sender, ContractPubKey, TxInfo
     ok.
 
 check_mined_contract_tx_common(TxInfo, Cfg) ->
-    ?assertEqual(proplists:get_value(contract_tx_vm_version, Cfg), hex_to_integer(maps:get(vm_version, TxInfo))),
-    ?assertEqual(proplists:get_value(contract_tx_amount, Cfg), maps:get(amount, TxInfo)),
-    ?assertEqual(proplists:get_value(contract_tx_gas, Cfg), maps:get(gas, TxInfo)),
-    ?assertEqual(proplists:get_value(contract_tx_gas_price, Cfg), maps:get(gas_price, TxInfo)),
-    ?assertEqual(proplists:get_value(contract_tx_fee, Cfg), maps:get(fee, TxInfo)),
+    ?assertEqual(?config(contract_tx_vm_version, Cfg), hex_to_integer(maps:get(vm_version, TxInfo))),
+    ?assertEqual(?config(contract_tx_amount, Cfg), maps:get(amount, TxInfo)),
+    ?assertEqual(?config(contract_tx_gas, Cfg), maps:get(gas, TxInfo)),
+    ?assertEqual(?config(contract_tx_gas_price, Cfg), maps:get(gas_price, TxInfo)),
+    ?assertEqual(?config(contract_tx_fee, Cfg), maps:get(fee, TxInfo)),
     ok.
 
 check_protocol_version_on_nodes(NodeNames, ExpectedProtocolVersion, BlockHash, BlockHeight, Cfg) ->
