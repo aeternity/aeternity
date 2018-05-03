@@ -755,29 +755,6 @@ fork_get_transaction() ->
     ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
                  aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
 
-    %% Now, mock that the transaction is in the mempool as well.
-    %% This should not change the result.
-    meck:new(aec_db, [passthrough]),
-    meck:expect(aec_db, read_tx,
-                fun(TxHash) when TxHash =:= HardTxHash ->
-                        Res = [{_, Tx}|_] = meck:passthrough([HardTxHash]),
-                        [{mempool, Tx}|Res];
-                   (TxHash) -> meck:passthrough([TxHash])
-                end),
-    ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
-                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
-
-    %% But if we mock that the transaction is in the easy chain, and in
-    %% the mempool, we should get the mempool as result.
-    meck:expect(aec_db, read_tx,
-                fun(TxHash) when TxHash =:= HardTxHash ->
-                        [{_, Tx}|_] = meck:passthrough([HardTxHash]),
-                        [{mempool, Tx}, {block_hash(EasyTopBlock), Tx}];
-                   (TxHash) -> meck:passthrough([TxHash])
-                end),
-    ?assertEqual({mempool, HardCoinbase},
-                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
-    meck:unload(aec_db),
     ok.
 
 %%%===================================================================

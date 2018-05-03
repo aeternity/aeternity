@@ -19,6 +19,7 @@
 
 %% API
 -export([sign/2,
+         hash/1,
          tx/1,
          verify/1,
          signatures/1,
@@ -57,6 +58,11 @@ sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
     Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
     #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
+
+-spec hash(signed_tx()) -> binary().
+hash(#signed_tx{} = Tx) ->
+    aec_hash:hash(signed_tx, serialize_to_binary(Tx)).
+
 
 -spec tx(signed_tx()) -> tx().
 %% @doc Get the original transaction from a signed transaction.

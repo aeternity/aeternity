@@ -16,6 +16,7 @@
         , mock_fast_cuckoo_pow/0
         , mock_fast_and_deterministic_cuckoo_pow/0
         , mock_genesis/0
+        , mock_genesis/1
         , unmock_genesis/0
         , wait_for_it/2
         , wait_for_it_or_timeout/3
@@ -97,8 +98,11 @@ mock_fast_cuckoo_pow({_MinerBin, _MinerExtraArgs, _NodeBits} = Cfg) ->
                end).
 
 mock_genesis() ->
+    mock_genesis(preset_accounts()).
+
+mock_genesis(PresetAccounts) ->
     meck:new(aec_genesis_block_settings, []),
-    meck:expect(aec_genesis_block_settings, preset_accounts, 0, preset_accounts()),
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
     ok.
 
 unmock_genesis() ->
@@ -176,6 +180,11 @@ unmock_block_target_validation() ->
 
 
 start_chain_db() ->
+    %% Horrible fix for rebar3 eunit not taking the vm.args path
+    Parts = filename:split(filename:dirname(code:which(aec_db))),
+    PPath = filename:join(lists:sublist(Parts, length(Parts) - 3) ++
+                              ["rel", "epoch", "patches", "ebin"]),
+    code:add_patha(PPath),
     ok = mnesia:start(),
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],

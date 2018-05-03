@@ -20,9 +20,8 @@
 -export([start_link/0,
          stop/0]).
 -export([push/1, push/2,
-         delete/1,
          peek/1,
-         fork_update/2,
+         top_change/2,
          get_max_nonce/1,
          size/0]).
 
@@ -71,12 +70,6 @@ push([], _) -> ok;
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
     gen_server:call(?SERVER, {push, [Tx], Event}).
 
--spec delete(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
-delete(Txs) when is_list(Txs) ->
-    gen_server:call(?SERVER, {delete, Txs});
-delete(Tx) ->
-    gen_server:call(?SERVER, {delete, [Tx]}).
-
 -spec get_max_nonce(pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
     gen_server:call(?SERVER, {get_max_nonce, Sender}).
@@ -88,9 +81,9 @@ get_max_nonce(Sender) ->
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec fork_update(AddedToChain::[{aetx_sign:signed_tx(),any()}], RemovedFromChain::[{aetx_sign:signed_tx(), any()}]) -> ok.
-fork_update(AddedToChain, RemovedFromChain) ->
-    gen_server:call(?SERVER, {fork_update, AddedToChain, RemovedFromChain}).
+-spec top_change(binary(), binary()) -> ok.
+top_change(OldHash, NewHash) ->
+    gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
@@ -101,6 +94,7 @@ size() ->
 %%%===================================================================
 
 init([]) ->
+    %% TODO: Traverse db table to init tx pool
     {ok, Db} = pool_db_open(),
     State = #state{db = Db},
     {ok, State}.
@@ -110,24 +104,13 @@ handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
 handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
     lists:foreach(
         fun(Tx) ->
-            pool_db_put(Mempool, pool_db_key(Tx), Tx, Event),
-            TxHash = aetx:hash(aetx_sign:tx(Tx)),
-            aec_db:write_tx(TxHash, mempool, Tx)
+            pool_db_put(Mempool, pool_db_key(Tx), Tx, Event)
         end,
         Txs),
     {reply, ok, State};
-handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
-    lists:foreach(
-        fun(Tx) ->
-            pool_db_delete(Mempool, pool_db_key(Tx)),
-            TxHash = aetx:hash(aetx_sign:tx(Tx)),
-            aec_db:delete_tx(TxHash, mempool)
-        end,
-        Txs),
-    {reply, ok, State};
-handle_call({fork_update, AddedFromChain, RemovedFromChain}, _From,
+handle_call({top_change, OldHash, NewHash}, _From,
             #state{db = Mempool} = State) ->
-    do_fork_update(AddedFromChain, RemovedFromChain, Mempool),
+    do_top_change(OldHash, NewHash, Mempool),
     {reply, ok, State};
 handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
@@ -205,64 +188,74 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_fork_update(AddedToChain, RemovedFromChain, Mempool) ->
+do_top_change(OldHash, NewHash, Mempool) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
-    TxMap0 =
-        lists:foldl(
-          fun({Tx, BlockHash}, Acc) ->
-                  case lists:keymember(Tx, 1, AddedToChain) of
-                      false ->
-                          pool_db_put(Mempool, pool_db_key(Tx), Tx, tx_created),
-                          [{Tx, BlockHash, mempool} | Acc];
-                      true ->
-                          Acc
-                  end
-          end, [], RemovedFromChain),
-    TxMap =
-        lists:foldl(
-          fun({Tx, BlockHash}, Acc) ->
-                  case lists:keymember(Tx, 1, RemovedFromChain) of
-                      false ->
-                          pool_db_delete(Mempool, pool_db_key(Tx)),
-                          [{Tx, mempool, BlockHash} | Acc];
-                      true ->
-                          Acc
-                  end
-          end, TxMap0, AddedToChain),
-    aec_db:transaction(fun() -> move_txs(TxMap) end).
-
-move_txs([{Tx, From, To}|T]) ->
-    TxHash = aetx:hash(aetx_sign:tx(Tx)),
-    aec_db:delete_tx(TxHash, From),
-    aec_db:write_tx(TxHash, To, Tx),
-    move_txs(T);
-move_txs([]) ->
+    {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
+    Handled = ets:new(foo, [private, set]),
+    update_pool_from_blocks(Ancestor, OldHash, Mempool, Handled),
+    update_pool_from_blocks(Ancestor, NewHash, Mempool, Handled),
+    ets:delete(Handled),
     ok.
 
--spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) -> true.
-pool_db_put(_, undefined, _, _) ->
-    false; %% Ignore coinbase
-pool_db_put(Mempool, Key, Tx, Event) ->
-    case ets:member(Mempool, Key) of
+update_pool_from_blocks(Hash, Hash,_Mempool,_Handled) -> ok;
+update_pool_from_blocks(Ancestor, Current, Mempool, Handled) ->
+    lists:foreach(fun(TxHash) ->
+                          update_pool_on_tx_hash(TxHash, Mempool, Handled)
+                  end,
+                  aec_db:get_block_tx_hashes(Current)),
+    Prev = aec_chain:prev_hash_from_hash(Current),
+    update_pool_from_blocks(Ancestor, Prev, Mempool, Handled).
+
+update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
+    case ets:member(Handled, TxHash) of
+        true -> ok;
         false ->
-            case aetx_sign:verify(Tx) of
-                ok ->
-                    ets:insert(Mempool, {Key, Tx}),
-                    aec_events:publish(Event, Tx),
-                    true;
-                {error, Reason} ->
-                    lager:error("verification error: ~p; Tx = ~p",
-                                [Reason, Tx]),
-                    false
-            end;
-        true ->
-            lager:debug("Tx already in pool (~p)", [Key]),
-            false
+            ets:insert(Handled, {TxHash}),
+            Tx = aec_db:get_signed_tx(TxHash),
+            case aec_db:is_in_tx_pool(TxHash) of
+                false ->
+                    %% Added to chain
+                    ets:delete(Mempool, pool_db_key(Tx));
+                true ->
+                    case pool_db_key(Tx) of
+                        undefined ->
+                            aec_db:remove_tx_from_mempool(TxHash);
+                        Key ->
+                            ets:insert(Mempool, {Key, Tx})
+                    end
+            end
     end.
 
--spec pool_db_delete(pool_db(), pool_db_key()) -> true.
-pool_db_delete(_, undefined) ->
-    true; %% Ignore coinbase
-pool_db_delete(Mempool, Key) ->
-    ets:delete(Mempool, Key).
+-spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) ->
+                         'ok' | {'error', atom()}.
+pool_db_put(_, undefined, _, _) ->
+    %% TODO: This is probably not needed anymore
+    false; %% Ignore coinbase
+pool_db_put(Mempool, Key, Tx, Event) ->
+    Hash = aetx_sign:hash(Tx),
+    case aetx_sign:verify(Tx) of
+        {error, _} = E ->
+            lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
+            E;
+        ok ->
+            case aec_db:find_transaction_in_main_chain_or_mempool(Hash) of
+                {Location, _} when is_binary(Location); Location =:= mempool ->
+                    lager:debug("Already have tx: ~p in ~p", [Hash, Location]),
+                    ok;
+                none ->
+                    lager:debug("Adding tx", [Hash]),
+                    %% TODO: Check nonce and origin to decide if this
+                    %% is an orphan or a pending transaction.
+                    case ets:member(Mempool, Key) of
+                        true ->
+                            lager:debug("Pool db key already present (~p)", [Key]),
+                            %% TODO: We should make a decision whether to switch the tx.
+                            ok;
+                        false ->
+                            aec_events:publish(Event, Tx),
+                            aec_db:add_tx(Tx),
+                            ets:insert(Mempool, {Key, Tx})
+                    end
+            end
+    end.

@@ -15,34 +15,31 @@ tx_pool_test_() ->
              application:ensure_started(gproc),
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
+             aec_test_utils:start_chain_db(),
+             aec_test_utils:mock_block_target_validation(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
              ets:new(?TAB, [public, ordered_set, named_table]),
-             meck:new(aec_db, [passthrough]),
-             meck:expect(aec_db, write_tx, 3, ok),
-             meck:expect(aec_db, delete_tx, 2, ok),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir),
              ok = application:stop(gproc),
              ets:delete(?TAB),
+             aec_test_utils:stop_chain_db(),
+             aec_test_utils:unmock_block_target_validation(),
              ok = aec_tx_pool:stop(),
-             meck:unload(aec_db),
              ok
      end,
      [{"No txs in mempool",
        fun() ->
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
                ?assertEqual({ok, []}, aec_tx_pool:peek(3)),
-               ?assertEqual(0, aec_tx_pool:size()),
-
-               STx1 = a_signed_tx(me, new_pubkey(), 1, 1),
-               ?assertEqual(ok, aec_tx_pool:delete(STx1)),
                ?assertEqual(0, aec_tx_pool:size())
        end},
-      {"As a healthy network peer, the node stores in mempool txs received from peers and serves txs in mempool to peers",
+      {"As a healthy network peer, the node stores in mempool txs received from"
+       " peers and serves txs in mempool to peers",
        fun() ->
                %% No txs to serve to peers.
                ?assertEqual({ok, []}, aec_tx_pool:peek(1)),
@@ -59,41 +56,47 @@ tx_pool_test_() ->
                ?assertEqual(ok, aec_tx_pool:push(STx2, tx_received)),
 
                %% Two tx2 to serve to peers.
-               ?assertEqual({ok, [STx2]}, aec_tx_pool:peek(1))
+               ?assertEqual({ok, [STx2]}, aec_tx_pool:peek(1)),
+               ?assertEqual({ok, [STx2, STx1]}, aec_tx_pool:peek(2))
        end},
-      {"Mempool follows longest chain",
+      {"Mempool follows chain insertion",
        fun() ->
+               %% Prepare and insert the genesis block with some funds
+               PubKey = new_pubkey(),
+               aec_test_utils:mock_genesis([{PubKey, 100}]),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               ok = aec_chain_state:insert_block(GenesisBlock),
+               {TopBlock, TopState} = aec_chain:top_block_with_state(),
+               TopBlockHash = aec_chain:top_block_hash(),
+
                %% Prepare a few txs.
-               STx1 = a_signed_tx(me, new_pubkey(), 1, 1),
-               STx2 = a_signed_tx(me, new_pubkey(), 2, 1),
-               STx3 = a_signed_tx(me, new_pubkey(), 3, 1),
-               STx4 = a_signed_tx(me, new_pubkey(), 4, 1),
-               STx5 = a_signed_tx(me, new_pubkey(), 5, 1),
+               STx1 = a_signed_tx(PubKey, new_pubkey(), 1, 1),
+               STx2 = a_signed_tx(PubKey, new_pubkey(), 2, 1),
 
                %% Some txs received from peers.
+               ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
-               ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               ?assertMatch({ok, [_,_]}, aec_tx_pool:peek(10)),
+               {ok, PoolTxs} = aec_tx_pool:peek(infinity),
+               ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
                %% A block inserted in chain.
-               ?assertEqual(ok, aec_tx_pool:delete(STx1)),
-               ?assertEqual(ok, aec_tx_pool:delete(STx2)),
-               ?assertEqual({ok, [STx4]}, aec_tx_pool:peek(10)),
+               {ok, Candidate,_Nonce} =
+                   aec_mining:create_block_candidate(TopBlock, TopState, []),
 
-               %% A tx already in chain now received from peers.
-               ?assertEqual(ok, aec_tx_pool:push(STx2, tx_received)),
-               ?assertMatch({ok, [_,_]}, aec_tx_pool:peek(10)),
+               [_|Included] = aec_blocks:txs(Candidate),
 
-               %% A block orphaned...
-               ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               %% ?assertEqual({error, already_exists},
-               %%              aec_tx_pool:push(STx2)), %% Tx already in pool.
-               ?assertMatch({ok, [_,_,_]}, aec_tx_pool:peek(10)),
-               %% ... two new blocks inserted in longest chain.
-               ?assertEqual(ok, aec_tx_pool:delete(STx3)),
-               ?assertEqual(ok, aec_tx_pool:delete(STx4)),
-               ?assertEqual(ok, aec_tx_pool:delete(STx5)),
-               ?assertMatch({ok, [_,_]}, aec_tx_pool:peek(10))
+               %% Check that we use all the txs in mempool
+               ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
+
+               %% Insert the block
+               ok = aec_chain_state:insert_block(Candidate),
+
+               %% Ping tx_pool for top change
+               aec_tx_pool:top_change(TopBlockHash, aec_chain:top_block_hash()),
+
+               %% The mempool should now be empty
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
+               aec_test_utils:unmock_genesis()
        end},
       {"Ensure ordering",
              fun() ->
@@ -124,67 +127,13 @@ tx_pool_test_() ->
 
                  NotExistingSender = aec_tx_pool:get_max_nonce(PK3),
                  ?assertEqual(undefined, NotExistingSender)
-             end},
-      {"As a miner, the node stores in mempool txs received from peers and includes txs from mempool in mined block",
-       fun() ->
-               %% Simplistic parameter representing maximum number of
-               %% txs in block excluding coinbase - for easing test.
-               MaxTxs = 2,
-
-               %% No txs to include in block (apart from coinbase).
-               ?assertEqual({ok, []}, aec_tx_pool:peek(MaxTxs)),
-
-               %% Tx received from a peer ...
-               STx1 = a_signed_tx(new_pubkey(), me, 1, 1),
-               ?assertEqual(ok, aec_tx_pool:push(STx1, tx_received)),
-               %% ... hence only one tx to include in block ...
-               ?assertEqual({ok, [STx1]}, aec_tx_pool:peek(2 = MaxTxs)),
-               %% ... that gets successfully mined and inserted in
-               %% chain.
-               ?assertEqual(ok, aec_tx_pool:delete(STx1)),
-
-               %% Two txs received from peers ...
-               STx2 = a_signed_tx(new_pubkey(), me, 1, 1),
-               STx3 = a_signed_tx(new_pubkey(), me, 1, 2),
-               ?assertEqual(ok, aec_tx_pool:push(STx2, tx_received)),
-               ?assertEqual(ok, aec_tx_pool:push(STx3, tx_received)),
-               %% ... hence exactly two txs to include in block ...
-               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:peek(2 = MaxTxs)),
-               %% ... that gets successfully mined and inserted in
-               %% chain.
-               ?assertEqual(ok, aec_tx_pool:delete(STx3)),
-               ?assertEqual(ok, aec_tx_pool:delete(STx2)),
-
-               %% A lot of txs received from peers ...
-               STx11 = a_signed_tx(new_pubkey(), me, 1, 8),
-               STx12 = a_signed_tx(new_pubkey(), me, 2, 2),
-               STx13 = a_signed_tx(new_pubkey(), me, 3, 5),
-               ?assertEqual(ok, aec_tx_pool:push(STx11, tx_received)),
-               ?assertEqual(ok, aec_tx_pool:push(STx12, tx_received)),
-               ?assertEqual(ok, aec_tx_pool:push(STx13, tx_received)),
-               %% ... but still only two txs to be included in block ...
-               ?assertEqual({ok, [STx11, STx13]}, aec_tx_pool:peek(2 = MaxTxs)),
-               %% ... that gets successfully mined and inserted in
-               %% chain.
-               ?assertEqual(ok, aec_tx_pool:delete(STx11)),
-               ?assertEqual(ok, aec_tx_pool:delete(STx13)),
-
-               %% One tx left to be included in block...
-               ?assertEqual({ok, [STx12]}, aec_tx_pool:peek(2 = MaxTxs)),
-               %% ... that gets successfully mined and inserted in
-               %% chain ...
-               ?assertEqual(ok, aec_tx_pool:delete(STx12)),
-               %% ... so now none.
-               ?assertEqual({ok, []}, aec_tx_pool:peek(2 = MaxTxs))
-      end}]}.
-
-no_tx_pool_size_test() ->
-    ?assertEqual(undefined, aec_tx_pool:size()).
+             end}
+     ]}.
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     {ok, Tx} = aec_spend_tx:new(#{sender => acct(Sender),
                                   recipient => acct(Recipient),
-                                  amount => 0,
+                                  amount => 1,
                                   nonce => Nonce, fee => Fee,
                                   payload => <<"">>}),
     {ok, STx} = sign(Sender, Tx),
