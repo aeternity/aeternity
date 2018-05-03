@@ -397,6 +397,9 @@ groups() ->
       ]},
      {channel_websocket, [sequence],
       [sc_ws_timeout_open,
+       sc_ws_open,
+       sc_ws_update,
+       sc_ws_close,
       % initiator can start close mutual
        sc_ws_open,
        sc_ws_update,
