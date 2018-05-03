@@ -741,7 +741,7 @@ new_node_can_mine_contract_on_old_chain_using_old_protocol(Cfg) ->
     {ok, DecPubKey3} = aec_base58c:safe_decode(account_pubkey, PubKey3),
     {ContractCreate, DecContractCreate} =
         make_contract_tx(contract_create_tx, PubKey3, DecPubKey3, Cfg),
-    {ok, Nonce} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce = 1,
     #{tx := ContractCreateTx, contract_address := ContractPubKey} =
         get_contract_tx(new_node3, 'PostContractCreate', fun aect_create_tx:new/1,
                         Nonce, ContractCreate, DecContractCreate, Cfg),
@@ -756,7 +756,7 @@ new_node_can_mine_contract_on_old_chain_using_old_protocol(Cfg) ->
     %% Create contract call transaction.
     {ContractCall, DecContractCall} =
         make_contract_tx(contract_call_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
-    {ok, Nonce1} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce1 = Nonce + 1,
     #{tx := ContractCallTx} =
         get_contract_tx(new_node3, 'PostContractCall', fun aect_call_tx:new/1,
                         Nonce1, ContractCall, DecContractCall, Cfg),
@@ -771,7 +771,7 @@ new_node_can_mine_contract_on_old_chain_using_old_protocol(Cfg) ->
     %% Create contract call compute transaction.
     {ContractCallCompute, DecContractCallCompute} =
         make_contract_tx(contract_call_compute_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
-    {ok, Nonce2} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce2 = Nonce1 + 1,
     #{tx := ContractCallComputeTx} =
         get_contract_tx(new_node3, 'PostContractCallCompute', fun aect_call_tx:new/1,
                         Nonce2, ContractCallCompute, DecContractCallCompute, Cfg),
@@ -845,7 +845,7 @@ new_node_can_mine_contract_on_old_chain_using_new_protocol(Cfg) ->
     {ok, DecPubKey3} = aec_base58c:safe_decode(account_pubkey, PubKey3),
     {ContractCreate, DecContractCreate} =
         make_contract_tx(contract_create_tx, PubKey3, DecPubKey3, Cfg),
-    {ok, Nonce} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce = 1,
     #{tx := ContractCreateTx, contract_address := ContractPubKey} =
         get_contract_tx(new_node3, 'PostContractCreate', fun aect_create_tx:new/1,
                         Nonce, ContractCreate, DecContractCreate, Cfg),
@@ -859,7 +859,7 @@ new_node_can_mine_contract_on_old_chain_using_new_protocol(Cfg) ->
     %% Create contract call transaction.
     {ContractCall, DecContractCall} =
         make_contract_tx(contract_call_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
-    {ok, Nonce1} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce1 = Nonce + 1,
     #{tx := ContractCallTx} =
         get_contract_tx(new_node3, 'PostContractCall', fun aect_call_tx:new/1,
                         Nonce1, ContractCall, DecContractCall, Cfg),
@@ -873,7 +873,7 @@ new_node_can_mine_contract_on_old_chain_using_new_protocol(Cfg) ->
     %% Create contract call compute transaction.
     {ContractCallCompute, DecContractCallCompute} =
         make_contract_tx(contract_call_compute_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
-    {ok, Nonce2} = get_next_nonce(new_node3, DecPubKey3, Cfg),
+    Nonce2 = Nonce1 + 1,
     #{tx := ContractCallComputeTx} =
         get_contract_tx(new_node3, 'PostContractCallCompute', fun aect_call_tx:new/1,
                         Nonce2, ContractCallCompute, DecContractCallCompute, Cfg),
@@ -977,10 +977,6 @@ load_module_on_node(NodeName, Module, String, Cfg) ->
           "{module, _} = code:load_binary(~s, \"Dummy Filename\", ~w), ok.",
           [Module, Binary]),
     ok = run_erl_cmd_on_node(NodeName, ErlCmd, 30000, Cfg).
-
-get_next_nonce(NodeName, PubKey, Cfg) ->
-    ErlCmd = lists:flatten(io_lib:format("aec_next_nonce:pick_for_account(~w).", [PubKey])),
-    run_erl_cmd_on_node(NodeName, ErlCmd, Cfg).
 
 get_signed_tx(NodeName, UnsignedTx, Cfg) ->
     ErlCmd = lists:flatten(io_lib:format("aec_keys:sign(~w).", [UnsignedTx])),
