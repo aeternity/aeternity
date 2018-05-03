@@ -200,12 +200,17 @@
             "properties" : {
                 "dir"      : {
                     "description" :
-                    "Location (directory) of the public/private key pair",
+                    "Location (directory) of the public/private key pair(s)",
                     "type" : "string"
                 },
                 "password" : {
                     "description" :
                     "Password used to encrypt the key-pair files",
+                    "type" : "string"
+                },
+                "peer_password" : {
+                    "description" :
+                    "Password used to encrypt the peer key-pair files - if left blank `password` will be used",
                     "type" : "string"
                 }
             }

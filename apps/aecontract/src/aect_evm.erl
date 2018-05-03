@@ -24,7 +24,7 @@ call(Code, CallData) ->
     Data = aeu_hex:hexstring_decode(CallData),
 
     %% TODO: proper setup of chain state!
-    Owner = <<123456:65/unit:8>>,
+    Owner = <<123456:32/unit:8>>,
     DummyPubKey = aect_contracts:compute_contract_pubkey(Owner, 1),
     {Block, Trees} = aec_chain:top_block_with_state(),
     BlockHeight = aec_blocks:height(Block) + 1,

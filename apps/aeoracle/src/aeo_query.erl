@@ -66,7 +66,7 @@
              , serialized/0
              ]).
 
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 -define(NONCE_SIZE, 256).
 
 %%%===================================================================

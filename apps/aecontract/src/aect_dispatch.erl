@@ -16,7 +16,7 @@
 	, encode_call_data/4
 	, run/2]).
 
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 
 %% -- Running contract code off chain ---------------------------------------
 
@@ -107,14 +107,14 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		    aect_call:set_gas_used(
 		      Gas - GasLeft,
 		      aect_call:set_return_type(
-			ok, 
+			ok,
 			aect_call:set_return_value(ReturnValue, Call)));
 		{revert, #{ gas := GasLeft, out := ReturnValue } = State} ->
 		    lager:error("Return state ~p~n", [State]),
 		    aect_call:set_gas_used(
 		      Gas - GasLeft,
 		      aect_call:set_return_type(
-			revert, 
+			revert,
 			aect_call:set_return_value(ReturnValue, Call)));
 		%% Execution resulting in VM exeception.
 		%% Gas used, but other state not affected.
@@ -125,7 +125,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		    aect_call:set_gas_used(
 		      Gas,
 		      aect_call:set_return_type(
-			error, 
+			error,
 			aect_call:set_return_value(error_to_binary(Error), Call)))
 	    catch T:E ->
 		    lager:error("Return error ~p:~p~n", [T,E]),

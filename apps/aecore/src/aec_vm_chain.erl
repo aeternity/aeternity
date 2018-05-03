@@ -27,6 +27,8 @@
 
 -type chain_state() :: #state{}.
 
+-define(PUB_SIZE, 32).
+
 %% -- API --------------------------------------------------------------------
 
 %% @doc Create a chain state.
@@ -141,7 +143,7 @@ do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
           throw:no_funds   -> {error, insufficient_funds}
     end.
 
-ensure_recipient_account(Recipient, Trees, Height) when byte_size(Recipient) =:= 65 ->
+ensure_recipient_account(Recipient, Trees, Height) when byte_size(Recipient) =:= ?PUB_SIZE ->
     case aec_trees:ensure_account_at_height(Recipient, Trees, Height) of
         {ok, Trees1} -> Trees1;
         {error, account_height_too_big} -> throw(bad_height)

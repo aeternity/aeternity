@@ -44,7 +44,7 @@
               , contract_address :: pubkey()
               , gas_used         :: amount()
               , return_value     :: binary()
-	      , return_type      :: ok | error | revert			    
+	      , return_type      :: ok | error | revert
               }).
 
 -opaque call() :: #call{}.
@@ -57,7 +57,7 @@
              , serialized/0
              ]).
 
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 -define(NONCE_SIZE, 256).
 
 %%%===================================================================
@@ -141,7 +141,7 @@ serialization_template(?CONTRACT_INTERACTION_VSN) ->
 serialize_return_type(ok) -> 0;
 serialize_return_type(error) -> 1;
 serialize_return_type(revert) ->  2.
-     
+
 deserialize_return_type(0) -> ok;
 deserialize_return_type(1) -> error;
 deserialize_return_type(2) -> revert.
