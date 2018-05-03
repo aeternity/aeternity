@@ -110,6 +110,12 @@ ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
 ast_body({id, _, "raw_spend"}) ->
     error({underapplied_primitive, raw_spend});
+%% State stuff
+ast_body({id, _, "state"}) -> prim_state;
+ast_body({app, _, {typed, _, {id, _, "put"}, _}, [NewState]}) ->
+    #prim_put{ state = ast_body(NewState) };
+ast_body({id, _, "put"}) ->
+    error({underapplied_primitive, put});   %% TODO: eta
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};

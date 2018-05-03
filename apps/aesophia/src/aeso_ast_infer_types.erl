@@ -15,6 +15,7 @@ global_env() ->
     Int     = {id, Ann, "int"},
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
+    State   = {id, Ann, "state"},
     Unit    = {tuple_t, Ann, []},
     Fun     = fun(S, T) -> {type_sig, [S], T} end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
@@ -37,7 +38,10 @@ global_env() ->
      {["Chain",    "timestamp"],    Int},
      {["Chain",    "block_height"], Int},
      {["Chain",    "difficulty"],   Int},
-     {["Chain",    "gas_limit"],    Int}
+     {["Chain",    "gas_limit"],    Int},
+     %% State
+     {"state", State},
+     {"put",   Fun(State, Unit)}
     ].
 
 infer([{contract, Attribs, ConName, Code}|Rest]) ->

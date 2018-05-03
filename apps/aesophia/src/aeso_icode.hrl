@@ -22,6 +22,7 @@
 
 -record(prim_balance,    { address :: expr() }).
 -record(prim_block_hash, { height :: expr() }).
+-record(prim_put,        { state :: expr() }).
 
 -record(integer, {value :: integer()}).
 
