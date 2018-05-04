@@ -27,6 +27,8 @@
           genesis_block_with_state/0,
           populated_trees/0 ]).
 
+-export([genesis_difficulty/0]).
+
 -export([prev_hash/0,
          height/0,
          pow/0,
@@ -99,3 +101,8 @@ populated_trees(Map) ->
 
 height() ->
     ?GENESIS_HEIGHT.
+
+%% Returns the difficulty of the genesis block meant to be used in the
+%% computation of the chain difficulty.
+genesis_difficulty() ->
+    0. %% Genesis block is unmined.

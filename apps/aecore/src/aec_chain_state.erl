@@ -363,7 +363,11 @@ update_next_state_tree_children([{Child, ForkId}|Left], Trees, Difficulty, Max, 
 
 get_state_trees_in(Node, State) ->
     case node_is_genesis(Node, State) of
-        true  -> {ok, aec_block_genesis:populated_trees(), 0, hash(Node)};
+        true  ->
+            {ok,
+             aec_block_genesis:populated_trees(),
+             aec_block_genesis:genesis_difficulty(),
+             hash(Node)};
         false -> db_find_state(prev_hash(Node))
     end.
 
