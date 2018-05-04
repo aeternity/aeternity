@@ -40,7 +40,7 @@ execute_identy_fun_from_file(_Cfg) ->
                         currentTimestamp => 0,
                         chainState => ChainState,
                         chainAPI => aevm_dummy_chain,
-                        vm_version => ?AEVM_01_Sophia_01},
+                        vm_version => ?AEVM_01_Solidity_01},
                pre => #{}},
             #{trace => false})
          ),
