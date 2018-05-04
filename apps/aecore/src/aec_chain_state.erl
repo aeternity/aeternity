@@ -208,8 +208,6 @@ node_is_in_main_chain(Node, TopNode) ->
 %%%-------------------------------------------------------------------
 
 internal_insert(Node, Block) ->
-    %% Keep track of which node we are actually adding to avoid giving
-    %% spurious error messages.
     case db_find_node(hash(Node)) of
         error ->
             %% To preserve the invariants of the chain,
@@ -218,6 +216,9 @@ internal_insert(Node, Block) ->
             %% trees, and update the pointers)
             Fun = fun() ->
                           State = new_state_from_persistence(),
+                          %% Keep track of which node we are actually
+                          %% adding to avoid giving spurious error
+                          %% messages.
                           State1 = State#{ currently_adding => hash(Node)},
                           assert_not_new_genesis(Node, State1),
                           ok = db_put_node(Block, hash(Node)),
