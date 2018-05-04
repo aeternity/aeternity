@@ -12,6 +12,7 @@
         , execute_call/2
         ]).
 
+-include("aecontract.hrl").
 
 
 -spec encode_call_data(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
@@ -50,6 +51,7 @@ call(Code, CallData) ->
             , currentTimestamp => 1
             , chainState => ChainState
             , chainAPI => aec_vm_chain
+            , vm_version => ?AEVM_01_Solidity_01
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};
@@ -81,6 +83,7 @@ execute_call(#{ code := CodeAsHexBinString
               , currentTimestamp := TS
               , chainState := ChainState
               , chainAPI := ChainAPI
+              , vm_version := VmVersion
               }, Trace) ->
     %% TODO: Handle Contract In State.
     Code = aeu_hex:hexstring_decode(CodeAsHexBinString),
@@ -101,6 +104,7 @@ execute_call(#{ code := CodeAsHexBinString
                    , currentTimestamp => TS
                    , chainState => ChainState
                    , chainAPI => ChainAPI
+                   , vm_version => VmVersion
                    },
            pre => #{}},
     TraceSpec =

@@ -8,6 +8,8 @@
 
 -module(aeso_test_utils).
 
+-include("apps/aecontract/src/aecontract.hrl").
+
 -export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1]).
 
 -export([spend/3, get_balance/2, call_contract/6]).
@@ -48,7 +50,8 @@ dummy_state(Code, Data) ->
            currentNumber     => 7,
            currentTimestamp  => 0,
            chainAPI          => ?MODULE,
-           chainState        => no_state
+           chainState        => no_state,
+           vm_version        => ?AEVM_01_Sophia_01
          }
      , exec =>
         #{ gas        => 10000,

@@ -11,6 +11,7 @@
    [ execute_identy_fun_from_file/1
    ]).
 
+-include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
@@ -38,7 +39,8 @@ execute_identy_fun_from_file(_Cfg) ->
                         currentNumber => 0,
                         currentTimestamp => 0,
                         chainState => ChainState,
-                        chainAPI => aevm_dummy_chain},
+                        chainAPI => aevm_dummy_chain,
+                        vm_version => ?AEVM_01_Sophia_01},
                pre => #{}},
             #{trace => false})
          ),
