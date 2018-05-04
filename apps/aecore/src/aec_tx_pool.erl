@@ -22,7 +22,7 @@
         , stop/0
         ]).
 
--export([ get_candidate/1
+-export([ get_candidate/2
         , get_max_nonce/1
         , peek/1
         , push/1
@@ -88,9 +88,10 @@ get_max_nonce(Sender) ->
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec get_candidate(pos_integer()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxN) when is_integer(MaxN), MaxN >= 0 ->
-    gen_server:call(?SERVER, {get_candidate, MaxN}).
+-spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
+                                    is_binary(BlockHash) ->
+    gen_server:call(?SERVER, {get_candidate, MaxN, BlockHash}).
 
 -spec top_change(binary(), binary()) -> ok.
 top_change(OldHash, NewHash) ->
@@ -127,9 +128,9 @@ handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
     {reply, {ok, Txs}, State};
-handle_call({get_candidate, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
-  when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0 ->
-    Txs = int_get_candidate(MaxNumberOfTxs, Mempool),
+handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From,
+            #state{db = Mempool} = State) ->
+    Txs = int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash),
     {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
@@ -167,22 +168,33 @@ int_get_max_nonce(Mempool, Sender) ->
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee.
-int_get_candidate(MaxNumberOfTxs, Mempool) ->
-    int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool), gb_trees:empty()).
+int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash) ->
+    int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool),
+                      BlockHash, gb_trees:empty()).
 
-int_get_candidate(0,_Mempool, _, Acc) ->
+int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(_N,_Mempool, '$end_of_table', Acc) ->
+int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(N, Mempool, {_NegFee, Account, Nonce} = Key, Acc) ->
+int_get_candidate(N, Mempool, {_Fee, Account, Nonce} = Key, BlockHash, Acc) ->
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
             %% The earlier must have had higher fee. Skip this tx.
-            int_get_candidate(N - 1, Mempool, ets:next(Mempool, Key), Acc);
+            int_get_candidate(N, Mempool, ets:next(Mempool, Key), BlockHash, Acc);
         false ->
             Tx = ets:lookup_element(Mempool, Key, 2),
-            NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
-            int_get_candidate(N - 1, Mempool, ets:next(Mempool, Key), NewAcc)
+            case check_nonce_at_hash(Tx, BlockHash) of
+                ok ->
+                    NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
+                    Next = ets:next(Mempool, Key),
+                    int_get_candidate(N - 1, Mempool, Next, BlockHash, NewAcc);
+                {error, _} ->
+                    %% This is not valid anymore.
+                    %% TODO: This should also be deleted, but we don't know for
+                    %% sure that we are still on the top.
+                    int_get_candidate(N, Mempool, ets:next(Mempool, Key),
+                                      BlockHash, Acc)
+            end
     end.
 
 pool_db_key(SignedTx) ->
@@ -309,6 +321,9 @@ check_signature(Tx, Hash) ->
     end.
 
 check_nonce(Tx,_Hash) ->
+  check_nonce_at_hash(Tx, aec_chain:top_block_hash()).
+
+check_nonce_at_hash(Tx, BlockHash) ->
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
@@ -317,7 +332,7 @@ check_nonce(Tx,_Hash) ->
         false ->
             {error, illegal_nonce};
         true ->
-            case aec_chain:get_account(Pubkey) of
+            case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
                 {value, Account} ->
                     aetx_utils:check_nonce(Account, TxNonce);
                 {error, no_state_trees} ->

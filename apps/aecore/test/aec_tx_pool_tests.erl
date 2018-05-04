@@ -170,17 +170,17 @@ tx_pool_test_() ->
                %% Only one tx in pool
                STx1 = a_signed_tx(PK, me, 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10)),
+               ?assertEqual({ok, [STx1]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Order by nonce even if fee is higher
                STx2 = a_signed_tx(PK, me, 2, 5),
                ?assertEqual(ok, aec_tx_pool:push(STx2)),
-               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10)),
+               ?assertEqual({ok, [STx1, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                %% Replace same nonce with the higher fee
                STx3 = a_signed_tx(PK, me, 1, 2),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
-               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10)),
+               ?assertEqual({ok, [STx3, STx2]}, aec_tx_pool:get_candidate(10, <<>>)),
 
                ok
        end},
