@@ -27,11 +27,14 @@
          new_node_can_mine_on_old_chain_using_new_protocol/1,
          new_node_can_mine_old_spend_tx_without_payload_using_new_protocol/1,
          new_node_can_mine_spend_tx_on_old_chain_using_old_protocol/1,
-         new_node_can_mine_spend_tx_on_old_chain_using_new_protocol/1
+         new_node_can_mine_spend_tx_on_old_chain_using_new_protocol/1,
+         new_node_can_mine_contract_on_old_chain_using_old_protocol/1,
+         new_node_can_mine_contract_on_old_chain_using_new_protocol/1
         ]).
 
 %=== INCLUDES ==================================================================
 
+-include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
 %=== MACROS ====================================================================
@@ -142,7 +145,8 @@ all() ->
     [
      {group, assumptions},
      {group, hard_fork},
-     {group, hard_fork_with_tx}
+     {group, hard_fork_with_tx},
+     {group, hard_fork_with_contract}
     ].
 
 groups() ->
@@ -208,6 +212,30 @@ groups() ->
       [
        new_node_can_receive_short_old_chain_from_old_node,
        new_node_can_mine_spend_tx_on_old_chain_using_new_protocol
+      ]},
+     {hard_fork_with_contract,
+      [sequence],
+      [
+       restore_db_backup_on_old_node, %% Determines info of top of chain in DB backup.
+       {group, hard_fork_all_with_contract}
+      ]},
+     {hard_fork_all_with_contract,
+      [sequence],
+      [
+       {group, hard_fork_old_chain_with_contract},
+       {group, hard_fork_new_chain_with_contract}
+      ]},
+     {hard_fork_old_chain_with_contract,
+      [sequence],
+      [
+       new_node_can_receive_short_old_chain_from_old_node,
+       new_node_can_mine_contract_on_old_chain_using_old_protocol
+      ]},
+     {hard_fork_new_chain_with_contract,
+      [sequence],
+      [
+       new_node_can_receive_short_old_chain_from_old_node,
+       new_node_can_mine_contract_on_old_chain_using_new_protocol
       ]}
     ].
 
@@ -242,10 +270,30 @@ init_per_group(Group, Config)
     [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
      {_, _} = proplists:lookup(db_backup_top_hash, SavedCfg)
      | Config];
+init_per_group(hard_fork_all_with_contract, Config) ->
+    {_, {restore_db_backup_on_old_node, SavedCfg}} =
+        proplists:lookup(saved_config, Config),
+    %% Taken from aehttp_integration_SUITE:contract_transactions.
+    Code = <<"0x36600080376200002160008080805180516004146200003057505B50600119"
+             "51005B60005260206000F35B80905090565B602001517F6D61696E0000000000"
+             "0000000000000000000000000000000000000000000000146200006157620000"
+             "1A565B602001519050809150506200002A56">>,
+    DecodedCode = aeu_hex:hexstring_decode(Code),
+    [{_, _} = proplists:lookup(db_backup_top_height, SavedCfg),
+     {_, _} = proplists:lookup(db_backup_top_hash, SavedCfg),
+     {contract_code, Code}, {contract_call_data, Code},
+     {decoded_contract_code, DecodedCode},
+     {decoded_contract_call_data, DecodedCode},
+     {contract_tx_vm_version, 1}, {contract_tx_deposit, 5},
+     {contract_tx_amount, 10}, {contract_tx_gas, 1000},
+     {contract_tx_gas_price, 3}, {contract_tx_fee, 1},
+     {contract_function, <<"main">>}, {contract_arguments, <<"42">>}
+     | Config];
 init_per_group(Group, Config)
   when Group =:= upgrade_flow_smoke_test;
        Group =:= old_spend_tx_in_new_protocol_smoke_test;
-       Group =:= hard_fork_new_chain_with_tx ->
+       Group =:= hard_fork_new_chain_with_tx;
+       Group =:= hard_fork_new_chain_with_contract ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
     Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL(TopHeight)),
@@ -254,7 +302,9 @@ init_per_group(Group, Config)
        ?NEW_NODE3(Ps),
        ?NEW_NODE4(Ps)], NewConfig),
     NewConfig;
-init_per_group(hard_fork_old_chain_with_tx, Config) ->
+init_per_group(Group, Config)
+  when Group =:= hard_fork_old_chain_with_tx;
+       Group =:= hard_fork_old_chain_with_contract ->
     {_, TopHeight} = proplists:lookup(db_backup_top_height, Config),
     NewConfig = aest_nodes:ct_setup(Config),
     Ps = protocols(?HEIGHT_OF_NEW_PROTOCOL_UNREACHABLE(TopHeight)),
@@ -268,9 +318,10 @@ init_per_group(_, Config) -> Config.
 end_per_group(Group, Config)
   when Group =:= upgrade_flow_smoke_test;
        Group =:= old_spend_tx_in_new_protocol_smoke_test;
-       Group =:= hard_fork_new_chain_with_tx ->
-    aest_nodes:ct_cleanup(Config);
-end_per_group(hard_fork_old_chain_with_tx, Config) ->
+       Group =:= hard_fork_old_chain_with_tx;
+       Group =:= hard_fork_new_chain_with_tx;
+       Group =:= hard_fork_old_chain_with_contract;
+       Group =:= hard_fork_new_chain_with_contract ->
     aest_nodes:ct_cleanup(Config);
 end_per_group(_, _) -> ok.
 
@@ -536,7 +587,6 @@ new_node_can_mine_old_spend_tx_without_payload_using_new_protocol(Cfg) ->
     aest_nodes:kill_node(old_node1, Cfg),
     ok.
 
-
 %% New node can sync the old chain from old node and can start mining
 %% on the top of the old chain. The new node can mine blocks using the
 %% old protocol and include spend transaction in the blocks. The block
@@ -646,6 +696,196 @@ new_node_can_mine_spend_tx_on_old_chain_using_new_protocol(Cfg) ->
     ?assertEqual(SpendTxBlockHash, maps:get(hash, get_block_by_height(new_node4, SpendTxHeight, Cfg))),
     ok.
 
+%% New node can sync the old chain from old node and can start mining
+%% on the top of the old chain. The new node can mine blocks using the
+%% old protocol and include contract create, contract call and contract
+%% call compute(?) transactions in the blocks. The blocks with the
+%% contract transactions can be synced among old and other new nodes.
+new_node_can_mine_contract_on_old_chain_using_old_protocol(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, old_node1} = proplists:lookup(old_node_left_running_with_old_chain, SavedCfg),
+    {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    OldProtocolVersion = old_protocol_version(),
+    start_node(new_node4, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node4], {{100000, ms}, {1000, blocks}}, Cfg),
+    ok = mock_pow_on_node(new_node3, Cfg),
+    ok = mock_pow_on_node(new_node4, Cfg),
+    %% Kill old node - syncing of blocks with contract transactions is not tested.
+    aest_nodes:kill_node(old_node1, Cfg),
+    %% expected_mine_rate is lowered so contract gets mined faster.
+    ErlCmd = make_erl_cmd("application:set_env(aecore, expected_mine_rate, ~p)", [10]),
+    ok = run_erl_cmd_on_node(new_node3, ErlCmd, Cfg),
+    ok = run_erl_cmd_on_node(new_node4, ErlCmd, Cfg),
+    %% Get public key of account meant to be creator of contract and make sure it has a sufficient balance by means of mining.
+    {ok, 200, #{pub_key := PubKey3}} = request(new_node3, 'GetPubKey', #{}, Cfg),
+    %% Balance is 0.
+    {ok, 404, #{reason := <<"Account not found">>}} =
+        request(new_node3, 'GetAccountBalance', #{account_pubkey => PubKey3}, Cfg),
+    ct:log("Balance of account with public key ~p is ~p", [PubKey3, 0]),
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg),
+    %% 100 should be enough.
+    MinedReward = 100,
+    aest_nodes:wait_for_value({balance, PubKey3, MinedReward}, [new_node3], 10000, Cfg),
+    {ok, 200, #{balance := MinedBalance}} =
+        request(new_node3, 'GetAccountBalance', #{account_pubkey => PubKey3}, Cfg),
+    ?assert(MinedBalance >= MinedReward),
+    ct:log("Mined balance on ~p with public key ~p is ~p", [new_node3, PubKey3, MinedBalance]),
+    %% Make sure there are no contracts related to the account.
+    ?assertMatch(
+       {ok, 200, #{transactions := []}},
+       request(new_node3, 'GetAccountTransactions',
+               #{account_pubkey => PubKey3, tx_types => contract_create_tx, tx_encoding => json}, Cfg)),
+    %% Create contract create transaction.
+    {ok, DecPubKey3} = aec_base58c:safe_decode(account_pubkey, PubKey3),
+    {ContractCreate, DecContractCreate} =
+        make_contract_tx(contract_create_tx, PubKey3, DecPubKey3, Cfg),
+    Nonce = 1,
+    #{tx := ContractCreateTx, contract_address := ContractPubKey} =
+        get_contract_tx(new_node3, 'PostContractCreate', fun aect_create_tx:new/1,
+                        Nonce, ContractCreate, DecContractCreate, Cfg),
+    %% Post contract create transaction and wait until it's mined.
+    #{block_hash := ContractBlockHash, block_height := ContractBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce, ContractPubKey, contract_create_tx,
+                                           ContractCreateTx, Cfg),
+    %% Check protocol version of the block with mined transaction on all nodes.
+    %% Cannot smoke test that block with contract tx mined by new node with old protocol is synced by old_node1.
+    check_protocol_version_on_nodes([new_node3, new_node4], OldProtocolVersion,
+                                    ContractBlockHash, ContractBlockHeight, Cfg),
+    %% Create contract call transaction.
+    {ContractCall, DecContractCall} =
+        make_contract_tx(contract_call_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
+    Nonce1 = Nonce + 1,
+    #{tx := ContractCallTx} =
+        get_contract_tx(new_node3, 'PostContractCall', fun aect_call_tx:new/1,
+                        Nonce1, ContractCall, DecContractCall, Cfg),
+    %% Post contract call transaction and wait until it's mined.
+    #{block_hash := ContractCallBlockHash, block_height := ContractCallBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce1, ContractPubKey, contract_call_tx,
+                                           ContractCallTx, Cfg),
+    %% Check protocol version of the block with mined transacion on all nodes.
+    %% Cannot smoke test that block with contract tx mined by new node with old protocol is synced by old_node1.
+    check_protocol_version_on_nodes([new_node3, new_node4], OldProtocolVersion,
+                                    ContractCallBlockHash, ContractCallBlockHeight, Cfg),
+    %% Create contract call compute transaction.
+    {ContractCallCompute, DecContractCallCompute} =
+        make_contract_tx(contract_call_compute_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
+    Nonce2 = Nonce1 + 1,
+    #{tx := ContractCallComputeTx} =
+        get_contract_tx(new_node3, 'PostContractCallCompute', fun aect_call_tx:new/1,
+                        Nonce2, ContractCallCompute, DecContractCallCompute, Cfg),
+    %% Post contract call compute transaction and wait until it's mined.
+    #{block_hash := ContractCallComputeBlockHash, block_height := ContractCallComputeBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce2, ContractPubKey, contract_call_compute_tx,
+                                           ContractCallComputeTx, Cfg),
+    %% Check protocol version of the block with mined transaction on all nodes.
+    %% Cannot smoke test that block with contract tx mined by new node with old protocol is synced by old_node1.
+    check_protocol_version_on_nodes([new_node3, new_node4], OldProtocolVersion,
+                                    ContractCallComputeBlockHash, ContractCallComputeBlockHeight, Cfg),
+    ok.
+
+%% New node can sync the old chain from old node and can start mining
+%% on the top of the old chain. The new node can mine blocks using the
+%% new protocol and include contract create, contract call and contract
+%% call compute transactions in the blocks. The blocks with the
+%% contract transactions can be synced among other new nodes.
+new_node_can_mine_contract_on_old_chain_using_new_protocol(Cfg) ->
+    {_, {_Saver, SavedCfg}} = proplists:lookup(saved_config, Cfg),
+    {_, old_node1} = proplists:lookup(old_node_left_running_with_old_chain, SavedCfg),
+    {_, new_node3} = proplists:lookup(new_node_left_running_with_synced_old_chain, SavedCfg),
+    {_, TopHeight} = proplists:lookup(db_backup_top_height, Cfg),
+    {_, _TopHash} = proplists:lookup(db_backup_top_hash, Cfg),
+    OldProtocolVersion = old_protocol_version(),
+    NewProtocolVersion = new_protocol_version(),
+    HeightOfNewProtocol = ?HEIGHT_OF_NEW_PROTOCOL(TopHeight),
+    start_node(new_node4, Cfg),
+    wait_for_height_syncing(TopHeight, [new_node4], {{100000, ms}, {1000, blocks}}, Cfg),
+    ok = mock_pow_on_node(new_node3, Cfg),
+    ok = mock_pow_on_node(new_node4, Cfg),
+    %% Kill old node - not needed.
+    aest_nodes:kill_node(old_node1, Cfg),
+    %% expected_mine_rate is lowered so contract gets mined faster.
+    ErlCmd = make_erl_cmd("application:set_env(aecore, expected_mine_rate, ~p)", [10]),
+    ok = run_erl_cmd_on_node(new_node3, ErlCmd, Cfg),
+    ok = run_erl_cmd_on_node(new_node4, ErlCmd, Cfg),
+    %% Get public key of account meant to be creator of contract and make sure it has a sufficient balance by means of mining.
+    {ok, 200, #{pub_key := PubKey3}} = request(new_node3, 'GetPubKey', #{}, Cfg),
+    %% Balance is 0.
+    {ok, 404, #{reason := <<"Account not found">>}} =
+        request(new_node3, 'GetAccountBalance', #{account_pubkey => PubKey3}, Cfg),
+    ct:log("Balance of account with public key ~p is ~p", [PubKey3, 0]),
+    %% Reach height of switch to new protocol.
+    ok = run_erl_cmd_on_node(new_node3, "aec_conductor:start_mining().", 10000, Cfg),
+    LastHeightOfOldProtocol = HeightOfNewProtocol - 1,
+    %% Check the last block of old protocol has old version.
+    wait_for_height_syncing(LastHeightOfOldProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
+    {ok, 200, B3OldProtocol} =
+        request(new_node3, 'GetBlockByHeight', #{height => LastHeightOfOldProtocol}, Cfg),
+    ?assertEqual(OldProtocolVersion, maps:get(version, B3OldProtocol)),
+    %% Check the first block of new protocol has version of the new protocol.
+    wait_for_height_syncing(HeightOfNewProtocol, [new_node3], {{10000, ms}, {1000, blocks}}, Cfg),
+    B3NewProtocol = get_block_by_height(new_node3, HeightOfNewProtocol, Cfg),
+    {ok, 200, B3NewProtocol} =
+        request(new_node3, 'GetBlockByHeight', #{height => HeightOfNewProtocol}, Cfg),
+    ?assertEqual(NewProtocolVersion, maps:get(version, B3NewProtocol)),
+    %% 100 should be enough.
+    MinedReward = 100,
+    aest_nodes:wait_for_value({balance, PubKey3, MinedReward}, [new_node3], 10000, Cfg),
+    {ok, 200, #{balance := MinedBalance}} =
+        request(new_node3, 'GetAccountBalance', #{account_pubkey => PubKey3}, Cfg),
+    ?assert(MinedBalance >= MinedReward),
+    ct:log("Mined balance on ~p with public key ~p is ~p", [new_node3, PubKey3, MinedBalance]),
+    %% Make sure there are no contracts related to the account.
+    ?assertMatch(
+       {ok, 200, #{transactions := []}},
+       request(new_node3, 'GetAccountTransactions',
+               #{account_pubkey => PubKey3, tx_types => contract_create_tx, tx_encoding => json}, Cfg)),
+    %% Create contract create transaction.
+    {ok, DecPubKey3} = aec_base58c:safe_decode(account_pubkey, PubKey3),
+    {ContractCreate, DecContractCreate} =
+        make_contract_tx(contract_create_tx, PubKey3, DecPubKey3, Cfg),
+    Nonce = 1,
+    #{tx := ContractCreateTx, contract_address := ContractPubKey} =
+        get_contract_tx(new_node3, 'PostContractCreate', fun aect_create_tx:new/1,
+                        Nonce, ContractCreate, DecContractCreate, Cfg),
+    %% Post contract create transaction and wait until it's mined.
+    #{block_hash := ContractBlockHash, block_height := ContractBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce, ContractPubKey, contract_create_tx,
+                                           ContractCreateTx, Cfg),
+    %% Check protocol version of the block with mined transaction on all nodes.
+    check_protocol_version_on_nodes([new_node3, new_node4], NewProtocolVersion,
+                                    ContractBlockHash, ContractBlockHeight, Cfg),
+    %% Create contract call transaction.
+    {ContractCall, DecContractCall} =
+        make_contract_tx(contract_call_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
+    Nonce1 = Nonce + 1,
+    #{tx := ContractCallTx} =
+        get_contract_tx(new_node3, 'PostContractCall', fun aect_call_tx:new/1,
+                        Nonce1, ContractCall, DecContractCall, Cfg),
+    %% Post contract call transaction and wait until it's mined.
+    #{block_hash := ContractCallBlockHash, block_height := ContractCallBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce1, ContractPubKey, contract_call_tx,
+                                           ContractCallTx, Cfg),
+    %% Check protocol version of the block with mined transacion on all nodes.
+    check_protocol_version_on_nodes([new_node3, new_node4], NewProtocolVersion,
+                                    ContractCallBlockHash, ContractCallBlockHeight, Cfg),
+    %% Create contract call compute transaction.
+    {ContractCallCompute, DecContractCallCompute} =
+        make_contract_tx(contract_call_compute_tx, PubKey3, DecPubKey3, ContractPubKey, Cfg),
+    Nonce2 = Nonce1 + 1,
+    #{tx := ContractCallComputeTx} =
+        get_contract_tx(new_node3, 'PostContractCallCompute', fun aect_call_tx:new/1,
+                        Nonce2, ContractCallCompute, DecContractCallCompute, Cfg),
+    %% Post contract call compute transaction and wait until it's mined.
+    #{block_hash := ContractCallComputeBlockHash, block_height := ContractCallComputeBlockHeight} =
+        post_contract_tx_and_wait_in_chain(new_node3, PubKey3, Nonce2, ContractPubKey, contract_call_compute_tx,
+                                           ContractCallComputeTx, Cfg),
+    %% Check protocol version of the block with mined transaction on all nodes.
+    check_protocol_version_on_nodes([new_node3, new_node4], NewProtocolVersion,
+                                    ContractCallComputeBlockHash, ContractCallComputeBlockHeight, Cfg),
+    ok.
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 old_protocol_version() ->
@@ -738,6 +978,10 @@ load_module_on_node(NodeName, Module, String, Cfg) ->
           [Module, Binary]),
     ok = run_erl_cmd_on_node(NodeName, ErlCmd, 30000, Cfg).
 
+get_signed_tx(NodeName, UnsignedTx, Cfg) ->
+    ErlCmd = lists:flatten(io_lib:format("aec_keys:sign(~w).", [UnsignedTx])),
+    run_erl_cmd_on_node(NodeName, ErlCmd, Cfg).
+
 dot_ending_token_lists(Chars) ->
     (fun
          F(ContinuationIn, LeftOverCharsIn, TokenListsIn) ->
@@ -758,6 +1002,9 @@ to_forms(DotEndingTokenLists) ->
 make_erl_cmd(Fmt, Params) ->
     lists:flatten(io_lib:format(Fmt, Params)).
 
+run_erl_cmd_on_node(NodeName, ErlCmd, Cfg) ->
+    run_erl_cmd_on_node(NodeName, ErlCmd, 5000, Cfg).
+
 run_erl_cmd_on_node(NodeName, ErlCmd, Timeout, Cfg) ->
     ct:log("Running Erlang command on node ~s:~n~s", [NodeName, ErlCmd]),
     Cmd = ["bin/epoch", "eval", ErlCmd],
@@ -771,6 +1018,12 @@ eval_expression(Expr) ->
     {ok, Parsed} = erl_parse:parse_exprs(Tokens),
     {value, Result, _} = erl_eval:exprs(Parsed, []),
     Result.
+
+request(NodeName, OpId, Params, Cfg) ->
+    ExtAddr = aest_nodes:get_service_address(NodeName, ext_http, Cfg),
+    IntAddr = aest_nodes:get_service_address(NodeName, int_http, Cfg),
+    Cfg1 = [{ext_http, ExtAddr}, {int_http, IntAddr} | Cfg],
+    aehttp_client:request(OpId, Params, Cfg1).
 
 get_version(NodeName, Cfg) ->
     {ok, 200, B} = aest_nodes:http_get(NodeName, ext_http, [v2, version], #{}, Cfg),
@@ -836,6 +1089,133 @@ post_spend_tx(NodeName, Recipient, Amount, Fee, Cfg) ->
     {ok, 200, #{}} = aest_nodes:http_post(NodeName, int_http, [v2, 'spend-tx'], #{}, Headers, Body, Cfg),
     ok.
 
+get_contract_tx(NodeName, OpId, NewF, Nonce, Data, DecData, Cfg) ->
+    {ok, ExpectedDeserializedTx} = NewF(DecData#{nonce => Nonce}),
+    {ok, 200, #{tx := Tx, tx_hash := TxHash} = Result} = request(NodeName, OpId, Data, Cfg),
+    {ok, SerializedTx} = aec_base58c:safe_decode(transaction, Tx),
+    DeserializedTx = aetx:deserialize_from_binary(SerializedTx),
+    ExpectedTxHash = aec_base58c:encode(tx_hash, aetx:hash(DeserializedTx)),
+    ?assertEqual(ExpectedDeserializedTx, DeserializedTx),
+    ?assertEqual(ExpectedTxHash, TxHash),
+    Result.
+
+post_contract_tx_and_wait_in_chain(NodeName, Sender, Nonce, ContractPubKey, TxType, Tx, Cfg) ->
+    %% Deserialize, sign and post transaction.
+    {ok, SerializedTx} = aec_base58c:safe_decode(transaction, Tx),
+    DeserializedTx = aetx:deserialize_from_binary(SerializedTx),
+    {ok, SignedDeserializedTx} = get_signed_tx(NodeName, DeserializedTx, Cfg),
+    SerializedSignedTx = aetx_sign:serialize_to_binary(SignedDeserializedTx),
+    EncSerializedSignedTx = aec_base58c:encode(transaction, SerializedSignedTx),
+    ct:log("Sent ~p with sender public key ~p and transaction: ~p", [TxType, Sender, Tx]),
+    {ok, 200, _} = request(NodeName, 'PostTx', #{tx => EncSerializedSignedTx}, Cfg),
+    wait_contract_tx_in_chain(NodeName, Sender, Nonce, ContractPubKey, TxType, Cfg).
+
+wait_contract_tx_in_chain(NodeName, Sender, Nonce, ContractPubKey, TxType, Cfg) ->
+    %% Wait until the contract gets mined, retrieve info about the block which contains the contract.
+    aest_nodes:wait_for_value({contract_tx, Sender, Nonce}, [NodeName], 45000, Cfg),
+    TxType1 = make_contract_tx_type(TxType),
+    {ok, 200, #{transactions := Txs}} =
+        request(NodeName, 'GetAccountTransactions',
+                #{account_pubkey => Sender, tx_types => TxType1, tx_encoding => json}, Cfg),
+    [#{tx := MinedTxInfo} = MinedTx] = tx_with_nonce(Nonce, Txs),
+    check_mined_contract_tx(TxType, Sender, ContractPubKey, MinedTxInfo, Cfg),
+    MinedTx.
+
+make_contract_tx(contract_create_tx, PubKey, DecPubKey, Cfg) ->
+    ContractCreate =
+        #{owner      => PubKey,
+          code       => ?config(contract_code, Cfg),
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          deposit    => ?config(contract_tx_deposit, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
+          call_data  => ?config(contract_call_data, Cfg)},
+    DecContractCreate =
+        ContractCreate#{owner     => DecPubKey,
+                        code      => ?config(decoded_contract_code, Cfg),
+                        call_data => ?config(decoded_contract_call_data, Cfg)},
+    {ContractCreate, DecContractCreate}.
+
+make_contract_tx(contract_call_tx, PubKey, DecPubKey, ContractPubKey, Cfg) ->
+    ContractCall =
+        #{caller     => PubKey,
+          contract   => ContractPubKey,
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
+          call_data  => ?config(contract_call_data, Cfg)},
+    DecContractCall =
+        ContractCall#{caller    => DecPubKey,
+                      call_data => ?config(decoded_contract_call_data, Cfg)},
+    {ContractCall, DecContractCall};
+make_contract_tx(contract_call_compute_tx, PubKey, DecPubKey, ContractPubKey, Cfg) ->
+    ContractCode = ?config(contract_code, Cfg),
+    ContractFunction = ?config(contract_function, Cfg),
+    ContractArguments = ?config(contract_arguments, Cfg),
+    ContractCallCompute =
+        #{caller     => PubKey,
+          contract   => ContractPubKey,
+          vm_version => ?config(contract_tx_vm_version, Cfg),
+          amount     => ?config(contract_tx_amount, Cfg),
+          gas        => ?config(contract_tx_gas, Cfg),
+          gas_price  => ?config(contract_tx_gas_price,Cfg),
+          fee        => ?config(contract_tx_fee, Cfg),
+          function   => ContractFunction,
+          arguments  => ContractArguments},
+    {ok, EncContractCallData} =
+        aect_sophia:encode_call_data(ContractCode, ContractFunction, ContractArguments),
+    DecContractCallData1 = aeu_hex:hexstring_decode(EncContractCallData),
+    DecContractCallCompute =
+        ContractCallCompute#{caller    => DecPubKey,
+                             call_data => DecContractCallData1},
+    {ContractCallCompute, DecContractCallCompute}.
+
+check_mined_contract_tx(contract_create_tx, Sender, _ContractPubKey, TxInfo, Cfg) ->
+    check_mined_contract_tx_common(TxInfo, Cfg),
+    ?assertEqual(Sender, maps:get(owner, TxInfo)),
+    ?assertEqual(?config(contract_code, Cfg), list_to_binary(maps:get(code, TxInfo))),
+    ?assertEqual(?config(contract_tx_deposit, Cfg), maps:get(deposit, TxInfo)),
+    ?assertEqual(?config(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
+    ok;
+check_mined_contract_tx(contract_call_tx, Sender, ContractPubKey, TxInfo, Cfg) ->
+    check_mined_contract_tx_common(TxInfo, Cfg),
+    {ok, TxInfoContractPubKey} = aec_base58c:safe_decode(account_pubkey, maps:get(contract, TxInfo)),
+    ?assertEqual(Sender, maps:get(caller, TxInfo)),
+    ?assertEqual(ContractPubKey, TxInfoContractPubKey),
+    ?assertEqual(?config(contract_call_data, Cfg), list_to_binary(maps:get(call_data, TxInfo))),
+    ok;
+check_mined_contract_tx(contract_call_compute_tx, Sender, ContractPubKey, TxInfo, Cfg) ->
+    check_mined_contract_tx_common(TxInfo, Cfg),
+    {ok, TxInfoContractPubKey} = aec_base58c:safe_decode(account_pubkey, maps:get(contract, TxInfo)),
+    ?assertEqual(Sender, maps:get(caller, TxInfo)),
+    ?assertEqual(ContractPubKey, TxInfoContractPubKey),
+    ok.
+
+check_mined_contract_tx_common(TxInfo, Cfg) ->
+    ?assertEqual(?config(contract_tx_vm_version, Cfg), hex_to_integer(maps:get(vm_version, TxInfo))),
+    ?assertEqual(?config(contract_tx_amount, Cfg), maps:get(amount, TxInfo)),
+    ?assertEqual(?config(contract_tx_gas, Cfg), maps:get(gas, TxInfo)),
+    ?assertEqual(?config(contract_tx_gas_price, Cfg), maps:get(gas_price, TxInfo)),
+    ?assertEqual(?config(contract_tx_fee, Cfg), maps:get(fee, TxInfo)),
+    ok.
+
+check_protocol_version_on_nodes(NodeNames, ExpectedProtocolVersion, BlockHash, BlockHeight, Cfg) ->
+    lists:foreach(
+      fun(NodeName) ->
+              check_protocol_version_on_node(NodeName, ExpectedProtocolVersion, BlockHash, BlockHeight, Cfg)
+      end,
+      NodeNames).
+
+check_protocol_version_on_node(NodeName, ExpectedProtocolVersion, BlockHash, BlockHeight, Cfg) ->
+    wait_for_height_syncing(BlockHeight, [NodeName], {{100000, ms}, {1000, blocks}}, Cfg),
+    {ok, 200, #{version := ProtocolVersion}} =
+        request(NodeName, 'GetBlockByHash', #{hash => BlockHash, tx_encoding => json}, Cfg),
+    ?assertMatch(ExpectedProtocolVersion, ProtocolVersion).
+
 wait_for_height_syncing(MinHeight, NodeNames, {{Timeout, ms}, {Blocks, blocks}}, Cfg) ->
     WaitF =
         fun(H) ->
@@ -858,3 +1238,16 @@ wait_step_for_height(WaitF, MinHeight, StepMaxBlocks, ReachedHeight) ->
     H = min(MinHeight, ReachedHeight + StepMaxBlocks),
     ok = WaitF(H),
     wait_step_for_height(WaitF, MinHeight, StepMaxBlocks, H).
+
+make_contract_tx_type(contract_create_tx) -> contract_create_tx;
+make_contract_tx_type(contract_call_tx) -> contract_call_tx;
+make_contract_tx_type(contract_call_compute_tx) -> contract_call_tx.
+
+tx_with_nonce(Nonce, Txs) ->
+    lists:filter(fun(#{tx := #{nonce := N}}) when N =:= Nonce -> true;
+                    (_) -> false
+                end, Txs).
+
+hex_to_integer([$0, $x | N]) ->
+    list_to_integer(N, 16).
+
