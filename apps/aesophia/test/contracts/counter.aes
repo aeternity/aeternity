@@ -3,7 +3,7 @@ contract Counter =
 
   type state = { value : int }
 
-  function init() : state = { value = 0 }
-  function get()  = state.value
-  function tick() = put(state{ value = state.value + 1 })
+  function init(val) = { value = val }
+  function get()     = state.value
+  function tick()    = put(state{ value = state.value + 1 })
 
