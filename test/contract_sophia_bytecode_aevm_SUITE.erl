@@ -232,7 +232,7 @@ initial_state(Contracts) ->
     initial_state(Contracts, #{}).
 
 initial_state(Contracts, Accounts) ->
-    maps:merge(#{environment => #{}},
+    maps:merge(#{environment => #{}, store => #{}},
         maps:merge(Contracts, #{accounts => Accounts})).
 
 spend(_To, Amount, _) when Amount < 0 ->
@@ -247,6 +247,16 @@ spend(To, Amount, S = #{ running := From, accounts := Accounts }) ->
 
 get_balance(Account, #{ accounts := Accounts }) ->
     maps:get(Account, Accounts, 0).
+
+get_store(#{ running := Contract, store := Store }) ->
+    Data = maps:get(Contract, Store, undefined),
+    case Data of
+        undefined -> aevm_eeevm_store:from_sophia_state(<<>>);
+        _         -> Data
+    end.
+
+set_store(Data, State = #{ running := Contract, store := Store }) ->
+    State#{ store => Store#{ Contract => Data } }.
 
 -define(PRIM_CALL_SPEND, 1).
 
@@ -286,7 +296,3 @@ call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
             {error, {no_such_contract, Contract}}
     end.
 
-%% Note if you add contracts that use the storage state, it has to be handled here.
-%% Dummy implementation.
-get_store(_) -> #{}.
-set_store(_Store, State) -> State.
