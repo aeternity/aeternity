@@ -84,11 +84,16 @@ save_store(#{ chain_state := ChainState
         ?AEVM_01_Sophia_01 ->
             %% The serialized state is on top of the heap and the pointer to it
             %% at address 0.
-            {Addr, _} = aevm_eeevm_memory:load(0, State),
-            Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
-            {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
-            Store     = aevm_eeevm_store:from_sophia_state(Data),
-            State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+            try
+                {Addr, _} = aevm_eeevm_memory:load(0, State),
+                Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
+                {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+                Store     = aevm_eeevm_store:from_sophia_state(Data),
+                State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+            catch _:_ ->
+                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
+                State
+            end
     end.
 
 -spec init(map(), map()) -> state().
