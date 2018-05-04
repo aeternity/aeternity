@@ -2,8 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
-* Change the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable
-  anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`).
+* Change the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`). This impacts consensus.
 * Does this. This impacts consensus.
 * Does that.
 * TODO Improves the stability of the testnet.
@@ -11,7 +10,7 @@ It:
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
 
 This release introduces backward incompatible changes in the chain format:
-* After upgrading your node, you will not have your previous balance (even if you keep your key pair);
+* After upgrading your node, you will not have your previous balance (do not attempt to keep your key pair from previous releases "v0.12.x" because not useable anymore);
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.12.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
