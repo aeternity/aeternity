@@ -79,11 +79,16 @@ save_store(#{ chain_state := ChainState
             , vm_version  := VmVersion } = State) ->
     case VmVersion of
         ?AEVM_01_Solidity_01 ->
-            Store  = aevm_eeevm_store:to_binary(State),
+            Store = aevm_eeevm_store:to_binary(State),
             State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
         ?AEVM_01_Sophia_01 ->
-            %% TODO
-            State
+            %% The serialized state is on top of the heap and the pointer to it
+            %% at address 0.
+            {Addr, _} = aevm_eeevm_memory:load(0, State),
+            Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
+            {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+            Store     = aevm_eeevm_store:from_sophia_state(Data),
+            State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
     end.
 
 -spec init(map(), map()) -> state().
