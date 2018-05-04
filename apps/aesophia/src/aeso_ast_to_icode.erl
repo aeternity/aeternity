@@ -28,7 +28,15 @@ code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
     code(Rest, NewIcode);
 code([], Icode) -> Icode.
 
-contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
+contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
+    StateType =
+        case TypeDef of
+            {alias_t, T}   -> ast_typerep(T);
+            {record_t, _}  -> ast_typerep(TypeDef);
+            {variant_t, _} -> error({not_supported, variant_state_types, TypeDef})
+        end,
+    contract_to_icode(Rest, Icode#{ state_type => StateType});
+contract_to_icode([{type_def, _Attrib, _, _, _}|Rest], Icode) ->
     %% TODO: Handle types
     contract_to_icode(Rest, Icode);
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
@@ -209,7 +217,7 @@ ast_typerep({id,_,"int"}) ->
 ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
-    word;   %% except addresses are 65 bytes..?
+    word;
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;

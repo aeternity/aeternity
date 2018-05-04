@@ -17,6 +17,7 @@
 i(Code) -> aeb_opcodes:mnemonic(Code).
 
 convert(#{ contract_name := _ContractName
+         , state_type := StateType
          , functions := Functions
               },
         _Options) ->
@@ -29,8 +30,8 @@ convert(#{ contract_name := _ContractName
                    word},
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),
-    TypeReps = all_type_reps([TypeRep || {_, _, _, TypeRep} <- Functions] ++ InTypes),
-    OutTypeReps = all_type_reps(OutTypes),
+    TypeReps = all_type_reps([TypeRep || {_, _, _, TypeRep} <- Functions] ++ InTypes ++ [StateType]),
+    OutTypeReps = all_type_reps(OutTypes ++ [StateType]),
     Encoders = [make_encoder(T) || T <- TypeReps],
     Decoders = [make_decoder(T) || T <- OutTypeReps],
     Library = [make_copymem()],
@@ -48,9 +49,12 @@ convert(#{ contract_name := _ContractName
                     i(?CALLDATACOPY),
                     %% push a return address to stop
                     push_label(StopLabel),
-                    %% The second word of the calldata is a pointer to the
-                    %% actual calldata (the first is a pointer to the contract
-                    %% state).
+                    %% Decode the state (a pointer to the binary is at address 0)
+                    push(0), i(?MLOAD),
+                    assemble_expr(Funs, [dummy], nontail, {decode, StateType}),
+                    push(0), i(?MSTORE),
+                    %% The first word of the calldata is a pointer to the
+                    %% actual calldata.
                     push(32), i(?MLOAD),
                     jump(MainFunction),
                     jumpdest(StopLabel),
@@ -61,6 +65,11 @@ convert(#{ contract_name := _ContractName
                     i(?MSIZE), %% MSize Ptr Ptr
                     i(?SUB),   %% Size Ptr
                     swap(1),   %% Ptr Size
+                    %% Now we need to do the same thing for the state
+                    push(0), i(?MLOAD),          %% State Ptr Size
+                    assemble_expr(Funs, [{"state", "_"}, dummy, dummy], nontail, {encode, 0, StateType, {var_ref, "state"}}),
+                                                 %% StateBinPtr State Ptr Size
+                    push(0), i(?MSTORE), pop(1), %% Ptr Size  Mem[0] := StateBinPtr
                     i(?RETURN)
                    ],
 
