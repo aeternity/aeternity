@@ -188,7 +188,7 @@ get_transactions_between(Hash, Root, Acc) ->
 
 -spec find_transaction_in_main_chain_or_mempool(binary()) ->
                                                    'none' |
-                                                   {binary() | 'mempool', aetx_sign:tx()}.
+                                                   {binary() | 'mempool', aetx_sign:signed_tx()}.
 find_transaction_in_main_chain_or_mempool(TxHash) ->
     case aec_db:find_transaction_in_main_chain_or_mempool(TxHash) of
         none -> none;

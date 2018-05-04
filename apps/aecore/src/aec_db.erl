@@ -459,13 +459,16 @@ fold_mempool(FunIn, InitAcc) ->
           end,
     ?t(mnesia:foldl(Fun, InitAcc, aec_tx_pool)).
 
+-dialyzer({nowarn_function, find_transaction_in_main_chain_or_mempool/1}). %% For mnesia patches.
+
 -spec find_transaction_in_main_chain_or_mempool(binary()) ->
                                                        'none'
-                                                     | {'mempool', [aetx_sign:tx()]}
-                                                     | {binary(), aetx_sign:tx()}.
+                                                     | {'mempool', [aetx_sign:signed_tx()]}
+                                                     | {binary(), aetx_sign:signed_tx()}.
 find_transaction_in_main_chain_or_mempool(Hash) ->
     ?t(pick_location(mnesia:index_read(aec_signed_tx, Hash, {tx2stx}), [])).
 
+-dialyzer({nowarn_function, pick_location/2}). %% For mnesia patches.
 pick_location([], Acc) ->
     case [STx || #aec_signed_tx{key = STxHash, value = STx} <- Acc,
                  is_in_tx_pool(STxHash)] of
