@@ -63,6 +63,7 @@
         , vm_version/1
         ]).
 
+-include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_eeevm.hrl").
 
 -type state() :: map().
@@ -74,9 +75,16 @@ init(Spec) -> init(Spec, #{}).
 
 -spec save_store(state()) -> state().
 save_store(#{ chain_state := ChainState
-	    , chain_api   := ChainAPI } = State) ->
-    Store  = aevm_eeevm_store:to_binary(State),
-    State#{ chain_state => ChainAPI:set_store(Store, ChainState)}.
+	    , chain_api   := ChainAPI
+            , vm_version  := VmVersion } = State) ->
+    case VmVersion of
+        ?AEVM_01_Solidity_01 ->
+            Store  = aevm_eeevm_store:to_binary(State),
+            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
+        ?AEVM_01_Sophia_01 ->
+            %% TODO
+            State
+    end.
 
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
@@ -141,10 +149,22 @@ init_vm(State, Code, Mem, Store) ->
 	      , cp        => 0
 	      , logs      => []
 	      , memory    => Mem
+              , storage   => #{}
 	      , return_data => <<>>
 	      , stack     => []
 	      },
-    aevm_eeevm_store:init(Store, State1).
+    %% Solidity contracts want their state in the 'store', and Sophia contracts
+    %% want it on the heap.
+    case vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            aevm_eeevm_store:init(Store, State1);
+        ?AEVM_01_Sophia_01 ->
+            %% Leave room for the calldata at address 32
+            Addr = byte_size(data(State1)) + 32,
+            Data = aevm_eeevm_store:to_sophia_state(Store),
+            State2 = aevm_eeevm_memory:write_area(Addr, Data, State1),
+            aevm_eeevm_memory:store(0, Addr, State2)
+    end.
 
 call_contract(Caller, Dest, CallGas, Value, Data, State) ->
     ChainAPI   = chain_api(State),
