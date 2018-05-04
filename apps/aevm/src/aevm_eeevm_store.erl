@@ -64,7 +64,7 @@ integer_to_binary_map(Store) ->
     ToBin = fun(A, Val, Map) ->
                     Key = binary:encode_unsigned(A),
                     case binary:encode_unsigned(Val) of
-                        0 -> Map;
+                        <<0>> -> Map;
                         V -> Map#{ Key => V}
                     end
             end,
