@@ -86,10 +86,13 @@ save_store(#{ chain_state := ChainState
             %% at address 0.
             try
                 {Addr, _} = aevm_eeevm_memory:load(0, State),
-                Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
-                {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
-                Store     = aevm_eeevm_store:from_sophia_state(Data),
-                State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+                case Addr of        %% A contract can write 0 to the state pointer
+                    0 -> State;     %% to indicate that the state didn't change.
+                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
+                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+                         Store     = aevm_eeevm_store:from_sophia_state(Data),
+                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+                end
             catch _:_ ->
                 io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
                 State
