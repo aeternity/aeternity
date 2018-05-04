@@ -60,6 +60,7 @@
         , trace_format/3
         , trace_fun/1
         , value/1
+        , vm_version/1
         ]).
 
 -include("aevm_eeevm.hrl").
@@ -113,6 +114,8 @@ init(#{ env  := Env
          , do_trace  => maps:get(trace, Opts, false)
          , trace => []
          , trace_fun => init_trace_fun(Opts)
+
+         , vm_version => maps:get(vm_version, Env)
 
          , chain_state => ChainState
          , chain_api   => ChainAPI
@@ -248,6 +251,8 @@ trace_fun(State)   -> maps:get(trace_fun, State).
 
 chain_state(State) -> maps:get(chain_state, State).
 chain_api(State)   -> maps:get(chain_api, State).
+
+vm_version(State)  -> maps:get(vm_version, State).
 
 set_cp(Value, State)      -> maps:put(cp, Value, State).
 set_code(Value, State)    -> maps:put(code, Value, State).
