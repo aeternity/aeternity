@@ -18,13 +18,18 @@
 -define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1'}, '_'}).
 
 %% API
--export([start_link/0,
-         stop/0]).
--export([push/1, push/2,
-         peek/1,
-         top_change/2,
-         get_max_nonce/1,
-         size/0]).
+-export([ start_link/0
+        , stop/0
+        ]).
+
+-export([ get_candidate/1
+        , get_max_nonce/1
+        , peek/1
+        , push/1
+        , push/2
+        , size/0
+        , top_change/2
+        ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -83,6 +88,10 @@ get_max_nonce(Sender) ->
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
+-spec get_candidate(pos_integer()) -> {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxN) when is_integer(MaxN), MaxN >= 0 ->
+    gen_server:call(?SERVER, {get_candidate, MaxN}).
+
 -spec top_change(binary(), binary()) -> ok.
 top_change(OldHash, NewHash) ->
     gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
@@ -118,6 +127,10 @@ handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
     {reply, {ok, Txs}, State};
+handle_call({get_candidate, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
+  when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0 ->
+    Txs = int_get_candidate(MaxNumberOfTxs, Mempool),
+    {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -152,6 +165,25 @@ int_get_max_nonce(Mempool, Sender) ->
             {ok, MaxNonce}
     end.
 
+%% Ensure ordering of tx nonces in one account, and for duplicate account nonces
+%% we only get the one with higher fee.
+int_get_candidate(MaxNumberOfTxs, Mempool) ->
+    int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool), gb_trees:empty()).
+
+int_get_candidate(0,_Mempool, _, Acc) ->
+    gb_trees:values(Acc);
+int_get_candidate(_N,_Mempool, '$end_of_table', Acc) ->
+    gb_trees:values(Acc);
+int_get_candidate(N, Mempool, {_NegFee, Account, Nonce} = Key, Acc) ->
+    case gb_trees:is_defined({Account, Nonce}, Acc) of
+        true ->
+            %% The earlier must have had higher fee. Skip this tx.
+            int_get_candidate(N - 1, Mempool, ets:next(Mempool, Key), Acc);
+        false ->
+            Tx = ets:lookup_element(Mempool, Key, 2),
+            NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
+            int_get_candidate(N - 1, Mempool, ets:next(Mempool, Key), NewAcc)
+    end.
 
 pool_db_key(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),

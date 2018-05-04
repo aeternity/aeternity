@@ -55,7 +55,7 @@ get_miner_account_balance() ->
 
 -spec get_txs_to_mine_in_pool() -> list(aetx_sign:signed_tx()).
 get_txs_to_mine_in_pool() ->
-    {ok, Txs} = aec_tx_pool:peek(aec_governance:max_txs_in_block() - 1),
+    {ok, Txs} = aec_tx_pool:get_candidate(aec_governance:max_txs_in_block() - 1),
     Txs.
 
 -spec create_block_candidate(
