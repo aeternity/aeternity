@@ -289,9 +289,9 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
             attempt_epoch_stop(NodeState, Timeout),
-            case wait_stopped(ID, Timeout) of
+            case aest_docker_api:wait_stopped(ID, Timeout) of
                 timeout ->
-                    aest_docker_api:stop_container(ID, Opts);
+                    aest_docker_api:kill_container(ID);
                 ok ->
                     log(NodeState,
                         "Container ~p [~s] detected as stopped", [Name, ID]),
@@ -443,9 +443,7 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        {ok, _, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
-        log(NodeState, "Command executed on container ~p [~s]: ~s",
-            [Name, ID, CmdStr])
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5)
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
             log(NodeState,
@@ -453,6 +451,19 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
                 [Name, ID, TimeoutInfo])
     end,
     ok.
+
+%% Sometime the stop command do not succeed...
+retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) -> error;
+retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
+    #{container_id := ID, hostname := Name} = NodeState,
+    case aest_docker_api:exec(ID, Cmd, Opts) of
+        {ok, 137, <<"ok\r\n">>} -> ok;
+        {ok, Status, Res} ->
+            CmdStr = lists:join($ , Cmd),
+            log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
+                    [Name, ID, CmdStr, Status, Res]),
+            retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
+    end.
 
 maybe_continue_waiting(Id, infinity, StartTime) ->
     timer:sleep(100),
