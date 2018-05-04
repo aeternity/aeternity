@@ -340,7 +340,7 @@ def main(argv):
         print("Checking that emergency patching of OTP modules works: `mnesia:index_read`")
         [start_node(d) for d in node_dirs]
         wait_all_nodes_are_online(node_objs)
-        if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>).'"):
+        if 0 != eval_on_node(temp_dir_dev1, "'aec_db:transactions_by_account(<<\"FakeAccountPublicKey\">>, fun(_)-> true end, true).'"):
             test_failed = True
             print("Check on `mnesia:index_read` failed")
         [stop_node(d) for d in node_dirs]
