@@ -299,11 +299,11 @@ prune_oracle(Cfg) ->
     Expires        = ?ORACLE_REG_HEIGHT + maps:get(oracle, aeo_test_utils:ttl_defaults()),
 
     %% Test that the oracle is pruned
-    Gone  = prune_from_until(0, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
     none  = aeo_state_tree:lookup_oracle(OracleKey, aec_trees:oracles(Gone)),
 
     %% Test that the oracle remains
-    Left      = prune_from_until(0, Expires, Trees),
+    Left      = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
     Oracle    = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left)),
     OracleKey = aeo_oracles:owner(Oracle),
     ok.
@@ -313,16 +313,16 @@ prune_oracle_extend(Cfg) ->
     Trees                      = aeo_test_utils:trees(S),
 
     %% Test that the oracle is not pruned prematurely
-    Left1 = prune_from_until(0, Exp1 + 1, Trees),
+    Left1 = prune_from_until(?GENESIS_HEIGHT, Exp1 + 1, Trees),
     Oracle0   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left1)),
     OracleKey = aeo_oracles:owner(Oracle0),
 
     %% Test that the oracle is pruned
-    Gone  = prune_from_until(0, Exp2 + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, Exp2 + 1, Trees),
     none  = aeo_state_tree:lookup_oracle(OracleKey, aec_trees:oracles(Gone)),
 
     %% Test that the oracle remains
-    Left2     = prune_from_until(0, Exp2, Trees),
+    Left2     = prune_from_until(?GENESIS_HEIGHT, Exp2, Trees),
     Oracle2   = aeo_state_tree:get_oracle(OracleKey, aec_trees:oracles(Left2)),
     OracleKey = aeo_oracles:owner(Oracle2),
     ok.
@@ -336,7 +336,7 @@ prune_query(Cfg) ->
     SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(0, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
     none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
 
     %% Check that the query fee was refunded
@@ -345,7 +345,7 @@ prune_query(Cfg) ->
     true = aec_accounts:balance(PreAccount) < aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(0, Expires, Trees),
+    Left  = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
     OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.
@@ -365,7 +365,7 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
     SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
-    Gone  = prune_from_until(0, Expires + 1, Trees),
+    Gone  = prune_from_until(?GENESIS_HEIGHT, Expires + 1, Trees),
     none  = aeo_state_tree:lookup_query(OracleKey, ID, aec_trees:oracles(Gone)),
 
     %% Check that the query fee was not refunded
@@ -374,7 +374,7 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
     true = aec_accounts:balance(PreAccount) == aec_accounts:balance(PostAccount),
 
     %% Test that the query remains
-    Left  = prune_from_until(0, Expires, Trees),
+    Left  = prune_from_until(?GENESIS_HEIGHT, Expires, Trees),
     OIO2  = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Left)),
     ID    = aeo_query:id(OIO2),
     ok.
