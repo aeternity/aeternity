@@ -345,11 +345,11 @@ test_get_block_candidate() ->
     ?assertEqual({error, not_mining}, ?TEST_MODULE:get_block_candidate()),
     {ok, MyAccount} = aec_keys:pubkey(),
     lists:foreach(
-        fun(_) ->
+        fun(X) ->
             {ok, Tx} = aec_spend_tx:new(#{sender => MyAccount,
                                           recipient => MyAccount,
                                           amount => 0,
-                                          nonce => 0, fee => 0,
+                                          nonce => X, fee => 1,
                                           payload => <<"">>}),
             {ok, STx} = aec_keys:sign(Tx),
             ok = aec_tx_pool:push(STx, tx_received)
@@ -365,6 +365,7 @@ test_get_block_candidate() ->
     {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     ?assertEqual(TopBlockHash, aec_blocks:prev_hash(BlockCandidate)),
     {ok, AllTxsInPool} = aec_tx_pool:peek(infinity),
+    ?assertEqual(true, length(aec_blocks:txs(BlockCandidate)) > 1),
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
@@ -372,7 +373,7 @@ test_get_block_candidate() ->
                 case aetx:tx_type(Tx) of
                     <<"coinbase_tx">> -> true;
                     _ ->
-                        lists:member(Tx, AllTxsInPool)
+                        lists:member(SignedTx, AllTxsInPool)
                 end
             end,
             aec_blocks:txs(BlockCandidate))),
