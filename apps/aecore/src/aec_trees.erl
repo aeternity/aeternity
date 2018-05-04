@@ -84,8 +84,8 @@ oracles(Trees) ->
 set_oracles(Trees, Oracles) ->
     Trees#trees{oracles = Oracles}.
 
--spec perform_pre_transformations(trees(), non_neg_integer()) -> trees().
-perform_pre_transformations(Trees, Height) ->
+-spec perform_pre_transformations(trees(), height()) -> trees().
+perform_pre_transformations(Trees, Height) when Height > ?GENESIS_HEIGHT ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
     set_ns(Trees1, aens_state_tree:prune(Height, ns(Trees1))).
@@ -106,14 +106,14 @@ contracts(Trees) ->
 set_contracts(Trees, Contracts) ->
     Trees#trees{contracts = Contracts}.
 
--spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), non_neg_integer(),
+-spec apply_signed_txs_strict(list(aetx_sign:signed_tx()), trees(), height(),
                               non_neg_integer()) ->
                                  {ok, list(aetx_sign:signed_tx()), trees()}
                                | {'error', atom()}.
 apply_signed_txs_strict(SignedTxs, Trees, Height, ConsensusVersion) ->
     apply_signed_txs_common(SignedTxs, Trees, Height, ConsensusVersion, true).
 
--spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), non_neg_integer(),
+-spec apply_signed_txs(list(aetx_sign:signed_tx()), trees(), height(),
                        non_neg_integer()) ->
                           {ok, list(aetx_sign:signed_tx()), trees()}.
 apply_signed_txs(SignedTxs, Trees, Height, ConsensusVersion) ->

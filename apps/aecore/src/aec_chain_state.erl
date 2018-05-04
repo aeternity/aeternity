@@ -373,11 +373,14 @@ get_state_trees_in(Node, State) ->
     end.
 
 apply_and_store_state_trees(Node, TreesIn, DifficultyIn, ForkId,
-                            #{currently_adding := Hash}) ->
+                            #{currently_adding := Hash} = State) ->
     NodeHash = hash(Node),
     try
         assert_previous_height(Node),
-        Trees = apply_node_transactions(Node, TreesIn),
+        Trees = case node_is_genesis(Node, State) of
+                    true -> TreesIn;
+                    false -> apply_node_transactions(Node, TreesIn)
+                end,
         assert_state_hash_valid(Trees, Node),
         assert_calculated_target(Node),
         Difficulty = DifficultyIn + node_difficulty(Node),

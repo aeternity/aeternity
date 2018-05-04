@@ -85,7 +85,7 @@ empty_with_backend() ->
                 }.
 
 -spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
-prune(Height, Trees) ->
+prune(Height, Trees) when Height > 0 ->
     %% Oracle information should be around for the expiry block
     %% since we prune before the block, use Height - 1 for pruning.
     int_prune(Height - 1, Trees).

@@ -78,7 +78,7 @@ empty_with_backend() ->
     #ns_tree{mtree = MTree, cache = Cache}.
 
 -spec prune(block_height(), tree()) -> tree().
-prune(NextBlockHeight, #ns_tree{} = Tree) ->
+prune(NextBlockHeight, #ns_tree{} = Tree) when NextBlockHeight > 0 ->
     {Tree1, ExpiredActions} = int_prune(NextBlockHeight - 1, Tree),
     run_elapsed(ExpiredActions, Tree1, NextBlockHeight).
 
