@@ -20,21 +20,19 @@
 %% API
 %%====================================================================
 
--spec init(binary(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
-init(Store, State) ->
-    State#{ storage =>
-		write_words([ B || <<B:256>> <= Store ], 0, #{})
-	  }.
--spec to_binary(aevm_eeevm_state:state()) -> binary().
-to_binary(#{ storage := Storage }) -> << <<W:256>>  || W <- to_list(Storage)>>.
+-spec init(aect_contracts:store(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
+init(Store, State) -> State#{ storage => binary_to_integer_map(Store) }.
 
--spec load(integer(), aevm_eeevm_state:state()) -> byte().
+-spec to_binary(aevm_eeevm_state:state()) -> aect_contracts:store().
+to_binary(#{ storage := Storage }) -> integer_to_binary_map(Storage).
+
+-spec load(integer(), aevm_eeevm_state:state()) -> integer().
 load(Address, State) ->
     Store = aevm_eeevm_state:storage(State),
     Value = storage_read(Address, Store),
     Value.
 
--spec store(integer(), byte(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
+-spec store(integer(), integer(), aevm_eeevm_state:state()) -> aevm_eeevm_state:state().
 store(Address, Value, State) when is_integer(Value) ->
     Store = aevm_eeevm_state:storage(State),
     %% Make sure value fits in 256 bits.
@@ -52,12 +50,23 @@ storage_read(Address, Mem) -> maps:get(Address, Mem, 0).
 storage_write(Address,     0, Mem) -> maps:remove(Address, Mem);
 storage_write(Address, Value, Mem) -> maps:put(Address, Value, Mem).
 
-write_words([W | Rest], Address, Mem) ->
-    write_words(Rest, Address + 32, storage_write(Address, W, Mem));
-write_words([], _, Mem) -> Mem.
+binary_to_integer_map(ChainStore) ->
+    ToInt = fun(K, Val, Map) ->
+                    Address = binary:decode_unsigned(K),
+                    case binary:decode_unsigned(Val) of
+                        0 -> Map;
+                        V -> Map#{ Address => V }
+                    end
+            end,
+    maps:fold(ToInt, #{}, ChainStore).
 
-to_list(Mem) -> to_list(0, lists:sort(maps:to_list(Mem))).
+integer_to_binary_map(Store) ->
+    ToBin = fun(A, Val, Map) ->
+                    Key = binary:encode_unsigned(A),
+                    case binary:encode_unsigned(Val) of
+                        0 -> Map;
+                        V -> Map#{ Key => V}
+                    end
+            end,
+    maps:fold(ToBin, #{}, Store).
 
-to_list(_, [])              -> [];
-to_list(N, [{N, W} | Rest]) -> [W || to_list(N+32, Rest)];
-to_list(N, Rest)            -> [0 || to_list(N+32, Rest)].

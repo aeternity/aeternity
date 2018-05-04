@@ -64,7 +64,7 @@
 
 -include("aevm_eeevm.hrl").
 
--type state() :: #{}.
+-type state() :: map().
 
 -export_type([state/0]).
 
@@ -75,8 +75,9 @@ init(Spec) -> init(Spec, #{}).
 save_store(#{ chain_state := ChainState
 	    , chain_api   := ChainAPI } = State) ->
     Store  = aevm_eeevm_store:to_binary(State),
-    State#{ chain_api => ChainAPI:set_store(Store, ChainState)}.
+    State#{ chain_state => ChainAPI:set_store(Store, ChainState)}.
 
+-spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = Spec, Opts) ->

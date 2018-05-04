@@ -124,7 +124,7 @@ call_contract(_Cfg) ->
     Overrides    = #{ code => IdContract
 		    , call_data => CallData
 		    , gas => 1000
-		    }, 
+		    },
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
 
     %% Test that the create transaction is accepted

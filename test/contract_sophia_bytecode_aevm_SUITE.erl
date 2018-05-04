@@ -1,4 +1,5 @@
 -module(contract_sophia_bytecode_aevm_SUITE).
+-behaviour(aec_vm_chain_api).
 
 %% common_test exports
 -export([all/0]).
@@ -16,7 +17,7 @@
    ]).
 
 %% chain API exports
--export([ spend/3, get_balance/2, call_contract/6 ]).
+-export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2 ]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -279,3 +280,7 @@ call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
             {error, {no_such_contract, Contract}}
     end.
 
+%% Note if you add contracts that use the storage state, it has to be handled here.
+%% Dummy implementation.
+get_store(_) -> #{}.
+set_store(_Store, State) -> State.

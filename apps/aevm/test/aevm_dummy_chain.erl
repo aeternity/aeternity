@@ -22,7 +22,7 @@
 new_state() -> no_state.
 
 get_balance(_, _S)              -> 0.
-get_store(_)                    -> <<>>.
+get_store(_)                    -> #{}.
 set_store(_,S)                  -> S.
 spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 call_contract(_, _, _, _, _, _) -> {error, cant_call_contracts_with_dummy_chain}.

@@ -184,18 +184,12 @@ process(#contract_create_tx{owner = OwnerPubKey,
 		{CallRes, Trees3} = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
-			%% Insert the call into the state tree.
-			%% This is mainly to remember what the
-			%% return value was so that the caller
-			%% can access it easily.
+			%% Insert the call into the state tree for one block.
+			%% This is mainly to make the return value accessible.
 			%% Each block starts with an empty calls tree.
 			CallsTree0 = aec_trees:calls(Trees3),
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
-			Trees4 = aec_trees:set_calls(Trees3, CallsTree1),
-
-			ContractsTree0 = aec_trees:contracts(Trees4),
-			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
-			aec_trees:set_contracts(Trees4, ContractsTree1);
+			Trees4 = aec_trees:set_calls(Trees3, CallsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
 			Trees2

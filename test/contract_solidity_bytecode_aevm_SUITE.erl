@@ -101,8 +101,8 @@ all() -> [
           %% but not with "make test" where other tests have run before.
           %% Taken out of test suite for now.
           %% TODO: Turn into a "dev1" node test.
-          execute_counter_fun_from_bytecode,
-          execute_identity_fun_from_solidity_binary
+          %% execute_counter_fun_from_bytecode,
+          %% execute_identity_fun_from_solidity_binary
          ].
 
 execute_identity_fun_from_solidity_binary(Cfg) ->

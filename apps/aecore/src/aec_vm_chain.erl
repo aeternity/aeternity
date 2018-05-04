@@ -59,16 +59,17 @@ get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
 %% @doc Get the contract state store of the contract account.
--spec get_store(chain_state()) -> binary().
+-spec get_store(chain_state()) -> aect_contracts:store().
 get_store(#state{ account = PubKey,
 		    trees = Trees }) ->
     do_get_store(PubKey, Trees).
 
 %% @doc Set the contract state store of the contract account.
--spec set_store(Store::binary(), chain_state()) -> chain_state().
+-spec set_store(Store::aect_contracts:store(), chain_state()) -> chain_state().
 set_store(Store,  #state{ account = PubKey,
 			  trees = Trees } = State) ->
-    Trees1 = do_set_store(Store, PubKey, Trees),
+    CTree1 = do_set_store(Store, PubKey, Trees),
+    Trees1 = aec_trees:set_contracts(Trees, CTree1),
     State#state{ trees = Trees1 }.
 
 
@@ -141,7 +142,7 @@ do_get_store(PubKey, Trees) ->
     ContractsTree = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
         {value, Contract} -> aect_contracts:state(Contract);
-        none              -> <<>>
+        none              -> #{}
     end.
 
 do_set_store(Store, PubKey, Trees) ->

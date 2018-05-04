@@ -98,9 +98,9 @@ validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
 	    PostStorage =
 		case maps:get(Addr, Post, undefined) of
 		    undefined -> #{};
-		    #{storage := S} -> S
+		    #{storage := _} = S -> aevm_eeevm_store:to_binary(S)
 		end,
-	    Storage = aevm_eeevm_state:storage(State),
+	    Storage = aevm_eeevm_store:to_binary(State),
 	    ?assertEqual(PostStorage, Storage);
 	_ -> true
     end.
