@@ -1,28 +1,20 @@
-import ecdsa
-from ecdsa import SigningKey, VerifyingKey
-from ecdsa.der import remove_sequence
-from hashlib import sha256
+import nacl.encoding
+import nacl.signing
+from nacl.signing import SigningKey, VerifyKey
 
 import common
 
 def new_private():
-    return SigningKey.generate(curve=ecdsa.SECP256k1, hashfunc=sha256) 
-
-def private_from_bytearray(arr):
-    return SigningKey.from_string(arr, curve=ecdsa.SECP256k1, hashfunc=sha256) 
+    return SigningKey.generate()
 
 def public_key(private_key):
-    return private_key.get_verifying_key()
-
-def public_from_bytearray(arr):
-    return VerifyingKey.from_string(arr, curve=ecdsa.SECP256k1, hashfunc=sha256) 
+    return private_key.verify_key
 
 def address(public_key):
-    arr = bytearray([0x04] + map(ord, list(public_key.to_string())))
-    return common.encode_pubkey(str(arr))
+    return common.encode_pubkey(public_key.encode(encoder=nacl.encoding.RawEncoder))
 
 def sign(message, private_key):
-    return private_key.sign(message, sigencode=ecdsa.util.sigencode_der)
+    return private_key.sign(message).signature
 
 def sign_encode_tx(packed_tx, private_key):
     signature = sign(packed_tx, private_key)
@@ -36,7 +28,5 @@ def sign_verify_encode_tx(packed_tx, private_key, public_key):
     return signed_encoded
 
 def verify(signature, message, public_key):
-    return public_key.verify(signature, message, sigdecode=ecdsa.util.sigdecode_der)
+    return public_key.verify(message, signature)
 
-def to_string(key):
-    return str(map(ord, list(key.to_string())))
