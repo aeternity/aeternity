@@ -397,7 +397,7 @@ init_per_suite(Config) ->
     ct:log("Environment = ~p", [[{args, init:get_arguments()},
                                  {node, node()},
                                  {cookie, erlang:get_cookie()}]]),
-    Forks = aecore_suite_utils:forks(), 
+    Forks = aecore_suite_utils:forks(),
 
     aecore_suite_utils:create_configs(Config1, #{<<"chain">> =>
                                                  #{<<"persist">> => true,
@@ -632,9 +632,6 @@ contract_transactions(_Config) ->
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
-    %% Check mempool empty
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
-
     % contract_create_tx positive test
     Code = <<"0x600035807f00000000000000000000000000000000000000000000000000000"
 	     "00000000000146200002c57005b6020356200003a9062000043565b6000526020"
@@ -647,8 +644,8 @@ contract_transactions(_Config) ->
     ValidEncoded = #{ owner => MinerAddress,
                       code => Code,
                       vm_version => 1,
-                      deposit => 5,
-                      amount => 10,
+                      deposit => 2,
+                      amount => 1,
                       gas => 30,
                       gas_price => 3,
                       fee => 1,
@@ -661,39 +658,22 @@ contract_transactions(_Config) ->
     unsigned_tx_positive_test(ValidDecoded, ValidEncoded, fun get_contract_create/1,
                                fun aect_create_tx:new/1, MinerPubkey),
 
-    % in order to test a positive case for contract_call_tx, we first need an
-    % actual contract on the chain
-    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
-    % contract pub key will be:
-    ContractPubKey = aect_contracts:compute_contract_pubkey(MinerPubkey, Nonce),
-
     %% prepare a contract_create_tx and post it
-    {ok, 200, #{<<"tx">> := EncodedUnsignedTx,
-                <<"contract_address">> := CAddress}} = get_contract_create(ValidEncoded),
-    CAddress = ContractPubKey,
-    {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
-    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
-    % create_contract_tx is in mempool
-    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"tx_hash">> := ContractCreateTxHash,
+                <<"contract_address">> := ContractPubKey}} = get_contract_create(ValidEncoded),
+    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    tx_is_mined_test(MinerAddress, ContractCreateTxHash),
 
-    % ensure Contract is part of the contract's tree
-    TopBlockHash = rpc(aec_chain, top_block_hash, []),
-    {value, Trees} = rpc(aec_db, find_block_state, [TopBlockHash]),
-    ContractsTree = rpc(aec_trees, contracts, [Trees]),
-    {value, _ } = rpc(aect_state_tree, lookup_contract, [ContractPubKey,
-                                                         ContractsTree]),
     ContractCallEncoded = #{ caller => MinerAddress,
                              contract => ContractPubKey,
                              vm_version => 1,
-                             amount => 10,
-                             gas => 1000,
-                             gas_price => 2,
+                             amount => 1,
+                             gas => 10,
+                             gas_price => 1,
                              fee => 1,
                              call_data => EncodedCallData},
 
@@ -705,14 +685,20 @@ contract_transactions(_Config) ->
                                fun get_contract_call/1,
                                fun aect_call_tx:new/1, MinerPubkey),
 
-    Function = <<"main">>,
-    Argument = <<"42">>,
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx,
+                <<"tx_hash">> := ContractCallTxHash}} = get_contract_call(ContractCallEncoded),
+    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallTx),
+
+    % mine a block
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    tx_is_mined_test(MinerAddress, ContractCallTxHash),
+
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => ContractPubKey,
                              vm_version => 1,
-                             amount => 10,
-                             gas => 1000,
-                             gas_price => 2,
+                             amount => 1,
+                             gas => 10,
+                             gas_price => 1,
                              fee => 1,
                              function => Function,
                              arguments => Argument},
@@ -726,6 +712,15 @@ contract_transactions(_Config) ->
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
                                fun get_contract_call_compute/1,
                                fun aect_call_tx:new/1, MinerPubkey),
+
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallComputeTx,
+                <<"tx_hash">> := ContractCallComputeTxHash}} =
+        get_contract_call_compute(ComputeCCallEncoded),
+    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallComputeTx),
+
+    % mine a block
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    tx_is_mined_test(MinerAddress, ContractCallComputeTxHash),
 
     %% negative tests
     %% Invalid hashes
@@ -810,7 +805,7 @@ oracle_transactions(_Config) ->
     % oracle_query_tx we first need an actual Oracle on the chain
 
     {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
-    sign_and_post_tx(RegisterTx),
+    sign_and_post_tx(MinerAddress, RegisterTx),
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
@@ -854,7 +849,7 @@ oracle_transactions(_Config) ->
     ct:log("Nonce is ~p", [QueryNonce]),
     QueryId = aeo_query:id(MinerPubkey, QueryNonce, MinerPubkey),
     {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
-    sign_and_post_tx(QueryTx),
+    sign_and_post_tx(MinerAddress, QueryTx),
 
     % mine blocks to include it
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -872,7 +867,7 @@ oracle_transactions(_Config) ->
                                fun get_oracle_response/1,
                                fun aeo_response_tx:new/1, MinerPubkey),
     {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
-    sign_and_post_tx(ResponseTx),
+    sign_and_post_tx(MinerAddress, ResponseTx),
     % mine a block to include it
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
@@ -1138,6 +1133,12 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
     Test(RandomNonce, maps:put(nonce, RandomNonce, Params)),
     Transaction.
 
+tx_is_mined_test(AccountPubKey, TxHash) ->
+    {ok, 200, #{<<"transactions">> := Txs}} =
+        get_account_transactions(AccountPubKey, tx_encoding_param(json)),
+    true = lists:any(fun(#{<<"hash">> := H}) when H =:= TxHash -> true;
+                        (_) -> false
+                     end, Txs).
 
 get_transaction(_Config) ->
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
@@ -3768,15 +3769,26 @@ open_websockets_count() ->
     length([1 || {_, QName} <- rpc(jobs, info, [monitors]),
                  QName =:= QueueName]).
 
-sign_and_post_tx(EncodedUnsignedTx) ->
+sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     {ok, SerializedUnsignedTx} = aec_base58c:safe_decode(transaction, EncodedUnsignedTx),
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
-    % create_contract_tx is in mempool
-    {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
+    #{<<"hash">> := TxHash} = aetx_sign:serialize_for_client_pending(json, SignedTx),
+    %% Check tx is in mempool.
+    {ok, [TxHash]} = aec_test_utils:wait_for_it_or_timeout(fun() -> mempool_txs(AccountPubKey) end,
+                                                           [TxHash], 5000),
     ok.
+
+mempool_txs(AccountPubKey) ->
+    {ok, 200, #{<<"transactions">> := Txs}} =
+        get_account_transactions(AccountPubKey, tx_encoding_param(json)),
+    lists:filtermap(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash}) ->
+                            {true, TxHash};
+                       (_) ->
+                            false
+                    end, Txs).
 
 make_params(L) ->
     make_params(L, []).
