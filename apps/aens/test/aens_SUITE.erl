@@ -105,7 +105,7 @@ preclaim_negative(Cfg) ->
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aens_test_utils:preclaim_tx_spec(BadPubKey, CHash, S1),
     {ok, Tx1} = aens_preclaim_tx:new(TxSpec1),
     {error, account_not_found} =
@@ -183,7 +183,7 @@ claim_negative(Cfg) ->
         aetx:check(Tx0, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test bad account key
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aens_test_utils:claim_tx_spec(BadPubKey, Name, NameSalt, S1),
     {ok, Tx1} = aens_claim_tx:new(TxSpec1),
     {error, account_not_found} =
@@ -282,7 +282,7 @@ update_negative(Cfg) ->
         aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test bad account key
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     TxSpec2 = aens_test_utils:update_tx_spec(BadPubKey, NHash, S1),
     {ok, Tx2} = aens_update_tx:new(TxSpec2),
     {error, account_not_found} =
@@ -362,7 +362,7 @@ transfer_negative(Cfg) ->
     Height = ?PRE_CLAIM_HEIGHT+1,
 
     %% Test bad account key
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aens_test_utils:transfer_tx_spec(BadPubKey, NHash, PubKey, S1),
     {ok, Tx1} = aens_transfer_tx:new(TxSpec1),
     {error, account_not_found} =
@@ -439,7 +439,7 @@ revoke_negative(Cfg) ->
     Height = ?PRE_CLAIM_HEIGHT+1,
 
     %% Test bad account key
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aens_test_utils:revoke_tx_spec(BadPubKey, NHash, S1),
     {ok, Tx1} = aens_revoke_tx:new(TxSpec1),
     {error, account_not_found} =

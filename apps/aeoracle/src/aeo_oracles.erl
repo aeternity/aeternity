@@ -65,7 +65,7 @@
              , type_spec/0
              ]).
 
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(ORACLE_TYPE, oracle).
 -define(ORACLE_VSN, 1).

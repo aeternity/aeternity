@@ -69,7 +69,7 @@ register_oracle_negative(_Cfg) ->
     CurrHeight   = 1,
 
     %% Test registering a bogus account
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:register_tx(BadPubKey, S1),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
@@ -113,7 +113,7 @@ extend_oracle_negative(Cfg) ->
     CurrHeight   = 1,
 
     %% Test registering a bogus account
-    BadPubKey = <<42:65/unit:8>>,
+    BadPubKey = <<42:32/unit:8>>,
     RTx1      = aeo_test_utils:extend_tx(BadPubKey, S1),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
@@ -178,7 +178,7 @@ query_oracle_negative(Cfg) ->
     CurrHeight      = 3,
 
     %% Test bad sender key
-    BadSenderKey = <<42:65/unit:8>>,
+    BadSenderKey = <<42:32/unit:8>>,
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleKey, S2),
     {error, account_not_found} = aetx:check(Q1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
@@ -197,7 +197,7 @@ query_oracle_negative(Cfg) ->
     {error, too_low_fee} = aetx:check(Q4, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test bad oracle key
-    BadOracleKey = <<42:65/unit:8>>,
+    BadOracleKey = <<42:32/unit:8>>,
     Q5 = aeo_test_utils:query_tx(SenderKey, BadOracleKey, S2),
     {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
@@ -237,7 +237,7 @@ query_response_negative(Cfg) ->
     CurrHeight           = 5,
 
     %% Test bad oracle key
-    BadOracleKey = <<42:65/unit:8>>,
+    BadOracleKey = <<42:32/unit:8>>,
     RTx1 = aeo_test_utils:response_tx(BadOracleKey, ID, <<"42">>, S1),
     {error, no_matching_oracle_query} =
         aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),

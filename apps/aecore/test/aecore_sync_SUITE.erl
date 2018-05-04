@@ -510,7 +510,7 @@ get_balance(N) ->
 get_pool(N) ->
     rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
 
-new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = M) ->
+new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
     PK1 = ok(get_pubkey(N1)),
     PK2 = ok(get_pubkey(N2)),
     Port = rpc:call(N1, aeu_env, user_config_or_env,

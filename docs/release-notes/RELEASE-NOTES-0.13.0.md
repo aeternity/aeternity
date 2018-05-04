@@ -2,6 +2,8 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Change the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable
+  anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`).
 * Does this. This impacts consensus.
 * Does that.
 * TODO Improves the stability of the testnet.

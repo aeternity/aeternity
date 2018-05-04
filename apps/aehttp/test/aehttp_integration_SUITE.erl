@@ -2422,7 +2422,11 @@ list_oracles(_Config) ->
     %% Mine some blocks to get some funds
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
 
-    KeyPairs = [ crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)) || _ <- lists:seq(1, 5) ],
+    KeyPair = fun() ->
+                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
+                  {Pub, Priv}
+              end,
+    KeyPairs = [ KeyPair() || _ <- lists:seq(1, 5) ],
 
     %% Transfer some funds to these accounts
     [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- KeyPairs ],
@@ -2440,7 +2444,7 @@ list_oracles(_Config) ->
     %% Now we can test the oracle listing...
     Oracles = get_list_oracles(5),
     Os1 = lists:sort([aec_base58c:encode(oracle_pubkey, PubKey) ||  {PubKey, _} <- KeyPairs ]),
-    Os2 = [ maps:get(<<"address">>, O) || O <- Oracles ],
+    Os2 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles ]),
 
     ct:log("Os1 = ~p\nOs2 = ~p", [Os1, Os2]),
     Os1 = Os2,
@@ -2448,7 +2452,7 @@ list_oracles(_Config) ->
     %% Try pagination
     Oracles1 = [_, O2] = get_list_oracles(2),
     Oracles2 = get_list_oracles(maps:get(<<"address">>, O2), 3),
-    Os3 = [ maps:get(<<"address">>, O) || O <- Oracles1 ++ Oracles2 ],
+    Os3 = lists:sort([ maps:get(<<"address">>, O) || O <- Oracles1 ++ Oracles2 ]),
 
     ct:log("Os3 = ~p\nOs2 = ~p", [Os3, Os2]),
     Os3 = Os2,
@@ -2459,11 +2463,13 @@ list_oracle_queries(_Config) ->
     %% Mine some blocks to get some funds
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
 
-    OKeyPairs = [ crypto:generate_key(ecdh, crypto:ec_curve(secp256k1))
-                  || _ <- lists:seq(1, 2) ],
+    KeyPair = fun() ->
+                  #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
+                  {Pub, Priv}
+              end,
+    OKeyPairs = [ KeyPair() || _ <- lists:seq(1, 2) ],
 
-    {APubKey, APrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-
+    {APubKey, APrivKey} = KeyPair(),
 
     %% Transfer some funds to these accounts
     [ post_spend_tx(Receiver, 9, 1) || {Receiver, _} <- OKeyPairs ],

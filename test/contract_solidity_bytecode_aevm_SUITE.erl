@@ -37,7 +37,7 @@ init_per_testcase(_, Cfg) ->
     Preset = [{MyPubKey, Amount}],
 
     [ {running_apps, Apps}
-    , {regnames, Names}    
+    , {regnames, Names}
     , {my_pub_key, MyPubKey}
     , {my_priv_key, MyPrivKey}
     , {preset, Preset}
@@ -109,14 +109,14 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
     ok = aec_tx_pool:push(SignedTx),
     TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
 
-    wait_for_it(fun () ->  
-    			none =/= 
+    wait_for_it(fun () ->
+    			none =/=
     			    aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
      		end, true),
 
-    %% lager:error("TxBin ~w~n",[TxHash]),    
+    %% lager:error("TxBin ~w~n",[TxHash]),
 
-    wait_for_it(fun () ->  
+    wait_for_it(fun () ->
 			case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
 			    'none' -> false;
 			    {'mempool', _} -> false;
@@ -125,7 +125,7 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
      		end, true),
 
 
-    {Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
+    {_Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
 
     ok = unmock_genesis(Cfg),
     ok = application:stop(aecore),
@@ -151,20 +151,9 @@ id_bytecode() ->
 %%%===================================================================
 %%% Keys TODO: Should move
 %%%===================================================================
-
--define(PUB_SIZE, 65).
--define(PRIV_SIZE, 32).
-
 new_key_pair() ->
-    {Pubkey, PrivKey} = crypto:generate_key(ecdh, crypto:ec_curve(secp256k1)),
-    {Pubkey, pad_privkey(PrivKey)}.
-
-%% crypto:generate_keys/2 gives you a binary with as many bytes as are needed
-%%  to fit the private key. It does not pad with zeros.
-
-pad_privkey(Bin) ->
-    Pad = ?PRIV_SIZE - size(Bin),
-    <<0:(Pad*8), Bin/binary>>.
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    {PubKey, PrivKey}.
 
 %%%===================================================================
 %%% Accounts in Genesis

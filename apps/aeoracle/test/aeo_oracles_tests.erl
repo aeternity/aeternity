@@ -51,7 +51,7 @@ basic_setters() ->
     ?assertError({illegal, _, _}, set_expires(foo, O)),
     _ = set_expires(100, O),
     ?assertError({illegal, _, _}, set_owner(<<4711:64/unit:8>>, O)),
-    _ = set_owner(<<42:65/unit:8>>, O),
+    _ = set_owner(<<42:32/unit:8>>, O),
     ?assertError({illegal, _, _}, set_query_fee(foo, O)),
     _ = set_query_fee(123, O),
     ?assertError({illegal, _, _}, set_query_format("foo", O)),
@@ -65,7 +65,7 @@ register_tx() ->
     register_tx(#{}).
 
 register_tx(Override) ->
-    Map = #{ account       => <<4711:65/unit:8>>
+    Map = #{ account       => <<4711:32/unit:8>>
            , nonce         => 42
            , query_spec    => <<"{foo: bar}"/utf8>>
            , response_spec => <<"boolean()"/utf8>>

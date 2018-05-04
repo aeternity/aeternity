@@ -55,13 +55,8 @@ sign(Tx, PrivKey) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
-    Curve = crypto:ec_curve(?CRYPTO_CURVE),
-    Signatures =
-        [crypto:sign(?CRYPTO_ALGO, ?CRYPTO_DIGEST, Bin, [PrivKey, Curve])
-         || PrivKey <- PrivKeys],
-    #signed_tx{tx = Tx,
-               signatures = lists:sort(Signatures)}.
-
+    Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
+    #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
 
 -spec tx(signed_tx()) -> tx().
 %% @doc Get the original transaction from a signed transaction.
@@ -97,10 +92,9 @@ verify_one_pubkey(Sigs, PubKey, Bin) ->
     verify_one_pubkey(Sigs, PubKey, Bin, []).
 
 verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) ->
-    Key = [PubKey, crypto:ec_curve(?CRYPTO_CURVE)],
-    case crypto:verify(?CRYPTO_ALGO, ?CRYPTO_DIGEST, Bin, Sig, Key) of
-        true  -> {ok, Acc ++ Left};
-        false -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
+    case enacl:sign_verify_detached(Sig, Bin, PubKey) of
+        {ok, _}    -> {ok, Acc ++ Left};
+        {error, _} -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
     end;
 verify_one_pubkey([],_PubKey,_Bin,_Acc) ->
     error.

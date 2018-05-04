@@ -32,6 +32,8 @@
         ]).
 -endif.
 
+-define(PUB_SIZE, 32).
+
 %% The oracle state tree keep track of oracles and its associated queries
 %% (query objects). The naive approach, storing the queries directly
 %% in the oracle field in the state tree, does not work well. Since the state
@@ -154,14 +156,14 @@ root_hash(#oracle_tree{otree = OTree}) ->
 oracle_list(#oracle_tree{otree = OTree}) ->
     [ aeo_oracles:deserialize(Val)
       || {Key, Val} <- aeu_mtrees:to_list(OTree),
-         byte_size(Key) =:= 65
+         byte_size(Key) =:= ?PUB_SIZE
     ].
 
 -spec query_list(tree()) -> list(query()).
 query_list(#oracle_tree{otree = OTree}) ->
     [ aeo_query:deserialize(Val)
       || {Key, Val} <- aeu_mtrees:to_list(OTree),
-         byte_size(Key) > 65
+         byte_size(Key) > ?PUB_SIZE
     ].
 -endif.
 
@@ -294,7 +296,7 @@ find_open_oracle_queries(OracleId, FromQueryId, Max, #oracle_tree{otree = T}) ->
 find_open_oracle_queries(_Iterator, 0) -> [];
 find_open_oracle_queries(Iterator, N) ->
     case aeu_mtrees:iterator_next(Iterator) of
-        {Key, Value, NextIterator} when byte_size(Key) > 65 ->
+        {Key, Value, NextIterator} when byte_size(Key) > ?PUB_SIZE ->
             Query = aeo_query:deserialize(Value),
             case aeo_query:is_closed(Query) of
                 false -> [Query | find_open_oracle_queries(NextIterator, N-1)];
@@ -306,7 +308,7 @@ find_open_oracle_queries(Iterator, N) ->
 find_oracles(FromOracleId, Max, #oracle_tree{otree = T}) ->
     %% Only allow paths that match the size of an OracleId - Queries have
     %% a longer path.
-    IterOpts = [{max_path_length, 65*2}],
+    IterOpts = [{max_path_length, ?PUB_SIZE*2}],
     Iterator =
         case FromOracleId of
             '$first' -> aeu_mtrees:iterator(T, IterOpts);

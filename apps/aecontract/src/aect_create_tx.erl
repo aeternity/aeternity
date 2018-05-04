@@ -43,7 +43,7 @@
 -define(CONTRACT_CREATE_TX_FEE, 4).
 
 %% Should this be in a header file somewhere?
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 
 -type amount() :: aect_contracts:amount().
 
@@ -196,7 +196,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			ContractsTree1 = aect_state_tree:insert_contract(Contract, ContractsTree0),
 			aec_trees:set_contracts(Trees2, ContractsTree1);
 		    E ->
-			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
 			Trees1
 		end;
 	    ?AEVM_01_Solidity_01 ->
@@ -224,7 +224,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			ContractsTree1 = aect_state_tree:insert_contract(Contract1, ContractsTree0),
 			aec_trees:set_contracts(Trees2, ContractsTree1);
 		    E ->
-			lager:debug("Init call error ~w ~w~n",[E, CallRes]), 
+			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
 			Trees1
 		end;
 	    _ ->
@@ -239,7 +239,7 @@ run_contract(#contract_create_tx{ owner      = Caller
 				, code       = Code
 				, vm_version = VmVersion
 				, amount     =_Amount
-				, gas        = Gas 
+				, gas        = Gas
 				, gas_price  = GasPrice
 				, call_data  = CallData
 				} =_Tx,

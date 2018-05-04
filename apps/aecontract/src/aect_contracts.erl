@@ -83,7 +83,7 @@
              , vm_version/0
              ]).
 
--define(PUB_SIZE, 65).
+-define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(CONTRACT_TYPE, contract).
 -define(CONTRACT_VSN, 0).
