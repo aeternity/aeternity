@@ -81,6 +81,11 @@ make_call(Contract, Fun, Args, Env, Options) ->
                     list_to_binary(Args)),
     execute_call(Contract, CallData, Env, Options).
 
+create_contract(Address, Code, Args, Env) ->
+    Env1 = Env#{Address => Code},
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, #{}),
+    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
     Res.
@@ -229,12 +234,14 @@ environment(_Cfg) ->
     ok.
 
 %% State tests
+
 counter(_Cfg) ->
     Code       = compile_contract(counter),
-    Env        = initial_state(#{101 => Code, store => #{101 => <<32:256, 5:256>>}}),
-    {5,  Env1} = successful_call(101, word, get, "()", Env),
-    {{}, Env2} = successful_call(101, {tuple, []}, tick, "()", Env1),
-    {6, _Env3} = successful_call(101, word, get, "()", Env2),
+    Env        = initial_state(#{}),
+    Env1       = create_contract(101, Code, "5", Env),
+    {5,  Env2} = successful_call(101, word, get, "()", Env1),
+    {{}, Env3} = successful_call(101, {tuple, []}, tick, "()", Env2),
+    {6, _Env4} = successful_call(101, word, get, "()", Env3),
     ok.
 
 %% -- Chain API implementation -----------------------------------------------
