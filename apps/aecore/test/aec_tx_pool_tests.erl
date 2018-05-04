@@ -207,14 +207,16 @@ tx_pool_test_() ->
 
                %% A transaction with too low nonce should be rejected
                STx2 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
-               ?assertEqual({error, too_low_nonce},
+               ?assertEqual({error, account_nonce_too_high},
                             aec_tx_pool:push(STx2)),
 
                %% A transaction with too high nonce should _NOT_ be rejected
                STx3 = a_signed_tx(PubKey1, new_pubkey(), 5, 1),
-               ?assertEqual(ok,
-                            aec_tx_pool:push(STx3)),
+               ?assertEqual(ok, aec_tx_pool:push(STx3)),
 
+               STx4 = a_signed_tx(PubKey1, new_pubkey(), 6,
+                                  aec_governance:minimum_tx_fee() - 1),
+               ?assertEqual({error, too_low_fee}, aec_tx_pool:push(STx4)),
                ok
        end}
      ]}.

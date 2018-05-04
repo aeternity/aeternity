@@ -243,42 +243,60 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
             ok;
         none ->
-            case aetx_sign:verify(Tx) of
+            Checks = [ fun check_signature/2
+                     , fun check_nonce/2
+                     , fun check_minimum_fee/2
+                     ],
+            case aeu_validation:run(Checks, [Tx, Hash]) of
                 {error, _} = E ->
-                    lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
+                    lager:debug("Validation error for tx ~p: ~p", [Hash, E]),
                     E;
                 ok ->
-                    Unsigned = aetx_sign:tx(Tx),
-                    Nonce = aetx:nonce(Unsigned),
-                    case check_nonce(aetx:origin(Unsigned), Nonce) of
-                        {error, _} = E -> E;
-                        ok ->
-                            lager:debug("Adding tx", [Hash]),
-                            case ets:member(Mempool, Key) of
-                                true ->
-                                    lager:debug("Pool db key already present (~p)", [Key]),
-                                    %% TODO: We should make a decision whether to switch the tx.
-                                    ok;
-                                false ->
-                                    aec_events:publish(Event, Tx),
-                                    aec_db:add_tx(Tx),
-                                    ets:insert(Mempool, {Key, Tx}),
-                                    ok
-                            end
+                    case ets:member(Mempool, Key) of
+                        true ->
+                            lager:debug("Pool db key already present (~p)", [Key]),
+                            %% TODO: We should make a decision whether to switch the tx.
+                            ok;
+                        false ->
+                            lager:debug("Adding tx: ~p", [Hash]),
+                            aec_db:add_tx(Tx),
+                            ets:insert(Mempool, {Key, Tx}),
+                            aec_events:publish(Event, Tx),
+                            ok
                     end
             end
     end.
 
-check_nonce(Pubkey, TxNonce) ->
-    %% Check is conservative and only rejects certain cases
-    case aec_chain:get_account(Pubkey) of
-        {value, Account} ->
-            case aec_accounts:nonce(Account) < TxNonce of
-                true  -> ok;
-                false -> {error, too_low_nonce}
-            end;
-        {error, no_state_trees} ->
-            ok;
-        none ->
+check_signature(Tx, Hash) ->
+    case aetx_sign:verify(Tx) of
+        {error, _} = E ->
+            lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
+            E;
+        ok ->
             ok
+    end.
+
+check_nonce(Tx,_Hash) ->
+    %% Check is conservative and only rejects certain cases
+    Unsigned = aetx_sign:tx(Tx),
+    TxNonce = aetx:nonce(Unsigned),
+    Pubkey = aetx:origin(Unsigned),
+    case TxNonce > 0 of
+        false ->
+            {error, illegal_nonce};
+        true ->
+            case aec_chain:get_account(Pubkey) of
+                {value, Account} ->
+                    aetx_utils:check_nonce(Account, TxNonce);
+                {error, no_state_trees} ->
+                    ok;
+                none ->
+                    ok
+            end
+    end.
+
+check_minimum_fee(Tx,_Hash) ->
+    case aetx:fee(aetx_sign:tx(Tx)) >= aec_governance:minimum_tx_fee() of
+        true  -> ok;
+        false -> {error, too_low_fee}
     end.
