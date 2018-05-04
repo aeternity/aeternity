@@ -264,9 +264,11 @@ init(#{role := Role} = Arg) ->
     %% a channel_open() message and await a channel_accept().
     case Role of
         initiator ->
-            {ok, initialized, send_open_msg(Data)};
+            {ok, initialized, send_open_msg(Data),
+                        [timer_for_state(initialized, Data)]};
         responder ->
-            {ok, awaiting_open, Data}
+            {ok, awaiting_open, Data,
+                        [timer_for_state(awaiting_open, Data)]}
     end.
 
 check_opts([H|T], Opts) ->
@@ -635,17 +637,12 @@ disconnected(cast, {channel_reestablish, _Msg}, D) ->
 
 close(close_mutual, D) ->
     report(info, close_mutual, D),
-    close_session(D),
     {stop, normal, D};
 close(Reason, D) ->
     try send_error_msg(Reason, D)
     catch error:_ -> ignore
     end,
-    close_session(D),
     {stop, Reason, D}.
-
-close_session(#data{session = Sn}) when Sn =/= undefined ->
-    aesc_session_noise:close(Sn).
 
 send_error_msg(Reason, #data{session = Sn} = D) ->
     case cur_channel_id(D) of
@@ -714,8 +711,7 @@ error_binary(E) when is_atom(E) ->
     atom_to_binary(E, latin1).
 
 
-terminate(Reason, _State, #data{session = Sn} = Data) ->
-    aesc_session_noise:close(Sn),
+terminate(Reason, _State, Data) ->
     report(info, {died, Reason}, Data),
     ok.
 
