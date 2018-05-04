@@ -21,6 +21,7 @@ convert(Tree, Options) ->
 %%    code(Tree,
 	 #{ functions => []
 	  , env => []
+          , state_type => {tuple, []}   %% Default to unit type for state
 	  , options => Options}).
 
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
