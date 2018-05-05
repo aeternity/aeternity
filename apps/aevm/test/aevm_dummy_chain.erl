@@ -8,7 +8,7 @@
 
 -module(aevm_dummy_chain).
 
--behaviour(aec_vm_chain_api).
+%% -behaviour(aec_vm_chain_api).
 
 -export([new_state/0]).
 

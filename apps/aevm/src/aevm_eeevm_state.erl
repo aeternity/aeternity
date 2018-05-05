@@ -124,10 +124,12 @@ init(#{ env  := Env
          },
 
     init_vm(State,
-            maps:get(code, Exec),
-	    ChainAPI:get_store(ChainState)).
+            maps:get(code, Exec, #{}),
+            maps:get(mem, Exec, #{mem_size => 0}),
+            maps:get(store, Exec, #{})).
 
-init_vm(State, Code, Store) ->
+
+init_vm(State, Code, Mem, Store) ->
     State1 =
 	State#{ out       => <<>>
 	      , call      => #{}
@@ -135,7 +137,7 @@ init_vm(State, Code, Store) ->
 	      , code      => Code
 	      , cp        => 0
 	      , logs      => []
-	      , memory    => #{}
+	      , memory    => Mem
 	      , return_data => <<>>
 	      , stack     => []
 	      },

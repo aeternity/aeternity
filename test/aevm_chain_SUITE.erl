@@ -111,7 +111,7 @@ make_call(From, To, Value, Arg, S) ->
     C1Bal1    = aec_vm_chain:get_balance(From, S),
     C2Bal1    = aec_vm_chain:get_balance(To, S),
     CallData  = call_data(integer_to_binary(Arg)),
-    Gas       = 10000,
+    Gas       = 500,
     CallStack = [],
     CallRes   = aec_vm_chain:call_contract(To, Gas, Value, CallData, CallStack, S),
     case C1Bal1 >= Value of

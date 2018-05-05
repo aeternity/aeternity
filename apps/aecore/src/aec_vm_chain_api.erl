@@ -9,13 +9,15 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--export_type([call_result/0, exception/0]).
+-export_type([call_result/0, exception/0, store/0]).
 
 -export([call_result/2, call_exception/2,
          return_value/1, gas_spent/1]).
 
 %% @doc The state of the chain. Specific to the API implementation.
 -type chain_state() :: any().
+
+-type store() :: #{binary() => binary()}.
 
 -type exception() :: out_of_gas.
 
@@ -44,8 +46,8 @@
                         State     :: chain_state()) ->
                     {ok, call_result(), chain_state()} | {error, term()}.
 
--callback get_store(chain_state()) -> aect_contracts:store().
--callback set_store(Store::aect_contracts:store(), chain_state()) -> chain_state().
+-callback get_store(chain_state()) -> store().
+-callback set_store(store(), chain_state()) -> chain_state().
 
 %% -- Call results -----------------------------------------------------------
 

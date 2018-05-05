@@ -62,7 +62,7 @@ eval_code(State) ->
 	    handle_signal(Signal, State, StateOut)
     end.
 
-handle_signal(revert, StateIn, StateOut) -> 
+handle_signal(revert, StateIn, StateOut) ->
     {revert, aevm_eeevm_state:set_storage(
 	       aevm_eeevm_state:storage(StateIn), StateOut)}.
 

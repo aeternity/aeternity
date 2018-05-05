@@ -14,7 +14,6 @@
 
 -include("aevm_eeevm.hrl").
 
--type mem() :: #{ mem_size := integer(), integer() => integer()}.
 -type memmap() :: #{ integer() => integer() }.
 
 -spec bin_copy(Pos::integer(), N::integer(), Bin::binary()) -> binary().
@@ -35,10 +34,14 @@ bin_copy(Pos, N, Bin) ->
     end.
 
 -spec get_area(From::integer(), Size::integer(), memmap()) -> binary().
-get_area(_From, 0, Mem) -> <<>>;
+get_area(_From, 0,_Mem) -> <<>>;
 get_area(From, Size, Mem) ->
     To = From + Size - 1,
     list_to_binary([read_raw_byte(X, Mem) || X <- lists:seq(From, To)]).
+
+-spec write_area(From::integer(), Bytes::binary(), Mem::memmap()) -> memmap().
+write_area(From, Bytes, Mem) ->
+    write_bytes(From, [B || <<B:8>> <= Bytes], Mem).
 
 %%====================================================================
 %% Internal functions
@@ -51,16 +54,11 @@ read_raw_byte(Address, Mem) ->
     Byte = ((WordVal bsr (ByteOffset*8)) band 255),
     Byte.
 
--spec write_area(From::integer(), Bytes::binary(), Mem::mem()) -> mem().
-write_area(From, Bytes, Mem) ->
-    write_bytes(From, [B || <<B:8>> <= Bytes], Mem).
-
 write_bytes(_, [], Mem) -> Mem;
 write_bytes(Address, [Byte|Bytes], Mem) ->
     write_bytes(Address+1, Bytes, store8(Address, Byte, Mem)).
 
-
--spec store8(integer(), byte(), mem()) -> mem().
+-spec store8(integer(), byte(), memmap()) -> memmap().
 store8(Address, Value, Mem) when is_integer(Value) ->
     Byte = Value band 255,
     AlignedAddress = (Address bor ?ALIGN256) - ?ALIGN256,
@@ -72,13 +70,5 @@ store8(Address, Value, Mem) when is_integer(Value) ->
     Mem1.
 
 %% No alignment or size check. Don't use directly.
-write(Address,     0, Mem) -> extend(Address, maps:remove(Address, Mem));
-write(Address, Value, Mem) -> extend(Address, maps:put(Address, Value, Mem)).
-
-extend(AlignedAddress, Mem) when is_integer(AlignedAddress) ->
-    NewSize = (AlignedAddress bsr 5) + 1,
-    case maps:get(mem_size, Mem, undefined) of
-        undefined -> maps:put(mem_size, NewSize, Mem);
-        Size when NewSize > Size -> maps:put(mem_size, NewSize, Mem);
-        _ -> Mem
-    end.
+write(Address,     0, Mem) -> maps:remove(Address, Mem);
+write(Address, Value, Mem) -> maps:put(Address, Value, Mem).

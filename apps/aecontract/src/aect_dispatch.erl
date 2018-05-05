@@ -47,59 +47,95 @@ encode_call_data(_, _, _, _) ->
 run(?AEVM_01_Sophia_01, CallDef) ->
     call_AEVM_01_Sophia_01(CallDef);
 run(?AEVM_01_Solidity_01, CallDef) ->
-    %% TODO:
-    %% For now use the same ABI as for Sophia
-    call_AEVM_01_Sophia_01(CallDef);
+    call_AEVM_01_Solidity_01(CallDef);
 run(_, #{ call := Call} = _CallDef) ->
     %% TODO:
     %% Wrong VM/ABI version just return an unchanged call.
     Call.
 
+call_AEVM_01_Sophia_01(#{ contract   := ContractPubKey
+                        , height     := Height
+                        , trees      := Trees
+			} = CallDef) ->
+    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
+    Store = get_store(ContractPubKey, Trees),
+    Exec = #{ mem => Store#{mem_size => maps:size(Store)},
+              store => Store},
+    Spec = #{ env => Env,
+              exec => Exec,
+              pre => #{}},
+    call_common(CallDef, Spec).
 
-call_AEVM_01_Sophia_01(#{ caller     := Caller
-			, contract   := ContractPubKey
-			, gas        := Gas
-			, gas_price  := GasPrice
-			, call_data  := CallData
-			, amount     := Value
-			, call_stack := CallStack
-			, code       := Code
-			, call       := Call
-			, height     := Height
-			, trees      := Trees
-			}) ->
+get_store(ContractPubKey, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    Store =
+        case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
+            {value, Contract} -> aect_contracts:state(Contract);
+            none              -> #{}
+        end,
+    Store.
 
+
+call_AEVM_01_Solidity_01(#{ contract   := ContractPubKey
+                          , height     := Height
+                          , trees      := Trees
+                          } = CallDef) ->
+    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
+    Store = get_store(ContractPubKey, Trees),
+    Exec = #{ store => Store},
+    Spec = #{ env => Env,
+              exec => Exec,
+              pre => #{}},
+    call_common(CallDef, Spec).
+
+set_env(ContractPubKey, Height, Trees, API) ->
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
-    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+    %% {ok, MinerPubkey} = aec_keys:pubkey(),
+    #{currentCoinbase   => <<>>, %% MinerPubkey,
+      %% TODO: get the right difficulty
+      currentDifficulty => 0,
+      %% TODO: implement gas limit in governance and blocks.
+      currentGasLimit   => 100000000000,
+      currentNumber     => Height,
+      %% TODO: should be set before starting block candidate.
+      currentTimestamp  => aeu_time:now_in_msecs(),
+      chainState        => ChainState,
+      chainAPI          => API}.
 
+call_common(#{ caller     := Caller
+             , contract   := ContractPubKey
+             , gas        := Gas
+             , gas_price  := GasPrice
+             , call_data  := CallData
+             , amount     := Value
+             , call_stack := CallStack
+             , code       := Code
+             , call       := Call
+             , height     :=_Height
+             , trees      := Trees
+             }, Spec) ->
+    <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+    Exec = maps:get(exec, Spec),
     try aevm_eeevm_state:init(
-	  #{ exec => #{ code       => Code,
-			address    => Address,
-			caller     => Caller,
-			data       => CallData,
-			gas        => Gas,
-			gasPrice   => GasPrice,
-			origin     => Caller,
-			value      => Value,
-                        call_stack => CallStack
-		      },
-             %% TODO: set up the env properly
-             env => #{currentCoinbase   => 0,
-                      currentDifficulty => 0,
-                      currentGasLimit   => Gas,
-                      currentNumber     => Height,
-                      currentTimestamp  => 0,
-                      chainState        => ChainState,
-                      chainAPI          => aec_vm_chain},
-             pre => #{}},
+	  Spec#{ exec => Exec#{ code       => Code,
+                                address    => Address,
+                                caller     => Caller,
+                                data       => CallData,
+                                gas        => Gas,
+                                gasPrice   => GasPrice,
+                                origin     => Caller,
+                                value      => Value,
+                                call_stack => CallStack
+                              }
+               },
           #{
-	     trace_fun  => fun(S,A) -> lager:error(S,A) end,
-	     trace => false
-	     })
+            trace_fun  => fun(S,A) -> lager:error(S,A) end,
+            trace => false
+           })
     of
 	InitState ->
 	    %% TODO: Nicer error handling - do more in check.
-	    %% Update gas_used depending on exit type.x
+	    %% Update gas_used depending on exit type.
 	    try aevm_eeevm:eval(InitState) of
 		%% Succesful execution
 		{ok, #{ gas := GasLeft
@@ -139,7 +175,7 @@ call_AEVM_01_Sophia_01(#{ caller     := Caller
 		    {aect_call:set_return_type(error, Call), Trees}
 	    end
     catch T:E ->
-	    lager:error("Return error ~p:~p~n", [T,E]),
+	    lager:error("Init error ~p:~p~n", [T,E]),
 	    {aect_call:set_return_type(error, Call), Trees}
     end.
 

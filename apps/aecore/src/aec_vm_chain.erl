@@ -59,15 +59,14 @@ get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
 %% @doc Get the contract state store of the contract account.
--spec get_store(chain_state()) -> aect_contracts:store().
-get_store(#state{ account = PubKey,
-		    trees = Trees }) ->
-    do_get_store(PubKey, Trees).
+-spec get_store(chain_state()) -> aec_vm_chain_api:store().
+get_store(#state{ account = PubKey, trees = Trees }) ->
+    Store = do_get_store(PubKey, Trees),
+    Store.
 
 %% @doc Set the contract state store of the contract account.
--spec set_store(Store::aect_contracts:store(), chain_state()) -> chain_state().
-set_store(Store,  #state{ account = PubKey,
-			  trees = Trees } = State) ->
+-spec set_store(aec_vm_chain_api:store(), chain_state()) -> chain_state().
+set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
     CTree1 = do_set_store(Store, PubKey, Trees),
     Trees1 = aec_trees:set_contracts(Trees, CTree1),
     State#state{ trees = Trees1 }.
@@ -113,11 +112,12 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             CallId  = aect_call:id(ContractKey, Nonce, Target),
             Call    = aect_call_state_tree:get_call(Target, CallId, aec_trees:calls(Trees2)),
             GasUsed = aect_call:gas_used(Call),
-            Result  = case aect_call:return_value(Call) of
+            Result  = case aect_call:return_type(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
-                          <<>> -> aec_vm_chain_api:call_exception(out_of_gas, GasUsed);
-                          Bin when is_binary(Bin) ->
-                            aec_vm_chain_api:call_result(Bin, GasUsed)
+                          error -> aec_vm_chain_api:call_exception(out_of_gas, GasUsed);
+                          ok ->
+                              Bin = aect_call:return_value(Call),
+                              aec_vm_chain_api:call_result(Bin, GasUsed)
                       end,
             {ok, Result, State#state{ trees = Trees2, nonce = Nonce + 1 }}
     end.
