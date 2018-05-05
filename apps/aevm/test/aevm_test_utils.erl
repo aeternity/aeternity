@@ -57,11 +57,16 @@ testcase_generate(Path, Tests, Opts) ->
 %%--------------------------------------------------------------------
 %% Running the actual test case
 
-testcase({Path, Name, Opts}, Spec) ->
+testcase({Path, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
     { Path ++ "/" ++ atom_to_list(Name)
     , fun() ->
+              %% Set up the store for the contract.
+              #{ address := Address } = Exec,
+              Store = get_store(Address, Pre),
+              Spec1 = Spec#{ exec => Exec#{ store => Store}},
+
               ?opt_format(Opts, "Setting up state: ~w~n", [Name]),
-              InitState = init_state(Spec, Opts),
+              InitState = init_state(Spec1, Opts),
               ?opt_format(Opts, "Init state: ~p~n", [InitState]),
               ?opt_format(Opts, "Running: ~w~n", [Name]),
               case ?wrap_run(run_eeevm(InitState)) of
@@ -69,10 +74,10 @@ testcase({Path, Name, Opts}, Spec) ->
                       %% Executed to completion'
                       ?opt_format(Opts, "Checking: ~w~n", [Name]),
                       ?opt_format(Opts, "State of ~w: ~p~n", [Name, State]),
-                      validate_storage(State, Spec),
-                      validate_out(State, Spec),
-                      validate_gas(State, Spec, Opts),
-                      validate_callcreates(State, Spec),
+                      validate_storage(State, Spec1),
+                      validate_out(State, Spec1),
+                      validate_gas(State, Spec1, Opts),
+                      validate_callcreates(State, Spec1),
                       {ok, State};
                   {error, What, State} ->
                       %% Handle execution exceptions gracefully here.
@@ -81,11 +86,19 @@ testcase({Path, Name, Opts}, Spec) ->
                       %% by leaving out some fields.
                       %% TODO: Check the config
                       io:format("Error ~p~n", [What]),
-                      validate_no_post(Spec),
+                      validate_no_post(Spec1),
                       {error, State}
               end
       end
     }.
+
+get_store(Address, State) ->
+    case State of
+        #{ Address := #{ storage := Store }} ->
+            aevm_eeevm_store:to_binary(#{ storage => Store});
+        _ -> #{}
+    end.
+
 
 validate_no_post(#{post := _} = Spec) ->
     error({should_have_succeeded, Spec});
@@ -98,9 +111,9 @@ validate_storage(State, #{exec := #{address := Addr}} = Spec) ->
 	    PostStorage =
 		case maps:get(Addr, Post, undefined) of
 		    undefined -> #{};
-		    #{storage := _} = S -> aevm_eeevm_store:to_binary(S)
+		    #{storage := S}  -> S
 		end,
-	    Storage = aevm_eeevm_store:to_binary(State),
+	    Storage = aevm_eeevm_state:storage(State),
 	    ?assertEqual(PostStorage, Storage);
 	_ -> true
     end.
