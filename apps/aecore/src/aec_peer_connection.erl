@@ -42,6 +42,7 @@
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
+-define(REQUEST_TIMEOUT, 5000).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -95,7 +96,7 @@ stop(PeerCon) ->
 
 
 call(PeerCon, Call) when is_pid(PeerCon) ->
-    try gen_server:call(PeerCon, Call)
+    try gen_server:call(PeerCon, Call, ?REQUEST_TIMEOUT + 2000)
     catch exit:{noproc, _} -> {error, no_connection}
     end;
 call(PeerId, Call) when is_binary(PeerId) ->
@@ -166,8 +167,8 @@ init([Opts]) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
     Opts1 = Opts#{ role => initiator
-                   , version => Version
-                   , genesis => Genesis},
+                 , version => Version
+                 , genesis => Genesis},
     {ok, Opts1, 0}.
 
 handle_call(Request, From, State) ->
@@ -197,6 +198,8 @@ handle_info(timeout, S = #{ role := initiator, host := Host, port := Port }) ->
     {noreply, S#{ status => {connecting, Pid} }};
 handle_info(timeout, S) ->
     {noreply, S};
+handle_info({timeout, Ref, {request, Kind}}, S) ->
+    handle_request_timeout(S, Ref, Kind);
 handle_info({timeout, Ref, first_ping_timeout}, S) ->
     NonRegAccept = is_non_registered_accept(S),
     case maps:get(first_ping_tref, S, undefined) of
@@ -278,16 +281,43 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% -- Local functions --------------------------------------------------------
+handle_general_error(S) ->
+    S1 = cleanup_connection(S),
+    case is_non_registered_accept(S) of
+        true ->
+            {stop, normal, S1};
+        false ->
+            connect_fail(S1)
+    end.
+
 get_request(S, Kind) ->
     maps:get(map_request(Kind), maps:get(requests, S, #{}), none).
 
 set_request(S, Kind, From) ->
     Rs = maps:get(requests, S, #{}),
-    S#{ requests => Rs#{ Kind => {Kind, From} } }.
+    TRef = erlang:start_timer(?REQUEST_TIMEOUT, self(), {request, Kind}),
+    S#{ requests => Rs#{ Kind => {Kind, From, TRef} } }.
 
 remove_request_fld(S, Kind) ->
     Rs = maps:get(requests, S, #{}),
+    case get_request(S, Kind) of
+        none ->
+            ok;
+        {_MappedKind, _From, TRef} ->
+            erlang:cancel_timer(TRef)
+    end,
     S#{ requests => maps:remove(map_request(Kind), Rs) }.
+
+handle_request_timeout(S, Ref, Kind) ->
+    case get_request(S, Kind) of
+        {_MappedKind, From, Ref} ->
+            lager:info("~p request timeout, stopping peer_connection", [Kind]),
+            gen_server:reply(From, {error, request_timeout}),
+            handle_general_error(S);
+        _Other ->
+            %% We got a stale timeout
+            {noreply, S}
+    end.
 
 map_request(mempool)              -> get_mempool;
 map_request(get_header_by_hash)   -> get_header;
@@ -340,8 +370,10 @@ cleanup_connection(State) ->
 
 cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
-    [ gen_server:reply(From, {error, disconnected})
-      || {_Request, From} <- Reqs ],
+    [ begin
+        gen_server:reply(From, {error, disconnected}),
+        erlang:cancel_timer(TRef)
+      end || {_, {_, From, TRef}} <- Reqs ],
     maps:remove(requests, State).
 
 connect_fail(S0) ->
@@ -373,7 +405,7 @@ handle_msg(S, MsgType, true, none, Result) ->
     lager:info("Peer ~p got unexpected ~p response - ~p",
                [peer_id(S), MsgType, Result]),
     S;
-handle_msg(S, _MsgType, true, {RequestFld, From}, {error, Reason}) ->
+handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     gen_server:reply(From, {error, Reason}),
     remove_request_fld(S, RequestFld);
 handle_msg(S, MsgType, false, Request, {ok, Msg}) ->
@@ -427,7 +459,7 @@ prepare_request_data(_S, get_mempool, []) ->
 
 %% -- Ping message -----------------------------------------------------------
 
-handle_ping_rsp(S, {ping, From}, RemotePingObj) ->
+handle_ping_rsp(S, {ping, From, _TRef}, RemotePingObj) ->
     Res = handle_ping_msg(S, RemotePingObj),
     gen_server:reply(From, Res),
     remove_request_fld(S, ping).
@@ -449,7 +481,7 @@ handle_ping(S, none, RemotePingObj) ->
         end,
     send_response(S, ping, Response),
     S1;
-handle_ping(S, {ping, _From}, RemotePingObj) ->
+handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
     lager:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
                [peer_id(S), RemotePingObj]),
     send_response(S, ping, {error, already_pinging}),
@@ -550,7 +582,7 @@ handle_get_header_by_hash(S, Msg) ->
     send_response(S, header, Response),
     S.
 
-handle_header_rsp(S, {get_header, From}, Msg) ->
+handle_header_rsp(S, {get_header, From, _TRef}, Msg) ->
     try
         Header = aec_headers:deserialize_from_binary(maps:get(hdr, Msg)),
         gen_server:reply(From, {ok, Header})
@@ -610,7 +642,7 @@ handle_get_n_successors(S, Msg) ->
     send_response(S, header_hashes, Response),
     S.
 
-handle_header_hashes_rsp(S, {get_n_successors, From}, Msg) ->
+handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Msg) ->
     case maps:get(header_hashes, Msg, undefined) of
         Hdrs when is_list(Hdrs) ->
             Hdrs1 = [ {Height, Hash} || <<Height:64, Hash/binary>> <- Hdrs ],
@@ -639,7 +671,7 @@ handle_get_block(S, Msg) ->
     send_response(S, block, Response),
     S.
 
-handle_get_block_rsp(S, {get_block, From}, Msg) ->
+handle_get_block_rsp(S, {get_block, From, _TRef}, Msg) ->
     case maps:get(block, Msg, undefined) of
         Block0 when is_binary(Block0) ->
             case aec_blocks:deserialize_from_binary(Block0) of
@@ -661,7 +693,7 @@ handle_get_mempool(S, _MsgObj) ->
     send_response(S, mempool, {ok, #{ txs => Txs }}),
     S.
 
-handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
+handle_get_mempool_rsp(S, {get_mempool, From, _TRef}, MsgObj) ->
     case maps:get(txs, MsgObj, undefined) of
         Txs0 when is_list(Txs0) ->
             Txs = [ aetx_sign:deserialize_from_binary(T) || T <- Txs0 ],
