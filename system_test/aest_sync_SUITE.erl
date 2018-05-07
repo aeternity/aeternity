@@ -115,6 +115,8 @@
 
 %=== COMMON TEST FUNCTIONS =====================================================
 
+% Please note: this module is part of of the smoke-test target. The combined
+% runtime should be kept below 10 minutes.
 all() -> [
     new_node_joins_network,
     docker_keeps_data,
