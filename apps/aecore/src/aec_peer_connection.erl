@@ -258,15 +258,12 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
             lager:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
+handle_info({enoise_error, _, decrypt_error}, S) ->
+    lager:debug("Peer connection got decrypt_error", []),
+    handle_general_error(S);
 handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
-    S1 = cleanup_connection(S),
-    case is_non_registered_accept(S) of
-        true ->
-            {stop, normal, S1};
-        false ->
-            connect_fail(S1)
-    end;
+    handle_general_error(S);
 handle_info(_Msg, S) ->
     {noreply, S}.
 
@@ -738,7 +735,7 @@ send_response(S, Type, Response) ->
 -endif.
 -define(FRAGMENT_SIZE, (?MAX_PACKET_SIZE - 6)).
 do_send(ESock, Msg) when byte_size(Msg) < ?MAX_PACKET_SIZE - 2 ->
-    enoise:send(ESock, Msg);
+    enoise_send(ESock, Msg);
 do_send(ESock, Msg) ->
     NChunks = (?FRAGMENT_SIZE + byte_size(Msg) - 1) div ?FRAGMENT_SIZE,
     send_chunks(ESock, 1, NChunks, Msg).
@@ -746,11 +743,20 @@ do_send(ESock, Msg) ->
 send_chunks(ESock, M, M, Msg) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
 send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
-    enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
+    enoise_send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
 peer_id(#{ r_pubkey := PK }) ->
     PK.
+
+enoise_send(ESock, Msg) ->
+    case enoise:send(ESock, Msg) of
+        ok ->
+            ok;
+        Err = {error, _} ->
+            lager:info("Failed to send message: ~p", [Err]),
+            Err
+    end.
 
 %% -- Configuration ----------------------------------------------------------
 
