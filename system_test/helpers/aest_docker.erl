@@ -415,14 +415,6 @@ write_template(TemplateFile, OutputFile, Context) ->
     ok = filelib:ensure_dir(OutputFile),
     file:write_file(OutputFile, Data).
 
-wait_stopped(Id, Timeout) -> wait_stopped(Id, Timeout, os:timestamp()).
-
-wait_stopped(Id, Timeout, StartTime) ->
-    case is_running(Id) of
-        false -> ok;
-        true -> maybe_continue_waiting(Id, Timeout, StartTime)
-    end.
-
 is_running(Id) -> is_running(Id, 5).
 
 is_running(_Id, 0) -> error(retry_exausted);
@@ -453,7 +445,8 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
     ok.
 
 %% Sometime the stop command do not succeed...
-retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) -> error;
+retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) ->
+    error(retry_exausted);
 retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
     #{container_id := ID, hostname := Name} = NodeState,
     case aest_docker_api:exec(ID, Cmd, Opts) of
@@ -463,17 +456,6 @@ retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
             log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
                     [Name, ID, CmdStr, Status, Res]),
             retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
-    end.
-
-maybe_continue_waiting(Id, infinity, StartTime) ->
-    timer:sleep(100),
-    wait_stopped(Id, infinity, StartTime);
-maybe_continue_waiting(Id, Timeout, StartTime) ->
-    case timer:now_diff(os:timestamp(), StartTime) > (1000 * Timeout) of
-        true -> timeout;
-        false ->
-            timer:sleep(200),
-            wait_stopped(Id, Timeout, StartTime)
     end.
 
 setup_networks(NetworkSpecs, NodeState) ->
