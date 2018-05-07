@@ -128,6 +128,9 @@ ast_body({id, _, "put"}) ->
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
+ast_body({bool, _, Bool}) ->		%BOOL as ints
+    Value = if Bool -> 1 ; true -> 0 end,
+    #integer{value = Value};
 ast_body({int, _, Value}) ->
     #integer{value = Value};
 ast_body({string,_,Bin}) ->
@@ -213,6 +216,8 @@ ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
 
+ast_typerep({id,_,"bool"}) ->		%BOOL as ints
+    word;
 ast_typerep({id,_,"int"}) ->
     word;
 ast_typerep({id,_,"string"}) ->
