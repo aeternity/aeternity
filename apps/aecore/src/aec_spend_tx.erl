@@ -14,7 +14,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -109,8 +109,8 @@ check(#spend_tx{} = SpendTx, _Context, Trees0, Height, _ConsensusVersion) ->
 accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
     [SenderPubKey, RecipientPubKey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#spend_tx{sender = SenderPubKey}) -> [SenderPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#spend_tx{sender = SenderPubKey}, _) -> {ok, [SenderPubKey]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{sender = SenderPubkey,

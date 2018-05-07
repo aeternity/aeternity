@@ -19,12 +19,11 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1,
-         is_verifiable/1
+         for_client/1
         ]).
 
 %%%===================================================================
@@ -119,13 +118,14 @@ process(#channel_slash_tx{channel_id = ChannelId,
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_slash_tx{payload = Payload}) ->
     case deserialize_from_binary(Payload) of
-        {ok, SignedState, _StateTx} -> aetx:signers(aetx_sign:tx(SignedState));
+        {ok, SignedState, _StateTx} -> aetx:signers(aetx_sign:tx(SignedState),
+                                                    aec_trees:new());
         {error, _Reason}            -> []
     end.
 
--spec signers(tx()) -> list(pubkey()).
-signers(#channel_slash_tx{from = FromPubKey}) ->
-    [FromPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+signers(#channel_slash_tx{from = FromPubKey}, _) ->
+    {ok, [FromPubKey]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_slash_tx{channel_id = ChannelId,
@@ -183,13 +183,6 @@ serialization_template(?CHANNEL_SLASH_TX_VSN) ->
     , {nonce     , int}
     ].
 
--spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_slash_tx{channel_id = ChannelId}) ->
-    case aec_chain:get_channel(ChannelId) of
-        {ok, _Channel} -> true;
-        {error, not_found} -> false
-    end.
-
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -200,8 +193,8 @@ check_payload(ChannelId, FromPubKey, Payload, Height, Trees) ->
     case deserialize_from_binary(Payload) of
         {ok, SignedState, StateTx} ->
             Checks =
-                [fun() -> is_peer(FromPubKey, SignedState) end,
-                 fun() -> aetx_sign:verify(SignedState) end,
+                [fun() -> is_peer(FromPubKey, SignedState, Trees) end,
+                 fun() -> aetx_sign:verify(SignedState, Trees) end,
                  fun() -> check_channel(ChannelId, StateTx, Height, Trees) end],
             aeu_validation:run(Checks);
         {error, _Reason} = Error ->
@@ -222,11 +215,15 @@ deserialize_from_binary(Payload) ->
             {error, payload_deserialization_failed}
     end.
 
-is_peer(AccountPubKey, SignedState) ->
+is_peer(AccountPubKey, SignedState, Trees) ->
     Tx = aetx_sign:tx(SignedState),
-    case lists:member(AccountPubKey, aetx:signers(Tx)) of
-        true  -> ok;
-        false -> {error, account_not_peer}
+    case aetx:signers(Tx, Trees) of
+        {ok, Signers} ->
+            case lists:member(AccountPubKey, Signers) of
+                true  -> ok;
+                false -> {error, account_not_peer}
+            end;
+        {error, _Reason}=Err -> Err
     end.
 
 check_channel(ChannelId, StateTx, Height, Trees) ->

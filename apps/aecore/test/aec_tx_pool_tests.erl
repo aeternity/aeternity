@@ -256,7 +256,8 @@ sign(me, Tx) ->
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),
-        Signers = aetx:signers(Tx),
+        {ok, Trees} = aec_chain:get_top_state(),
+        {ok, Signers} = aetx:signers(Tx, Trees),
         true = lists:member(PubKey, Signers),
         {ok, aetx_sign:sign(Tx, PrivKey)}
     catch

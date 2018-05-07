@@ -312,7 +312,8 @@ pool_db_put(Mempool, Key, Tx, Event) ->
     end.
 
 check_signature(Tx, Hash) ->
-    case aetx_sign:verify(Tx) of
+    {ok, Trees} = aec_chain:get_top_state(),
+    case aetx_sign:verify(Tx, Trees) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
             E;

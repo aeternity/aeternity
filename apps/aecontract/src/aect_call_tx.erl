@@ -21,7 +21,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -114,9 +114,9 @@ check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
 accounts(Tx) ->
     [caller(Tx)].
 
--spec signers(tx()) -> [pubkey()].
-signers(Tx) ->
-    [caller(Tx)].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(Tx, _) ->
+    {ok, [caller(Tx)]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,

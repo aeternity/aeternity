@@ -194,7 +194,8 @@ handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call({sign, Tx}, _From,
             #state{sign_pub = PubKey, sign_priv=PrivKey} = State) ->
-    Signers = aetx:signers(Tx),
+    {ok, Trees} = aec_chain:get_top_state(),
+    {ok, Signers} = aetx:signers(Tx, Trees),
     case lists:member(PubKey, Signers) of
         false ->
             {reply, {error, not_a_signer}, State};

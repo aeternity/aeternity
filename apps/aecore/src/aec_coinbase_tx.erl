@@ -13,7 +13,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialize/1,
          serialization_template/1,
          deserialize/2,
@@ -89,8 +89,8 @@ process(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees0
 -spec accounts(tx()) -> [pubkey()].
 accounts(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#coinbase_tx{account = AccountPubkey}) -> [AccountPubkey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#coinbase_tx{account = AccountPubkey}, _) -> {ok, [AccountPubkey]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#coinbase_tx{account = Account, block_height = Height, reward = Reward}) ->

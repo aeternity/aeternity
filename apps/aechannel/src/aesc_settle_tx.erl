@@ -19,12 +19,11 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1,
-         is_verifiable/1
+         for_client/1
         ]).
 
 %%%===================================================================
@@ -147,9 +146,9 @@ accounts(#channel_settle_tx{channel_id = ChannelId}) ->
         {error, not_found} -> []
     end.
 
--spec signers(tx()) -> list(pubkey()).
-signers(#channel_settle_tx{from = FromPubKey}) ->
-    [FromPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+signers(#channel_settle_tx{from = FromPubKey}, _) ->
+    {ok, [FromPubKey]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_settle_tx{channel_id       = ChannelId,
@@ -214,13 +213,6 @@ serialization_template(?CHANNEL_SETTLE_TX_VSN) ->
     , {fee              , int}
     , {nonce            , int}
     ].
-
--spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_settle_tx{channel_id = ChannelId}) ->
-    case aec_chain:get_channel(ChannelId) of
-        {ok, _Channel} -> true;
-        {error, not_found} -> false
-    end.
 
 %%%===================================================================
 %%% Internal functions

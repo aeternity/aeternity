@@ -15,7 +15,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -115,11 +115,11 @@ accounts(#channel_offchain_tx{
             responder   = ResponderPubKey}) ->
     [InitiatorPubKey, ResponderPubKey].
 
--spec signers(tx()) -> list(pubkey()).
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
 signers(#channel_offchain_tx{
            initiator   = InitiatorPubKey,
-           responder   = ResponderPubKey}) ->
-    [InitiatorPubKey, ResponderPubKey].
+           responder   = ResponderPubKey}, _) ->
+    {ok, [InitiatorPubKey, ResponderPubKey]}.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
