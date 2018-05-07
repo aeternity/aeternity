@@ -159,8 +159,13 @@ signers(#aetx{ cb = CB, tx = Tx }) ->
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion).
+check(#aetx{ cb = CB, tx = Tx } = O, Trees, Height, ConsensusVersion) ->
+    case is_coinbase(O) orelse (CB:fee(Tx) >= aec_governance:minimum_tx_fee()) of
+        true ->
+            CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
+        false ->
+            {error, too_low_fee}
+    end.
 
 -spec check_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
                           ConsensusVersion :: non_neg_integer()) ->
