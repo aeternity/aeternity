@@ -155,7 +155,7 @@ get_contract(PubKey) ->
             ContractTree = aec_trees:contracts(Trees),
             try aect_state_tree:get_contract(PubKey, ContractTree) of
                 Contract -> {ok, Contract}
-            catch error:{not_present, ContractKey} -> {error, not_present}
+            catch error:{not_present,_ContractKey} -> {error, not_present}
             end;
         error -> {error, no_state_trees}
     end.
