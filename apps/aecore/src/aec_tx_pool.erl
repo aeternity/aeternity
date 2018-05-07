@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level:4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Memory pool of unconfirmed transactions.
@@ -17,14 +18,18 @@
 -define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1'}, '_'}).
 
 %% API
--export([start_link/0,
-         stop/0]).
--export([push/1, push/2,
-         delete/1,
-         peek/1,
-         fork_update/2,
-         get_max_nonce/1,
-         size/0]).
+-export([ start_link/0
+        , stop/0
+        ]).
+
+-export([ get_candidate/2
+        , get_max_nonce/1
+        , peek/1
+        , push/1
+        , push/2
+        , size/0
+        , top_change/2
+        ]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -60,22 +65,17 @@ stop() ->
 
 %% INFO: Transaction from the same sender with the same nonce and fee
 %%       will be overwritten
--spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
+-spec push(aetx_sign:signed_tx()) -> ok.
 push(Tx) ->
     push(Tx, tx_created).
 
--spec push(aetx_sign:signed_tx()|list(aetx_sign:signed_tx()), event()) -> ok.
-push([_|_] = Txs, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, Txs, Event});
-push([], _) -> ok;
+-spec push(aetx_sign:signed_tx(), event()) -> ok.
 push(Tx, Event) when ?PUSH_EVENT(Event) ->
-    gen_server:call(?SERVER, {push, [Tx], Event}).
-
--spec delete(aetx_sign:signed_tx()|list(aetx_sign:signed_tx())) -> ok.
-delete(Txs) when is_list(Txs) ->
-    gen_server:call(?SERVER, {delete, Txs});
-delete(Tx) ->
-    gen_server:call(?SERVER, {delete, [Tx]}).
+    %% Verify that this is a signed transaction.
+    try aetx_sign:tx(Tx)
+    catch _:_ -> error({illegal_transaction, Tx})
+    end,
+    gen_server:call(?SERVER, {push, Tx, Event}).
 
 -spec get_max_nonce(pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
@@ -88,9 +88,14 @@ get_max_nonce(Sender) ->
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN}).
 
--spec fork_update(AddedToChain::[{aetx_sign:signed_tx(),any()}], RemovedFromChain::[{aetx_sign:signed_tx(), any()}]) -> ok.
-fork_update(AddedToChain, RemovedFromChain) ->
-    gen_server:call(?SERVER, {fork_update, AddedToChain, RemovedFromChain}).
+-spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxN, BlockHash) when is_integer(MaxN), MaxN >= 0,
+                                    is_binary(BlockHash) ->
+    gen_server:call(?SERVER, {get_candidate, MaxN, BlockHash}).
+
+-spec top_change(binary(), binary()) -> ok.
+top_change(OldHash, NewHash) ->
+    gen_server:call(?SERVER, {top_change, OldHash, NewHash}).
 
 -spec size() -> non_neg_integer() | undefined.
 size() ->
@@ -102,37 +107,30 @@ size() ->
 
 init([]) ->
     {ok, Db} = pool_db_open(),
-    State = #state{db = Db},
-    {ok, State}.
+    Handled  = ets:new(init_tx_pool, [private]),
+    InitF  = fun(TxHash, _) ->
+                     update_pool_on_tx_hash(TxHash, Db, Handled),
+                     ok
+             end,
+    ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
+    {ok, #state{db = Db}}.
 
 handle_call({get_max_nonce, Sender}, _From, #state{db = Mempool} = State) ->
     {reply, int_get_max_nonce(Mempool, Sender), State};
-handle_call({push, Txs, Event}, _From, #state{db = Mempool} = State) ->
-    lists:foreach(
-        fun(Tx) ->
-            pool_db_put(Mempool, pool_db_key(Tx), Tx, Event),
-            TxHash = aetx:hash(aetx_sign:tx(Tx)),
-            aec_db:write_tx(TxHash, mempool, Tx)
-        end,
-        Txs),
-    {reply, ok, State};
-handle_call({delete, Txs}, _From, #state{db = Mempool} = State) ->
-    lists:foreach(
-        fun(Tx) ->
-            pool_db_delete(Mempool, pool_db_key(Tx)),
-            TxHash = aetx:hash(aetx_sign:tx(Tx)),
-            aec_db:delete_tx(TxHash, mempool)
-        end,
-        Txs),
-    {reply, ok, State};
-handle_call({fork_update, AddedFromChain, RemovedFromChain}, _From,
+handle_call({push, Tx, Event}, _From, #state{db = Mempool} = State) ->
+    {reply, pool_db_put(Mempool, pool_db_key(Tx), Tx, Event), State};
+handle_call({top_change, OldHash, NewHash}, _From,
             #state{db = Mempool} = State) ->
-    do_fork_update(AddedFromChain, RemovedFromChain, Mempool),
+    do_top_change(OldHash, NewHash, Mempool),
     {reply, ok, State};
 handle_call({peek, MaxNumberOfTxs}, _From, #state{db = Mempool} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
     Txs = pool_db_peek(Mempool, MaxNumberOfTxs),
+    {reply, {ok, Txs}, State};
+handle_call({get_candidate, MaxNumberOfTxs, BlockHash}, _From,
+            #state{db = Mempool} = State) ->
+    Txs = int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash),
     {reply, {ok, Txs}, State};
 handle_call(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
@@ -168,6 +166,36 @@ int_get_max_nonce(Mempool, Sender) ->
             {ok, MaxNonce}
     end.
 
+%% Ensure ordering of tx nonces in one account, and for duplicate account nonces
+%% we only get the one with higher fee.
+int_get_candidate(MaxNumberOfTxs, Mempool, BlockHash) ->
+    int_get_candidate(MaxNumberOfTxs, Mempool, ets:first(Mempool),
+                      BlockHash, gb_trees:empty()).
+
+int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
+    gb_trees:values(Acc);
+int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
+    gb_trees:values(Acc);
+int_get_candidate(N, Mempool, {_Fee, Account, Nonce} = Key, BlockHash, Acc) ->
+    case gb_trees:is_defined({Account, Nonce}, Acc) of
+        true ->
+            %% The earlier must have had higher fee. Skip this tx.
+            int_get_candidate(N, Mempool, ets:next(Mempool, Key), BlockHash, Acc);
+        false ->
+            Tx = ets:lookup_element(Mempool, Key, 2),
+            case check_nonce_at_hash(Tx, BlockHash) of
+                ok ->
+                    NewAcc = gb_trees:insert({Account, Nonce}, Tx, Acc),
+                    Next = ets:next(Mempool, Key),
+                    int_get_candidate(N - 1, Mempool, Next, BlockHash, NewAcc);
+                {error, _} ->
+                    %% This is not valid anymore.
+                    %% TODO: This should also be deleted, but we don't know for
+                    %% sure that we are still on the top.
+                    int_get_candidate(N, Mempool, ets:next(Mempool, Key),
+                                      BlockHash, Acc)
+            end
+    end.
 
 pool_db_key(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
@@ -205,64 +233,117 @@ sel_return(L) when is_list(L) -> L;
 sel_return('$end_of_table' ) -> [];
 sel_return({Matches, _Cont}) -> Matches.
 
-do_fork_update(AddedToChain, RemovedFromChain, Mempool) ->
+do_top_change(OldHash, NewHash, Mempool) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
-    TxMap0 =
-        lists:foldl(
-          fun({Tx, BlockHash}, Acc) ->
-                  case lists:keymember(Tx, 1, AddedToChain) of
-                      false ->
-                          pool_db_put(Mempool, pool_db_key(Tx), Tx, tx_created),
-                          [{Tx, BlockHash, mempool} | Acc];
-                      true ->
-                          Acc
-                  end
-          end, [], RemovedFromChain),
-    TxMap =
-        lists:foldl(
-          fun({Tx, BlockHash}, Acc) ->
-                  case lists:keymember(Tx, 1, RemovedFromChain) of
-                      false ->
-                          pool_db_delete(Mempool, pool_db_key(Tx)),
-                          [{Tx, mempool, BlockHash} | Acc];
-                      true ->
-                          Acc
-                  end
-          end, TxMap0, AddedToChain),
-    aec_db:transaction(fun() -> move_txs(TxMap) end).
-
-move_txs([{Tx, From, To}|T]) ->
-    TxHash = aetx:hash(aetx_sign:tx(Tx)),
-    aec_db:delete_tx(TxHash, From),
-    aec_db:write_tx(TxHash, To, Tx),
-    move_txs(T);
-move_txs([]) ->
+    {ok, Ancestor} = aec_chain:find_common_ancestor(OldHash, NewHash),
+    Handled = ets:new(foo, [private, set]),
+    update_pool_from_blocks(Ancestor, OldHash, Mempool, Handled),
+    update_pool_from_blocks(Ancestor, NewHash, Mempool, Handled),
+    ets:delete(Handled),
     ok.
 
--spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) -> true.
-pool_db_put(_, undefined, _, _) ->
-    false; %% Ignore coinbase
-pool_db_put(Mempool, Key, Tx, Event) ->
-    case ets:member(Mempool, Key) of
+update_pool_from_blocks(Hash, Hash,_Mempool,_Handled) -> ok;
+update_pool_from_blocks(Ancestor, Current, Mempool, Handled) ->
+    lists:foreach(fun(TxHash) ->
+                          update_pool_on_tx_hash(TxHash, Mempool, Handled)
+                  end,
+                  aec_db:get_block_tx_hashes(Current)),
+    Prev = aec_chain:prev_hash_from_hash(Current),
+    update_pool_from_blocks(Ancestor, Prev, Mempool, Handled).
+
+update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
+    case ets:member(Handled, TxHash) of
+        true -> ok;
         false ->
-            case aetx_sign:verify(Tx) of
-                ok ->
-                    ets:insert(Mempool, {Key, Tx}),
-                    aec_events:publish(Event, Tx),
-                    true;
-                {error, Reason} ->
-                    lager:error("verification error: ~p; Tx = ~p",
-                                [Reason, Tx]),
-                    false
-            end;
-        true ->
-            lager:debug("Tx already in pool (~p)", [Key]),
-            false
+            ets:insert(Handled, {TxHash}),
+            Tx = aec_db:get_signed_tx(TxHash),
+            case aec_db:is_in_tx_pool(TxHash) of
+                false ->
+                    %% Added to chain
+                    ets:delete(Mempool, pool_db_key(Tx));
+                true ->
+                    case pool_db_key(Tx) of
+                        undefined ->
+                            aec_db:remove_tx_from_mempool(TxHash);
+                        Key ->
+                            ets:insert(Mempool, {Key, Tx})
+                    end
+            end
     end.
 
--spec pool_db_delete(pool_db(), pool_db_key()) -> true.
-pool_db_delete(_, undefined) ->
-    true; %% Ignore coinbase
-pool_db_delete(Mempool, Key) ->
-    ets:delete(Mempool, Key).
+-spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) ->
+                         'ok' | {'error', atom()}.
+pool_db_put(_, undefined, _, _) ->
+    %% TODO: This is probably not needed anymore
+    {error, coinbase};
+pool_db_put(Mempool, Key, Tx, Event) ->
+    Hash = aetx_sign:hash(Tx),
+    case aec_db:find_tx_location(Hash) of
+        BlockHash when is_binary(BlockHash) ->
+            lager:debug("Already have tx: ~p in ~p", [Hash, BlockHash]),
+            {error, already_accepted};
+        mempool ->
+            lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
+            ok;
+        none ->
+            Checks = [ fun check_signature/2
+                     , fun check_nonce/2
+                     , fun check_minimum_fee/2
+                     ],
+            case aeu_validation:run(Checks, [Tx, Hash]) of
+                {error, _} = E ->
+                    lager:debug("Validation error for tx ~p: ~p", [Hash, E]),
+                    E;
+                ok ->
+                    case ets:member(Mempool, Key) of
+                        true ->
+                            lager:debug("Pool db key already present (~p)", [Key]),
+                            %% TODO: We should make a decision whether to switch the tx.
+                            ok;
+                        false ->
+                            lager:debug("Adding tx: ~p", [Hash]),
+                            aec_db:add_tx(Tx),
+                            ets:insert(Mempool, {Key, Tx}),
+                            aec_events:publish(Event, Tx),
+                            ok
+                    end
+            end
+    end.
+
+check_signature(Tx, Hash) ->
+    case aetx_sign:verify(Tx) of
+        {error, _} = E ->
+            lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
+            E;
+        ok ->
+            ok
+    end.
+
+check_nonce(Tx,_Hash) ->
+  check_nonce_at_hash(Tx, aec_chain:top_block_hash()).
+
+check_nonce_at_hash(Tx, BlockHash) ->
+    %% Check is conservative and only rejects certain cases
+    Unsigned = aetx_sign:tx(Tx),
+    TxNonce = aetx:nonce(Unsigned),
+    Pubkey = aetx:origin(Unsigned),
+    case TxNonce > 0 of
+        false ->
+            {error, illegal_nonce};
+        true ->
+            case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
+                {value, Account} ->
+                    aetx_utils:check_nonce(Account, TxNonce);
+                {error, no_state_trees} ->
+                    ok;
+                none ->
+                    ok
+            end
+    end.
+
+check_minimum_fee(Tx,_Hash) ->
+    case aetx:fee(aetx_sign:tx(Tx)) >= aec_governance:minimum_tx_fee() of
+        true  -> ok;
+        false -> {error, too_low_fee}
+    end.

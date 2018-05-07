@@ -8,7 +8,9 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
--export([check_account/5]).
+-export([ check_account/5
+        , check_nonce/2
+        ]).
 
 %% Checks that an account (PubKey) exist at this height, has enough funds,
 %% and that the Nonce is ok.

@@ -407,13 +407,13 @@ worker_reply(wait_for_keys, Res, State) ->
 %%%===================================================================
 %%% Preemption of workers if the top of the chain changes.
 
-preempt_if_new_top(#state{seen_top_block_hash = TopHash} = State, Publish) ->
+preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
     case aec_chain:top_block_hash() of
-        TopHash -> no_change;
-        TopBlockHash ->
-            maybe_publish_top(Publish, TopBlockHash),
-            update_tx_pool_on_top_change(TopHash, TopBlockHash),
-            State1 = State#state{seen_top_block_hash = TopBlockHash},
+        OldHash -> no_change;
+        NewHash ->
+            ok = aec_tx_pool:top_change(OldHash, NewHash),
+            maybe_publish_top(Publish, NewHash),
+            State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(create_block_candidate, State2),
             {changed, State3#state{block_candidate = undefined}}
@@ -480,18 +480,6 @@ kill_all_workers_with_tag(Tag, #state{workers = Workers} = State) ->
                   false -> S
               end
       end, State, Workers).
-
-%%%===================================================================
-%%% Handling update in transaction pool
-
-update_tx_pool_on_top_change(Hash1, Hash2) when is_binary(Hash1),
-                                                is_binary(Hash2) ->
-    epoch_mining:info("Updating transactions ~p ~p", [Hash1, Hash2]),
-    {ok, Ancestor} = aec_chain:find_common_ancestor(Hash1, Hash2),
-    {ok, TxsOnOldChain} = aec_chain:get_transactions_between(Hash1, Ancestor),
-    {ok, TxsOnNewChain} = aec_chain:get_transactions_between(Hash2, Ancestor),
-    ok = aec_tx_pool:fork_update(TxsOnNewChain, TxsOnOldChain),
-    ok.
 
 %%%===================================================================
 %%% Worker: Wait for keys to appear

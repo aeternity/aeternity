@@ -52,8 +52,8 @@ hash_is_connected_to_genesis(Hash) ->
                                   {'ok', binary()} | {error, atom()}.
 find_common_ancestor(Hash1, Hash2) ->
     case {db_find_node(Hash1), db_find_node(Hash2)} of
-        {{ok, Node1}, {ok, Node2}} ->
-            case find_fork_point(Node1, Node2) of
+        {{ok,_Node1}, {ok,_Node2}} ->
+            case find_fork_point(Hash1, Hash2) of
                 error          -> {error, not_found};
                 {ok, ForkHash} -> {ok, ForkHash}
             end;
@@ -63,13 +63,11 @@ find_common_ancestor(Hash1, Hash2) ->
 -spec hash_is_in_main_chain(binary()) -> boolean().
 hash_is_in_main_chain(Hash) ->
     case db_find_node(Hash) of
-        {ok, Node} ->
+        {ok,_Node} ->
             State = new_state_from_persistence(),
             case get_top_block_hash(State) of
                 undefined -> false;
-                TopHash ->
-                    TopNode = db_get_node(TopHash),
-                    node_is_in_main_chain(Node, TopNode)
+                TopHash -> hash_is_in_main_chain(Hash, TopHash)
             end;
         error -> false
     end.
@@ -184,22 +182,23 @@ get_hash_at_height(Height, State) when is_integer(Height), Height >= 0 ->
                         error -> error({broken_chain, Height});
                         {ok, [Node]} -> {ok, hash(Node)};
                         {ok, [_|_] = Nodes} ->
-                            first_hash_in_main_chain(Nodes, TopNode)
+                            first_hash_in_main_chain(Nodes, Hash)
                     end
             end
     end.
 
-first_hash_in_main_chain([Node|Left], TopNode) ->
-    case node_is_in_main_chain(Node, TopNode) of
+first_hash_in_main_chain([Node|Left], TopHash) ->
+    case hash_is_in_main_chain(hash(Node), TopHash) of
         true  -> {ok, hash(Node)};
-        false -> first_hash_in_main_chain(Left, TopNode)
+        false -> first_hash_in_main_chain(Left, TopHash)
     end;
-first_hash_in_main_chain([],_TopNode) ->
+first_hash_in_main_chain([],_TopHash) ->
     error.
 
-node_is_in_main_chain(Node, TopNode) ->
-    case find_fork_point(Node, TopNode) of
-        {ok, Hash} -> Hash =:= hash(Node);
+hash_is_in_main_chain(Hash, TopHash) ->
+    case find_fork_point(Hash, TopHash) of
+        {ok, Hash} -> true;
+        {ok, _} -> false;
         error -> false
     end.
 
@@ -310,15 +309,8 @@ update_state_tree(Node, State) ->
                      end,
             {State1, NewTopDifficulty} =
                 update_state_tree(Node, Trees, Difficulty, ForkId, State),
-            case get_top_block_hash(State) of
-                undefined -> State1;
-                TopBlockHash ->
-                    {ok, TopDifficulty} = db_find_difficulty(TopBlockHash),
-                    case TopDifficulty >= NewTopDifficulty of
-                        true -> set_top_block_hash(TopBlockHash, State1);
-                        false -> State1
-                    end
-            end
+            OldTopHash = get_top_block_hash(State),
+            handle_top_block_change(OldTopHash, NewTopDifficulty, State1)
     end.
 
 update_state_tree(Node, TreesIn, Difficulty, ForkId, State) ->
@@ -387,6 +379,53 @@ apply_and_store_state_trees(Node, TreesIn, DifficultyIn, ForkId,
         throw:?internal_error(_) when NodeHash =/= Hash -> error
     end.
 
+handle_top_block_change(OldTopHash, NewTopDifficulty, State) ->
+    case get_top_block_hash(State) of
+        OldTopHash -> State;
+        NewTopHash when OldTopHash =:= undefined ->
+            update_main_chain(get_genesis_hash(State), NewTopHash, State);
+        NewTopHash ->
+            {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
+            case OldTopDifficulty >= NewTopDifficulty of
+                true -> set_top_block_hash(OldTopHash, State); %% Reset
+                false -> update_main_chain(OldTopHash, NewTopHash, State)
+            end
+    end.
+
+update_main_chain(undefined, NewTopHash, State) ->
+    add_locations(NewTopHash, get_genesis_hash(State)),
+    State;
+update_main_chain(OldTopHash, NewTopHash, State) ->
+    case find_fork_point(OldTopHash, NewTopHash) of
+        {ok, OldTopHash} ->
+            add_locations(OldTopHash, NewTopHash),
+            State;
+        {ok, ForkHash} ->
+            remove_locations(ForkHash, OldTopHash),
+            add_locations(ForkHash, NewTopHash),
+            State
+    end.
+
+remove_locations(Hash, Hash) ->
+    ok;
+remove_locations(StopHash, CurrentHash) ->
+    %% TODO: Maybe special treat coinbase
+    lists:foreach(fun(TxHash) ->
+                          aec_db:remove_tx_location(TxHash),
+                          aec_db:add_tx_hash_to_mempool(TxHash)
+                  end, db_get_tx_hashes(CurrentHash)),
+    remove_locations(StopHash, db_get_prev_hash(CurrentHash)).
+
+add_locations(Hash, Hash) ->
+    ok;
+add_locations(StopHash, CurrentHash) ->
+    lists:foreach(fun(TxHash) ->
+                          aec_db:add_tx_location(TxHash, CurrentHash),
+                          aec_db:remove_tx_from_mempool(TxHash)
+                  end, db_get_tx_hashes(CurrentHash)),
+    add_locations(StopHash, db_get_prev_hash(CurrentHash)).
+
+
 assert_state_hash_valid(Trees, Node) ->
     RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
@@ -405,9 +444,7 @@ apply_node_transactions(Node, Trees) ->
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.
 
-find_fork_point(Node1, Node2) ->
-    Hash1 = hash(Node1),
-    Hash2 = hash(Node2),
+find_fork_point(Hash1, Hash2) ->
     find_fork_point(Hash1, db_find_fork_id(Hash1), Hash2, db_find_fork_id(Hash2)).
 
 find_fork_point(Hash1, {ok, FHash}, Hash2, {ok, FHash}) ->
@@ -481,6 +518,9 @@ db_find_fork_id(Hash) when is_binary(Hash) ->
 
 db_get_txs(Hash) when is_binary(Hash) ->
     aec_blocks:txs(aec_db:get_block(Hash)).
+
+db_get_tx_hashes(Hash) when is_binary(Hash) ->
+    aec_db:get_block_tx_hashes(Hash).
 
 db_get_prev_hash(Hash) when is_binary(Hash) ->
     {value, PrevHash} = db_find_prev_hash(Hash),
