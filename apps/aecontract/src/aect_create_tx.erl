@@ -192,7 +192,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			aec_trees:set_calls(Trees3, CallsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees2
+			Trees1  %% Don't create the contract if 'init' fails!
 		end;
 	    ?AEVM_01_Solidity_01 ->
 
