@@ -59,8 +59,8 @@
 basic_access_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis(),
+             aec_test_utils:start_chain_db(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
