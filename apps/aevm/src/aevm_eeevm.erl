@@ -42,8 +42,8 @@ eval(State) ->
 	    %% Turn storage map into binary and save in state tree.
 	    {Res, aevm_eeevm_state:save_store(State1)};
 	{error, What, State1} ->
-	    %% Turn (old) storage map back into binary and save in state tree.
-	    {error, What, aevm_eeevm_state:save_store(State1)}
+	    %% Don't save state on error.
+	    {error, What, State1}
     end.
 
 eval_code(State = #{ address := 0 }) ->
