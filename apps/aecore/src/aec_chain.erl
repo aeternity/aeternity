@@ -49,6 +49,10 @@
         , get_oracles/2
         ]).
 
+%%% Contracts API
+-export([ get_contract/1
+        ]).
+
 %%% Difficulty API
 -export([ difficulty_at_hash/1
         , difficulty_at_top_block/0
@@ -137,6 +141,25 @@ resolve_name(Type, Name) ->
         {ok, Trees} -> aens:resolve(Type, Name, aec_trees:ns(Trees));
         error -> {error, no_state_trees}
     end.
+
+%%%===================================================================
+%%% Contracts
+%%%===================================================================
+
+-spec get_contract(pubkey()) ->
+                          {'ok', map()} |
+                          {'error', atom()}.
+get_contract(PubKey) ->
+    case get_top_state() of
+        {ok, Trees} ->
+            ContractTree = aec_trees:contracts(Trees),
+            try aect_state_tree:get_contract(PubKey, ContractTree) of
+                Contract -> {ok, Contract}
+            catch error:{not_present, ContractKey} -> {error, not_present}
+            end;
+        error -> {error, no_state_trees}
+    end.
+
 
 %%%===================================================================
 %%% Time summary.

@@ -58,33 +58,18 @@ call_AEVM_01_Sophia_01(#{ contract   := ContractPubKey
                         , trees      := Trees
 			} = CallDef) ->
     Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
-    Store = get_store(ContractPubKey, Trees),
-    Exec = #{ mem => Store#{mem_size => maps:size(Store)},
-              store => Store},
     Spec = #{ env => Env,
-              exec => Exec,
+              exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
-
-get_store(ContractPubKey, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    Store =
-        case aect_state_tree:lookup_contract(ContractPubKey, ContractsTree) of
-            {value, Contract} -> aect_contracts:state(Contract);
-            none              -> #{}
-        end,
-    Store.
-
 
 call_AEVM_01_Solidity_01(#{ contract   := ContractPubKey
                           , height     := Height
                           , trees      := Trees
                           } = CallDef) ->
     Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
-    Store = get_store(ContractPubKey, Trees),
-    Exec = #{ store => Store},
     Spec = #{ env => Env,
-              exec => Exec,
+              exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
 

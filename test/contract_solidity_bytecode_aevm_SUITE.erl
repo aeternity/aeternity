@@ -101,7 +101,7 @@ all() -> [
           %% but not with "make test" where other tests have run before.
           %% Taken out of test suite for now.
           %% TODO: Turn into a "dev1" node test.
-          %% execute_counter_fun_from_bytecode,
+          %% execute_counter_fun_from_bytecode
           %% execute_identity_fun_from_solidity_binary
          ].
 
@@ -154,8 +154,13 @@ execute_counter_fun_from_bytecode(Cfg) ->
     ok = mock_genesis(Cfg),
     ok = application:start(aecore),
 
-    Tx = create_tx(#{}, Cfg),
     PrivKey = ?config(my_priv_key, Cfg),
+    Tx = create_tx(#{}, Cfg),
+    OwnerPubKey = ?config(my_pub_key, Cfg),
+    Nonce = 1, %% aect_create_tx:nonce(Tx),
+    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+
+
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
     TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
@@ -175,7 +180,36 @@ execute_counter_fun_from_bytecode(Cfg) ->
                         end
                 end, true),
 
-    {Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
+    {ok, Contract} = aec_chain:get_contract(ContractPubKey),
+    ct:pal("~p~n",[Contract]),
+    ct:pal("~p~n",[aect_contracts:state(Contract)]),
+    #{} = aect_contracts:state(Contract),
+    %% Call Counter:inc(1)
+    CallData =  aeu_hex:hexstring_decode(<< "0x6d4ce63c" >>),
+    Spec = #{ caller     => OwnerPubKey
+            , nonce      => 2
+            , contract   => ContractPubKey
+            , vm_version => 2
+            , fee        => 1
+            , amount     => 0
+            , gas        => 500
+            , gas_price  => 1
+            , call_data  => CallData
+            },
+    {ok, CallTx} = aect_call_tx:new(Spec),
+    SignedCallTx = aetx_sign:sign(CallTx, PrivKey),
+    ok = aec_tx_pool:push(SignedCallTx),
+    CallTxHash = aetx:hash(aetx_sign:tx(SignedCallTx)),
+    wait_for_it(fun () ->
+                        case aec_chain:find_transaction_in_main_chain_or_mempool(CallTxHash) of
+                            'none' -> false;
+                            {'mempool', _} -> false;
+                            {_, _} -> true
+                        end
+                end, true),
+    {ok, Contract2} = aec_chain:get_contract(ContractPubKey),
+    ct:pal("~p~n",[Contract2]),
+    ct:pal("~p~n",[aect_contracts:state(Contract2)]),
 
     ok = unmock_genesis(Cfg),
     ok = application:stop(aecore),
@@ -188,28 +222,36 @@ counter_bytecode() ->
     %% contract Counter {
     %%   uint32 public value;
     %%
-    %%   constructor() public {
-    %%       value = 0;
-    %%   }
+    %%    constructor() public {
+    %%        value = 0;
+    %%    }
     %%
-    %%   function inc(uint32 x) public {
-    %%      value = value + x;
+    %%    function inc(uint32 x) public {
+    %%       value = value + x;
+    %%      }
+    %%
+    %%     function get() public constant returns (uint32) {
+    %%         return value;
     %%     }
-    %% }
+    %%  }
+
 
     aeu_hex:hexstring_decode(
       <<"0x608060405234801561001057600080fd5b5060008060006101000a81548163"
-        "ffffffff021916908363ffffffff160217905550610129806100416000396000"
-        "f3006080604052600436106049576000357c0100000000000000000000000000"
-	"000000000000000000000000000000900463ffffffff1680633fa4f24514604e"
-	"578063dd5d5211146082575b600080fd5b348015605957600080fd5b50606060"
-	"b2565b604051808263ffffffff1663ffffffff16815260200191505060405180"
-	"910390f35b348015608d57600080fd5b5060b0600480360381019080803563ff"
-	"ffffff16906020019092919050505060c7565b005b6000809054906101000a90"
-	"0463ffffffff1681565b806000809054906101000a900463ffffffff16016000"
-	"806101000a81548163ffffffff021916908363ffffffff160217905550505600"
-	"a165627a7a72305820ec60a98f58782e07d413180c539f5b87800236b702bbbb"
-	"b97ac1ebd1938cc0100029">>).
+        "ffffffff021916908363ffffffff16021790555061018d8061004160003960"
+        "00f300608060405260043610610057576000357c0100000000000000000000"
+        "000000000000000000000000000000000000900463ffffffff1680633fa4f2"
+        "451461005c5780636d4ce63c14610093578063dd5d5211146100ca575b6000"
+        "80fd5b34801561006857600080fd5b506100716100fd565b604051808263ff"
+        "ffffff1663ffffffff16815260200191505060405180910390f35b34801561"
+        "009f57600080fd5b506100a8610112565b604051808263ffffffff1663ffff"
+        "ffff16815260200191505060405180910390f35b3480156100d657600080fd"
+        "5b506100fb600480360381019080803563ffffffff16906020019092919050"
+        "505061012b565b005b6000809054906101000a900463ffffffff1681565b60"
+        "008060009054906101000a900463ffffffff16905090565b80600080905490"
+        "6101000a900463ffffffff16016000806101000a81548163ffffffff021916"
+        "908363ffffffff160217905550505600a165627a7a72305820d465419d8b4c"
+        "7adf48551bcf6e438080d2c45e27489fc706002b4c638d420ebd0029">>).
 
 
 
