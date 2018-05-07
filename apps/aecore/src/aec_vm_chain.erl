@@ -1,18 +1,18 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Implementation of the aec_vm_chain_api.
+%%%    Implementation of the aevm_chain_api.
 %%% @end
 %%%=============================================================================
 -module(aec_vm_chain).
 
 -include_lib("apps/aecore/include/common.hrl").
 
--behaviour(aec_vm_chain_api).
+-behaviour(aevm_chain_api).
 
 -export([new_state/3, get_trees/1]).
 
-%% aec_vm_chain_api callbacks
+%% aevm_chain_api callbacks
 -export([get_balance/2,
 	 get_store/1,
 	 set_store/2,
@@ -59,13 +59,13 @@ get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
 %% @doc Get the contract state store of the contract account.
--spec get_store(chain_state()) -> aec_vm_chain_api:store().
+-spec get_store(chain_state()) -> aevm_chain_api:store().
 get_store(#state{ account = PubKey, trees = Trees }) ->
     Store = do_get_store(PubKey, Trees),
     Store.
 
 %% @doc Set the contract state store of the contract account.
--spec set_store(aec_vm_chain_api:store(), chain_state()) -> chain_state().
+-spec set_store(aevm_chain_api:store(), chain_state()) -> chain_state().
 set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
     CTree1 = do_set_store(Store, PubKey, Trees),
     Trees1 = aec_trees:set_contracts(Trees, CTree1),
@@ -86,7 +86,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 %% @doc Call another contract.
 -spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
-        {ok, aec_vm_chain_api:call_result(), chain_state()} | {error, term()}.
+        {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
                               height  = Height,
@@ -114,10 +114,10 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             GasUsed = aect_call:gas_used(Call),
             Result  = case aect_call:return_type(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
-                          error -> aec_vm_chain_api:call_exception(out_of_gas, GasUsed);
+                          error -> aevm_chain_api:call_exception(out_of_gas, GasUsed);
                           ok ->
                               Bin = aect_call:return_value(Call),
-                              aec_vm_chain_api:call_result(Bin, GasUsed)
+                              aevm_chain_api:call_result(Bin, GasUsed)
                       end,
             {ok, Result, State#state{ trees = Trees2, nonce = Nonce + 1 }}
     end.

@@ -1,5 +1,5 @@
 -module(contract_sophia_bytecode_aevm_SUITE).
--behaviour(aec_vm_chain_api).
+-behaviour(aevm_chain_api).
 
 %% common_test exports
 -export([all/0]).
@@ -254,7 +254,7 @@ call_contract(0, _Gas, Value, CallData, _, S) ->
             case spend(To, Value, S) of
                 {ok, S1} ->
                     io:format("Spent ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
-                    {ok, aec_vm_chain_api:call_result(<<>>, 0), S1};
+                    {ok, aevm_chain_api:call_result(<<>>, 0), S1};
                 Err -> Err
             end;
         _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
@@ -270,10 +270,10 @@ call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
                     io:format("  result = ~p\n", [aeso_test_utils:dump_words(Ret)]),
-                    {ok, aec_vm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
+                    {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
                 {error, out_of_gas, _} ->
                     io:format("  result = out_of_gas\n"),
-                    {ok, aec_vm_chain_api:call_exception(out_of_gas, 0), S}
+                    {ok, aevm_chain_api:call_exception(out_of_gas, 0), S}
             end;
         false ->
             io:format("  oops, no such contract!\n"),

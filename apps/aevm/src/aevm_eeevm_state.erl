@@ -149,8 +149,8 @@ call_contract(Caller, Dest, CallGas, Value, Data, State) ->
     CallStack  = [Caller | call_stack(State)],
     case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
         {ok, Res, ChainState1} ->
-            GasSpent = aec_vm_chain_api:gas_spent(Res),
-            Return   = aec_vm_chain_api:return_value(Res),
+            GasSpent = aevm_chain_api:gas_spent(Res),
+            Return   = aevm_chain_api:return_value(Res),
             {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
         {error, Err} -> {error, Err}
     end.

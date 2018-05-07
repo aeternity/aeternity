@@ -44,7 +44,7 @@ groups() ->
 %%%===================================================================
 
 %% Uses aect_test_utils to set up the chain, but after the setup everything is
-%% done through the aec_vm_chain_api.
+%% done through the aevm_chain_api.
 setup_chain() ->
     S0              = aect_test_utils:new_state(),
     {Account1, S1}  = aect_test_utils:setup_new_account(S0),
@@ -120,8 +120,8 @@ make_call(From, To, Value, Arg, S) ->
             S;
         true ->
             {ok, Res, S1} = CallRes,
-            GasUsed  = aec_vm_chain_api:gas_spent(Res),
-            {ok, <<Arg:256>>} = aec_vm_chain_api:return_value(Res),
+            GasUsed  = aevm_chain_api:gas_spent(Res),
+            {ok, <<Arg:256>>} = aevm_chain_api:return_value(Res),
             true     = GasUsed > 0,
             true     = GasUsed =< Gas,
             C1Bal2   = aec_vm_chain:get_balance(From, S1),

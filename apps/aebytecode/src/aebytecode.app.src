@@ -5,13 +5,10 @@
   {applications,
    [kernel,
     stdlib,
-    lager,
-    jsx,
-    sha3
+    lager
    ]},
   {env,[]},
   {modules, []},
-
   {maintainers, []},
   {licenses, []},
   {links, []}

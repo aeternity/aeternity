@@ -1,18 +1,18 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Implementation of the aec_vm_chain_api. Has a predefined state. To
+%%%    Implementation of the aevm_chain_api. Has a predefined state. To
 %%%    use when testing contracts in the ethereum test suite.
 %%% @end
 %%%=============================================================================
 
 -module(aevm_ethereum_test_chain).
 
-%-behaviour(aec_vm_chain_api).
+-behaviour(aevm_chain_api).
 
 -export([new_state/1]).
 
-%% aec_vm_chain_api callbacks
+%% aevm_chain_api callbacks
 -export([get_balance/2,
 	 get_store/1,
 	 set_store/2,
@@ -51,6 +51,6 @@ set_store(Store, State) ->
 spend(_Recipient, _Amount, _S)  -> {error, cant_spend_with_dummy_chain}.
 -spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
-        {ok, aec_vm_chain_api:call_result(), chain_state()} | {error, term()}.
+        {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(_, _, _, _, _, _) -> {error, cant_call_contracts_with_dummy_chain}.
 
