@@ -81,18 +81,21 @@ enter_contract(Contract, Tree = #contract_tree{ contracts = CtTree }) ->
 enter_store(Contract, OldStore, CtTree) ->
     Id = aect_contracts:store_id(Contract),
     Store = aect_contracts:state(Contract),
-    MergedStore = maps:merge(OldStore, Store),
-    %% Merged store contains all keys
-    enter_store_nodes(Id, MergedStore, Store, CtTree).
+    MergedStore = maps:merge(Store, OldStore),
+    %% Merged store contains all keys, and old Values.
+    enter_store_nodes(Id, MergedStore, Store, OldStore, CtTree).
 
-enter_store_nodes(Prefix, MergedStore, Store, CtTree) ->
+enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
     %% Iterate over all (merged) keys.
-    Insert = fun (Key, _MergedVal, Tree) ->
+    Insert = fun (Key,_MergedVal, Tree) ->
                      Id = <<Prefix/binary, Key/binary>>,
                      %% Check if key exist in new store
                      %% If not overwrite with empty tree.
-                     Value = maps:get(Key, Store, <<>>),
-                     aeu_mtrees:enter(Id, Value, Tree)
+                     case {maps:get(Key,    Store, <<>>),
+                           maps:get(Key, OldStore, <<>>)} of
+                         {Same, Same} -> Tree;
+                         {Value,   _}    -> aeu_mtrees:enter(Id, Value, Tree)
+                     end
              end,
      maps:fold(Insert, CtTree, MergedStore).
 
