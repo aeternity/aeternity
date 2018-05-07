@@ -314,7 +314,7 @@ merge_chains(#{ chain_id := CId, peers := Ps1, chain := C1 },
     %% We sort descending...
     Cmp = fun(#{ height := H1 }, #{ height := H2 }) -> H1 >= H2 end,
     #{ chain_id => CId, peers => lists:usort(Ps1 ++ Ps2),
-       chain => lists:merge(Cmp, C1, C2) }.
+       chain => lists:umerge(Cmp, C1, C2) }.
 
 match_tasks(_Chain, [], []) ->
     no_match;
@@ -329,20 +329,27 @@ match_tasks(Chain1, [ST = #sync_task{ chain = Chain2 } | STs], Acc) ->
         {snd, N}  -> match_tasks(Chain1, STs, [{N, Chain2} | Acc])
     end.
 
-match_chains([#{ height := N1 } | C1], [#{ height := N2 } | _] = C2) when N1 > N2 ->
-    match_chains(C1, C2);
-match_chains([#{ height := N1 } | _] = C1, [#{ height := N2 } | C2]) when N1 < N2 ->
-    match_chains(C1, C2);
-match_chains([], [#{ height := N } | _]) ->
-    %% we need more info from first chain
-    {fst, N};
-match_chains([#{ height := N } | _], []) ->
-    %% we need more info from second chain
-    {snd, N};
-match_chains([#{ hash := H } | _], [#{ hash := H } | _]) ->
-    equal;
-match_chains(_, _) ->
-    different.
+match_chains([#{ height := N1 } | C1], [#{ height := N2, hash := H } | _]) when N1 > N2 ->
+    case find_hash_at_height(N2, C1) of
+        {ok, H}   -> equal;
+        {ok, _}   -> different;
+        not_found -> {fst, N2}
+    end;
+match_chains([#{ height := N1, hash := H } | _], C2) ->
+    case find_hash_at_height(N1, C2) of
+        {ok, H}   -> equal;
+        {ok, _}   -> different;
+        not_found -> {snd, N1}
+    end.
+
+find_hash_at_height(N, [#{ height := N, hash := H } | _]) ->
+    {ok, H};
+find_hash_at_height(_, []) ->
+    not_found;
+find_hash_at_height(N, [#{ height := N1 } | _]) when N1 < N ->
+    not_found;
+find_hash_at_height(N, [_ | Cs]) ->
+    find_hash_at_height(N, Cs).
 
 do_handle_worker({new_worker, PeerId, Pid}, ST = #sync_task{ workers = Ws }) ->
     case lists:keyfind(PeerId, 1, Ws) of
