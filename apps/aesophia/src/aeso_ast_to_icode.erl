@@ -27,7 +27,18 @@ convert(Tree, Options) ->
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
     NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
     code(Rest, NewIcode);
-code([], Icode) -> Icode.
+code([], Icode) ->
+    add_default_init_function(Icode).
+
+%% Create default init function (only if state is unit).
+add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
+    case lists:keymember("init", 1, Funs) of
+        true -> Icode;
+        false when State /= {tuple, []} -> error(missing_init_function);
+        false ->
+            DefaultInit = {"init", [], {tuple, []}, {tuple, []}},
+            Icode#{ functions => [DefaultInit | Funs] }
+    end.
 
 contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
     StateType =
