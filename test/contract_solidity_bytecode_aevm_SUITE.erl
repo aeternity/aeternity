@@ -101,8 +101,8 @@ all() -> [
           %% but not with "make test" where other tests have run before.
           %% Taken out of test suite for now.
           %% TODO: Turn into a "dev1" node test.
-          execute_counter_fun_from_bytecode,
-          execute_identity_fun_from_solidity_binary
+          %% execute_counter_fun_from_bytecode,
+          %% execute_identity_fun_from_solidity_binary
          ].
 
 execute_identity_fun_from_solidity_binary(Cfg) ->
@@ -150,9 +150,12 @@ id_bytecode() ->
         "e405cbf70029">>).
 
 execute_counter_fun_from_bytecode(Cfg) ->
+    application:stop(mnesia),
+    application:stop(aec_conductor),
+    application:stop(aecore),
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
     ok = mock_genesis(Cfg),
-    ok = application:start(aecore),
+    {ok,_} = application:ensure_all_started(aecore),
 
     PrivKey = ?config(my_priv_key, Cfg),
     Tx = create_tx(#{}, Cfg),

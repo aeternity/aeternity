@@ -140,8 +140,6 @@ application_test(Config) ->
 prepare_app_start(App, Config) ->
     try prepare_app_start_(App, Config)
     catch
-        T:E -> ct:pal("~w ~w ~n",[E,T]),
-               error({E, erlang:get_stacktrace()});
         error:Reason ->
             error({Reason, erlang:get_stacktrace()})
     end.
