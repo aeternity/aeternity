@@ -22,7 +22,6 @@
     kill_node/2,
     connect_node/3, disconnect_node/3,
     http_get/5,
-    request/4,
     wait_for_value/4,
     assert_synchronized/2
 ]).
@@ -121,6 +120,8 @@ new_node_joins_network(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
+                                          %% Change if comptibility with previous version 
+                                          %% should be guaranteed
     ct:log("Testing compatiblity of epoch:local with ~p", [Compatible]),
 
     OldNode1 = #{ 
@@ -205,7 +206,7 @@ docker_keeps_data(Cfg) ->
     A = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length)],
 
     stop_node(standalone_node, infinity, Cfg), %% Is this triggering PT-155851463 ?
-    timer:sleep(8000),
+
     start_node(standalone_node, Cfg),
     wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
 
@@ -308,7 +309,7 @@ stop_and_continue_sync(Cfg) ->
     case Height >= Length of
          true -> {skip, already_synced_when_stopped};
          false ->
-            timer:sleep(8000),
+            timer:sleep(4 * ?MINING_TIMEOUT), %% make sure we do a bit of forking on the new chain
             start_node(node1, Cfg),
             wait_for_value({height, Length}, [node2], (Length - Height) * MiningTime, Cfg),
             {ok, 200, B2} = request(node2, 'GetBlockByHeight', #{height => Length}),
