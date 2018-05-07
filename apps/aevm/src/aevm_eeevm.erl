@@ -42,7 +42,7 @@ eval(State) ->
 	    %% Turn storage map into binary and save in state tree.
 	    {Res, aevm_eeevm_state:save_store(State1)};
 	{error, What, State1} ->
-	    %% Turn storage map into binary and save in state tree.
+	    %% Turn (old) storage map back into binary and save in state tree.
 	    {error, What, aevm_eeevm_state:save_store(State1)}
     end.
 
@@ -57,14 +57,18 @@ eval_code(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
-            {error, What, StateOut};
+	    %% Throw away new storage on error.
+            {error, What, old_store(State, StateOut)};
 	throw:?AEVM_SIGNAL(Signal, StateOut) ->
 	    handle_signal(Signal, State, StateOut)
     end.
 
+old_store(StateIn, StateOut) ->
+    aevm_eeevm_state:set_storage(
+      aevm_eeevm_state:storage(StateIn), StateOut).
+
 handle_signal(revert, StateIn, StateOut) ->
-    {revert, aevm_eeevm_state:set_storage(
-	       aevm_eeevm_state:storage(StateIn), StateOut)}.
+    {revert, old_store(StateIn, StateOut)}.
 
 
 
