@@ -3254,30 +3254,6 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     assert_balance(IPubkey, IStartB + IChange),
     assert_balance(RPubkey, RStartB + RChange),
 
-    %% There is an issue in the mempool processing mutual close transactions
-    %% remove after mempool refactoring 
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
-
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ToMine),
-    %% prepare participants
-    IStartAmt = 20,
-    RStartAmt = 10,
-    Fee = 1,
-
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
-
-    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
-    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    assert_balance(IPubkey, IStartAmt),
-    assert_balance(RPubkey, RStartAmt),
     ok.
 
 sc_ws_timeout_open(Config) ->
