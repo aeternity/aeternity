@@ -429,7 +429,7 @@ is_running(Id, Retries) ->
 
 attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout) ->
     Cmd = ["/home/epoch/node/bin/epoch", "stop"],
-    CmdStr = lists:join($ , Cmd),
+    CmdStr = lists:join(" " , Cmd),
     log(NodeState,
         "Container ~p [~s] still running: "
         "attempting to stop node by executing command ~s",
@@ -452,7 +452,7 @@ retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
     case aest_docker_api:exec(ID, Cmd, Opts) of
         {ok, 137, <<"ok\r\n">>} -> ok;
         {ok, Status, Res} ->
-            CmdStr = lists:join($ , Cmd),
+            CmdStr = lists:join(" ", Cmd),
             log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
                     [Name, ID, CmdStr, Status, Res]),
             retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
