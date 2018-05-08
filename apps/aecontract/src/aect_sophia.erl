@@ -7,6 +7,8 @@
 
 -module(aect_sophia).
 
+-include("aecontract.hrl").
+
 -export([ compile/2
         , create_call/3
         , encode_call_data/3
@@ -79,6 +81,7 @@ simple_call(Code, Function, Argument) ->
                     , currentTimestamp => 1
                     , chainAPI => aec_vm_chain
                     , chainState => ChainState
+                    , vm_version => ?AEVM_01_Sophia_01
                     },
             case aect_evm:execute_call(Spec, true) of
                 {ok, #{ out := Out } = _RetState} ->

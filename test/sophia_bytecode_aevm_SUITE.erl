@@ -13,6 +13,7 @@
      , execute_identity_fun_from_sophia_file/1
    ]).
 
+-include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 all() ->
@@ -47,7 +48,8 @@ execute_identity_fun_from_sophia_file(_Cfg) ->
                         currentNumber => 0,
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
-                        chainAPI => aevm_dummy_chain},
+                        chainAPI => aevm_dummy_chain,
+                        vm_version => ?AEVM_01_Sophia_01},
                pre => #{}},
             #{trace => true})
          ),
@@ -77,7 +79,8 @@ execute_identity_fun_from_bytecode(_Cfg) ->
                         currentNumber => 0,
                         currentTimestamp => 0,
                         chainState => aevm_dummy_chain:new_state(),
-                        chainAPI => aevm_dummy_chain},
+                        chainAPI => aevm_dummy_chain,
+                        vm_version => ?AEVM_01_Sophia_01},
                pre => #{}},
             #{trace => true})
          ),

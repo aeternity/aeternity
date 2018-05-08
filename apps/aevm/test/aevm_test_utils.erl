@@ -12,6 +12,7 @@
 
 -define(EUNIT_NOAUTO, true).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("apps/aecontract/src/aecontract.hrl").
 
 -define(opt_format(___Opts__, ___Fmt___, ___Args___),
         case maps:get(trace, ___Opts__, false) of
@@ -186,6 +187,7 @@ get_config({DirPath, TestName,_Opts}) ->
     TestConfig = maps:get(TestName, Config),
     DefaultEnv = #{ chainState => aevm_ethereum_test_chain:new_state(TestConfig)
                   , chainAPI => aevm_ethereum_test_chain
+                  , vm_version => ?AEVM_01_Solidity_01
                   },
     maps:update_with(env, fun(Env) -> maps:merge(DefaultEnv, Env) end,
                      TestConfig).

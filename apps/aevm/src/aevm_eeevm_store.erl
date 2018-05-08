@@ -12,6 +12,8 @@
         , store/3
 	, init/2
 	, to_binary/1
+        , from_sophia_state/1
+        , to_sophia_state/1
         ]).
 
 -include("aevm_eeevm.hrl").
@@ -39,6 +41,12 @@ store(Address, Value, State) when is_integer(Value) ->
     Value256 = Value band ?MASK256,
     Store1 = storage_write(Address, Value256, Store),
     aevm_eeevm_state:set_storage(Store1, State).
+
+-spec from_sophia_state(binary()) -> aect_contracts:store().
+from_sophia_state(Data) -> #{<<0>> => Data}.
+
+-spec to_sophia_state(aect_contracts:store()) -> binary().
+to_sophia_state(Store) -> maps:get(<<0>>, Store, <<>>).
 
 %%====================================================================
 %% Internal functions

@@ -14,11 +14,14 @@
    , spend_tests/1
    , complex_types/1
    , environment/1
+   , counter/1
+   , stack/1
    ]).
 
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2 ]).
 
+-include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
 all() -> [ execute_identity_fun_from_sophia_file,
@@ -28,7 +31,9 @@ all() -> [ execute_identity_fun_from_sophia_file,
            remote_multi_argument_call,
            spend_tests,
            complex_types,
-           environment ].
+           environment,
+           counter,
+           stack ].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -62,7 +67,8 @@ execute_call(Contract, CallData, ChainState, Options) ->
              currentNumber     => 0,
              currentTimestamp  => 0,
              chainState        => ChainState1,
-             chainAPI          => ?MODULE}, Options),
+             chainAPI          => ?MODULE,
+             vm_version        => ?AEVM_01_Sophia_01}, Options),
           Trace),
     case Res of
         {ok, #{ out := RetVal, chain_state := S }} ->
@@ -76,6 +82,11 @@ make_call(Contract, Fun, Args, Env, Options) ->
                     list_to_binary(atom_to_list(Fun)),
                     list_to_binary(Args)),
     execute_call(Contract, CallData, Env, Options).
+
+create_contract(Address, Code, Args, Env) ->
+    Env1 = Env#{Address => Code},
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, #{}),
+    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
 
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
@@ -224,13 +235,33 @@ environment(_Cfg) ->
 
     ok.
 
+%% State tests
+
+counter(_Cfg) ->
+    Code       = compile_contract(counter),
+    Env        = initial_state(#{}),
+    Env1       = create_contract(101, Code, "5", Env),
+    {5,  Env2} = successful_call(101, word, get, "()", Env1),
+    {{}, Env3} = successful_call(101, {tuple, []}, tick, "()", Env2),
+    {6, _Env4} = successful_call(101, word, get, "()", Env3),
+    ok.
+
+stack(_Cfg) ->
+    Code      = compile_contract(stack),
+    Env       = create_contract(101, Code, "[\"bar\"]", initial_state(#{})),
+    {1, Env1} = successful_call(101, word, size, "()", Env),
+    {2, Env2} = successful_call(101, word, push, "\"foo\"", Env1),
+    {<<"foo">>,  Env3} = successful_call(101, string, pop, "()", Env2),
+    {<<"bar">>, _Env4} = successful_call(101, string, pop, "()", Env3),
+    ok.
+
 %% -- Chain API implementation -----------------------------------------------
 
 initial_state(Contracts) ->
     initial_state(Contracts, #{}).
 
 initial_state(Contracts, Accounts) ->
-    maps:merge(#{environment => #{}},
+    maps:merge(#{environment => #{}, store => #{}},
         maps:merge(Contracts, #{accounts => Accounts})).
 
 spend(_To, Amount, _) when Amount < 0 ->
@@ -246,20 +277,34 @@ spend(To, Amount, S = #{ running := From, accounts := Accounts }) ->
 get_balance(Account, #{ accounts := Accounts }) ->
     maps:get(Account, Accounts, 0).
 
+get_store(#{ running := Contract, store := Store }) ->
+    Data = maps:get(Contract, Store, undefined),
+    case Data of
+        undefined -> aevm_eeevm_store:from_sophia_state(<<>>);
+        _         -> Data
+    end.
+
+set_store(Data, State = #{ running := Contract, store := Store }) ->
+    State#{ store => Store#{ Contract => Data } }.
+
 -define(PRIM_CALL_SPEND, 1).
 
-call_contract(0, _Gas, Value, CallData, _, S) ->
-    case aeso_data:from_binary({tuple, [word, word]}, CallData) of
-        {?PRIM_CALL_SPEND, To} ->
+call_contract(<<0:256>>, _Gas, Value, CallData, _, S) ->
+    io:format("primitive call with data ~p\n", [aeso_test_utils:dump_words(CallData)]),
+    %% TODO: aeso_data:from_binary/2 should take an offset
+    case aeso_test_utils:dump_words(CallData) of
+        [64, ?PRIM_CALL_SPEND, To] ->
             case spend(To, Value, S) of
                 {ok, S1} ->
                     io:format("Spent ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
                     {ok, aevm_chain_api:call_result(<<>>, 0), S1};
-                Err -> Err
+                Err ->
+                    io:format("Bad spend ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
+                    Err
             end;
         _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
     end;
-call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
               [Contract, aeso_test_utils:dump_words(CallData)]),
     case maps:is_key(Contract, S) of
@@ -280,7 +325,3 @@ call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
             {error, {no_such_contract, Contract}}
     end.
 
-%% Note if you add contracts that use the storage state, it has to be handled here.
-%% Dummy implementation.
-get_store(_) -> #{}.
-set_store(_Store, State) -> State.

@@ -16,7 +16,12 @@
 
 i(Code) -> aeb_opcodes:mnemonic(Code).
 
+%% We don't track purity or statefulness in the type checker yet.
+is_pure({FName, _, _, _})     -> FName == "init".
+is_stateful({FName, _, _, _}) -> FName /= "init".
+
 convert(#{ contract_name := _ContractName
+         , state_type := StateType
          , functions := Functions
               },
         _Options) ->
@@ -24,16 +29,18 @@ convert(#{ contract_name := _ContractName
     DispatchFun = {"_main", [{"arg", "_"}],
                    {switch, {var_ref, "arg"},
                     [{{tuple, [fun_hash(FName)|make_args(Args)]},
-                      {encode, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}}
-                     || {FName, Args, _, TypeRep} <- Functions]},
+                      icode_seq([ hack_return_address(Fun, length(Args) + 1) ] ++
+                                [ {funcall, {var_ref, "_copy_state"}, [prim_state]} || not is_pure(Fun) ] ++
+                                [{encode, 0, TypeRep, {funcall, {var_ref, FName}, make_args(Args)}}])}
+                     || Fun={FName, Args, _, TypeRep} <- Functions]},
                    word},
     %% Find the type-reps we need encoders for
     {InTypes, OutTypes} = remote_call_type_reps(Functions),
-    TypeReps = all_type_reps([TypeRep || {_, _, _, TypeRep} <- Functions] ++ InTypes),
-    OutTypeReps = all_type_reps(OutTypes),
+    TypeReps = all_type_reps([TypeRep || {_, _, _, TypeRep} <- Functions] ++ InTypes ++ [StateType]),
+    OutTypeReps = all_type_reps(OutTypes ++ [StateType]),
     Encoders = [make_encoder(T) || T <- TypeReps],
     Decoders = [make_decoder(T) || T <- OutTypeReps],
-    Library = [make_copymem()],
+    Library = [make_copymem(), make_copystate(StateType)],
     NewFunctions = Functions ++ [DispatchFun] ++ Encoders ++ Decoders ++ Library,
     %% Create a function environment
     Funs = [{Name, length(Args), make_ref()}
@@ -41,18 +48,21 @@ convert(#{ contract_name := _ContractName
     %% Create dummy code to call the main function with one argument
     %% taken from the stack
     StopLabel = make_ref(),
+    StatefulStopLabel = make_ref(),
     MainFunction = lookup_fun(Funs, "_main"),
-    DispatchCode = [%% read all call data into memory at address zero
+    DispatchCode = [%% read all call data into memory at address 32
                     i(?CALLDATASIZE),
-                    push(0),
-                    dup(1),
+                    push(0), push(32),
                     i(?CALLDATACOPY),
-                    %% push a return address to stop
+                    %% push two return addresses to stop, one for stateful
+                    %% functions and one for non-stateful functions.
                     push_label(StopLabel),
-                    %% The first word of the calldata is a pointer.
-                    push(0), i(?MLOAD),
+                    push_label(StatefulStopLabel),
+                    %% The first word of the calldata is a pointer to the
+                    %% actual calldata.
+                    push(32), i(?MLOAD),
                     jump(MainFunction),
-                    jumpdest(StopLabel),
+                    jumpdest(StatefulStopLabel),
                     %% A pointer to a binary is on top of the stack
                     %% Get size of data area (it will be the last thing on the
                     %% heap, so we can use MSIZE to compute it).
@@ -60,6 +70,17 @@ convert(#{ contract_name := _ContractName
                     i(?MSIZE), %% MSize Ptr Ptr
                     i(?SUB),   %% Size Ptr
                     swap(1),   %% Ptr Size
+                    %% Now we need to do the same thing for the state
+                    push(0), i(?MLOAD),          %% State Ptr Size
+                    assemble_expr(Funs, [{"state", "_"}, dummy, dummy], nontail, {encode, 0, StateType, {var_ref, "state"}}),
+                                                 %% StateBinPtr State Ptr Size
+                    push(0), i(?MSTORE), pop(1), %% Ptr Size  Mem[0] := StateBinPtr
+                    i(?RETURN),
+                    jumpdest(StopLabel),
+                    %% Same as StatefulStopLabel above
+                    dup(1), i(?MSIZE), i(?SUB), swap(1),
+                    %% Set state pointer to 0 to indicate that we didn't change state
+                    push(0), dup(1), i(?MSTORE),
                     i(?RETURN)
                    ],
 
@@ -80,6 +101,18 @@ make_args(Args) ->
 fun_hash(Name) ->
     {tuple, [{integer, X} || X <- [length(Name)|aeso_data:binary_to_words(list_to_binary(Name))]]}.
 
+%% Expects two return addresses below N elements on the stack. Picks the top
+%% one for stateful functions and the bottom one for non-stateful.
+hack_return_address(Fun, N) ->
+    case is_stateful(Fun) of
+        true  -> {inline_asm, [i(?MSIZE)]};
+        false ->
+            {inline_asm,     %% X1 .. XN State NoState
+             [ dup(N + 2)    %% NoState X1 .. XN State NoState
+             , swap(N + 1)   %% State X1 .. XN NoState NoState
+             ]}  %% Top of the stack will be discarded.
+    end.
+
 assemble_function(Funs, Name, Args, Body) ->
     [jumpdest(lookup_fun(Funs, Name)),
      assemble_expr(Funs, lists:reverse(Args), tail, Body),
@@ -88,6 +121,8 @@ assemble_function(Funs, Name, Args, Body) ->
      swap(1),
      i(?JUMP)].
 
+assemble_expr(_Funs, _Stack, _Tail, {inline_asm, Code}) ->
+    Code;   %% Unsafe! Code should take care to respect the stack!
 assemble_expr(Funs, Stack, _TailPosition, {var_ref, Id}) ->
     case lists:keymember(Id, 1, Stack) of
         true ->
@@ -203,33 +238,37 @@ assemble_expr(Funs, Stack, _, {lambda, Args, Body}) ->
      jumpdest(Continue)];
 assemble_expr(_, _, _, {label, Label}) ->
     push_label(Label);
-assemble_expr(Funs, Stack, _, {encode, TypeRep, A}) ->
+assemble_expr(Funs, Stack, _, {encode, Base, TypeRep, A}) ->
     %% Encode a value A of type TypeRep as a binary. Leaves a pointer to the
     %% binary on top of the stack.
     %%
     %% For boxed types the encoding is a relative pointer into a following heap fragment
-    %% with relative addresses.
-    %% For instance the tuple ("pink", (99, "apple")) would be encoded as
+    %% with relative addresses. `Base` is the relative address of the start of the binary,
+    %% so that if the binary were written to address `Base` it would be a valid
+    %% heap object.
+    %% For instance with Pad = 0, the tuple ("pink", (99, "apple")) would be encoded as
     %%    Offset   0   32   64     96     128    160   192     224    256
     %%    Word   160   99   96      5  "apple"   224    32       4  "pink"
     %%
     %% For unboxed types the encoding is simply the value.
 
+    SubBase = [ [push(Base), swap(1), i(?SUB)] || Base /= 0 ],
+
       %% First assemble the value to be encoded. This may allocate memory.
     [ assemble_expr(Funs, Stack, nontail, A), %% [ value ]
                                            %% Allocate space for the first word
-      i(?MSIZE),                           %% [ base value ]
-      push(0),                             %% [ 0 base value ]
-      dup(2),                              %% [ base 0 base value ]
-      i(?MSTORE),                          %% [ base value ]
+      i(?MSIZE),                           %% [ addr value ]
+      push(0),                             %% [ 0 addr value ]
+      dup(2),                              %% [ addr 0 addr value ]
+      i(?MSTORE),                          %% [ addr value ]    -- allocate
+      swap(1), dup(2), SubBase,            %% [ base value addr ]
       %% Call the encoder function. This returns a relative pointer for boxed
       %% types, and `value` for unboxed types.
       assemble_expr(Funs, [{"base", "_"}, {"value", "_"} | Stack], nontail,
         {funcall, {var_ref, encoder_name(TypeRep)},
-        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value ]
-      dup(2),                                          %% [ base result base value ]
-      i(?MSTORE),                                      %% [ base value ]    Mem[base] := value
-      pop_args(1)];                                    %% [ base ]
+        [{var_ref, "base"}, {var_ref, "value"}]}),     %% [ result base value addr ]
+      dup(4), i(?MSTORE),                              %% [ base value addr ]  Mem[addr] := result
+      pop(2)];                                         %% [ addr ]
 assemble_expr(Funs, Stack0, _Tail, {decode, TypeRep}) ->
     %% Inverse of encoding. Top of the stack should contain a pointer to the
     %% blob.
@@ -311,6 +350,15 @@ assemble_expr(Funs, Stack, Tail, {switch, A, Cases}) ->
     [assemble_expr(Funs, Stack, nontail, A),
      assemble_cases(Funs, Stack, Tail, Close, Cases),
      {'JUMPDEST', Close}];
+%% State primitives
+%%  (A pointer to) the contract state is stored at address 0.
+assemble_expr(_Funs, _Stack, _Tail, prim_state) ->
+    [push(0), i(?MLOAD)];
+assemble_expr(Funs, Stack, _Tail, #prim_put{ state = State }) ->
+    [assemble_expr(Funs, Stack, nontail, State),
+     push(0), i(?MSTORE),   %% We need something for the unit value on the stack,
+     i(?MSIZE)];            %% MSIZE is the cheapest instruction.
+%% Environment primitives
 assemble_expr(_Funs, _Stack, _Tail, prim_contract_address) ->
     [i(?ADDRESS)];
 assemble_expr(_Funs, _Stack, _Tail, prim_call_origin) ->
@@ -357,7 +405,7 @@ assemble_expr(Funs, Stack, Tail,
     Exprs = [Value, Gas, To],                 %% Stack
     [ assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
     , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
-            nontail, {encode, ArgT, Arg})     %%  IOffset To Gas Value
+            nontail, {encode, 32, ArgT, Arg}) %%  IOffset To Gas Value
     , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
     , dup(2), dup(2)                          %%  OOffset IOffset OOffset IOffset To Gas Value
     , i(?SUB)                                 %%  ISize OOffset IOffset To Gas Value
@@ -743,6 +791,19 @@ make_copymem() ->
       {var_ref, "result"}},
     word}.
 
+%% Generates a function _copy_state that decodes a binary blob at the argument
+%% address.
+make_copystate(StateType) ->
+    {"_copy_state", [{"addr", "_"}],
+     #switch{expr = {decode, StateType},  %% Replaces addr with new state pointer
+             cases =
+                [{#var_ref{name = "addr"},
+                 {inline_asm,
+                    [ dup(1), push(0), i(?MSTORE)
+                    , i(?MSIZE), i(?MSIZE)  %% dummy result of switch and dummy return
+                    ]}}] },
+     {tuple, []}}.
+
 %% shuffle_stack reorders the stack, for example before a tailcall. It is called
 %% with a description of the current stack, and how the final stack
 %% should appear. The argument is a list containing
@@ -831,6 +892,17 @@ push_label(Label) -> {push_label, Label}.
 
 jump(Label)    -> [push_label(Label), i(?JUMP)].
 jump_if(Label) -> [push_label(Label), i(?JUMPI)].
+
+%% ICode utilities (TODO: move to separate module)
+
+icode_noname() -> #var_ref{name = "_"}.
+
+icode_seq([A]) -> A;
+icode_seq([A | As]) ->
+    icode_seq(A, icode_seq(As)).
+
+icode_seq(A, B) ->
+    #switch{ expr = A, cases = [{icode_noname(), B}] }.
 
 %% Stack: <N elements> ADDR
 %% Write elements at addresses ADDR, ADDR+32, ADDR+64...

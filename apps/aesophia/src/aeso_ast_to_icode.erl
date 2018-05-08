@@ -21,14 +21,34 @@ convert(Tree, Options) ->
 %%    code(Tree,
 	 #{ functions => []
 	  , env => []
+          , state_type => {tuple, []}   %% Default to unit type for state
 	  , options => Options}).
 
 code([{contract, _Attribs, {con, _, Name}, Code}|Rest], Icode) ->
     NewIcode = contract_to_icode(Code, set_name(Name, Icode)),
     code(Rest, NewIcode);
-code([], Icode) -> Icode.
+code([], Icode) ->
+    add_default_init_function(Icode).
 
-contract_to_icode([{type_def,_Attrib, _, _, _}|Rest], Icode) ->
+%% Create default init function (only if state is unit).
+add_default_init_function(Icode = #{functions := Funs, state_type := State}) ->
+    case lists:keymember("init", 1, Funs) of
+        true -> Icode;
+        false when State /= {tuple, []} -> error(missing_init_function);
+        false ->
+            DefaultInit = {"init", [], {tuple, []}, {tuple, []}},
+            Icode#{ functions => [DefaultInit | Funs] }
+    end.
+
+contract_to_icode([{type_def, _Attrib, {id, _, "state"}, _, TypeDef}|Rest], Icode) ->
+    StateType =
+        case TypeDef of
+            {alias_t, T}   -> ast_typerep(T);
+            {record_t, _}  -> ast_typerep(TypeDef);
+            {variant_t, _} -> error({not_supported, variant_state_types, TypeDef})
+        end,
+    contract_to_icode(Rest, Icode#{ state_type => StateType});
+contract_to_icode([{type_def, _Attrib, _, _, _}|Rest], Icode) ->
     %% TODO: Handle types
     contract_to_icode(Rest, Icode);
 contract_to_icode([{letfun,_Attrib, Name, Args, _What, Body={typed,_,_,T}}|Rest], Icode) ->
@@ -110,6 +130,12 @@ ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
 ast_body({id, _, "raw_spend"}) ->
     error({underapplied_primitive, raw_spend});
+%% State stuff
+ast_body({id, _, "state"}) -> prim_state;
+ast_body({app, _, {typed, _, {id, _, "put"}, _}, [NewState]}) ->
+    #prim_put{ state = ast_body(NewState) };
+ast_body({id, _, "put"}) ->
+    error({underapplied_primitive, put});   %% TODO: eta
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -203,7 +229,7 @@ ast_typerep({id,_,"int"}) ->
 ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
-    word;   %% except addresses are 65 bytes..?
+    word;
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;

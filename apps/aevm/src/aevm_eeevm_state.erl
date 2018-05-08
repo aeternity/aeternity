@@ -60,8 +60,10 @@
         , trace_format/3
         , trace_fun/1
         , value/1
+        , vm_version/1
         ]).
 
+-include_lib("aecontract/src/aecontract.hrl").
 -include("aevm_eeevm.hrl").
 
 -type state() :: map().
@@ -73,9 +75,29 @@ init(Spec) -> init(Spec, #{}).
 
 -spec save_store(state()) -> state().
 save_store(#{ chain_state := ChainState
-	    , chain_api   := ChainAPI } = State) ->
-    Store  = aevm_eeevm_store:to_binary(State),
-    State#{ chain_state => ChainAPI:set_store(Store, ChainState)}.
+	    , chain_api   := ChainAPI
+            , vm_version  := VmVersion } = State) ->
+    case VmVersion of
+        ?AEVM_01_Solidity_01 ->
+            Store = aevm_eeevm_store:to_binary(State),
+            State#{ chain_state => ChainAPI:set_store(Store, ChainState)};
+        ?AEVM_01_Sophia_01 ->
+            %% The serialized state is on top of the heap and the pointer to it
+            %% at address 0.
+            try
+                {Addr, _} = aevm_eeevm_memory:load(0, State),
+                case Addr of        %% A contract can write 0 to the state pointer
+                    0 -> State;     %% to indicate that the state didn't change.
+                    _ -> Size      = aevm_eeevm_memory:size_in_words(State) * 32 - Addr,
+                         {Data, _} = aevm_eeevm_memory:get_area(Addr, Size, State),
+                         Store     = aevm_eeevm_store:from_sophia_state(Data),
+                         State#{ chain_state => ChainAPI:set_store(Store, ChainState) }
+                end
+            catch _:_ ->
+                io:format("** Error reading updated state\n~s", [format_mem(mem(State))]),
+                State
+            end
+    end.
 
 -spec init(map(), map()) -> state().
 init(#{ env  := Env
@@ -114,6 +136,8 @@ init(#{ env  := Env
          , trace => []
          , trace_fun => init_trace_fun(Opts)
 
+         , vm_version => maps:get(vm_version, Env)
+
          , chain_state => ChainState
          , chain_api   => ChainAPI
 
@@ -138,21 +162,38 @@ init_vm(State, Code, Mem, Store) ->
 	      , cp        => 0
 	      , logs      => []
 	      , memory    => Mem
+              , storage   => #{}
 	      , return_data => <<>>
 	      , stack     => []
 	      },
-    aevm_eeevm_store:init(Store, State1).
+    %% Solidity contracts want their state in the 'store', and Sophia contracts
+    %% want it on the heap.
+    case vm_version(State) of
+        ?AEVM_01_Solidity_01 ->
+            aevm_eeevm_store:init(Store, State1);
+        ?AEVM_01_Sophia_01 ->
+            %% Leave room for the calldata at address 32
+            Addr = byte_size(data(State1)) + 32,
+            Data = aevm_eeevm_store:to_sophia_state(Store),
+            State2 = aevm_eeevm_memory:write_area(Addr, Data, State1),
+            aevm_eeevm_memory:store(0, Addr, State2)
+    end.
 
-call_contract(Caller, Dest, CallGas, Value, Data, State) ->
+call_contract(Caller, Target, CallGas, Value, Data, State) ->
     ChainAPI   = chain_api(State),
     ChainState = chain_state(State),
     CallStack  = [Caller | call_stack(State)],
-    case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
+    TargetKey  = <<Target:256>>,
+    try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
         {ok, Res, ChainState1} ->
             GasSpent = aevm_chain_api:gas_spent(Res),
             Return   = aevm_chain_api:return_value(Res),
             {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
         {error, Err} -> {error, Err}
+    catch K:Err ->
+        lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
+                    [TargetKey, CallGas, Value, Data, CallStack, K, Err]),
+        {error, Err}
     end.
 
 
@@ -248,6 +289,8 @@ trace_fun(State)   -> maps:get(trace_fun, State).
 
 chain_state(State) -> maps:get(chain_state, State).
 chain_api(State)   -> maps:get(chain_api, State).
+
+vm_version(State)  -> maps:get(vm_version, State).
 
 set_cp(Value, State)      -> maps:put(cp, Value, State).
 set_code(Value, State)    -> maps:put(code, Value, State).

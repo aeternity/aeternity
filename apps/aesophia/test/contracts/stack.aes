@@ -1,0 +1,27 @@
+// Testing more interesting state types
+contract Stack =
+
+  type state = { stack : list(string),
+                 size  : int }
+
+  function init(ss) = { stack = ss, size = length(ss) }
+
+  private function length(xs) =
+    switch(xs)
+      [] => 0
+      _ :: xs => length(xs) + 1
+
+  stateful function pop() : string =
+    switch(state.stack)
+      s :: ss =>
+        put(state{ stack = ss, size = state.size - 1 })
+        s
+
+  stateful function push(s) =
+    put(state{ stack = s :: state.stack, size = state.size + 1 })
+    state.size
+
+  function all() = state.stack
+
+  function size() = state.size
+

@@ -189,10 +189,16 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			%% Each block starts with an empty calls tree.
 			CallsTree0 = aec_trees:calls(Trees3),
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
-			aec_trees:set_calls(Trees3, CallsTree1);
+			Trees4     = aec_trees:set_calls(Trees3, CallsTree1),
+                        %% Save the initial state (returned by `init`) in the store.
+                        InitState  = aect_call:return_value(CallRes),
+                                     %% TODO: move to/from_sophia_state to make nicer dependencies?
+                        Contract1  = aect_contracts:set_state(aevm_eeevm_store:from_sophia_state(InitState), Contract),
+                        ContractsTree2a = aect_state_tree:enter_contract(Contract1, ContractsTree1a),
+                        aec_trees:set_contracts(Trees4, ContractsTree2a);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees2
+			Trees1  %% Don't create the contract if 'init' fails!
 		end;
 	    ?AEVM_01_Solidity_01 ->
 

@@ -57,7 +57,7 @@ call_AEVM_01_Sophia_01(#{ contract   := ContractPubKey
                         , height     := Height
                         , trees      := Trees
 			} = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
+    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain, ?AEVM_01_Sophia_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
@@ -67,13 +67,13 @@ call_AEVM_01_Solidity_01(#{ contract   := ContractPubKey
                           , height     := Height
                           , trees      := Trees
                           } = CallDef) ->
-    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain),
+    Env = set_env(ContractPubKey, Height, Trees, aec_vm_chain, ?AEVM_01_Solidity_01),
     Spec = #{ env => Env,
               exec => #{},
               pre => #{}},
     call_common(CallDef, Spec).
 
-set_env(ContractPubKey, Height, Trees, API) ->
+set_env(ContractPubKey, Height, Trees, API, VmVersion) ->
     ChainState = aec_vm_chain:new_state(Trees, Height, ContractPubKey),
     %% {ok, MinerPubkey} = aec_keys:pubkey(),
     #{currentCoinbase   => <<>>, %% MinerPubkey,
@@ -85,7 +85,8 @@ set_env(ContractPubKey, Height, Trees, API) ->
       %% TODO: should be set before starting block candidate.
       currentTimestamp  => aeu_time:now_in_msecs(),
       chainState        => ChainState,
-      chainAPI          => API}.
+      chainAPI          => API,
+      vm_version        => VmVersion}.
 
 call_common(#{ caller     := Caller
              , contract   := ContractPubKey
@@ -164,4 +165,5 @@ call_common(#{ caller     := Caller
 	    {aect_call:set_return_type(error, Call), Trees}
     end.
 
-error_to_binary(out_of_gas) -> <<"out_of_gas">>.
+error_to_binary(out_of_gas) -> <<"out_of_gas">>;
+error_to_binary(out_of_stack) -> <<"out_of_stack">>.
