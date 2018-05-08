@@ -12,6 +12,7 @@
 %% API
 -export([ deserialize/1
         , id/1
+        , store_id/1
         , new/3
         , new/7 %% For use without transaction
         , serialize/1
@@ -51,6 +52,7 @@
 %%%===================================================================
 
 -type amount() :: non_neg_integer().
+-type store() :: #{binary() => binary()}.
 
 -record(contract, {
         %% Normal account fields
@@ -62,7 +64,7 @@
         owner      :: pubkey(),
         vm_version :: vm_version(),
         code       :: binary(),     %% The byte code
-        state      :: binary(),     %% The current state
+        store      :: store(),      %% The current state/store (stored in a subtree in mpt)
         log        :: binary(),     %% The current event log
         active     :: boolean(),    %% false when disabled, but don't remove unless referers == []
         referers   :: [pubkey()],   %% List of contracts depending on this contract
@@ -81,12 +83,14 @@
              , id/0
              , serialized/0
              , vm_version/0
+             , store/0
              ]).
 
 -define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(CONTRACT_TYPE, contract).
--define(CONTRACT_VSN, 0).
+-define(CONTRACT_VSN, 1).
+-define(STORE_PREFIX, 16). %% To collect storage trees in one subtree.
 
 %%%===================================================================
 %%% API
@@ -95,6 +99,13 @@
 -spec id(contract()) -> id().
 id(C) ->
   pubkey(C).
+
+-spec store_id(contract()) -> id().
+store_id(C) ->
+    CId = pubkey(C),
+    %% The STORE_PREFIX is used to name the storage tree and keep
+    %% all storage nodes in one subtree under the contract tree.
+    << CId/binary, ?STORE_PREFIX>>.
 
 -spec new(pubkey(), aect_create_tx:tx(), height()) -> contract().
 new(ContractPubKey, RTx, BlockHeight) ->
@@ -116,14 +127,13 @@ new(ContractPubKey, BlockHeight, Amount, Owner, VmVersion, Code, Deposit) ->
                    owner      = Owner,
                    vm_version = VmVersion,
                    code       = Code,
-                   state      = <<>>,
+                   store      = #{},
                    log        = <<>>,
                    active     = true,
                    referers   = [],
                    deposit    = Deposit
                  },
     C = assert_fields(C),
-    %% TODO: call the init function to initialise the state
     C.
 
 -spec serialize(contract()) -> serialized().
@@ -139,7 +149,6 @@ serialize(#contract{} = C) ->
       , {owner, owner(C)}
       , {vm_version, vm_version(C)}
       , {code, code(C)}
-      , {state, state(C)}
       , {log, log(C)}
       , {active, active(C)}
       , {referers, referers(C)}
@@ -155,7 +164,6 @@ deserialize(Bin) ->
     , {owner, Owner}
     , {vm_version, VmVersion}
     , {code, Code}
-    , {state, Store}
     , {log, Log}
     , {active, Active}
     , {referers, Referers}
@@ -173,7 +181,7 @@ deserialize(Bin) ->
              , owner      = Owner
              , vm_version = VmVersion
              , code       = Code
-             , state      = Store
+             , store      = #{}
              , log        = Log
              , active     = Active
              , referers   = Referers
@@ -188,7 +196,6 @@ serialization_template(?CONTRACT_VSN) ->
     , {owner, binary}
     , {vm_version, int}
     , {code, binary}
-    , {state, binary}
     , {log, binary}
     , {active, bool}
     , {referers, [binary]}
@@ -234,9 +241,9 @@ vm_version(C) -> C#contract.vm_version.
 -spec code(contract()) -> binary().
 code(C) -> C#contract.code.
 
-%% The binary representation of the contract state data.
--spec state(contract()) -> binary().
-state(C) -> C#contract.state.
+%% The representation of the contract state data.
+-spec state(contract()) -> store().
+state(C) -> C#contract.store.
 
 %% The log of the contract.
 -spec log(contract()) -> binary().
@@ -293,9 +300,9 @@ set_vm_version(X, C) ->
 set_code(X, C) ->
     C#contract{code = assert_field(code, X)}.
 
--spec set_state(binary(), contract()) -> contract().
+-spec set_state(store(), contract()) -> contract().
 set_state(X, C) ->
-    C#contract{state = assert_field(state, X)}.
+    C#contract{store = assert_field(store, X)}.
 
 -spec set_log(binary(), contract()) -> contract().
 set_log(X, C) ->
@@ -325,7 +332,7 @@ assert_fields(C) ->
            , {owner,      C#contract.owner}
            , {vm_version, C#contract.vm_version}
            , {code,       C#contract.code}
-           , {state,      C#contract.state}
+           , {store,      C#contract.store}
            , {log,        C#contract.log}
            , {active,     C#contract.active}
            , {referers,   C#contract.referers}
@@ -346,7 +353,7 @@ assert_field(owner,  <<_:?PUB_SIZE/binary>> = X)         -> X;
 assert_field(vm_version, X) when is_integer(X), X > 0,
                                                 X < 6    -> X;
 assert_field(code, X)       when is_binary(X)            -> X;
-assert_field(state, X)      when is_binary(X)            -> X;
+assert_field(store, X)      when is_map(X)               -> X;
 assert_field(log, X)        when is_binary(X)            -> X;
 assert_field(active, X)     when X =:= true; X =:= false -> X;
 assert_field(referers = Field, X) ->

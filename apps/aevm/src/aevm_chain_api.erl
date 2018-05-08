@@ -1,21 +1,23 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    This module defines the callbacks required by a VM to interact with the
+%%%    This module defines the callbacks required by the VM to interact with a
 %%%    chain.
 %%% @end
 %%%=============================================================================
--module(aec_vm_chain_api).
+-module(aevm_chain_api).
 
--include_lib("apps/aecore/include/common.hrl").
-
--export_type([call_result/0, exception/0]).
+-export_type([call_result/0, exception/0, store/0]).
 
 -export([call_result/2, call_exception/2,
          return_value/1, gas_spent/1]).
 
+-type(pubkey() :: binary()).
+
 %% @doc The state of the chain. Specific to the API implementation.
 -type chain_state() :: any().
+
+-type store() :: #{binary() => binary()}.
 
 -type exception() :: out_of_gas.
 
@@ -43,6 +45,9 @@
                         CallStack :: [non_neg_integer()],
                         State     :: chain_state()) ->
                     {ok, call_result(), chain_state()} | {error, term()}.
+
+-callback get_store(chain_state()) -> store().
+-callback set_store(store(), chain_state()) -> chain_state().
 
 %% -- Call results -----------------------------------------------------------
 

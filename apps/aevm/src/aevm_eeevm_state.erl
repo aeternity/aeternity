@@ -15,8 +15,11 @@
         , blockhash/3
         , calldepth/1
         , call_stack/1
+        , call_contract/6
         , caller/1
         , callcreates/1
+        , chain_state/1
+        , chain_api/1
         , code/1
         , coinbase/1
         , cp/1
@@ -34,13 +37,11 @@
         , logs/1
         , origin/1
         , out/1
-        , call_contract/6
         , mem/1
         , no_recursion/1
         , number/1
         , return_data/1
-        , chain_state/1
-        , chain_api/1
+	, save_store/1
         , set_code/2
         , set_cp/2
         , set_gas/2
@@ -63,14 +64,29 @@
 
 -include("aevm_eeevm.hrl").
 
+-type state() :: map().
+
+-export_type([state/0]).
+
+-spec init(map()) -> state().
 init(Spec) -> init(Spec, #{}).
 
+-spec save_store(state()) -> state().
+save_store(#{ chain_state := ChainState
+	    , chain_api   := ChainAPI } = State) ->
+    Store  = aevm_eeevm_store:to_binary(State),
+    State#{ chain_state => ChainAPI:set_store(Store, ChainState)}.
+
+-spec init(map(), map()) -> state().
 init(#{ env  := Env
       , exec := Exec
       , pre  := Pre} = Spec, Opts) ->
     Address = maps:get(address, Exec),
     BlockHashFun = get_blockhash_fun(Opts, Env, Address),
     NoRecursion = maps:get(no_recursion, Opts, false),
+
+    ChainState = maps:get(chainState, Env),
+    ChainAPI =  maps:get(chainAPI, Env),
 
     State =
         #{ address     => Address
@@ -98,8 +114,8 @@ init(#{ env  := Env
          , trace => []
          , trace_fun => init_trace_fun(Opts)
 
-         , chain_state => maps:get(chainState, Env)
-         , chain_api   => maps:get(chainAPI, Env)
+         , chain_state => ChainState
+         , chain_api   => ChainAPI
 
          , environment =>
                #{ spec => Spec
@@ -108,21 +124,24 @@ init(#{ env  := Env
          },
 
     init_vm(State,
-            maps:get(code, Exec),
-            init_storage(Address, Pre)).
+            maps:get(code, Exec, #{}),
+            maps:get(mem, Exec, #{mem_size => 0}),
+            ChainAPI:get_store(ChainState)).
 
-init_vm(State, Code, Store) ->
-    State#{ out       => <<>>
-          , call      => #{}
-          , callcreates => []
-          , code      => Code
-          , cp        => 0
-          , logs      => []
-          , memory    => #{}
-          , return_data => <<>>
-          , stack     => []
-          , storage   => Store
-          }.
+
+init_vm(State, Code, Mem, Store) ->
+    State1 =
+	State#{ out       => <<>>
+	      , call      => #{}
+	      , callcreates => []
+	      , code      => Code
+	      , cp        => 0
+	      , logs      => []
+	      , memory    => Mem
+	      , return_data => <<>>
+	      , stack     => []
+	      },
+    aevm_eeevm_store:init(Store, State1).
 
 call_contract(Caller, Dest, CallGas, Value, Data, State) ->
     ChainAPI   = chain_api(State),
@@ -130,17 +149,12 @@ call_contract(Caller, Dest, CallGas, Value, Data, State) ->
     CallStack  = [Caller | call_stack(State)],
     case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
         {ok, Res, ChainState1} ->
-            GasSpent = aec_vm_chain_api:gas_spent(Res),
-            Return   = aec_vm_chain_api:return_value(Res),
+            GasSpent = aevm_chain_api:gas_spent(Res),
+            Return   = aevm_chain_api:return_value(Res),
             {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
         {error, Err} -> {error, Err}
     end.
 
-init_storage(Address, #{} = Pre) ->
-    case maps:get(Address, Pre, undefined) of
-        undefined -> #{};
-        #{storage := S} -> S
-    end.
 
 %%get_code(Address, #{} = Pre) ->
 %%    case maps:get(Address, Pre, undefined) of

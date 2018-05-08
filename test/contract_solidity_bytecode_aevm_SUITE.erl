@@ -10,7 +10,8 @@
 %% test case exports
 -export(
    [
-     execute_identity_fun_from_solidity_binary/1
+    execute_counter_fun_from_bytecode/1,
+    execute_identity_fun_from_solidity_binary/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -24,10 +25,10 @@
          inet_gethost_native_sup, inet_gethost_native, %% by inet
          prfTarg,  %% by eper
          dets_sup, dets,  %% by mnesia
-	 aeu_env_meck %% by test
+         aeu_env_meck %% by test
         ]).
 
-init_per_testcase(_, Cfg) ->
+init_per_testcase(TC, Cfg) ->
     lager_common_test_backend:bounce(error),
     Apps = application:which_applications(),
     Names = registered(),
@@ -36,14 +37,21 @@ init_per_testcase(_, Cfg) ->
     Amount = 100000000000000000000,
     Preset = [{MyPubKey, Amount}],
 
+    Code = tc_to_code(TC),
+
     [ {running_apps, Apps}
     , {regnames, Names}
     , {my_pub_key, MyPubKey}
     , {my_priv_key, MyPrivKey}
     , {preset, Preset}
     , {vm_version, 2} %% AEVM/Solidity
-    , {code, id_bytecode()}
+    , {code, Code}
       | Cfg].
+
+tc_to_code(execute_identity_fun_from_solidity_binary) ->
+     id_bytecode();
+tc_to_code(execute_counter_fun_from_bytecode) ->
+     counter_bytecode().
 
 end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
@@ -89,19 +97,18 @@ iolist_to_s(L) ->
 %% ------------------------------------------------------------------------
 
 all() -> [
-	  %% This test works when running as a standalone test,
-	  %% but not with "make test" where other tests have run before.
-	  %% Taken out of test suite for now.
-	  %% TODO: Turn into a "dev1" node test.
-
-	  %% execute_identity_fun_from_solidity_binary
-
-	 ].
+          %% This test works when running as a standalone test,
+          %% but not with "make test" where other tests have run before.
+          %% Taken out of test suite for now.
+          %% TODO: Turn into a "dev1" node test.
+          %% execute_counter_fun_from_bytecode,
+          %% execute_identity_fun_from_solidity_binary
+         ].
 
 execute_identity_fun_from_solidity_binary(Cfg) ->
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
     ok = mock_genesis(Cfg),
-    ok = application:start(aecore),
+    {ok,_} = application:ensure_all_started(aecore),
 
     Tx = create_tx(#{}, Cfg),
     PrivKey = ?config(my_priv_key, Cfg),
@@ -124,7 +131,6 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
 			end
      		end, true),
 
-
     {_Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
 
     ok = unmock_genesis(Cfg),
@@ -136,12 +142,120 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
 id_bytecode() ->
     aeu_hex:hexstring_decode(
       <<"0x6060604052341561000f57600080fd5b60ae8061001d6000396000f300606060"
-	"405260043610603f576000357c0100000000000000000000000000000000000000"
-	"000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
-	"3415604e57600080fd5b606260048080359060200190919050506078565b604051"
-	"8082815260200191505060405180910390f35b60008190509190505600a165627a"
-	"7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
-	"e405cbf70029">>).
+        "405260043610603f576000357c0100000000000000000000000000000000000000"
+        "000000000000000000900463ffffffff1680631a94d83e146044575b600080fd5b"
+        "3415604e57600080fd5b606260048080359060200190919050506078565b604051"
+        "8082815260200191505060405180910390f35b60008190509190505600a165627a"
+        "7a723058205cc378b9229138b9feea0e5d1a4c82df2ff3e18e9db005d866e7158b"
+        "e405cbf70029">>).
+
+execute_counter_fun_from_bytecode(Cfg) ->
+    application:stop(mnesia),
+    application:stop(aec_conductor),
+    application:stop(aecore),
+    {ok, StartedApps, TempDir} = prepare_app_start(aecore, Cfg),
+    ok = mock_genesis(Cfg),
+    {ok,_} = application:ensure_all_started(aecore),
+
+    PrivKey = ?config(my_priv_key, Cfg),
+    Tx = create_tx(#{}, Cfg),
+    OwnerPubKey = ?config(my_pub_key, Cfg),
+    Nonce = 1, %% aect_create_tx:nonce(Tx),
+    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+
+
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    ok = aec_tx_pool:push(SignedTx),
+    TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+
+    wait_for_it(fun () ->
+                        none =/=
+                            aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
+                end, true),
+
+    %% lager:error("TxBin ~w~n",[TxHash]),
+
+    wait_for_it(fun () ->
+                        case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+                            'none' -> false;
+                            {'mempool', _} -> false;
+                            {_Bin, _TX} -> true
+                        end
+                end, true),
+
+    {ok, Contract} = aec_chain:get_contract(ContractPubKey),
+    ct:pal("~p~n",[Contract]),
+    ct:pal("~p~n",[aect_contracts:state(Contract)]),
+    #{} = aect_contracts:state(Contract),
+    %% Call Counter:inc(1)
+    CallData =  aeu_hex:hexstring_decode(<< "0x6d4ce63c" >>),
+    Spec = #{ caller     => OwnerPubKey
+            , nonce      => 2
+            , contract   => ContractPubKey
+            , vm_version => 2
+            , fee        => 1
+            , amount     => 0
+            , gas        => 500
+            , gas_price  => 1
+            , call_data  => CallData
+            },
+    {ok, CallTx} = aect_call_tx:new(Spec),
+    SignedCallTx = aetx_sign:sign(CallTx, PrivKey),
+    ok = aec_tx_pool:push(SignedCallTx),
+    CallTxHash = aetx:hash(aetx_sign:tx(SignedCallTx)),
+    wait_for_it(fun () ->
+                        case aec_chain:find_transaction_in_main_chain_or_mempool(CallTxHash) of
+                            'none' -> false;
+                            {'mempool', _} -> false;
+                            {_, _} -> true
+                        end
+                end, true),
+    {ok, Contract2} = aec_chain:get_contract(ContractPubKey),
+    ct:pal("~p~n",[Contract2]),
+    ct:pal("~p~n",[aect_contracts:state(Contract2)]),
+
+    ok = unmock_genesis(Cfg),
+    ok = application:stop(aecore),
+    ok = app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir),
+    ok.
+
+
+counter_bytecode() ->
+    %% pragma solidity ^0.4.0;
+    %% contract Counter {
+    %%   uint32 public value;
+    %%
+    %%    constructor() public {
+    %%        value = 0;
+    %%    }
+    %%
+    %%    function inc(uint32 x) public {
+    %%       value = value + x;
+    %%      }
+    %%
+    %%     function get() public constant returns (uint32) {
+    %%         return value;
+    %%     }
+    %%  }
+
+
+    aeu_hex:hexstring_decode(
+      <<"0x608060405234801561001057600080fd5b5060008060006101000a81548163"
+        "ffffffff021916908363ffffffff16021790555061018d8061004160003960"
+        "00f300608060405260043610610057576000357c0100000000000000000000"
+        "000000000000000000000000000000000000900463ffffffff1680633fa4f2"
+        "451461005c5780636d4ce63c14610093578063dd5d5211146100ca575b6000"
+        "80fd5b34801561006857600080fd5b506100716100fd565b604051808263ff"
+        "ffffff1663ffffffff16815260200191505060405180910390f35b34801561"
+        "009f57600080fd5b506100a8610112565b604051808263ffffffff1663ffff"
+        "ffff16815260200191505060405180910390f35b3480156100d657600080fd"
+        "5b506100fb600480360381019080803563ffffffff16906020019092919050"
+        "505061012b565b005b6000809054906101000a900463ffffffff1681565b60"
+        "008060009054906101000a900463ffffffff16905090565b80600080905490"
+        "6101000a900463ffffffff16016000806101000a81548163ffffffff021916"
+        "908363ffffffff160217905550505600a165627a7a72305820d465419d8b4c"
+        "7adf48551bcf6e438080d2c45e27489fc706002b4c638d420ebd0029">>).
+
 
 
 %% ------------------------------------------------------------------------

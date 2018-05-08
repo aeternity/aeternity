@@ -1,19 +1,21 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Implementation of the aec_vm_chain_api.
+%%%    Implementation of the aevm_chain_api.
 %%% @end
 %%%=============================================================================
 -module(aec_vm_chain).
 
 -include_lib("apps/aecore/include/common.hrl").
 
--behaviour(aec_vm_chain_api).
+-behaviour(aevm_chain_api).
 
 -export([new_state/3, get_trees/1]).
 
-%% aec_vm_chain_api callbacks
+%% aevm_chain_api callbacks
 -export([get_balance/2,
+	 get_store/1,
+	 set_store/2,
          spend/3,
          call_contract/6]).
 
@@ -56,6 +58,20 @@ get_trees(#state{ trees = Trees, account = Key, nonce = Nonce }) ->
 get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
+%% @doc Get the contract state store of the contract account.
+-spec get_store(chain_state()) -> aevm_chain_api:store().
+get_store(#state{ account = PubKey, trees = Trees }) ->
+    Store = do_get_store(PubKey, Trees),
+    Store.
+
+%% @doc Set the contract state store of the contract account.
+-spec set_store(aevm_chain_api:store(), chain_state()) -> chain_state().
+set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
+    CTree1 = do_set_store(Store, PubKey, Trees),
+    Trees1 = aec_trees:set_contracts(Trees, CTree1),
+    State#state{ trees = Trees1 }.
+
+
 %% @doc Spend money from the contract account.
 -spec spend(pubkey(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
@@ -70,7 +86,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 %% @doc Call another contract.
 -spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
-        {ok, aec_vm_chain_api:call_result(), chain_state()} | {error, term()}.
+        {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
                               height  = Height,
@@ -96,11 +112,12 @@ call_contract(Target, Gas, Value, CallData, CallStack,
             CallId  = aect_call:id(ContractKey, Nonce, Target),
             Call    = aect_call_state_tree:get_call(Target, CallId, aec_trees:calls(Trees2)),
             GasUsed = aect_call:gas_used(Call),
-            Result  = case aect_call:return_value(Call) of
+            Result  = case aect_call:return_type(Call) of
                           %% TODO: currently we don't set any sensible return value on exceptions
-                          <<>> -> aec_vm_chain_api:call_exception(out_of_gas, GasUsed);
-                          Bin when is_binary(Bin) ->
-                            aec_vm_chain_api:call_result(Bin, GasUsed)
+                          error -> aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                          ok ->
+                              Bin = aect_call:return_value(Call),
+                              aevm_chain_api:call_result(Bin, GasUsed)
                       end,
             {ok, Result, State#state{ trees = Trees2, nonce = Nonce + 1 }}
     end.
@@ -119,6 +136,22 @@ do_get_balance(PubKey, Trees) ->
                 {value, Account} -> aec_accounts:balance(Account)
             end
     end.
+
+
+do_get_store(PubKey, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+        {value, Contract} -> aect_contracts:state(Contract);
+        none              -> #{}
+    end.
+
+do_set_store(Store, PubKey, Trees) ->
+    ContractsTree = aec_trees:contracts(Trees),
+    NewContract =
+	case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
+	    {value, Contract} -> aect_contracts:set_state(Store, Contract)
+	end,
+    aect_state_tree:enter_contract(NewContract, ContractsTree).
 
 %% TODO: can only spend to proper accounts. Not other contracts.
 %% Note that we cannot use an aec_spend_tx here, since we are spending from a

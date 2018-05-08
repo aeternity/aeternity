@@ -97,7 +97,7 @@ application_test(Config) ->
 
     meck:new(aec_genesis_block_settings, []),
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, []),
-    ok = application:start(aecore),
+    {ok,_} = application:ensure_all_started(aecore),
     timer:sleep(100),
     ok = application:stop(aecore),
     meck:unload(aec_genesis_block_settings),
@@ -153,7 +153,7 @@ prepare_app_start_(App, Config) ->
     {ok, Deps0} = application:get_key(App, applications),
     Deps = maybe_add_mnesia(App, Deps0), % mnesia is started manually in aecore_app
     AlreadyRunning = [ Name || {Name, _,_} <- proplists:get_value(running_apps, Config) ],
-    [ ok = application:ensure_started(Dep) || Dep <- Deps ],
+    [ application:ensure_started(Dep) || Dep <- Deps ],
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
 
 app_stop(Apps, TempDir) ->

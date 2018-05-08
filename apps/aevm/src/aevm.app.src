@@ -7,12 +7,10 @@
    [kernel,
     stdlib,
     lager,
-    jsx,
-    aebytecode
+    jsx
    ]},
   {env,[]},
   {modules, []},
-
   {maintainers, []},
   {licenses, []},
   {links, []}

@@ -36,25 +36,41 @@
 %% Main eval loop.
 %%
 %%
-eval(State = #{ address := 0 }) ->
+eval(State) ->
+    case eval_code(State) of
+	{Res, State1} ->
+	    %% Turn storage map into binary and save in state tree.
+	    {Res, aevm_eeevm_state:save_store(State1)};
+	{error, What, State1} ->
+	    %% Don't save state on error.
+	    {error, What, State1}
+    end.
+
+eval_code(State = #{ address := 0 }) ->
     %% Primitive call. Used for transactions. Once contract calls go through
     %% the chain API we won't get here!
     <<TxType:256, _/binary>> = aevm_eeevm_state:data(State),
     Trace = aevm_eeevm_state:trace_fun(State),
     Trace("  PrimCall ~p\n", [TxType]),
     {ok, State};
-eval(State) ->
+eval_code(State) ->
     try {ok, loop(valid_jumpdests(State))}
     catch
         throw:?aevm_eval_error(What, StateOut) ->
-            {error, What, StateOut};
+	    %% Throw away new storage on error.
+            {error, What, old_store(State, StateOut)};
 	throw:?AEVM_SIGNAL(Signal, StateOut) ->
 	    handle_signal(Signal, State, StateOut)
     end.
 
-handle_signal(revert, StateIn, StateOut) -> 
-    {revert, aevm_eeevm_state:set_storage(
-	       aevm_eeevm_state:storage(StateIn), StateOut)}.
+old_store(StateIn, StateOut) ->
+    aevm_eeevm_state:set_storage(
+      aevm_eeevm_state:storage(StateIn), StateOut).
+
+handle_signal(revert, StateIn, StateOut) ->
+    {revert, old_store(StateIn, StateOut)}.
+
+
 
 valid_jumpdests(State) ->
     Code = aevm_eeevm_state:code(State),
