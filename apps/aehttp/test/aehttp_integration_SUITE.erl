@@ -1136,7 +1136,8 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
 tx_is_mined_test(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =
         get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    true = lists:any(fun(#{<<"hash">> := H}) when H =:= TxHash -> true;
+    true = lists:any(fun(#{<<"block_hash">> := BH, <<"hash">> := H})
+                           when H =:= TxHash, BH =/= <<"none">> -> true;
                         (_) -> false
                      end, Txs).
 
