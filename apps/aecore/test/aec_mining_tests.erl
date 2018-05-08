@@ -161,7 +161,6 @@ difficulty_recalculation_test_() ->
 setup() ->
     ok = meck:new(aeu_env, [passthrough]),
     aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
-    aec_test_utils:mock_genesis(),
     aec_test_utils:start_chain_db(),
     ok = application:ensure_started(erlexec),
     application:start(crypto),
@@ -204,7 +203,6 @@ cleanup(_) ->
     meck:unload(aeu_time),
     ok = aec_tx_pool:stop(),
     aec_test_utils:stop_chain_db(),
-    aec_test_utils:unmock_genesis(),
     ok = meck:unload(aeu_env).
 
 generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->

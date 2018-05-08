@@ -36,12 +36,12 @@ wait_for_conductor() ->
 write_chain_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:mock_genesis(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
+             aec_test_utils:mock_genesis(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
@@ -112,12 +112,12 @@ restart_test_() ->
     {foreach,
      fun() ->
              TmpDir = aec_test_utils:aec_keys_setup(),
-             aec_test_utils:mock_genesis(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
+             aec_test_utils:mock_genesis(),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
              TmpDir

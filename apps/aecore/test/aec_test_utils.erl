@@ -188,9 +188,7 @@ start_chain_db() ->
     ok = mnesia:start(),
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],
-    ok = mnesia:wait_for_tables(Tabs, 5000),
-    GB = aec_test_utils:genesis_block(),
-    aec_chain_state:insert_block(GB).
+    ok = mnesia:wait_for_tables(Tabs, 5000).
 
 stop_chain_db() ->
     application:stop(mnesia).

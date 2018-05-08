@@ -192,17 +192,9 @@ init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
 %%--------------------------------------------------------------------
 handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
-handle_call({sign, Tx}, _From,
-            #state{sign_pub = PubKey, sign_priv=PrivKey} = State) ->
-    {ok, Trees} = aec_chain:get_top_state(),
-    {ok, Signers} = aetx:signers(Tx, Trees),
-    case lists:member(PubKey, Signers) of
-        false ->
-            {reply, {error, not_a_signer}, State};
-        true ->
-            SignedTx = aetx_sign:sign(Tx, PrivKey),
-            {reply, {ok, SignedTx}, State}
-    end;
+handle_call({sign, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    {reply, {ok, SignedTx}, State};
 handle_call(pubkey, _From, #state{sign_pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->

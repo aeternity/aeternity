@@ -117,8 +117,8 @@ basic_access_test_block_chain() ->
 out_of_order_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:mock_genesis(),
              aec_test_utils:start_chain_db(),
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
@@ -136,41 +136,41 @@ restart_chain_db() ->
 
 out_of_order_test_block_chain() ->
     %% Create a chain that we are going to use.
-    Chain = [_B0, B1, B2, B3] = aec_test_utils:gen_blocks_only_chain(4),
-    [B0H,_B1H, B2H, B3H] = [block_hash(H) || H <- Chain],
+    Chain = [B0, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
+    [B0H,_B1H, B2H] = [block_hash(H) || H <- Chain],
 
     %% Insert the blocks in different order and assert
     %% that the end result is the same
-    write_blocks_to_chain([B1, B2]),
+    write_blocks_to_chain([B0, B1, B2]),
     ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
-    write_blocks_to_chain([B2, B1]),
+    write_blocks_to_chain([B0, B2, B1]),
     ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
-    write_blocks_to_chain([B1, B3, B2]),
-    ?assertEqual(B3H, top_block_hash()),
+    write_blocks_to_chain([B1, B0, B2]),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
-    write_blocks_to_chain([B3, B1, B2]),
-    ?assertEqual(B3H, top_block_hash()),
+    write_blocks_to_chain([B1, B2, B0]),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
-    write_blocks_to_chain([B3, B1, B2]),
-    ?assertEqual(B3H, top_block_hash()),
+    write_blocks_to_chain([B2, B0, B1]),
+    ?assertEqual(B2H, top_block_hash()),
 
     restart_chain_db(),
-    write_blocks_to_chain([B3, B2, B1]),
-    ?assertEqual(B3H, top_block_hash()),
+    write_blocks_to_chain([B2, B1, B0]),
+    ?assertEqual(B2H, top_block_hash()),
 
     %% Check that the top block is not moving if the chain is not complete.
     restart_chain_db(),
-    write_blocks_to_chain([B2]),
+    write_blocks_to_chain([B0, B2]),
     ?assertEqual(B0H, top_block_hash()),
     restart_chain_db(),
-    write_blocks_to_chain([B2, B3]),
-    ?assertEqual(B0H, top_block_hash()),
+    write_blocks_to_chain([B1, B2]),
+    ?assertEqual(undefined, top_block_hash()),
     ok.
 
 %%%===================================================================
@@ -179,9 +179,8 @@ out_of_order_test_block_chain() ->
 broken_chain_test_() ->
     {foreach,
      fun() ->
-             TmpDir = setup_meck_and_keys(),
              aec_test_utils:start_chain_db(),
-             TmpDir
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
              teardown_meck_and_keys(TmpDir),
@@ -297,9 +296,8 @@ broken_chain_invalid_transaction() ->
 n_headers_test_() ->
     {foreach,
      fun() ->
-             TmpDir = setup_meck_and_keys(),
              aec_test_utils:start_chain_db(),
-             TmpDir
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
              aec_test_utils:stop_chain_db(),
@@ -406,21 +404,21 @@ n_headers_forwards_fork() ->
 target_validation_test_() ->
     {foreach,
      fun() ->
-             aec_test_utils:mock_genesis(),
              aec_test_utils:start_chain_db(),
              aec_test_utils:mock_difficulty_as_target(),
              meck:new(aec_governance, [passthrough]),
              meck:new(aec_pow, [passthrough]),
              meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 3),
              meck:expect(aec_governance, expected_block_mine_rate, 0, 3000000), %% 50 mins
+             aec_test_utils:mock_genesis(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
              aec_test_utils:unmock_difficulty_as_target(),
-             aec_test_utils:unmock_genesis(),
              meck:unload(aec_governance),
              meck:unload(aec_pow),
              aec_test_utils:aec_keys_cleanup(TmpDir),
+             aec_test_utils:unmock_genesis(),
              aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
@@ -537,9 +535,8 @@ test_postponed_target_verification() ->
 total_difficulty_test_() ->
     {foreach,
      fun() ->
-             TmpDir = setup_meck_and_keys(),
              aec_test_utils:start_chain_db(),
-             TmpDir
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
              aec_test_utils:stop_chain_db(),
@@ -584,9 +581,8 @@ total_difficulty_in_chain() ->
 forking_test_() ->
     {foreach,
      fun() ->
-             TmpDir = setup_meck_and_keys(),
              aec_test_utils:start_chain_db(),
-             TmpDir
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
              teardown_meck_and_keys(TmpDir),
@@ -767,17 +763,21 @@ fork_get_transaction() ->
 block_time_summary_test_() ->
     {foreach,
      fun() ->
-             TmpDir = setup_meck_and_keys(),
              aec_test_utils:start_chain_db(),
-             TmpDir
+             setup_meck_and_keys()
      end,
      fun(TmpDir) ->
              aec_test_utils:stop_chain_db(),
              teardown_meck_and_keys(TmpDir)
      end,
-     [ {"Time summary on only genesis block", fun time_summary_only_genesis/0}
+     [ {"Empty list on no genesis", fun time_summary_no_genesis/0}
+     , {"Time summary on only genesis block", fun time_summary_only_genesis/0}
      , {"Time summary N blocks", fun time_summary_N_blocks/0}
      ]}.
+
+time_summary_no_genesis() ->
+    ?assertEqual([], aec_chain:get_top_N_blocks_time_summary(30)),
+    ok.
 
 time_summary_only_genesis() ->
     Genesis = genesis_block(),

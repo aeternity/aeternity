@@ -16,14 +16,14 @@ tx_pool_test_() ->
              application:ensure_started(gproc),
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
-             aec_test_utils:mock_genesis(),
              aec_test_utils:start_chain_db(),
+             aec_test_utils:mock_genesis(),
+             GB = aec_test_utils:genesis_block(),
+             aec_chain_state:insert_block(GB),
              aec_test_utils:mock_block_target_validation(),
              {ok, _} = aec_tx_pool:start_link(),
              %% Start `aec_keys` merely for generating realistic test
              %% signed txs - as a node would do.
-             ok = meck:new(aec_chain, [passthrough]),
-             meck:expect(aec_chain, get_top_state, 0, {ok, aec_trees:new()}),
              ets:new(?TAB, [public, ordered_set, named_table]),
              TmpKeysDir
      end,
@@ -34,7 +34,6 @@ tx_pool_test_() ->
              aec_test_utils:stop_chain_db(),
              aec_test_utils:unmock_genesis(),
              aec_test_utils:unmock_block_target_validation(),
-             meck:unload(aec_chain),
              ok = aec_tx_pool:stop(),
              ok
      end,
@@ -76,7 +75,7 @@ tx_pool_test_() ->
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_genesis_block_settings, preset_accounts, 0,
-                           [{PubKey1, 100}, {PubKey2, 100}]),
+                  [{PubKey1, 100}, {PubKey2, 100}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
@@ -135,6 +134,7 @@ tx_pool_test_() ->
                {ok, PoolTxs2} = aec_tx_pool:peek(infinity),
                Sorted2 = lists:sort(PoolTxs2),
                ?assertEqual(lists:sort([STx1, STx2]), Sorted2),
+
 
                meck:unload(aec_headers),
                ok
@@ -215,7 +215,7 @@ tx_pool_test_() ->
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_genesis_block_settings, preset_accounts, 0,
-                           [{PubKey1, 100}, {PubKey2, 100}]),
+                  [{PubKey1, 100}, {PubKey2, 100}]),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
