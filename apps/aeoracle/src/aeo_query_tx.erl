@@ -20,7 +20,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -127,9 +127,9 @@ accounts(#oracle_query_tx{sender = SenderPubKey,
                           oracle = OraclePubKey}) ->
     [SenderPubKey, OraclePubKey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#oracle_query_tx{sender = SenderPubKey}) ->
-    [SenderPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#oracle_query_tx{sender = SenderPubKey}, _) ->
+    {ok, [SenderPubKey]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,

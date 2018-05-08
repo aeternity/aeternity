@@ -19,12 +19,11 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
-         for_client/1,
-         is_verifiable/1
+         for_client/1
         ]).
 
 %%%===================================================================
@@ -119,13 +118,14 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
 accounts(#channel_deposit_tx{from = FromPubKey}) ->
     [FromPubKey].
 
--spec signers(tx()) -> list(pubkey()).
-signers(#channel_deposit_tx{channel_id = ChannelId}) ->
-    case aec_chain:get_channel(ChannelId) of
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}
+                                        | {error, channel_not_found}.
+signers(#channel_deposit_tx{channel_id = ChannelId}, Trees) ->
+    case aec_chain:get_channel(ChannelId, Trees) of
         {ok, Channel} ->
-            [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)];
-        {error, not_found} ->
-            []
+            {ok, [aesc_channels:initiator(Channel),
+                  aesc_channels:responder(Channel)]};
+        {error, not_found} -> {error, channel_not_found}
     end.
 
 -spec serialize(tx()) -> {vsn(), list()}.
@@ -183,13 +183,6 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
     , {fee         , int}
     , {nonce       , int}
     ].
-
--spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_deposit_tx{channel_id = ChannelId}) ->
-    case aec_chain:get_channel(ChannelId) of
-        {ok, _Channel}     -> true;
-        {error, not_found} -> false
-    end.
 
 %%%===================================================================
 %%% Internal functions

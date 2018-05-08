@@ -20,7 +20,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -105,9 +105,9 @@ process(#ns_revoke_tx{account = AccountPubKey, fee = Fee,
 accounts(#ns_revoke_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#ns_revoke_tx{account = AccountPubKey}) ->
-    [AccountPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#ns_revoke_tx{account = AccountPubKey}, _) ->
+    {ok, [AccountPubKey]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_revoke_tx{account   = AccountPubKey,

@@ -185,7 +185,7 @@ apply_txs_on_state_trees(SignedTxs, Trees, Height, ConsensusVersion, Strict) ->
 apply_txs_on_state_trees([], FilteredSignedTxs, Trees, _Height,_ConsensusVersion,_Strict) ->
     {ok, lists:reverse(FilteredSignedTxs), Trees};
 apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
-    case aetx_sign:verify(SignedTx) of
+    case aetx_sign:verify(SignedTx, Trees0) of
         ok ->
             Tx = aetx_sign:tx(SignedTx),
             case aetx:check(Tx, Trees0, Height, ConsensusVersion) of

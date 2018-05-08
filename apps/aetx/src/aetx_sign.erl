@@ -22,10 +22,9 @@
          hash/1,
          add_signatures/2,
          tx/1,
-         verify/1,
+         verify/2,
          signatures/1,
-         is_coinbase/1,
-         filter_invalid_signatures/1]).
+         is_coinbase/1]).
 
 %% API that should be avoided to be used
 -export([serialize_for_client/3,
@@ -81,11 +80,14 @@ tx(#signed_tx{tx = Tx}) ->
 signatures(#signed_tx{signatures = Sigs}) ->
     Sigs.
 
--spec verify(signed_tx()) -> ok | {error, signature_check_failed}.
-verify(#signed_tx{tx = Tx, signatures = Sigs}) ->
+-spec verify(signed_tx(), aec_trees:trees()) -> ok | {error, signature_check_failed}.
+verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
     Bin     = aetx:serialize_to_binary(Tx),
-    Signers = aetx:signers(Tx),
-    verify_signatures(Signers, Bin, Sigs).
+    case aetx:signers(Tx, Trees) of
+        {ok, Signers} ->
+            verify_signatures(Signers, Bin, Sigs);
+        {error, _Reason} = Err -> Err
+    end.
 
 verify_signatures([PubKey|Left], Bin, Sigs) ->
     case verify_one_pubkey(Sigs, PubKey, Bin) of
@@ -108,10 +110,6 @@ verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) ->
     end;
 verify_one_pubkey([],_PubKey,_Bin,_Acc) ->
     error.
-
--spec filter_invalid_signatures(list(signed_tx())) -> list(signed_tx()).
-filter_invalid_signatures(SignedTxs) ->
-    lists:filter(fun(SignedTx) -> ok == verify(SignedTx) end, SignedTxs).
 
 -define(SIG_TX_TYPE, signed_tx).
 -define(SIG_TX_VSN, 1).

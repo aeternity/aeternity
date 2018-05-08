@@ -3126,18 +3126,15 @@ channel_create(Config, IConnPid, RConnPid) ->
     TxHash = aec_base58c:encode(tx_hash, aetx:hash(CrTx)),
 
     %% ensure the tx is in the mempool
-    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+    ok = wait_for_transaction_in_pool(TxHash),
 
     %% balances hadn't changed yet
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
 
     % mine the create_tx
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ok = wait_for_transaction_in_block(TxHash),
 
-    %% ensure the tx had been mined
-    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := BlockHeight}}} = get_tx(TxHash, json),
-    true = BlockHeight =/= -1,
     ChannelCreateFee.
 
 
@@ -3229,17 +3226,14 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
 
-    timer:sleep(100), % as aesc_fsm_SUITE
     TxHash = aec_base58c:encode(tx_hash, aetx:hash(ShutdownTx)),
 
-    %% ensure the tx is in the mempool
-    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} = get_tx(TxHash, json),
+    ok = wait_for_transaction_in_pool(TxHash),
+
     assert_balance(IPubkey, IStartB),
     assert_balance(RPubkey, RStartB),
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := Block}}} = get_tx(TxHash, json),
-    true = Block =/= -1,
+    ok = wait_for_transaction_in_block(TxHash),
 
     IChange = aesc_close_mutual_tx:initiator_amount(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount(MutualTx),
@@ -3247,31 +3241,37 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     assert_balance(IPubkey, IStartB + IChange),
     assert_balance(RPubkey, RStartB + RChange),
 
-    %% There is an issue in the mempool processing mutual close transactions
-    %% remove after mempool refactoring 
-    RpcFun = fun(M, F, A) -> rpc(?NODE, M, F, A) end,
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(RpcFun),
-    aecore_suite_utils:stop_node(?NODE, Config),
-    aecore_suite_utils:delete_node_db_if_persisted(DbCfg),
-
-    aecore_suite_utils:start_node(?NODE, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
-    ToMine = aecore_suite_utils:latest_fork_height(),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   ToMine),
-    %% prepare participants
-    IStartAmt = 20,
-    RStartAmt = 10,
-    Fee = 1,
-
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
-
-    {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
-    {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    assert_balance(IPubkey, IStartAmt),
-    assert_balance(RPubkey, RStartAmt),
     ok.
+
+wait_for_transaction_in_pool(TxHash) ->
+    WaitForTx =
+        fun Try(0) -> no_transaction;
+            Try(Attempts) ->
+                case get_tx(TxHash, json) of
+                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} ->
+                        ok;
+                    _ ->
+                        timer:sleep(10),
+                        Try(Attempts -1)
+                end
+            end,
+    ok = WaitForTx(30). % 30 attempts * 10ms
+
+wait_for_transaction_in_block(TxHash) ->
+    MineTx =
+        fun Try(0) -> did_not_mine;
+            Try(Attempts) ->
+                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+                case get_tx(TxHash, json) of
+                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := H}}}
+                            when H =/= -1->
+                        ok;
+                    _ ->
+                        Try(Attempts -1)
+                end
+            end,
+
+    ok = MineTx(5). % 5 blocks mined
 
 sc_ws_timeout_open(Config) ->
     #{initiator := #{pub_key := IPubkey},

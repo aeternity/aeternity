@@ -19,10 +19,9 @@
         , origin/1
         , process/4
         , process_from_contract/4
-        , is_verifiable/1
         , serialize_for_client/1
         , serialize_to_binary/1
-        , signers/1
+        , signers/2
         , specialize_type/1
         , specialize_callback/1
         , update_tx/2
@@ -112,8 +111,8 @@
 -callback accounts(Tx :: tx_instance()) ->
     [pubkey()].
 
--callback signers(Tx :: tx_instance()) ->
-    [pubkey()].
+-callback signers(Tx :: tx_instance(), Trees :: aec_trees:trees()) ->
+    {ok, [pubkey()]} | {error, atom()}.
 
 -callback check(Tx :: tx_instance(), Context :: tx_context(),
                 Trees :: aec_trees:trees(), Height :: non_neg_integer(),
@@ -136,11 +135,6 @@
 
 -callback for_client(Tx :: tx_instance()) ->
     map().
-
--callback is_verifiable(Tx :: tx_instance()) ->
-    boolean().
-
--optional_callbacks([is_verifiable/1]).
 
 %% -- ADT Implementation -----------------------------------------------------
 
@@ -176,9 +170,10 @@ origin(#aetx{ cb = CB, tx = Tx }) ->
 accounts(#aetx{ cb = CB, tx = Tx }) ->
     CB:accounts(Tx).
 
--spec signers(Tx :: tx()) -> [pubkey()].
-signers(#aetx{ cb = CB, tx = Tx }) ->
-    CB:signers(Tx).
+-spec signers(Tx :: tx(), Trees :: aec_trees:trees()) ->
+    {ok, [pubkey()]} | {error, atom()}.
+signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
+    CB:signers(Tx, Trees).
 
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
             ConsensusVersion :: non_neg_integer()) ->
@@ -255,22 +250,6 @@ type_to_cb(channel_close_mutual_tx) -> aesc_close_mutual_tx;
 type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
 type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
-
--spec is_verifiable(Tx :: tx()) -> boolean().
-is_verifiable(Tx) ->
-    call_optional_callback(Tx, is_verifiable, [], true).
-
-
-call_optional_callback(#aetx{ cb = CB, tx = Tx }, FunAtom, Params0, Default) ->
-    Params = [Tx | Params0],
-    Arity = length(Params),
-    case erlang:function_exported(CB, FunAtom, Arity) of
-        true ->
-            apply(CB, FunAtom, Params);
-        false ->
-            Default
-    end.
-
 
 -spec is_coinbase(Tx :: tx()) -> boolean().
 is_coinbase(#aetx{ type = Type }) ->

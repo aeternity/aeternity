@@ -183,7 +183,6 @@ setup() ->
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
-    meck:expect(aetx_sign, filter_invalid_signatures, fun(X) -> X end),
     meck:expect(aec_trees, apply_signed_txs, 4, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     %% We hardcode the signed_tx because crypto adds salt and gives

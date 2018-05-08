@@ -19,12 +19,11 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
          for_client/1,
-         is_verifiable/1,
          initiator_amount/1,
          responder_amount/1
         ]).
@@ -167,9 +166,14 @@ accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
         {error, not_found} -> []
     end.
 
--spec signers(tx()) -> list(pubkey()).
-signers(#channel_close_mutual_tx{} = CloseTx) ->
-    accounts(CloseTx).
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}
+                                        | {error, channel_not_found}.
+signers(#channel_close_mutual_tx{channel_id = ChannelId}, Trees) ->
+    case aec_chain:get_channel(ChannelId, Trees) of
+        {ok, Channel} ->
+            {ok, [aesc_channels:initiator(Channel), aesc_channels:responder(Channel)]};
+        {error, not_found} -> {error, channel_not_found}
+    end.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_mutual_tx{channel_id       = ChannelId,
@@ -233,13 +237,6 @@ serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
     , {fee              , int}
     , {nonce            , int}
     ].
-
--spec is_verifiable(tx()) -> boolean().
-is_verifiable(#channel_close_mutual_tx{channel_id = ChannelId}) ->
-    case aec_chain:get_channel(ChannelId) of
-        {ok, _Channel} -> true;
-        {error, not_found} -> false
-    end.
 
 -spec initiator_amount(tx()) -> integer().
 initiator_amount(#channel_close_mutual_tx{initiator_amount  = Amount}) ->

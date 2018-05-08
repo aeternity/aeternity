@@ -20,7 +20,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialize/1,
          serialization_template/1,
          deserialize/2,
@@ -93,9 +93,9 @@ check(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce,
 accounts(#oracle_extend_tx{oracle = OraclePK}) ->
     [OraclePK].
 
--spec signers(tx()) -> [pubkey()].
-signers(#oracle_extend_tx{oracle = OraclePK}) ->
-    [OraclePK].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#oracle_extend_tx{oracle = OraclePK}, _) ->
+    {ok, [OraclePK]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL},
