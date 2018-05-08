@@ -16,18 +16,23 @@ request(OpId, Params, Cfg) ->
     {Method, Interface} = operation_spec(Op),
     BaseUrl = make_base_url(proplists:get_value(Interface, Cfg)),
     Path = operation_path(Method, OpId, convert_params(Params)),
-    request(Method, BaseUrl, Path, Params, [], [], [], Cfg).
+    inets:start(httpc, [{profile, test_browser}]),
+    Response = request(Method, BaseUrl, Path, Params, [], [{timeout, 15000}], [], Cfg),
+    inets:stop(httpc, test_browser),
+    Response.
 
 request(get, BaseUrl, Path, QueryParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, QueryParams),
     log("GET ~p", [Url], Cfg),
-    Resp = httpc:request(get, {Url, Headers}, HttpOpts, Opts),
+    Resp = httpc:request(get, {Url, Headers}, 
+                         HttpOpts, Opts, test_browser),
     process_response(Resp, Cfg);
 request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts, Cfg) ->
     Url = make_url(BaseUrl, Path, #{}),
     {ContentType, Body} = make_body(BodyParams, Path),
     log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams], Cfg),
-    Resp = httpc:request(post, {Url, Headers, ContentType, Body}, HttpOpts, Opts),
+    Resp = httpc:request(post, {Url, Headers, ContentType, Body},
+                         HttpOpts, Opts, test_browser),
     process_response(Resp, Cfg).
 
 %%=============================================================================
@@ -35,6 +40,9 @@ request(post, BaseUrl, Path, BodyParams, Headers, HttpOpts, Opts, Cfg) ->
 %%=============================================================================
 
 process_response({ok, {{_, Code, _State}, _Head, Body}}, Cfg) ->
+  %% httpc request format
+  process_response({ok, Code, _Head, Body}, Cfg);
+process_response({ok, Code, _Head, Body}, Cfg) ->
     case iolist_to_binary(Body) of
         <<>> ->
             log("Return code: ~p", [Code], Cfg),
