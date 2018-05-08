@@ -289,7 +289,7 @@ set_store(Data, State = #{ running := Contract, store := Store }) ->
 
 -define(PRIM_CALL_SPEND, 1).
 
-call_contract(0, _Gas, Value, CallData, _, S) ->
+call_contract(<<0:256>>, _Gas, Value, CallData, _, S) ->
     io:format("primitive call with data ~p\n", [aeso_test_utils:dump_words(CallData)]),
     %% TODO: aeso_data:from_binary/2 should take an offset
     case aeso_test_utils:dump_words(CallData) of
@@ -304,7 +304,7 @@ call_contract(0, _Gas, Value, CallData, _, S) ->
             end;
         _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
     end;
-call_contract(Contract, _Gas, Value, CallData, _, S = #{running := Caller}) ->
+call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
               [Contract, aeso_test_utils:dump_words(CallData)]),
     case maps:is_key(Contract, S) of

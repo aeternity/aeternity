@@ -179,16 +179,21 @@ init_vm(State, Code, Mem, Store) ->
             aevm_eeevm_memory:store(0, Addr, State2)
     end.
 
-call_contract(Caller, Dest, CallGas, Value, Data, State) ->
+call_contract(Caller, Target, CallGas, Value, Data, State) ->
     ChainAPI   = chain_api(State),
     ChainState = chain_state(State),
     CallStack  = [Caller | call_stack(State)],
-    case ChainAPI:call_contract(Dest, CallGas, Value, Data, CallStack, ChainState) of
+    TargetKey  = <<Target:256>>,
+    try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
         {ok, Res, ChainState1} ->
             GasSpent = aevm_chain_api:gas_spent(Res),
             Return   = aevm_chain_api:return_value(Res),
             {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
         {error, Err} -> {error, Err}
+    catch K:Err ->
+        lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
+                    [TargetKey, CallGas, Value, Data, CallStack, K, Err]),
+        {error, Err}
     end.
 
 
