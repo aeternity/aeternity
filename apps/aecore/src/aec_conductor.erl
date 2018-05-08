@@ -169,7 +169,9 @@ reinit_chain_state() ->
     aec_db:transaction(fun() ->
                                aec_db:clear_db(),
                                init_chain_state()
-                       end).
+                       end),
+    exit(whereis(aec_tx_pool), kill),
+    ok.
 
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
