@@ -118,8 +118,10 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
 -spec accounts(tx()) -> list(pubkey()).
 accounts(#channel_close_solo_tx{payload = Payload}) ->
     case deserialize_from_binary(Payload) of
-        {ok, SignedState, _StateTx} -> aetx:signers(aetx_sign:tx(SignedState),
-                                                    aec_trees:new());
+        {ok, SignedState, _StateTx} ->
+            {ok, Accounts} = aetx:signers(aetx_sign:tx(SignedState),
+                                          aec_trees:new()),
+            Accounts;
         {error, _Reason}            -> []
     end.
 
