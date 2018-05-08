@@ -18,6 +18,12 @@
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
+        , create_store/1
+        , update_store/1
+        , read_store/1
+        , store_zero_value/1
+        , merge_new_zero_value/1
+        , merge_missing_keys/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -39,6 +45,7 @@ groups() ->
     [ {all_tests, [sequence], [ {group, transactions}
                               , {group, state_tree}
                               , {group, sophia}
+                              , {group, store}
                               ]}
     , {transactions, [sequence], [ create_contract
                                  , create_contract_negative
@@ -48,6 +55,13 @@ groups() ->
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state ]}
+    , {store, [sequence], [ create_store
+                          , update_store
+                          , read_store
+                          , store_zero_value
+                          , merge_new_zero_value
+                          , merge_missing_keys
+                          ]}
     ].
 
 %%%===================================================================
@@ -340,3 +354,106 @@ sophia_state(_Cfg) ->
     error        = ?call(call_contract, Acc1, Stack, pop, string, {}),
     ok.
 
+%%%===================================================================
+%%% Store
+%%%===================================================================
+
+create_store(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1  = ?call(new_account, 100),
+    Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1   = ?call(get_contract, Ct1),
+    #{}   = aect_contracts:state(Ct1),
+    ok.
+
+update_store(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1   = ?call(new_account, 100),
+    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1    = ?call(get_contract, Ct1),
+    Store1 = #{ <<0>> => <<42>> },
+    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = ?call(enter_contract, Ct2),
+    Ct2    = ?call(get_contract, Ct2),
+    ok.
+
+read_store(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1   = ?call(new_account, 100),
+    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1    = ?call(get_contract, Ct1),
+    Store1 = #{ <<0>> => <<42>> },
+    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = ?call(enter_contract, Ct2),
+    Ct2    = ?call(get_contract, Ct2),
+    Store1 = aect_contracts:state(Ct2),
+    ok.
+
+
+store_zero_value(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1   = ?call(new_account, 100),
+    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1    = ?call(get_contract, Ct1),
+    Store1 = #{ <<0>> => <<42>>
+              , <<1>> => <<0>>
+              , <<2>> => <<>> },
+    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = ?call(enter_contract, Ct2),
+    %% Empty values are removed in state tree.
+    Ct3    = ?call(get_contract, Ct2),
+    Store2 = #{ <<0>> => <<42>>
+              , <<1>> => <<0>>},
+    Store2 = aect_contracts:state(Ct3),
+    ok.
+
+merge_new_zero_value(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1   = ?call(new_account, 100),
+    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1    = ?call(get_contract, Ct1),
+    Store1 = #{ <<0>> => <<42>>
+              , <<1>> => <<0>>
+              , <<2>> => <<>> },
+    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = ?call(enter_contract, Ct2),
+    %% Empty values are removed in state tree.
+    Ct3    = ?call(get_contract, Ct2),
+    Store2 = #{ <<0>> => <<0>>
+              , <<1>> => <<>>
+              , <<2>> => <<42>> },
+    Ct4    = aect_contracts:set_state(Store2, Ct3),
+    Ct4    = ?call(enter_contract, Ct4),
+    Ct5    = ?call(get_contract, Ct4),
+    Store3 = #{ <<0>> => <<0>>
+              , <<2>> => <<42>>},
+    Store3 = aect_contracts:state(Ct5),
+    ok.
+
+
+merge_missing_keys(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1   = ?call(new_account, 100),
+    Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
+    Ct1    = ?call(get_contract, Ct1),
+    Store1 = #{ <<0>> => <<42>>
+              , <<1>> => <<17>>
+              , <<2>> => <<>> },
+    Ct2    = aect_contracts:set_state(Store1, Ct1),
+    Ct2    = ?call(enter_contract, Ct2),
+    %% Empty values are removed in state tree.
+    Ct3    = ?call(get_contract, Ct2),
+    Store2 = #{ <<3>> => <<1,2,3,4>>
+              , <<2>> => <<42>> },
+    Ct4    = aect_contracts:set_state(Store2, Ct3),
+    Ct4    = ?call(enter_contract, Ct4),
+    Ct5    = ?call(get_contract, Ct4),
+    Store3 = #{ <<2>> => <<42>>
+              , <<3>> => <<1,2,3,4>>},
+    Store3 = aect_contracts:state(Ct5),
+    ok.
+
+
+enter_contract(Contract, S) ->
+    Contracts = aect_state_tree:enter_contract(Contract, aect_test_utils:contracts(S)),
+    {Contract, aect_test_utils:set_contracts(Contracts, S)}.
