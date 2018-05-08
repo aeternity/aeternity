@@ -24,8 +24,7 @@
          tx/1,
          verify/2,
          signatures/1,
-         is_coinbase/1,
-         filter_invalid_signatures/2]).
+         is_coinbase/1]).
 
 %% API that should be avoided to be used
 -export([serialize_for_client/3,
@@ -111,10 +110,6 @@ verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) ->
     end;
 verify_one_pubkey([],_PubKey,_Bin,_Acc) ->
     error.
-
--spec filter_invalid_signatures(list(signed_tx()), aec_trees:trees()) -> list(signed_tx()).
-filter_invalid_signatures(SignedTxs, Trees) ->
-    lists:filter(fun(SignedTx) -> ok == verify(SignedTx, Trees) end, SignedTxs).
 
 -define(SIG_TX_TYPE, signed_tx).
 -define(SIG_TX_VSN, 1).

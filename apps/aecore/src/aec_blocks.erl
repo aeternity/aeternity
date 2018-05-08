@@ -108,11 +108,6 @@ new_with_state(LastBlock, Txs, Trees1) ->
     Height = LastBlockHeight + 1,
     Version = protocol_effective_at_height(Height),
 
-    %% We should not have any transactions with invalid signatures for
-    %% creation of block candidate, as only txs with validated signatures should land in mempool.
-    %% Let's hardcode this expectation for now.
-    {Txs, _} = {aetx_sign:filter_invalid_signatures(Txs, Trees1), Txs},
-
     {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees1, Height, Version),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
