@@ -333,12 +333,19 @@ check_nonce_at_hash(Tx, BlockHash) ->
             {error, illegal_nonce};
         true ->
             case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
-                {value, Account} ->
-                    aetx_utils:check_nonce(Account, TxNonce);
                 {error, no_state_trees} ->
                     ok;
                 none ->
-                    ok
+                    ok;
+                {value, Account} ->
+                    case aetx_utils:check_nonce(Account, TxNonce) of
+                        ok -> ok;
+                        {error, account_nonce_too_low} ->
+                            %% This can be ok in the future
+                            ok;
+                        {error, account_nonce_too_high} = E ->
+                            E
+                    end
             end
     end.
 
