@@ -102,24 +102,3 @@ determine_depth_(Height, MinDepth) ->
             (TopHeight - Height) >= MinDepth
     end.
 
-
-%% block_has_channel(ChanId, Block) ->
-%%     Txs = aec_blocks:txs(Block),
-%%     has_chan_id(Txs, ChanId).
-
-%% has_chan_id([], _) ->
-%%     false;
-%% has_chan_id([SignedTx|T], ChanId) ->
-%%     Tx = aetx_sign:tx(SignedTx),
-%%     case aetx:specialize_type(Tx) of
-%%         {channel_create_tx, CTx} ->
-%%             Initiator   = aesc_create_tx:initiator(CTx),
-%%             Responder = aesc_create_tx:responder(CTx),
-%%             Nonce       = aesc_create_tx:nonce(CTx),
-%%             case aesc_channels:id(Initiator, Nonce, Responder) of
-%%                 ChanId -> true;
-%%                 _      -> has_chan_id(T, ChanId)
-%%             end;
-%%         _ ->
-%%             has_chan_id(T, ChanId)
-%%     end.
