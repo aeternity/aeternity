@@ -39,7 +39,7 @@ get_store(#{ env :=_Env,
     Address = maps:get(address, Exec),
     case maps:get(Address, Pre, undefined) of
         undefined -> #{};
-        #{storage := S} = _ -> S
+        #{storage := _} = S -> aevm_eeevm_store:to_binary(S)
     end.
 
 -spec set_store(Store::binary(), chain_state()) -> chain_state().
