@@ -165,4 +165,5 @@ call_common(#{ caller     := Caller
 	    {aect_call:set_return_type(error, Call), Trees}
     end.
 
-error_to_binary(out_of_gas) -> <<"out_of_gas">>.
+error_to_binary(out_of_gas) -> <<"out_of_gas">>;
+error_to_binary(out_of_stack) -> <<"out_of_stack">>.
