@@ -289,9 +289,9 @@ stop_node(#{container_id := ID, hostname := Name} = NodeState, Opts) ->
             log(NodeState, "Container ~p [~s] already not running", [Name, ID]);
         true ->
             attempt_epoch_stop(NodeState, Timeout),
-            case wait_stopped(ID, Timeout) of
+            case aest_docker_api:wait_stopped(ID, Timeout) of
                 timeout ->
-                    aest_docker_api:stop_container(ID, Opts);
+                    aest_docker_api:kill_container(ID);
                 ok ->
                     log(NodeState,
                         "Container ~p [~s] detected as stopped", [Name, ID]),
@@ -415,14 +415,6 @@ write_template(TemplateFile, OutputFile, Context) ->
     ok = filelib:ensure_dir(OutputFile),
     file:write_file(OutputFile, Data).
 
-wait_stopped(Id, Timeout) -> wait_stopped(Id, Timeout, os:timestamp()).
-
-wait_stopped(Id, Timeout, StartTime) ->
-    case is_running(Id) of
-        false -> ok;
-        true -> maybe_continue_waiting(Id, Timeout, StartTime)
-    end.
-
 is_running(Id) -> is_running(Id, 5).
 
 is_running(_Id, 0) -> error(retry_exausted);
@@ -437,15 +429,13 @@ is_running(Id, Retries) ->
 
 attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout) ->
     Cmd = ["/home/epoch/node/bin/epoch", "stop"],
-    CmdStr = lists:join($ , Cmd),
+    CmdStr = lists:join(" " , Cmd),
     log(NodeState,
         "Container ~p [~s] still running: "
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        {ok, _, _} = aest_docker_api:exec(ID, Cmd, #{timeout => Timeout}),
-        log(NodeState, "Command executed on container ~p [~s]: ~s",
-            [Name, ID, CmdStr])
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5)
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
             log(NodeState,
@@ -454,15 +444,18 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
     end,
     ok.
 
-maybe_continue_waiting(Id, infinity, StartTime) ->
-    timer:sleep(100),
-    wait_stopped(Id, infinity, StartTime);
-maybe_continue_waiting(Id, Timeout, StartTime) ->
-    case timer:now_diff(os:timestamp(), StartTime) > (1000 * Timeout) of
-        true -> timeout;
-        false ->
-            timer:sleep(200),
-            wait_stopped(Id, Timeout, StartTime)
+%% Sometime the stop command do not succeed...
+retry_epoch_stop(_NodeState, _ID, _Cmd, _Opts, 0) ->
+    error(retry_exausted);
+retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry) ->
+    #{container_id := ID, hostname := Name} = NodeState,
+    case aest_docker_api:exec(ID, Cmd, Opts) of
+        {ok, 137, <<"ok\r\n">>} -> ok;
+        {ok, Status, Res} ->
+            CmdStr = lists:join(" ", Cmd),
+            log(NodeState, "Command executed on container ~p [~s]: ~s (~p)~n~s",
+                    [Name, ID, CmdStr, Status, Res]),
+            retry_epoch_stop(NodeState, ID, Cmd, Opts, Retry - 1)
     end.
 
 setup_networks(NetworkSpecs, NodeState) ->

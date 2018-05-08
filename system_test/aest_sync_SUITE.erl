@@ -122,17 +122,16 @@ new_node_joins_network(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
 
     Compatible = "aeternity/epoch:local", %% Latest version it should be compatible with
-                                          %% Change if comptibility with previous version 
+                                          %% Change if comptibility with previous version
                                           %% should be guaranteed
     ct:log("Testing compatiblity of epoch:local with ~p", [Compatible]),
 
-    OldNode1 = #{ 
+    OldNode1 = #{
       name    => old_node1,
       peers   => [old_node2],
       backend => aest_docker,
       source  => {pull, Compatible}},
-  
-  
+
     OldNode2 = #{
       name    => old_node2,
       peers   => [old_node1],
@@ -144,7 +143,7 @@ new_node_joins_network(Cfg) ->
       peers   => [old_node1],
       backend => aest_docker,
       source  => {pull, "aeternity/epoch:local"}},
-  
+
     setup_nodes([OldNode1, OldNode2, NewNode], Cfg),
 
     %% Starts a chain with two nodes
