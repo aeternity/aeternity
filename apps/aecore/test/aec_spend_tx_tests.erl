@@ -88,7 +88,7 @@ check_test_() ->
               SenderAccountHeight = 10,
               RecipientAccountHeight = 100,
               BlockHeight = 20,
-              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 10, height => SenderAccountHeight}),
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => 11, height => SenderAccountHeight}),
               RecipientAccount = new_account(#{pubkey => ?RECIPIENT_PUBKEY, height => RecipientAccountHeight}),
               StateTree = aec_test_utils:create_state_tree_with_accounts([SenderAccount, RecipientAccount]),
               ?assertEqual({error, recipient_account_height_too_big},
