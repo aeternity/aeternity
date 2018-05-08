@@ -43,7 +43,8 @@ check_balance(Account, Amount) ->
     end.
 
 -spec check_nonce(aec_accounts:account(), non_neg_integer()) ->
-                         ok | {error, account_nonce_too_high}.
+                     ok |
+                     {error, account_nonce_too_high | account_nonce_too_low}.
 check_nonce(Account, Nonce) ->
     AccountNonce = aec_accounts:nonce(Account),
     if
