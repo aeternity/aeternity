@@ -3783,18 +3783,20 @@ sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     #{<<"hash">> := TxHash} = aetx_sign:serialize_for_client_pending(json, SignedTx),
     %% Check tx is in mempool.
-    {ok, [TxHash]} = aec_test_utils:wait_for_it_or_timeout(fun() -> mempool_txs(AccountPubKey) end,
-                                                           [TxHash], 5000),
+    Fun = fun() ->
+                  tx_in_mempool_for_account(AccountPubKey, TxHash)
+          end,
+    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
     ok.
 
-mempool_txs(AccountPubKey) ->
+tx_in_mempool_for_account(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =
         get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    lists:filtermap(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash}) ->
-                            {true, TxHash};
-                       (_) ->
-                            false
-                    end, Txs).
+    lists:any(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash1}) ->
+                      TxHash1 =:= TxHash;
+                 (_) ->
+                      false
+              end, Txs).
 
 make_params(L) ->
     make_params(L, []).
