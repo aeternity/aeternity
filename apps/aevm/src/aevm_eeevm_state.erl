@@ -64,6 +64,7 @@
         ]).
 
 -include_lib("aecontract/src/aecontract.hrl").
+-include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include("aevm_eeevm.hrl").
 
 -type state() :: map().
@@ -182,18 +183,33 @@ init_vm(State, Code, Mem, Store) ->
 call_contract(Caller, Target, CallGas, Value, Data, State) ->
     ChainAPI   = chain_api(State),
     ChainState = chain_state(State),
-    CallStack  = [Caller | call_stack(State)],
-    TargetKey  = <<Target:256>>,
-    try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
-        {ok, Res, ChainState1} ->
-            GasSpent = aevm_chain_api:gas_spent(Res),
-            Return   = aevm_chain_api:return_value(Res),
-            {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
-        {error, Err} -> {error, Err}
-    catch K:Err ->
-        lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
-                    [TargetKey, CallGas, Value, Data, CallStack, K, Err]),
-        {error, Err}
+    case vm_version(State) of
+        ?AEVM_01_Sophia_01 when Target == 0 ->  %% Primitive call
+            case Data of    %% TODO: use aeso_data:from_binary() (but it doesn't take a base address at the moment)
+                <<64:256, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
+                    case ChainAPI:spend(<<Recipient:256>>, Value, ChainState) of
+                        {ok, ChainState1} ->
+                            UnitReturn = {ok, <<0:256>>}, %% spend returns unit
+                            GasSpent   = 0,         %% Already costs lots of gas
+                            {ok, UnitReturn, GasSpent, set_chain_state(ChainState1, State)};
+                        {error, _} = Err -> Err
+                    end;
+                _ -> {error, out_of_gas}
+            end;
+        _ ->
+            CallStack  = [Caller | call_stack(State)],
+            TargetKey  = <<Target:256>>,
+            try ChainAPI:call_contract(TargetKey, CallGas, Value, Data, CallStack, ChainState) of
+                {ok, Res, ChainState1} ->
+                    GasSpent = aevm_chain_api:gas_spent(Res),
+                    Return   = aevm_chain_api:return_value(Res),
+                    {ok, Return, GasSpent, set_chain_state(ChainState1, State)};
+                {error, Err} -> {error, Err}
+            catch K:Err ->
+                lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
+                            [TargetKey, CallGas, Value, Data, CallStack, K, Err]),
+                {error, Err}
+            end
     end.
 
 
@@ -243,7 +259,8 @@ init_trace_fun(Opts) ->
 accountbalance(Address, State) ->
     Chain = chain_api(State),
     ChainState = chain_state(State),
-    Chain:get_balance(Address band ?MASK160, ChainState).
+    PubKey = <<Address:256>>,
+    Chain:get_balance(PubKey, ChainState).
 address(State)     -> maps:get(address, State).
 blockhash(N,A,State) -> (maps:get(block_hash_fun, State))(N,A).
 calldepth(State) -> length(call_stack(State)).

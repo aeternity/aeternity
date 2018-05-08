@@ -266,15 +266,15 @@ initial_state(Contracts, Accounts) ->
 
 spend(_To, Amount, _) when Amount < 0 ->
     {error, negative_spend};
-spend(To, Amount, S = #{ running := From, accounts := Accounts }) ->
-    Balance = get_balance(From, S),
+spend(<<To:256>>, Amount, S = #{ running := From, accounts := Accounts }) ->
+    Balance = get_balance(<<From:256>>, S),
     case Amount =< Balance of
         true -> {ok, S#{ accounts := Accounts#{ From => Balance            - Amount,
-                                                To   => get_balance(To, S) + Amount } }};
+                                                To   => get_balance(<<To:256>>, S) + Amount } }};
         false -> {error, insufficient_funds}
     end.
 
-get_balance(Account, #{ accounts := Accounts }) ->
+get_balance(<<Account:256>>, #{ accounts := Accounts }) ->
     maps:get(Account, Accounts, 0).
 
 get_store(#{ running := Contract, store := Store }) ->
@@ -287,23 +287,6 @@ get_store(#{ running := Contract, store := Store }) ->
 set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
--define(PRIM_CALL_SPEND, 1).
-
-call_contract(<<0:256>>, _Gas, Value, CallData, _, S) ->
-    io:format("primitive call with data ~p\n", [aeso_test_utils:dump_words(CallData)]),
-    %% TODO: aeso_data:from_binary/2 should take an offset
-    case aeso_test_utils:dump_words(CallData) of
-        [64, ?PRIM_CALL_SPEND, To] ->
-            case spend(To, Value, S) of
-                {ok, S1} ->
-                    io:format("Spent ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
-                    {ok, aevm_chain_api:call_result(<<>>, 0), S1};
-                Err ->
-                    io:format("Bad spend ~p from ~p to ~p\n", [Value, maps:get(running, S), To]),
-                    Err
-            end;
-        _ -> {error, {bad_prim_call, aeso_test_utils:dump_words(CallData)}}
-    end;
 call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
     io:format("Calling contract ~p with args ~p\n",
               [Contract, aeso_test_utils:dump_words(CallData)]),
