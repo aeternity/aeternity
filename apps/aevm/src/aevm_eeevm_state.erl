@@ -207,7 +207,7 @@ call_contract(Caller, Target, CallGas, Value, Data, State) ->
                 {error, Err} -> {error, Err}
             catch K:Err ->
                 lager:error("~w:call_contract(~w, ~w, ~w, ~w, ~w, _) crashed with ~w:~w",
-                            [TargetKey, CallGas, Value, Data, CallStack, K, Err]),
+                            [ChainAPI, TargetKey, CallGas, Value, Data, CallStack, K, Err]),
                 {error, Err}
             end
     end.
