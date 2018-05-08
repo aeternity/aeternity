@@ -1136,7 +1136,8 @@ unsigned_tx_positive_test(Data, Params, HTTPCallFun, NewFun, Pubkey) ->
 tx_is_mined_test(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =
         get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    true = lists:any(fun(#{<<"hash">> := H}) when H =:= TxHash -> true;
+    true = lists:any(fun(#{<<"block_hash">> := BH, <<"hash">> := H})
+                           when H =:= TxHash, BH =/= <<"none">> -> true;
                         (_) -> false
                      end, Txs).
 
@@ -2714,17 +2715,9 @@ ws_oracles(_Config) ->
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
 
-    %% Register an oracle
-    RegisterData =
-        #{ type => 'OracleRegisterTxObject',
-           account => PK,
-           query_format => <<"the query spec">>,
-           response_format => <<"the response spec">>,
-           query_fee => 4,
-           ttl => #{ type => delta, value => 500 },
-           fee => 5 },
-    #{<<"result">> := <<"ok">>,
-      <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, register, RegisterData),
+    %% The account is already an oracle from an earlier test case.
+    {account_pubkey, ActualPK} = aec_base58c:decode(PK),
+    OId = aec_base58c:encode(oracle_pubkey, ActualPK),
 
     %% Mine a block to get the oracle onto the chain
     ws_mine_block(ConnPid, ?NODE),
@@ -3783,18 +3776,20 @@ sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     #{<<"hash">> := TxHash} = aetx_sign:serialize_for_client_pending(json, SignedTx),
     %% Check tx is in mempool.
-    {ok, [TxHash]} = aec_test_utils:wait_for_it_or_timeout(fun() -> mempool_txs(AccountPubKey) end,
-                                                           [TxHash], 5000),
+    Fun = fun() ->
+                  tx_in_mempool_for_account(AccountPubKey, TxHash)
+          end,
+    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
     ok.
 
-mempool_txs(AccountPubKey) ->
+tx_in_mempool_for_account(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =
         get_account_transactions(AccountPubKey, tx_encoding_param(json)),
-    lists:filtermap(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash}) ->
-                            {true, TxHash};
-                       (_) ->
-                            false
-                    end, Txs).
+    lists:any(fun(#{<<"block_hash">> := <<"none">>, <<"hash">> := TxHash1}) ->
+                      TxHash1 =:= TxHash;
+                 (_) ->
+                      false
+              end, Txs).
 
 make_params(L) ->
     make_params(L, []).

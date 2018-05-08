@@ -43,13 +43,14 @@ check_balance(Account, Amount) ->
     end.
 
 -spec check_nonce(aec_accounts:account(), non_neg_integer()) ->
-                         ok | {error, account_nonce_too_high}.
+                     ok |
+                     {error, account_nonce_too_high | account_nonce_too_low}.
 check_nonce(Account, Nonce) ->
-    case Nonce > aec_accounts:nonce(Account) of
-        true ->
-            ok;
-        false ->
-            {error, account_nonce_too_high}
+    AccountNonce = aec_accounts:nonce(Account),
+    if
+        Nonce =:= (AccountNonce + 1) -> ok;
+        Nonce =< AccountNonce -> {error, account_nonce_too_high};
+        Nonce > AccountNonce -> {error, account_nonce_too_low}
     end.
 
 -spec check_height(aec_accounts:account(), height()) ->
