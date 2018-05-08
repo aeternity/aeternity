@@ -2715,17 +2715,9 @@ ws_oracles(_Config) ->
     %% Fetch the pubkey via HTTP
     {ok, 200, #{ <<"pub_key">> := PK }} = get_miner_pub_key(),
 
-    %% Register an oracle
-    RegisterData =
-        #{ type => 'OracleRegisterTxObject',
-           account => PK,
-           query_format => <<"the query spec">>,
-           response_format => <<"the response spec">>,
-           query_fee => 4,
-           ttl => #{ type => delta, value => 500 },
-           fee => 5 },
-    #{<<"result">> := <<"ok">>,
-      <<"oracle_id">> := OId } = ws_do_request(ConnPid, oracle, register, RegisterData),
+    %% The account is already an oracle from an earlier test case.
+    {account_pubkey, ActualPK} = aec_base58c:decode(PK),
+    OId = aec_base58c:encode(oracle_pubkey, ActualPK),
 
     %% Mine a block to get the oracle onto the chain
     ws_mine_block(ConnPid, ?NODE),
