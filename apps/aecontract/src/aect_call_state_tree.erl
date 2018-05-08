@@ -19,7 +19,7 @@
 
 -export_type([tree/0]).
 
--include_lib("aecore/include/common.hrl").
+-include_lib("apps/aecore/include/common.hrl").
 
 %%%===================================================================
 %%% Types
