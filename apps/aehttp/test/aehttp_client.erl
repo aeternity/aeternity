@@ -50,6 +50,7 @@ process_response({error, _} = Error, _Cfg) ->
 log(Fmt, Params, Cfg) ->
     case proplists:get_value(ct_log, Cfg, true) of
         true -> ct:log(Fmt, Params);
+        F when is_function(F) -> F(Fmt, Params);
         false -> ok
     end.
 
