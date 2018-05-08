@@ -9,7 +9,7 @@ contract RemoteCall =
     function call42(r : address) : int = call(r, 42)
 
     function staged_call(r1 : address, r2 : address, x : int) =
-        raw_call(r1, "call", 10000, 0, (r2, x))
+        raw_call(r1, "call", 20000, 0, (r2, x))
 
     function plus(x, y) = x + y
 

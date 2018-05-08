@@ -21,5 +21,7 @@ contract Stack =
     put(state{ stack = s :: state.stack, size = state.size + 1 })
     state.size
 
+  function all() = state.stack
+
   function size() = state.size
 
