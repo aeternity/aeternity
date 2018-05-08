@@ -207,8 +207,6 @@ hash_is_in_main_chain(Hash, TopHash) ->
 %%%-------------------------------------------------------------------
 
 internal_insert(Node, Block) ->
-    %% Keep track of which node we are actually adding to avoid giving
-    %% spurious error messages.
     case db_find_node(hash(Node)) of
         error ->
             %% To preserve the invariants of the chain,
@@ -217,6 +215,9 @@ internal_insert(Node, Block) ->
             %% trees, and update the pointers)
             Fun = fun() ->
                           State = new_state_from_persistence(),
+                          %% Keep track of which node we are actually
+                          %% adding to avoid giving spurious error
+                          %% messages.
                           State1 = State#{ currently_adding => hash(Node)},
                           assert_not_new_genesis(Node, State1),
                           ok = db_put_node(Block, hash(Node)),
@@ -355,16 +356,23 @@ update_next_state_tree_children([{Child, ForkId}|Left], Trees, Difficulty, Max, 
 
 get_state_trees_in(Node, State) ->
     case node_is_genesis(Node, State) of
-        true  -> {ok, aec_block_genesis:populated_trees(), 0, hash(Node)};
+        true  ->
+            {ok,
+             aec_block_genesis:populated_trees(),
+             aec_block_genesis:genesis_difficulty(),
+             hash(Node)};
         false -> db_find_state(prev_hash(Node))
     end.
 
 apply_and_store_state_trees(Node, TreesIn, DifficultyIn, ForkId,
-                            #{currently_adding := Hash}) ->
+                            #{currently_adding := Hash} = State) ->
     NodeHash = hash(Node),
     try
         assert_previous_height(Node),
-        Trees = apply_node_transactions(Node, TreesIn),
+        Trees = case node_is_genesis(Node, State) of
+                    true -> TreesIn;
+                    false -> apply_node_transactions(Node, TreesIn)
+                end,
         assert_state_hash_valid(Trees, Node),
         assert_calculated_target(Node),
         Difficulty = DifficultyIn + node_difficulty(Node),
