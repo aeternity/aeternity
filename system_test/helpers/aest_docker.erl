@@ -427,7 +427,7 @@ is_running(Id, Retries) ->
             is_running(Id, Retries - 1)
     end.
 
-attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout) ->
+attempt_epoch_stop(#{container_id := ID, hostname := Name, sockets := Sockets} = NodeState, Timeout) ->
     Cmd = ["/home/epoch/node/bin/epoch", "stop"],
     CmdStr = lists:join(" " , Cmd),
     log(NodeState,
@@ -435,7 +435,8 @@ attempt_epoch_stop(#{container_id := ID, hostname := Name} = NodeState, Timeout)
         "attempting to stop node by executing command ~s",
         [Name, ID, CmdStr]),
     try
-        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5)
+        retry_epoch_stop(NodeState, ID, Cmd, #{timeout => Timeout}, 5),
+        [ gen_tcp:close(S) || S <- Sockets ]
     catch
         throw:{exec_start_timeout, TimeoutInfo} ->
             log(NodeState,

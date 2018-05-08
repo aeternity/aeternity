@@ -100,12 +100,19 @@ handle_call({get_node_pubkey, NodeName}, _From, State) ->
     {reply, mgr_get_node_pubkey(NodeName, State), State};
 handle_call({get_service_address, NodeName, Service}, _From, State) ->
     {reply, mgr_get_service_address(NodeName, Service, State), State};
-handle_call({start_node, NodeName}, _From, State) ->
-    {reply, ok, mgr_start_node(NodeName, State)};
-handle_call({stop_node, NodeName, Timeout}, _From, State) ->
-    {reply, ok, mgr_stop_node(NodeName, Timeout, State)};
-handle_call({kill_node, NodeName}, _From, State) ->
-    {reply, ok, mgr_kill_node(NodeName, State)};
+handle_call({start_node, NodeName}, _From, #{nodes := Nodes} = State) ->
+    {Mod, NodeState} = maps:get(NodeName, Nodes),
+    NodeState2 = Mod:start_node(NodeState),
+    {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
+handle_call({stop_node, NodeName, Timeout}, _From, #{nodes := Nodes} =State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    Opts = #{soft_timeout => Timeout},
+    NodeState2 = Mod:stop_node(NodeState, Opts),
+    {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
+handle_call({kill_node, NodeName}, _From, #{nodes := Nodes} = State) ->
+    #{NodeName := {Mod, NodeState}} = Nodes,
+    NodeState2 = Mod:kill_node(NodeState),
+    {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({extract_archive, NodeName, Path, Archive}, _From, State) ->
     {reply, ok, mgr_extract_archive(NodeName, Path, Archive, State)};
 handle_call({run_cmd_in_node_dir, NodeName, Cmd, Timeout}, _From, State) ->
@@ -157,7 +164,7 @@ mgr_cleanup(State) ->
             State;
         _ ->
             [ begin 
-                  Backend:stop_node(Node, #{soft_timeout => 0}),
+                  Backend:stop_node(Node, #{soft_timeout => 20000}),
                   Backend:delete_node(Node)
               end || {Backend, Node} <- maps:values(maps:get(nodes, State)) ],
             [ Backend:stop(BackendState) || {Backend, BackendState} <- maps:get(backends, State) ],
@@ -171,22 +178,6 @@ mgr_get_service_address(NodeName, Service, #{nodes := Nodes}) ->
 mgr_get_node_pubkey(NodeName, #{nodes := Nodes}) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
     Mod:get_node_pubkey(NodeState).
-
-mgr_start_node(NodeName, #{nodes := Nodes} = State) ->
-    {Mod, NodeState} = maps:get(NodeName, Nodes),
-    NodeState2 = Mod:start_node(NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_stop_node(NodeName, Timeout, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    Opts = #{soft_timeout => Timeout},
-    NodeState2 = Mod:stop_node(NodeState, Opts),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
-
-mgr_kill_node(NodeName, #{nodes := Nodes} = State) ->
-    #{NodeName := {Mod, NodeState}} = Nodes,
-    NodeState2 = Mod:kill_node(NodeState),
-    State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}.
 
 mgr_extract_archive(NodeName, Path, Archive, #{nodes := Nodes} = State) ->
     #{NodeName := {Mod, NodeState}} = Nodes,
