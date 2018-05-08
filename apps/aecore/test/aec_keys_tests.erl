@@ -16,10 +16,13 @@
 all_test_() ->
     {foreach,
      fun() ->
+             ok = meck:new(aec_chain, [passthrough]),
+             meck:expect(aec_chain, get_top_state, 0, {ok, aec_trees:new()}),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpKeysDir) ->
-             aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+             aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+             ok = meck:unload(aec_chain)
      end,
      [fun(_) ->
               [{"Sign coinbase transaction",

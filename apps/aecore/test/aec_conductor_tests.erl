@@ -17,13 +17,13 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
+    aec_test_utils:mock_genesis(),
     ok = aec_test_utils:start_chain_db(),
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
                 fun() ->
                         meck:passthrough([]) div 2560
                 end),
-    aec_test_utils:mock_genesis(),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
     aec_test_utils:mock_time(),
     {ok, _} = aec_tx_pool:start_link(),
