@@ -143,7 +143,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                 , {timeout, HSTimeout} ],
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
-    inet:setopts(TcpSock, [{active, true}]),
+    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
     case enoise:accept(TcpSock, NoiseOpts) of
         {ok, ESock, FinalState} ->
             RemotePub = enoise_keypair:pubkey(enoise_hs_state:remote_keys(FinalState)),
@@ -226,7 +226,7 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 , {timeout, HSTimeout} ],
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
-    inet:setopts(TcpSock, [{active, true}]),
+    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
             lager:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
@@ -261,8 +261,8 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
             lager:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
-handle_info({enoise_error, _, decrypt_error}, S) ->
-    lager:debug("Peer connection got decrypt_error", []),
+handle_info({enoise_error, _, Reason}, S) ->
+    lager:debug("Peer connection got enoise_error: ~p", [Reason]),
     handle_general_error(S);
 handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
@@ -808,7 +808,8 @@ enoise_send(ESock, Msg) ->
     case enoise:send(ESock, Msg) of
         ok ->
             ok;
-        Err = {error, _} ->
+        Err = {error, Reason} ->
+            self() ! {enoise_error, ESock, Reason},
             lager:info("Failed to send message: ~p", [Err]),
             Err
     end.
