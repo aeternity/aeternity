@@ -8,24 +8,11 @@
 
 -export([ deserialize/2
         , serialize/2
+        , serialize/3
         , serialize_response/2
         , tag/1]).
 
 -include("aec_peer_messages.hrl").
-
--define(RESPONSE_VSN, 1).
--define(PING_VSN, 1).
--define(GET_MEMPOOL_VSN, 1).
--define(MEMPOOL_VSN, 1).
--define(GET_HEADER_BY_HASH_VSN, 1).
--define(GET_HEADER_BY_HEIGHT_VSN, 1).
--define(HEADER_VSN, 1).
--define(GET_N_SUCCESSORS_VSN, 1).
--define(HEADER_HASHES_VSN, 1).
--define(GET_BLOCK_VSN, 1).
--define(BLOCK_VSN, 1).
--define(TX_VSN, 1).
--define(PEER_VSN, 1).
 
 serialize_response(Type, {ok, Object}) ->
     SerObj = serialize(Type, Object),
@@ -37,63 +24,66 @@ serialize_response(Type, {error, Reason}) ->
                            type   => tag(Type),
                            reason => to_binary(Reason) }).
 
-serialize(ping, Ping) ->
+serialize(Msg, Data) ->
+    serialize(Msg, Data, latest_vsn(Msg)).
+
+serialize(ping, Ping, Vsn = ?PING_VSN) ->
     Flds = [ {port, maps:get(port, Ping)}
            , {share, maps:get(share, Ping)}
            , {genesis_hash, maps:get(genesis_hash, Ping)}
-           , {difficulty, serialize(double, maps:get(difficulty, Ping))}
+           , {difficulty, serialize(double, maps:get(difficulty, Ping), ?VSN_1)}
            , {best_hash, maps:get(best_hash, Ping)}
-           , {peers, serialize(peers, maps:get(peers, Ping))} ],
-    serialize(ping, ?PING_VSN, Flds);
-serialize(get_mempool, _MemPool) ->
-    serialize(get_mempool, ?GET_MEMPOOL_VSN, []);
-serialize(mempool, MemPool) ->
+           , {peers, serialize(peers, maps:get(peers, Ping), ?VSN_1)} ],
+    serialize_flds(ping, Vsn, Flds);
+serialize(get_mempool, _MemPool, Vsn = ?GET_MEMPOOL_VSN) ->
+    serialize_flds(get_mempool, Vsn, []);
+serialize(mempool, MemPool, Vsn = ?MEMPOOL_VSN) ->
     #{ txs := Txs } = MemPool,
-    serialize(mempool, ?MEMPOOL_VSN, [{txs, Txs}]);
-serialize(get_header_by_hash, GetHeader) ->
+    serialize_flds(mempool, Vsn, [{txs, Txs}]);
+serialize(get_header_by_hash, GetHeader, Vsn = ?GET_HEADER_BY_HASH_VSN) ->
     #{ hash := Hash } = GetHeader,
-    serialize(get_header_by_hash, ?GET_HEADER_BY_HASH_VSN, [{hash, Hash}]);
-serialize(get_header_by_height, GetHeader) ->
-    #{ height := Height } = GetHeader,
-    serialize(get_header_by_height, ?GET_HEADER_BY_HEIGHT_VSN, [{height, Height}]);
-serialize(header, Header) ->
+    serialize_flds(get_header_by_hash, Vsn, [{hash, Hash}]);
+serialize(get_header_by_height, GetHeader, Vsn = ?GET_HEADER_BY_HEIGHT_VSN) ->
+    #{ height := Height, top_hash := TopHash } = GetHeader,
+    serialize_flds(get_header_by_height, Vsn, [{height, Height}, {top_hash, TopHash}]);
+serialize(header, Header, Vsn = ?HEADER_VSN) ->
     #{ hdr := Hdr } = Header,
-    serialize(header, ?HEADER_VSN, [{hdr, Hdr}]);
-serialize(get_n_successors, GetNSucc) ->
-    #{ hash := Hash, n := N } = GetNSucc,
-    serialize(get_n_successors, ?GET_N_SUCCESSORS_VSN, [{hash, Hash}, {n, N}]);
-serialize(header_hashes, HeaderHashes) ->
+    serialize_flds(header, Vsn, [{hdr, Hdr}]);
+serialize(get_n_successors, GetNSucc, Vsn = ?GET_N_SUCCESSORS_VSN) ->
+    #{ from_hash := FromHash, target_hash := TargetHash, n := N } = GetNSucc,
+    serialize_flds(get_n_successors, Vsn,
+              [{from_hash, FromHash}, {target_hash, TargetHash}, {n, N}]);
+serialize(header_hashes, HeaderHashes, Vsn = ?HEADER_HASHES_VSN) ->
     #{ header_hashes := HHs } = HeaderHashes,
-    serialize(header_hashes, ?HEADER_HASHES_VSN, [{header_hashes, HHs}]);
-serialize(get_block, GetBlock) ->
+    serialize_flds(header_hashes, Vsn, [{header_hashes, HHs}]);
+serialize(get_block, GetBlock, Vsn = ?GET_BLOCK_VSN) ->
     #{ hash := Hash } = GetBlock,
-    serialize(get_block, ?GET_BLOCK_VSN, [{hash, Hash}]);
-serialize(block, Block) ->
+    serialize_flds(get_block, Vsn, [{hash, Hash}]);
+serialize(block, Block, Vsn = ?BLOCK_VSN) ->
     #{ block := Blk } = Block,
-    serialize(block, ?BLOCK_VSN, [{block, Blk}]);
-serialize(tx, TxMap) ->
+    serialize_flds(block, Vsn, [{block, Blk}]);
+serialize(tx, TxMap, Vsn = ?TX_VSN) ->
     #{ tx := Tx } = TxMap,
-    serialize(tx, ?TX_VSN, [{tx, Tx}]);
-serialize(double, D) ->
+    serialize_flds(tx, Vsn, [{tx, Tx}]);
+serialize(double, D, ?VSN_1) ->
     float_to_binary(D);
-serialize(peers, Peers) ->
-    [ serialize(peer, Peer) || Peer <- Peers ];
-serialize(peer, Peer) ->
+serialize(peers, Peers, Vsn = ?VSN_1) ->
+    [ serialize(peer, Peer, Vsn) || Peer <- Peers ];
+serialize(peer, Peer, ?VSN_1) ->
     %% Don't pollute the encoding with lots of Vsn-fields...
     Template = serialization_template(peer, ?PING_VSN),
     Flds = [ {host,   maps:get(host, Peer)}
            , {port,   maps:get(port, Peer)}
            , {pubkey, maps:get(pubkey, Peer)} ],
     aeu_rlp:encode(aec_serialization:encode_fields(Template, Flds));
-serialize(response, Response) ->
-    serialize(response, ?RESPONSE_VSN,
+serialize(response, Response, Vsn = ?RESPONSE_VSN) ->
+    serialize_flds(response, Vsn,
               [ {result, maps:get(result, Response)}
               , {type,   maps:get(type, Response)}
               , {reason, maps:get(reason, Response, <<>>)}
               , {object, maps:get(object, Response, <<>>)} ]).
 
-
-serialize(Type, Vsn, Flds) ->
+serialize_flds(Type, Vsn, Flds) ->
     Template = [{vsn, int} | serialization_template(Type, Vsn)],
     List = aec_serialization:encode_fields(Template, [{vsn, Vsn} | Flds]),
     aeu_rlp:encode(List).
@@ -133,6 +123,19 @@ rev_tag(?MSG_BLOCK)                -> block;
 rev_tag(?MSG_TX)                   -> tx;
 rev_tag(?MSG_P2P_RESPONSE)         -> response.
 
+latest_vsn(ping)                 -> ?PING_VSN;
+latest_vsn(get_mempool)          -> ?GET_MEMPOOL_VSN;
+latest_vsn(mempool)              -> ?MEMPOOL_VSN;
+latest_vsn(get_header_by_hash)   -> ?GET_HEADER_BY_HASH_VSN;
+latest_vsn(get_header_by_height) -> ?GET_HEADER_BY_HEIGHT_VSN;
+latest_vsn(header)               -> ?HEADER_VSN;
+latest_vsn(get_n_successors)     -> ?GET_N_SUCCESSORS_VSN;
+latest_vsn(header_hashes)        -> ?HEADER_HASHES_VSN;
+latest_vsn(get_block)            -> ?GET_BLOCK_VSN;
+latest_vsn(block)                -> ?BLOCK_VSN;
+latest_vsn(tx)                   -> ?TX_VSN;
+latest_vsn(response)             -> ?RESPONSE_VSN.
+
 deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
     PingData =
         [ {port, _Port}
@@ -160,20 +163,31 @@ deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_H
     [{hash, Hash}] = aec_serialization:decode_fields(
                          serialization_template(get_header_by_hash, Vsn), GetHeaderFlds),
     {get_header_by_hash, Vsn, #{ hash => Hash }};
-deserialize(get_header_by_height, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HEIGHT_VSN ->
+deserialize(get_header_by_height, Vsn, GetHeaderFlds) when Vsn == ?VSN_1 ->
     [{height, Height}] = aec_serialization:decode_fields(
                              serialization_template(get_header_by_height, Vsn),
                              GetHeaderFlds),
     {get_header_by_height, Vsn, #{ height => Height }};
+deserialize(get_header_by_height, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HEIGHT_VSN ->
+    [{height, Height}, {top_hash, TopHash}] =
+        aec_serialization:decode_fields(serialization_template(get_header_by_height, Vsn),
+                                        GetHeaderFlds),
+    {get_header_by_height, Vsn, #{ height => Height, top_hash => TopHash }};
 deserialize(header, Vsn, HeaderFlds) when Vsn == ?HEADER_VSN ->
     [{hdr, Hdr}] = aec_serialization:decode_fields(
                        serialization_template(header, Vsn), HeaderFlds),
     {header, Vsn, #{ hdr => Hdr }};
-deserialize(get_n_successors, Vsn, GetNFlds) when Vsn == ?GET_N_SUCCESSORS_VSN ->
+deserialize(get_n_successors, Vsn, GetNFlds) when Vsn == ?VSN_1 ->
     [ {hash, Hash}
     , {n, N} ] = aec_serialization:decode_fields(
                      serialization_template(get_n_successors, Vsn), GetNFlds),
     {get_n_successors, Vsn, #{ hash => Hash, n => N }};
+deserialize(get_n_successors, Vsn, GetNFlds) when Vsn == ?GET_N_SUCCESSORS_VSN ->
+    [ {from_hash, FromHash}
+    , {target_hash, TargetHash}
+    , {n, N} ] = aec_serialization:decode_fields(
+                     serialization_template(get_n_successors, Vsn), GetNFlds),
+    {get_n_successors, Vsn, #{ from_hash => FromHash, target_hash => TargetHash, n => N }};
 deserialize(header_hashes, Vsn, HeaderHashesFlds) when Vsn == ?HEADER_HASHES_VSN ->
     [{header_hashes, HHs}] = aec_serialization:decode_fields(
                        serialization_template(header_hashes, Vsn), HeaderHashesFlds),
@@ -228,12 +242,16 @@ serialization_template(mempool, ?MEMPOOL_VSN) ->
     [{txs, [binary]}];
 serialization_template(get_header_by_hash, ?GET_HEADER_BY_HASH_VSN) ->
     [{hash, binary}];
-serialization_template(get_header_by_height, ?GET_HEADER_BY_HEIGHT_VSN) ->
+serialization_template(get_header_by_height, ?VSN_1) ->
     [{height, int}];
+serialization_template(get_header_by_height, ?GET_HEADER_BY_HEIGHT_VSN) ->
+    [{height, int}, {top_hash, binary}];
 serialization_template(header, ?HEADER_VSN) ->
     [{hdr, binary}];
-serialization_template(get_n_successors, ?GET_N_SUCCESSORS_VSN) ->
+serialization_template(get_n_successors, ?VSN_1) ->
     [{hash, binary}, {n, int}];
+serialization_template(get_n_successors, ?GET_N_SUCCESSORS_VSN) ->
+    [{from_hash, binary}, {target_hash, binary}, {n, int}];
 serialization_template(header_hashes, ?HEADER_HASHES_VSN) ->
     [{header_hashes, [binary]}];
 serialization_template(get_block, ?GET_BLOCK_VSN) ->

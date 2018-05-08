@@ -263,8 +263,9 @@ get_next_work_item(ST = #sync_task{ adding = [], pending = [ToAdd | NewPending] 
     {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ chain = Chain, agreed = undefined }) ->
     {{agree_on_height, Chain}, ST};
-get_next_work_item(ST = #sync_task{ pool = [], agreed = #{ hash := LastAgreed } }) ->
-    {{fill_pool, LastAgreed}, ST};
+get_next_work_item(ST = #sync_task{ pool = [], agreed = #{ hash := LastHash, height := H }, chain = Chain }) ->
+    TargetHash = next_known_hash(maps:get(chain, Chain), H + ?MAX_HEADERS_PER_CHUNK),
+    {{fill_pool, LastHash, TargetHash}, ST};
 get_next_work_item(ST = #sync_task{ pool = [{_, _, {_, _}} | _] = Pool, adding = Add, pending = Pend }) ->
     {ToBeAdded, NewPool} = split_pool(Pool),
     case Add of
@@ -509,15 +510,40 @@ identify_chain({existing, Task}) ->
 identify_chain({new, #{ chain := [Target | _]}, Task}) ->
     lager:info("Starting new sync task ~p target is ~p", [Task, Target]),
     {ok, Task};
-identify_chain({inconclusive, Chain, {get_header, CId, [PeerId | _] = Peers, N}}) -> %% TODO: use all peers
-    case aec_peer_connection:get_header_by_height(PeerId, N) of
+identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
+    %% We need another hash for this chain, make sure whoever we ask is
+    %% still on this particular chain by including a known (at higher height) hash
+    KnownHash = next_known_hash(maps:get(chain, Chain), N),
+    case do_get_header_by_height(Peers, N, KnownHash) of
         {ok, Header} ->
             identify_chain(known_chain(Chain, init_chain(CId, Peers, Header)));
-        {error, Reason} ->
-            lager:debug("fetching header at height ~p from ~p failed: ~p",
-                        [N, ppp(PeerId), Reason]),
-            {error, Reason}
+        Err = {error, _} ->
+            lager:info("fetching header at height ~p from ~p failed", [N, Peers]),
+            Err
     end.
+
+%% Get the next known hash at a height bigger than N; or if no such hash
+%% exist, the hash at the highest known height.
+next_known_hash(Cs, N) ->
+    #{ hash := Hash } =
+        case lists:takewhile(fun(#{ height := H }) -> H > N end, Cs) of
+            []  -> hd(Cs);
+            Cs1 -> lists:last(Cs1)
+        end,
+    Hash.
+
+do_get_header_by_height([], _TopHash, _N) ->
+    {error, header_not_found};
+do_get_header_by_height([PeerId | PeerIds], TopHash, N) ->
+    case aec_peer_connection:get_header_by_height(PeerId, N, TopHash) of
+        {ok, Header} ->
+            {ok, Header};
+        {error, Reason} ->
+            lager:debug("fetching header at height ~p under ~p from ~p failed: ~p",
+                        [N, pp(TopHash), ppp(PeerId), Reason]),
+            do_get_header_by_height(PeerIds, TopHash, N)
+    end.
+
 
 do_work_on_sync_task(PeerId, Task) ->
     do_work_on_sync_task(PeerId, Task, none).
@@ -543,8 +569,8 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
                 {error, Reason} ->
                     do_work_on_sync_task(PeerId, Task, {error, {agree_on_height, Reason}})
             end;
-        {fill_pool, StartFrom} ->
-            fill_pool(PeerId, StartFrom, Task);
+        {fill_pool, StartHash, TargetHash} ->
+            fill_pool(PeerId, StartHash, TargetHash, Task);
         {post_blocks, Blocks} ->
             Res = post_blocks(Blocks),
             do_work_on_sync_task(PeerId, Task, {post_blocks, Res});
@@ -609,8 +635,8 @@ agree_on_height(PeerId, RHash, RH, CheckHeight, Max, Min, AgreedHash) when RH ==
                      {ok, Min, AgreedHash}
              end
     end;
-agree_on_height(PeerId, _, RH, CheckHeight, Max, Min, AgreedHash) when RH =/= CheckHeight ->
-    case aec_peer_connection:get_header_by_height(PeerId, CheckHeight) of
+agree_on_height(PeerId, RHash0, RH, CheckHeight, Max, Min, AgreedHash) when RH =/= CheckHeight ->
+    case aec_peer_connection:get_header_by_height(PeerId, CheckHeight, RHash0) of
          {ok, RemoteAtHeight} ->
              {ok, RHash} = aec_headers:hash_header(RemoteAtHeight),
              lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
@@ -620,16 +646,14 @@ agree_on_height(PeerId, _, RH, CheckHeight, Max, Min, AgreedHash) when RH =/= Ch
              {error, Reason}
     end.
 
-fill_pool(PeerId, AgreedHash, ST) ->
-    case aec_peer_connection:get_n_successors(PeerId, AgreedHash, ?MAX_HEADERS_PER_CHUNK) of
+fill_pool(PeerId, StartHash, TargetHash, ST) ->
+    case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
             update_sync_task({done, PeerId}, ST),
             lager:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
         {ok, Hashes} ->
             HashPool = [ {Height, Hash, false} || {Height, Hash} <- Hashes ],
-            %% lager:debug("We need to get the following hashes: [~p, ... ~p] ",
-            %%             [hd(HashPool), lists:last(HashPool)]),
             do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
         {error, _} = Error ->
             lager:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),

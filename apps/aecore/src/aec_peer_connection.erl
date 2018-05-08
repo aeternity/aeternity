@@ -22,9 +22,9 @@
 -export([ retry/1
         , get_block/2
         , get_header_by_hash/2
-        , get_header_by_height/2
+        , get_header_by_height/3
         , get_mempool/1
-        , get_n_successors/3
+        , get_n_successors/4
         , ping/1
         , send_block/2
         , send_tx/2
@@ -73,11 +73,11 @@ ping(PeerId) ->
 get_header_by_hash(PeerId, Hash) ->
     call(PeerId, {get_header_by_hash, [Hash]}).
 
-get_header_by_height(PeerId, Hash) ->
-    call(PeerId, {get_header_by_height, [Hash]}).
+get_header_by_height(PeerId, Height, TopHash) ->
+    call(PeerId, {get_header_by_height, [Height, TopHash]}).
 
-get_n_successors(PeerId, Hash, N) ->
-    call(PeerId, {get_n_successors, [Hash, N]}).
+get_n_successors(PeerId, FromHash, TargetHash, N) ->
+    call(PeerId, {get_n_successors, [FromHash, TargetHash, N]}).
 
 get_block(PeerId, Hash) ->
     call(PeerId, {get_block, [Hash]}).
@@ -253,10 +253,10 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     case aec_peer_messages:deserialize(Type, Payload) of
         {response, _Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
             {noreply, handle_msg(S, MsgType, true, {error, Reason})};
-        {response, _Vsn, #{ result := true, type := MsgType, msg := Msg }} ->
-            {noreply, handle_msg(S, MsgType, true, {ok, Msg})};
-        {MsgType, _Vsn, Msg} ->
-            {noreply, handle_msg(S, MsgType, false, {ok, Msg})};
+        {response, _Vsn, #{ result := true, type := MsgType, msg := {MsgType, Vsn, Msg} }} ->
+            {noreply, handle_msg(S, MsgType, true, {ok, Vsn, Msg})};
+        {MsgType, Vsn, Msg} ->
+            {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
         Err = {error, _} ->
             lager:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
@@ -408,18 +408,18 @@ handle_msg(S, MsgType, true, none, Result) ->
 handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     gen_server:reply(From, {error, Reason}),
     remove_request_fld(S, RequestFld);
-handle_msg(S, MsgType, false, Request, {ok, Msg}) ->
+handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
     case MsgType of
         ping                 -> handle_ping(S, Request, Msg);
         get_mempool          -> handle_get_mempool(S, Msg);
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
-        get_header_by_height -> handle_get_header_by_height(S, Msg);
-        get_n_successors     -> handle_get_n_successors(S, Msg);
+        get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
+        get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
         get_block            -> handle_get_block(S, Msg);
         block                -> handle_new_block(S, Msg);
         tx                   -> handle_new_tx(S, Msg)
     end;
-handle_msg(S, MsgType, true, Request, {ok, {MsgType, _Vsn, Msg}}) ->
+handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
     case MsgType of
         ping    -> handle_ping_rsp(S, Request, Msg);
         mempool -> handle_get_mempool_rsp(S, Request, Msg);
@@ -448,10 +448,10 @@ prepare_request_data(S, ping, []) ->
     ping_obj(local_ping_obj(S), [peer_id(S)]);
 prepare_request_data(_S, get_header_by_hash, [Hash]) ->
     #{ hash => Hash };
-prepare_request_data(_S, get_header_by_height, [Height]) ->
-    #{ height => Height };
-prepare_request_data(_S, get_n_successors, [Hash, N]) ->
-    #{ hash => Hash, n => N };
+prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
+    #{ height => Height, top_hash => TopHash };
+prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
+    #{ from_hash => FromHash, target_hash => TargetHash, n => N };
 prepare_request_data(_S, get_block, [Hash]) ->
     #{ hash => Hash };
 prepare_request_data(_S, get_mempool, []) ->
@@ -613,29 +613,52 @@ get_header(Fun, Arg) ->
 
 %% -- Get Header by Height -----------------------------------------------------
 
-handle_get_header_by_height(S, Msg) ->
+handle_get_header_by_height(S, ?VSN_1, Msg) ->
     Response = get_header(maps:get(height, Msg, undefined)),
     send_response(S, header, Response),
+    S;
+handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
+                            #{ height := H, top_hash := TopHash}) ->
+    case {aec_chain:get_header_by_height(H),
+          aec_chain:hash_is_in_main_chain(TopHash)} of
+        {{ok, Header}, true} ->
+            SerHeader = aec_headers:serialize_to_binary(Header),
+            send_response(S, header, {ok, #{ hdr => SerHeader }});
+        {_, false} ->
+            send_response(S, header, {error, not_on_chain});
+        {Err, _} when Err == error orelse Err == {error, chain_too_short} ->
+            send_response(S, header, {error, header_not_found})
+    end,
     S.
 
 %% Response is handled above in Get Header by Hash
 
 %% -- Get N Successors -------------------------------------------------------
 
-handle_get_n_successors(S, Msg) ->
+do_get_n_successors(Hash, N) ->
+    case aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N+1) of
+        {ok, [_ | Headers]} ->
+            HHashes = [ begin
+                            {ok, HHash} = aec_headers:hash_header(H),
+                            <<(aec_headers:height(H)):64, HHash/binary>>
+                        end || H <- Headers ],
+            {ok, #{ header_hashes => HHashes }};
+        error ->
+            {error, block_not_found}
+    end.
+
+handle_get_n_successors(S, Vsn, Msg) ->
     Response =
         case Msg of
-            #{ hash := Hash, n := N } ->
-                 case aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N+1) of
-                     {ok, [_ | Headers]} ->
-                         HHashes = [ begin
-                                         {ok, HHash} = aec_headers:hash_header(H),
-                                         <<(aec_headers:height(H)):64, HHash/binary>>
-                                     end || H <- Headers ],
-                         {ok, #{ header_hashes => HHashes }};
-                     error ->
-                         {error, block_not_found}
-                 end;
+            #{ hash := Hash, n := N } when Vsn == ?VSN_1 ->
+                do_get_n_successors(Hash, N);
+            #{ from_hash := FromHash, target_hash := TargetHash, n := N }
+                when Vsn == ?GET_N_SUCCESSORS_VSN ->
+                Res = do_get_n_successors(FromHash, N),
+                case aec_chain:hash_is_in_main_chain(TargetHash) of
+                    true  -> Res;
+                    false -> {error, not_on_chain}
+                end;
             _ ->
                 {error, bad_request}
         end,

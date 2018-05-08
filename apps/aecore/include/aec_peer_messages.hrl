@@ -13,3 +13,19 @@
 -define(MSG_MEMPOOL, 14).
 -define(MSG_GET_HEADER_BY_HEIGHT, 15).
 
+-define(RESPONSE_VSN, 1).
+-define(PING_VSN, 1).
+-define(GET_MEMPOOL_VSN, 1).
+-define(MEMPOOL_VSN, 1).
+-define(GET_HEADER_BY_HASH_VSN, 1).
+-define(GET_HEADER_BY_HEIGHT_VSN, 2).
+-define(HEADER_VSN, 1).
+-define(GET_N_SUCCESSORS_VSN, 2).
+-define(HEADER_HASHES_VSN, 1).
+-define(GET_BLOCK_VSN, 1).
+-define(BLOCK_VSN, 1).
+-define(TX_VSN, 1).
+-define(PEER_VSN, 1).
+
+-define(VSN_1, 1).
+
