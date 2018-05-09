@@ -7,7 +7,6 @@
    [kernel,
     stdlib,
     lager,
-    crypto,
     aetx,
     sext
    ]},
