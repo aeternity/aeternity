@@ -4,3 +4,5 @@ apps/aecuckoo/c_src
 apps/aecuckoo/priv/bin
 apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
+system_test
+erl_crash.dump
