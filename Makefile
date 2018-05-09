@@ -183,21 +183,11 @@ smoke-test-run:
 system-test:
 	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg $(CT_TEST_FLAGS)
 
-system-test-deps: | system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar
-	$(info The downloaded DB backup is not checked for freshness.)
+system-test-deps:
 #	docker pull aeternity/epoch:latest
-
-system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.tar: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup
-	tar -c -C $(<D) -f $@ $(<F)
-
-system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup: system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz
-	zcat <$< >$@
 
 TESTNET_DB_BACKUP_FILE = mnesia_18.196.250.42_uat_db_backup_1524700922.gz
 TESTNET_DB_BACKUP_BASE_URL = https://9305-99802036-gh.circle-artifacts.com/0/tmp/chain_snapshots/18.196.250.42/tmp
-
-system_test/aest_hard_fork_SUITE_data/db/mnesia_ae-uat-epoch_backup.gz:
-	curl -fsS --create-dirs -o $@ $(TESTNET_DB_BACKUP_BASE_URL)/$(TESTNET_DB_BACKUP_FILE)
 
 aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
@@ -273,7 +263,7 @@ clean:
 	( cd apps/aesophia/test/contracts && $(MAKE) clean; )
 	( cd $(HTTP_APP) && $(MAKE) clean; )
 	@$(MAKE) multi-distclean
-	@rm -rf _build/system_test+test _build/system_test system_test/aest_hard_fork_SUITE_data/db system_test/logs _build/test _build/prod _build/local
+	@rm -rf _build/system_test+test _build/system_test _build/test _build/prod _build/local
 	@rm -rf _build/default/plugins
 	@rm -rf $$(ls -d _build/default/lib/* | grep -v '[^_]rocksdb') ## Dependency `rocksdb` takes long to build.
 

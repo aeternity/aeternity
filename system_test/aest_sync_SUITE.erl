@@ -18,7 +18,7 @@
 -import(aest_nodes, [
     setup_nodes/2,
     start_node/2,
-    stop_node/2, stop_node/3,
+    stop_node/3,
     kill_node/2,
     connect_node/3, disconnect_node/3,
     http_get/5,
@@ -33,7 +33,6 @@
 %=== MACROS ====================================================================
 
 -define(MINING_TIMEOUT,   2000).
--define(STARTUP_TIMEOUT, 10000).
 -define(SYNC_TIMEOUT,      100).
 
 -define(STANDALONE_NODE, #{
@@ -102,9 +101,10 @@ all() -> [
 
 init_per_testcase(_TC, Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
+    %% timers must be less than gen_server:call timeout.
     aest_nodes:ct_setup([ {blocks_per_second, 3},
-                          {node_startup_time, 5000}, %% Time it takes to get the node to respond to http
-                          {node_stop_time, 20000}    %% Time it takes to get the node to stop cleanly
+                          {node_startup_time, 20000}, %% Time may take to get the node to respond to http
+                          {node_shutdown_time, 20000}  %% Time it may take to stop node cleanly
                           | Config]).
 
 end_per_testcase(_TC, Config) ->
@@ -189,6 +189,8 @@ new_node_joins_network(Cfg) ->
 docker_keeps_data(Cfg) ->
     Length = 20,
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+    NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
+
 
     setup_nodes([?STANDALONE_NODE], Cfg),
 
@@ -206,7 +208,8 @@ docker_keeps_data(Cfg) ->
     %% Get all blocks before stopping
     A = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length)],
 
-    stop_node(standalone_node, infinity, Cfg), %% Is this triggering PT-155851463 ?
+    stop_node(standalone_node, NodeShutdownTime, Cfg),
+    %% This requires some time
 
     start_node(standalone_node, Cfg),
     wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
@@ -237,10 +240,9 @@ docker_keeps_data(Cfg) ->
     %% Get all blocks before stopping
     C = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length + 10)],
 
-    stop_node(standalone_node, infinity, Cfg),
+    stop_node(standalone_node, NodeShutdownTime, Cfg),
     start_node(standalone_node, Cfg),
     wait_for_value({height, 0}, [standalone_node], NodeStartupTime, Cfg),
-
 
     %% Give it time to read from disk, but not enough to build a new chain of same length
     timer:sleep(MiningTime * 5),
@@ -270,8 +272,9 @@ docker_keeps_data(Cfg) ->
 stop_and_continue_sync(Cfg) ->
     BlocksPerSecond = proplists:get_value(blocks_per_second, Cfg),
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+
     %% Create a chain long enough to need 10 seconds to fetch it
-    Length = BlocksPerSecond * 20,
+    Length = BlocksPerSecond * 30,
 
     setup_nodes([#{ name    => node1,
                     peers   => [node2],
@@ -287,12 +290,7 @@ stop_and_continue_sync(Cfg) ->
     start_node(node1, Cfg),
     wait_for_value({height, 0}, [node1], NodeStartupTime, Cfg),
 
-    StartTime = os:timestamp(),
     wait_for_value({height, Length}, [node1], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = os:timestamp(),
-    %% Average mining time per block plus 50% extra
-    MiningTime = round(timer:now_diff(EndTime, StartTime) * 1.5)
-                 div (1000 * Length),
 
     {ok, 200, B1} = request(node1, 'GetBlockByHeight', #{height => Length}),
     ct:log("Node 1 at height ~p: ~p~n", [Length, B1]),
@@ -302,20 +300,27 @@ stop_and_continue_sync(Cfg) ->
     wait_for_value({height, 0}, [node2], NodeStartupTime, Cfg),
     ct:log("Node 2 ready to go"),
 
-    %% we are fetching blocks stop node1 now
-    kill_node(node1, Cfg),
+    %% we are fetching blocks, abruptly stop node1 now
+    stop_node(node1, 8000, Cfg),
     {ok, 200, Top2} = request(node2, 'GetTop', #{}),
     ct:log("Node 2 top: ~p~n", [Top2]),
     Height = maps:get(height, Top2),
     case Height >= Length of
          true -> {skip, already_synced_when_stopped};
          false ->
-            timer:sleep(4 * ?MINING_TIMEOUT), %% make sure we do a bit of forking on the new chain
             start_node(node1, Cfg),
-            wait_for_value({height, Length}, [node2], (Length - Height) * MiningTime, Cfg),
+            %% should sync with about 10 blocks per second, hence 100ms per block
+            wait_for_value({height, Length}, [node2], (Length - Height) * ?MINING_TIMEOUT, Cfg),
             {ok, 200, B2} = request(node2, 'GetBlockByHeight', #{height => Length}),
-            ct:log("Node 2 at height ~p: ~p~n", [Length, B2]),
-            ?assertEqual(B1, B2)
+            {ok, 200, C1} = request(node1, 'GetBlockByHeight', #{height => Length}),
+            ct:log("Node 2 at height ~p: ~p and  Node 1 at same height ~p~n", [Length, B2, C1]),
+            if C1 == B1 ->
+                ct:log("This test showed that sync can be interrupted");
+               C1 =/= B2 ->
+                ct:log("Tested non-interesting branch, node2 synced with node1")
+                %% skip here?
+            end,
+            ?assertEqual(C1, B2)
     end.
 
 %% Test that two disconnected clusters of nodes are able to recover and merge
@@ -374,7 +379,7 @@ net_split_recovery(Cfg) ->
 
     wait_for_value({height, Length * 5}, [net1_node1, net1_node2, net2_node1, net2_node2],
                     Length * 2 * ?MINING_TIMEOUT, Cfg),
-
+ 
     {ok, 200, C1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 5}),
     {ok, 200, C2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 5}),
     {ok, 200, C3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 5}),
