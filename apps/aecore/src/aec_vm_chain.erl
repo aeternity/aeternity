@@ -19,12 +19,9 @@
          spend/3,
          call_contract/6]).
 
--record(state, {trees   :: aec_trees:trees(),
-                height  :: height(),
-                account :: pubkey(),            %% the contract account
-                nonce   :: non_neg_integer()
-                    %% the nonce of the contract account, cached to avoid having
-                    %% to update the tree at each external call
+-record(state, { trees   :: aec_trees:trees()
+               , height  :: height()
+               , account :: pubkey()            %% the contract account
                }).
 
 -type chain_state() :: #state{}.
@@ -36,22 +33,15 @@
 %% @doc Create a chain state.
 -spec new_state(aec_trees:trees(), height(), pubkey()) -> chain_state().
 new_state(Trees, Height, ContractAccount) ->
-    Contract = aect_state_tree:get_contract(ContractAccount, aec_trees:contracts(Trees)),
-    Nonce    = aect_contracts:nonce(Contract),
     #state{ trees   = Trees,
             height  = Height,
-            account = ContractAccount,
-            nonce   = Nonce }.
+            account = ContractAccount
+          }.
 
 %% @doc Get the state trees from a state.
 -spec get_trees(chain_state()) -> aec_trees:trees().
-get_trees(#state{ trees = Trees, account = Key, nonce = Nonce }) ->
-    CTree0    = aec_trees:contracts(Trees),
-    Contract0 = aect_state_tree:get_contract(Key, CTree0),
-    Contract1 = aect_contracts:set_nonce(Nonce, Contract0),
-    CTree1    = aect_state_tree:enter_contract(Contract1, CTree0),
-    aec_trees:set_contracts(Trees, CTree1).
-
+get_trees(#state{ trees = Trees}) ->
+    Trees.
 
 %% @doc Get the balance of the contract account.
 -spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
@@ -89,60 +79,66 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
-                              height  = Height,
-                              account = ContractKey,
-                              nonce   = Nonce }) ->
+                               height  = Height,
+                               account = ContractKey
+                             }) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    VmVersion = 1,  %% TODO
-    {ok, CallTx} =
-        aect_call_tx:new(#{ caller     => ContractKey,
-                            nonce      => Nonce,
-                            contract   => Target,
-                            vm_version => VmVersion,
-                            fee        => 0,
-                            amount     => Value,
-                            gas        => Gas,
-                            gas_price  => 0,
-                            call_data  => CallData,
-                            call_stack => CallStack }),
+    CT = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract(Target, CT) of
+        {value, Contract} ->
+            AT = aec_trees:accounts(Trees),
+            {value, ContractAccount} = aec_accounts_trees:lookup(ContractKey, AT),
+            Nonce = aec_accounts:nonce(ContractAccount) + 1,
+            VmVersion = aect_contracts:vm_version(Contract),
+            {ok, CallTx} =
+                aect_call_tx:new(#{ caller     => ContractKey,
+                                    nonce      => Nonce,
+                                    contract   => Target,
+                                    vm_version => VmVersion,
+                                    fee        => 0,
+                                    amount     => Value,
+                                    gas        => Gas,
+                                    gas_price  => 0,
+                                    call_data  => CallData,
+                                    call_stack => CallStack }),
+            do_call_contract(CallTx, ContractKey, Target, Nonce, Trees, State, Height,
+                             ConsensusVersion);
+        none -> {error, {no_such_contract, Target}}
+    end.
+
+do_call_contract(CallTx, ContractKey, Target, Nonce, Trees,
+                 State, Height, ConsensusVersion) ->
     case aetx:check_from_contract(CallTx, Trees, Height, ConsensusVersion) of
         Err = {error, _} -> Err;
         {ok, Trees1} ->
-            {ok, Trees2} = aetx:process_from_contract(CallTx, Trees1, Height, ConsensusVersion),
+            {ok, Trees2} =
+                aetx:process_from_contract(CallTx, Trees1,
+                                           Height, ConsensusVersion),
             CallId  = aect_call:id(ContractKey, Nonce, Target),
-            Call    = aect_call_state_tree:get_call(Target, CallId, aec_trees:calls(Trees2)),
+            Call    = aect_call_state_tree:get_call(Target, CallId,
+                                                    aec_trees:calls(Trees2)),
             GasUsed = aect_call:gas_used(Call),
-            Result  = case aect_call:return_type(Call) of
-                          %% TODO: currently we don't set any sensible return value on exceptions
-                          error -> aevm_chain_api:call_exception(out_of_gas, GasUsed);
-                          ok ->
-                              Bin = aect_call:return_value(Call),
-                              aevm_chain_api:call_result(Bin, GasUsed)
-                      end,
-            {ok, Result, State#state{ trees = Trees2, nonce = Nonce + 1 }}
+            Result  =
+                case aect_call:return_type(Call) of
+                    %% TODO: currently we don't set any
+                    %%       sensible return value on exceptions
+                    error ->
+                        aevm_chain_api:call_exception(out_of_gas, GasUsed);
+                    ok ->
+                        Bin = aect_call:return_value(Call),
+                        aevm_chain_api:call_result(Bin, GasUsed)
+                end,
+            {ok, Result, State#state{ trees = Trees2}}
     end.
 
 
 %% -- Internal functions -----------------------------------------------------
 
 do_get_balance(PubKey, Trees) ->
-    case get_contract_or_account(PubKey, Trees) of
-        {contract, Contract} -> aect_contracts:balance(Contract);
-        {account, Account}   -> aec_accounts:balance(Account);
-        none                 -> 0
-    end.
-
-%% TODO: should be the same thing
-get_contract_or_account(PubKey, Trees) ->
-    ContractsTree = aec_trees:contracts(Trees),
     AccountsTree  = aec_trees:accounts(Trees),
-    case aect_state_tree:lookup_contract(PubKey, ContractsTree) of
-        {value, Contract} -> {contract, Contract};
-        none              ->
-            case aec_accounts_trees:lookup(PubKey, AccountsTree) of
-                none             -> none;
-                {value, Account} -> {account, Account}
-            end
+    case aec_accounts_trees:lookup(PubKey, AccountsTree) of
+        none             -> 0;
+        {value, Account} -> aec_accounts:balance(Account)
     end.
 
 do_get_store(PubKey, Trees) ->
@@ -160,54 +156,21 @@ do_set_store(Store, PubKey, Trees) ->
 	end,
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
-%% TODO: can only spend to proper accounts. Not other contracts.
-%% Note that we cannot use an aec_spend_tx here, since we are spending from a
-%% contract account and not a proper account.
 do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
-    try
-        case get_contract_or_account(Recipient, Trees) of
-            {contract, _} -> do_spend_to_contract(Recipient, ContractKey, Amount, Trees, Height);
-            {account, _}  -> do_spend_to_account(Recipient, ContractKey, Amount, Trees, Height);
-            none          -> do_spend_to_account(Recipient, ContractKey, Amount, Trees, Height)
-        end
-    catch throw:bad_recip  -> {error, {bad_recipient_account, Recipient}};
-          throw:bad_height -> {error, {account_height_too_big, Recipient}};
-          throw:no_funds   -> {error, insufficient_funds};
-          _:_              -> {error, unspecified_error}    %% TODO
+    AccountTree = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(ContractKey, AccountTree),
+    Nonce = aec_accounts:nonce(Account) + 1,
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => ContractKey
+                                      , recipient => Recipient
+                                      , amount => Amount
+                                      , fee => 0
+                                      , nonce => Nonce
+                                      , payload => <<>>}),
+    case aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion) of
+        {ok, Trees1} ->
+            aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion);
+        Error -> Error
     end.
 
-do_spend_to_account(Recipient, ContractKey, Amount, Trees, Height) ->
-    ContractsTree   = aec_trees:contracts(Trees),
-    Contract        = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    Balance         = aect_contracts:balance(Contract),
-    [ throw(no_funds) || Balance < Amount ],
-    Trees1          = ensure_recipient_account(Recipient, Trees, Height),
-    AccountsTree    = aec_trees:accounts(Trees1),
-    {value, RecipAcc} = aec_accounts_trees:lookup(Recipient, AccountsTree),
-    {ok, RecipAcc1} = aec_accounts:earn(RecipAcc, Amount, Height),
-    AccountsTree1   = aec_accounts_trees:enter(RecipAcc1, AccountsTree),
-    Contract1       = aect_contracts:spend(Amount, Contract),
-    ContractsTree1  = aect_state_tree:enter_contract(Contract1, ContractsTree),
-    Trees2          = aec_trees:set_accounts(Trees1, AccountsTree1),
-    {ok, aec_trees:set_contracts(Trees2, ContractsTree1)}.
-
-do_spend_to_contract(Recipient, ContractKey, Amount, Trees, _Height) ->
-    ContractsTree  = aec_trees:contracts(Trees),
-    FromContract   = aect_state_tree:get_contract(ContractKey, ContractsTree),
-    ToContract     = aect_state_tree:get_contract(Recipient, ContractsTree),
-    FromBalance    = aect_contracts:balance(FromContract),
-    [ throw(no_funds) || FromBalance < Amount ],
-    ToContract1    = aect_contracts:earn(Amount, ToContract),
-    FromContract1  = aect_contracts:spend(Amount, FromContract),
-    ContractsTree1 = aect_state_tree:enter_contract(FromContract1,
-                     aect_state_tree:enter_contract(ToContract1, ContractsTree)),
-    {ok, aec_trees:set_contracts(Trees, ContractsTree1)}.
-
-ensure_recipient_account(Recipient, Trees, Height) when byte_size(Recipient) =:= ?PUB_SIZE ->
-    case aec_trees:ensure_account_at_height(Recipient, Trees, Height) of
-        {ok, Trees1} -> Trees1;
-        {error, account_height_too_big} -> throw(bad_height)
-    end;
-ensure_recipient_account(_,_Trees,_Height) ->
-    throw(bad_recip).
 

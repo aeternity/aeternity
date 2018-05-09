@@ -121,9 +121,11 @@ signers(Tx, _) ->
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
                           fee = Fee, gas_price = GasPrice, amount = Value
-                         } = CallTx, Context, Trees0, Height, _ConsensusVersion) ->
-    AccountsTree0  = aec_trees:accounts(Trees0),
-    ContractsTree0 = aec_trees:contracts(Trees0),
+                         } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
+
+    %% Transfer the attached funds to the callee (before calling the contract!)
+    Trees2 = spend(CallerPubKey, CalleePubKey, Value,
+                   Nonce, Context, Height, Trees1, ConsensusVersion),
 
     %% Create the call.
     Call0 = aect_call:new(aect_call_tx:caller(CallTx),
@@ -131,35 +133,14 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
 			  aect_call_tx:contract(CallTx),
 			  Height),
 
-    %% Transfer the attached funds to the callee (before calling the contract!)
-    Callee0 = aect_state_tree:get_contract(CalleePubKey, ContractsTree0),
-    Callee1 = aect_contracts:earn(Value, Callee0),
-    ContractsTree1 = aect_state_tree:enter_contract(Callee1, ContractsTree0),
-    Trees1 = aec_trees:set_contracts(Trees0, ContractsTree1),
-    {AccountsTree1, ContractsTree2} =
-        %% TODO: contract accounts should live in the account tree
-        case Context of
-            aetx_contract    ->
-                Caller0 = aect_state_tree:get_contract(CallerPubKey, ContractsTree1),
-                Caller1 = aect_contracts:spend(Value, Caller0),
-                {AccountsTree0, aect_state_tree:enter_contract(Caller1, ContractsTree1)};
-            aetx_transaction ->
-                Caller0       = aec_accounts_trees:get(CallerPubKey, AccountsTree0),
-                {ok, Caller1} = aec_accounts:spend(Caller0, Value, Nonce, Height),
-                {aec_accounts_trees:enter(Caller1, AccountsTree0), ContractsTree1}
-        end,
-
-    Trees2 = aec_trees:set_accounts(Trees1, AccountsTree1),
-    Trees3 = aec_trees:set_contracts(Trees2, ContractsTree2),
-
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
     %% TODO: handle transactions performed by the contract code
-    {Call, Trees4} = run_contract(CallTx, Call0, Height, Trees3),
+    {Call, Trees3} = run_contract(CallTx, Call0, Height, Trees2),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
-    AccountsTree2 = aec_trees:accounts(Trees4),
-    AccountsTree3 =
+    AccountsTree1 = aec_trees:accounts(Trees3),
+    AccountsTree2 =
         case Context of
             aetx_contract    ->
                 AccountsTree2;
@@ -170,16 +151,30 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
                 {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
                 aec_accounts_trees:enter(Caller3, AccountsTree2)
         end,
-    Trees5 = aec_trees:set_accounts(Trees4, AccountsTree3),
+    Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
 
     %% Insert the call into the state tree. This is mainly to remember what the
     %% return value was so that the caller can access it easily.
     %% Each block starts with an empty calls tree.
-    CallsTree0 = aec_trees:calls(Trees5),
+    CallsTree0 = aec_trees:calls(Trees4),
     CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
-    Trees6 = aec_trees:set_calls(Trees5, CallsTree1),
+    Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
 
-    {ok, Trees6}.
+    {ok, Trees5}.
+
+spend(CallerPubKey, CalleePubKey, Value, Nonce, Context, Height, Trees,
+      ConsensusVersion) ->
+    {ok, SpendTx} = aec_spend_tx:new(#{ sender => CallerPubKey
+                                , recipient => CalleePubKey
+                                , amount => Value
+                                , fee => 0
+                                , nonce => Nonce
+                                , payload => <<>>}),
+    {ok, Trees1} =
+        aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion),
+    {ok, Trees2} =
+        aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
+    Trees2.
 
 run_contract(#contract_call_tx{	caller = Caller
 			      , nonce  = _Nonce

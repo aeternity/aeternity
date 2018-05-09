@@ -128,13 +128,26 @@ nonce(#contract_create_tx{nonce = Nonce}) ->
 origin(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
-%% Owner should exist, and have enough funds for the fee
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
+%% Owner should exist, and have enough funds for the fee, the amount and the gas
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) ->
+                   {ok, aec_trees:trees()} | {error, term()}.
+check(#contract_create_tx{owner = OwnerPubKey,
+                          nonce = Nonce,
+                          amount     = Amount,
+                          gas        = Gas,
+                          gas_price  = GasPrice,
                           fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+    TotalAmount = Fee + Amount + Gas * GasPrice,
     Checks =
-        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, Fee) end],
-
+        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, TotalAmount) end,
+         %% TODO: Check minum gas price.
+         fun () ->
+                 case Fee >= aec_governance:minimum_tx_fee() of
+                     true -> ok;
+                     _ ->  {error, too_low_fee}
+                 end
+         end
+        ],
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
         {error, Reason} -> {error, Reason}
@@ -148,40 +161,41 @@ accounts(#contract_create_tx{owner = OwnerPubKey}) ->
 signers(#contract_create_tx{owner = OwnerPubKey}, _) ->
     {ok, [OwnerPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) ->
+                     {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
 			    vm_version = VmVersion,
-                            fee   = Fee} = CreateTx, _Context, Trees0, Height, _ConsensusVersion) ->
+                            amount     = Amount,
+                            gas        = Gas,
+                            gas_price  = GasPrice,
+                            fee   = Fee} = CreateTx,
+        Context, Trees0, Height, ConsensusVersion) ->
 
-    AccountsTree0  = aec_trees:accounts(Trees0),
+    %% Create the contract and insert it into the contract state tree
+    %%   The public key for the contract is generated from the owners pubkey
+    %%   and the nonce, so that no one has the private key.
+    ContractPubKey  = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
+    Contract        = aect_contracts:new(ContractPubKey, CreateTx),
+    ContractsTree0a = aec_trees:contracts(Trees0),
+    ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
+    Trees1 = aec_trees:set_contracts(Trees0, ContractsTree1a),
 
     %% Charge the fee to the contract owner (caller)
-    Owner0        = aec_accounts_trees:get(OwnerPubKey, AccountsTree0),
-    {ok, Owner1}  = aec_accounts:spend(Owner0, Fee, Nonce, Height),
-    AccountsTree1 = aec_accounts_trees:enter(Owner1, AccountsTree0),
-    Trees1        = aec_trees:set_accounts(Trees0, AccountsTree1),
-
-    %% Create the contract and add to state tree
-    ContractPubKey = aect_contracts:compute_contract_pubkey(OwnerPubKey, Nonce),
-    Contract       = aect_contracts:new(ContractPubKey, CreateTx, Height),
+    %% and transfer the funds (amount) to the contract account.
+    Trees2 =
+        spend(OwnerPubKey, ContractPubKey, Amount, Fee, Nonce, Context, Height, Trees1,
+              ConsensusVersion),
 
     %% Create the init call.
     Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
-    %% Create the contract and insert it into the contract state tree
-    %%   The public key for the contract is generated from the owners pubkey
-    %%   and the nonce, so that no one has the private key. Though, even if
-    %%   someone did have the private key, we should not accept spend
-    %%   transactions on a contract account.
     Trees5 =
 	case VmVersion of
 	    ?AEVM_01_Sophia_01 ->
 		%% Execute init call to get the contract state and return value
-		ContractsTree0a = aec_trees:contracts(Trees1),
-		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
-		Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1a),
-		{CallRes, Trees3} = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
+		{CallRes, Trees3} =
+                    run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
 			%% Insert the call into the state tree for one block.
@@ -193,7 +207,8 @@ process(#contract_create_tx{owner = OwnerPubKey,
                         %% Save the initial state (returned by `init`) in the store.
                         InitState  = aect_call:return_value(CallRes),
                                      %% TODO: move to/from_sophia_state to make nicer dependencies?
-                        Contract1  = aect_contracts:set_state(aevm_eeevm_store:from_sophia_state(InitState), Contract),
+                        Contract1  = aect_contracts:set_state(
+                                       aevm_eeevm_store:from_sophia_state(InitState), Contract),
                         ContractsTree2a = aect_state_tree:enter_contract(Contract1, ContractsTree1a),
                         aec_trees:set_contracts(Trees4, ContractsTree2a);
 		    E ->
@@ -204,10 +219,8 @@ process(#contract_create_tx{owner = OwnerPubKey,
 
 		%% Execute init call to get the contract bytecode
 		%% as a result. to be used for insertion
-		ContractsTree0a = aec_trees:contracts(Trees1),
-		ContractsTree1a = aect_state_tree:insert_contract(Contract, ContractsTree0a),
-		Trees2 = aec_trees:set_contracts(Trees1, ContractsTree1a),
-		{CallRes, Trees3} = run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
+		{CallRes, Trees3} =
+                    run_contract(CreateTx, Call0, Height, Trees2, Contract, ContractPubKey),
 		case aect_call:return_type(CallRes) of
 		    ok ->
 			%% Insert the call into the state tree.
@@ -235,6 +248,22 @@ process(#contract_create_tx{owner = OwnerPubKey,
 
 
     {ok, Trees5}.
+
+spend(OwnerPubKey, ContractPubKey, Value, Fee, Nonce, Context, Height, Trees,
+      ConsensusVersion) ->
+    {ok, SpendTx} = aec_spend_tx:new(
+                      #{ sender => OwnerPubKey
+                       , recipient => ContractPubKey
+                       , amount => Value
+                       , fee => Fee
+                       , nonce => Nonce
+                       , payload => <<>>}),
+    {ok, Trees1} =
+        aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion),
+    {ok, Trees2} =
+        aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
+    Trees2.
+
 
 run_contract(#contract_create_tx{ owner      = Caller
 				, nonce      =_Nonce

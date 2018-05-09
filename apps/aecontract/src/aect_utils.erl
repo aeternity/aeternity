@@ -21,10 +21,10 @@ hex_bytes(Bin) ->
 
 -spec check_balance(pubkey(), aec_trees:trees(), non_neg_integer()) -> ok | {error, term()}.
 check_balance(ContractKey, Trees, Amount) ->
-    ContractsTree = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(ContractKey, ContractsTree) of
-        {value, Contract} ->
-            check(aect_contracts:balance(Contract) >= Amount, insufficient_funds);
+    AccountsTree = aec_trees:accounts(Trees),
+    case aec_accounts_trees:lookup(ContractKey, AccountsTree) of
+        {value, Account} ->
+            check(aec_accounts:balance(Account) >= Amount, insufficient_funds);
         none -> {error, contract_not_found}
     end.
 

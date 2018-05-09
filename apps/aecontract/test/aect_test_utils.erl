@@ -141,7 +141,7 @@ call_tx_default_spec(PubKey, State) ->
 %%%===================================================================
 
 setup_new_account(State) ->
-    setup_new_account(100000, 1, State).
+    setup_new_account(1000000, 1, State).
 
 setup_new_account(Balance, Height, State) ->
     {PubKey, PrivKey} = new_key_pair(),
