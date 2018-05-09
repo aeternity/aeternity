@@ -1,0 +1,55 @@
+contract DutchTokenAuction
+
+state
+    start_amount : integer = 0,
+    start_height : integer = chain.height,
+    decrement : integer    = 0,
+    min : integer          = 0,
+    benficiary : address   = null,
+    item : tokenaddress    = null,
+    sold : boolean         = false
+end
+
+private function Require(b : boolean) : void
+    if (not b) then abort() end
+end
+
+## API
+## Caller is buyer
+
+public stateful function Bid() : void
+    var cost = state.start_amount
+               - (chain.height - state.start_height) * state.decrement
+    Require(not state.sold)
+    # Accept only minimal cost
+    if cost < state.min then cost = state.min end
+    Require(call.value >= cost)
+    Spend(state.benficiary, cost)       # Pay cost to beneficiary
+    Spend(caller, contract.balance)     # Pay back overbid to caller
+    SpendTokens(caller, state.item)
+    state.sold = true
+    return                              # Maybe have implicit return of void?
+end
+
+public stateful function Cancel() : void  # cancel?
+    Require(caller == state.beneficiary and not state.sold)
+    # SpendToken(caller, contract.tokens(state.item))
+    SpendToken(caller, state.item)
+    Spend(contract.balance, owner)      # Empty contract of any funds
+    state.sold = true
+    return
+end
+
+function Init(benficiary : address, start : integer,
+              decrease : integer, min : integer) : void
+    Require(start > 0 and decrease > 0 and min >= 0)
+    # Maybe have Pascal's with name do ... end statement?
+    state.start_amount = start
+    state.benficiary = benficiary
+    state.decrement = decrease
+    state.min = min
+    state.item = call.tokens
+    return
+end
+
+end
