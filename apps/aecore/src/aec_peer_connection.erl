@@ -22,9 +22,9 @@
 -export([ retry/1
         , get_block/2
         , get_header_by_hash/2
-        , get_header_by_height/2
+        , get_header_by_height/3
         , get_mempool/1
-        , get_n_successors/3
+        , get_n_successors/4
         , ping/1
         , send_block/2
         , send_tx/2
@@ -42,6 +42,7 @@
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
+-define(REQUEST_TIMEOUT, 5000).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -72,11 +73,11 @@ ping(PeerId) ->
 get_header_by_hash(PeerId, Hash) ->
     call(PeerId, {get_header_by_hash, [Hash]}).
 
-get_header_by_height(PeerId, Hash) ->
-    call(PeerId, {get_header_by_height, [Hash]}).
+get_header_by_height(PeerId, Height, TopHash) ->
+    call(PeerId, {get_header_by_height, [Height, TopHash]}).
 
-get_n_successors(PeerId, Hash, N) ->
-    call(PeerId, {get_n_successors, [Hash, N]}).
+get_n_successors(PeerId, FromHash, TargetHash, N) ->
+    call(PeerId, {get_n_successors, [FromHash, TargetHash, N]}).
 
 get_block(PeerId, Hash) ->
     call(PeerId, {get_block, [Hash]}).
@@ -95,7 +96,7 @@ stop(PeerCon) ->
 
 
 call(PeerCon, Call) when is_pid(PeerCon) ->
-    try gen_server:call(PeerCon, Call)
+    try gen_server:call(PeerCon, Call, ?REQUEST_TIMEOUT + 2000)
     catch exit:{noproc, _} -> {error, no_connection}
     end;
 call(PeerId, Call) when is_binary(PeerId) ->
@@ -142,7 +143,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                 , {timeout, HSTimeout} ],
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
-    inet:setopts(TcpSock, [{active, true}]),
+    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
     case enoise:accept(TcpSock, NoiseOpts) of
         {ok, ESock, FinalState} ->
             RemotePub = enoise_keypair:pubkey(enoise_hs_state:remote_keys(FinalState)),
@@ -166,8 +167,8 @@ init([Opts]) ->
     Version = <<?P2P_PROTOCOL_VSN:64>>,
     Genesis = aec_chain:genesis_hash(),
     Opts1 = Opts#{ role => initiator
-                   , version => Version
-                   , genesis => Genesis},
+                 , version => Version
+                 , genesis => Genesis},
     {ok, Opts1, 0}.
 
 handle_call(Request, From, State) ->
@@ -197,6 +198,8 @@ handle_info(timeout, S = #{ role := initiator, host := Host, port := Port }) ->
     {noreply, S#{ status => {connecting, Pid} }};
 handle_info(timeout, S) ->
     {noreply, S};
+handle_info({timeout, Ref, {request, Kind}}, S) ->
+    handle_request_timeout(S, Ref, Kind);
 handle_info({timeout, Ref, first_ping_timeout}, S) ->
     NonRegAccept = is_non_registered_accept(S),
     case maps:get(first_ping_tref, S, undefined) of
@@ -223,7 +226,7 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
                 , {timeout, HSTimeout} ],
     %% Keep the socket passive until here to avoid premature message
     %% receiving...
-    inet:setopts(TcpSock, [{active, true}]),
+    inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
             lager:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
@@ -250,23 +253,20 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     case aec_peer_messages:deserialize(Type, Payload) of
         {response, _Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
             {noreply, handle_msg(S, MsgType, true, {error, Reason})};
-        {response, _Vsn, #{ result := true, type := MsgType, msg := Msg }} ->
-            {noreply, handle_msg(S, MsgType, true, {ok, Msg})};
-        {MsgType, _Vsn, Msg} ->
-            {noreply, handle_msg(S, MsgType, false, {ok, Msg})};
+        {response, _Vsn, #{ result := true, type := MsgType, msg := {MsgType, Vsn, Msg} }} ->
+            {noreply, handle_msg(S, MsgType, true, {ok, Vsn, Msg})};
+        {MsgType, Vsn, Msg} ->
+            {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
         Err = {error, _} ->
             lager:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
+handle_info({enoise_error, _, Reason}, S) ->
+    lager:debug("Peer connection got enoise_error: ~p", [Reason]),
+    handle_general_error(S);
 handle_info({tcp_closed, _}, S) ->
     lager:debug("Peer connection got tcp_closed", []),
-    S1 = cleanup_connection(S),
-    case is_non_registered_accept(S) of
-        true ->
-            {stop, normal, S1};
-        false ->
-            connect_fail(S1)
-    end;
+    handle_general_error(S);
 handle_info(_Msg, S) ->
     {noreply, S}.
 
@@ -281,16 +281,43 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% -- Local functions --------------------------------------------------------
+handle_general_error(S) ->
+    S1 = cleanup_connection(S),
+    case is_non_registered_accept(S) of
+        true ->
+            {stop, normal, S1};
+        false ->
+            connect_fail(S1)
+    end.
+
 get_request(S, Kind) ->
     maps:get(map_request(Kind), maps:get(requests, S, #{}), none).
 
 set_request(S, Kind, From) ->
     Rs = maps:get(requests, S, #{}),
-    S#{ requests => Rs#{ Kind => {Kind, From} } }.
+    TRef = erlang:start_timer(?REQUEST_TIMEOUT, self(), {request, Kind}),
+    S#{ requests => Rs#{ Kind => {Kind, From, TRef} } }.
 
 remove_request_fld(S, Kind) ->
     Rs = maps:get(requests, S, #{}),
+    case get_request(S, Kind) of
+        none ->
+            ok;
+        {_MappedKind, _From, TRef} ->
+            erlang:cancel_timer(TRef)
+    end,
     S#{ requests => maps:remove(map_request(Kind), Rs) }.
+
+handle_request_timeout(S, Ref, Kind) ->
+    case get_request(S, Kind) of
+        {_MappedKind, From, Ref} ->
+            lager:info("~p request timeout, stopping peer_connection", [Kind]),
+            gen_server:reply(From, {error, request_timeout}),
+            handle_general_error(S);
+        _Other ->
+            %% We got a stale timeout
+            {noreply, S}
+    end.
 
 map_request(mempool)              -> get_mempool;
 map_request(get_header_by_hash)   -> get_header;
@@ -343,8 +370,10 @@ cleanup_connection(State) ->
 
 cleanup_requests(State) ->
     Reqs = maps:to_list(maps:get(requests, State, #{})),
-    [ gen_server:reply(From, {error, disconnected})
-      || {_Request, From} <- Reqs ],
+    [ begin
+        gen_server:reply(From, {error, disconnected}),
+        erlang:cancel_timer(TRef)
+      end || {_, {_, From, TRef}} <- Reqs ],
     maps:remove(requests, State).
 
 connect_fail(S0) ->
@@ -376,21 +405,21 @@ handle_msg(S, MsgType, true, none, Result) ->
     lager:info("Peer ~p got unexpected ~p response - ~p",
                [peer_id(S), MsgType, Result]),
     S;
-handle_msg(S, _MsgType, true, {RequestFld, From}, {error, Reason}) ->
+handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     gen_server:reply(From, {error, Reason}),
     remove_request_fld(S, RequestFld);
-handle_msg(S, MsgType, false, Request, {ok, Msg}) ->
+handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
     case MsgType of
         ping                 -> handle_ping(S, Request, Msg);
         get_mempool          -> handle_get_mempool(S, Msg);
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
-        get_header_by_height -> handle_get_header_by_height(S, Msg);
-        get_n_successors     -> handle_get_n_successors(S, Msg);
+        get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
+        get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
         get_block            -> handle_get_block(S, Msg);
         block                -> handle_new_block(S, Msg);
         tx                   -> handle_new_tx(S, Msg)
     end;
-handle_msg(S, MsgType, true, Request, {ok, {MsgType, _Vsn, Msg}}) ->
+handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
     case MsgType of
         ping    -> handle_ping_rsp(S, Request, Msg);
         mempool -> handle_get_mempool_rsp(S, Request, Msg);
@@ -419,10 +448,10 @@ prepare_request_data(S, ping, []) ->
     ping_obj(local_ping_obj(S), [peer_id(S)]);
 prepare_request_data(_S, get_header_by_hash, [Hash]) ->
     #{ hash => Hash };
-prepare_request_data(_S, get_header_by_height, [Height]) ->
-    #{ height => Height };
-prepare_request_data(_S, get_n_successors, [Hash, N]) ->
-    #{ hash => Hash, n => N };
+prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
+    #{ height => Height, top_hash => TopHash };
+prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
+    #{ from_hash => FromHash, target_hash => TargetHash, n => N };
 prepare_request_data(_S, get_block, [Hash]) ->
     #{ hash => Hash };
 prepare_request_data(_S, get_mempool, []) ->
@@ -430,7 +459,7 @@ prepare_request_data(_S, get_mempool, []) ->
 
 %% -- Ping message -----------------------------------------------------------
 
-handle_ping_rsp(S, {ping, From}, RemotePingObj) ->
+handle_ping_rsp(S, {ping, From, _TRef}, RemotePingObj) ->
     Res = handle_ping_msg(S, RemotePingObj),
     gen_server:reply(From, Res),
     remove_request_fld(S, ping).
@@ -452,7 +481,7 @@ handle_ping(S, none, RemotePingObj) ->
         end,
     send_response(S, ping, Response),
     S1;
-handle_ping(S, {ping, _From}, RemotePingObj) ->
+handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
     lager:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
                [peer_id(S), RemotePingObj]),
     send_response(S, ping, {error, already_pinging}),
@@ -553,7 +582,7 @@ handle_get_header_by_hash(S, Msg) ->
     send_response(S, header, Response),
     S.
 
-handle_header_rsp(S, {get_header, From}, Msg) ->
+handle_header_rsp(S, {get_header, From, _TRef}, Msg) ->
     try
         Header = aec_headers:deserialize_from_binary(maps:get(hdr, Msg)),
         gen_server:reply(From, {ok, Header})
@@ -584,36 +613,59 @@ get_header(Fun, Arg) ->
 
 %% -- Get Header by Height -----------------------------------------------------
 
-handle_get_header_by_height(S, Msg) ->
+handle_get_header_by_height(S, ?VSN_1, Msg) ->
     Response = get_header(maps:get(height, Msg, undefined)),
     send_response(S, header, Response),
+    S;
+handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
+                            #{ height := H, top_hash := TopHash}) ->
+    case {aec_chain:get_header_by_height(H),
+          aec_chain:hash_is_in_main_chain(TopHash)} of
+        {{ok, Header}, true} ->
+            SerHeader = aec_headers:serialize_to_binary(Header),
+            send_response(S, header, {ok, #{ hdr => SerHeader }});
+        {_, false} ->
+            send_response(S, header, {error, not_on_chain});
+        {Err, _} when Err == error orelse Err == {error, chain_too_short} ->
+            send_response(S, header, {error, header_not_found})
+    end,
     S.
 
 %% Response is handled above in Get Header by Hash
 
 %% -- Get N Successors -------------------------------------------------------
 
-handle_get_n_successors(S, Msg) ->
+do_get_n_successors(Hash, N) ->
+    case aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N+1) of
+        {ok, [_ | Headers]} ->
+            HHashes = [ begin
+                            {ok, HHash} = aec_headers:hash_header(H),
+                            <<(aec_headers:height(H)):64, HHash/binary>>
+                        end || H <- Headers ],
+            {ok, #{ header_hashes => HHashes }};
+        error ->
+            {error, block_not_found}
+    end.
+
+handle_get_n_successors(S, Vsn, Msg) ->
     Response =
         case Msg of
-            #{ hash := Hash, n := N } ->
-                 case aec_chain:get_at_most_n_headers_forward_from_hash(Hash, N+1) of
-                     {ok, [_ | Headers]} ->
-                         HHashes = [ begin
-                                         {ok, HHash} = aec_headers:hash_header(H),
-                                         <<(aec_headers:height(H)):64, HHash/binary>>
-                                     end || H <- Headers ],
-                         {ok, #{ header_hashes => HHashes }};
-                     error ->
-                         {error, block_not_found}
-                 end;
+            #{ hash := Hash, n := N } when Vsn == ?VSN_1 ->
+                do_get_n_successors(Hash, N);
+            #{ from_hash := FromHash, target_hash := TargetHash, n := N }
+                when Vsn == ?GET_N_SUCCESSORS_VSN ->
+                Res = do_get_n_successors(FromHash, N),
+                case aec_chain:hash_is_in_main_chain(TargetHash) of
+                    true  -> Res;
+                    false -> {error, not_on_chain}
+                end;
             _ ->
                 {error, bad_request}
         end,
     send_response(S, header_hashes, Response),
     S.
 
-handle_header_hashes_rsp(S, {get_n_successors, From}, Msg) ->
+handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Msg) ->
     case maps:get(header_hashes, Msg, undefined) of
         Hdrs when is_list(Hdrs) ->
             Hdrs1 = [ {Height, Hash} || <<Height:64, Hash/binary>> <- Hdrs ],
@@ -642,7 +694,7 @@ handle_get_block(S, Msg) ->
     send_response(S, block, Response),
     S.
 
-handle_get_block_rsp(S, {get_block, From}, Msg) ->
+handle_get_block_rsp(S, {get_block, From, _TRef}, Msg) ->
     case maps:get(block, Msg, undefined) of
         Block0 when is_binary(Block0) ->
             case aec_blocks:deserialize_from_binary(Block0) of
@@ -664,7 +716,7 @@ handle_get_mempool(S, _MsgObj) ->
     send_response(S, mempool, {ok, #{ txs => Txs }}),
     S.
 
-handle_get_mempool_rsp(S, {get_mempool, From}, MsgObj) ->
+handle_get_mempool_rsp(S, {get_mempool, From, _TRef}, MsgObj) ->
     case maps:get(txs, MsgObj, undefined) of
         Txs0 when is_list(Txs0) ->
             Txs = [ aetx_sign:deserialize_from_binary(T) || T <- Txs0 ],
@@ -738,7 +790,7 @@ send_response(S, Type, Response) ->
 -endif.
 -define(FRAGMENT_SIZE, (?MAX_PACKET_SIZE - 6)).
 do_send(ESock, Msg) when byte_size(Msg) < ?MAX_PACKET_SIZE - 2 ->
-    enoise:send(ESock, Msg);
+    enoise_send(ESock, Msg);
 do_send(ESock, Msg) ->
     NChunks = (?FRAGMENT_SIZE + byte_size(Msg) - 1) div ?FRAGMENT_SIZE,
     send_chunks(ESock, 1, NChunks, Msg).
@@ -746,11 +798,21 @@ do_send(ESock, Msg) ->
 send_chunks(ESock, M, M, Msg) ->
     enoise:send(ESock, <<?MSG_FRAGMENT:16, M:16, M:16, Msg/binary>>);
 send_chunks(ESock, N, M, <<Chunk:?FRAGMENT_SIZE/binary, Rest/binary>>) ->
-    enoise:send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
+    enoise_send(ESock, <<?MSG_FRAGMENT:16, N:16, M:16, Chunk/binary>>),
     send_chunks(ESock, N + 1, M, Rest).
 
 peer_id(#{ r_pubkey := PK }) ->
     PK.
+
+enoise_send(ESock, Msg) ->
+    case enoise:send(ESock, Msg) of
+        ok ->
+            ok;
+        Err = {error, Reason} ->
+            self() ! {enoise_error, ESock, Reason},
+            lager:info("Failed to send message: ~p", [Err]),
+            Err
+    end.
 
 %% -- Configuration ----------------------------------------------------------
 
