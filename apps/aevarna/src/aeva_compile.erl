@@ -182,27 +182,32 @@ passes() ->
      done
     ].
 
-do_passes([{when_flag,Flag,Cmd}|Ps], #comp{opts=Opts}=St) ->
-    do_passes(?IF(member(Flag, Opts), [Cmd|Ps], Ps), St);
-do_passes([{unless_flag,Flag,Cmd}|Ps], #comp{opts=Opts}=St) ->
-    do_passes(?IF(member(Flag, Opts), Ps, [Cmd|Ps]), St);
-do_passes([{when_test,Test,Cmd}|Ps], St) ->
-    do_passes(?IF(Test(St), [Cmd|Ps], Ps), St);
-do_passes([{unless_test,Test,Cmd}|Ps], St) ->
-    do_passes(?IF(Test(St), Ps, [Cmd|Ps]), St);
+%% Comment out unused cases to keep dialyzer quiet!
+%% do_passes([{when_flag,Flag,Cmd}|Ps], #comp{opts=Opts}=St) ->
+%%     do_passes(?IF(member(Flag, Opts), [Cmd|Ps], Ps), St);
+%% do_passes([{unless_flag,Flag,Cmd}|Ps], #comp{opts=Opts}=St) ->
+%%     do_passes(?IF(member(Flag, Opts), Ps, [Cmd|Ps]), St);
+%% do_passes([{when_test,Test,Cmd}|Ps], St) ->
+%%     do_passes(?IF(Test(St), [Cmd|Ps], Ps), St);
+%% do_passes([{unless_test,Test,Cmd}|Ps], St) ->
+%%     do_passes(?IF(Test(St), Ps, [Cmd|Ps]), St);
 do_passes([{do,Fun}|Ps], St0) ->
     case Fun(St0) of
         {ok,St1} -> do_passes(Ps, St1);
         {error,St1} -> {error,St1}
     end;
-do_passes([{listing,PrintFun}|_], St) ->
-    PrintFun(St);
+%% do_passes([{listing,PrintFun}|_], St) ->
+%%     PrintFun(St);
+%% do_passes([{done,Fun}|_], St) ->
+%%     %% Print unless binary, in which case end.
+%%     do_passes([{unless_flag,binary,{listing,Fun}}], St);
 do_passes([done|_], St) -> {ok,St};             %Just end now
-do_passes([error|_], St) -> {error,St};
-do_passes([{done,Fun}|_], St) ->
-    %% Print unless binary, in which case end.
-    do_passes([{unless_flag,binary,{listing,Fun}}], St);
+%% do_passes([error|_], St) -> {error,St};
 do_passes([], St) -> {ok,St}.                   %Got to the end, everything ok!
+
+
+%% Add block to keep dialyzer quiet.
+-dialyzer([{nowarn_function,[do_aeva_lint/1]}, no_match]).
 
 %% do_aeva_lint(State) -> {ok,State} | {error,State}.
 %%  Run lint on the parsed contract.

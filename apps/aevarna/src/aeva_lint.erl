@@ -19,7 +19,7 @@
                warnings={}                      %Warnings
               }).
 
-%% contract(Contract, FileName) -> {ok,Warnings} | {error,Errors,Warnings}.
+%% contract(Contract) -> {ok,Warnings} | {error,Errors,Warnings}.
 
 contract(_Form) ->
     {ok,[]}.
