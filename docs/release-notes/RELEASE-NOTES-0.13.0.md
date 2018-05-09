@@ -1,14 +1,12 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on Smart Contracts & State Channels MVPs.
 It:
-* Change the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`). This impacts consensus.
+* Adds channels functionality. This impacts consesus.
+* Changes the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`). This impacts consensus.
 * Enforces contiguous nonces for transactions from the same account. This impacts consensus.
 * Enforces positive transaction fee for all transactions. This impacts consensus.
 * Persists the pending transactions in the DB. This impacts the persisted DB.
-* Add channels functionality. This impacts consesus.
-* Does this. This impacts consensus.
-* Does that.
 * Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
