@@ -46,10 +46,12 @@ get_name_entry(Name, NSTree) ->
         {ok, #{<<"name">>     := Name,
                <<"hash">>     := Hash,
                <<"name_ttl">> := TTL,
+               <<"owner">>    := Owner,
                <<"pointers">> := Pointers}} ->
             {ok, #{<<"name">>     => Name,
                    <<"hash">>     => Hash,
                    <<"name_ttl">> => TTL,
+                   <<"owner">>    => Owner,
                    <<"pointers">> => jsx:encode(Pointers)}};
         {error, _} = E ->
             E
@@ -99,6 +101,7 @@ get_name(Name, NSTree) ->
                             {ok, #{<<"name">>     => Name,
                                    <<"hash">>     => NameHash,
                                    <<"name_ttl">> => aens_names:ttl(N),
+                                   <<"owner">>    => aens_names:owner(N),
                                    <<"pointers">> => aens_names:pointers(N)}}
                     end;
                 none ->
