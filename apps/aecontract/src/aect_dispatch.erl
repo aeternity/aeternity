@@ -101,15 +101,16 @@ call_common(#{ caller     := Caller
              , trees      := Trees
              }, Spec) ->
     <<Address:?PUB_SIZE/unit:8>> = ContractPubKey,
+    <<CallerAddr:?PUB_SIZE/unit:8>> = Caller,
     Exec = maps:get(exec, Spec),
     try aevm_eeevm_state:init(
 	  Spec#{ exec => Exec#{ code       => Code,
                                 address    => Address,
-                                caller     => Caller,
+                                caller     => CallerAddr,
                                 data       => CallData,
                                 gas        => Gas,
                                 gasPrice   => GasPrice,
-                                origin     => Caller,
+                                origin     => CallerAddr,
                                 value      => Value,
                                 call_stack => CallStack
                               }

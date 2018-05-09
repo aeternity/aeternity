@@ -18,6 +18,7 @@
         , state_tree/1
         , sophia_identity/1
         , sophia_state/1
+        , sophia_spend/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -54,7 +55,8 @@ groups() ->
                                  ]}
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
-                                 sophia_state ]}
+                                 sophia_state,
+                                 sophia_spend ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -352,6 +354,26 @@ sophia_state(_Cfg) ->
     <<"middle">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     <<"bottom">> = ?call(call_contract, Acc1, Stack, pop, string, {}),
     error        = ?call(call_contract, Acc1, Stack, pop, string, {}),
+    ok.
+
+sophia_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc1         = ?call(new_account, 1000000),
+    Acc2         = ?call(new_account, 2000000),
+    Ct1          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 10000}),
+    Ct2          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 20000}),
+    10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
+    20000        = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
+    5000         = ?call(call_contract, Acc1, Ct2, spend, word, {Acc2, 15000}),
+    5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
+    10000        = ?call(call_contract, Acc1, Ct1, get_balance, word, {}),
+    5000         = ?call(call_contract, Acc1, Ct2, get_balance, word, {}),
+    2015000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    %% Spend in nested call
+    2021000      = ?call(call_contract, Acc1, Ct2, spend_from, word, {Ct1, Acc2, 6000}),
+    2021000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
+    4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
+    5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
     ok.
 
 %%%===================================================================
