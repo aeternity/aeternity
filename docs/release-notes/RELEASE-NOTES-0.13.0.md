@@ -6,6 +6,7 @@ It:
 * Enforces contiguous nonces for transactions from the same account. This impacts consensus.
 * Enforces positive transaction fee for all transactions. This impacts consensus.
 * Persists the pending transactions in the DB. This impacts the persisted DB.
+* Add channels functionality. This impacts consesus.
 * Does this. This impacts consensus.
 * Does that.
 * Improves the stability of the testnet.

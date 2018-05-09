@@ -16,6 +16,13 @@ The following example configuration assumes that:
 * The listening TCP port on your public IP address is `3015`;
 * The listening TCP port on your node is `3115`.
 
+### Channels
+
+In order to be able to connect to your node as a channel participant you need to have
+a port set up for channels' websocket communication. That would be the TCP port (`websocket` > `channel` > `port` parameter).
+
+Please notice that, if your node is behind a firewall, you need to open a TCP port in your firewall (the one you want to connect to) and map that port to the one the node actually listens on (`websocket` > `channel` > `port` parameter).
+
 ### Keys management
 
 In order for your node to manage the correct account (able to hold tokens on the blockchain), you need to specify in the configuration file the location of your public-private key pair.
@@ -58,6 +65,8 @@ http:
 websocket:
     internal:
         port: 3104
+    channel:
+        port: 3004
 
 mining:
     autostart: true
