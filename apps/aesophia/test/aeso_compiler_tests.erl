@@ -12,17 +12,21 @@
 
 %% simple_compile_test_() -> ok.
 %%  Very simply test compile the given contracts. Only basic checks
-%%  are made on the output, just that it is a binary.
+%%  are made on the output, just that it is a binary which indicates
+%%  that the compilation worked.
 
 simple_compile_test_() ->
     {setup,
      fun () -> ok end,                          %Setup
      fun (_) -> ok end,                         %Cleanup
-     [ {"Testing the " ++ Contract ++ " contract",
+     [ {"Testing the " ++ ContractName ++ " contract",
         fun() ->
-                ?assertMatch(Code when is_binary(Code), aeso_compiler:file(Contract))
+                ContractString = aeso_test_utils:read_contract(ContractName),
+                ?assertMatch(Code when is_binary(Code),
+                                       aeso_compiler:from_string(ContractString, []))
+
         end} ||
-         Contract <- compilable_contracts() ]}.
+         ContractName <- compilable_contracts() ]}.
 
 %% compilable_contracts() -> [ContractName].
 %%  The currently compilable contracts.
