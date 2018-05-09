@@ -107,7 +107,8 @@
 
     naming_spend_to_name/1,
 
-    naming_system_manage_name/1,
+    naming_system_manage/1,
+    naming_system_transfer_name_to_name/1,
     naming_system_broken_txs/1,
 
     list_oracles/1,
@@ -379,7 +380,8 @@ groups() ->
      ]},
      {naming, [sequence], [
        naming_spend_to_name,
-       naming_system_manage_name
+       naming_system_manage,
+       naming_system_transfer_name_to_name
       ]},
      {websocket, [sequence],
       [ws_get_genesis,
@@ -2589,16 +2591,10 @@ naming_pre_claim_claim_update(_Config, Name, PubKey) ->
                 <<"pointers">> := Pointers}} = get_name(Name),
     ok.
 
-naming_system_manage_name(_Config) ->
-    {ok, PubKey} = rpc(aec_keys, pubkey, []),
-
+naming_system_transfer_name(_Config, Name, PubKey) ->
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
-    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 2,
-
-    naming_pre_claim_claim_update(_Config, Name, PubKey),
-
 
     %% Submit name transfer tx and check it is in mempool
     {ok, DecodedPubkey}            = aec_base58c:safe_decode(account_pubkey, PubKeyEnc),
@@ -2609,7 +2605,11 @@ naming_system_manage_name(_Config) ->
 
     %% Mine a block and check mempool empty again
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]).
+
+naming_system_revoke_name(_Config, Name) ->
+    {ok, NHash} = aens:get_name_hash(Name),
+    Fee         = 2,
 
     %% Submit name revoke tx and check it is in mempool
     {ok, 200, _}      = post_name_revoke_tx(NHash, Fee),
@@ -2621,6 +2621,37 @@ naming_system_manage_name(_Config) ->
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_name(Name),
+    ok.
+
+naming_system_manage(_Config) ->
+    {ok, PubKey} = rpc(aec_keys, pubkey, []),
+    Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
+
+    naming_pre_claim_claim_update(_Config, Name, PubKey),
+    naming_system_transfer_name(_Config, Name, PubKey),
+    naming_system_revoke_name(_Config, Name).
+
+naming_system_transfer_name_to_name(_Config) ->
+    Name          = <<"someOtherName.test"/utf8>>,
+    NamePubKey    = random_hash(),
+    NamePubKeyEnc = aec_base58c:encode(account_pubkey, NamePubKey),
+    {ok, NHash}   = aens:get_name_hash(Name),
+    Fee           = 2,
+
+    naming_pre_claim_claim_update(_Config, Name, NamePubKey),
+
+    %% Submit name transfer tx and check it is in mempool
+    {ok, 200, _}                   = post_name_transfer_tx(NHash, Name, Fee),
+    {ok, [TransferTx0]}            = rpc(aec_tx_pool, peek, [infinity]),
+    {name_transfer_tx, TransferTx} = aetx:specialize_type(aetx_sign:tx(TransferTx0)),
+    Name                           = aens_transfer_tx:recipient_account(TransferTx),
+
+    %% Mine a block and check mempool empty again
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    %% Check the name got transfered
+    {ok, 200, #{<<"owner">> := NamePubKeyEnc}} = get_name(Name),
     ok.
 
 naming_system_broken_txs(_Config) ->
