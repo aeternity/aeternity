@@ -441,10 +441,12 @@ handle_request('GetName', Req, _Context) ->
             #{<<"name">>     := Name,
               <<"hash">>     := Hash,
               <<"name_ttl">> := NameTTL,
+              <<"owner">>    := Owner,
               <<"pointers">> := Pointers} = NameEntry,
             {200, [], #{name      => Name,
                         name_hash => aec_base58c:encode(name, Hash),
                         name_ttl  => NameTTL,
+                        owner     => aec_base58c:encode(account_pubkey, Owner),
                         pointers  => Pointers}};
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};
