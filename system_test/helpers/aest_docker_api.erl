@@ -31,8 +31,8 @@
 -define(BASE_URL, <<"http+unix://%2Fvar%2Frun%2Fdocker.sock/">>).
 -define(CONTAINER_STOP_TIMEOUT, 30000).
 -define(CONTAINER_KILL_TIMEOUT_EXTRA, 5000).
--define(DEFAULT_TIMEOUT, 5000).
-%% It seems there is no way to disable the killing timout,
+-define(DEFAULT_TIMEOUT, 20000).
+%% It seems there is no way to disable the killing timeout,
 %% it just default to 10 seconds. So we just set a big one...
 -define(CONTAINER_STOP_INFINTY, 24*60*60).
 
