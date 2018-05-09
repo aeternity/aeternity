@@ -162,7 +162,22 @@ all-tests: eunit test
 docker:
 	@docker build . -t aeternity/epoch:local
 
-smoke-test: system-test-deps docker
+ST_DOCKER_FILTER=--filter label=epoch_system_test=true
+
+docker-clean:
+	$(eval RUNNING=$(shell docker container ls $(ST_DOCKER_FILTER) --format '{{.ID}}'))
+	@if [ -n "$(RUNNING)" ]; then \
+		echo "Stopping containers..."; \
+		docker container stop $(RUNNING); \
+	fi
+	@echo "Deleting containers..."
+	@docker container prune -f $(ST_DOCKER_FILTER)
+	@echo "Deleting images..."
+	@docker image prune -a -f $(ST_DOCKER_FILTER)
+
+smoke-test: system-test-deps docker smoke-test-run
+
+smoke-test-run:
 	@./rebar3 as system_test do ct --dir system_test --logdir system_test/logs --config system_test/cfg --suite=aest_sync_SUITE,aest_commands_SUITE
 
 system-test:
@@ -319,8 +334,8 @@ internal-distclean: $$(KIND)
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps \
 	dialyzer \
-	docker \
-	test smoke-test system-test system-test-deps aevm-test-deps\
+	docker docker-clean \
+	test smoke-test smoke-test-run system-test system-test-deps aevm-test-deps\
 	kill killall \
 	clean distclean \
 	swagger swagger-docs swagger-check \
