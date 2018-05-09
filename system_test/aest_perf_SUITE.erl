@@ -3,6 +3,7 @@
 %=== EXPORTS ===================================================================
 
 % Common Test exports
+-export([suite/0]).
 -export([all/0]).
 -export([groups/0]).
 -export([init_per_suite/1]).
@@ -42,6 +43,8 @@
 }).
 
 %=== COMMON TEST FUNCTIONS =====================================================
+
+suite() -> [{timetrap, {minutes, 90}}].
 
 all() -> [
     {group, long_chain}
