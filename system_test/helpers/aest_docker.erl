@@ -244,6 +244,7 @@ setup_node(Spec, BackendState) ->
         ulimits => [{nofile, 1024, 1024}],
         command => Command,
         env => #{"EPOCH_CONFIG" => ?EPOCH_CONFIG_FILE},
+        labels => #{epoch_system_test => <<"true">>},
         volumes => [
             {rw, KeysDir, ?EPOCH_KEYS_FOLDER},
             {ro, ConfigFilePath, ?EPOCH_CONFIG_FILE},
