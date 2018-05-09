@@ -12,9 +12,14 @@
 -define(DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS, <<"0.0.0.0">>).
 -define(DEFAULT_SWAGGER_INTERNAL_PORT, 8143).
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
+
 -define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
 -define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(INT_ACCEPTORS_POOLSIZE, 10).
+
+-define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
+-define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"0.0.0.0">>).
+-define(CHANNEL_ACCEPTORS_POOLSIZE, 10).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -33,9 +38,12 @@ start(_StartType, _StartArgs) ->
     {ok, _} = ws_task_worker_sup:start_link(),
     ok = start_http_api(),
     ok = start_websocket_internal(),
+    ok = start_channel_websocket(),
     MaxWsHandlers = get_internal_websockets_acceptors(),
     ok = jobs:add_queue(ws_handlers_queue, [{standard_counter, MaxWsHandlers},
                                             {max_size, ws_handlers_queue_max_size()}]),
+    ok = jobs:add_queue(sc_ws_handlers_queue, [{standard_counter, get_channel_websockets_acceptors()},
+                                               {max_size, ws_handlers_queue_max_size()}]),
     gproc:reg({n,l,{epoch, app, aehttp}}),
     {ok, Pid}.
 
@@ -52,7 +60,7 @@ stop(_State) ->
 check_env() ->
     %TODO: we need to validate that all tags are present
     GroupDefaults = #{<<"gossip">>        => true,
-                      <<"name_service">>   => true,
+                      <<"name_service">>  => true,
                       <<"chain">>         => true,
                       <<"transactions">>  => true,
                       <<"node_operator">> => true,
@@ -121,6 +129,23 @@ start_websocket_internal() ->
         ),
     ok.
 
+start_channel_websocket() ->
+    Port = get_channel_websockets_port(),
+    PoolSize = get_channel_websockets_acceptors(),
+    ListenAddress = get_channel_websockets_listen_address(),
+    Dispatch = cowboy_router:compile([
+        {'_', [
+            {"/channel", sc_ws_handler, []}
+        ]}
+    ]),
+    {ok, _} = cowboy:start_clear(channels_socket,
+            [{port, Port},
+             {ip, ListenAddress},
+             {num_acceptors, PoolSize}],
+            #{env => #{dispatch => Dispatch}}
+        ),
+    ok.
+
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
     Config = aeu_env:user_config_or_env(CfgKey, App, EnvKey, Default),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
@@ -161,3 +186,17 @@ get_internal_websockets_acceptors() ->
                                aehttp, [internal, websocket, handlers], ?INT_ACCEPTORS_POOLSIZE).
 
 ws_handlers_queue_max_size() -> 5.
+
+get_channel_websockets_listen_address() ->
+    get_and_parse_ip_address_from_config_or_env([<<"websocket">>, <<"channel">>, <<"listen_address">>],
+                                                aehttp, [channel, websocket,
+                                                         listen_address], ?DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS).
+
+get_channel_websockets_port() ->
+    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"port">>],
+                               aehttp, [channel, websocket, port], ?DEFAULT_CHANNEL_WEBSOCKET_PORT).
+
+get_channel_websockets_acceptors() ->
+    aeu_env:user_config_or_env([<<"websocket">>, <<"channel">>, <<"acceptors">>],
+                               aehttp, [channel, websocket, handlers], ?CHANNEL_ACCEPTORS_POOLSIZE).
+

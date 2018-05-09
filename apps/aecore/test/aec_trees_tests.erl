@@ -7,6 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("common.hrl").
+-include("blocks.hrl").
 
 -define(TEST_MODULE, aec_trees).
 
@@ -45,4 +46,38 @@ ensure_account_at_height_test_() ->
               ?assertEqual({ok, Trees},
                            ?TEST_MODULE:ensure_account_at_height(AccountPubkey, Trees, BlockHeight))
       end}].
+
+signatures_check_test_() ->
+    {setup,
+     fun() ->
+             ok = meck:new(aec_chain, [passthrough]),
+             meck:expect(aec_chain, get_top_state, 0, {ok, aec_trees:new()}),
+             aec_test_utils:aec_keys_setup()
+     end,
+     fun(TmpKeysDir) ->
+             meck:unload(aec_chain),
+             ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
+     end,
+     [ {"Correctly signed transactions are not rejected",
+        fun () ->
+            SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
+            SignedTxs = [SignedCoinbase],
+            {ok, ApprovedTxs, _Trees} =
+                ?TEST_MODULE:apply_signed_txs(SignedTxs, aec_trees:new(), 1,
+                                          ?PROTOCOL_VERSION),
+            ?assertEqual(SignedTxs, ApprovedTxs),
+            ok
+        end}
+     , {"Transactions with broken signatures are rejected",
+        fun () ->
+            {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<0:32/unit:8>>,
+                                                        block_height => 1}),
+            MalformedTxs = [aetx_sign:sign(BadCoinbaseTx, <<0:64/unit:8>>)],
+            {ok, ApprovedTxs, _Trees} =
+                ?TEST_MODULE:apply_signed_txs(MalformedTxs, aec_trees:new(), 1,
+                                          ?PROTOCOL_VERSION),
+            ?assertEqual([], ApprovedTxs),
+            ok
+        end}
+     ]}.
 

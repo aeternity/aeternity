@@ -312,7 +312,8 @@ pool_db_put(Mempool, Key, Tx, Event) ->
     end.
 
 check_signature(Tx, Hash) ->
-    case aetx_sign:verify(Tx) of
+    {ok, Trees} = aec_chain:get_top_state(),
+    case aetx_sign:verify(Tx, Trees) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, Hash]),
             E;
@@ -327,24 +328,27 @@ check_nonce_at_hash(Tx, BlockHash) ->
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
-    Pubkey = aetx:origin(Unsigned),
-    case TxNonce > 0 of
-        false ->
-            {error, illegal_nonce};
-        true ->
-            case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
-                {error, no_state_trees} ->
-                    ok;
-                none ->
-                    ok;
-                {value, Account} ->
-                    case aetx_utils:check_nonce(Account, TxNonce) of
-                        ok -> ok;
-                        {error, account_nonce_too_low} ->
-                            %% This can be ok in the future
+    case aetx:origin(Unsigned) of
+        undefined -> {error, no_origin};
+        Pubkey when is_binary(Pubkey) ->
+            case TxNonce > 0 of
+                false ->
+                    {error, illegal_nonce};
+                true ->
+                    case aec_chain:get_account_at_hash(Pubkey, BlockHash) of
+                        {error, no_state_trees} ->
                             ok;
-                        {error, account_nonce_too_high} = E ->
-                            E
+                        none ->
+                            ok;
+                        {value, Account} ->
+                            case aetx_utils:check_nonce(Account, TxNonce) of
+                                ok -> ok;
+                                {error, account_nonce_too_low} ->
+                                    %% This can be ok in the future
+                                    ok;
+                                {error, account_nonce_too_high} = E ->
+                                    E
+                            end
                     end
             end
     end.

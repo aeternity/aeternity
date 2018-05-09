@@ -108,11 +108,6 @@ new_with_state(LastBlock, Txs, Trees1) ->
     Height = LastBlockHeight + 1,
     Version = protocol_effective_at_height(Height),
 
-    %% We should not have any transactions with invalid signatures for
-    %% creation of block candidate, as only txs with validated signatures should land in mempool.
-    %% Let's hardcode this expectation for now.
-    Txs = aetx_sign:filter_invalid_signatures(Txs),
-
     {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees1, Height, Version),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
@@ -244,9 +239,10 @@ hash_internal_representation(B = #block{}) ->
 
 -spec validate(block()) -> ok | {error, term()}.
 validate(Block) ->
+    % since trees are required for transaction signature validation, this is
+    % performed while applying transactions
     Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1,
-                  fun validate_no_txs_with_invalid_signature/1],
+                  fun validate_txs_hash/1],
     aeu_validation:run(Validators, [Block]).
 
 -spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
@@ -277,15 +273,6 @@ validate_txs_hash(#block{txs = Txs,
             ok;
         _Other ->
             {error, malformed_txs_hash}
-    end.
-
-validate_no_txs_with_invalid_signature(#block{txs = Txs}) ->
-    FilteredTxs = aetx_sign:filter_invalid_signatures(Txs),
-    case FilteredTxs =:= Txs of
-        true ->
-            ok;
-        false ->
-            {error, invalid_transaction_signature}
     end.
 
 cointains_coinbase_tx(#block{txs = []}) ->

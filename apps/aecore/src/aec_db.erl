@@ -58,6 +58,7 @@
 %% MP trees backend
 -export([ find_accounts_node/1
         , find_calls_node/1
+        , find_channels_node/1
         , find_contracts_node/1
         , find_ns_node/1
         , find_ns_cache_node/1
@@ -65,6 +66,7 @@
         , find_oracles_cache_node/1
         , write_accounts_node/2
         , write_calls_node/2
+        , write_channels_node/2
         , write_contracts_node/2
         , write_ns_node/2
         , write_ns_cache_node/2
@@ -88,6 +90,7 @@
 
 -include("common.hrl").
 -include("blocks.hrl").
+-include("aec_db.hrl").
 
 %% - transactions
 %% - headers
@@ -95,26 +98,10 @@
 %% - oracle_state
 %% - oracle_cache
 %% - account_state
+%% - channel_state
 %% - name_service_state
 %% - name_service_cache
 %% - one per state tree
-
--record(aec_blocks             , {key, txs}).
--record(aec_headers            , {key, value, height}).
--record(aec_contract_state     , {key, value}).
--record(aec_call_state         , {key, value}).
--record(aec_chain_state        , {key, value}).
--record(aec_block_state        , {key, value, difficulty, fork_id}).
--record(aec_oracle_cache       , {key, value}).
--record(aec_oracle_state       , {key, value}).
--record(aec_account_state      , {key, value}).
--record(aec_name_service_cache , {key, value}).
--record(aec_name_service_state , {key, value}).
-
--record(aec_signed_tx          , {key, value}).
--record(aec_tx_location        , {key, value}).
--record(aec_tx_pool            , {key, value}).
-
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -139,6 +126,7 @@ tables(Mode) ->
    , ?TAB(aec_oracle_cache)
    , ?TAB(aec_oracle_state)
    , ?TAB(aec_account_state)
+   , ?TAB(aec_channel_state)
    , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
    , ?TAB(aec_signed_tx, [{index, [{acct2tx}, {tx2stx}]}])
@@ -297,6 +285,9 @@ write_accounts_node(Hash, Node) ->
 write_calls_node(Hash, Node) ->
     ?t(mnesia:write(#aec_call_state{key = Hash, value = Node})).
 
+write_channels_node(Hash, Node) ->
+    ?t(mnesia:write(#aec_channel_state{key = Hash, value = Node})).
+
 write_contracts_node(Hash, Node) ->
     ?t(mnesia:write(#aec_contract_state{key = Hash, value = Node})).
 
@@ -371,6 +362,12 @@ find_oracles_cache_node(Hash) ->
 find_calls_node(Hash) ->
     case ?t(mnesia:read(aec_call_state, Hash)) of
         [#aec_call_state{value = Node}] -> {value, Node};
+        [] -> none
+    end.
+
+find_channels_node(Hash) ->
+    case ?t(mnesia:read(aec_channel_state, Hash)) of
+        [#aec_channel_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
@@ -575,10 +572,20 @@ initialize_db(ram) ->
 
 initialize_db(Mode, Storage) ->
     add_backend_plugins(Mode),
+    run_hooks('$aec_db_add_plugins', Mode),
     add_index_plugins(),
+    run_hooks('$aec_db_add_index_plugins', Mode),
     ensure_mnesia_tables(Mode, Storage),
     ok.
 
+run_hooks(Hook, Mode) ->
+    [M:F(Mode) || {_App, {M,F}} <- setup:find_env_vars(Hook)].
+
+fold_hooks(Hook, Acc0) ->
+    lists:foldl(
+      fun({_App, {M,F}}, Acc) ->
+              M:F(Acc)
+      end, Acc0, setup:find_env_vars(Hook)).
 
 add_backend_plugins(disc) ->
     mnesia_rocksdb:register();
@@ -602,6 +609,7 @@ ensure_mnesia_tables(Mode, Storage) ->
         ok ->
             [{atomic,ok} = mnesia:create_table(T, Spec)
              || {T, Spec} <- Tables],
+            run_hooks('$aec_db_create_tables', Mode),
             ok
     end.
 
@@ -620,7 +628,7 @@ check_mnesia_tables([{Table, Spec}|Left], Acc) ->
              end,
     check_mnesia_tables(Left, NewAcc);
 check_mnesia_tables([], Acc) ->
-    Acc.
+    fold_hooks('$aec_db_check_tables', Acc).
 
 ensure_schema_storage_mode(ram) ->
     case disc_db_exists() of

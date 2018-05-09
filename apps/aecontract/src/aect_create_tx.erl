@@ -21,7 +21,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -144,9 +144,9 @@ check(#contract_create_tx{owner = OwnerPubKey, nonce = Nonce,
 accounts(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#contract_create_tx{owner = OwnerPubKey}) ->
-    [OwnerPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#contract_create_tx{owner = OwnerPubKey}, _) ->
+    {ok, [OwnerPubKey]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,

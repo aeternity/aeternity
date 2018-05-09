@@ -43,6 +43,7 @@
     aetx,
     aevm,
     aeoracle,
+    aechannel,
     aecontract,
     aens,
     ranch

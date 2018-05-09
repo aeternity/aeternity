@@ -34,7 +34,7 @@
 -export([check_key_pair/0]).
 
 -ifdef(TEST).
--export([encrypt_key/2, check_sign_keys/2]).
+-export([encrypt_key/2, check_sign_keys/2, sign_privkey/0]).
 -endif.
 
 -define(SERVER, ?MODULE).
@@ -100,6 +100,12 @@ sign(Tx) ->
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
     gen_server:call(?MODULE, pubkey).
+
+-ifdef(TEST).
+-spec sign_privkey() -> {ok, binary()} | {error, key_not_found}.
+sign_privkey() ->
+    gen_server:call(?MODULE, privkey).
+-endif.
 
 -spec peer_pubkey() -> {ok, binary()} | {error, key_not_found}.
 peer_pubkey() ->
@@ -186,20 +192,18 @@ init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
 %%--------------------------------------------------------------------
 handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
-handle_call({sign, Tx}, _From,
-            #state{sign_pub = PubKey, sign_priv=PrivKey} = State) ->
-    Signers = aetx:signers(Tx),
-    case lists:member(PubKey, Signers) of
-        false ->
-            {reply, {error, not_a_signer}, State};
-        true ->
-            SignedTx = aetx_sign:sign(Tx, PrivKey),
-            {reply, {ok, SignedTx}, State}
-    end;
+handle_call({sign, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
+    SignedTx = aetx_sign:sign(Tx, PrivKey),
+    {reply, {ok, SignedTx}, State};
 handle_call(pubkey, _From, #state{sign_pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->
     {reply, {ok, PubKey}, State};
+handle_call(privkey, _From, #state{sign_priv=PrivKey} = State) ->
+    case PrivKey of
+        undefined -> {reply, {error, key_not_found}, State};
+        _         -> {reply, {ok, PrivKey}, State}
+    end;
 handle_call(peer_pubkey, _From, #state{peer_pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(peer_pubkey, _From, #state{peer_pub=PubKey} = State) ->

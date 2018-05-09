@@ -21,7 +21,7 @@
          check/5,
          process/5,
          accounts/1,
-         signers/1,
+         signers/2,
          serialization_template/1,
          serialize/1,
          deserialize/2,
@@ -111,9 +111,9 @@ accounts(#ns_transfer_tx{account = AccountPubKey,
                          recipient_account = RecipientPubKey}) ->
     [AccountPubKey, RecipientPubKey].
 
--spec signers(tx()) -> [pubkey()].
-signers(#ns_transfer_tx{account = AccountPubKey}) ->
-    [AccountPubKey].
+-spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+signers(#ns_transfer_tx{account = AccountPubKey}, _) ->
+    {ok, [AccountPubKey]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_transfer_tx{account           = AccountPubKey,
