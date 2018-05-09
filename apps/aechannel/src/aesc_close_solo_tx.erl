@@ -79,8 +79,7 @@ check(#channel_close_solo_tx{channel_id = ChannelId,
                              payload    = Payload,
                              ttl        = TTL,
                              fee        = Fee,
-                             nonce        = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+                             nonce        = Nonce}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
          fun() -> aetx_utils:check_ttl(TTL, Height) end,

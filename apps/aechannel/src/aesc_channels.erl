@@ -63,7 +63,7 @@
               channel/0,
               serialized/0]).
 
--define(CHANNEL_TYPE, <<"channel">>).
+-define(CHANNEL_TYPE, channel).
 -define(CHANNEL_VSN, 1).
 
 -define(PUB_SIZE, 32).
@@ -87,18 +87,20 @@ deposit(#channel{total_amount = TotalAmount} = Ch, Amount) ->
 
 -spec deserialize(binary()) -> channel().
 deserialize(Bin) ->
-    {ok, List} = msgpack:unpack(Bin),
-    [#{<<"type">>             := ?CHANNEL_TYPE},
-     #{<<"vsn">>              := ?CHANNEL_VSN},
-     #{<<"id">>               := Id},
-     #{<<"initiator">>        := InitiatorPubKey},
-     #{<<"responder">>        := ResponderPubKey},
-     #{<<"total_amount">>     := TotalAmount},
-     #{<<"initiator_amount">> := InitiatorAmount},
-     #{<<"channel_reserve">>  := ChannelReserve},
-     #{<<"round">>            := Round},
-     #{<<"lock_period">>      := LockPeriod},
-     #{<<"closes_at">>        := ClosesAt}] = List,
+    [ {id               , Id}
+    , {initiator        , InitiatorPubKey}
+    , {responder        , ResponderPubKey}
+    , {total_amount     , TotalAmount}
+    , {initiator_amount , InitiatorAmount}
+    , {channel_reserve  , ChannelReserve}
+    , {round            , Round}
+    , {lock_period      , LockPeriod}
+    , {closes_at        , ClosesAt}
+    ] = aec_object_serialization:deserialize(
+          ?CHANNEL_TYPE,
+          ?CHANNEL_VSN,
+          serialization_template(?CHANNEL_VSN),
+          Bin),
     #channel{id               = Id,
              initiator        = InitiatorPubKey,
              responder        = ResponderPubKey,
@@ -151,19 +153,31 @@ peers(#channel{} = Ch) ->
 
 -spec serialize(channel()) -> binary().
 serialize(#channel{} = Ch) ->
-    msgpack:pack([#{<<"type">>             => ?CHANNEL_TYPE},
-                  #{<<"vsn">>              => ?CHANNEL_VSN},
-                  #{<<"id">>               => id(Ch)},
-                  #{<<"initiator">>        => initiator(Ch)},
-                  #{<<"responder">>        => responder(Ch)},
-                  #{<<"total_amount">>     => total_amount(Ch)},
-                  #{<<"initiator_amount">> => initiator_amount(Ch)},
-                  #{<<"channel_reserve">>  => channel_reserve(Ch)},
-                  #{<<"round">>            => round(Ch)},
-                  #{<<"lock_period">>      => lock_period(Ch)},
-                  #{<<"closes_at">>        => closes_at(Ch)}
-                 ]).
+    aec_object_serialization:serialize(
+      ?CHANNEL_TYPE, ?CHANNEL_VSN,
+      serialization_template(?CHANNEL_VSN),
+      [ {id               , id(Ch)}
+      , {initiator        , initiator(Ch)}
+      , {responder        , responder(Ch)}
+      , {total_amount     , total_amount(Ch)}
+      , {initiator_amount , initiator_amount(Ch)}
+      , {channel_reserve  , channel_reserve(Ch)}
+      , {round            , round(Ch)}
+      , {lock_period      , lock_period(Ch)}
+      , {closes_at        , closes_at(Ch)}
+      ]).
 
+serialization_template(?CHANNEL_VSN) ->
+    [ {id               , binary}
+    , {initiator        , binary}
+    , {responder        , binary}
+    , {total_amount     , int}
+    , {initiator_amount , int}
+    , {channel_reserve  , int}
+    , {round            , int}
+    , {lock_period      , int}
+    , {closes_at        , int}
+    ].
 -spec slash(channel(), aesc_offchain_tx:tx(), height()) -> channel().
 slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,

@@ -103,14 +103,14 @@ dec_ch_open(<< ChainHash      :32/binary
              , ResponderAmt   :8 /unit:8
              , ChanReserve    :8 /unit:8
              , InitiatorPubkey:32/binary >>) ->
-    #{chain_hash           => ChainHash
-    , temporary_channel_id => ChanId
-    , lock_period          => LockPeriod
-    , push_amount          => PushAmt
-    , initiator_amount     => InitiatorAmt
-    , responder_amount     => ResponderAmt
-    , channel_reserve      => ChanReserve
-    , initiator            => InitiatorPubkey}.
+    #{ chain_hash           => ChainHash
+     , temporary_channel_id => ChanId
+     , lock_period          => LockPeriod
+     , push_amount          => PushAmt
+     , initiator_amount     => InitiatorAmt
+     , responder_amount     => ResponderAmt
+     , channel_reserve      => ChanReserve
+     , initiator            => InitiatorPubkey}.
 
 
 -type ch_accept_msg() :: #{ chain_hash           := hash()
@@ -146,13 +146,13 @@ dec_ch_accept(<< ChainHash      :32/binary
                , ResponderAmt   :8 /unit:8
                , ChanReserve    :8 /unit:8
                , Responder      :32/binary >>) ->
-    #{chain_hash           => ChainHash
-    , temporary_channel_id => ChanId
-    , minimum_depth        => MinDepth
-    , initiator_amount     => InitiatorAmt
-    , responder_amount     => ResponderAmt
-    , channel_reserve      => ChanReserve
-    , responder            => Responder}.
+    #{ chain_hash           => ChainHash
+     , temporary_channel_id => ChanId
+     , minimum_depth        => MinDepth
+     , initiator_amount     => InitiatorAmt
+     , responder_amount     => ResponderAmt
+     , channel_reserve      => ChanReserve
+     , responder            => Responder}.
 
 
 -type ch_reestabl_msg() :: #{temporary_channel_id := chan_id()}.
@@ -220,8 +220,8 @@ enc_fnd_locked(#{ temporary_channel_id := ChanId
 -spec dec_fnd_locked(binary()) -> fnd_locked_msg().
 dec_fnd_locked(<< ChanId:32/binary
                 , OnChainId:32/binary >>) ->
-    #{temporary_channel_id => ChanId,
-      channel_id           => OnChainId }.
+    #{ temporary_channel_id => ChanId
+     , channel_id           => OnChainId }.
 
 -type update_msg() :: #{ channel_id := chan_id()
                        , data       := binary()}.
