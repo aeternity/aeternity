@@ -58,8 +58,12 @@ sign(Tx, PrivKey) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
+    case lists:any(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
+        true -> erlang:error(invalid_priv_key);
+        false -> pass
+    end,
     Signatures = [ enacl:sign_detached(Bin, PrivKey)
-                   || PrivKey <- PrivKeys, ?VALID_PRIVK(PrivKey)],
+                   || PrivKey <- PrivKeys],
     #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
 
 -spec hash(signed_tx()) -> binary().

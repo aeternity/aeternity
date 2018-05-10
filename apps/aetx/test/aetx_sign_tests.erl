@@ -25,7 +25,7 @@ sign_txs_test_() ->
                {ok, CB} = aec_coinbase_tx:new(#{account => Pubkey,
                                                 block_height => 1}),
                Signed = ?TEST_MODULE:sign(CB, Privkey),
-               ?assertEqual(ok, ?TEST_MODULE:verify(Signed)),
+               ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
       {"Mismatched keys do produce invalid signatures",
@@ -35,7 +35,8 @@ sign_txs_test_() ->
                {ok, CB} = aec_coinbase_tx:new(#{account => PubkeyA,
                                                 block_height => 1}),
                Signed = ?TEST_MODULE:sign(CB, PrivkeyB),
-               ?assertEqual({error, signature_check_failed}, ?TEST_MODULE:verify(Signed)),
+               ?assertEqual({error, signature_check_failed},
+                            ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
       {"Broken pub key does not validate signatures",
@@ -44,7 +45,8 @@ sign_txs_test_() ->
                {ok, CB} = aec_coinbase_tx:new(#{account => <<0:42/unit:8>>,
                                                 block_height => 1}),
                Signed = ?TEST_MODULE:sign(CB, Privkey),
-               ?assertEqual({error, signature_check_failed}, ?TEST_MODULE:verify(Signed)),
+               ?assertEqual({error, signature_check_failed},
+                            ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
       {"Broken priv key does not produce signatures",
@@ -52,9 +54,8 @@ sign_txs_test_() ->
                #{ public := Pubkey, secret := _Privkey } = enacl:sign_keypair(),
                {ok, CB} = aec_coinbase_tx:new(#{account => Pubkey,
                                                 block_height => 1}),
-               Signed = ?TEST_MODULE:sign(CB, <<0:42/unit:8>>),
-               ?assertEqual({error, signature_check_failed}, ?TEST_MODULE:verify(Signed)),
-               ?assertEqual([], ?TEST_MODULE:signatures(Signed)),
+               ?_assertException(error, invalid_priv_key,
+                                 ?TEST_MODULE:sign(CB, <<0:42/unit:8>>)),
                ok
       end}
      ]}.
