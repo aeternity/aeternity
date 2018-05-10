@@ -20,6 +20,7 @@ py/local
 py/man
 py/pip-selfcheck.json
 py/tests/swagger_client
+py/share
 nosetests.xml
 *.pyc
 apps/aecuckoo/c_src

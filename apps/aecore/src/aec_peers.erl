@@ -222,7 +222,7 @@ init(ok) ->
     {ok, PubKey} = aec_keys:peer_pubkey(),
     LocalPeer = #{seckey => SecKey, pubkey => PubKey},
     PMons = ets:new(aec_peer_monitors, [named_table, protected]),
-    lager:info("aec_peers started at ~p", [LocalPeer]),
+    epoch_sync:info("aec_peers started at ~p", [LocalPeer]),
     {ok, #state{ peers = gb_trees:empty(),
                  blocked = gb_trees:empty(),
                  local_peer = LocalPeer,
@@ -287,34 +287,34 @@ handle_call({get_random, N, Exclude}, _From, #state{peers = Peers} = State) ->
 handle_call({connect_fail, PeerId, PeerCon}, _From, State = #state{ peers = Peers }) ->
     case lookup_peer(PeerId, State) of
         none ->
-            lager:info("Got connect_fail from unknown Peer - ~p", [ppp(PeerId)]),
+            epoch_sync:info("Got connect_fail from unknown Peer - ~p", [ppp(PeerId)]),
             {reply, close, State};
         {value, _Key, Peer = #peer{ connection = Con, retries = Rs }} ->
             {Res, NewPeers} =
                 case Con of
                     {connected, PeerCon} ->
-                        lager:debug("Connection to ~p failed - {connected, ~p} -> error",
-                                    [ppp(PeerId), PeerCon]),
+                        epoch_sync:debug("Connection to ~p failed - {connected, ~p} -> error",
+                                         [ppp(PeerId), PeerCon]),
                         Peer1 = Peer#peer{ connection = {error, PeerCon}, retries = 0 },
                         Timeout = backoff_timeout(Peer1),
                         Peer2 = set_retry_timeout(Peer1, Timeout),
                         {keep, enter_peer(Peer2, Peers)};
                     {pending, PeerCon} ->
-                        lager:debug("Connection to ~p failed - {pending, ~p} -> error",
-                                    [ppp(PeerId), PeerCon]),
+                        epoch_sync:debug("Connection to ~p failed - {pending, ~p} -> error",
+                                         [ppp(PeerId), PeerCon]),
                         Peer1 = Peer#peer{ connection = {error, PeerCon}, retries = Rs + 1 },
                         case backoff_timeout(Peer1) of
                             stop ->
-                                lager:info("Connection failed - remove peer: ~p",
-                                           [ppp(PeerId)]),
+                                epoch_sync:info("Connection failed - remove peer: ~p",
+                                                [ppp(PeerId)]),
                                 {close, remove_peer(PeerId, Peers)};
                             Timeout ->
                                 Peer2 = set_retry_timeout(Peer1, Timeout),
                                 {keep, enter_peer(Peer2, Peers)}
                         end;
                     _PeerCon ->
-                        lager:debug("Stale connection to ~p attempt failed - ~p",
-                                    [ppp(PeerId), _PeerCon]),
+                        epoch_sync:debug("Stale connection to ~p attempt failed - ~p",
+                                         [ppp(PeerId), _PeerCon]),
                         {close, Peers}
                 end,
             State1 = State#state{peers = NewPeers},
@@ -324,30 +324,30 @@ handle_call({connect_fail, PeerId, PeerCon}, _From, State = #state{ peers = Peer
 handle_call({connect_peer, PeerId, PeerCon}, _From, State) ->
     case lookup_peer(PeerId, State) of
         none ->
-            lager:info("Got connected_peer from unknown Peer - ~p", [ppp(PeerId)]),
+            epoch_sync:info("Got connected_peer from unknown Peer - ~p", [ppp(PeerId)]),
             {reply, {error, invalid}, State};
         {value, _Key, Peer = #peer{ connection = Con }} ->
             {Res, NewPeer} =
                 case Con of
                     {connected, PeerCon1} when PeerCon1 /= PeerCon->
                         %% Someone beat us to it...
-                        lager:debug("Connection to ~p up - {connected, ~p} - keep using it",
-                                    [ppp(PeerId), PeerCon1]),
+                        epoch_sync:debug("Connection to ~p up - {connected, ~p} - keep using it",
+                                         [ppp(PeerId), PeerCon1]),
                         {{error, already_connected}, Peer};
                     {ConState, PeerCon} ->
-                        lager:debug("Connection to ~p up - {~p, ~p} -> connected",
-                                    [ppp(PeerId), ConState, PeerCon]),
+                        epoch_sync:debug("Connection to ~p up - {~p, ~p} -> connected",
+                                         [ppp(PeerId), ConState, PeerCon]),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }};
                     {ConState, PeerCon1} ->
-                        lager:debug("Connection to ~p up - {~p, ~p} - use ~p",
-                                    [ppp(PeerId), ConState, PeerCon1, PeerCon]),
-                        lager:debug("Closing ~p ", [PeerCon1]),
+                        epoch_sync:debug("Connection to ~p up - {~p, ~p} - use ~p",
+                                         [ppp(PeerId), ConState, PeerCon1, PeerCon]),
+                        epoch_sync:debug("Closing ~p ", [PeerCon1]),
                         aec_peer_connection:stop(PeerCon1),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }}
                 end,
             case Res of
                 ok ->
-                    lager:debug("Will ping peer ~p", [ppp(PeerId)]),
+                    epoch_sync:debug("Will ping peer ~p", [ppp(PeerId)]),
                     aec_sync:schedule_ping(PeerId);
                 {error, _} ->
                     ok
@@ -364,41 +364,41 @@ handle_call({accept_peer, PeerInfo, PeerCon}, _From, State) ->
     PeerId  = peer_id(Peer),
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         true ->
-            lager:debug("Will not add peer ~p", [ppp(PeerId)]),
+            epoch_sync:debug("Will not add peer ~p", [ppp(PeerId)]),
             {reply, {error, blocked}, State};
         false ->
             {Res, NewPeer} =
                 case lookup_peer(PeerId, State) of
                     none ->
-                        lager:debug("New peer from accept ~p", [PeerInfo]),
+                        epoch_sync:debug("New peer from accept ~p", [PeerInfo]),
                         {ok, Peer#peer{ connection = {connected, PeerCon} }};
                     {value, _Key, FoundPeer = #peer{ connection = Con, pubkey = PKey }} ->
                         #{ pubkey := LPKey } = State#state.local_peer,
                         case Con of
                             undefined ->
-                                lager:debug("Peer ~p accepted - undefined - use ~p",
-                                            [ppp(PeerId), PeerCon]),
+                                epoch_sync:debug("Peer ~p accepted - undefined - use ~p",
+                                                 [ppp(PeerId), PeerCon]),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {pending, PeerCon1} ->
-                                lager:debug("Peer ~p accepted - {pending, ~p} - use ~p",
-                                            [ppp(PeerId), PeerCon1, PeerCon]),
+                                epoch_sync:debug("Peer ~p accepted - {pending, ~p} - use ~p",
+                                                 [ppp(PeerId), PeerCon1, PeerCon]),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {error, PeerCon1} ->
-                                lager:debug("Peer ~p accepted - {error, ~p} - use ~p",
-                                            [ppp(PeerId), PeerCon1, PeerCon]),
-                                lager:debug("Closing ~p ", [PeerCon1]),
+                                epoch_sync:debug("Peer ~p accepted - {error, ~p} - use ~p",
+                                                 [ppp(PeerId), PeerCon1, PeerCon]),
+                                epoch_sync:debug("Closing ~p ", [PeerCon1]),
                                 aec_peer_connection:stop(PeerCon1),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }};
                             {connected, PeerCon1} when LPKey > PKey ->
                                 %% We slash the accepted connection and use PeerCon1
-                                lager:debug("Peer ~p accepted - {connected, ~p} when LPK > PK - use ~p",
-                                            [ppp(PeerId), PeerCon1, PeerCon1]),
+                                epoch_sync:debug("Peer ~p accepted - {connected, ~p} when LPK > PK - use ~p",
+                                                 [ppp(PeerId), PeerCon1, PeerCon1]),
                                 {{error, already_connected}, FoundPeer};
                             {connected, PeerCon1} ->
                                 %% Stop using PeerCon1 - use PeerCon
-                                lager:debug("Peer ~p accepted - {connected, ~p} when PK > LPK - use ~p",
-                                            [ppp(PeerId), PeerCon1, PeerCon]),
-                                lager:debug("Closing ~p ", [PeerCon1]),
+                                epoch_sync:debug("Peer ~p accepted - {connected, ~p} when PK > LPK - use ~p",
+                                                 [ppp(PeerId), PeerCon1, PeerCon]),
+                                epoch_sync:debug("Closing ~p ", [PeerCon1]),
                                 aec_peer_connection:stop(PeerCon1),
                                 {ok, FoundPeer#peer{ connection = {connected, PeerCon} }}
                         end
@@ -413,14 +413,14 @@ handle_cast({log_ping, Result, PeerId, _Time}, State) ->
     update_ping_metrics(Result),
     case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("Reported ping event for unknown peer - ~p", [ppp(PeerId)]),
+            epoch_sync:debug("Reported ping event for unknown peer - ~p", [ppp(PeerId)]),
             {noreply, State};
         {value, _Hash, Peer = #peer{ connection = {connected, _PeerCon} }} ->
             %% TODO: if a ping keeps failing we should do something?!
             Peer1 = set_ping_timeout(Peer, ping_interval()),
             {noreply, State#state{ peers = enter_peer(Peer1, State#state.peers) }};
         {value, _Hash, _Peer} ->
-            lager:debug("Log ping event for ~p - no new ping", [ppp(PeerId)]),
+            epoch_sync:debug("Log ping event for ~p - no new ping", [ppp(PeerId)]),
             {noreply, State}
     end;
 
@@ -434,7 +434,7 @@ handle_cast({add, PeerInfo}, State0) ->
             NewPeer =
                 case lookup_peer(PeerId, State0) of
                     none ->
-                        lager:debug("Adding peer ~p", [PeerInfo]),
+                        epoch_sync:debug("Adding peer ~p", [PeerInfo]),
                         case maps:get(ping, PeerInfo, false) of
                             true ->
                                 #{ seckey := SKey, pubkey := PKey } = State0#state.local_peer,
@@ -452,7 +452,7 @@ handle_cast({add, PeerInfo}, State0) ->
             maybe_add_monitor(NewPeer, State1),
             {noreply, metrics(State1)};
         true ->
-            lager:debug("Will not add peer ~p", [ppp(PeerId)]),
+            epoch_sync:debug("Will not add peer ~p", [ppp(PeerId)]),
             {noreply, State0}
     end;
 handle_cast({remove, PeerIdOrInfo}, State = #state{peers = Peers, blocked = Blocked}) ->
@@ -461,7 +461,7 @@ handle_cast({remove, PeerIdOrInfo}, State = #state{peers = Peers, blocked = Bloc
         none -> ok;
         {value, _Key, Peer} -> stop_connection(Peer)
     end,
-    lager:debug("Will remove peer ~p", [ppp(PeerId)]),
+    epoch_sync:debug("Will remove peer ~p", [ppp(PeerId)]),
     NewState = State#state{peers   = remove_peer(PeerId, Peers),
                            blocked = del_blocked(PeerId, Blocked)},
     {noreply, metrics(NewState)}.
@@ -469,7 +469,7 @@ handle_cast({remove, PeerIdOrInfo}, State = #state{peers = Peers, blocked = Bloc
 handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
     case lookup_peer(PeerId, State) of
         none ->
-            lager:debug("timer msg for unknown peer (~p)", [ppp(PeerId)]),
+            epoch_sync:debug("timer msg for unknown peer (~p)", [ppp(PeerId)]),
             {noreply, State};
         {value, _Hash, #peer{timer_tref = Ref} = Peer} when Msg == ping ->
             maybe_ping_peer(PeerId, State),
@@ -482,7 +482,7 @@ handle_info({timeout, Ref, {Msg, PeerId}}, State) ->
                                State#state.peers),
             {noreply, State#state{peers = Peers}};
         {value, _, #peer{}} ->
-            lager:debug("stale ping_peer timer msg (~p) - ignore", [ppp(PeerId)]),
+            epoch_sync:debug("stale ping_peer timer msg (~p) - ignore", [ppp(PeerId)]),
             {noreply, State}
     end;
 handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = State) ->
@@ -492,8 +492,8 @@ handle_info({'DOWN', Ref, process, Pid, _}, #state{peer_monitors = PMons} = Stat
         {value, _, #peer{connection = {_, Pid}}} ->
             %% This was an unexpected process down. Clean it up.
             %% TODO: This should probably be restarted.
-            lager:warning("Peer connection died - removing: ~p : ~p",
-                          [Pid, ppp(PeerId)]),
+            epoch_sync:warning("Peer connection died - removing: ~p : ~p",
+                               [Pid, ppp(PeerId)]),
             Peers = remove_peer(PeerId, State#state.peers),
             {noreply, State#state{peers = Peers}};
         _ ->
@@ -598,19 +598,19 @@ stop_connection(_) ->
 maybe_ping_peer(PeerId, State) ->
     case is_local(PeerId, State) orelse is_blocked(PeerId, State) of
         false ->
-            lager:debug("Will ping peer ~p", [ppp(PeerId)]),
+            epoch_sync:debug("Will ping peer ~p", [ppp(PeerId)]),
             aec_sync:schedule_ping(PeerId);
         true ->
-            lager:debug("Will not ping ~p", [ppp(PeerId)]),
+            epoch_sync:debug("Will not ping ~p", [ppp(PeerId)]),
             ignore
     end.
 
 maybe_retry_peer(P = #peer{ connection = {error, PeerCon} }) ->
-    lager:debug("Will retry peer ~p", [peer_info(P)]),
+    epoch_sync:debug("Will retry peer ~p", [peer_info(P)]),
     aec_peer_connection:retry(PeerCon),
     P#peer{ connection = {pending, PeerCon} };
 maybe_retry_peer(P) ->
-    lager:debug("No need to retry peer ~p", [ppp(peer_id(P))]),
+    epoch_sync:debug("No need to retry peer ~p", [ppp(peer_id(P))]),
     P.
 
 is_local(PeerId1, #state{local_peer = LocalPeer}) ->
@@ -647,7 +647,7 @@ set_ping_timeout(Peer, Timeout) ->
     set_timeout(Peer, Timeout, ping).
 
 set_timeout(Peer = #peer{ timer_tref = Prev }, Timeout, Msg) ->
-    lager:debug("Starting ~p timer for ~p: ~p", [Msg, ppp(peer_id(Peer)), Timeout]),
+    epoch_sync:debug("Starting ~p timer for ~p: ~p", [Msg, ppp(peer_id(Peer)), Timeout]),
     TRef = erlang:start_timer(Timeout, self(), {Msg, peer_id(Peer)}),
     case Prev of
         undefined -> ok;

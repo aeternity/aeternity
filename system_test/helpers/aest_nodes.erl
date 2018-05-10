@@ -480,7 +480,8 @@ validate_logs() ->
     Logs = aest_nodes_mgr:get_log_paths(),
     maps:fold(fun(NodeName, LogPath, Result) ->
         Result1 = check_crash_log(NodeName, LogPath, Result),
-        check_log_for_errors(NodeName, LogPath, Result1)
+        Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Result1),
+        check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Result2)
     end, ok, Logs).
 
 check_crash_log(NodeName, LogPath, Result) ->
@@ -502,8 +503,8 @@ check_crash_log(NodeName, LogPath, Result) ->
             end
     end.
 
-check_log_for_errors(NodeName, LogPath, Result) ->
-    LogFile = binary_to_list(filename:join(LogPath, "epoch.log")),
+check_log_for_errors(NodeName, LogPath, LogName, Result) ->
+    LogFile = binary_to_list(filename:join(LogPath, LogName)),
     case filelib:is_file(LogFile) of
         false -> Result;
         true ->
@@ -511,8 +512,8 @@ check_log_for_errors(NodeName, LogPath, Result) ->
             case os:cmd(Command) of
                 "" -> Result;
                 ErrorLines ->
-                    aest_nodes_mgr:log("Node ~p's logs contains errors:~n~s",
-                                       [NodeName, ErrorLines]),
+                    aest_nodes_mgr:log("Node ~p's log ~p contains errors:~n~s",
+                                       [NodeName, LogName, ErrorLines]),
                     {error, log_has_errors}
             end
     end.
