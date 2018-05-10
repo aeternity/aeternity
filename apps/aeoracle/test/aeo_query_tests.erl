@@ -36,12 +36,14 @@ basic_test_() ->
     ].
 
 basic_serialize() ->
-    O = new(query_tx(), 1),
+    QTx = query_tx(),
+    O = aeo_query:new(query_tx(), aeo_query_tx:oracle(QTx), 1),
     ?assertEqual(O, deserialize(serialize(O))),
     ok.
 
 basic_getters() ->
-    I = new(query_tx(), 1),
+    QTx = query_tx(),
+    I = aeo_query:new(query_tx(), aeo_query_tx:oracle(QTx), 1),
     ?assert(is_integer(expires(I))),
     ?assert(is_integer(fee(I))),
     ?assert(is_binary(id(I))),
@@ -53,7 +55,8 @@ basic_getters() ->
     ok.
 
 basic_setters() ->
-    I = aeo_query:new(query_tx(), 1),
+    QTx = query_tx(),
+    I = aeo_query:new(query_tx(), aeo_query_tx:oracle(QTx), 1),
     ?assertError({illegal, _, _}, set_expires(foo, I)),
     _ = set_expires(100, I),
     ?assertError({illegal, _, _}, set_fee(foo, I)),

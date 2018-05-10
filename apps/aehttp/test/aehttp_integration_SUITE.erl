@@ -42,6 +42,7 @@
     % non signed txs
     contract_transactions/1,
     oracle_transactions/1,
+    oracle_query_name_resolve_oracle_id/1,
     nameservice_transactions/1,
     spend_transaction/1,
     state_channels_onchain_transactions/1,
@@ -248,6 +249,7 @@ groups() ->
         % non signed txs
         contract_transactions,
         oracle_transactions,
+        oracle_query_name_resolve_oracle_id,
         nameservice_transactions,
         spend_transaction,
         state_channels_onchain_transactions,
@@ -783,6 +785,9 @@ contract_transactions(_Config) ->
     ok.
 
 oracle_transactions(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
@@ -930,6 +935,104 @@ oracle_transactions(_Config) ->
         get_oracle_query(maps:put(response_ttl, #{type => <<"block">>,
                                                   value => 2}, QueryEncoded)),
     ok.
+
+
+oracle_query_name_resolve_oracle_id(_Config) ->
+    ok = rpc(aec_conductor, reinit_chain, []),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+
+    Name = <<"oracleIdResolvement.test"/utf8>>,
+    naming_pre_claim_claim_update(_Config, Name, MinerPubkey),
+
+    % oracle_register_tx positive test
+    RegEncoded = #{account => MinerAddress,
+                   query_format => <<"something other">>,
+                   response_format => <<"something other else">>,
+                   query_fee => 1,
+                   fee => 6,
+                   ttl => #{type => <<"block">>, value => 2000}},
+    RegDecoded = maps:merge(RegEncoded,
+        #{account => MinerPubkey,
+          query_spec => <<"something other">>,
+          response_spec => <<"something other else">>,
+          ttl => {block, 2000}}),
+    unsigned_tx_positive_test(RegDecoded, RegEncoded,
+        fun get_oracle_register/1,
+        fun aeo_register_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for oracle_extend_tx and
+    % oracle_query_tx we first need an actual Oracle on the chain
+
+    {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(RegEncoded),
+    sign_and_post_tx(MinerAddress, RegisterTx),
+
+    % mine blocks to include it
+    ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    % oracle_extend_tx positive test
+    ExtEncoded = #{oracle => Name,
+                   fee => 2,
+                   ttl => #{type => <<"delta">>, value => 500}},
+    ExtDecoded = maps:merge(ExtEncoded,
+        #{oracle => Name,
+          ttl => {delta, 500}}),
+    unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
+        fun get_oracle_extend/1,
+        fun aeo_extend_tx:new/1, MinerPubkey),
+
+    % oracle_query_tx positive test
+    QueryEncoded = #{sender => MinerAddress,
+                     oracle_pubkey => Name,
+                     query => <<"Hejsan Svejsan Other">>,
+                     query_fee => 2,
+                     fee => 30,
+                     query_ttl => #{type => <<"block">>, value => 200},
+                     response_ttl => #{type => <<"delta">>, value => 200}},
+    QueryDecoded = maps:merge(QueryEncoded,
+        #{sender => MinerPubkey,
+          oracle => Name,
+          query_ttl => {block, 200},
+          response_ttl => {delta, 200}}),
+    unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
+        fun get_oracle_query/1,
+        fun aeo_query_tx:new/1, MinerPubkey),
+
+    % in order to test a positive case for oracle_response_tx we first need an
+    % actual Oracle query on the chain
+
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, QueryNonce} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+    ct:log("Nonce is ~p", [QueryNonce]),
+    QueryId = aeo_query:id(MinerPubkey, QueryNonce, MinerPubkey),
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(QueryEncoded),
+    sign_and_post_tx(MinerAddress, QueryTx),
+
+    % mine blocks to include it
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+
+    ResponseEncoded = #{oracle => MinerAddress,
+                        query_id => aec_base58c:encode(oracle_query_id, QueryId),
+                        response => <<"Hejsan">>,
+                        fee => 3},
+    ResponseDecoded = maps:merge(ResponseEncoded, #{oracle => MinerPubkey, query_id => QueryId}),
+    unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
+        fun get_oracle_response/1,
+        fun aeo_response_tx:new/1, MinerPubkey),
+    {ok, 200, #{<<"tx">> := ResponseTx}} = get_oracle_response(ResponseEncoded),
+    sign_and_post_tx(MinerAddress, ResponseTx),
+
+    % mine a block to include it
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    ok.
+
 
 %% tests the following
 %% GET preclaim_tx unsigned transaction
@@ -2518,14 +2621,15 @@ naming_spend_to_name(_Config) ->
     ok.
 
 naming_pre_claim_claim_update(_Config, Name, PubKey) ->
-    PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
-    NameSalt    = 12345,
-    NameTTL     = 60000,
-    Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
-    TTL         = 10,
-    {ok, NHash} = aens:get_name_hash(Name),
-    Fee         = 2,
-    MineReward  = rpc(aec_governance, block_mine_reward, []),
+    PubKeyEnc       = aec_base58c:encode(account_pubkey, PubKey),
+    PubKeyEncOracle = aec_base58c:encode(oracle_pubkey, PubKey),
+    NameSalt        = 12345,
+    NameTTL         = 60000,
+    Pointers        = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\",\"oracle_pubkey\":\"", PubKeyEncOracle/binary, "\"}">>,
+    TTL             = 10,
+    {ok, NHash}     = aens:get_name_hash(Name),
+    Fee             = 2,
+    MineReward      = rpc(aec_governance, block_mine_reward, []),
 
     %% Mine 10 blocks to get some funds
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
