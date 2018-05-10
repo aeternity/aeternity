@@ -34,6 +34,8 @@ apps/aeutils/src/endpoints.erl
 apps/aecore/c_src/*.[1-9][0-9]o
 apps/aecore/c_src/cuckoo
 apps/aecore/priv
+apps/aevarna/src/aeva_parse.erl
+apps/aevarna/src/aeva_scan.erl
 aevm_external
 apps/aebytecode/src/aeb_asm_scan.erl
 apps/*/doc/*.html

@@ -740,7 +740,7 @@ handle_new_block(S, Msg) ->
         {ok, Block} = aec_blocks:deserialize_from_binary(maps:get(block, Msg)),
         Header = aec_blocks:to_header(Block),
         {ok, HH} = aec_headers:hash_header(Header),
-        lager:debug("Got new block: ~s", [pp(HH)]),
+        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
         aec_conductor:post_block(Block)
     catch _:_ ->
         ok
