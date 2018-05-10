@@ -8,7 +8,8 @@
 -module(aeo_query).
 
 %% API
--export([ deserialize/1
+-export([ add_response/3
+        , deserialize/1
         , expires/1
         , fee/1
         , id/1
@@ -104,6 +105,12 @@ id(SenderAddress, Nonce, OracleAddress) ->
 %% @doc An query is closed if it is already answered.
 is_closed(#query{response = undefined}) -> false;
 is_closed(#query{}) -> true.
+
+-spec add_response(height(), oracle_response(), query()) -> query().
+add_response(Height, Response, Q = #query{ response_ttl = RTTL }) ->
+    NewExpires =  aeo_utils:ttl_expiry(Height, RTTL),
+    Q#query{ response = assert_field(response, Response)
+           , expires  = NewExpires }.
 
 -spec serialize(query()) -> binary().
 serialize(#query{} = I) ->
