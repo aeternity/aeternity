@@ -108,7 +108,6 @@ handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxO
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, key_not_found} ->
                     {404, [], #{reason => <<"Keys not configured">>}}
-
             end;
         {error, _} ->
             {404, [], #{reason => <<"Invalid Query Id">>}}
