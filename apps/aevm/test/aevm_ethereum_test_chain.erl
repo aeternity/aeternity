@@ -21,14 +21,16 @@
 
 -include_lib("apps/aecore/include/common.hrl").
 
+-define(MASK160, ((1 bsl 160) -1)).
+
 -type chain_state() :: map().
 
 -spec new_state(map()) -> chain_state().
 new_state(State) -> State.
 
 -spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
-get_balance(A, #{ pre := Chain} =_S) ->
-    Account = maps:get(A, Chain, #{}),
+get_balance(<<A:256>>, #{ pre := Chain} =_S) ->
+    Account = maps:get(A band ?MASK160, Chain, #{}),
     Balance = maps:get(balance, Account, 0),
     Balance.
 
