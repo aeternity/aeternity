@@ -16,7 +16,8 @@
         , prune_oracle/1
         , prune_oracle_extend/1
         , prune_query/1
-        , prune_response/1
+        , prune_response_short/1
+        , prune_response_long/1
         , query_oracle/1
         , query_oracle_negative/1
         , query_response/1
@@ -55,18 +56,20 @@ groups() ->
     , {state_tree, [ prune_oracle
                    , prune_oracle_extend
                    , prune_query
-                   , prune_response
+                   , prune_response_short
+                   , prune_response_long
                    ]}
     ].
 
 %%%===================================================================
 %%% Register oracle
 %%%===================================================================
+-define(ORACLE_REG_HEIGHT, 1).
 
 register_oracle_negative(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
     Trees        = aeo_test_utils:trees(S1),
-    CurrHeight   = 1,
+    CurrHeight   = ?ORACLE_REG_HEIGHT,
 
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
@@ -92,13 +95,13 @@ register_oracle_negative(_Cfg) ->
 
 register_oracle(_Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
-    Tx           = aeo_test_utils:register_tx(PubKey, #{ ttl => {delta, 100} }, S1),
+    Tx           = aeo_test_utils:register_tx(PubKey, S1),
     PrivKey      = aeo_test_utils:priv_key(PubKey, S1),
 
     %% Test that RegisterTX is accepted
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
-    Height   = 1,
+    Height   = ?ORACLE_REG_HEIGHT,
     {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
@@ -106,11 +109,11 @@ register_oracle(_Cfg) ->
 %%%===================================================================
 %%% Extend oracle
 %%%===================================================================
-
+-define(ORACLE_EXT_HEIGHT, 3).
 extend_oracle_negative(Cfg) ->
     {PubKey, S1} = aeo_test_utils:setup_new_account(aeo_test_utils:new_state()),
     Trees        = aeo_test_utils:trees(S1),
-    CurrHeight   = 1,
+    CurrHeight   = ?ORACLE_REG_HEIGHT,
 
     %% Test registering a bogus account
     BadPubKey = <<42:32/unit:8>>,
@@ -125,7 +128,7 @@ extend_oracle_negative(Cfg) ->
     %% Register the oracle
     {OracleKey, S2} = register_oracle(Cfg),
     Trees2          = aeo_test_utils:trees(S2),
-    CurrHeight2     = 3,
+    CurrHeight2     = ?ORACLE_EXT_HEIGHT,
 
     %% Insufficient funds
     S3     = aeo_test_utils:set_account_balance(OracleKey, 0, S2),
@@ -151,10 +154,10 @@ extend_oracle(Cfg) ->
     OTrees         = aec_trees:oracles(Trees),
     Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
     Expires0       = aeo_oracles:expires(Oracle),
-    CurrHeight     = 3,
+    CurrHeight     = ?ORACLE_EXT_HEIGHT,
 
     %% Test that ExtendTX is accepted
-    Tx       = aeo_test_utils:extend_tx(OracleKey, #{ ttl => {delta, 50} }, S),
+    Tx       = aeo_test_utils:extend_tx(OracleKey, S),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S1       = aeo_test_utils:set_trees(Trees1, S),
@@ -163,19 +166,19 @@ extend_oracle(Cfg) ->
     Oracle1  = aeo_state_tree:get_oracle(OracleKey, OTrees1),
     Expires1 = aeo_oracles:expires(Oracle1),
     ct:pal("Expires0 = ~p\nExpires1 = ~p\n", [Expires0, Expires1]),
-    true = (Expires0 + 50) == Expires1,
+    true = (Expires0 + maps:get(extend, aeo_test_utils:ttl_defaults())) == Expires1,
 
     {OracleKey, Expires0, Expires1, S1}.
 
 %%%===================================================================
 %%% Query oracle
 %%%===================================================================
-
+-define(ORACLE_QUERY_HEIGHT, 3).
 query_oracle_negative(Cfg) ->
     {OracleKey, S}  = register_oracle(Cfg),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S),
     Trees           = aeo_test_utils:trees(S2),
-    CurrHeight      = 3,
+    CurrHeight      = ?ORACLE_QUERY_HEIGHT,
 
     %% Test bad sender key
     BadSenderKey = <<42:32/unit:8>>,
@@ -202,22 +205,25 @@ query_oracle_negative(Cfg) ->
     {error, oracle_does_not_exist} = aetx:check(Q5, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long query ttl
-    Q6 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ query_ttl => {block, 200} }, S2),
+    Q6 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ query_ttl => {block, 500} }, S2),
     {error, too_long_ttl} = aetx:check(Q6, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too long response ttl
-    Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 50} }, S2),
+    Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 500} }, S2),
     {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 query_oracle(Cfg) ->
+    query_oracle(Cfg, #{}).
+
+query_oracle(Cfg, Opts) ->
     {OracleKey, S1} = register_oracle(Cfg),
     {SenderKey, S2} = aeo_test_utils:setup_new_account(S1),
     Trees           = aeo_test_utils:trees(S2),
-    CurrHeight      = 3,
+    CurrHeight      = ?ORACLE_QUERY_HEIGHT,
     PrivKey         = aeo_test_utils:priv_key(SenderKey, S2),
 
-    Q1 = aeo_test_utils:query_tx(SenderKey, OracleKey, S2),
+    Q1 = aeo_test_utils:query_tx(SenderKey, OracleKey, Opts, S2),
     %% Test that QueryTX is accepted
     SignedTx = aetx_sign:sign(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
@@ -230,11 +236,11 @@ query_oracle(Cfg) ->
 %%%===================================================================
 %%% Query resoponse
 %%%===================================================================
-
+-define(ORACLE_RSP_HEIGHT, 5).
 query_response_negative(Cfg) ->
     {OracleKey, ID, S1}  = query_oracle(Cfg),
     Trees                = aeo_test_utils:trees(S1),
-    CurrHeight           = 5,
+    CurrHeight           = ?ORACLE_RSP_HEIGHT,
 
     %% Test bad oracle key
     BadOracleKey = <<42:32/unit:8>>,
@@ -260,9 +266,12 @@ query_response_negative(Cfg) ->
     ok.
 
 query_response(Cfg) ->
-    {OracleKey, ID, S1} = query_oracle(Cfg),
+    query_response(Cfg, #{}).
+
+query_response(Cfg, QueryOpts) ->
+    {OracleKey, ID, S1} = query_oracle(Cfg, QueryOpts),
     Trees               = aeo_test_utils:trees(S1),
-    CurrHeight          = 5,
+    CurrHeight          = ?ORACLE_RSP_HEIGHT,
 
     %% Test that ResponseTX is accepted
     RTx      = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, S1),
@@ -287,7 +296,7 @@ prune_oracle(Cfg) ->
     Trees          = aeo_test_utils:trees(S),
     OTrees         = aec_trees:oracles(Trees),
     Oracle         = aeo_state_tree:get_oracle(OracleKey, OTrees),
-    Expires        = aeo_oracles:expires(Oracle),
+    Expires        = ?ORACLE_REG_HEIGHT + maps:get(oracle, aeo_test_utils:ttl_defaults()),
 
     %% Test that the oracle is pruned
     Gone  = prune_from_until(0, Expires + 1, Trees),
@@ -323,7 +332,7 @@ prune_query(Cfg) ->
     Trees              = aeo_test_utils:trees(S),
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires            = aeo_query:expires(OIO),
+    Expires            = ?ORACLE_QUERY_HEIGHT + maps:get(query, aeo_test_utils:ttl_defaults()),
     SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
@@ -341,12 +350,18 @@ prune_query(Cfg) ->
     ID    = aeo_query:id(OIO2),
     ok.
 
-prune_response(Cfg) ->
-    {OracleKey, ID, S} = query_response(Cfg),
+prune_response_short(Cfg) ->
+    prune_response(Cfg, #{ query_ttl => {delta, 50}, response_ttl => {delta, 25} }).
+
+prune_response_long(Cfg) ->
+    prune_response(Cfg, #{ query_ttl => {delta, 50}, response_ttl => {delta, 75} }).
+
+prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
+    {OracleKey, ID, S} = query_response(Cfg, QueryOpts),
     Trees              = aeo_test_utils:trees(S),
     OTrees             = aec_trees:oracles(Trees),
     OIO                = aeo_state_tree:get_query(OracleKey, ID, OTrees),
-    Expires            = aeo_query:expires(OIO),
+    Expires            = ?ORACLE_RSP_HEIGHT + RTTL,
     SenderKey          = aeo_query:sender_address(OIO),
 
     %% Test that the query is pruned
