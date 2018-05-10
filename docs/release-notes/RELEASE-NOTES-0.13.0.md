@@ -8,8 +8,8 @@ It:
 * Enforces positive transaction fee for all transactions. This impacts consensus.
 * Persists the pending transactions in the DB. This impacts the persisted DB.
 * Improves the stability of the testnet.
-* Add much functionallity to smart contracts which impacting consensus. The updates includes:
-  * Storing and retriveing the state of a smart contract (in a MPT).
+* Add much functionality to smart contracts which impacting consensus. The updates includes:
+  * Storing and retrieving the state of a smart contract (in a MPT).
   * Storing calls and return values in a separate MPT for one block.
   * Handle state in Sophia.
 * Adds a first version of the Varna syntax and a compiler for that syntax.
