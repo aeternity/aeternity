@@ -8,10 +8,10 @@ It:
 * Enforces positive transaction fee for all transactions. This impacts consensus.
 * Persists the pending transactions in the DB. This impacts the persisted DB.
 * Improves the stability of the testnet.
-* Add much functionality to smart contracts which impacting consensus. The updates includes:
+* Adds functionality to smart contracts that allows for executing of non-trivial Solidity and Sophia smart contracts (impacts consensus):
   * Storing and retrieving the state of a smart contract (in a MPT).
   * Storing calls and return values in a separate MPT for one block.
-  * Handle state in Sophia.
+  * Handling state in Sophia.
 * Adds a first version of the Varna syntax and a compiler for that syntax.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
