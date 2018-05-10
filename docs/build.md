@@ -61,10 +61,10 @@ Epoch source code can be obtained by cloning the public [GitHub repository](http
 git clone https://github.com/aeternity/epoch.git epoch && cd epoch
 ```
 
-Then checkout the version to be build, e.g. `v0.12.0`:
+Then checkout the version to be build, e.g. `v0.13.0`:
 
 ```bash
-git checkout tags/v0.12.0
+git checkout tags/v0.13.0
 ```
 
 ### Production build
@@ -90,13 +90,13 @@ Alternatively a production package similar to what is distributed via [GitHub re
 make prod-package
 ```
 
-Once the packaging is done, assuming the built version is `v0.12.0`, the package is created as `_build/prod/rel/epoch/epoch-0.12.0.tar.gz`.
+Once the packaging is done, assuming the built version is `v0.13.0`, the package is created as `_build/prod/rel/epoch/epoch-0.13.0.tar.gz`.
 
 To deploy the package for example in `/tmp/node` one should just unarchive it to that directory:
 
 ```bash
 mkdir /tmp/node
-tar xf _build/prod/rel/epoch/epoch-0.12.0.tar.gz -C /tmp/node
+tar xf _build/prod/rel/epoch/epoch-0.13.0.tar.gz -C /tmp/node
 ```
 
 Then start the node:

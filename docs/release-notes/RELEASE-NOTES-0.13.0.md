@@ -1,15 +1,18 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This release][this-release] is focused on Smart Contracts & State Channels MVPs.
 It:
-* Change the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`). This impacts consensus.
+* Adds channels functionality. This impacts consesus.
+* Changes the cryptographic signing to use Curve25519. This means all old node/signing keys are not useable anymore (`key/key.pub` is replaced by `sign_key/sign_key.pub`). This impacts consensus.
 * Enforces contiguous nonces for transactions from the same account. This impacts consensus.
 * Enforces positive transaction fee for all transactions. This impacts consensus.
 * Persists the pending transactions in the DB. This impacts the persisted DB.
-* Add channels functionality. This impacts consesus.
-* Does this. This impacts consensus.
-* Does that.
 * Improves the stability of the testnet.
+* Adds functionality to smart contracts that allows for executing of non-trivial Solidity and Sophia smart contracts (impacts consensus):
+  * Storing and retrieving the state of a smart contract (in a MPT).
+  * Storing calls and return values in a separate MPT for one block.
+  * Handling state in Sophia.
+* Adds a first version of the Varna syntax and a compiler for that syntax.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.13.0
 
