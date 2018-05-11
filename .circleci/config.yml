@@ -10,6 +10,14 @@ references:
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aeternity/epoch
 
+
+  machine_config: &machine_config
+    machine: true
+    working_directory: ~/epoch
+    environment:
+      DOCKER_CLIENT_VERSION: "17.09.0-ce"
+      DOCKERHUB_REPO: aetrnty/epoch
+
   setup_remote_docker: &setup_remote_docker
     setup_remote_docker:
       docker_layer_caching: true
@@ -23,6 +31,8 @@ references:
           https://download.docker.com/linux/static/stable/x86_64/docker-${DOCKER_CLIENT_VERSION:?}.tgz
         tar -xz -C /tmp -f /tmp/docker-${DOCKER_CLIENT_VERSION:?}.tgz
         mkdir ~/bin && mv /tmp/docker/docker ~/bin
+        curl -L https://github.com/docker/compose/releases/download/1.19.0/docker-compose-`uname -s`-`uname -m` -o docker-compose
+        chmod +x docker-compose
 
   rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
   restore_rebar_cache: &restore_rebar_cache
@@ -320,15 +330,17 @@ jobs:
       - *fail_notification
 
   docker_image_build:
-    <<: *container_config
+    <<: *machine_config
     steps:
       - checkout
-      - *setup_remote_docker
-      - *install_docker_client
       - run:
-          name: Build Docker image
+          name: Build image and smoke test the nodes
           command: |
-            ~/bin/docker build .
+            docker-compose build node1
+            docker-compose up -d
+            sleep 10
+            curl -f -w "\n" localhost:300{1,2,3}/v2/top
+            docker-compose down -v
 
   docker_push_tag:
     <<: *container_config
@@ -443,7 +455,6 @@ workflows:
               ignore:
                 - env/dev1
                 - env/dev2
-                - master
 
       - deploy_api_docs:
           requires:
