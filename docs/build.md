@@ -95,7 +95,7 @@ Alternatively a production package similar to what is distributed via [GitHub re
 make prod-package
 ```
 
-Once the packaging is done, assuming the built version is `${VERSION:?}`, the package is created as `_build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz`.
+Once the packaging is done, the package is created in the `_build/prod/rel/epoch/` directory, e.g. `_build/prod/rel/epoch/epoch-${VERSION:?}.tar.gz`.
 
 To deploy the package for example in `/tmp/node` one should just unarchive it to that directory:
 
