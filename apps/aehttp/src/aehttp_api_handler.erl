@@ -54,7 +54,7 @@ handle_request_json(Req0, State = #state{
             Req = cowboy_req:reply(Code, to_headers(Headers), jsx:encode(Body), Req1),
             {stop, Req, State};
         {error, Reason, Req1} ->
-            error_logger:error_msg("Unable to process params for ~p: ~p", [OperationId, Reason]),
+            error_logger:warning_msg("Unable to process params for ~p: ~p", [OperationId, Reason]),
             Body = jsx:encode(to_error(Reason)),
             Req = cowboy_req:reply(400, #{}, Body, Req1),
             {stop, Req, State}
