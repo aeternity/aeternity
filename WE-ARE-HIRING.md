@@ -6,6 +6,6 @@ You should be able to explain how Bitcoin works and how it's different from Ethe
 
 We are in a rush to deliver cutting-edge blockchain software so you should be able to hit the ground running and start contributing. No on-the-job training is provided! 
 
-Please contact Joel Reymont at joel@aeternity.com for more information.
+Please contact Emin Mahrt at emin@aeternity.com for more information.
 
 Principals only. No recruiters, agencies or third parties.
