@@ -121,6 +121,8 @@ adjust_sinks(L) ->
                   {K, set_sink_level(L, Opts)};
              ({epoch_pow_cuckoo_lager_event = K, Opts}) ->
                   {K, set_sink_level(L, Opts)};
+             ({epoch_sync_lager_event = K, Opts}) ->
+                  {K, set_sink_level(L, Opts)};
              (X) ->
                   X
           end, Sinks),
@@ -147,6 +149,9 @@ live_set_level(L) ->
                        undefined, L),
     lager:set_loglevel(epoch_pow_cuckoo_lager_event,
                        {lager_file_backend, "log/epoch_pow_cuckoo.log"},
+                       undefined, L),
+    lager:set_loglevel(epoch_sync_lager_event,
+                       {lager_file_backend, "log/epoch_sync.log"},
                        undefined, L).
 
 levels() ->
