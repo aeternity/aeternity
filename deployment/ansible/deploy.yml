@@ -170,14 +170,23 @@
         when: genesis_accounts is defined
         tags: [config]
 
+      # Workaround to deploy peer keys even with --limits that does not include seed groups
+      # Also workarounds an issue with hostname/IP of inventory items, as the keys are bound to IP
+      - name: Check if peer keys directory exists
+        local_action: stat path=files/peer_keys/{{ public_ip }}
+        register: stat_peer_dir
+        tags: [config, peer_keys]
+
       - name: "Copy node peer keys to {{ project_root }}/{{ config.keypair.dir }}"
         copy:
           src: "{{ item }}"
           dest: "{{ project_root }}/{{ config.keypair.dir }}"
           mode: 0600
-        with_items: "{{ peer_keypairs }}"
-        when: peer_keypairs is defined
-        tags: [config]
+        with_items:
+          - "files/peer_keys/{{ public_ip }}/peer_key"
+          - "files/peer_keys/{{ public_ip }}/peer_key.pub"
+        when: stat_peer_dir.stat.exists
+        tags: [config, peer_keys]
 
       - name: Start epoch daemon
         command: "{{ project_root }}/bin/epoch start"
