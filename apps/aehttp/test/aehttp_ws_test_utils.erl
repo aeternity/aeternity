@@ -5,6 +5,7 @@
 -export([start_link/2,
          start_link_channel/4,
          start_channel/4,
+         set_role/2,
          send/3, send/4, send/5,
          send_tagged/4,
          register_test_for_event/3,
@@ -33,6 +34,10 @@
 
 -define(CHANNEL, channel).
 
+-record(state, {role :: atom() | undefined,
+                regs:: map() | undefined
+               }).
+
 start_link(Host, Port) ->
     WsAddress = "ws://" ++ Host ++ ":" ++ integer_to_list(Port) ++ "/websocket",
     ct:log("connecting to ~p", [WsAddress]),
@@ -51,7 +56,12 @@ start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
     WsAddress = make_channel_connect_address(Host, Port, Role, Opts),
     ct:log("connecting to Channel ~p as ~p", [WsAddress, Role]),
     {ok, Pid} = websocket_client:start(WsAddress, ?MODULE, self()),
-    wait_for_connect(Pid).
+    case wait_for_connect(Pid) of
+        {ok, Pid} = Res ->
+            set_role(Pid, RoleA),
+            Res;
+        {error, _} = Err -> Err
+    end.
 
 
 make_channel_connect_address(Host, Port, Role, Opts0) ->
@@ -77,6 +87,9 @@ wait_for_connect(Pid) ->
                 _ -> {error, still_connecting, Pid}
             end
     end.
+
+set_role(ConnPid, Role) when is_atom(Role) ->
+    ConnPid ! {set_role, Role}.
 
 stop(ConnPid) ->
     ok = websocket_client:stop(ConnPid).
@@ -104,8 +117,7 @@ send_(ConnPid, Target, Action, Payload, Msg0) ->
             true  -> Msg1;
             false -> maps:put(payload, Payload, Msg1)
         end,
-    ct:log("Sending to server ~p", [Msg]),
-    websocket_client:cast(ConnPid, {text, jsx:encode(Msg)}),
+    ConnPid ! {send_to_client, jsx:encode(Msg)},
     ok.
 
 %% when an WS event occours, the registered process will receive a message in
@@ -202,34 +214,39 @@ inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
 
 init(WaitingPid) ->
     Regs = put_registration(WaitingPid, waiting_connected, #{}),
-    {once, Regs}.
+    {once, #state{regs = Regs}}.
 
-onconnect(_WSReq, Regs) ->
+onconnect(_WSReq, State) ->
     ct:log("Ws connected"),
     self() ! ping,
-    {ok, Regs}.
+    {ok, State}.
 
 
-ondisconnect({error, {400, <<"Bad Request">>}}, Regs) ->
-    {close, normal, Regs};
-ondisconnect({remote, closed}, Regs) ->
+ondisconnect({error, {400, <<"Bad Request">>}}, State) ->
+    {close, normal, State};
+ondisconnect({remote, closed}, State) ->
     ct:log("Connection closed, closing"),
-    {close, normal, Regs}.
+    {close, normal, State}.
 
-websocket_handle({pong, Nonce}, _ConnState, Regs) ->
+websocket_handle({pong, Nonce}, _ConnState, #state{regs=Regs}=State) ->
     case get_registered(waiting_nonce, Regs) of
         [Nonce] ->
             Regs1 = delete_registered(Nonce, waiting_nonce, Regs),
             [WaitingPid] = get_registered(waiting_connected, Regs1),
             inform_registered(WaitingPid, websocket, connected),
             Regs2 = delete_registered(WaitingPid, waiting_connected, Regs1),
-            {ok, Regs2};
+            {ok, State#state{regs=Regs2}};
         [] ->
-            {ok, Regs}
+            {ok, State}
     end;
-websocket_handle({text, MsgBin}, _ConnState, Regs) ->
+websocket_handle({text, MsgBin}, _ConnState, #state{regs=Regs, role=Role}=State) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
-    ct:log("Received msg ~p~n", [Msg]),
+    case Role of
+        undefined ->
+            ct:log("Received msg ~p~n", [Msg]);
+        _ ->
+            ct:log("[~p] Received msg ~p~n", [Role, Msg])
+    end,
     Origin = binary_to_existing_atom(maps:get(<<"origin">>, Msg,
                                               atom_to_binary(?CHANNEL, utf8)), utf8),
     Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
@@ -245,26 +262,38 @@ websocket_handle({text, MsgBin}, _ConnState, Regs) ->
         true -> ct:log("No test registered for this event");
         false -> pass
     end,
-    {ok, Regs}.
+    {ok, State}.
 
-websocket_info(ping, _ConnState, Regs) ->
+websocket_info(ping, _ConnState, #state{regs=Regs}=State) ->
     Nonce = list_to_binary(ref_to_list(make_ref())),
     Regs1 = put_registration(Nonce, waiting_nonce, Regs),
-    {reply, {ping, Nonce}, Regs1};
-websocket_info(stop, _ConnState, _Regs) ->
+    {reply, {ping, Nonce}, State#state{regs=Regs1}};
+websocket_info(stop, _ConnState, _State) ->
     {close, <<>>, "stopped"};
-websocket_info({register_test, RegisteredPid, Event}, _ConnState, Regs0) ->
+websocket_info({register_test, RegisteredPid, Event}, _ConnState,
+                #state{regs=Regs0}=State) ->
     Regs = put_registration(RegisteredPid, Event, Regs0),
     inform_registered(RegisteredPid, registered_test, Event),
-    {ok, Regs};
-websocket_info({unregister_test, RegisteredPid, Event}, _ConnState, Regs0) ->
+    {ok, State#state{regs=Regs}};
+websocket_info({unregister_test, RegisteredPid, Event}, _ConnState,
+                #state{regs=Regs0}=State) ->
     Regs = delete_registered(RegisteredPid, Event, Regs0),
     inform_registered(RegisteredPid, unregistered_test, Event),
-    {ok, Regs}.
+    {ok, State#state{regs=Regs}};
+websocket_info({set_role, Role}, _ConnState, #state{role=undefined}=State) ->
+    {ok, State#state{role=Role}};
+websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
+    case Role of
+        undefined ->
+            ct:log("Sending to server ~p", [Msg]);
+        _ ->
+            ct:log("[~p] Sending to server ~p", [Role, Msg])
+    end,
+    {reply, {text, Msg}, State}.
 
-websocket_terminate(Reason, _ConnState, Regs) ->
+websocket_terminate(Reason, _ConnState, State) ->
     ct:log("Websocket closed in state ~p wih reason ~p~n",
-              [Regs, Reason]),
+              [State, Reason]),
     ok.
 
 get_registered(Event, Regs) ->
@@ -301,6 +330,8 @@ str(S) when is_list(S); is_binary(S) ->
 
 uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
+uenc(A) when is_atom(A) ->
+    uenc(atom_to_binary(A, utf8));
 uenc(V) ->
     http_uri:encode(V).
 

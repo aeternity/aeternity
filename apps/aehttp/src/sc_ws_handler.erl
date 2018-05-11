@@ -185,6 +185,12 @@ read_param(ParamName, RecordField, Options) ->
 
 parse_by_type(binary, V, _) when is_binary(V) ->
     {ok, V};
+parse_by_type(boolean, V, _) when is_binary(V) ->
+    case V of
+        <<"true">>  -> {ok, true};
+        <<"false">> -> {ok, false};
+        _           -> {error, not_bool}
+    end;
 parse_by_type(string, V, _) when is_binary(V) ->
     {ok, binary_to_list(V)};
 parse_by_type(atom, V, _) when is_binary(V) ->
@@ -208,6 +214,18 @@ process_incoming(#{<<"action">> := <<"update">>,
           aec_base58c:safe_decode(account_pubkey, ToB)} of
         {{ok, From}, {ok, To}} ->
             case aesc_fsm:upd_transfer(fsm_pid(State), From, To, Amount) of
+                ok -> no_reply;
+                {error, Reason} ->
+                    {reply, error_response(R, Reason)}
+            end;
+        _ -> {reply, error_response(R, broken_encoding)}
+    end;
+process_incoming(#{<<"action">> := <<"message">>,
+                   <<"payload">> := #{<<"to">>    := ToB,
+                                      <<"info">>  := Msg}} = R, State) ->
+    case aec_base58c:safe_decode(account_pubkey, ToB) of
+        {ok, To} ->
+            case aesc_fsm:inband_msg(fsm_pid(State), To, Msg) of
                 ok -> no_reply;
                 {error, Reason} ->
                     {reply, error_response(R, Reason)}
@@ -252,14 +270,6 @@ process_incoming(Msg, _State) ->
     {error, unhandled}.
 
 -spec process_fsm(term()) -> no_reply | {reply, map()} | {error, atom()}.
-process_fsm({info, Event0}) ->
-    Event =
-        case Event0 of
-            {died, _} -> died;
-            _ -> Event0
-        end,
-    {reply, #{action => <<"info">>,
-              payload => #{event => Event}}};
 process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
                            orelse Tag =:= shutdown
                            orelse Tag =:= shutdown_ack
@@ -277,7 +287,37 @@ process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
         end,
     {reply, #{action => <<"sign">>,
               tag => Tag1,
-              payload => #{tx => EncTx}}}.
+              payload => #{tx => EncTx}}};
+process_fsm({Tag, Event}) when Tag =:= info
+                        orelse Tag =:= update
+                        orelse Tag =:= conflict
+                        orelse Tag =:= message
+                        orelse Tag =:= error ->
+    Payload =
+        case {Tag, Event} of
+            {info, {died, _}} -> #{event => <<"died">>};
+            {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
+            {update, NewState} ->
+                Bin = aec_base58c:encode(transaction,
+                                         aetx_sign:serialize_to_binary(NewState)),
+                #{state => Bin};
+            {conflict, #{channel_id := ChId,
+                         round      := Round}} ->
+                         #{channel_id => aec_base58c:encode(channel, ChId),
+                           round => Round};
+            {message, #{channel_id  := ChId,
+                        from        := From,
+                        to          := To,
+                        info        := Info}} ->
+                #{message => #{channel_id => aec_base58c:encode(channel, ChId),
+                               from => aec_base58c:encode(account_pubkey, From),
+                               to => aec_base58c:encode(account_pubkey, To),
+                               info => Info}};
+            {error, Msg} -> #{message => Msg}
+        end,
+    Action = atom_to_binary(Tag, utf8),
+    {reply, #{action => Action,
+              payload => Payload}}.
 
 prepare_handler(Params) ->
     Read =
@@ -332,21 +372,25 @@ read_channel_options(Params) ->
         fun(K, V) ->
             fun(M) -> maps:put(K, V, M) end
         end,
-    TimeoutOpts = #{type => integer,
-                    mandatory => false},
-    ReadTimeout =
-        fun(TimeoutName) ->
-            TmBin = atom_to_binary(TimeoutName, utf8),
-            Key = <<"timeout_", TmBin/binary>>,
-            fun(M) ->
-                Timeouts0 = maps:get(timeouts, M, #{}),
-                case (read_param(Key, TimeoutName, TimeoutOpts))(Params) of
-                    not_set -> M;
-                    {ok, Val} -> maps:put(timeouts, maps:put(TimeoutName, Val, Timeouts0), M);
-                    {error, _} = Err -> Err
+    ReadMap =
+        fun(MapName, Prefix, Opts) ->
+            fun(Name) ->
+                NameBin = atom_to_binary(Name, utf8),
+                Key = <<Prefix/binary, "_", NameBin/binary>>,
+                fun(M) ->
+                    OldVal = maps:get(MapName, M, #{}),
+                    case (read_param(Key, Name, Opts))(Params) of
+                        not_set -> M;
+                        {ok, Val} -> maps:put(MapName, maps:put(Name, Val, OldVal), M);
+                        {error, _} = Err -> Err
+                    end
                 end
             end
         end,
+    ReadTimeout = ReadMap(timeouts, <<"timeout">>, #{type => integer,
+                                                     mandatory => false}),
+    ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
+                                                     mandatory => false}),
     lists:foldl(
         fun(_, {error, _} = Err) -> Err;
             (Fun, Accum) -> Fun(Accum)
@@ -360,13 +404,13 @@ read_channel_options(Params) ->
          Read(<<"responder_amount">>, responder_amount, #{type => integer}),
          Read(<<"channel_reserve">>, channel_reserve, #{type => integer}),
          Read(<<"ttl">>, ttl, #{type => integer}),
-         Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}]),
-         Put(report_info, true)
+         Put(noise, [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}])
         ] ++ lists:map(ReadTimeout, aesc_fsm:timeouts() ++ [awaiting_open,
-                                                            initialized])).
+                                                            initialized])
+          ++ lists:map(ReadReport, aesc_fsm:report_tags())
+     ).
 
 error_response(Req, Reason) ->
-    #{<<"action">>  => <<"result">>,
-      <<"tag">>     => <<"error">>,
+    #{<<"action">>  => <<"error">>,
       <<"payload">> => #{<<"request">> => Req,
                          <<"reason">> => Reason}}.

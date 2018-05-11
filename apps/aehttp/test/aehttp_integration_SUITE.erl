@@ -205,6 +205,9 @@
    [sc_ws_timeout_open/1,
     sc_ws_open/1,
     sc_ws_update/1,
+    sc_ws_update_fails_and_close/1,
+    sc_ws_send_messages_and_close/1,
+    sc_ws_conflict_and_close/1,
     sc_ws_close/1,
     sc_ws_close_mutual_inititator/1,
     sc_ws_close_mutual_responder/1
@@ -400,10 +403,13 @@ groups() ->
        sc_ws_open,
        sc_ws_update,
        sc_ws_close,
-      % initiator can start close mutual
+      % ensure port is reusable
        sc_ws_open,
-       sc_ws_update,
-       sc_ws_close,
+       sc_ws_update_fails_and_close,
+       sc_ws_open,
+       sc_ws_send_messages_and_close,
+       sc_ws_open,
+       sc_ws_conflict_and_close,
       % initiator can start close mutual
        sc_ws_open,
        sc_ws_update,
@@ -448,11 +454,11 @@ init_per_group(channel_websocket, Config) ->
     %% prepare participants
     {IPubkey, IPrivkey} = generate_key_pair(),
     {RPubkey, RPrivkey} = generate_key_pair(),
-    IStartAmt = 40,
-    RStartAmt = 20,
+    IStartAmt = 50,
+    RStartAmt = 50,
     Fee = 1,
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 7),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
@@ -3037,7 +3043,7 @@ sc_ws_open(Config) ->
     {ok, 200, #{<<"balance">> := RStartAmt}} =
                  get_balance_at_top(aec_base58c:encode(account_pubkey, RPubkey)),
     IAmt = 7,
-    RAmt = 3,
+    RAmt = 4,
 
     {IStartAmt, RStartAmt} = channel_participants_balances(IPubkey, RPubkey),
 
@@ -3137,44 +3143,273 @@ channel_create(Config, IConnPid, RConnPid) ->
 
     ChannelCreateFee.
 
-
-
 sc_ws_update(Config) ->
     {sc_ws_open, ConfigList} = ?config(saved_config, Config),
-    #{initiator := #{pub_key := IPubkey,
-                    priv_key := IPrivkey},
-      responder := #{pub_key := RPubkey,
-                    priv_key := RPrivkey}} = proplists:get_value(participants, Config),
+    Participants = proplists:get_value(participants, Config),
+    Conns = proplists:get_value(channel_clients, ConfigList),
+    lists:foldl(
+        fun(Sender, Round) ->
+            channel_update(Conns, Sender, Participants, 1, Round),
+            Round + 1
+        end,
+        2, % we start from round 2
+        [initiator,
+         responder,
+         responder,
+         initiator,
+         responder]),
+    {save_config, ConfigList}.
 
-    #{initiator := IConnPid,
-      responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
+sc_ws_update_fails_and_close(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    Participants = proplists:get_value(participants, Config),
+    #{initiator := IConnPid, responder :=RConnPid} = Conns =
+        proplists:get_value(channel_clients, ConfigList),
+    lists:foreach(
+        fun(Sender) ->
+            {ok, #{<<"reason">> := <<"insufficient_balance">>,
+                  <<"request">> := _Request}} = channel_update_fail(Conns, Sender,
+                                                                  Participants, 10000),
+            ok
+        end,
+        [initiator, responder]),
+
+    lists:foreach(
+        fun(Sender) ->
+            {ok, #{<<"reason">> := <<"negative_amount">>,
+                  <<"request">> := _Request}} = channel_update_fail(Conns, Sender,
+                                                                  Participants,
+                                                                  -1),
+            ok
+        end,
+        [initiator, responder]),
+
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
+sc_ws_send_messages_and_close(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    #{initiator := #{pub_key := IPubkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    #{initiator := IConnPid, responder :=RConnPid} =
+        proplists:get_value(channel_clients, ConfigList),
+
+    lists:foreach(
+        fun({Sender, Msg}) ->
+            {SenderPubkey, ReceiverPubkey, SenderPid, ReceiverPid} =
+                case Sender of
+                    initiator ->
+                        {IPubkey, RPubkey, IConnPid, RConnPid};
+                    responder ->
+                        {RPubkey, IPubkey, RConnPid, IConnPid}
+                end,
+            SenderEncodedK = aec_base58c:encode(account_pubkey, SenderPubkey),
+            ReceiverEncodedK = aec_base58c:encode(account_pubkey, ReceiverPubkey),
+            ok = ?WS:register_test_for_channel_event(ReceiverPid, message),
+
+            ?WS:send(SenderPid, <<"message">>,
+                    #{<<"to">> => ReceiverEncodedK,
+                      <<"info">> => Msg}),
+
+            {ok, #{<<"message">> := #{<<"from">> := SenderEncodedK,
+                                      <<"to">> := ReceiverEncodedK,
+                                      <<"info">> := Msg}}}
+                = ?WS:wait_for_channel_event(ReceiverPid, message),
+            ok = ?WS:unregister_test_for_channel_event(ReceiverPid, message)
+        end,
+        [ {initiator, <<"hejsan">>}                   %% initiator can send
+        , {responder, <<"svejsan">>}                  %% responder can send
+        , {initiator, <<"first message in a row">>}   %% initiator can send two messages in a row
+        , {initiator, <<"second message in a row">>}
+        , {responder, <<"some message">>}             %% responder can send two messages in a row
+        , {responder, <<"other message">>}
+        ]),
+
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
+sc_ws_conflict_and_close(Config) ->
+    {sc_ws_open, ConfigList} = ?config(saved_config, Config),
+    Participants = proplists:get_value(participants, Config),
+    #{initiator := IConnPid, responder :=RConnPid} = Conns =
+        proplists:get_value(channel_clients, ConfigList),
+
+    lists:foreach(
+        fun(FirstSender) ->
+            channel_conflict(Conns, FirstSender, Participants, 1, 2)
+        end,
+        [initiator,
+         responder]),
+
+    ok = ?WS:stop(IConnPid),
+    ok = ?WS:stop(RConnPid),
+    ok.
+
+channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
+               StarterRole,
+               #{initiator := #{pub_key := IPubkey,
+                                priv_key := IPrivkey},
+                 responder := #{pub_key := RPubkey,
+                                priv_key := RPrivkey}},
+               Amount1, Amount2) ->
+    {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
+     AcknowledgerPubkey, AcknowledgerPrivkey} =
+        case StarterRole of
+            initiator ->
+                {IConnPid, RConnPid, IPubkey, IPrivkey, RPubkey, RPrivkey};
+            responder ->
+                {RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey}
+        end,
+    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+
+    ok = ?WS:register_test_for_channel_event(IConnPid, conflict),
+    ok = ?WS:register_test_for_channel_event(RConnPid, conflict),
+
+
+    SignUpdate =
+        fun TrySignUpdate(ConnPid, Privkey) ->
+            case ?WS:wait_for_channel_event(ConnPid, sign) of
+                {ok, <<"update_ack">>, _} -> %% this is not the message we are looking for
+                    TrySignUpdate(ConnPid, Privkey);
+                {ok, <<"update">>, #{<<"tx">> := EncCreateTx}} ->
+                    {ok, CreateBinTx} = aec_base58c:safe_decode(transaction, EncCreateTx),
+                    Tx = aetx:deserialize_from_binary(CreateBinTx),
+                    SignedCreateTx = aetx_sign:sign(Tx, Privkey),
+                    EncSignedCreateTx = aec_base58c:encode(transaction,
+                                                  aetx_sign:serialize_to_binary(SignedCreateTx)),
+                    ?WS:send(ConnPid, <<"update">>, #{tx => EncSignedCreateTx})
+            end
+        end,
+    %% sender initiates an update
+    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
+        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+          amount => Amount1}),
+
+    %% starter signs the new state
+
+    %% acknowledger initiates an update too
+    ?WS:send_tagged(AcknowledgerPid, <<"update">>, <<"new">>,
+        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+          amount => Amount2}),
+
+    SignUpdate(StarterPid, StarterPrivkey),
+    SignUpdate(AcknowledgerPid, AcknowledgerPrivkey),
+
+    {ok, _} = ?WS:wait_for_channel_event(StarterPid, conflict),
+    {ok, _} = ?WS:wait_for_channel_event(AcknowledgerPid, conflict),
+
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, conflict),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, conflict),
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+
+    ok.
+
+channel_update(#{initiator := IConnPid, responder :=RConnPid},
+               StarterRole,
+               #{initiator := #{pub_key := IPubkey,
+                                priv_key := IPrivkey},
+                 responder := #{pub_key := RPubkey,
+                                priv_key := RPrivkey}},
+               Amount, Round) ->
+    {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
+     AcknowledgerPubkey, AcknowledgerPrivkey} =
+        case StarterRole of
+            initiator ->
+                {IConnPid, RConnPid, IPubkey, IPrivkey,
+                                    RPubkey, RPrivkey};
+            responder ->
+                {RConnPid, IConnPid, RPubkey, RPrivkey,
+                                    IPubkey, IPrivkey}
+        end,
     ok = ?WS:register_test_for_channel_event(IConnPid, sign),
     ok = ?WS:register_test_for_channel_event(RConnPid, sign),
 
     ok = ?WS:register_test_for_channel_event(IConnPid, info),
     ok = ?WS:register_test_for_channel_event(RConnPid, info),
 
-    SendTokens =
-        fun(SenderPid, ReceiverPid, SenderPubkey, SenderPrivkey,
-                                    ReceiverPubkey, ReceiverPrivkey, Amount) ->
-            ?WS:send_tagged(SenderPid, <<"update">>, <<"new">>,
-                #{from => aec_base58c:encode(account_pubkey, SenderPubkey),
-                  to => aec_base58c:encode(account_pubkey, ReceiverPubkey),
-                  amount => Amount}),
-            UpdateTx = channel_sign_tx(SenderPid, SenderPrivkey, <<"update">>),
-            ct:log("Update tx ~p", [UpdateTx]),
-            {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(ReceiverPid, info),
-            UpdateTx = channel_sign_tx(ReceiverPid, ReceiverPrivkey, <<"update_ack">>),
-            ok
-        end,
-    SendTokens(IConnPid, RConnPid, IPubkey, IPrivkey, RPubkey, RPrivkey, 2),
-    SendTokens(RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey, 2),
+    ok = ?WS:register_test_for_channel_event(IConnPid, update),
+    ok = ?WS:register_test_for_channel_event(RConnPid, update),
+
+    %% sender initiates an update
+    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
+        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+          amount => Amount}),
+
+    %% starter signs the new state
+    UnsignedStateTx = channel_sign_tx(StarterPid, StarterPrivkey, <<"update">>),
+    ct:log("Unsigned state tx ~p", [UnsignedStateTx]),
+    %% verify contents
+    {channel_offchain_tx, OffchainTx} = aetx:specialize_type(UnsignedStateTx),
+    Round = aesc_offchain_tx:round(OffchainTx),
+    true = Round - 1 =:= aesc_offchain_tx:previous_round(OffchainTx),
+    [Update] = aesc_offchain_tx:updates(OffchainTx),
+    {StarterPubkey, AcknowledgerPubkey, Amount} = Update,
+
+
+    %% acknowledger signs the new state
+    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(AcknowledgerPid, info),
+    UnsignedStateTx = channel_sign_tx(AcknowledgerPid, AcknowledgerPrivkey, <<"update_ack">>),
+
+    {ok, #{<<"state">> := NewState}} = ?WS:wait_for_channel_event(IConnPid,
+                                                                 update),
+    {ok, #{<<"state">> := NewState}} = ?WS:wait_for_channel_event(RConnPid,
+                                                                 update),
+    {ok, SignedStateTxBin} = aec_base58c:safe_decode(transaction, NewState),
+    SignedStateTx = aetx_sign:deserialize_from_binary(SignedStateTxBin),
+
+    %% validate it is co-signed
+    {ok, Trees} = rpc(aec_chain, get_top_state, []),
+    ok = aetx_sign:verify(SignedStateTx, Trees),
+    {UnsignedStateTx, _} = % same transaction that was signed
+        {aetx_sign:tx(SignedStateTx), UnsignedStateTx},
+
     ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
     ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
 
     ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
     ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
-    {save_config, ConfigList}.
+    ok = ?WS:unregister_test_for_channel_event(IConnPid, update),
+    ok = ?WS:unregister_test_for_channel_event(RConnPid, update),
+    ok.
+
+
+channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
+               StarterRole,
+               #{initiator := #{pub_key := IPubkey,
+                                priv_key := IPrivkey},
+                 responder := #{pub_key := RPubkey,
+                                priv_key := RPrivkey}},
+               Amount) ->
+    {StarterPid, _AcknowledgerPid, StarterPubkey, _StarterPrivkey,
+     AcknowledgerPubkey, _AcknowledgerPrivkey} =
+        case StarterRole of
+            initiator ->
+                {IConnPid, RConnPid, IPubkey, IPrivkey,
+                                    RPubkey, RPrivkey};
+            responder ->
+                {RConnPid, IConnPid, RPubkey, RPrivkey,
+                                    IPubkey, IPrivkey}
+        end,
+    ok = ?WS:register_test_for_channel_event(StarterPid, error),
+
+    %% sender initiates an update
+    ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
+        #{from => aec_base58c:encode(account_pubkey, StarterPubkey),
+          to => aec_base58c:encode(account_pubkey, AcknowledgerPubkey),
+          amount => Amount}),
+
+    {ok, _Payload}= Res = ?WS:wait_for_channel_event(StarterPid, error),
+
+
+    ok = ?WS:unregister_test_for_channel_event(StarterPid, error),
+    Res.
 
 sc_ws_close(Config) ->
     {sc_ws_update, ConfigList} = ?config(saved_config, Config),

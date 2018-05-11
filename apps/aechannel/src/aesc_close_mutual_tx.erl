@@ -97,7 +97,9 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
             InitiatorPubKey = aesc_channels:initiator(Channel),
             Checks =
                 [fun() -> aesc_utils:check_is_peer(From, aesc_channels:peers(Channel)) end,
-                 fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, Fee) end,
+                 % the fee is being split between parties so no check if the
+                 % initiator can pay the fee; just a check for the nonce correctness
+                 fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, 0) end,
                  fun() ->
                     case aesc_channels:is_active(Channel) of
                         true -> ok;
