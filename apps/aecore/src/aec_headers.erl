@@ -18,7 +18,8 @@
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
          root_hash/1,
-         validate/2,
+         validate_key_block_header/1,
+         validate_micro_block_header/2,
          type/1]).
 
 -include("common.hrl").
@@ -169,25 +170,26 @@ deserialize_pow_evidence(L) when is_list(L) ->
 deserialize_pow_evidence(_) ->
     'no_value'.
 
-%% TODO: implement validation of microblocks
--spec validate(header(), binary()) -> ok | {error, term()}.
-validate(Header, _LeaderKey) ->
-    validate(Header, _LeaderKey, aec_governance:protocols()).
-
--spec validate(header(), binary(), aec_governance:protocols()) -> ok | {error, term()}.
-validate(Header, _LeaderKey, ProtocolVersions) ->
-    ProtocolVersions = aec_hard_forks:protocols(ProtocolVersions),
+validate_key_block_header(Header) ->
+    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
 
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_time/1],
-    aeu_validation:run(Validators, [{Header, ProtocolVersions}]).
+    aeu_validation:run(Validators, [{Header, ProtocolVersions, undefined}]).
+
+validate_micro_block_header(Header, LeaderKey) ->
+    ProtocolVersions = aec_hard_forks:protocols(aec_governance:protocols()),
+
+    Validators = [fun validate_version/1,
+                  fun validate_signature/1],
+    aeu_validation:run(Validators, [{Header, ProtocolVersions, LeaderKey}]).
 
 -spec validate_version({header(), aec_governance:protocols()}) ->
                               ok | {error, Reason} when
       Reason :: unknown_protocol_version
               | {protocol_version_mismatch, ExpectedVersion::non_neg_integer()}.
-validate_version({#header{version = V, height = H}, Protocols}) ->
+validate_version({#header{version = V, height = H}, Protocols, _}) ->
     case aec_hard_forks:is_known_protocol(V, Protocols) of
         false -> {error, unknown_protocol_version};
         true ->
@@ -199,9 +201,9 @@ validate_version({#header{version = V, height = H}, Protocols}) ->
 
 -spec validate_pow({header(), aec_governance:protocols()}) ->
                           ok | {error, incorrect_pow}.
-validate_pow({#header{nonce = Nonce,
+validate_pow({#header{nonce        = Nonce,
                       pow_evidence = Evd,
-                      target = Target} = Header, _})
+                      target       = Target} = Header, _, _})
  when Nonce >= 0, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined block
     %% got hashed.
@@ -216,13 +218,20 @@ validate_pow({#header{nonce = Nonce,
 
 -spec validate_time({header(), aec_governance:protocols()}) ->
                            ok | {error, block_from_the_future}.
-validate_time({#header{time = Time}, _}) ->
-    MaxAcceptedTime = aeu_time:now_in_msecs() + ?ACCEPTED_FUTURE_BLOCK_TIME_SHIFT,
+validate_time({#header{time = Time}, _, _}) ->
+    MaxAcceptedTime = aeu_time:now_in_msecs() + ?ACCEPTED_FUTURE_KEY_BLOCK_TIME_SHIFT,
     case Time < MaxAcceptedTime of
         true ->
             ok;
         false ->
             {error, block_from_the_future}
+    end.
+
+validate_signature({#header{signature = Sig} = Header, _, LeaderKey}) ->
+    {ok, Bin} = hash_header(Header),
+    case enacl:sign_verify_detached(Sig, Bin, LeaderKey) of
+        {ok, _}    -> ok;
+        {error, _} -> {error, signature_verification_failed}
     end.
 
 type(#header{key = undefined, pow_evidence = no_value, height = H}) when H > 0 -> micro;

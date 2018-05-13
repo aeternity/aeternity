@@ -33,7 +33,8 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/2,
+         validate_key_block/1,
+         validate_micro_block/2,
          cointains_coinbase_tx/1,
          type/1]).
 
@@ -135,7 +136,7 @@ new_key(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
     B.
 
 -spec new_with_state(atom(), block(), list(aetx_sign:signed_tx()), aec_trees:trees()) ->
-                                {block(), aec_trees:trees()}.
+                            {block(), aec_trees:trees()}.
 new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
 
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
@@ -223,10 +224,10 @@ serialize_to_binary(B = #block{}) ->
     Vsn = B#block.version,
     {ok, Template} = serialization_template(Vsn),
     aec_object_serialization:serialize(
-        block,
-        Vsn,
-        Template,
-        [{header, Hdr}, {txs, Txs}]).
+      block,
+      Vsn,
+      Template,
+      [{header, Hdr}, {txs, Txs}]).
 
 deserialize_from_binary(Bin) ->
     {block, Vsn, _RawFields} =
@@ -292,32 +293,43 @@ hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
 
 
-%% TODO: implement validation of microblocks
--spec validate(block(), binary()) -> ok | {error, term()}.
-validate(Block, _LeaderKey) ->
+validate_key_block(Block) ->
+    case aec_headers:validate_key_block_header(to_header(Block)) of
+        ok ->
+            Validators = [fun validate_no_txs/1,
+                          fun validate_empty_txs_hash/1],
+            case aeu_validation:run(Validators, [Block]) of
+                ok              -> ok;
+                {error, Reason} -> {error, {block, Reason}}
+            end;
+        {error, Reason} ->
+            {error, {header, Reason}}
+    end.
+
+validate_no_txs(#block{txs = Txs}) ->
+    case Txs =:= [] of
+        true  -> ok;
+        false -> {error, txs_in_key_block}
+    end.
+
+validate_empty_txs_hash(#block{txs_hash = TxsHash}) ->
+    case TxsHash =:= <<0:?TXS_HASH_BYTES/unit:8>> of
+        true  -> ok;
+        false -> {error, wrong_txs_hash}
+    end.
+
+validate_micro_block(Block, LeaderKey) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
-    Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1],
-    aeu_validation:run(Validators, [Block]).
-
--spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
-validate_coinbase_txs_count(#block{txs = Txs}) ->
-    CoinbaseTxsCount =
-        lists:foldl(
-          fun(SignedTx, Count) ->
-                  case aetx_sign:is_coinbase(SignedTx) of
-                      true ->
-                          Count + 1;
-                      false ->
-                          Count
-                  end
-          end, 0, Txs),
-    case CoinbaseTxsCount == 1 of
-        true ->
-            ok;
-        false ->
-            {error, multiple_coinbase_txs}
+    case aec_headers:validate_micro_block_header(to_header(Block), LeaderKey) of
+        ok ->
+            Validators = [fun validate_txs_hash/1],
+            case aeu_validation:run(Validators, [Block]) of
+                ok              -> ok;
+                {error, Reason} -> {error, {block, Reason}}
+            end;
+        {error, Reason} ->
+            {error, {header, Reason}}
     end.
 
 -spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.

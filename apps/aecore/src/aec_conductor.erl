@@ -758,7 +758,7 @@ create_key_block_candidate(State) ->
 
 get_adjustment_headers(TopBlock) ->
     {ok, TopHash} = aec_blocks:hash_internal_representation(TopBlock),
-    N = aec_governance:blocks_to_check_difficulty_count(),
+    N = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_blocks:height(TopBlock) < N of
         true  -> [];
         false ->
@@ -862,8 +862,8 @@ handle_add_block(Block, #state{consensus = #consensus{leader_key = LeaderKey}} =
             epoch_mining:debug("Block already in chain", []),
             {ok, State};
         false ->
-            case aec_validate:block(Block, LeaderKey) of
-                {ok, ok} ->
+            case aec_validation:validate_block(Block, LeaderKey) of
+                ok ->
                     case aec_chain_state:insert_block(Block) of
                         ok ->
                             maybe_publish_block(Origin, Block),

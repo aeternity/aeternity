@@ -116,7 +116,7 @@ create_coinbase_tx(Height) ->
             {ok, aec_blocks:block()} | {error, term()}.
 adjust_target(Block, AdjHeaders) ->
     Header = aec_blocks:to_header(Block),
-    DeltaHeight = aec_governance:blocks_to_check_difficulty_count(),
+    DeltaHeight = aec_governance:key_blocks_to_check_difficulty_count(),
     case aec_headers:height(Header) =< DeltaHeight of
         true ->
             %% For the first DeltaHeight blocks, use pre-defined target
