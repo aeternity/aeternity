@@ -13,7 +13,7 @@ request(OpId, Params, Cfg) ->
     {Method, Interface} = operation_spec(Op),
     BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),
     Path = endpoints:path(Method, OpId, Params),
-    Query = endpoints:query(get, OpId, Params),
+    Query = endpoints:query(Method, OpId, Params),
     inets:start(httpc, [{profile, test_browser}]),
     Response = request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], Cfg),
     inets:stop(httpc, test_browser),
