@@ -295,8 +295,7 @@ unsigned_tx_response(NewTxFun) when is_function(NewTxFun, 1) ->
         fun(State) ->
             {ok, Tx} = NewTxFun(State),
             #{tx => aec_base58c:encode(transaction,
-                                       aetx:serialize_to_binary(Tx)),
-              tx_hash => aec_base58c:encode(tx_hash, aetx:hash(Tx))
+                                       aetx:serialize_to_binary(Tx))
             }
         end,
     ok_response(RespFun).
@@ -321,7 +320,7 @@ compute_contract_call_data() ->
 get_transaction(TxKey, TxStateKey) ->
     fun(_Req, State) ->
         TxHash = maps:get(TxKey, State),
-        case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+        case aec_chain:find_tx_with_location(TxHash) of
             none ->
                 {error, {404, [], #{<<"reason">> => <<"Transaction not found">>}}};
             {Tag, Tx} ->

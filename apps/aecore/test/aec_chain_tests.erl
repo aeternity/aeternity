@@ -728,15 +728,15 @@ fork_get_transaction() ->
 
     EasyTopBlock = lists:last(EasyChain),
     [EasyCoinbase] = aec_blocks:txs(EasyTopBlock),
-    EasyTxHash = aetx:hash(aetx_sign:tx(EasyCoinbase)),
+    EasyTxHash = aetx_sign:hash(EasyCoinbase),
 
     HardTopBlock = lists:last(HardChain),
     [HardCoinbase] = aec_blocks:txs(HardTopBlock),
-    HardTxHash = aetx:hash(aetx_sign:tx(HardCoinbase)),
+    HardTxHash = aetx_sign:hash(HardCoinbase),
 
     HardButLastBlock = lists:last(lists:droplast(HardChain)),
     [HardButLastCoinbase] = aec_blocks:txs(HardButLastBlock),
-    HardButLastTxHash = aetx:hash(aetx_sign:tx(HardButLastCoinbase)),
+    HardButLastTxHash = aetx_sign:hash(HardButLastCoinbase),
 
     %% NOTE: Currently, the coinbase tx has the same hash at the same
     %% height. This test needs to be rewritten if this precondition
@@ -745,15 +745,15 @@ fork_get_transaction() ->
 
     ok = write_blocks_to_chain(EasyChain),
     ?assertEqual({block_hash(EasyTopBlock), EasyCoinbase},
-                 aec_chain:find_transaction_in_main_chain_or_mempool(EasyTxHash)),
+                 aec_chain:find_tx_with_location(EasyTxHash)),
     ?assertEqual(none,
-                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+                 aec_chain:find_tx_with_location(HardTxHash)),
 
     ok = write_blocks_to_chain(HardChain),
     ?assertEqual({block_hash(HardButLastBlock), HardButLastCoinbase},
-                 aec_chain:find_transaction_in_main_chain_or_mempool(HardButLastTxHash)),
+                 aec_chain:find_tx_with_location(HardButLastTxHash)),
     ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
-                 aec_chain:find_transaction_in_main_chain_or_mempool(HardTxHash)),
+                 aec_chain:find_tx_with_location(HardTxHash)),
 
     ok.
 

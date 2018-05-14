@@ -114,24 +114,24 @@ execute_identity_fun_from_solidity_binary(Cfg) ->
     PrivKey = ?config(my_priv_key, Cfg),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
-    TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+    TxHash = aetx_sign:hash(SignedTx),
 
     wait_for_it(fun () ->
     			none =/=
-    			    aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
+    			    aec_chain:find_tx_with_location(TxHash)
      		end, true),
 
     %% lager:error("TxBin ~w~n",[TxHash]),
 
     wait_for_it(fun () ->
-			case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+			case aec_chain:find_tx_with_location(TxHash) of
 			    'none' -> false;
 			    {'mempool', _} -> false;
 			    {_Bin, _TX} -> true
 			end
      		end, true),
 
-    {_Block, SignedTx} = aec_chain:find_transaction_in_main_chain_or_mempool(TxHash),
+    {_Block, SignedTx} = aec_chain:find_tx_with_location(TxHash),
 
     ok = unmock_genesis(Cfg),
     ok = application:stop(aecore),
@@ -166,17 +166,17 @@ execute_counter_fun_from_bytecode(Cfg) ->
 
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     ok = aec_tx_pool:push(SignedTx),
-    TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+    TxHash = aetx_sign:hash(SignedTx),
 
     wait_for_it(fun () ->
                         none =/=
-                            aec_chain:find_transaction_in_main_chain_or_mempool(TxHash)
+                            aec_chain:find_tx_with_location(TxHash)
                 end, true),
 
     %% lager:error("TxBin ~w~n",[TxHash]),
 
     wait_for_it(fun () ->
-                        case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+                        case aec_chain:find_tx_with_location(TxHash) of
                             'none' -> false;
                             {'mempool', _} -> false;
                             {_Bin, _TX} -> true
@@ -202,9 +202,9 @@ execute_counter_fun_from_bytecode(Cfg) ->
     {ok, CallTx} = aect_call_tx:new(Spec),
     SignedCallTx = aetx_sign:sign(CallTx, PrivKey),
     ok = aec_tx_pool:push(SignedCallTx),
-    CallTxHash = aetx:hash(aetx_sign:tx(SignedCallTx)),
+    CallTxHash = aetx_sign:hash(SignedCallTx),
     wait_for_it(fun () ->
-                        case aec_chain:find_transaction_in_main_chain_or_mempool(CallTxHash) of
+                        case aec_chain:find_tx_with_location(CallTxHash) of
                             'none' -> false;
                             {'mempool', _} -> false;
                             {_, _} -> true

@@ -716,9 +716,8 @@ contract_transactions(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"tx_hash">> := ContractCreateTxHash,
                 <<"contract_address">> := ContractPubKey}} = get_contract_create(ValidEncoded),
-    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
+    ContractCreateTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -741,9 +740,8 @@ contract_transactions(_Config) ->
                                fun get_contract_call/1,
                                fun aect_call_tx:new/1, MinerPubkey),
 
-    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx,
-                <<"tx_hash">> := ContractCallTxHash}} = get_contract_call(ContractCallEncoded),
-    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallTx),
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
+    ContractCallTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -769,10 +767,10 @@ contract_transactions(_Config) ->
                                fun get_contract_call_compute/1,
                                fun aect_call_tx:new/1, MinerPubkey),
 
-    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallComputeTx,
-                <<"tx_hash">> := ContractCallComputeTxHash}} =
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallComputeTx}} =
         get_contract_call_compute(ComputeCCallEncoded),
-    sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallComputeTx),
+    ContractCallComputeTxHash =
+        sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallComputeTx),
 
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
@@ -1342,15 +1340,11 @@ unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey,
         fun(Nonce, P) ->
             ct:log("PARAMS ~p", [P]),
             {ok, ExpectedTx} = NewFun(maps:put(nonce, Nonce, Data)),
-            {ok, 200, #{<<"tx">> := ActualTx,
-                        <<"tx_hash">> := ActualHash}} = HTTPCallFun(P),
+            {ok, 200, #{<<"tx">> := ActualTx}} = HTTPCallFun(P),
             {ok, SerializedTx} = aec_base58c:safe_decode(transaction, ActualTx),
             Tx = aetx:deserialize_from_binary(SerializedTx),
-            TxHash = aec_base58c:encode(tx_hash, aetx:hash(Tx)),
             ct:log("Expected ~p~nActual ~p", [ExpectedTx, Tx]),
             ExpectedTx = Tx,
-            ct:log("Hashes: Expected ~p~nActual ~p", [TxHash, ActualHash]),
-            ActualHash = TxHash,
             Tx
         end,
     Params =
@@ -1407,11 +1401,12 @@ get_transaction(_Config) ->
                 amount => 2,
                 fee => 1,
                 payload => <<"foo">>},
-    {ok, 200, #{<<"tx">> := EncodedSpendTx,
-                <<"tx_hash">> := TxHash}} = get_spend(Encoded),
+    {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
     {ok, SignedSpendTx} = rpc(aec_keys, sign, [SpendTx]),
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
+
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
     {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedSpendTx)),
     lists:foreach(
@@ -3123,17 +3118,16 @@ channel_create(Config, IConnPid, RConnPid) ->
     IPubkey = aesc_create_tx:initiator(Tx),
     RPubkey = aesc_create_tx:responder(Tx),
     ChannelCreateFee = aesc_create_tx:fee(Tx),
-    TxHash = aec_base58c:encode(tx_hash, aetx:hash(CrTx)),
 
     %% ensure the tx is in the mempool
-    ok = wait_for_transaction_in_pool(TxHash),
+    ok = wait_for_unsigned_transaction_in_pool(CrTx),
 
     %% balances hadn't changed yet
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
 
     % mine the create_tx
-    ok = wait_for_transaction_in_block(TxHash),
+    ok = wait_for_unsigned_transaction_in_block(CrTx),
 
     ChannelCreateFee.
 
@@ -3226,14 +3220,12 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
 
-    TxHash = aec_base58c:encode(tx_hash, aetx:hash(ShutdownTx)),
-
-    ok = wait_for_transaction_in_pool(TxHash),
+    ok = wait_for_unsigned_transaction_in_pool(ShutdownTx),
 
     assert_balance(IPubkey, IStartB),
     assert_balance(RPubkey, RStartB),
 
-    ok = wait_for_transaction_in_block(TxHash),
+    ok = wait_for_unsigned_transaction_in_block(ShutdownTx),
 
     IChange = aesc_close_mutual_tx:initiator_amount(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount(MutualTx),
@@ -3243,35 +3235,25 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     ok.
 
-wait_for_transaction_in_pool(TxHash) ->
+wait_for_unsigned_transaction_in_pool(Tx) ->
     WaitForTx =
         fun Try(0) -> no_transaction;
             Try(Attempts) ->
-                case get_tx(TxHash, json) of
-                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} ->
-                        ok;
-                    _ ->
-                        timer:sleep(10),
-                        Try(Attempts -1)
+                {ok, STxs} = rpc(aec_tx_pool, peek, [infinity]),
+                case lists:any(fun(STx) -> Tx =:= aetx_sign:tx(STx) end, STxs) of
+                    true  -> ok;
+                    false -> Try(Attempts - 1)
                 end
             end,
     ok = WaitForTx(30). % 30 attempts * 10ms
 
-wait_for_transaction_in_block(TxHash) ->
-    MineTx =
-        fun Try(0) -> did_not_mine;
-            Try(Attempts) ->
-                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-                case get_tx(TxHash, json) of
-                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := H}}}
-                            when H =/= -1->
-                        ok;
-                    _ ->
-                        Try(Attempts -1)
-                end
-            end,
-
-    ok = MineTx(5). % 5 blocks mined
+wait_for_unsigned_transaction_in_block(Tx) ->
+    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    Txs = aec_blocks:txs(Block),
+    case lists:any(fun(STx) -> Tx =:= aetx_sign:tx(STx) end, Txs) of
+        true  -> ok;
+        false -> did_not_mine
+    end.
 
 sc_ws_timeout_open(Config) ->
     #{initiator := #{pub_key := IPubkey},
@@ -4213,7 +4195,7 @@ block_to_endpoint_map(Block, Options) ->
                   aetx_sign:meta_data_from_client_serialized(Encoding, EncodedTx),
             {BlockHeight, TxBlockHeight} = {TxBlockHeight, BlockHeight},
             {BlockHash, TxBlockHash} = {TxBlockHash, BlockHash},
-            TxHash = aetx:hash(aetx_sign:tx(SignedTx)),
+            TxHash = aetx_sign:hash(SignedTx),
             {Hash, TxHash} = {TxHash, Hash}
         end,
         lists:zip(ExpectedTxs, aec_blocks:txs(Block))),
@@ -4353,7 +4335,7 @@ sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
                   tx_in_mempool_for_account(AccountPubKey, TxHash)
           end,
     {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
-    ok.
+    aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)).
 
 tx_in_mempool_for_account(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =

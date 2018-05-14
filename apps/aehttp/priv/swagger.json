@@ -4093,20 +4093,15 @@
     },
     "UnsignedTx" : {
       "type" : "object",
-      "required" : [ "tx", "tx_hash" ],
+      "required" : [ "tx" ],
       "properties" : {
         "tx" : {
           "description" : "Unsigned transaction object",
           "$ref" : "#/definitions/EncodedHash"
-        },
-        "tx_hash" : {
-          "description" : "Transaction's hash",
-          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
-        "tx" : { },
-        "tx_hash" : null
+        "tx" : { }
       }
     },
     "CreateContractUnsignedTx" : {

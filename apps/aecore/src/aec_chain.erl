@@ -9,7 +9,8 @@
 
 %%% Chain API
 -export([ find_common_ancestor/2
-        , find_transaction_in_main_chain_or_mempool/1
+        , find_tx_location/1
+        , find_tx_with_location/1
         , genesis_block/0
         , genesis_hash/0
         , genesis_header/0
@@ -243,20 +244,20 @@ get_transactions_between(Hash, Root, Acc) ->
         error -> error
     end.
 
--spec find_transaction_in_main_chain_or_mempool(binary()) ->
-                                                   'none' |
-                                                   {binary() | 'mempool', aetx_sign:signed_tx()}.
-find_transaction_in_main_chain_or_mempool(TxHash) ->
-    case aec_db:find_transaction_in_main_chain_or_mempool(TxHash) of
+-spec find_tx_with_location(binary()) ->
+                                   'none' |
+                                   {binary() | 'mempool', aetx_sign:signed_tx()}.
+find_tx_with_location(TxHash) ->
+    case aec_db:find_tx_with_location(TxHash) of
         none -> none;
         {BlockHash, STx} when is_binary(BlockHash) -> {BlockHash, STx};
-        {mempool, [STx]} -> {mempool, STx};
-        {mempool, [STx|_] = TXs} ->
-            lager:info("More than one signed version of the same transaction: ~p",
-                       [TXs]),
-            %% TODO: The api should return all versions
-            {mempool, STx}
+        {mempool, STx} -> {mempool, STx}
     end.
+
+-spec find_tx_location(binary()) -> 'none' | 'mempool' | binary().
+
+find_tx_location(TxHash) ->
+    aec_db:find_tx_location(TxHash).
 
 %%%===================================================================
 %%% Chain
