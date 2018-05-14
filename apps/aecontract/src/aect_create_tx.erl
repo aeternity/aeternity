@@ -206,7 +206,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			Trees4     = aec_trees:set_calls(Trees3, CallsTree1),
 
                         %% Spend Gas
-                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
                             spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce+1,
                                   Context, Height, Trees4,
@@ -224,7 +224,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                         %% Don't create the contract if 'init' fails!
                         %% Go back to Trees1
                         %% Spend gas + fee
-                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
                             spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
                                   Context, Height, Trees1,
@@ -266,7 +266,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                         %% Don't create the contract if 'init' fails!
                         %% Go back to Trees1
                         %% Spend gas + fee
-                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
                             spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
                                   Context, Height, Trees1,

@@ -139,20 +139,14 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree1 = aec_trees:accounts(Trees3),
-    GasUsed =
-        case aect_call:return_type(Call) of
-            ok ->
-                aect_call:gas_used(Call) * GasPrice;
-            _Error ->
-                Gas * GasPrice
-        end,
     AccountsTree2 =
         case Context of
             aetx_contract    ->
                 AccountsTree1;
             aetx_transaction ->
                 %% When calling from the top-level we charge Fee and Gas as well.
-                Amount        = Fee + GasUsed,
+                GasCost       = aect_call:gas_used(Call) * GasPrice,
+                Amount        = Fee + GasCost,
                 Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree1),
                 {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
                 aec_accounts_trees:enter(Caller3, AccountsTree1)
