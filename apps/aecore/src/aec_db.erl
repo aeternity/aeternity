@@ -27,6 +27,7 @@
          write_block_state/4,
          write_genesis_hash/1,
          write_top_block_hash/1,
+         write_top_block_height/1,
          find_block/1,
          find_header/1,
          find_headers_at_height/1,
@@ -36,6 +37,7 @@
          get_genesis_hash/0,
          get_signed_tx/1,
          get_top_block_hash/0,
+         get_top_block_height/0,
          get_block_state/1
         ]).
 
@@ -309,11 +311,17 @@ write_genesis_hash(Hash) when is_binary(Hash) ->
 write_top_block_hash(Hash) when is_binary(Hash) ->
     ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash})).
 
+write_top_block_height(Height) when is_integer(Height) ->
+    ?t(mnesia:write(#aec_chain_state{key = top_block_height, value = Height})).
+
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
 
 get_top_block_hash() ->
     get_chain_state_value(top_block_hash).
+
+get_top_block_height() ->
+    get_chain_state_value(top_block_height).
 
 get_block_state(Hash) ->
     ?t(begin

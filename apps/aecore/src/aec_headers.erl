@@ -18,7 +18,8 @@
          serialize_pow_evidence/1,
          deserialize_pow_evidence/1,
          root_hash/1,
-         validate/1]).
+         validate/2,
+         type/1]).
 
 -include("common.hrl").
 -include("blocks.hrl").
@@ -168,14 +169,15 @@ deserialize_pow_evidence(L) when is_list(L) ->
 deserialize_pow_evidence(_) ->
     'no_value'.
 
+%% TODO: implement validation of microblocks
+-spec validate(header(), binary()) -> ok | {error, term()}.
+validate(Header, _LeaderKey) ->
+    validate(Header, _LeaderKey, aec_governance:protocols()).
 
--spec validate(header()) -> ok | {error, term()}.
-validate(Header) ->
-    validate(Header, aec_governance:protocols()).
-
--spec validate(header(), aec_governance:protocols()) -> ok | {error, term()}.
-validate(Header, ProtocolVersions) ->
+-spec validate(header(), binary(), aec_governance:protocols()) -> ok | {error, term()}.
+validate(Header, _LeaderKey, ProtocolVersions) ->
     ProtocolVersions = aec_hard_forks:protocols(ProtocolVersions),
+
     Validators = [fun validate_version/1,
                   fun validate_pow/1,
                   fun validate_time/1],
@@ -222,3 +224,6 @@ validate_time({#header{time = Time}, _}) ->
         false ->
             {error, block_from_the_future}
     end.
+
+type(#header{key = undefined, pow_evidence = no_value, height = H}) when H > 0 -> micro;
+type(_) -> key.

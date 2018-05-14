@@ -11,12 +11,20 @@
          txs/1,
          txs_hash/1,
          difficulty/1,
+         is_key_block/1,
          time_in_msecs/1,
          pow/1,
          set_pow/3,
+         signature/1,
+         set_signature/2,
+         key/1,
+         key_hash/1,
+         set_key/2,
          set_target/2,
-         new/3,
-         new_with_state/3,
+         new_key/4,
+         new_micro/4,
+         new_key_with_state/4,
+         new_with_state/4,
          from_header_and_txs/2,
          to_header/1,
          serialize_to_binary/1,
@@ -25,8 +33,9 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1,
-         cointains_coinbase_tx/1]).
+         validate/2,
+         cointains_coinbase_tx/1,
+         type/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
 
@@ -58,6 +67,11 @@ target(Block) ->
 difficulty(Block) ->
     aec_pow:target_to_difficulty(target(Block)).
 
+-spec is_key_block(block()) -> boolean().
+is_key_block(Block) ->
+    Block#block.key =/= undefined.
+
+
 time_in_msecs(Block) ->
     Block#block.time.
 
@@ -74,6 +88,29 @@ set_pow(Block, Nonce, Evd) ->
 -spec pow(block()) -> aec_pow:pow_evidence().
 pow(Block) ->
     Block#block.pow_evidence.
+
+%% Sets the signature for microblock
+-spec set_signature(block(), list()) -> block().
+set_signature(Block, Signature) ->
+    Block#block{signature = Signature}.
+
+-spec key(block()) -> binary().
+key(Block) ->
+    Block#block.key.
+
+%% Sets the leader key in the key block
+-spec set_key(block(), binary()) -> block().
+set_key(Block, Key) ->
+    Block#block{key = Key}.
+
+-spec key_hash(block()) -> binary().
+key_hash(Block) ->
+    Block#block.key_hash.
+
+-spec signature(block()) -> binary().
+signature(Block) ->
+    Block#block.signature.
+
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
@@ -87,31 +124,31 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) -> block().
-new(LastBlock, Txs, Trees0) ->
-    {B, _} = new_with_state(LastBlock, Txs, Trees0),
+-spec new_micro(block(), block(), list(aetx_sign:signed_tx()), aec_trees:trees()) -> block().
+new_micro(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
+    {B, _} = new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0),
     B.
 
--spec new_with_state(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) ->
-                                {block(), aec_trees:trees()}.
-new_with_state(LastBlock, Txs, Trees1) ->
-    LastBlockHeight = height(LastBlock),
+-spec new_key(block(), block(), list(aetx_sign:signed_tx()), aec_trees:trees()) -> block().
+new_key(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
+    {B, _} = new_key_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0),
+    B.
 
-    %% Assert correctness of last block protocol version, as minimum
-    %% sanity check on previous block and state (mainly for potential
-    %% stale state persisted in DB and for development testing).
-    ExpectedLastBlockVersion = protocol_effective_at_height(LastBlockHeight),
-    {ExpectedLastBlockVersion, _} = {LastBlock#block.version,
-                                     {expected, ExpectedLastBlockVersion}},
+-spec new_with_state(atom(), block(), list(aetx_sign:signed_tx()), aec_trees:trees()) ->
+                                {block(), aec_trees:trees()}.
+new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
+
     {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
 
-    Height = LastBlockHeight + 1,
-    Version = protocol_effective_at_height(Height),
+    LastBlockHeight = height(CurrentKeyBlock),
+    Version = protocol_effective_at_height(LastBlockHeight),
 
-    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees1, Height, Version),
+    %% NG-INFO: here we modify state trees based on transactions
+    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees0, LastBlockHeight, Version),
     {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
     NewBlock =
-        #block{height = Height,
+        #block{height = LastBlockHeight,
+               key_hash = key_hash(CurrentKeyBlock),
                prev_hash = LastBlockHeaderHash,
                root_hash = aec_trees:hash(Trees),
                txs_hash = TxsRootHash,
@@ -120,6 +157,24 @@ new_with_state(LastBlock, Txs, Trees1) ->
                time = aeu_time:now_in_msecs(),
                version = Version},
     {NewBlock, Trees}.
+
+new_key_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
+
+    {UncompleteBlock, Trees} = new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0),
+
+    %% TODO: NG-INFO: here we need to modify coinbase driven balances
+
+    %% Assert correctness of last block protocol version, as minimum
+    %% sanity check on previous block and state (mainly for potential
+    %% stale state persisted in DB and for development testing).
+    ExpectedLastBlockVersion = protocol_effective_at_height(aec_blocks:height(CurrentKeyBlock)),
+    {ExpectedLastBlockVersion, _} = {LastBlock#block.version, {expected, ExpectedLastBlockVersion}},
+
+    LastBlockHeight = height(CurrentKeyBlock),
+    NewHeight = LastBlockHeight + 1,
+    Version = protocol_effective_at_height(NewHeight),
+
+    {UncompleteBlock#block{height = NewHeight, version = Version, key_hash = undefined}, Trees}.
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,
@@ -237,8 +292,9 @@ hash_internal_representation(B = #block{}) ->
     aec_headers:hash_header(to_header(B)).
 
 
--spec validate(block()) -> ok | {error, term()}.
-validate(Block) ->
+%% TODO: implement validation of microblocks
+-spec validate(block(), binary()) -> ok | {error, term()}.
+validate(Block, _LeaderKey) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
     Validators = [fun validate_coinbase_txs_count/1,
@@ -279,3 +335,7 @@ cointains_coinbase_tx(#block{txs = []}) ->
     false;
 cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
     aetx_sign:is_coinbase(CoinbaseTx).
+
+%% NG-INFO: naive check
+type(#block{key = undefined, pow_evidence = no_value, txs = [], height = H}) when H > 0 -> micro;
+type(_) -> key.

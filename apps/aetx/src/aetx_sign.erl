@@ -50,13 +50,23 @@
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
--spec sign(aetx:tx(), list(binary()) | binary()) -> signed_tx().
+
+%% TODO: fix outgoing format. Microblock needs spec
+-spec sign(aetx:tx()|binary(), list(binary()) | binary()) -> signed_tx() | tuple().
 sign(Tx, PrivKey) when is_binary(PrivKey) ->
-  sign(Tx, [PrivKey]);
+    sign(Tx, [PrivKey]);
+sign(Bin, PrivKey) when is_binary(Bin) ->
+    Signatures = sign_bin(Bin, PrivKey),
+    {Bin, Signatures};
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
+    Signatures = sign_bin(Bin, PrivKeys),
+    #signed_tx{tx = Tx,
+               signatures = Signatures}.
+
+sign_bin(Bin, PrivKeys) ->
     Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
-    #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
+    lists:sort(Signatures).
 
 -spec hash(signed_tx()) -> binary().
 hash(#signed_tx{} = Tx) ->

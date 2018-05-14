@@ -18,6 +18,7 @@
 -include("blocks.hrl").
 
 -type event() :: block_created
+               | micro_block_created
                | start_mining
                | top_changed
                | tx_created
