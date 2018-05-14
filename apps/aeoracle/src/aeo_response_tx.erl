@@ -122,7 +122,7 @@ process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
     OraclesTree0  = aec_trees:oracles(Trees0),
 
     Query0 = aeo_state_tree:get_query(OraclePubKey, QId, OraclesTree0),
-    Query1 = aeo_query:set_response(Response, Query0),
+    Query1 = aeo_query:add_response(Height, Response, Query0),
     OraclesTree1 = aeo_state_tree:enter_query(Query1, OraclesTree0),
 
     OracleAccount0 = aec_accounts_trees:get(OraclePubKey, AccountsTree0),

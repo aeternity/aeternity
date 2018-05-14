@@ -233,13 +233,26 @@ delete({oracle, Id}, H, OTree, ATree) ->
         end,
     {OTree#oracle_tree{otree = OTree1}, ATree1};
 delete({query, OracleId, Id}, H, OTree, ATree) ->
-    TreeId = <<OracleId/binary, Id/binary>>,
-    {OTree1, ATree1} = int_delete_query(TreeId, H, {OTree#oracle_tree.otree, ATree}),
+    {OTree1, ATree1} =
+        %% When responded to we get a stale cache entry
+        case oracle_query_expired(OracleId, Id, H, OTree) of
+            true ->
+                TreeId = <<OracleId/binary, Id/binary>>,
+                int_delete_query(TreeId, H, {OTree#oracle_tree.otree, ATree});
+            false ->
+                {OTree#oracle_tree.otree, ATree}
+        end,
     {OTree#oracle_tree{otree = OTree1}, ATree1}.
 
 oracle_expired(Id, H, OTree) ->
     case lookup_oracle(Id, OTree) of
         {value, O} -> H >= aeo_oracles:expires(O);
+        none       -> false
+    end.
+
+oracle_query_expired(OracleId, Id, H, OTree) ->
+    case lookup_query(OracleId, Id, OTree) of
+        {value, Q} -> H >= aeo_query:expires(Q);
         none       -> false
     end.
 

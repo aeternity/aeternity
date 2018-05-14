@@ -21,6 +21,7 @@
         , setup_new_account/1
         , setup_new_account/3
         , trees/1
+        , ttl_defaults/0
         ]).
 
 -include_lib("apps/aecore/include/common.hrl").
@@ -53,6 +54,9 @@ next_nonce(PubKey, S) ->
 priv_key(PubKey, State) ->
     maps:get(PubKey, key_pairs(State)).
 
+ttl_defaults() ->
+    #{ oracle => 250, query => 50, response => 75, extend => 125 }.
+
 %%%===================================================================
 %%% Info API
 %%%===================================================================
@@ -78,7 +82,7 @@ register_tx(PubKey, Spec0, State) ->
                                 }).
 
 register_tx_default_spec(PubKey, State) ->
-    #{ ttl       => {delta, 10}
+    #{ ttl       => {delta, maps:get(oracle, ttl_defaults())}
      , fee       => 5
      , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , query_fee => 5
@@ -101,7 +105,7 @@ extend_tx(PubKey, Spec0, State) ->
                               }).
 
 extend_tx_default_spec(PubKey, State) ->
-    #{ ttl       => {delta, 10}
+    #{ ttl       => {delta, maps:get(extend, ttl_defaults())}
      , fee       => 5
      , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
@@ -129,8 +133,8 @@ query_tx(PubKey, OracleKey, Spec0, State) ->
 query_tx_default_spec(PubKey, State) ->
     #{ query        => <<"Hello world">>
      , query_fee    => 5
-     , query_ttl    => {delta, 50}
-     , response_ttl => {delta, 25}
+     , query_ttl    => {delta, maps:get(query, ttl_defaults())}
+     , response_ttl => {delta, maps:get(response, ttl_defaults())}
      , fee          => 5
      , nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
