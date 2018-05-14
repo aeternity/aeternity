@@ -34,14 +34,9 @@
     block_latest/1,
     block_by_height/1,
     block_not_found_by_height/1,
-    block_by_height_deprecated/1,
-    block_not_found_by_height_deprecated/1,
     block_by_hash/1,
-    block_by_hash_deprecated/1,
     block_not_found_by_broken_hash/1,
     block_not_found_by_hash/1,
-    block_not_found_by_broken_hash_deprecated/1,
-    block_not_found_by_hash_deprecated/1,
 
     % non signed txs
     contract_transactions/1,
@@ -147,9 +142,7 @@
     wrong_http_method_name_transfer/1,
     wrong_http_method_name_revoke/1,
     wrong_http_method_block_by_height/1,
-    wrong_http_method_block_by_height_deprecated/1,
     wrong_http_method_block_by_hash/1,
-    wrong_http_method_block_by_hash_deprecated/1,
     wrong_http_method_header_by_hash/1,
     wrong_http_method_transactions/1,
     wrong_http_method_tx_id/1,
@@ -241,14 +234,8 @@ groups() ->
 
         block_by_height,
         block_not_found_by_height,
-        block_not_found_by_height_deprecated,
-        block_by_height_deprecated,
         block_by_hash,
-        block_by_hash_deprecated,
-        block_not_found_by_broken_hash,
         block_not_found_by_hash,
-        block_not_found_by_broken_hash_deprecated,
-        block_not_found_by_hash_deprecated,
 
         % non signed txs
         contract_transactions,
@@ -344,9 +331,7 @@ groups() ->
         wrong_http_method_name_transfer,
         wrong_http_method_name_revoke,
         wrong_http_method_block_by_height,
-        wrong_http_method_block_by_height_deprecated,
         wrong_http_method_block_by_hash,
-        wrong_http_method_block_by_hash_deprecated,
         wrong_http_method_header_by_hash,
         wrong_http_method_transactions,
         wrong_http_method_tx_id,
@@ -545,45 +530,6 @@ block_not_found_by_height(_Config) ->
                                    ToMine),
     ok.
 
-block_by_height_deprecated(_Config) ->
-    BlocksToCheck = 4,
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
-    TopHeader = rpc(aec_chain, top_header, []),
-    %% assert there are enough blocks
-    case aec_headers:height(TopHeader) of
-        TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
-          pass
-    end,
-    % fetch and validate blocks
-    lists:foreach(
-        fun(Height) ->
-            {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
-            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
-            {ok, 200, BlockMap} = get_block_by_height(Height),
-            ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
-                                                         BlockMap]),
-            BlockMap = ExpectedBlockMap,
-            #{<<"height">> := Height} = BlockMap
-        end,
-        lists:seq(0, BlocksToCheck)), % from genesis
-    ok.
-
-block_not_found_by_height_deprecated(_Config) ->
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    % ensure no mining (and thus - no new blocks)
-    {error, not_mining}  = rpc(aec_conductor, get_block_candidate, []),
-    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
-    lists:foreach(
-        fun(_) ->
-            Height = rand:uniform(99) + 1 + InitialHeight, % random number 1-100 + CurrentTopHeight
-            {ok, 404, #{<<"reason">> := <<"Chain too short">>}} = get_block_by_height(Height)
-        end,
-        lists:seq(1, NumberOfChecks)), % number
-    ok.
-
 block_not_found_by_hash(_Config) ->
     lists:foreach(
         fun(_Height) ->
@@ -614,28 +560,6 @@ block_not_found_by_broken_hash(_Config) ->
         lists:seq(1, ?DEFAULT_TESTS_COUNT)),
     ok.
 
-block_not_found_by_hash_deprecated(_Config) ->
-    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
-    lists:foreach(
-        fun(_) ->
-            H = random_hash(),
-            error = rpc(aec_chain, get_block, [H]),
-            Hash = aec_base58c:encode(block_hash, H),
-            {ok, 404, #{<<"reason">> := <<"Block not found">>}} = get_block_by_hash_deprecated(Hash)
-        end,
-        lists:seq(1, NumberOfChecks)), % number
-    ok.
-
-block_not_found_by_broken_hash_deprecated(_Config) ->
-    NumberOfChecks = ?DEFAULT_TESTS_COUNT,
-    lists:foreach(
-        fun(_) ->
-            <<_, BrokenHash/binary>> = aec_base58c:encode(block_hash, random_hash()),
-            {ok, 400, #{<<"reason">> := <<"Invalid hash">>}} = get_block_by_hash_deprecated(BrokenHash)
-        end,
-        lists:seq(1, NumberOfChecks)), % number
-    ok.
-
 block_by_hash(_Config) ->
     GetExpectedBlockFun =
         fun(H) -> rpc(aec_chain, get_block_by_height, [H]) end,
@@ -645,37 +569,6 @@ block_by_hash(_Config) ->
             get_block_by_hash(Hash, Opts)
         end,
     internal_get_block_generic(GetExpectedBlockFun, CallApiFun).
-
-block_by_hash_deprecated(_Config) ->
-    BlocksToCheck = 4,
-    InitialHeight = aec_blocks:height(rpc(aec_chain, top_block, [])),
-    BlocksToMine = max(BlocksToCheck - InitialHeight, 0),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   BlocksToMine),
-    TopHeader = rpc(aec_chain, top_header, []),
-    %% assert there are enough blocks
-    case aec_headers:height(TopHeader) of
-        TopHeaderHeight when TopHeaderHeight >= BlocksToCheck ->
-          pass
-    end,
-    % fetch and validate blocks
-    lists:foreach(
-        fun(Height) ->
-            {ok, ExpectedBlock} = rpc(aec_chain, get_block_by_height, [Height]),
-            {ok, H} = aec_blocks:hash_internal_representation(ExpectedBlock),
-            Hash = aec_base58c:encode(block_hash, H),
-            ExpectedBlockMap = block_to_endpoint_gossip_map(ExpectedBlock),
-            {ok, 200, BlockMap} = get_block_by_hash_deprecated(Hash),
-            ct:log("ExpectedBlockMap ~p, BlockMap: ~p", [ExpectedBlockMap,
-                                                         BlockMap]),
-            BlockMap = ExpectedBlockMap,
-            {ok, 200, HeaderMap} = get_header_by_hash(Hash),
-            %% Equal upto transactions.
-            HeaderMap = maps:without([<<"transactions">>], ExpectedBlockMap),
-            #{<<"height">> := Height} = BlockMap
-        end,
-        lists:seq(0, BlocksToCheck)), % from genesis
-    ok.
 
 %% tests the following
 %% GET contract_create_tx unsigned transaction
@@ -3519,16 +3412,13 @@ get_block_by_height(Height, TxObjects) ->
 
 get_block_by_height(Height) ->
     Host = external_address(),
-    http_request(Host, get, "block-by-height", [{height, Height}]).
+    http_request(Host, get, "block/height/" ++ integer_to_list(Height), []).
 
 get_block_by_hash(Hash, TxObjects) ->
     Params = tx_encoding_param(TxObjects),
     Host = external_address(),
     http_request(Host, get, "block/hash/" ++ http_uri:encode(Hash), Params).
 
-get_block_by_hash_deprecated(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "block-by-hash", [{hash, Hash}]).
 
 get_header_by_hash(Hash) ->
     Host = external_address(),
@@ -3910,17 +3800,9 @@ wrong_http_method_name_revoke(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, get, "tx/name/revoke", []).
 
-wrong_http_method_block_by_height_deprecated(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block-by-height", []).
-
 wrong_http_method_block_by_hash(_Config) ->
     Host = external_address(),
     {ok, 405, _} = http_request(Host, post, "block/hash/123", []).
-
-wrong_http_method_block_by_hash_deprecated(_Config) ->
-    Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "block-by-hash", []).
 
 wrong_http_method_header_by_hash(_Config) ->
     Host = external_address(),
