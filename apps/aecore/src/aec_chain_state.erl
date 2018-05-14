@@ -130,7 +130,19 @@ node_difficulty(#node{type = micro}) -> 0;
 
 node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
 
+node_target(#node{header = H}) -> aec_headers:target(H).
+
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
+
+node_type(#node{type = T}) -> T.
+
+node_key_hash(#node{key_hash = KeyHash}) -> KeyHash.
+
+node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
+
+is_key_block(N) -> node_type(N) =:= key.
+
+is_micro_block(N) -> node_type(N) =:= micro.
 
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
@@ -247,69 +259,93 @@ internal_insert(Node, Block) ->
     end.
 
 %% NG-INFO: micro blocks inherit the height from the last key block
-assert_previous_height(#node{type = NodeType} = Node) ->
-    case {NodeType, db_find_node(prev_hash(Node))} of
-        {key, {ok, PrevNode}} ->
+assert_previous_height(Node) ->
+    case is_key_block(Node) of
+        true ->
+            {ok, PrevNode} = db_find_node(prev_hash(Node)),
             case node_height(PrevNode) =:= (node_height(Node) - 1) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_keyblock_with_previous_hash)
             end;
-        {micro, {ok, PrevNode}} ->
+        false ->
+            {ok, PrevNode} = db_find_node(prev_hash(Node)),
             case node_height(PrevNode) =:= node_height(Node) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_microblock_with_previous_hash)
-            end;
-        {_, error} -> ok
+            end
     end.
 
-%% To assert the target calculation we need DeltaHeight headers counted
-%% backwards from the node we want to assert. If Height <= DeltaHeight
-%% we will need all headers back to genesis.
-%% NG-INFO: micro blocks are signed, so we don't validate the target
-assert_calculated_target(#node{type = micro}) -> ok;
+%% To assert key block target calculation we need DeltaHeight headers counted
+%% backwards from the node we want to assert.
 assert_calculated_target(Node) ->
+    case is_key_block(Node) of
+        true  -> assert_key_block_target(Node);
+        false -> ok
+    end.
+
+assert_key_block_target(Node) ->
     case db_find_node(prev_hash(Node)) of
         error -> ok;
         {ok, PrevNode} ->
-            case node_height(Node) of
-                0  -> ok;
-                Height ->
-                    Delta = aec_governance:blocks_to_check_difficulty_count(),
-                    assert_calculated_target(Node, PrevNode, Delta, Height)
+            Delta         = aec_governance:key_blocks_to_check_difficulty_count(),
+            Height        = node_height(Node),
+            GenesisHeight = aec_block_genesis:genesis_header(),
+            case Delta >= Height - GenesisHeight of
+                true ->
+                    %% We only need to verify that the target is equal to its predecessor.
+                    assert_target_equal_to_prev(Node, PrevNode);
+                false ->
+                    assert_calculated_target(Node, PrevNode, Delta)
             end
     end.
 
-assert_calculated_target(Node, PrevNode, Delta, Height) when Delta >= Height ->
-    %% We only need to verify that the target is equal to its predecessor.
-    case {node_difficulty(Node), node_difficulty(PrevNode)} of
+assert_target_equal_to_prev(Node, PrevNode) ->
+    PrevKeyNode = case is_key_block(PrevNode) of
+                      true  -> PrevNode;
+                      false -> db_find_node(node_key_hash(PrevNode))
+                  end,
+    case {node_target(Node), node_target(PrevKeyNode)} of
         {X, X} -> ok;
         {X, Y} -> internal_error({target_not_equal_to_parent, Node, X, Y})
-    end;
-assert_calculated_target(Node, PrevNode, Delta, Height) when Delta < Height ->
-    case get_n_headers_from(PrevNode, Delta) of
-        {error, chain_too_short} ->
-            ok;
-        {ok, Headers} ->
-            Header = export_header(Node),
-            case aec_target:verify(Header, Headers) of
-                ok -> ok;
-                {error, {wrong_target, Actual, Expected}} ->
-                    internal_error({wrong_target, Node, Actual, Expected})
-            end
     end.
 
-get_n_headers_from(Node, N) ->
-    get_n_headers_from(Node, N-1, []).
+assert_calculated_target(Node, PrevNode, Delta) ->
+    {ok, Headers} = get_n_key_headers_from(PrevNode, Delta),
+    case aec_target:verify(export_header(Node), Headers) of
+        ok -> ok;
+        {error, {wrong_target, Actual, Expected}} ->
+            internal_error({wrong_target, Node, Actual, Expected})
+    end.
 
-get_n_headers_from(Node, 0, Acc) ->
+get_n_key_headers_from(Node, N) ->
+    get_n_key_headers_from(Node, N-1, []).
+
+get_n_key_headers_from(Node, 0, Acc) ->
     {ok, lists:reverse([export_header(Node) | Acc])};
-get_n_headers_from(Node, N, Acc) ->
-    case db_find_node(prev_hash(Node)) of
-        {ok, PrevNode} ->
-            get_n_headers_from(PrevNode, N-1, [export_header(Node) | Acc]);
-        error ->
-            {error, chain_too_short}
+get_n_key_headers_from(Node, N, Acc) ->
+    {ok, PrevNode} = db_find_node(prev_hash(Node)),
+    case node_type(PrevNode) of
+        micro ->
+            PrevKeyHash       = node_key_hash(PrevNode),
+            {ok, PrevKeyNode} = db_find_node(PrevKeyHash),
+            get_n_key_headers_from(PrevKeyNode, N-1, [export_header(PrevKeyNode) | Acc]);
+        key ->
+            get_n_key_headers_from(PrevNode, N-1, [export_header(Node) | Acc])
     end.
+
+assert_micro_block_time(Node) ->
+    case is_micro_block(Node) of
+        true ->
+            {ok, PrevNode} = db_find_node(prev_hash(Node)),
+            case time_diff_greater_than_minimal(Node, PrevNode) of
+                true  -> ok;
+                false -> internal_error(micro_block_time_too_low)
+            end;
+        false -> ok
+    end.
+
+time_diff_greater_than_minimal(Node, PrevNode) ->
+    node_time(Node) >= node_time(PrevNode) + ?ACCEPTED_MICRO_BLOCK_MIN_TIME_DIFF.
 
 %% Transitively compute new state trees iff
 %%   - We can find the state trees of the previous node; and
@@ -389,6 +425,7 @@ apply_and_store_state_trees(#node{hash = NodeHash} = Node, TreesIn, DifficultyIn
         Trees = apply_node_transactions(Node, TreesIn),
         assert_state_hash_valid(Trees, Node),
         assert_calculated_target(Node),
+        assert_micro_block_time(Node),
         Difficulty = DifficultyIn + node_difficulty(Node),
         ok = db_put_state(hash(Node), Trees, Difficulty, ForkId),
         {ok, Trees, Difficulty}
