@@ -23,6 +23,7 @@
                    , set_expires/2
                    , set_fee/2
                    , set_oracle_address/2
+                   , set_response/2
                    , set_response_ttl/2
                    , set_sender_address/2
                    , set_sender_nonce/2
@@ -59,6 +60,8 @@ basic_setters() ->
     _ = set_fee(123, I),
     ?assertError({illegal, _, _}, set_oracle_address(foo, I)),
     _ = set_oracle_address(<<123:32/unit:8>>, I),
+    ?assertError({illegal, _, _}, set_response(true, I)),
+    _ = set_response(<<"true">>, I),
     ?assertError({illegal, _, _}, set_response_ttl({block, 100}, I)),
     _ = set_response_ttl({delta, 10}, I),
     ?assertError({illegal, _, _}, set_sender_address(foo, I)),

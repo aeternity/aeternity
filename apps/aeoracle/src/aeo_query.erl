@@ -27,6 +27,7 @@
         , set_fee/2
         , set_oracle_address/2
         , set_query/2
+        , set_response/2
         , set_response_ttl/2
         , set_sender_address/2
         , set_sender_nonce/2
@@ -219,6 +220,10 @@ set_oracle_address(X, I) ->
 -spec set_query(oracle_query(), query()) -> query().
 set_query(X, I) ->
     I#query{query = assert_field(query, X)}.
+
+-spec set_response(oracle_response(), query()) -> query().
+set_response(X, I) ->
+    I#query{response = assert_field(response, X)}.
 
 -spec set_expires(block_height(), query()) -> query().
 set_expires(X, I) ->
