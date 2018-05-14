@@ -47,6 +47,9 @@
 -opaque signed_tx() :: #signed_tx{}.
 -type binary_signed_tx() :: binary().
 
+-define(VALID_PUBK(K), byte_size(K) =:= 32).
+-define(VALID_PRIVK(K), byte_size(K) =:= 64).
+
 %% @doc Given a transaction Tx, a private key or list of keys,
 %% return the cryptographically signed transaction using the default crypto
 %% parameters.
@@ -55,7 +58,12 @@ sign(Tx, PrivKey) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
-    Signatures = [ enacl:sign_detached(Bin, PrivKey) || PrivKey <- PrivKeys ],
+    case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
+        [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
+        [] -> pass
+    end,
+    Signatures = [ enacl:sign_detached(Bin, PrivKey)
+                   || PrivKey <- PrivKeys],
     #signed_tx{tx = Tx, signatures = lists:sort(Signatures)}.
 
 -spec hash(signed_tx()) -> binary().
@@ -103,12 +111,14 @@ verify_signatures(PubKeys,_Bin, Sigs) ->
 verify_one_pubkey(Sigs, PubKey, Bin) ->
     verify_one_pubkey(Sigs, PubKey, Bin, []).
 
-verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) ->
+verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) when ?VALID_PUBK(PubKey) ->
     case enacl:sign_verify_detached(Sig, Bin, PubKey) of
         {ok, _}    -> {ok, Acc ++ Left};
         {error, _} -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
     end;
-verify_one_pubkey([],_PubKey,_Bin,_Acc) ->
+verify_one_pubkey([], _PubKey,_Bin,_Acc) -> % no more signatures
+    error;
+verify_one_pubkey(_, _PubKey,_Bin,_Acc) -> % invalid pubkey
     error.
 
 -define(SIG_TX_TYPE, signed_tx).
