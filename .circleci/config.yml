@@ -476,6 +476,17 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - aevm_tests:
+          requires:
+            - build
+          filters:
+            branches:
+              ignore:
+                - env/dev1
+                - env/dev2
+            tags:
+              only: /^v.*$/
+
       - uat_tests:
           requires:
             - build
@@ -510,6 +521,7 @@ workflows:
           requires:
             - test
             - eunit
+            - aevm_tests
             - uat_tests
             - static_analysis
             - linux_package
@@ -521,6 +533,7 @@ workflows:
           requires:
             - test
             - eunit
+            - aevm_tests
             - uat_tests
             - static_analysis
           filters:
@@ -595,17 +608,6 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*$/
-
-  nightly:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - master
-    jobs:
-      - aevm_tests
 
   chain_snapshots:
     triggers:
