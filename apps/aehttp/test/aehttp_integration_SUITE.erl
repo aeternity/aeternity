@@ -753,6 +753,7 @@ oracle_transactions(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
     % oracle_register_tx positive test
     RegEncoded = #{account => MinerAddress,
@@ -824,11 +825,10 @@ oracle_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => MinerAddress,
-                        query_id => aec_base58c:encode(oracle_query_id,
-                                                       QueryId),
+    ResponseEncoded = #{oracle   => OracleAddress,
+                        query_id => aec_base58c:encode(oracle_query_id, QueryId),
                         response => <<"Hejsan">>,
-                        fee => 3},
+                        fee      => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle => MinerPubkey,
                                 query_id => QueryId}),
@@ -857,6 +857,7 @@ oracle_transactions(_Config) ->
 
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    RandOracle = aec_base58c:encode(oracle_pubkey, random_hash()),
     RandOracleAddress = aec_base58c:encode(oracle_pubkey, random_hash()),
     RandQueryID = aec_base58c:encode(oracle_query_id, random_hash()),
     {ok, 404, #{<<"reason">> := <<"Account of account not found">>}} =
@@ -866,7 +867,7 @@ oracle_transactions(_Config) ->
         get_oracle_query(maps:put(sender, RandAddress, QueryEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Account of oracle not found">>}} =
-        get_oracle_response(maps:put(oracle, RandAddress, ResponseEncoded)),
+        get_oracle_response(maps:put(oracle, RandOracle, ResponseEncoded)),
 
     {ok, 404, #{<<"reason">> := <<"Oracle address for key oracle not found">>}} =
         get_oracle_query(maps:put(oracle_pubkey, RandOracleAddress, QueryEncoded)),
@@ -905,6 +906,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
     Name = <<"oracleIdResolvement.test"/utf8>>,
     naming_pre_claim_claim_update(_Config, Name, MinerPubkey),
@@ -979,7 +981,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => MinerAddress,
+    ResponseEncoded = #{oracle => OracleAddress,
                         query_id => aec_base58c:encode(oracle_query_id, QueryId),
                         response => <<"Hejsan">>,
                         fee => 3},

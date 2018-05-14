@@ -12,6 +12,7 @@
                         , hexstrings_decode/1
                         , nameservice_pointers_decode/1
                         , get_nonce/1
+                        , get_nonce_resolved_name/2
                         , print_state/0
                         , get_contract_code/2
                         , verify_oracle_existence/1
@@ -219,7 +220,7 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle, fee, ttl]),
                  base58_decode_or_name([{oracle, oracle, oracle_pubkey}]),
-                 get_nonce(oracle),
+                 get_nonce_resolved_name(oracle, oracle_pubkey),
                  ttl_decode(ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
                 ],
@@ -243,7 +244,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle, query_id,
                                        response, fee]),
-                 base58_decode_or_name([{oracle, oracle, account_pubkey},
+                 base58_decode_or_name([{oracle, oracle, oracle_pubkey},
                                         {query_id, query_id, oracle_query_id}]),
                  get_nonce(oracle),
                  verify_oracle_query_existence(oracle, query_id),

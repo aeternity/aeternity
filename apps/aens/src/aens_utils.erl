@@ -14,7 +14,8 @@
          is_revoked/1,
          to_ascii/1,
          from_ascii/1,
-         validate_name/1]).
+         validate_name/1,
+         base58c_decode_safe_or_valid_name/2]).
 
 %%%===================================================================
 %%% Types
@@ -68,6 +69,7 @@ from_ascii(NameAscii) when is_binary(NameAscii) ->
     UnicodeName   = idna:from_ascii(NameAsciiList),
     list_to_binary(UnicodeName).
 
+-spec validate_name(binary()) -> ok| {error, term()}.
 validate_name(Name) ->
     case binary:split(Name, ?LABEL_SEPARATOR, [global, trim]) of
         [_Label, RegistrarNS] ->
@@ -79,6 +81,17 @@ validate_name(Name) ->
             {error, no_registrar};
         [_Label | _Namespaces] ->
             {error, multiple_namespaces}
+    end.
+
+-spec base58c_decode_safe_or_valid_name(atom(), binary()) -> {ok, binary()} | {error, term()}.
+base58c_decode_safe_or_valid_name(Type, EncodedOrName) ->
+    case aec_base58c:safe_decode(Type, EncodedOrName) of
+        {ok, Decoded}   -> {ok, Decoded};
+        {error, _Error} ->
+            case validate_name(EncodedOrName) of
+                ok             -> {ok, EncodedOrName};
+                {error, Error} -> {error, Error}
+            end
     end.
 
 %%%===================================================================
