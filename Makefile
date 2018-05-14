@@ -29,6 +29,7 @@ PYTHON_TESTS = $(PYTHON_DIR)/tests
 PIP = $(PYTHON_BIN)/pip
 
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
+export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
 HTTP_APP = apps/aehttp
 SWTEMP := $(shell mktemp -d 2>/dev/null || mktemp -d -t 'mytmpdir')
@@ -193,6 +194,11 @@ aevm-test: aevm-test-deps
 	@./rebar3 eunit --application=aevm
 
 aevm-test-deps: $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
+aevm-test-deps:
+	$(eval VER=$(shell git -C "$(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests" log -1 --pretty=format:"%H"))
+	@if [ "$(VER)" != "$(AEVM_EXTERNAL_TEST_VERSION)" ]; then \
+		git -C $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests checkout $(AEVM_EXTERNAL_TEST_VERSION); \
+	fi
 
 $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 	@git clone https://github.com/ethereum/tests.git $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests
