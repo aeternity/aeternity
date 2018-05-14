@@ -65,7 +65,7 @@
           port: 3114
       chain:
         persist: true
-        db_path: "./db50"
+        db_path: "./db51"
       keypair:
         dir: "keys"
         password: "{{ vault_keys_password|default('secret') }}"
