@@ -44,6 +44,7 @@
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
     is_remote_package: false
     public_ip: "{{ ansible_ssh_host|default(ansible_host)|default(inventory_hostname) }}"
+    local_peer_keys_dir: "files/peer_keys/{{ public_ip }}"
 
     # Label used for datadog tagging and ENV file planting
     env: unknown
@@ -170,14 +171,23 @@
         when: genesis_accounts is defined
         tags: [config]
 
+      # Workaround to deploy peer keys even with --limits that does not include seed groups
+      # Also workarounds an issue with hostname/IP of inventory items, as the keys are bound to IP
+      - name: Check if peer keys directory exists
+        local_action: stat path={{ local_peer_keys_dir }}
+        register: stat_peer_dir
+        tags: [config, peer_keys]
+
       - name: "Copy node peer keys to {{ project_root }}/{{ config.keypair.dir }}"
         copy:
           src: "{{ item }}"
           dest: "{{ project_root }}/{{ config.keypair.dir }}"
           mode: 0600
-        with_items: "{{ peer_keypairs }}"
-        when: peer_keypairs is defined
-        tags: [config]
+        with_items:
+          - "{{ local_peer_keys_dir }}/peer_key"
+          - "{{ local_peer_keys_dir }}/peer_key.pub"
+        when: stat_peer_dir.stat.exists
+        tags: [config, peer_keys]
 
       - name: Start epoch daemon
         command: "{{ project_root }}/bin/epoch start"
