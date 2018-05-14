@@ -12,6 +12,7 @@
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
         , get_nonce/1
+        , get_nonce_resolved_name/2
         , print_state/0
         , get_contract_code/2
         , get_contract_call_object_from_tx/2
@@ -155,8 +156,7 @@ get_nonce(AccountKey) ->
     fun(Req, State) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
-                PubkeyOrName = maps:get(AccountKey, State),
-                Pubkey = resolve_name_for_key(PubkeyOrName, AccountKey),
+                Pubkey = maps:get(AccountKey, State),
                 case aec_next_nonce:pick_for_account(Pubkey) of
                     {ok, Nonce} ->
                         {ok, maps:put(nonce, Nonce, State)};
@@ -169,22 +169,29 @@ get_nonce(AccountKey) ->
         end
     end.
 
-resolve_name_for_key(PubkeyOrName, Key) ->
-    NameTypeForKey =
-        case Key of
-            oracle  -> {ok, oracle_pubkey};
-            account -> {ok, account_pubkey};
-            _       -> {error, no_type_for_state_resolve}
-        end,
+get_nonce_resolved_name(AccountKey, NameType) ->
+    fun(Req, State) ->
+        case maps:get(nonce, Req, undefined) of
+            undefined ->
+                PubkeyOrName = maps:get(AccountKey, State),
+                Pubkey = resolve_name_for_type(PubkeyOrName, NameType),
+                case aec_next_nonce:pick_for_account(Pubkey) of
+                    {ok, Nonce} ->
+                        {ok, maps:put(nonce, Nonce, State)};
+                    {error, account_not_found} ->
+                        Msg = "Account of " ++ atom_to_list(AccountKey) ++ " not found",
+                        {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}}
+                end;
+            Nonce ->
+                {ok, maps:put(nonce, Nonce, State)}
+        end
+    end.
 
-    case NameTypeForKey of
-        {ok, NameType} ->
-            {ok, PubkeyMaybeEnc} = aec_chain:resolve_name_decoded(NameType, PubkeyOrName),
-            case aec_base58c:safe_decode(NameType, PubkeyMaybeEnc) of
-                {ok, PubkeyDec} -> PubkeyDec;
-                {error, _} -> PubkeyMaybeEnc
-            end;
-        {error, _} -> PubkeyOrName
+resolve_name_for_type(PubkeyOrName, NameType) ->
+    {ok, PubkeyMaybeEnc} = aec_chain:resolve_name_decoded(NameType, PubkeyOrName),
+    case aec_base58c:safe_decode(NameType, PubkeyMaybeEnc) of
+        {ok, PubkeyDec} -> PubkeyDec;
+        {error, _}      -> PubkeyMaybeEnc
     end.
 
 print_state() ->
@@ -238,25 +245,25 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
 verify_oracle_existence(OracleKey) ->
     verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
                              fun aeo_state_tree:lookup_oracle/2,
-                             "Oracle address"). 
+                             oracle_pubkey, "Oracle address").
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
         OraclePubKeyOrName = maps:get(OracleKey, State),
-        OraclePubKey = resolve_name_for_key(OraclePubKeyOrName, OracleKey),
+        OraclePubKey = resolve_name_for_type(OraclePubKeyOrName, oracle_pubkey),
         Lookup =
             fun(QId, Tree) ->
                 aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
             end,
         Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
-                                        Lookup, "Oracle query"),
+                                        Lookup, oracle_pubkey, "Oracle query"),
         Fun(Req, State)
     end.
 
-verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
+verify_key_in_state_tree(Key, StateTreeFun, Lookup, NameType, Entity) ->
     fun(_Req, State) ->
         ReceivedAddressOrName = maps:get(Key, State),
-        ReceivedAddress = resolve_name_for_key(ReceivedAddressOrName, Key),
+        ReceivedAddress = resolve_name_for_type(ReceivedAddressOrName, NameType),
         {ok, Trees}  = aec_chain:get_top_state(),
         Tree = StateTreeFun(Trees),
         case Lookup(ReceivedAddress, Tree) of

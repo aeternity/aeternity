@@ -744,7 +744,7 @@ contract_transactions(_Config) ->
         get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call(maps:put(contract, RandContractAddress, 
+        get_contract_call(maps:put(contract, RandContractAddress,
                                    ContractCallEncoded)),
     %% caller not found
     {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
@@ -863,11 +863,10 @@ oracle_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => OracleAddress,
-                        query_id => aec_base58c:encode(oracle_query_id,
-                                                       QueryId),
+    ResponseEncoded = #{oracle   => OracleAddress,
+                        query_id => aec_base58c:encode(oracle_query_id, QueryId),
                         response => <<"Hejsan">>,
-                        fee => 3},
+                        fee      => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle => MinerPubkey,
                                 query_id => QueryId}),
@@ -944,6 +943,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
+    OracleAddress = aec_base58c:encode(oracle_pubkey, MinerPubkey),
 
     Name = <<"oracleIdResolvement.test"/utf8>>,
     naming_pre_claim_claim_update(_Config, Name, MinerPubkey),
@@ -1018,7 +1018,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => MinerAddress,
+    ResponseEncoded = #{oracle => OracleAddress,
                         query_id => aec_base58c:encode(oracle_query_id, QueryId),
                         response => <<"Hejsan">>,
                         fee => 3},
