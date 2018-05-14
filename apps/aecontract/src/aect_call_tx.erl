@@ -120,7 +120,7 @@ signers(Tx, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
-                          fee = Fee, gas_price = GasPrice, amount = Value
+                          fee = Fee, gas = Gas, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
 
     %% Transfer the attached funds to the callee (before calling the contract!)
@@ -135,21 +135,27 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
 
     %% Run the contract code. Also computes the amount of gas left and updates
     %% the call object.
-    %% TODO: handle transactions performed by the contract code
     {Call, Trees3} = run_contract(CallTx, Call0, Height, Trees2),
 
     %% Charge the fee and the used gas to the caller (not if called from another contract!)
     AccountsTree1 = aec_trees:accounts(Trees3),
+    GasUsed =
+        case aect_call:return_type(Call) of
+            ok ->
+                aect_call:gas_used(Call) * GasPrice;
+            _Error ->
+                Gas * GasPrice
+        end,
     AccountsTree2 =
         case Context of
             aetx_contract    ->
-                AccountsTree2;
+                AccountsTree1;
             aetx_transaction ->
                 %% When calling from the top-level we charge Fee and Gas as well.
-                Amount        = Fee + aect_call:gas_used(Call) * GasPrice,
-                Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree2),
+                Amount        = Fee + GasUsed,
+                Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree1),
                 {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
-                aec_accounts_trees:enter(Caller3, AccountsTree2)
+                aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
     Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),
 
@@ -159,10 +165,9 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
     CallsTree0 = aec_trees:calls(Trees4),
     CallsTree1 = aect_call_state_tree:insert_call(Call, CallsTree0),
     Trees5 = aec_trees:set_calls(Trees4, CallsTree1),
-
     {ok, Trees5}.
 
-spend(CallerPubKey, CalleePubKey, Value, Nonce, Context, Height, Trees,
+spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
       ConsensusVersion) ->
     {ok, SpendTx} = aec_spend_tx:new(#{ sender => CallerPubKey
                                 , recipient => CalleePubKey

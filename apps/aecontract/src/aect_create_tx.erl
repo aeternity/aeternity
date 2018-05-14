@@ -167,7 +167,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
 			    vm_version = VmVersion,
                             amount     = Amount,
-                            gas        = Gas,
+                            gas        =_Gas,
                             gas_price  = GasPrice,
                             fee   = Fee} = CreateTx,
         Context, Trees0, Height, ConsensusVersion) ->
@@ -190,7 +190,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
     %% Create the init call.
     Call0 = aect_call:new(OwnerPubKey, Nonce, ContractPubKey, Height),
 
-    Trees5 =
+    Trees6 =
 	case VmVersion of
 	    ?AEVM_01_Sophia_01 ->
 		%% Execute init call to get the contract state and return value
@@ -204,16 +204,32 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			CallsTree0 = aec_trees:calls(Trees3),
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
 			Trees4     = aec_trees:set_calls(Trees3, CallsTree1),
+
+                        %% Spend Gas
+                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        Trees5 =
+                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce+1,
+                                  Context, Height, Trees4,
+                                  ConsensusVersion),
+
                         %% Save the initial state (returned by `init`) in the store.
                         InitState  = aect_call:return_value(CallRes),
                                      %% TODO: move to/from_sophia_state to make nicer dependencies?
                         Contract1  = aect_contracts:set_state(
                                        aevm_eeevm_store:from_sophia_state(InitState), Contract),
                         ContractsTree2a = aect_state_tree:enter_contract(Contract1, ContractsTree1a),
-                        aec_trees:set_contracts(Trees4, ContractsTree2a);
+                        aec_trees:set_contracts(Trees5, ContractsTree2a);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees1  %% Don't create the contract if 'init' fails!
+                        %% Don't create the contract if 'init' fails!
+                        %% Go back to Trees1
+                        %% Spend gas + fee
+                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        Trees5 =
+                            spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
+                                  Context, Height, Trees1,
+                                  ConsensusVersion),
+			Trees5
 		end;
 	    ?AEVM_01_Solidity_01 ->
 
@@ -232,24 +248,39 @@ process(#contract_create_tx{owner = OwnerPubKey,
 			CallsTree1 = aect_call_state_tree:insert_call(CallRes, CallsTree0),
 			Trees4 = aec_trees:set_calls(Trees3, CallsTree1),
 
+                        %% Spend Gas
+                        GasCost = aect_call:gas_used(CallRes) * GasPrice,
+                        Trees5 =
+                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce+1,
+                                  Context, Height, Trees4,
+                                  ConsensusVersion),
+
 			%% Update contract
-			ContractsTree0 = aec_trees:contracts(Trees4),
+			ContractsTree0 = aec_trees:contracts(Trees5),
 			NewCode = aect_call:return_value(CallRes),
 			Contract1 = aect_contracts:set_code(NewCode, Contract),
 			ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-			aec_trees:set_contracts(Trees4, ContractsTree1);
+			aec_trees:set_contracts(Trees5, ContractsTree1);
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
-			Trees3
+                        %% Don't create the contract if 'init' fails!
+                        %% Go back to Trees1
+                        %% Spend gas + fee
+                        GasCost       = aect_call:gas_used(CallRes) * GasPrice,
+                        Trees5 =
+                            spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
+                                  Context, Height, Trees1,
+                                  ConsensusVersion),
+			Trees5
 		end;
 	    _ ->
 		Trees1
 	end,
 
 
-    {ok, Trees5}.
+    {ok, Trees6}.
 
-spend(OwnerPubKey, ContractPubKey, Value, Fee, Nonce, Context, Height, Trees,
+spend(OwnerPubKey, ContractPubKey, Value, Fee, Nonce,_Context, Height, Trees,
       ConsensusVersion) ->
     {ok, SpendTx} = aec_spend_tx:new(
                       #{ sender => OwnerPubKey

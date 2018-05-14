@@ -68,7 +68,7 @@ def test_contract_create():
     assert_equals(alice_balance0,
                   alice_balance
                   + test_settings["create_contract"]["fee"]
-    ##              + test_settings["create_contract"]["gas_used"]
+                  + test_settings["create_contract"]["gas_used"]
                   + test_settings["create_contract"]["amount"])
 
     print("Fee was consumed, transaction is part of the chain")
@@ -108,6 +108,7 @@ def test_contract_call():
     assert_equals(alice_balance0,
                   alice_balance
                   + create_settings["create_contract"]["fee"]
+                  + create_settings["create_contract"]["gas_used"]
                   + create_settings["create_contract"]["amount"])
 
     call_input = ContractCallInput("sophia", create_settings["create_contract"]["code"],\
@@ -144,7 +145,8 @@ def test_contract_call():
 
     # The call runs out of gas and all gas is consumed
     # assert contract called:
-    assert_equals(alice_balance0, alice_balance + test_settings["contract_call"]["fee"]
+    assert_equals(alice_balance0, alice_balance
+                  + test_settings["contract_call"]["fee"]
                   + test_settings["contract_call"]["gas"]
                   + test_settings["contract_call"]["amount"])
     print("Fee and gas was consumed, transaction is part of the chain")
