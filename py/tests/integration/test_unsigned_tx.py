@@ -21,7 +21,7 @@ settings = common.test_settings(__name__.split(".")[-1])
 
 def test_contract_create():
     test_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
+    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -65,8 +65,12 @@ def test_contract_create():
     top = external_api.get_top()
     common.wait_until_height(external_api, top.height + 3)
     alice_balance = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    assert_equals(alice_balance0,
+                  alice_balance
+                  + test_settings["create_contract"]["fee"]
+    ##              + test_settings["create_contract"]["gas_used"]
+                  + test_settings["create_contract"]["amount"])
 
-    assert_equals(alice_balance0, alice_balance + test_settings["create_contract"]["fee"])
     print("Fee was consumed, transaction is part of the chain")
 
     cleanup(node, root_dir)
@@ -74,7 +78,7 @@ def test_contract_create():
 def test_contract_call():
     test_settings = settings["test_contract_call"]
     create_settings = settings["test_contract_create"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
+    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
@@ -101,7 +105,10 @@ def test_contract_call():
 
     # assert contract created:
     call_contract = test_settings["contract_call"]
-    assert_equals(alice_balance0, alice_balance + create_settings["create_contract"]["fee"])
+    assert_equals(alice_balance0,
+                  alice_balance
+                  + create_settings["create_contract"]["fee"]
+                  + create_settings["create_contract"]["amount"])
 
     call_input = ContractCallInput("sophia", create_settings["create_contract"]["code"],\
                                              call_contract["data"]["function"],\
