@@ -116,7 +116,6 @@ call_common(#{ caller     := Caller
                               }
                },
           #{
-            trace_fun  => fun(S,A) -> lager:error(S,A) end,
             trace => false
            })
     of
@@ -139,7 +138,6 @@ call_common(#{ caller     := Caller
 			  , out := ReturnValue
 			  , chain_state := ChainState1
 			  } = State} ->
-		    lager:error("Return state ~p~n", [State]),
 		    {aect_call:set_gas_used(
 		       Gas - GasLeft,
 		       aect_call:set_return_type(
@@ -151,18 +149,17 @@ call_common(#{ caller     := Caller
 		%% TODO: Use up the right amount of gas depending on error
 		%% TODO: Store errorcode in state tree
 		{error, Error, #{ gas :=_GasLeft}} ->
-		    lager:error("Return error ~p:~p~n", [error, Error]),
 		    {aect_call:set_gas_used(
 		       Gas,
 		       aect_call:set_return_type(
 			 error,
 			 aect_call:set_return_value(error_to_binary(Error), Call))), Trees}
 	    catch T:E ->
-		    lager:error("Return error ~p:~p~n", [T,E]),
+		    lager:debug("Return error ~p:~p~n", [T,E]),
 		    {aect_call:set_return_type(error, Call), Trees}
 	    end
     catch T:E ->
-	    lager:error("Init error ~p:~p~n", [T,E]),
+	    lager:debug("Init error ~p:~p~n", [T,E]),
 	    {aect_call:set_return_type(error, Call), Trees}
     end.
 
