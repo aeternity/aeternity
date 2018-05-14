@@ -48,6 +48,7 @@ services:
     volumes:
       - ${PWD}/docker/nginx-default.conf:/etc/nginx/conf.d/default.conf
       - ${PWD}/docker/nginx-cors.conf:/etc/nginx/cors.conf
+      - ${PWD}/docker/nginx-ws.conf:/etc/nginx/ws.conf
 
 volumes:
   node1_db:
