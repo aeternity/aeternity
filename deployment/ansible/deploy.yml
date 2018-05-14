@@ -44,6 +44,7 @@
     genesis_accounts_path: "{{ project_root }}/data/aecore/.genesis/accounts.json"
     is_remote_package: false
     public_ip: "{{ ansible_ssh_host|default(ansible_host)|default(inventory_hostname) }}"
+    local_peer_keys_dir: "files/peer_keys/{{ public_ip }}"
 
     # Label used for datadog tagging and ENV file planting
     env: unknown
@@ -173,7 +174,7 @@
       # Workaround to deploy peer keys even with --limits that does not include seed groups
       # Also workarounds an issue with hostname/IP of inventory items, as the keys are bound to IP
       - name: Check if peer keys directory exists
-        local_action: stat path=files/peer_keys/{{ public_ip }}
+        local_action: stat path={{ local_peer_keys_dir }}
         register: stat_peer_dir
         tags: [config, peer_keys]
 
@@ -183,8 +184,8 @@
           dest: "{{ project_root }}/{{ config.keypair.dir }}"
           mode: 0600
         with_items:
-          - "files/peer_keys/{{ public_ip }}/peer_key"
-          - "files/peer_keys/{{ public_ip }}/peer_key.pub"
+          - "{{ local_peer_keys_dir }}/peer_key"
+          - "{{ local_peer_keys_dir }}/peer_key.pub"
         when: stat_peer_dir.stat.exists
         tags: [config, peer_keys]
 
