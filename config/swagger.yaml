@@ -97,6 +97,7 @@ paths:
           description: 'Height of the header to fetch'
           required: true
           type: integer
+          minimum: 0
       responses:
         '200':
           description: The header found
@@ -121,7 +122,7 @@ paths:
       parameters:
         - in: body
           name: body
-          description: Put a new block to node
+          description: A new block
           required: true
           schema:
             $ref: '#/definitions/Block'
@@ -147,7 +148,7 @@ paths:
       parameters:
         - in: body
           name: body
-          description: Put a new transaction to node
+          description: A new transaction
           required: true
           schema:
             $ref: '#/definitions/Tx'
@@ -202,7 +203,7 @@ paths:
         - external
         - dev
       operationId: PostContractCreate
-      description: 'Get a contract_create transaction'
+      description: 'Get a contract_create transaction object'
       consumes:
         - application/json
       produces:
@@ -232,7 +233,7 @@ paths:
         - external
         - dev
       operationId: PostContractCall
-      description: 'Get a contract_call transaction'
+      description: 'Get a contract_call transaction object'
       consumes:
         - application/json
       produces:
@@ -262,7 +263,7 @@ paths:
         - external
         - dev
       operationId: PostContractCallCompute
-      description: 'Compute the call_data for SOPHIA and get contract_call transaction'
+      description: 'Compute the call_data for SOPHIA and get contract_call transaction object'
       consumes:
         - application/json
       produces:
@@ -292,7 +293,7 @@ paths:
         - external
         - dev
       operationId: PostOracleRegister
-      description: 'Get a oracle_register transaction'
+      description: 'Get a oracle_register transaction object'
       consumes:
         - application/json
       produces:
@@ -322,7 +323,7 @@ paths:
         - external
         - dev
       operationId: PostOracleExtend
-      description: 'Get an oracle_extend transaction'
+      description: 'Get an oracle_extend transaction object'
       consumes:
         - application/json
       produces:
@@ -352,7 +353,7 @@ paths:
         - external
         - dev
       operationId: PostOracleQuery
-      description: 'Get a oracle_query transaction'
+      description: 'Get an oracle_query transaction object'
       consumes:
         - application/json
       produces:
@@ -382,7 +383,7 @@ paths:
         - external
         - dev
       operationId: PostOracleResponse
-      description: 'Get a oracle_response transaction'
+      description: 'Get an oracle_response transaction object'
       consumes:
         - application/json
       produces:
@@ -412,7 +413,7 @@ paths:
         - external
         - dev
       operationId: PostNamePreclaim
-      description: 'Get a name_preclaim transaction'
+      description: 'Get a name_preclaim transaction object'
       produces:
         - application/json
       parameters:
@@ -440,7 +441,7 @@ paths:
         - external
         - dev
       operationId: PostNameClaim
-      description: 'Get a name_claim transaction'
+      description: 'Get a name_claim transaction object'
       produces:
         - application/json
       parameters:
@@ -468,7 +469,7 @@ paths:
         - external
         - dev
       operationId: PostNameUpdate
-      description: 'Get a name_update transaction'
+      description: 'Get a name_update transaction object'
       produces:
         - application/json
       parameters:
@@ -496,7 +497,7 @@ paths:
         - external
         - dev
       operationId: PostNameTransfer
-      description: 'Get a name_transfer transaction'
+      description: 'Get a name_transfer transaction object'
       produces:
         - application/json
       parameters:
@@ -524,7 +525,7 @@ paths:
         - external
         - dev
       operationId: PostNameRevoke
-      description: 'Get a name_revoke transaction'
+      description: 'Get a name_revoke transaction object'
       produces:
         - application/json
       parameters:
@@ -552,7 +553,7 @@ paths:
         - external
         - dev
       operationId: PostSpend
-      description: 'Get a spend transaction'
+      description: 'Get a spend transaction object'
       consumes:
         - application/json
       produces:
@@ -560,6 +561,7 @@ paths:
       parameters:
         - in: body
           name: body
+          description: A spend transaction
           required: true
           schema:
             $ref: '#/definitions/SpendTx'
@@ -582,7 +584,7 @@ paths:
         - external
         - dev 
       operationId: PostChannelCreate
-      description: 'Get a channel_create transaction'
+      description: 'Get a channel_create transaction object'
       produces:
         - application/json
       parameters:
@@ -610,7 +612,7 @@ paths:
         - external
         - dev
       operationId: PostChannelDeposit
-      description: 'Get a channel_deposit transaction'
+      description: 'Get a channel_deposit transaction object'
       produces:
         - application/json
       parameters:
@@ -634,7 +636,7 @@ paths:
         - external
         - dev
       operationId: PostChannelWithdrawal
-      description: 'Get a channel_withdrawal transaction'
+      description: 'Get a channel_withdrawal transaction object'
       produces:
         - application/json
       parameters:
@@ -658,7 +660,7 @@ paths:
         - external
         - dev
       operationId: PostChannelCloseMutual
-      description: 'Get a channel_close_mutual transaction'
+      description: 'Get a channel_close_mutual transaction object'
       produces:
         - application/json
       parameters:
@@ -682,7 +684,7 @@ paths:
         - external
         - dev
       operationId: PostChannelCloseSolo
-      description: 'Get a channel_close_solo transaction'
+      description: 'Get a channel_close_solo transaction object'
       produces:
         - application/json
       parameters:
@@ -706,7 +708,7 @@ paths:
         - external
         - dev
       operationId: PostChannelSlash
-      description: 'Get a channel_slash transaction'
+      description: 'Get a channel_slash transaction object'
       produces:
         - application/json
       parameters:
@@ -730,7 +732,7 @@ paths:
         - external
         - dev
       operationId: PostChannelSettle
-      description: 'Get a channel_settle transaction'
+      description: 'Get a channel_settle transaction object'
       produces:
         - application/json
       parameters:
@@ -1231,6 +1233,7 @@ paths:
           description: 'Height of the block to show balance at'
           required: false
           type: integer
+          minimum: 0
         - in: query
           name: hash
           description: 'Hash of the block to show balance at'
