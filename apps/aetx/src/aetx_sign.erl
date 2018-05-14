@@ -58,9 +58,9 @@ sign(Tx, PrivKey) when is_binary(PrivKey) ->
   sign(Tx, [PrivKey]);
 sign(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin = aetx:serialize_to_binary(Tx),
-    case lists:any(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
-        true -> erlang:error(invalid_priv_key);
-        false -> pass
+    case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
+        [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
+        [] -> pass
     end,
     Signatures = [ enacl:sign_detached(Bin, PrivKey)
                    || PrivKey <- PrivKeys],
@@ -116,7 +116,9 @@ verify_one_pubkey([Sig|Left], PubKey, Bin, Acc) when ?VALID_PUBK(PubKey) ->
         {ok, _}    -> {ok, Acc ++ Left};
         {error, _} -> verify_one_pubkey(Left, PubKey, Bin, [Sig|Acc])
     end;
-verify_one_pubkey(_,_PubKey,_Bin,_Acc) ->
+verify_one_pubkey([], _PubKey,_Bin,_Acc) -> % no more signatures
+    error;
+verify_one_pubkey(_, _PubKey,_Bin,_Acc) -> % invalid pubkey
     error.
 
 -define(SIG_TX_TYPE, signed_tx).

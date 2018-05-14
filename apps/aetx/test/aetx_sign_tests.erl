@@ -22,9 +22,8 @@ sign_txs_test_() ->
      [{"Key pair is able to sign and validate transaction",
        fun() ->
                #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
-               {ok, CB} = aec_coinbase_tx:new(#{account => Pubkey,
-                                                block_height => 1}),
-               Signed = ?TEST_MODULE:sign(CB, Privkey),
+               {ok, SpendTx} = make_spend_tx(Pubkey),
+               Signed = ?TEST_MODULE:sign(SpendTx, Privkey),
                ?assertEqual(ok, ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
@@ -32,9 +31,8 @@ sign_txs_test_() ->
        fun() ->
                #{ public :=  PubkeyA, secret := _PrivkeyA } = enacl:sign_keypair(),
                #{ public := _PubkeyB, secret :=  PrivkeyB } = enacl:sign_keypair(),
-               {ok, CB} = aec_coinbase_tx:new(#{account => PubkeyA,
-                                                block_height => 1}),
-               Signed = ?TEST_MODULE:sign(CB, PrivkeyB),
+               {ok, SpendTx} = make_spend_tx(PubkeyA),
+               Signed = ?TEST_MODULE:sign(SpendTx, PrivkeyB),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
@@ -42,20 +40,27 @@ sign_txs_test_() ->
       {"Broken pub key does not validate signatures",
        fun() ->
                #{ public := _Pubkey, secret := Privkey } = enacl:sign_keypair(),
-               {ok, CB} = aec_coinbase_tx:new(#{account => <<0:42/unit:8>>,
-                                                block_height => 1}),
-               Signed = ?TEST_MODULE:sign(CB, Privkey),
+               {ok, SpendTx} = make_spend_tx(<<0:42/unit:8>>),
+               Signed = ?TEST_MODULE:sign(SpendTx, Privkey),
                ?assertEqual({error, signature_check_failed},
                             ?TEST_MODULE:verify(Signed, aec_trees:new())),
                ok
       end},
       {"Broken priv key does not produce signatures",
        fun() ->
-               #{ public := Pubkey, secret := _Privkey } = enacl:sign_keypair(),
-               {ok, CB} = aec_coinbase_tx:new(#{account => Pubkey,
-                                                block_height => 1}),
-               ?_assertException(error, invalid_priv_key,
-                                 ?TEST_MODULE:sign(CB, <<0:42/unit:8>>)),
+               BrokenKey = <<0:42/unit:8>>,
+               {ok, SpendTx} = make_spend_tx(BrokenKey),
+               ?_assertException(error, {invalid_priv_key, [BrokenKey]},
+                                 ?TEST_MODULE:sign(SpendTx, <<0:42/unit:8>>)),
                ok
       end}
      ]}.
+
+make_spend_tx(Sender) ->
+    #{ public := OtherPubkey} = enacl:sign_keypair(),
+    {ok, _SpendTx} = aec_spend_tx:new(#{sender => Sender,
+                                        recipient => OtherPubkey,
+                                        amount => 4,
+                                        fee => 1,
+                                        nonce => 1,
+                                        payload => <<>>}).
