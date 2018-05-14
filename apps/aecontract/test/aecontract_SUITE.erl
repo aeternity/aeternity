@@ -80,19 +80,22 @@ create_contract_negative(_Cfg) ->
     {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1      = aect_test_utils:create_tx(BadPubKey, S1),
-    {error, S1}  = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
+    {error, MaybeS1Mined} = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
+    aect_test_utils:assert_state_equal(S1, MaybeS1Mined),
     {error, account_not_found} = aetx:check(RTx1, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Insufficient funds
     S2     = aect_test_utils:set_account_balance(PubKey, 0, S1),
     Trees2 = aect_test_utils:trees(S2),
     RTx2   = aect_test_utils:create_tx(PubKey, S2),
-    {error, S2}  = sign_and_apply_transaction(RTx2, PrivKey, S2),
+    {error, MaybeS2Mined} = sign_and_apply_transaction(RTx2, PrivKey, S2),
+    aect_test_utils:assert_state_equal(S2, MaybeS2Mined),
     {error, insufficient_funds} = aetx:check(RTx2, Trees2, CurrHeight, ?PROTOCOL_VERSION),
 
     %% Test too high account nonce
     RTx3 = aect_test_utils:create_tx(PubKey, #{nonce => 0}, S1),
-    {error, S1}  = sign_and_apply_transaction(RTx3, PrivKey, S1),
+    {error, MaybeS1Mined2} = sign_and_apply_transaction(RTx3, PrivKey, S1),
+    aect_test_utils:assert_state_equal(S1, MaybeS1Mined2),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
     ok.
