@@ -15,7 +15,7 @@
         [ extend_block_chain_with_state/3
         , blocks_only_chain/1
         , genesis_block/0
-        , genesis_block_with_state/0
+        , genesis_block_with_state/1
         ]).
 
 -import(aec_chain_state,
@@ -473,7 +473,8 @@ target_verified_based_on_calculations() ->
     ChainData =
         #{ targets    => [?GENESIS_TARGET, ?GENESIS_TARGET, ?GENESIS_TARGET, Good4, Good5],
            nonce      => 12345,
-           timestamps => [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000] },
+           timestamps => [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000],
+           txs_by_height_fun => fun(_) -> [] end},
 
     [B0, B1, B2, B3, B4, B5] = Chain = gen_blocks_only_chain(ChainData),
 
@@ -501,9 +502,9 @@ test_postponed_target_verification() ->
 
     T0 = aeu_time:now_in_msecs(),
     TS = [T0, T0 + 10000, T0 + 20000, T0 + 30000, T0 + 40000, T0 + 50000],
-    MainBC = gen_blocks_only_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS }),
+    MainBC = gen_blocks_only_chain(#{ targets => MainTargets, nonce => 111, timestamps => TS, txs_by_height_fun => fun(_) -> [] end }),
     AltChain = [_, B1, B2, B3, B4, B5, B6] =
-        gen_blocks_only_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS }),
+        gen_blocks_only_chain(#{ targets => AltTargets, nonce => 222, timestamps => TS, txs_by_height_fun => fun(_) -> [] end }),
 
     %% Assert that we are creating a fork
     ?assertNotEqual(MainBC, AltChain),
@@ -722,37 +723,52 @@ fork_is_in_main_chain() ->
     ok.
 
 fork_get_transaction() ->
-    CommonChain = gen_block_chain_with_state_by_target([?GENESIS_TARGET, 1, 1], 111),
-    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, [2, 2], 111)),
-    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1, 1, 1], 222)),
+    #{ public := SenderPubKey, secret := SenderPrivKey } = enacl:sign_keypair(),
+    RecipientPubKey = <<42:32/unit:8>>,
+    PresetAccounts = [{SenderPubKey, 100}],
+    meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
+    Spend1 = aetx_sign:sign(make_a_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+    Spend2 = aetx_sign:sign(make_a_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
+    CommonChainTargets = [?GENESIS_TARGET, 1, 1],
+    EasyChainExtensionTargets = [2, 2],
+    HardChainExtensionTargets = [1, 1, 1],
+    EasyChainTopHeight = ?GENESIS_HEIGHT + length(CommonChainTargets ++ EasyChainExtensionTargets),
+    HardChainTopHeight = ?GENESIS_HEIGHT + length(CommonChainTargets ++ HardChainExtensionTargets),
+    ?assertMatch(H when H > EasyChainTopHeight, HardChainTopHeight),
+    TxsFun = fun
+                 (H) when H =:= EasyChainTopHeight -> [Spend1];
+                 (H) when H =:= HardChainTopHeight -> [Spend2];
+                 (_) -> []
+             end,
+    CommonChain = gen_block_chain_with_state_by_target(PresetAccounts, CommonChainTargets, 111),
+    EasyChain = blocks_only_chain(extend_chain_with_state(CommonChain, EasyChainExtensionTargets, 111, TxsFun)),
+    HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, HardChainExtensionTargets, 222, TxsFun)),
 
     EasyTopBlock = lists:last(EasyChain),
-    [EasyCoinbase] = aec_blocks:txs(EasyTopBlock),
-    EasyTxHash = aetx_sign:hash(EasyCoinbase),
+    [_EasyCoinbase, EasySpend] = aec_blocks:txs(EasyTopBlock),
+    EasyTxHash = aetx_sign:hash(EasySpend),
 
     HardTopBlock = lists:last(HardChain),
-    [HardCoinbase] = aec_blocks:txs(HardTopBlock),
-    HardTxHash = aetx_sign:hash(HardCoinbase),
+    [_HardCoinbase, HardSpend] = aec_blocks:txs(HardTopBlock),
+    HardTxHash = aetx_sign:hash(HardSpend),
 
     HardButLastBlock = lists:last(lists:droplast(HardChain)),
-    [HardButLastCoinbase] = aec_blocks:txs(HardButLastBlock),
-    HardButLastTxHash = aetx_sign:hash(HardButLastCoinbase),
+    [_HardButLastCoinbase, HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
+    HardButLastTxHash = aetx_sign:hash(HardButLastSpend),
 
-    %% NOTE: Currently, the coinbase tx has the same hash at the same
-    %% height. This test needs to be rewritten if this precondition
-    %% changes since it is no longer testing the correct thing.
     ?assertEqual(HardButLastTxHash, EasyTxHash),
+    ?assertNotEqual(HardButLastTxHash, HardTxHash),
 
     ok = write_blocks_to_chain(EasyChain),
-    ?assertEqual({block_hash(EasyTopBlock), EasyCoinbase},
+    ?assertEqual({block_hash(EasyTopBlock), EasySpend},
                  aec_chain:find_tx_with_location(EasyTxHash)),
     ?assertEqual(none,
                  aec_chain:find_tx_with_location(HardTxHash)),
 
     ok = write_blocks_to_chain(HardChain),
-    ?assertEqual({block_hash(HardButLastBlock), HardButLastCoinbase},
+    ?assertEqual({block_hash(HardButLastBlock), HardButLastSpend},
                  aec_chain:find_tx_with_location(HardButLastTxHash)),
-    ?assertEqual({block_hash(HardTopBlock), HardCoinbase},
+    ?assertEqual({block_hash(HardTopBlock), HardSpend},
                  aec_chain:find_tx_with_location(HardTxHash)),
 
     ok.
@@ -843,22 +859,46 @@ write_blocks_to_chain([]) ->
     ok.
 
 gen_blocks_only_chain(Data) ->
-    blocks_only_chain(gen_block_chain_with_state(Data)).
+    gen_blocks_only_chain(aec_test_utils:preset_accounts(), Data).
 
-gen_block_chain_with_state(Data) ->
-    {B0, S0} = genesis_block_with_state(),
+gen_blocks_only_chain(PresetAccounts, Data) ->
+    blocks_only_chain(gen_block_chain_with_state(PresetAccounts, Data)).
+
+gen_block_chain_with_state(PresetAccounts, Data) ->
+    {B0, S0} = genesis_block_with_state(PresetAccounts),
     [{B0, S0} | extend_block_chain_with_state(B0, S0, Data)].
 
 gen_blocks_only_chain_by_target(Targets, Nonce) ->
-    blocks_only_chain(gen_block_chain_with_state_by_target(Targets, Nonce)).
+    gen_blocks_only_chain_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
+
+gen_blocks_only_chain_by_target(PresetAccounts, Targets, Nonce) ->
+    blocks_only_chain(gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce)).
 
 gen_block_chain_with_state_by_target(Targets, Nonce) ->
-    gen_block_chain_with_state(#{ targets => Targets, nonce => Nonce }).
+    gen_block_chain_with_state_by_target(aec_test_utils:preset_accounts(), Targets, Nonce).
+
+gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce) ->
+    gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, fun(_) -> [] end).
+
+gen_block_chain_with_state_by_target(PresetAccounts, Targets, Nonce, TxsFun) ->
+    gen_block_chain_with_state(PresetAccounts, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
 
 extend_chain_with_state(Base, Targets, Nonce) ->
+    extend_chain_with_state(Base, Targets, Nonce, fun(_) -> [] end).
+
+extend_chain_with_state(Base, Targets, Nonce, TxsFun) ->
     {B, S} = lists:last(Base),
-    Base ++ extend_block_chain_with_state(B, S, #{ targets => Targets, nonce => Nonce }).
+    Base ++ extend_block_chain_with_state(B, S, #{ targets => Targets, txs_by_height_fun => TxsFun, nonce => Nonce }).
 
 block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),
     H.
+
+make_a_spend_tx(Sender, SenderNonce, Recipient) ->
+    {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
+                                       recipient => Recipient,
+                                       amount => 1,
+                                       fee => 1,
+                                       nonce => SenderNonce,
+                                       payload => <<>>}),
+    SpendTx.
