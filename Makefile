@@ -1,6 +1,6 @@
 CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
-EUNIT_VM_ARGS = $(CURDIR)/config/euint.vm.args
+EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
 CT_TEST_FLAGS =
 EUNIT_TEST_FLAGS =
 ifdef SUITE
