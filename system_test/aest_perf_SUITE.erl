@@ -99,11 +99,17 @@ end_per_suite(_Cfg) -> ok.
 %=== TEST CASES ================================================================
 
 startup_speed(Cfg) ->
+    % This test verifies that startup does not time out (take longer than
+    % mining) and logs the time taken.
     Height = ?cfg(height),
     setup_nodes([spec(node, [], #{source => ?cfg(source)})], Cfg),
     sync_node(node, Height, Cfg).
 
 sync_speed(Cfg) ->
+    % This tests starts 4 nodes at the pre-mined height, then adds and syncs two
+    % more one at a time. Syncing is verified to not take longer than mining and
+    % then the measured time is logged. It asserts that the network does not
+    % fork.
     [Height, MineRate] = ?cfg([height, mine_rate]),
 
     InitialNodes = [n1, n2, n3, n4],
@@ -131,6 +137,9 @@ sync_speed(Cfg) ->
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 stay_in_sync(Cfg) ->
+    % This test starts 6 nodes at the pre-mined height and then mines for an
+    % additional 20% of the original mining time. It asserts that the network
+    % does not fork.
     Height = ?cfg(height),
     Nodes = [n1, n2, n3, n4, n5, n6],
     setup_nodes(cluster(Nodes, #{
@@ -159,8 +168,9 @@ sync_node(Node, Height, Cfg) ->
     Start = erlang:system_time(millisecond),
     wait_for_startup([Node], 0, Cfg),
     wait_for_sync([Node], Height, Cfg),
-    Block = get_block(Node, Height, Cfg),
     End = erlang:system_time(millisecond),
+    Block = get_block(Node, Height, Cfg),
+    % Sanity check that syncing does not take longer than mining
     ?assert(End - Start =< time_to_ms(?cfg(mine_time))),
     Block.
 
