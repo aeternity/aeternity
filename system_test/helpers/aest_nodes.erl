@@ -22,16 +22,18 @@
 -export([disconnect_node/3]).
 -export([get_service_address/3]).
 -export([get_node_pubkey/2]).
--export([http_get/5]).
--export([http_post/7]).
 -export([export/3]).
 
 %% Helper function exports
+-export([request/3]).
 -export([request/4]).
 -export([get/5]).
--export([get_block/3]).
--export([get_top/2]).
+-export([get_block/2]).
+-export([get_top/1]).
 -export([wait_for_value/4]).
+-export([wait_for_time/3]).
+-export([wait_for_time/4]).
+-export([time_to_ms/1]).
 
 %=== MACROS ====================================================================
 
@@ -110,8 +112,6 @@
 -type node_service() :: ext_http | int_http | int_ws.
 -type http_path() :: [atom() | binary() | number()] | binary().
 -type http_query() :: #{atom() | binary() => atom() | binary()}.
--type http_headers() :: [{binary(), binary()}].
--type http_body() :: binary().
 -type json_object() :: term().
 -type milliseconds() :: non_neg_integer().
 -type path() :: binary() | string().
@@ -256,19 +256,18 @@ http_get(NodeName, Service, Path, Query, Ctx) ->
     Addr = get_service_address(NodeName, Service, Ctx),
     http_addr_get(Addr, Path, Query).
 
--spec http_post(atom(), ext_http | int_http, http_path(), http_query(), http_headers(), http_body(), test_ctx()) ->
-        {ok, pos_integer(), json_object()} | {error, term()}.
-http_post(NodeName, Service, Path, Query, Headers, Body, Ctx) ->
-    Addr = get_service_address(NodeName, Service, Ctx),
-    http_addr_post(Addr, Path, Query, Headers, Body).
-
 export(NodeName, Name, Ctx) ->
     call(ctx2pid(Ctx), {export, NodeName, Name}).
 
 %=== HELPER FUNCTIONS ==========================================================
 
+request(Node, Id, Params) ->
+    aehttp_client:request(Id, Params, [
+        {ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)},
+        {ct_log, true}
+    ]).
+
 %% @doc Performs an HTTP get request on the node external API.
-%% Should preferably use `get/5` with service `ext_http`.
 -spec request(atom(), http_path(), http_query(), test_ctx) -> json_object().
 request(NodeName, Path, Query, Ctx) ->
     get(NodeName, ext_http, Path, Query, Ctx).
@@ -282,25 +281,15 @@ get(NodeName, Service, Path, Query, Ctx) ->
         {error, Reason} -> error({http_error, Reason})
     end.
 
-%% @doc Retrieves a block at given height from the given node.
-%% It will throw an excpetion if the block does not exists.
--spec get_block(atom(), non_neg_integer(), test_ctx()) -> json_object().
-get_block(NodeName, Height, Ctx) ->
-    case http_get(NodeName, ext_http, [v2, 'block-by-height'],
-                  #{height => Height}, Ctx) of
-        {ok, 200, Response} -> Response;
-        {ok, Status, _Response} -> error({unexpected_status, Status});
-        {error, Reason} -> error({http_error, Reason})
+get_block(NodeName, Height) ->
+    case request(NodeName, 'GetBlockByHeight', #{height => Height}) of
+        {ok, 200, Block} -> Block;
+        {ok, 404, _} -> undefined
     end.
 
-%% @doc Retrieves the top block from the given node.
--spec get_top(atom(), test_ctx()) -> json_object().
-get_top(NodeName, Ctx) ->
-    case http_get(NodeName, ext_http, [v2, 'top'], #{}, Ctx) of
-        {ok, 200, Response} -> Response;
-        {ok, Status, _Response} -> error({unexpected_status, Status});
-        {error, Reason} -> error({http_error, Reason})
-    end.
+get_top(NodeName) ->
+    {ok, 200, Top} = request(NodeName, 'GetTop', #{}),
+    Top.
 
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
@@ -356,6 +345,47 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
         [MinHeight, NodeNames, Duration]
     ).
 
+wait_for_time(height, NodeNames, Time) ->
+    wait_for_time(height, NodeNames, Time, #{}).
+
+wait_for_time(height, NodeNames, TimeUnit, Opts) ->
+    Time = time_to_ms(TimeUnit),
+    Interval = time_to_ms(maps:get(interval, Opts, {seconds, 10})),
+    ProgressFun = fun(Elapsed) ->
+        [{_Node, Lowest}|_] = Tops = lists:sort(fun({_, A}, {_, B}) ->
+            maps:get(height, A) =< maps:get(height, B)
+        end, [{N, get_top(N)} || N <- NodeNames]),
+        ct:log("Heights after ~p s: ~p", [
+            floor(Elapsed / 1000),
+            [{N, H} || {N, #{height := H}} <- Tops]
+        ]),
+        Lowest
+    end,
+    Block = repeat(ProgressFun, Interval, Time),
+    maps:get(height, Block).
+
+repeat(Fun, Interval, Max) ->
+    Start = erlang:system_time(millisecond),
+    timer:sleep(Interval),
+    repeat(Fun, Interval, Max, Start).
+
+repeat(Fun, Interval, Time, Start) ->
+    Elapsed = erlang:system_time(millisecond) - Start,
+    case Elapsed >= Time of
+        true ->
+            Fun(Elapsed);
+        false ->
+            timer:sleep(Interval),
+            _Result = Fun(Elapsed),
+            repeat(Fun, Interval, Time, Start)
+    end.
+
+time_to_ms(Time) when is_integer(Time) -> Time;
+time_to_ms({milliseconds, Time})       -> Time;
+time_to_ms({seconds, Time})            -> Time * 1000;
+time_to_ms({minutes, Time})            -> Time * 1000 * 60;
+time_to_ms({hours, Time})              -> Time * 1000 * 60 * 60.
+
 %=== INTERNAL FUNCTIONS ========================================================
 
 uid() ->
@@ -408,9 +438,6 @@ wait_for_value(CheckF, [Addr | Addrs], Rem, Delay, Expiration) ->
 
 http_addr_get(Addr, Path, Query) ->
     http_send(get, Addr, Path, Query, [], <<>>, #{}).
-
-http_addr_post(Addr, Path, Query, Headers, Body) ->
-    http_send(post, Addr, Path, Query, Headers, Body, #{}).
 
 http_send(Method, Addr, Path, Query, Headers, Body, Opts) ->
     Timeout = maps:get(timeout, Opts, ?DEFAULT_HTTP_TIMEOUT),

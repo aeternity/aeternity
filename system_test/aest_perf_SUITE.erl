@@ -23,13 +23,11 @@
 -import(aest_nodes, [
     setup_nodes/2,
     start_node/2,
-    stop_node/2, stop_node/3,
     kill_node/2,
-    connect_node/3, disconnect_node/3,
-    http_get/5,
     request/4,
     wait_for_value/4,
-    assert_synchronized/2
+    wait_for_time/4,
+    time_to_ms/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -63,11 +61,12 @@ groups() ->
 init_per_suite(Cfg) ->
     MineRate = 100,
     Cfg ++ [
-        {height, 10000},              % Length of chain to test
-        {mine_rate, MineRate},        % Mine rate configuration for nodes
-        {mine_timeout, MineRate * 2}, % Per block
-        {startup_timeout, 10000},     % Timeout until HTTP API responds
-        {sync_timeout, 100}           % Per block
+        {mine_time, {minutes, 20}},     % Time to mine for
+        {mine_interval, {seconds, 30}}, % Interval to check mining height
+        {mine_rate, MineRate},          % Mine rate configuration for nodes
+        {mine_timeout, MineRate * 2},   % Per block
+        {startup_timeout, 10000},       % Timeout until HTTP API responds
+        {sync_timeout, 100}             % Per block
     ].
 
 init_per_group(long_chain, InitCfg) ->
@@ -75,17 +74,19 @@ init_per_group(long_chain, InitCfg) ->
     Cfg = aest_nodes:ct_setup(InitCfg),
 
     Nodes = [n1, n2, n3],
-    Height = ?cfg(height),
 
     setup_nodes(cluster(Nodes, #{mine_rate => ?cfg(mine_rate)}), Cfg),
     [start_node(N, Cfg) || N <- Nodes],
     wait_for_startup(Nodes, 0, Cfg),
-    wait_for_value({height, Height}, Nodes, ?cfg(mine_timeout) * Height, Cfg),
+    % wait_for_value({height, Height}, Nodes, ?cfg(mine_timeout) * Height, Cfg),
+    Height = wait_for_time(height, Nodes, ?cfg(mine_time), #{
+        interval => ?cfg(mine_interval)
+    }),
     Tag = io_lib:format("local-h~b", [Height]),
     Ref = aest_nodes:export(n1, Tag, Cfg),
     [kill_node(N, Cfg) || N <- Nodes],
     aest_nodes:ct_cleanup(Cfg),
-    [{source, Ref}|Cfg].
+    [{height, Height}, {source, Ref}|Cfg].
 
 end_per_group(long_chain, _Cfg) -> ok.
 
@@ -99,11 +100,8 @@ end_per_suite(_Cfg) -> ok.
 
 startup_speed(Cfg) ->
     Height = ?cfg(height),
-
     setup_nodes([spec(node, [], #{source => ?cfg(source)})], Cfg),
-    start_node(node, Cfg),
-    wait_for_startup([node], Height, Cfg),
-    wait_for_value({height, Height}, [node], ?cfg(startup_timeout), Cfg).
+    sync_node(node, Height, Cfg).
 
 sync_speed(Cfg) ->
     [Height, MineRate] = ?cfg([height, mine_rate]),
@@ -123,21 +121,14 @@ sync_speed(Cfg) ->
     [start_node(N, Cfg) || N <- InitialNodes],
     wait_for_startup(InitialNodes, Height, Cfg),
 
-    InitialBlocks = [get_block(N, Height, Cfg) || N <- InitialNodes],
+    InitialBlocks = [{N, get_block(N, Height, Cfg)} || N <- InitialNodes],
 
-    start_node(n5, Cfg),
-    wait_for_startup([n5], 0, Cfg),
-    wait_for_sync([n5], Height, Cfg),
-    N5Block = get_block(n5, Height, Cfg),
+    N5Block = sync_node(n5, Height, Cfg),
+    N6Block = sync_node(n6, Height, Cfg),
 
-    start_node(n6, Cfg),
-    wait_for_startup([n6], 0, Cfg),
-    wait_for_sync([n6], Height, Cfg),
-    N6Block = get_block(n6, Height, Cfg),
+    Blocks = InitialBlocks ++ [{n5, N5Block}, {n6, N6Block}],
 
-    AllBlocks = InitialBlocks ++ [N5Block, N6Block],
-
-    [?assertEqual(A, B) || A <- AllBlocks, B <- AllBlocks, A =/= B].
+    [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 stay_in_sync(Cfg) ->
     Height = ?cfg(height),
@@ -148,9 +139,12 @@ stay_in_sync(Cfg) ->
     }), Cfg),
     [start_node(N, Cfg) || N <- Nodes],
     wait_for_startup(Nodes, Height, Cfg),
-    wait_for_value({height, Height + 500}, Nodes, ?cfg(mine_timeout) * 500, Cfg),
+    Fifth = floor(time_to_ms(?cfg(mine_time)) / 5),
+    Reached = wait_for_time(height, Nodes, Fifth, #{
+        interval => ?cfg(mine_interval)
+    }),
 
-    Blocks = [{N, get_block(N, Height + 500, Cfg)} || N <- Nodes],
+    Blocks = [{N, get_block(N, Reached, Cfg)} || N <- Nodes],
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -159,6 +153,16 @@ cluster(Names, Spec) -> [spec(N, Names -- [N], Spec) || N <- Names].
 
 spec(Name, Peers, Spec) ->
     maps:merge(maps:merge(?BASE, Spec), #{name => Name, peers => Peers}).
+
+sync_node(Node, Height, Cfg) ->
+    start_node(Node, Cfg),
+    Start = erlang:system_time(millisecond),
+    wait_for_startup([Node], 0, Cfg),
+    wait_for_sync([Node], Height, Cfg),
+    Block = get_block(Node, Height, Cfg),
+    End = erlang:system_time(millisecond),
+    ?assert(End - Start =< time_to_ms(?cfg(mine_time))),
+    Block.
 
 wait_for_startup(Nodes, Height, Cfg) ->
     StartupTimeout = proplists:get_value(startup_timeout, Cfg),
