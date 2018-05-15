@@ -88,7 +88,7 @@ check_nonce(Account, Nonce) ->
     end.
 
 -spec check_height(aec_accounts:account(), height()) ->
-                          ok | {error, account_height_too_big}.
+                          ok | {error, sender_account_height_too_big}.
 check_height(Account, Height) ->
     case aec_accounts:height(Account) =< Height of
         true ->
