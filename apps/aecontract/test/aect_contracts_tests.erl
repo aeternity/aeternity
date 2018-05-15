@@ -9,7 +9,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(aect_contracts, [ deserialize/1
+-import(aect_contracts, [ deserialize/2
                         , id/1
                         , new/2
                         , owner/1
@@ -27,7 +27,7 @@ basic_test_() ->
 basic_serialize() ->
     ContractPubKey = <<12345:32/unit:8>>,
     C = aect_contracts:new(ContractPubKey, create_tx()),
-    ?assertEqual(C, deserialize(serialize(C))),
+    ?assertEqual(C, deserialize(ContractPubKey, serialize(C))),
     ok.
 
 basic_getters() ->
