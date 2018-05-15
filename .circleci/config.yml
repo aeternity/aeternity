@@ -209,6 +209,7 @@ jobs:
           name: AEVM Tests
           command: |
             make aevm-test
+      - *fail_notification
 
   static_analysis:
     <<: *container_config
