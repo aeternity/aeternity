@@ -1,5 +1,5 @@
 -setcookie epoch_cookie
--pa otp_patches/ebin
+-pa otp_patches/ebin patches/ebin
 
 +K true
 +A30
