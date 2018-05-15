@@ -73,6 +73,7 @@ genesis_block_with_state(Map) ->
         #block{
            version = ?GENESIS_VERSION,
            height = ?GENESIS_HEIGHT,
+           key = ?GENESIS_KEY,
            prev_hash = prev_hash(),
            txs_hash = txs_hash(),
            root_hash = aec_trees:hash(Trees),
