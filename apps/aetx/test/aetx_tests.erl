@@ -30,9 +30,9 @@ apply_signed_txs_test_() ->
                %% Init state tree with 2 accounts
                {ok, MinerPubkey} = aec_keys:pubkey(),
                MinerAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100, 10), 10),
+                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100), 10),
                AnotherAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80, 7), 12),
+                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80), 12),
                StateTree0 = aec_test_utils:create_state_tree_with_accounts(
                               [MinerAccount, AnotherAccount]),
 

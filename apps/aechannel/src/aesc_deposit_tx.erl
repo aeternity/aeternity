@@ -82,7 +82,7 @@ check(#channel_deposit_tx{channel_id   = ChannelId,
                           nonce        = Nonce}, _Context, Trees, Height,
                                                 _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Amount + Fee) end,
+        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Amount + Fee) end,
          fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
     case aeu_validation:run(Checks) of
@@ -97,13 +97,13 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
                             from       = FromPubKey,
                             amount     = Amount,
                             fee        = Fee,
-                            nonce        = Nonce}, _Context, Trees, Height,
+                            nonce        = Nonce}, _Context, Trees, _Height,
                                                   _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
     FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
-    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Amount + Fee, Nonce, Height),
+    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Amount + Fee, Nonce),
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),

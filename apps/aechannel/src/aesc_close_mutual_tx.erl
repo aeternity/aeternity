@@ -99,7 +99,7 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
                 [fun() -> aesc_utils:check_is_peer(From, aesc_channels:peers(Channel)) end,
                  % the fee is being split between parties so no check if the
                  % initiator can pay the fee; just a check for the nonce correctness
-                 fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Height, Nonce, 0) end,
+                 fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, 0) end,
                  fun() ->
                     case aesc_channels:is_active(Channel) of
                         true -> ok;
@@ -133,7 +133,7 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  responder_amount = ResponderAmount,
                                  ttl              = _TTL,
                                  fee              = _Fee,
-                                 nonce            = Nonce}, _Context, Trees, Height,
+                                 nonce            = Nonce}, _Context, Trees, _Height,
                                                   _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
@@ -144,13 +144,11 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
 
     InitiatorAccount0         = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
     {ok, InitiatorAccount1}    = aec_accounts:earn(InitiatorAccount0,
-                                                   InitiatorAmount,
-                                                   Height),
+                                                   InitiatorAmount),
     InitiatorAccount = aec_accounts:set_nonce(InitiatorAccount1, Nonce),
     ResponderAccount0       = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
     {ok, ResponderAccount}  = aec_accounts:earn(ResponderAccount0,
-                                                ResponderAmount,
-                                                Height),
+                                                ResponderAmount),
 
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount, AccountsTree1),

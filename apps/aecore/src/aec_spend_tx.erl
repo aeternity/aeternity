@@ -101,12 +101,7 @@ check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
         end,
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
         ok ->
-            case aec_trees:ensure_account_at_height(RecipientPubkey, Trees0, Height) of
-                {ok, Trees} ->
-                    {ok, Trees};
-                {error, account_height_too_big} ->
-                    {error, recipient_account_height_too_big}
-            end;
+            {ok, aec_trees:ensure_account(RecipientPubkey, Trees0)};
         {error, _Reason} = Error ->
             Error
     end.
@@ -123,15 +118,15 @@ process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
                   amount = Amount,
                   fee = Fee,
-                  nonce = Nonce}, _Context, Trees0, Height, _ConsensusVersion) ->
+                  nonce = Nonce}, _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
-    {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce, Height),
+    {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce),
     AccountsTrees1 = aec_accounts_trees:enter(SenderAccount, AccountsTrees0),
 
     {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees1),
-    {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount, Height),
+    {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount),
     AccountsTrees2 = aec_accounts_trees:enter(RecipientAccount, AccountsTrees1),
 
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees2),
@@ -205,8 +200,8 @@ check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
 -spec check_sender_account(tx(), aec_trees:trees(), height()) ->
                                   ok | {error, term()}.
 check_sender_account(#spend_tx{sender = SenderPubkey, amount = Amount,
-                               fee = Fee, nonce = TxNonce }, Trees, Height) ->
-    aetx_utils:check_account(SenderPubkey, Trees, Height, TxNonce, Fee + Amount).
+                               fee = Fee, nonce = TxNonce }, Trees, _Height) ->
+    aetx_utils:check_account(SenderPubkey, Trees, TxNonce, Fee + Amount).
 
 version() ->
     ?SPEND_TX_VSN.

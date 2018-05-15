@@ -9,8 +9,8 @@
 -include_lib("apps/aecore/include/common.hrl").
 
 %% API
--export([check_account/4,
-         check_account/5,
+-export([check_account/3,
+         check_account/4,
          check_nonce/2,
          check_ttl/2]).
 
@@ -22,30 +22,26 @@
 %% and that the Nonce is ok.
 -spec check_account(Account :: pubkey(),
                     Trees   :: aec_trees:trees(),
-                    Height  :: height(),
                     Nonce   :: non_neg_integer(),
                     Amount  :: non_neg_integer()) -> ok | {error, term()}.
-check_account(AccountPubKey, Trees, Height, Nonce, Amount) ->
+check_account(AccountPubKey, Trees, Nonce, Amount) ->
     case get_account(AccountPubKey, Trees) of
         {value, Account} ->
             BalanceOk = check_balance(Account, Amount),
-            HeightOk  = check_height(Account, Height),
             NonceOk   = check_nonce(Account, Nonce),
-            checks_ok([BalanceOk, HeightOk, NonceOk]);
+            checks_ok([BalanceOk, NonceOk]);
         none ->
             {error, account_not_found}
     end.
 
 -spec check_account(Account :: pubkey(),
                     Trees   :: aec_trees:trees(),
-                    Height  :: height(),
                     Amount  :: non_neg_integer()) -> ok | {error, term()}.
-check_account(AccountPubKey, Trees, Height, Amount) ->
+check_account(AccountPubKey, Trees, Amount) ->
     case get_account(AccountPubKey, Trees) of
         {value, Account} ->
             BalanceOk = check_balance(Account, Amount),
-            HeightOk  = check_height(Account, Height),
-            checks_ok([BalanceOk, HeightOk]);
+            checks_ok([BalanceOk]);
         none ->
             {error, account_not_found}
     end.
@@ -85,16 +81,6 @@ check_nonce(Account, Nonce) ->
         Nonce =:= (AccountNonce + 1) -> ok;
         Nonce =< AccountNonce -> {error, account_nonce_too_high};
         Nonce > AccountNonce -> {error, account_nonce_too_low}
-    end.
-
--spec check_height(aec_accounts:account(), height()) ->
-                          ok | {error, sender_account_height_too_big}.
-check_height(Account, Height) ->
-    case aec_accounts:height(Account) =< Height of
-        true ->
-            ok;
-        false ->
-            {error, sender_account_height_too_big}
     end.
 
 -spec checks_ok(list(ok | {error, term()})) -> ok | {error, term()}.

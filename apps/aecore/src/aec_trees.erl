@@ -29,7 +29,7 @@
 
 -export([apply_signed_txs/4,
          apply_signed_txs_strict/4,
-         ensure_account_at_height/3]).
+         ensure_account/2]).
 
 -record(trees, {
           accounts  :: aec_accounts_trees:tree(),
@@ -173,7 +173,7 @@ apply_signed_txs_common(SignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
     case apply_txs_on_state_trees(SignedTxs, Trees1, Height, ConsensusVersion, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
-            Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee, Height),
+            Trees3 = grant_fee_to_miner(SignedTxs1, Trees2, TotalFee),
             {ok, SignedTxs1, Trees3};
         {error, _} = E -> E
     end.
@@ -213,12 +213,12 @@ calculate_total_fee(SignedTxs) ->
               TotalFee + Fee
       end, 0, SignedTxs).
 
--spec grant_fee_to_miner(list(aetx_sign:signed_tx()), trees(), non_neg_integer(), height()) ->
+-spec grant_fee_to_miner(list(aetx_sign:signed_tx()), trees(), non_neg_integer()) ->
                                 trees().
-grant_fee_to_miner([], Trees, 0, _Height) ->
+grant_fee_to_miner([], Trees, 0) ->
     lager:info("Empty block -- no fee"),
     Trees;
-grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
+grant_fee_to_miner(SignedTxs, Trees0, TotalFee) ->
     CoinbaseTxs = lists:filter(fun aetx_sign:is_coinbase/1, SignedTxs),
     case CoinbaseTxs of
         [] ->
@@ -230,29 +230,21 @@ grant_fee_to_miner(SignedTxs, Trees0, TotalFee, Height) ->
             AccountsTrees0 = accounts(Trees0),
 
             {value, Account0} = aec_accounts_trees:lookup(MinerPubkey, AccountsTrees0),
-            {ok, Account} = aec_accounts:earn(Account0, TotalFee, Height),
+            {ok, Account} = aec_accounts:earn(Account0, TotalFee),
 
             AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
             set_accounts(Trees0, AccountsTrees)
     end.
 
--spec ensure_account_at_height(pubkey(), trees(), height()) ->
-                                   {ok, trees()} | {error, account_height_too_big}.
-ensure_account_at_height(AccountPubkey, Trees0, Height) ->
+-spec ensure_account(pubkey(), trees()) -> trees().
+ensure_account(AccountPubkey, Trees0) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     case aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0) of
-        {value, Account} ->
-            AccountCurrentHeight = aec_accounts:height(Account),
-            case AccountCurrentHeight =< Height of
-                true ->
-                    {ok, Trees0};
-                false ->
-                    {error, account_height_too_big}
-            end;
+        {value, _Account} ->
+            Trees0;
         none ->
             %% Add newly referenced account (w/0 amount) to the state
-            Account = aec_accounts:new(AccountPubkey, 0, Height),
+            Account = aec_accounts:new(AccountPubkey, 0),
             AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
-            Trees = aec_trees:set_accounts(Trees0, AccountsTrees),
-            {ok, Trees}
+            aec_trees:set_accounts(Trees0, AccountsTrees)
     end.

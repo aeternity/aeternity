@@ -94,7 +94,7 @@ populated_trees(Map) ->
     StateTrees = maps:get(state_tree, Map, aec_trees:new()),
     PopulatedAccountsTree =
         lists:foldl(fun({PubKey, Amount}, T) ->
-                            Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                            Account = aec_accounts:new(PubKey, Amount),
                             aec_accounts_trees:enter(Account, T)
                     end, aec_trees:accounts(StateTrees), PresetAccounts),
     aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).

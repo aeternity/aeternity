@@ -100,7 +100,7 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
                           ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_REGISTER_TX_FEE) end],
 
@@ -125,7 +125,7 @@ process(#oracle_register_tx{account       = AccountPubKey,
     OraclesTree0  = aec_trees:oracles(Trees0),
 
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle = aeo_oracles:new(RegisterTx, Height),

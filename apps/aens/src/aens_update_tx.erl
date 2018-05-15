@@ -83,10 +83,10 @@ origin(#ns_update_tx{account = AccountPubKey}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
-                    fee = Fee, name_hash = NameHash, ttl = TTL}, _Context, Trees, Height, _ConsensusVersion) ->
+                    fee = Fee, name_hash = NameHash, ttl = TTL}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
         [fun() -> check_ttl(TTL) end,
-         fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
+         fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
 
     case aeu_validation:run(Checks) of
@@ -101,7 +101,7 @@ process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
     NSTree0 = aec_trees:ns(Trees0),
 
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Name0 = aens_state_tree:get_name(NameHash, NSTree0),

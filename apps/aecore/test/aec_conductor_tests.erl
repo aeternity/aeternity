@@ -259,7 +259,7 @@ test_chain_genesis_state() ->
     ?assertEqual({ok, GenesisAccountsBalances},
                  aec_chain:all_accounts_balances_at_hash(GHH)),
     [{PK, Balance} | _] = GenesisAccountsBalances,
-    GenAccount = aec_accounts:new(PK, Balance, 0),
+    GenAccount = aec_accounts:new(PK, Balance),
     ?assertMatch({value, GenAccount},
                  aec_chain:get_account(PK)),
     ?assertEqual(none, aec_chain:get_account(<<"I am a fake public key">>)),

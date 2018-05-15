@@ -111,7 +111,7 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
                        query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Height, Nonce, Fee + QFee) end,
+        [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
          fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, TTL, RTTL) end,
          fun() -> check_query(Q, Trees, Height) end
@@ -138,7 +138,7 @@ process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
     OraclesTree0  = aec_trees:oracles(Trees0),
 
     Sender0 = aec_accounts_trees:get(SenderPubKey, AccountsTree0),
-    {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce, Height),
+    {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
 
     Query = aeo_query:new(QueryTx, Height),

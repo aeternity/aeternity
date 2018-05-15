@@ -97,7 +97,7 @@ check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
         case Context of
             aetx_transaction ->
                 RequiredAmount = Fee + GasLimit * GasPrice + Value,
-                [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Height, Nonce, RequiredAmount) end,
+                [fun() -> aetx_utils:check_account(CallerPubKey, Trees, Nonce, RequiredAmount) end,
                  fun() -> check_call(CallTx, Trees, Height) end,
                  fun() -> aect_utils:check(CallStack == [], nonempty_call_stack) end];
             aetx_contract ->
@@ -148,7 +148,7 @@ process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce 
                 GasCost       = aect_call:gas_used(Call) * GasPrice,
                 Amount        = Fee + GasCost,
                 Caller2       = aec_accounts_trees:get(CallerPubKey, AccountsTree1),
-                {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce, Height),
+                {ok, Caller3} = aec_accounts:spend(Caller2, Amount, Nonce),
                 aec_accounts_trees:enter(Caller3, AccountsTree1)
         end,
     Trees4 = aec_trees:set_accounts(Trees3, AccountsTree2),

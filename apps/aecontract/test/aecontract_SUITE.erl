@@ -216,7 +216,7 @@ call(Name, Fun, Xs) ->
 -define(call(Fun, X, Y, Z, U, V, W), call(Fun, fun Fun/7, [X, Y, Z, U, V, W])).
 
 new_account(Balance, S) ->
-    aect_test_utils:setup_new_account(Balance, 1, S).
+    aect_test_utils:setup_new_account(Balance, S).
 
 insert_contract(Account, Code, S) ->
     Contract  = make_contract(Account, Code, S),
