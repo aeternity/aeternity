@@ -180,11 +180,6 @@ unmock_block_target_validation() ->
 
 
 start_chain_db() ->
-    %% Horrible fix for rebar3 eunit not taking the vm.args path
-    Parts = filename:split(filename:dirname(code:which(aec_db))),
-    PPath = filename:join(lists:sublist(Parts, length(Parts) - 3) ++
-                              ["rel", "epoch", "patches", "ebin"]),
-    code:add_patha(PPath),
     ok = mnesia:start(),
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],
