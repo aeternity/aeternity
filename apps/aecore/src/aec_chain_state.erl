@@ -260,15 +260,15 @@ internal_insert(Node, Block) ->
 
 %% NG-INFO: micro blocks inherit the height from the last key block
 assert_previous_height(Node) ->
-    case is_key_block(Node) of
-        true ->
-            {ok, PrevNode} = db_find_node(prev_hash(Node)),
+    case {db_find_node(prev_hash(Node)), is_key_block(Node)} of
+        {error, _} ->
+            ok;
+        {PrevNode, true} ->
             case node_height(PrevNode) =:= (node_height(Node) - 1) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_keyblock_with_previous_hash)
             end;
-        false ->
-            {ok, PrevNode} = db_find_node(prev_hash(Node)),
+        {PrevNode, false} ->
             case node_height(PrevNode) =:= node_height(Node) of
                 true -> ok;
                 false -> internal_error(height_inconsistent_for_microblock_with_previous_hash)
