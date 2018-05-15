@@ -120,7 +120,7 @@ signers(Tx, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
-                          fee = Fee, gas = Gas, gas_price = GasPrice, amount = Value
+                          fee = Fee, gas =_Gas, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
 
     %% Transfer the attached funds to the callee (before calling the contract!)

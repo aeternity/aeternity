@@ -137,7 +137,7 @@ call_common(#{ caller     := Caller
 		{revert, #{ gas := GasLeft
 			  , out := ReturnValue
 			  , chain_state := ChainState1
-			  } = State} ->
+			  } =_State} ->
 		    {aect_call:set_gas_used(
 		       Gas - GasLeft,
 		       aect_call:set_return_type(
