@@ -241,7 +241,7 @@ file_missing(F) ->
     end.
 
 expected_logs() ->
-    ["epoch.log", "epoch_mining.log",
+    ["epoch.log", "epoch_mining.log", "epoch_sync.log",
      "epoch_pow_cuckoo.log", "epoch_metrics.log"].
 
 await_sync_complete(T0, Nodes) ->

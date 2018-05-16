@@ -15,7 +15,7 @@
   
 ## Logs, error output, etc.
  
- (`epoch.yaml` configuration file, `log/epoch.log` log file plus other related logs, e.g., `log/epoch_mining.log`; if it’s long, please paste to https://ghostbin.com/ and insert the link here)
+ (`epoch.yaml` configuration file, `log/epoch.log` log file plus other related logs, e.g., `log/epoch_sync.log`, `log/epoch_mining.log`; if it’s long, please paste to https://ghostbin.com/ and insert the link here)
  
  ...
 

@@ -57,7 +57,7 @@ start_link(Ref, Socket, Transport, Opts) ->
 %% -- API --------------------------------------------------------------------
 
 connect(#{} = Options) ->
-    lager:debug("New peer connection to ~p", [Options]),
+    epoch_sync:debug("New peer connection to ~p", [Options]),
     aec_peer_connection_sup:start_peer_connection(Options).
 
 connect_start_link(Port, Opts) ->
@@ -148,7 +148,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
         {ok, ESock, FinalState} ->
             RemotePub = enoise_keypair:pubkey(enoise_hs_state:remote_keys(FinalState)),
             PingTimeout = first_ping_timeout(),
-            lager:debug("Connection accepted from ~p", [RemotePub]),
+            epoch_sync:debug("Connection accepted from ~p", [RemotePub]),
             %% Report this to aec_peers!? And possibly fail?
             %% Or, we can't do this yet we don't know the port?!
             TRef = erlang:start_timer(PingTimeout, self(), first_ping_timeout),
@@ -158,7 +158,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
             gen_server:enter_loop(?MODULE, [], S1);
         {error, Reason} ->
             %% What to do here? Close the socket and stop?
-            lager:info("Connection accept failed - ~p was from ~p", [Reason, maps:get(host, S)]),
+            epoch_sync:info("Connection accept failed - ~p was from ~p", [Reason, maps:get(host, S)]),
             gen_tcp:close(TcpSock)
     end.
 
@@ -204,16 +204,16 @@ handle_info({timeout, Ref, first_ping_timeout}, S) ->
     NonRegAccept = is_non_registered_accept(S),
     case maps:get(first_ping_tref, S, undefined) of
         Ref when NonRegAccept ->
-            lager:info("Connecting peer never sent ping, stopping"),
+            epoch_sync:info("Connecting peer never sent ping, stopping"),
             %% Consider blocking this peer
             S1 = cleanup_connection(S),
             {stop, normal, S1};
         _ ->
-            lager:debug("Got stale first_ping_timeout", []),
+            epoch_sync:debug("Got stale first_ping_timeout", []),
             {noreply, S}
     end;
 handle_info({connected, Pid, Err = {error, _}}, S = #{ status := {connecting, Pid}}) ->
-    lager:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
+    epoch_sync:debug("Failed to connected to ~p: ~p", [{maps:get(host, S), maps:get(port, S)}, Err]),
     connect_fail(S);
 handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid} }) ->
     HSTimeout = noise_hs_timeout(),
@@ -229,20 +229,20 @@ handle_info({connected, Pid, {ok, TcpSock}}, S0 = #{ status := {connecting, Pid}
     inet:setopts(TcpSock, [{active, true}, {send_timeout, 1000}, {send_timeout_close, true}]),
     case enoise:connect(TcpSock, NoiseOpts) of
         {ok, ESock, _} ->
-            lager:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
+            epoch_sync:debug("Peer connected to ~p", [{maps:get(host, S), maps:get(port, S)}]),
             case aec_peers:connect_peer(peer_id(S), self()) of
                 ok ->
                     {noreply, S#{ status => {connected, ESock} }};
                 {error, _} ->
-                    lager:debug("Dropping unnecessary connection to ~p", [maps:get(host, S)]),
+                    epoch_sync:debug("Dropping unnecessary connection to ~p", [maps:get(host, S)]),
                     enoise:close(ESock),
                     {stop, normal, S}
             end;
         {error, Reason} ->
             %% For now lets report connect_fail
             %% Maybe instead report permanent fail + block?!
-            lager:info("Connection handshake failed - ~p was from ~p",
-                       [Reason, maps:get(host, S)]),
+            epoch_sync:info("Connection handshake failed - ~p was from ~p",
+                            [Reason, maps:get(host, S)]),
             gen_tcp:close(TcpSock),
             connect_fail(S)
     end;
@@ -258,14 +258,14 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
         {MsgType, Vsn, Msg} ->
             {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
         Err = {error, _} ->
-            lager:info("Could not deserialize message ~p", [Err]),
+            epoch_sync:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
 handle_info({enoise_error, _, Reason}, S) ->
-    lager:debug("Peer connection got enoise_error: ~p", [Reason]),
+    epoch_sync:debug("Peer connection got enoise_error: ~p", [Reason]),
     handle_general_error(S);
 handle_info({tcp_closed, _}, S) ->
-    lager:debug("Peer connection got tcp_closed", []),
+    epoch_sync:debug("Peer connection got tcp_closed", []),
     handle_general_error(S);
 handle_info(_Msg, S) ->
     {noreply, S}.
@@ -273,7 +273,7 @@ handle_info(_Msg, S) ->
 terminate(normal, _State) ->
     ok;
 terminate(NonNormal, State) ->
-    lager:info("Non-normal terminate, reason: ~p", [NonNormal]),
+    epoch_sync:info("Non-normal terminate, reason: ~p", [NonNormal]),
     cleanup_connection(State),
     ok.
 
@@ -311,7 +311,7 @@ remove_request_fld(S, Kind) ->
 handle_request_timeout(S, Ref, Kind) ->
     case get_request(S, Kind) of
         {_MappedKind, From, Ref} ->
-            lager:info("~p request timeout, stopping peer_connection", [Kind]),
+            epoch_sync:info("~p request timeout, stopping peer_connection", [Kind]),
             gen_server:reply(From, {error, request_timeout}),
             handle_general_error(S);
         _Other ->
@@ -394,7 +394,7 @@ handle_fragment(S = #{ fragments := Fragments }, M, M, Fragment) ->
 handle_fragment(S = #{ fragments := Fragments }, N, _M, Fragment) when N == length(Fragments) + 1 ->
     {noreply, S#{ fragments := [Fragment | Fragments] }};
 handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
-    lager:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
+    epoch_sync:error("Got fragment ~p, expected ~p (out of ~p)", [N, length(Fragments) + 1, M]),
     S1 = cleanup_connection(S),
     connect_fail(maps:remove(fragments, S1)).
 
@@ -402,8 +402,8 @@ handle_msg(S, MsgType, IsResponse, Result) ->
     handle_msg(S, MsgType, IsResponse, get_request(S, MsgType), Result).
 
 handle_msg(S, MsgType, true, none, Result) ->
-    lager:info("Peer ~p got unexpected ~p response - ~p",
-               [peer_id(S), MsgType, Result]),
+    epoch_sync:info("Peer ~p got unexpected ~p response - ~p",
+                    [peer_id(S), MsgType, Result]),
     S;
 handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     gen_server:reply(From, {error, Reason}),
@@ -482,8 +482,8 @@ handle_ping(S, none, RemotePingObj) ->
     send_response(S, ping, Response),
     S1;
 handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
-    lager:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
-               [peer_id(S), RemotePingObj]),
+    epoch_sync:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
+                    [peer_id(S), RemotePingObj]),
     send_response(S, ping, {error, already_pinging}),
     S.
 
@@ -524,11 +524,11 @@ handle_ping_msg(S, RemotePingObj) ->
         {ok, RGHash, RTHash, RDiff, RPeers} when RGHash == LGHash ->
             case {{LTHash, LDiff}, {RTHash, RDiff}} of
                 {{T, _}, {T, _}} ->
-                    lager:debug("Same top blocks", []),
+                    epoch_sync:debug("Same top blocks", []),
                     aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
                     ok;
                 {{_, DL}, {_, DR}} when DL > DR ->
-                    lager:debug("Our difficulty is higher", []),
+                    epoch_sync:debug("Our difficulty is higher", []),
                     aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
                     ok;
                 {{_, _}, {_, DR}} ->
@@ -740,7 +740,7 @@ handle_new_block(S, Msg) ->
         {ok, Block} = aec_blocks:deserialize_from_binary(maps:get(block, Msg)),
         Header = aec_blocks:to_header(Block),
         {ok, HH} = aec_headers:hash_header(Header),
-        lager:debug("Got new block: ~s", [pp(HH)]),
+        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
         aec_conductor:post_block(Block)
     catch _:_ ->
         ok
@@ -810,7 +810,7 @@ enoise_send(ESock, Msg) ->
             ok;
         Err = {error, Reason} ->
             self() ! {enoise_error, ESock, Reason},
-            lager:info("Failed to send message: ~p", [Err]),
+            epoch_sync:info("Failed to send message: ~p", [Err]),
             Err
     end.
 

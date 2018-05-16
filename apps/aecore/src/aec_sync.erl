@@ -173,7 +173,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     {noreply, State};
 handle_info({'EXIT', Pid, Reason}, State) ->
     %% It might be one of our syncing workers that crashed
-    if Reason =/= normal -> lager:info("worker stopped with reason: ~p", [Reason]);
+    if Reason =/= normal -> epoch_sync:info("worker stopped with reason: ~p", [Reason]);
        true -> ok
     end,
     {noreply, do_terminate_worker(Pid, State)};
@@ -280,17 +280,17 @@ get_next_work_item(ST = #sync_task{ pool = [{_, _, false} | _] = Pool }) ->
     PickFrom = [ P || P = {_, _, false} <- Pool ],
     Random = rand:uniform(length(PickFrom)),
     {PickH, PickHash, false} = lists:nth(Random, PickFrom),
-    lager:debug("Get block at height ~p", [PickH]),
+    epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_block, PickH, PickHash}, ST};
 get_next_work_item(ST) ->
-    lager:info("Nothing to do: ~p", [ST]),
+    epoch_sync:info("Nothing to do: ~p", [ST]),
     {take_a_break, ST}.
 
 maybe_end_sync_task(State, ST) ->
     case ST#sync_task.chain of
         #{ peers := [], chain := [Target | _] } ->
-            lager:info("Removing/ending sync task ~p target was ~p",
-                       [ST#sync_task.id, Target]),
+            epoch_sync:info("Removing/ending sync task ~p target was ~p",
+                            [ST#sync_task.id, Target]),
             delete_sync_task(ST, State);
         _ ->
             set_sync_task(ST, State)
@@ -308,7 +308,7 @@ do_update_sync_task(State, STId, Update) ->
                 end,
             maybe_end_sync_task(State, ST#sync_task{ chain = Chain1 });
         {error, not_found} ->
-            lager:debug("SyncTask ~p not found", [STId]),
+            epoch_sync:debug("SyncTask ~p not found", [STId]),
             State
     end.
 
@@ -386,25 +386,25 @@ find_hash_at_height(N, [_ | Cs]) ->
 do_handle_worker({new_worker, PeerId, Pid}, ST = #sync_task{ workers = Ws }) ->
     case lists:keyfind(PeerId, 1, Ws) of
         false    -> ok;
-        {_, Old} -> lager:info("Peer ~p already has a worker (~p)", [ppp(PeerId), Old])
+        {_, Old} -> epoch_sync:info("Peer ~p already has a worker (~p)", [ppp(PeerId), Old])
     end,
     erlang:link(Pid),
-    lager:debug("New worker ~p for peer ~p", [Pid, ppp(PeerId)]),
+    epoch_sync:debug("New worker ~p for peer ~p", [Pid, ppp(PeerId)]),
     ST#sync_task{ workers = lists:keystore(PeerId, 1, Ws, {PeerId, Pid}) };
 do_handle_worker({change_worker, PeerId, OldPid, NewPid}, ST = #sync_task{ workers = Ws }) ->
     case lists:keyfind(PeerId, 1, Ws) of
         false ->
-            lager:info("Missing worker ~p for peer ~p", [OldPid, ppp(PeerId)]);
+            epoch_sync:info("Missing worker ~p for peer ~p", [OldPid, ppp(PeerId)]);
         {_, OldPid} ->
             ok;
         {_, AnotherPid} ->
-            lager:info("Wrong worker stored for peer ~p (~p)", [ppp(PeerId), AnotherPid])
+            epoch_sync:info("Wrong worker stored for peer ~p (~p)", [ppp(PeerId), AnotherPid])
     end,
     erlang:link(NewPid),
     %% The old worker will terminate right after the call to handle_worker so we can safely
     %% unlink it.
     erlang:unlink(OldPid),
-    lager:debug("Update worker ~p (was ~p) for peer ~p", [NewPid, OldPid, ppp(PeerId)]),
+    epoch_sync:debug("Update worker ~p (was ~p) for peer ~p", [NewPid, OldPid, ppp(PeerId)]),
     ST#sync_task{ workers = lists:keystore(PeerId, 1, Ws, {PeerId, NewPid}) }.
 
 do_terminate_worker(Pid, S = #state{ sync_tasks = STs }) ->
@@ -416,7 +416,7 @@ do_terminate_worker(Pid, S = #state{ sync_tasks = STs }) ->
     end;
 do_terminate_worker(Pid, ST = #sync_task{ workers = Ws }) ->
     {Peer, _} = lists:keyfind(Pid, 2, Ws),
-    lager:debug("Terminating worker ~p for peer ~p", [Pid, ppp(Peer)]),
+    epoch_sync:debug("Terminating worker ~p for peer ~p", [Pid, ppp(Peer)]),
     ST#sync_task{ workers = lists:keydelete(Pid, 2, Ws) }.
 
 %%%=============================================================================
@@ -448,7 +448,7 @@ enqueue(Kind, Data, PeerIds) ->
 
 ping_peer(PeerId) ->
     Res = aec_peer_connection:ping(PeerId),
-    lager:debug("Ping (~p): ~p", [ppp(PeerId), Res]),
+    epoch_sync:debug("Ping (~p): ~p", [ppp(PeerId), Res]),
     case Res of
         ok ->
             aec_peers:log_ping(PeerId, ok);
@@ -458,16 +458,16 @@ ping_peer(PeerId) ->
 
 do_forward_block(Block, PeerId) ->
     Res = aec_peer_connection:send_block(PeerId, Block),
-    lager:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
+    epoch_sync:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
 
 do_forward_tx(Tx, PeerId) ->
     Res = aec_peer_connection:send_tx(PeerId, Tx),
-    lager:debug("send_tx to (~p): ~p", [ppp(PeerId), Res]).
+    epoch_sync:debug("send_tx to (~p): ~p", [ppp(PeerId), Res]).
 
 do_start_sync(PeerId, RemoteHash) ->
     case sync_in_progress(PeerId) of
         true ->
-            lager:debug("Already syncing with ~p", [ppp(PeerId)]);
+            epoch_sync:debug("Already syncing with ~p", [ppp(PeerId)]);
         false ->
            do_start_sync1(PeerId, RemoteHash)
     end.
@@ -475,7 +475,7 @@ do_start_sync(PeerId, RemoteHash) ->
 do_start_sync1(PeerId, RemoteHash) ->
     case aec_peer_connection:get_header_by_hash(PeerId, RemoteHash) of
         {ok, Hdr} ->
-            lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(Hdr)]),
+            epoch_sync:debug("New header received (~p): ~p", [ppp(PeerId), pp(Hdr)]),
 
             %% We do try really hard to identify the same chain here...
             Chain = init_chain(PeerId, Hdr),
@@ -484,11 +484,11 @@ do_start_sync1(PeerId, RemoteHash) ->
                     handle_worker(Task, {new_worker, PeerId, self()}),
                     do_work_on_sync_task(PeerId, Task);
                 {error, Reason} ->
-                    lager:info("Could not identify chain, aborting sync with ~p (~p)",
-                               [ppp(PeerId), Reason])
+                    epoch_sync:info("Could not identify chain, aborting sync with ~p (~p)",
+                                    [ppp(PeerId), Reason])
             end;
         {error, Reason} ->
-            lager:debug("fetching top block (~p) failed: ~p", [ppp(PeerId), Reason])
+            epoch_sync:debug("fetching top block (~p) failed: ~p", [ppp(PeerId), Reason])
     end.
 
 init_chain(PeerId, Header) ->
@@ -505,10 +505,10 @@ known_chain(Chain) ->
     identify_chain(known_chain(Chain, none)).
 
 identify_chain({existing, Task}) ->
-    lager:debug("Already syncing chain ~p", [Task]),
+    epoch_sync:debug("Already syncing chain ~p", [Task]),
     {ok, Task};
 identify_chain({new, #{ chain := [Target | _]}, Task}) ->
-    lager:info("Starting new sync task ~p target is ~p", [Task, Target]),
+    epoch_sync:info("Starting new sync task ~p target is ~p", [Task, Target]),
     {ok, Task};
 identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
     %% We need another hash for this chain, make sure whoever we ask is
@@ -518,7 +518,7 @@ identify_chain({inconclusive, Chain, {get_header, CId, Peers, N}}) ->
         {ok, Header} ->
             identify_chain(known_chain(Chain, init_chain(CId, Peers, Header)));
         Err = {error, _} ->
-            lager:info("fetching header at height ~p from ~p failed", [N, Peers]),
+            epoch_sync:info("fetching header at height ~p from ~p failed", [N, Peers]),
             Err
     end.
 
@@ -539,8 +539,8 @@ do_get_header_by_height([PeerId | PeerIds], TopHash, N) ->
         {ok, Header} ->
             {ok, Header};
         {error, Reason} ->
-            lager:debug("fetching header at height ~p under ~p from ~p failed: ~p",
-                        [N, pp(TopHash), ppp(PeerId), Reason]),
+            epoch_sync:debug("fetching header at height ~p under ~p from ~p failed: ~p",
+                             [N, pp(TopHash), ppp(PeerId), Reason]),
             do_get_header_by_height(PeerIds, TopHash, N)
     end.
 
@@ -549,7 +549,7 @@ do_work_on_sync_task(PeerId, Task) ->
     do_work_on_sync_task(PeerId, Task, none).
 
 do_work_on_sync_task(PeerId, Task, LastResult) ->
-    %% lager:debug("working on ~p against ~p (Last: ~p)", [Task, ppp(PeerId), LastResult]),
+    %% epoch_sync:debug("working on ~p against ~p (Last: ~p)", [Task, ppp(PeerId), LastResult]),
     case next_work_item(Task, PeerId, LastResult) of
         take_a_break ->
             delayed_run_job(PeerId, Task, sync_task_workers,
@@ -563,7 +563,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             case  agree_on_height(PeerId, TopHash, TopHeight,
                                   MaxAgree, MaxAgree, ?GENESIS_HEIGHT, MinAgreedHash) of
                 {ok, AHeight, AHash} ->
-                    lager:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AHeight]),
+                    epoch_sync:debug("Agreed upon height (~p): ~p", [ppp(PeerId), AHeight]),
                     Agreement = {agreed_height, #{ height => AHeight, hash => AHash }},
                     do_work_on_sync_task(PeerId, Task, Agreement);
                 {error, Reason} ->
@@ -583,7 +583,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
                 end,
             do_work_on_sync_task(PeerId, Task, Res);
         abort_work ->
-            lager:info("~p aborting sync work against ~p", [self(), PeerId]),
+            epoch_sync:info("~p aborting sync work against ~p", [self(), PeerId]),
             schedule_ping(PeerId)
     end.
 
@@ -592,7 +592,7 @@ post_blocks([{StartHeight, _, _} | _] = Blocks) ->
     post_blocks(StartHeight, StartHeight, Blocks).
 
 post_blocks(From, To, []) ->
-    lager:info("Synced blocks ~p - ~p", [From, To]),
+    epoch_sync:info("Synced blocks ~p - ~p", [From, To]),
     ok;
 post_blocks(From, _To, [{Height, _Hash, {_PeerId, local}} | Blocks]) ->
     post_blocks(From, Height, Blocks);
@@ -601,8 +601,8 @@ post_blocks(From, To, [{Height, _Hash, {PeerId, Block}} | Blocks]) ->
         ok ->
             post_blocks(From, Height, Blocks);
         {error, Reason} ->
-            lager:info("Failed to add synced block ~p: ~p", [Height, Reason]),
-            [ lager:info("Synced blocks ~p - ~p", [From, To - 1]) || To > From ],
+            epoch_sync:info("Failed to add synced block ~p: ~p", [Height, Reason]),
+            [ epoch_sync:info("Synced blocks ~p - ~p", [From, To - 1]) || To > From ],
             {error, PeerId, Height}
     end.
 
@@ -639,10 +639,10 @@ agree_on_height(PeerId, RHash0, RH, CheckHeight, Max, Min, AgreedHash) when RH =
     case aec_peer_connection:get_header_by_height(PeerId, CheckHeight, RHash0) of
          {ok, RemoteAtHeight} ->
              {ok, RHash} = aec_headers:hash_header(RemoteAtHeight),
-             lager:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
+             epoch_sync:debug("New header received (~p): ~p", [ppp(PeerId), pp(RemoteAtHeight)]),
              agree_on_height(PeerId, RHash, CheckHeight, CheckHeight, Max, Min, AgreedHash);
          {error, Reason} ->
-             lager:debug("Fetching header ~p from ~p failed: ~p", [CheckHeight, ppp(PeerId), Reason]),
+             epoch_sync:debug("Fetching header ~p from ~p failed: ~p", [CheckHeight, ppp(PeerId), Reason]),
              {error, Reason}
     end.
 
@@ -650,13 +650,13 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
     case aec_peer_connection:get_n_successors(PeerId, StartHash, TargetHash, ?MAX_HEADERS_PER_CHUNK) of
         {ok, []} ->
             update_sync_task({done, PeerId}, ST),
-            lager:info("Sync done (according to ~p)", [ppp(PeerId)]),
+            epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
         {ok, Hashes} ->
             HashPool = [ {Height, Hash, false} || {Height, Hash} <- Hashes ],
             do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
         {error, _} = Error ->
-            lager:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
+            epoch_sync:info("Abort sync with ~p (~p) ", [ppp(PeerId), Error]),
             update_sync_task({error, PeerId}, ST),
             {error, sync_abort}
     end.
@@ -664,40 +664,40 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
 do_fetch_block(PeerId, Hash) ->
     case aec_chain:get_block(Hash) of
         {ok, Block} ->
-            lager:debug("block ~p already fetched, using local copy", [pp(Hash)]),
+            epoch_sync:debug("block ~p already fetched, using local copy", [pp(Hash)]),
             {ok, false, Block};
         error ->
             do_fetch_block_ext(Hash, PeerId)
     end.
 
 do_fetch_block_ext(Hash, PeerId) ->
-    lager:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
+    epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
     case aec_peer_connection:get_block(PeerId, Hash) of
         {ok, Block} ->
             case header_hash(Block) =:= Hash of
                 true ->
-                    lager:debug("block fetched from ~p (~p); ~p",
-                                [ppp(PeerId), pp(Hash), pp(Block)]),
+                    epoch_sync:debug("block fetched from ~p (~p); ~p",
+                                     [ppp(PeerId), pp(Hash), pp(Block)]),
                     {ok, true, Block};
                 false ->
                     {error, hash_mismatch}
             end;
         {error, _} = Error ->
-            lager:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
-                        [ppp(PeerId), pp(Hash), Error]),
+            epoch_sync:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
+                             [ppp(PeerId), pp(Hash), Error]),
             Error
     end.
 
 do_fetch_mempool(PeerId) ->
     case aec_peer_connection:get_mempool(PeerId) of
         {ok, Txs} ->
-            lager:debug("Mempool (~p) received, size: ~p",
-                        [ppp(PeerId), length(Txs)]),
+            epoch_sync:debug("Mempool (~p) received, size: ~p",
+                             [ppp(PeerId), length(Txs)]),
             lists:foreach(fun aec_tx_pool:push/1, Txs),
             aec_events:publish(mempool_sync, {fetched, PeerId});
         Other ->
-            lager:debug("Error fetching mempool from ~p: ~p",
-                        [ppp(PeerId), Other]),
+            epoch_sync:debug("Error fetching mempool from ~p: ~p",
+                             [ppp(PeerId), Other]),
             aec_events:publish(mempool_sync, {error, Other, PeerId}),
             Other
     end.
