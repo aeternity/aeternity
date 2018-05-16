@@ -216,7 +216,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
 		    E ->
 			lager:debug("Init call error ~w ~w~n",[E, CallRes]),
                         %% Don't create the contract if 'init' fails!
-                        %% Go back to Trees1
+                        %% Go back to Trees1 (Without contract and spent fee)
                         %% Spend gas + fee
                         GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
@@ -245,7 +245,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                         %% Spend Gas
                         GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
-                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce+1,
+                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce,
                                   Context, Height, Trees4,
                                   ConsensusVersion),
 
@@ -274,20 +274,26 @@ process(#contract_create_tx{owner = OwnerPubKey,
 
     {ok, Trees6}.
 
-spend(OwnerPubKey, ContractPubKey, Value, Fee, Nonce,_Context, Height, Trees,
-      ConsensusVersion) ->
+spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
+      Context, Height, Trees, ConsensusVersion) ->
     {ok, SpendTx} = aec_spend_tx:new(
-                      #{ sender => OwnerPubKey
-                       , recipient => ContractPubKey
+                      #{ sender => SenderPubKey
+                       , recipient => ReceiverPubKey
                        , amount => Value
                        , fee => Fee
                        , nonce => Nonce
                        , payload => <<>>}),
-    {ok, Trees1} =
-        aetx:check_from_contract(SpendTx, Trees, Height, ConsensusVersion),
-    {ok, Trees2} =
-        aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
-    Trees2.
+    {ok, Trees1} = aec_trees:ensure_account_at_height(ReceiverPubKey, Trees, Height),
+    case Context of
+        aetx_contract ->
+            {ok, Trees2} =
+                aetx:process_from_contract(SpendTx, Trees1, Height, ConsensusVersion),
+            Trees2;
+        aetx_transaction ->
+            {ok, Trees2} =
+                aetx:process(SpendTx, Trees1, Height, ConsensusVersion),
+            Trees2
+    end.
 
 
 run_contract(#contract_create_tx{ owner      = Caller
