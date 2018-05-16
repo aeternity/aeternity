@@ -3726,12 +3726,12 @@ get_balance_at_top(EncodedPubKey) ->
 
 get_balance(EncodedPubKey, Params) ->
     Host = external_address(),
-    http_request(Host, get, "account/balance/" ++ binary_to_list(EncodedPubKey),
+    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/balance",
                  Params).
 
 get_account_transactions(EncodedPubKey, Params) ->
     Host = external_address(),
-    http_request(Host, get, "account/txs/" ++ binary_to_list(EncodedPubKey),
+    http_request(Host, get, "account/" ++ binary_to_list(EncodedPubKey) ++ "/txs",
                  Params).
 
 post_block(Block) ->
@@ -4079,11 +4079,11 @@ wrong_http_method_name(_Config) ->
 
 wrong_http_method_balance(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "account/balance/123", []).
+    {ok, 405, _} = http_request(Host, post, "account/123/balance", []).
 
 wrong_http_method_account_transactions(_Config) ->
     Host = external_address(),
-    {ok, 405, _} = http_request(Host, post, "account/txs/123", []).
+    {ok, 405, _} = http_request(Host, post, "account/123/txs", []).
 
 wrong_http_method_block(_Config) ->
     Host = external_address(),

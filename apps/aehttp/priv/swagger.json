@@ -1453,7 +1453,7 @@
         }
       }
     },
-    "/account/balance/{account_pubkey}" : {
+    "/account/{account_pubkey}/balance" : {
       "get" : {
         "tags" : [ "external", "chain" ],
         "description" : "Get accounts's balance",
@@ -1501,7 +1501,7 @@
         }
       }
     },
-    "/account/txs/{account_pubkey}" : {
+    "/account/{account_pubkey}/txs" : {
       "get" : {
         "tags" : [ "external", "transactions" ],
         "description" : "Get accounts's transactions included in blocks in the longest chain",
