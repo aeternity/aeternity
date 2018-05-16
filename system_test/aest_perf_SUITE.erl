@@ -114,13 +114,20 @@ sync_speed(Cfg) ->
 
     InitialNodes = [n1, n2, n3, n4],
 
-    InitialNodeSpecs = cluster(InitialNodes, #{
-        mine_rate => MineRate,
-        source => ?cfg(source)
-    }),
+    % Only n1 mines, the other nodes just sync
+    InitialNodeSpecs = [
+        spec(N, InitialNodes -- [N], #{
+            mine_rate => MineRate,
+            source => ?cfg(source),
+            mining => #{autostart => N == n1}
+        })
+        || N <- InitialNodes
+    ],
     NewNodesSpec = [
-        spec(N, InitialNodes, #{mine_rate => MineRate})
-        || N <- [n5, n6]
+        spec(N, InitialNodes, #{
+            mine_rate => MineRate,
+            mining => #{autostart => false}
+        }) || N <- [n5, n6]
     ],
 
     setup_nodes(InitialNodeSpecs ++ NewNodesSpec, Cfg),
