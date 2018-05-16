@@ -290,6 +290,10 @@ dutch_auction(_Cfg) ->
     %% The auction has been closed so bidding again should fail.
     failing_call(Dadr, bid, "()", Env3,
                  #{ caller => Cadr, currentNumber => 70}),
+    %% Decrement is 5 per block and 18 blocks so 410 have been
+    %% transferred to benficiary and 90 back to caller.
+    1410 = get_balance(<<Badr:256>>, Env3),
+    1090 = get_balance(<<Cadr:256>>, Env3),
     ok.
 
 increment_account(Account, Value, Env) ->
