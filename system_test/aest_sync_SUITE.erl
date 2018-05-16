@@ -19,11 +19,10 @@
     setup_nodes/2,
     start_node/2,
     stop_node/3,
-    kill_node/2,
     connect_node/3, disconnect_node/3,
-    http_get/5,
     wait_for_value/4,
-    assert_synchronized/2
+    get_block/2,
+    request/3
 ]).
 
 %=== INCLUDES ==================================================================
@@ -191,7 +190,6 @@ docker_keeps_data(Cfg) ->
     NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
     NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
 
-
     setup_nodes([?STANDALONE_NODE], Cfg),
 
     start_node(standalone_node, Cfg),
@@ -206,7 +204,7 @@ docker_keeps_data(Cfg) ->
                  div (1000 * Length),
 
     %% Get all blocks before stopping
-    A = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length)],
+    A = [get_block(standalone_node, H) || H <- lists:seq(1, Length)],
 
     stop_node(standalone_node, NodeShutdownTime, Cfg),
     %% This requires some time
@@ -220,7 +218,7 @@ docker_keeps_data(Cfg) ->
     timer:sleep(MiningTime * 8),
 
     %% Get all blocks after restarting
-    B = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length)],
+    B = [get_block(standalone_node, H) || H <- lists:seq(1, Length)],
 
     %% Checks all the nodes before restarting are still there
     {_, Diff} = lists:foldl(fun({X, Y}, {H, Acc}) ->
@@ -238,7 +236,7 @@ docker_keeps_data(Cfg) ->
     wait_for_value({height, Length + 10}, [standalone_node], MiningTime * 10, Cfg),
 
     %% Get all blocks before stopping
-    C = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length + 10)],
+    C = [get_block(standalone_node, H) || H <- lists:seq(1, Length + 10)],
 
     stop_node(standalone_node, NodeShutdownTime, Cfg),
     start_node(standalone_node, Cfg),
@@ -248,7 +246,7 @@ docker_keeps_data(Cfg) ->
     timer:sleep(MiningTime * 5),
 
     %% Get all blocks after restarting
-    D = [get_block(standalone_node, H, Cfg) || H <- lists:seq(1, Length + 10)],
+    D = [get_block(standalone_node, H) || H <- lists:seq(1, Length + 10)],
 
     %% Checks all the nodes before restarting are still there
     {_, Diff} = lists:foldl(fun({X, Y}, {H, Acc}) ->
@@ -410,17 +408,3 @@ net_split_recovery(Cfg) ->
     ?assertEqual(D1, D4),
 
     ok.
-
-%=== INTERNAL FUNCTIONS ========================================================
-
-get_block(NodeName, Height, _Cfg) ->
-    case request(NodeName, 'GetBlockByHeight', #{height => Height}) of
-        {ok, 200, Block} -> Block;
-        {ok, 404, _} -> undefined
-    end.
-
-request(Node, Id, Params) ->
-    aehttp_client:request(Id, Params, 
-                          [{ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)}, 
-                           {ct_log, true}]).
-
