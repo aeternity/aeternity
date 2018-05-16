@@ -4,6 +4,10 @@
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 
+ %% NG-INFO: we need to start with valid genesis block:
+ %% NG-TODO: figure out what's the good key to put here
+-define(GENESIS_KEY, <<0:32/unit:8>>).
+
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).

@@ -162,8 +162,7 @@ new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
 new_key_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
 
     {UncompleteBlock, Trees} = new_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0),
-
-    %% TODO: NG-INFO: here we need to modify coinbase driven balances
+    {ok, KeyToClaimLeader} = aec_keys:pubkey(),
 
     %% Assert correctness of last block protocol version, as minimum
     %% sanity check on previous block and state (mainly for potential
@@ -175,10 +174,13 @@ new_key_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
     NewHeight = LastBlockHeight + 1,
     Version = protocol_effective_at_height(NewHeight),
 
-    {UncompleteBlock#block{height = NewHeight, version = Version, key_hash = undefined}, Trees}.
+    {UncompleteBlock#block{height = NewHeight, version = Version, key = KeyToClaimLeader, key_hash = undefined}, Trees}.
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,
+                 key = LeaderKey,
+                 key_hash = PreviousKeyBlockHash,
+                 signature = LeaderSignature,
                  prev_hash = PrevHash,
                  txs_hash = TxsHash,
                  root_hash = RootHash,
@@ -188,6 +190,9 @@ to_header(#block{height = Height,
                  version = Version,
                  pow_evidence = Evd}) ->
     #header{height = Height,
+            key = LeaderKey,
+            key_hash = PreviousKeyBlockHash,
+            signature = LeaderSignature,
             prev_hash = PrevHash,
             txs_hash = TxsHash,
             root_hash = RootHash,
@@ -199,6 +204,9 @@ to_header(#block{height = Height,
 
 from_header_and_txs(#header{height = Height,
                             prev_hash = PrevHash,
+                            key = LeaderKey,
+                            key_hash = PreviousKeyBlockHash,
+                            signature = LeaderSignature,
                             txs_hash = TxsHash,
                             root_hash = RootHash,
                             target = Target,
@@ -208,6 +216,9 @@ from_header_and_txs(#header{height = Height,
                             version = Version}, Txs) ->
     #block{height = Height,
            prev_hash = PrevHash,
+           key = LeaderKey,
+           key_hash = PreviousKeyBlockHash,
+           signature = LeaderSignature,
            txs_hash = TxsHash,
            root_hash = RootHash,
            target = Target,

@@ -28,7 +28,7 @@ create_micro_block_candidate(TopBlock, CurrentKeyBlock, TopBlockTrees) ->
 -spec create_key_block_candidate(aec_blocks:block(), aec_blocks:block(), aec_trees:trees(),
     list(aec_headers:header())) -> {ok, aec_blocks:block(), aec_pow:nonce()} | {error, term()}.
 create_key_block_candidate(TopBlock, CurrentKeyBlock, TopBlockTrees, AdjHeaders) ->
-    Height = aec_blocks:height(TopBlock) + 1,
+    Height = aec_blocks:height(CurrentKeyBlock) + 1,
     case create_signed_coinbase_tx(Height) of
         {error, _} = Error ->
             Error;
