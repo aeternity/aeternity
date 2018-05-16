@@ -139,14 +139,8 @@ check(#contract_create_tx{owner = OwnerPubKey,
                           fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     TotalAmount = Fee + Amount + Gas * GasPrice,
     Checks =
-        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, TotalAmount) end,
+        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, TotalAmount) end
          %% TODO: Check minum gas price.
-         fun () ->
-                 case Fee >= aec_governance:minimum_tx_fee() of
-                     true -> ok;
-                     _ ->  {error, too_low_fee}
-                 end
-         end
         ],
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
