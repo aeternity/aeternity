@@ -21,6 +21,7 @@ contract DutchAuction =
 
   // TTL set by user on posting contract, typically (start - end ) div dec
   public function init(beneficiary, start, decrease) : state =
+    require(start > 0 && decrease > 0, "bad args")
     { start_amount = start,
       start_height = Chain.block_height,
       beneficiary  = beneficiary,
@@ -31,12 +32,13 @@ contract DutchAuction =
 
   // We are the buyer... interesting case to buy for someone else and keep 10%
   public stateful function bid() =
-    require( !(state.sold) )
+    require( !(state.sold), "sold")
     let cost =
       state.start_amount - (Chain.block_height - state.start_height) * state.dec
-    require( Contract.balance >= cost)
+    require( Contract.balance >= cost, "no money")
 
 //    transaction(SpendTx({recipient = state.beneficiary,
 //                         amount    = cost }))  // or self.balance ** burn money **
     spend(state.beneficiary, cost)
+    spend(Call.caller, Contract.balance)
     put(state{sold = true})
