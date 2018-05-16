@@ -21,7 +21,7 @@
   0},
  {<<"enoise">>,
   {git,"https://github.com/aeternity/enoise.git",
-       {ref,"7347906f29c86456d0e144456b524014722424c7"}},
+       {ref,"c3bdb02e53706cafceccb109f8a5ace9a37356f4"}},
   0},
  {<<"eper">>,
   {git,"git://github.com/massemanet/eper.git",
