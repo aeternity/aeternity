@@ -2819,10 +2819,6 @@ definitions:
     allOf:
       - $ref: '#/definitions/JSONTx'
       - $ref: '#/definitions/ChannelSlashTx'
-  ChannelSlashTxJSON:
-    allOf:
-      - $ref: '#/definitions/JSONTx'
-      - $ref: '#/definitions/ChannelSlashTx'
   ChannelSettleTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'
