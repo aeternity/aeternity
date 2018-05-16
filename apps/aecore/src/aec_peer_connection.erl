@@ -97,7 +97,10 @@ stop(PeerCon) ->
 
 call(PeerCon, Call) when is_pid(PeerCon) ->
     try gen_server:call(PeerCon, Call, ?REQUEST_TIMEOUT + 2000)
-    catch exit:{noproc, _} -> {error, no_connection}
+    catch
+      exit:{normal, _}  -> {error, aborted};
+      exit:{timeout, _} -> {error, timeout};
+      exit:{noproc, _}  -> {error, no_connection}
     end;
 call(PeerId, Call) when is_binary(PeerId) ->
     cast_or_call(PeerId, call, Call).
