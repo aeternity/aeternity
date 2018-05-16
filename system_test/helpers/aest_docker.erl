@@ -220,7 +220,8 @@ setup_node(Spec, BackendState) ->
             ext_http => #{port => ?EXT_HTTP_PORT},
             int_http => #{port => ?INT_HTTP_PORT},
             int_ws => #{port => ?INT_WS_PORT}
-        }
+        },
+        mining => maps:merge(#{autostart => true}, maps:get(mining, Spec, #{}))
     },
     Context = #{epoch_config => RootVars},
     ok = write_template(TemplateFile, ConfigFilePath, Context),
