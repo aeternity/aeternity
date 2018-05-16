@@ -16,6 +16,7 @@
    , environment/1
    , counter/1
    , stack/1
+   , simple_storage/1
    ]).
 
 %% chain API exports
@@ -33,7 +34,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            complex_types,
            environment,
            counter,
-           stack ].
+           stack,
+	   simple_storage ].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -253,6 +255,15 @@ stack(_Cfg) ->
     {2, Env2} = successful_call(101, word, push, "\"foo\"", Env1),
     {<<"foo">>,  Env3} = successful_call(101, string, pop, "()", Env2),
     {<<"bar">>, _Env4} = successful_call(101, string, pop, "()", Env3),
+    ok.
+
+simple_storage(_Cfg) ->
+    Code = compile_contract(simple_storage),
+    Env0 = initial_state(#{}),
+    Env1 = create_contract(101, Code, "(42)", Env0),
+    {42, Env2} = successful_call(101, word, get, "()", Env1),
+    {{}, Env3} = successful_call(101, {tuple, []}, set, "84", Env2),
+    {84, _Env4} = successful_call(101, word, get, "()", Env3),
     ok.
 
 %% -- Chain API implementation -----------------------------------------------

@@ -40,6 +40,7 @@ compilable_contracts() ->
      "identity",
      "remote_call",
      "simple",
+     "simple_storage",
      "spend_test",
      "stack",
      "test"

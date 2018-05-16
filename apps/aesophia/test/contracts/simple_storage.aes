@@ -18,12 +18,12 @@
 
 contract SimpleStorage =
 
-  type event = unit
-  type state = { data : uint }
+  type event = int
+  type state = { data : int }
 
-  function init(value : uint) : state = { data = value }
+  function init(value : int) : state = { data = value }
 
-  function get() : uint = state.data
+  function get() : int = state.data
 
-  function set(value : uint) : result(unit) = { state = { data = value } }
-
+  function set(value : int) =
+      put(state{data = value})
