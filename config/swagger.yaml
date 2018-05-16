@@ -1213,7 +1213,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
-  /account/balance/{account_pubkey}:
+  /account/{account_pubkey}/balance:
     get:
       tags:
         - external
@@ -1252,7 +1252,7 @@ paths:
           description: Block or account not found
           schema:
             $ref: '#/definitions/Error'
-  /account/txs/{account_pubkey}:
+  /account/{account_pubkey}/txs:
     get:
       tags:
         - external
