@@ -10,6 +10,10 @@ It:
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
 
+This release removes deprecated http API endpoints block-by-height
+and block-by-hash. Instead use the endpoints as defined
+[online in swagger.yaml][swagger-yaml].
+
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
 * Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.13.x".
