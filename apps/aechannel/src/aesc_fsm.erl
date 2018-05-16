@@ -41,7 +41,8 @@
          closing/3,
          disconnected/3]).
 
--export([timeouts/0]).
+-export([timeouts/0,
+         report_tags/0]).
 
 -include_lib("apps/aecore/include/common.hrl").
 
@@ -220,6 +221,8 @@ respond(Port, #{} = Opts0) ->
                , port => Port
                , opts => Opts}).
 
+upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
+    {error, negative_amount};
 upd_transfer(Fsm, From, To, Amount) ->
     lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
     gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
@@ -520,7 +523,7 @@ awaiting_update_ack(cast, {update_ack, Msg}, #data{} = D) ->
 awaiting_update_ack(cast, {update, _Msg}, D) ->
     D1 = send_update_err_msg(fallback_to_stable_state(D)),
     next_state(open, D1);
-awaiting_update_ack(cast, {update_err, Msg}, D) ->
+awaiting_update_ack(cast, {update_error, Msg}, D) ->
     lager:debug("received update_err: ~p", [Msg]),
     case check_update_err_msg(Msg, D) of
         {ok, D1} ->
@@ -1354,9 +1357,11 @@ report_tags() ->
     [info, update, conflict, message, error].
 
 default_report_flags() ->
-    #{ error    => true
+    #{ info     => true
+     , update   => true
+     , conflict => true
      , message  => true
-     , conflict => true }.
+     , error    => true}.
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 
