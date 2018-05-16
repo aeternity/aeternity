@@ -3168,22 +3168,21 @@ sc_ws_update_fails_and_close(Config) ->
     lists:foreach(
         fun(Sender) ->
             {ok, #{<<"reason">> := <<"insufficient_balance">>,
-                  <<"request">> := _Request}} = channel_update_fail(Conns, Sender,
-                                                                  Participants, 10000),
-            ok
-        end,
-        [initiator, responder]),
-
-    lists:foreach(
-        fun(Sender) ->
+                  <<"request">> := _Request0}} = channel_update_fail(Conns, Sender,
+                                                                    Participants, 10000),
             {ok, #{<<"reason">> := <<"negative_amount">>,
-                  <<"request">> := _Request}} = channel_update_fail(Conns, Sender,
-                                                                  Participants,
-                                                                  -1),
+                  <<"request">> := _Request1}} = channel_update_fail(Conns, Sender,
+                                                                     Participants,
+                                                                     -1),
+            {ok, #{<<"reason">> := <<"invalid_pubkeys">>,
+                  <<"request">> := _Request2}} =
+                channel_update_fail(Conns, Sender,
+                                    #{initiator => #{pub_key => <<123456>>},
+                                      responder => #{pub_key => <<654321>>}},
+                                    1),
             ok
         end,
         [initiator, responder]),
-
     ok = ?WS:stop(IConnPid),
     ok = ?WS:stop(RConnPid),
     ok.
@@ -3382,20 +3381,15 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
 
 channel_update_fail(#{initiator := IConnPid, responder :=RConnPid},
                StarterRole,
-               #{initiator := #{pub_key := IPubkey,
-                                priv_key := IPrivkey},
-                 responder := #{pub_key := RPubkey,
-                                priv_key := RPrivkey}},
+               #{initiator := #{pub_key := IPubkey},
+                 responder := #{pub_key := RPubkey}},
                Amount) ->
-    {StarterPid, _AcknowledgerPid, StarterPubkey, _StarterPrivkey,
-     AcknowledgerPubkey, _AcknowledgerPrivkey} =
+    {StarterPid, _AcknowledgerPid, StarterPubkey, AcknowledgerPubkey} =
         case StarterRole of
             initiator ->
-                {IConnPid, RConnPid, IPubkey, IPrivkey,
-                                    RPubkey, RPrivkey};
+                {IConnPid, RConnPid, IPubkey, RPubkey};
             responder ->
-                {RConnPid, IConnPid, RPubkey, RPrivkey,
-                                    IPubkey, IPrivkey}
+                {RConnPid, IConnPid, RPubkey, IPubkey}
         end,
     ok = ?WS:register_test_for_channel_event(StarterPid, error),
 
