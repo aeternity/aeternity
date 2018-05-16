@@ -436,7 +436,7 @@ handle_request(S, {Request, Args}, From) ->
     case get_request(S, Request) of
         none ->
             handle_request(S, Request, Args, From);
-        {MappedRequest, _From} ->
+        {MappedRequest, _From, _TRef} ->
             {reply, {error, request_already_in_progress}, S}
     end.
 
