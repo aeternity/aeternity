@@ -148,7 +148,8 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             lager:debug("deserialized: ~p", [pp(SignedTx)]),
             PushRes = aec_tx_pool:push(SignedTx, tx_received),
             lager:debug("PushRes = ~p", [pp(PushRes)]),
-            {200, [], #{}}
+            Hash = aetx_sign:hash(SignedTx),
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
     end;
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->

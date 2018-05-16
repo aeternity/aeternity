@@ -1572,7 +1572,9 @@ post_correct_tx(_Config) ->
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
+    ExpectedHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    {ok, 200, #{<<"tx_hash">> := ExpectedHash}} =
+        post_tx(aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx))),
     {ok, [SignedTx]} = rpc(aec_tx_pool, peek, [infinity]), % same tx
     ok.
 
@@ -4328,14 +4330,14 @@ sign_and_post_tx(AccountPubKey, EncodedUnsignedTx) ->
     UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
     {ok, SignedTx} = rpc(aec_keys, sign, [UnsignedTx]),
     SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    {ok, 200, _} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     #{<<"hash">> := TxHash} = aetx_sign:serialize_for_client_pending(json, SignedTx),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = post_tx(aec_base58c:encode(transaction, SerializedTx)),
     %% Check tx is in mempool.
     Fun = fun() ->
                   tx_in_mempool_for_account(AccountPubKey, TxHash)
           end,
     {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
-    aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)).
+    TxHash.
 
 tx_in_mempool_for_account(AccountPubKey, TxHash) ->
     {ok, 200, #{<<"transactions">> := Txs}} =

@@ -235,7 +235,10 @@
         } ],
         "responses" : {
           "200" : {
-            "description" : "Successful operation"
+            "description" : "Successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PostTxResponse"
+            }
           },
           "400" : {
             "description" : "Invalid transaction",
@@ -4102,6 +4105,19 @@
       },
       "example" : {
         "tx" : { }
+      }
+    },
+    "PostTxResponse" : {
+      "type" : "object",
+      "required" : [ "tx_hash" ],
+      "properties" : {
+        "tx_hash" : {
+          "description" : "Hash of a signed transaction",
+          "$ref" : "#/definitions/EncodedHash"
+        }
+      },
+      "example" : {
+        "tx_hash" : { }
       }
     },
     "CreateContractUnsignedTx" : {
