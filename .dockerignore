@@ -6,3 +6,4 @@ apps/aecuckoo/priv/lib
 apps/aecore/priv/keys
 system_test
 erl_crash.dump
+aevm_external
