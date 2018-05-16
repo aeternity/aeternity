@@ -12,6 +12,7 @@ category info and up will still be directed to the console.
 * Improves the stability of the testnet.
 * Enhances user HTTP API with fine tuning paths for getting account balance and transactions
 * Moves contract account balances to account state tree. Also removes height and contract ID from contract state trees. This impacts consensus.
+* Removes unneeded height from the account object in the block state. This impacts consensus.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
 
