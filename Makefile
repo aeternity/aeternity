@@ -156,6 +156,8 @@ test:
 	fi
 
 eunit:
+	echo `pwd`
+	echo `ls -l otp_patches/ebin/`
 	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit test
