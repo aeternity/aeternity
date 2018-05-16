@@ -17,6 +17,7 @@
    , counter/1
    , stack/1
    , simple_storage/1
+   , dutch_auction/1
    ]).
 
 %% chain API exports
@@ -35,7 +36,8 @@ all() -> [ execute_identity_fun_from_sophia_file,
            environment,
            counter,
            stack,
-	   simple_storage ].
+           simple_storage,
+           dutch_auction ].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -90,6 +92,11 @@ create_contract(Address, Code, Args, Env) ->
     {ok, InitS, Env2} = make_call(Address, init, Args, Env1, #{}),
     set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
 
+create_contract(Address, Code, Args, Env, Options) ->
+    Env1 = Env#{Address => Code},
+    {ok, InitS, Env2} = make_call(Address, init, Args, Env1, Options),
+    set_store(aevm_eeevm_store:from_sophia_state(InitS), Env2).
+
 successful_call_(Contract, Type, Fun, Args, Env) ->
     {Res, _Env1} = successful_call(Contract, Type, Fun, Args, Env),
     Res.
@@ -112,14 +119,14 @@ successful_call(Contract, Type, Fun, Args, Env, Options) ->
 %% failing_call(Contract, Fun, Args, Env) ->
 %%     failing_call(Contract, Fun, Args, Env, #{}).
 
-%% failing_call(Contract, Fun, Args, Env, Options) ->
-%%     case make_call(Contract, Fun, Args, Env, Options) of
-%%         {ok, Result, _} ->
-%%             Words = aeso_test_utils:dump_words(Result),
-%%             exit({expected_failure, {ok, Words}});
-%%         {error, Err, _} ->
-%%             Err
-%%     end.
+failing_call(Contract, Fun, Args, Env, Options) ->
+    case make_call(Contract, Fun, Args, Env, Options) of
+        {ok, Result, _} ->
+            Words = aeso_test_utils:dump_words(Result),
+            exit({expected_failure, {ok, Words}});
+        {error, Err, _} ->
+            Err
+    end.
 
 execute_identity_fun_from_sophia_file(_Cfg) ->
     Code = compile_contract(identity),
@@ -265,6 +272,33 @@ simple_storage(_Cfg) ->
     {{}, Env3} = successful_call(101, {tuple, []}, set, "84", Env2),
     {84, _Env4} = successful_call(101, word, get, "()", Env3),
     ok.
+
+dutch_auction(_Cfg) ->
+    DaCode = compile_contract(dutch_auction),
+    Badr = 101,                                 %Beneficiary address
+    Cadr = 102,                                 %Caller address
+    Dadr = 110,                                 %Dutch auction address
+    ChainEnv = #{origin => 11, currentNumber => 20},
+    Env0 = initial_state(#{ environment => ChainEnv },
+                         #{ Badr => 1000, Cadr => 1000, 1 => 10000 }),
+    Env1 = create_contract(Dadr, DaCode, "(101, 500, 5)", Env0,
+                           #{ currentNumber => 42 }),
+    %% Currently this is how we can add value to an account for a call.
+    Env2 = increment_account(Dadr, 500, Env1),
+    {_,Env3} = successful_call(Dadr, {tuple,[]}, bid, "()", Env2,
+                               #{ caller => Cadr, currentNumber => 60 }),
+    %% The auction has been closed so bidding again should fail.
+    failing_call(Dadr, bid, "()", Env3,
+                 #{ caller => Cadr, currentNumber => 70}),
+    ok.
+
+increment_account(Account, Value, Env) ->
+    UpdAcc = fun (Amount) -> Amount + Value end,
+    maps:update_with(accounts,
+                     fun (Accs) ->
+                             maps:update_with(Account, UpdAcc, Value, Accs)
+                     end,
+                     Env).
 
 %% -- Chain API implementation -----------------------------------------------
 
