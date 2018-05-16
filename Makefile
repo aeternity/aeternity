@@ -207,7 +207,7 @@ $(AEVM_EXTERNAL_TEST_DIR)/ethereum_tests:
 venv-present:
 	@virtualenv -q $(PYTHON_DIR)
 
-python-env: venv-present
+python-env: venv-present swagger
 	( cd $(PYTHON_DIR) && $(MAKE) env; )
 
 python-ws-test:

@@ -1,16 +1,29 @@
 Python user acceptance tests
 ==========
 
-In order to generate tests:
-* prepare nosetests venv: `make nose-env`
+This document describes how to run them.
 
-* generate python client for the API: `make swagger`
+#### Python enviroment
 
-In order to run tests first prepare the nodes:
+Python tests are to be run on Python `2.7` and this is a prerequisite. Tests
+dependencies are installed in an virtual enviroment. To install deps:
+```
+make python-env
+```
+
+#### Epoch nodes
+
+Tests are ran on `dev1`, `dev2` and `dev3` epoch nodes. In order to build
+them, please run
+
 ```
 make multi-build
 ```
-Then:
+
+#### Running tests
+
+After the python dependencies are installed and the nodes are build, tests can
+be run
 
 * execute all user acceptance tests: `make python-uats`
 
