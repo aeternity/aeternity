@@ -2,6 +2,9 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Redirects all the log lines related to the synchronization protocol
+to the new log file `epoch_sync.log` instead of `epoch.log`; log lines with
+category info and up will still be directed to the console.
 * Does this. This impacts consesus.
 * Does that. This impacts the persisted DB.
 * Does that.
