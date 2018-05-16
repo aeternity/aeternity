@@ -1301,7 +1301,7 @@ start_min_depth_watcher(#data{create_tx = SignedTx,
                                        responder     := Responder,
                                        minimum_depth := MinDepth}} = Data) ->
     Tx = aetx_sign:tx(SignedTx),
-    TxHash = aetx:hash(Tx),
+    TxHash = aetx_sign:hash(SignedTx),
     evt({tx_hash, TxHash}),
     Nonce = aetx:nonce(Tx),
     evt({nonce, Nonce}),

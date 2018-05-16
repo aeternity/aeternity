@@ -70,7 +70,7 @@ watch_for_chain_transaction(St) ->
     {noreply, St, 5000}.
 
 min_depth_achieved(TxHash, MinDepth) ->
-    case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
+    case aec_chain:find_tx_with_location(TxHash) of
         none ->
             lager:debug("couldn't find tx hash", []),
             undefined;

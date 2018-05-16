@@ -11,7 +11,6 @@
         , check_from_contract/4
         , deserialize_from_binary/1
         , fee/1
-        , hash/1
         , is_coinbase/1
         , is_tx_type/1
         , new/2
@@ -143,10 +142,6 @@
 new(Callback, Tx) ->
     Type = Callback:type(),
     #aetx{ type = Type, cb = Callback, tx = Tx }.
-
--spec hash(Tx :: tx()) -> aec_hash:hash().
-hash(Tx) ->
-    aec_hash:hash(tx, serialize_to_binary(Tx)).
 
 -spec tx_type(TxOrTxType :: tx_type() | tx()) -> binary().
 tx_type(#aetx{ type = TxType }) ->

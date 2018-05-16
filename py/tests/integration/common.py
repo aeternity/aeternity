@@ -248,4 +248,8 @@ def encode_name(name):
     str = base58.b58encode_check(name)
     return "nm$" + str
 
+def encode_tx_hash(txhash):
+    str = base58.b58encode_check(txhash)
+    return "th$" + str
+
 logging.getLogger("urllib3").setLevel(logging.ERROR)

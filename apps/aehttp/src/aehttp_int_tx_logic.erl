@@ -22,9 +22,10 @@
         , name_revoke/2
        ]).
 
-sender_and_hash(Tx) ->
+sender_and_hash(STx) ->
+    Tx     = aetx_sign:tx(STx),
     Sender = aetx:origin(Tx),
-    TxHash = aetx:hash(Tx),
+    TxHash = aetx_sign:hash(STx),
     {Sender, TxHash}.
 
 spend(EncodedRecipient, Amount, Fee, Payload) ->
@@ -194,11 +195,9 @@ create_tx(TxFun) ->
             case TxFun(Pubkey, Nonce) of
                 {error, _} = Err -> Err;
                 {ok, Tx} ->
-                    sign_and_push_to_mempool(Tx),
-                    {ok, Tx};
+                    {ok, sign_and_push_to_mempool(Tx)};
                 {ok, Tx, Result} ->
-                    sign_and_push_to_mempool(Tx),
-                    {ok, Tx, Result}
+                    {ok, sign_and_push_to_mempool(Tx), Result}
             end;
         {error, _} = Err -> Err
     end.
@@ -229,5 +228,6 @@ sign_and_push_to_mempool(Tx) ->
     {ok, SignedTx} = aec_keys:sign(Tx),
     ok = aec_tx_pool:push(SignedTx),
     lager:debug("pushed; peek() -> ~p",
-                [pp(aec_tx_pool:peek(10))]).
+                [pp(aec_tx_pool:peek(10))]),
+    SignedTx.
 

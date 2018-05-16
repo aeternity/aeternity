@@ -148,7 +148,8 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
             lager:debug("deserialized: ~p", [pp(SignedTx)]),
             PushRes = aec_tx_pool:push(SignedTx, tx_received),
             lager:debug("PushRes = ~p", [pp(PushRes)]),
-            {200, [], #{}}
+            Hash = aetx_sign:hash(SignedTx),
+            {200, [], #{<<"tx_hash">> => aec_base58c:encode(tx_hash, Hash)}}
     end;
 
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
@@ -167,8 +168,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                             aect_contracts:compute_contract_pubkey(Owner, Nonce),
                         #{tx => aec_base58c:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
-                          contract_address => ContractPubKey,
-                          tx_hash => aec_base58c:encode(tx_hash, aetx:hash(Tx))}
+                          contract_address => ContractPubKey}
                     end)
                 ],
     process_request(ParseFuns, Req);
@@ -659,15 +659,16 @@ get_txs_and_headers(KeepTxTypes, DropTxTypes, ShowPending, Account) ->
         fun() ->
                 Txs = aec_db:transactions_by_account(Account, Filter,
                                                      ShowPending),
-                TxHashes = lists:usort([aetx:hash(aetx_sign:tx(SignedTx))
-                                        || SignedTx <- Txs]),
-                [case aec_chain:find_transaction_in_main_chain_or_mempool(TxHash) of
-                     {mempool, SignedTx} -> {mempool, SignedTx};
-                     {BlockHash, SignedTx} ->
-                         {ok, H} = aec_chain:get_header(BlockHash),
-                         {H, SignedTx}
-                 end
-                 || TxHash <- TxHashes]
+                lists:filtermap(
+                  fun({TxHash, STx}) ->
+                          case aec_chain:find_tx_location(TxHash) of
+                              none -> false;
+                              mempool -> {true, {mempool, STx}};
+                              BlockHash ->
+                                  {ok, H} = aec_chain:get_header(BlockHash),
+                                  {true, {H, STx}}
+                          end
+                  end, Txs)
         end,
     %% Put this in a transaction to avoid multiple transaction and to
     %% get a snapshot of the chain state.

@@ -208,6 +208,8 @@ paths:
       responses:
         '200':
           description: Successful operation
+          schema:
+            $ref: '#/definitions/PostTxResponse'
         '400':
           description: Invalid transaction
           schema:
@@ -3108,7 +3110,7 @@ definitions:
         description: Contract caller pub_key
         type: string
       nonce:
-        description: Caller's nonce
+        description: 'Caller''s nonce'
         type: integer
       contract:
         description: 'Contract''s pub_key'
@@ -3156,11 +3158,15 @@ definitions:
       tx:
         description: Unsigned transaction object
         $ref: '#/definitions/EncodedHash'
-      tx_hash:
-        description: Transaction's hash
-        $ref: '#/definitions/EncodedHash'
     required:
     - tx
+  PostTxResponse:
+    type: object
+    properties:
+      tx_hash:
+        description: Hash of a signed transaction
+        $ref: '#/definitions/EncodedHash'
+    required:
     - tx_hash
   CreateContractUnsignedTx:
     allOf:

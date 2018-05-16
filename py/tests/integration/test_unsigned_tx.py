@@ -182,12 +182,12 @@ def test_spend():
             payload="foo")
     unsigned_spend_obj = external_api.post_spend(spend_data_obj)
     unsigned_spend_enc = unsigned_spend_obj.tx
-    tx_hash = unsigned_spend_obj.tx_hash
     unsigned_tx = common.base58_decode(unsigned_spend_enc)
-    print("Tx hash " + tx_hash)
 
     # Alice signs spend tx
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
+    tx_hash = keys.tx_hash_from_signed_encoded(signed)
+    print("Tx hash " + tx_hash)
     print("Signed transaction " + signed)
 
     # Alice posts spend tx

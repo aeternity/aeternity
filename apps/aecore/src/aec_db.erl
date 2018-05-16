@@ -44,8 +44,8 @@
         , add_tx/1
         , add_tx_hash_to_mempool/1
         , is_in_tx_pool/1
-        , find_transaction_in_main_chain_or_mempool/1 %% NOTE: Legacy tx hash
         , find_tx_location/1
+        , find_tx_with_location/1
         , remove_tx_from_mempool/1
         , remove_tx_location/1
         ]).
@@ -85,7 +85,6 @@
 
 %% indexing callbacks
 -export([ ix_acct2tx/3
-        , ix_tx2stx/3
         ]).
 
 -include("common.hrl").
@@ -129,7 +128,7 @@ tables(Mode) ->
    , ?TAB(aec_channel_state)
    , ?TAB(aec_name_service_cache)
    , ?TAB(aec_name_service_state)
-   , ?TAB(aec_signed_tx, [{index, [{acct2tx}, {tx2stx}]}])
+   , ?TAB(aec_signed_tx, [{index, [{acct2tx}]}])
    , ?TAB(aec_tx_location)
    , ?TAB(aec_tx_pool)
     ].
@@ -429,6 +428,24 @@ find_tx_location(STxHash) ->
            [#aec_tx_location{value = BlockHash}] -> BlockHash
        end).
 
+-spec find_tx_with_location(binary()) ->
+                                   'none'
+                                 | {'mempool', aetx_sign:signed_tx()}
+                                 | {binary(), aetx_sign:signed_tx()}.
+find_tx_with_location(STxHash) ->
+    ?t(case mnesia:read(aec_signed_tx, STxHash) of
+           [#aec_signed_tx{value = STx}] ->
+               case mnesia:read(aec_tx_location, STxHash) of
+                   [] ->
+                       case mnesia:read(aec_tx_pool, STxHash) of
+                           [] -> none;
+                           [_] -> {mempool, STx}
+                       end;
+                   [#aec_tx_location{value = BlockHash}] -> {BlockHash, STx}
+               end;
+           [] -> none
+       end).
+
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),
     ?t(case mnesia:read(aec_signed_tx, Hash) of
@@ -456,41 +473,21 @@ fold_mempool(FunIn, InitAcc) ->
           end,
     ?t(mnesia:foldl(Fun, InitAcc, aec_tx_pool)).
 
--dialyzer({nowarn_function, find_transaction_in_main_chain_or_mempool/1}). %% For mnesia patches.
-
--spec find_transaction_in_main_chain_or_mempool(binary()) ->
-                                                       'none'
-                                                     | {'mempool', [aetx_sign:signed_tx()]}
-                                                     | {binary(), aetx_sign:signed_tx()}.
-find_transaction_in_main_chain_or_mempool(Hash) ->
-    ?t(pick_location(mnesia:index_read(aec_signed_tx, Hash, {tx2stx}), [])).
-
--dialyzer({nowarn_function, pick_location/2}). %% For mnesia patches.
-pick_location([], Acc) ->
-    case [STx || #aec_signed_tx{key = STxHash, value = STx} <- Acc,
-                 is_in_tx_pool(STxHash)] of
-        [] -> none;
-        MempoolTxs -> {mempool, MempoolTxs}
-    end;
-pick_location([#aec_signed_tx{key = STxHash, value = STx} = DBTx|Left], Acc) ->
-    case mnesia:read(aec_tx_location, STxHash) of
-        [] -> pick_location(Left, [DBTx|Acc]);
-        [#aec_tx_location{value = BlockHash}] -> {BlockHash, STx}
-    end.
-
 -dialyzer({nowarn_function, transactions_by_account/3}). %% For mnesia patches.
 transactions_by_account(AcctPubKey, Filter, false =_ShowPending) ->
-    ?t([T || #aec_signed_tx{value = T, key = STxHash}
-                 <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
-             mnesia:read(aec_tx_location, STxHash) =/= [],
-             Filter(T)
+    ?t([{STxHash, T}
+        || #aec_signed_tx{value = T, key = STxHash}
+               <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
+           mnesia:read(aec_tx_location, STxHash) =/= [],
+           Filter(T)
        ]);
 transactions_by_account(AcctPubKey, Filter, true =_ShowPending) ->
-    ?t([T || #aec_signed_tx{key = STxHash, value = T}
-                 <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
-             (mnesia:read(aec_tx_location, STxHash) =/= [])
-                 orelse is_in_tx_pool(STxHash),
-             Filter(T)
+    ?t([{STxHash, T}
+        || #aec_signed_tx{key = STxHash, value = T}
+               <- mnesia:index_read(aec_signed_tx, AcctPubKey, {acct2tx}),
+           (mnesia:read(aec_tx_location, STxHash) =/= [])
+               orelse is_in_tx_pool(STxHash),
+           Filter(T)
        ]).
 
 %% start phase hook to load the database
@@ -535,14 +532,6 @@ ix_acct2tx(aec_signed_tx, _Ix, #aec_signed_tx{value = SignedTx}) ->
     try aetx_sign:tx(SignedTx) of
         Tx ->
             aetx:accounts(Tx)
-    catch
-        error:_ ->
-            []
-    end.
-
-ix_tx2stx(aec_signed_tx, _Ix, #aec_signed_tx{value = SignedTx}) ->
-    try aetx_sign:tx(SignedTx) of
-        Tx -> [aetx:hash(Tx)]
     catch
         error:_ ->
             []
@@ -593,8 +582,7 @@ add_backend_plugins(_) ->
     ok.
 
 add_index_plugins() ->
-    mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx),
-    mnesia_schema:add_index_plugin({tx2stx}, aec_db, ix_tx2stx).
+    mnesia_schema:add_index_plugin({acct2tx}, aec_db, ix_acct2tx).
 
 ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),

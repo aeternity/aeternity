@@ -157,17 +157,15 @@ serialization_template(?SIG_TX_VSN) ->
 
 -spec serialize_for_client(json|message_pack, #header{}, aetx_sign:signed_tx()) ->
                               binary() | map().
-serialize_for_client(Encoding, Header, #signed_tx{tx = Tx}=S) ->
+serialize_for_client(Encoding, Header, #signed_tx{}=S) ->
     {ok, BlockHash} = aec_headers:hash_header(Header),
-    TxHash = aetx:hash(Tx),
     serialize_for_client(Encoding, S, aec_headers:height(Header), BlockHash,
-                         TxHash).
+                         hash(S)).
 
 -spec serialize_for_client_pending(json|message_pack, aetx_sign:signed_tx()) ->
                               binary() | map().
-serialize_for_client_pending(Encoding, #signed_tx{tx = Tx}=S) ->
-    TxHash = aetx:hash(Tx),
-    serialize_for_client(Encoding, S, -1, <<>>, TxHash).
+serialize_for_client_pending(Encoding, #signed_tx{}=S) ->
+    serialize_for_client(Encoding, S, -1, <<>>, hash(S)).
 
 serialize_for_client(message_pack, #signed_tx{}=S, BlockHeight, BlockHash0,
                      TxHash) ->
