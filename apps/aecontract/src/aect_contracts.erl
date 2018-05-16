@@ -77,7 +77,7 @@
 -define(PUB_SIZE, 32).
 -define(HASH_SIZE, 32).
 -define(CONTRACT_TYPE, contract).
--define(CONTRACT_VSN, 2).
+-define(CONTRACT_VSN, 1).
 -define(STORE_PREFIX, 16). %% To collect storage trees in one subtree.
 
 %%%===================================================================
