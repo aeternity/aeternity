@@ -24,7 +24,7 @@
     setup_nodes/2,
     start_node/2,
     kill_node/2,
-    request/4,
+    request/3,
     wait_for_value/4,
     wait_for_time/4,
     time_to_ms/1
@@ -127,7 +127,7 @@ sync_speed(Cfg) ->
     [start_node(N, Cfg) || N <- InitialNodes],
     wait_for_startup(InitialNodes, Height, Cfg),
 
-    InitialBlocks = [{N, get_block(N, Height, Cfg)} || N <- InitialNodes],
+    InitialBlocks = [{N, get_block(N, Height)} || N <- InitialNodes],
 
     N5Block = sync_node(n5, Height, Cfg),
     N6Block = sync_node(n6, Height, Cfg),
@@ -153,7 +153,7 @@ stay_in_sync(Cfg) ->
         interval => ?cfg(mine_interval)
     }),
 
-    Blocks = [{N, get_block(N, Reached, Cfg)} || N <- Nodes],
+    Blocks = [{N, get_block(N, Reached)} || N <- Nodes],
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 %=== INTERNAL FUNCTIONS ========================================================
@@ -169,7 +169,7 @@ sync_node(Node, Height, Cfg) ->
     wait_for_startup([Node], 0, Cfg),
     wait_for_sync([Node], Height, Cfg),
     End = erlang:system_time(millisecond),
-    Block = get_block(Node, Height, Cfg),
+    Block = get_block(Node, Height),
     % Sanity check that syncing does not take longer than mining
     ?assert(End - Start =< time_to_ms(?cfg(mine_time))),
     Block.
@@ -182,8 +182,11 @@ wait_for_sync(Nodes, Height, Cfg) ->
     SyncTimeout = proplists:get_value(sync_timeout, Cfg),
     wait_for_value({height, Height}, Nodes, SyncTimeout * Height, Cfg).
 
-get_block(NodeName, Height, Cfg) ->
-    request(NodeName, [v2, 'block-by-height'], #{height => Height}, Cfg).
+get_block(NodeName, Height) ->
+    case request(NodeName, 'GetBlockByHeight', #{height => Height}) of
+        {ok, 200, Block} -> Block;
+        _ -> error(undefined)
+    end.
 
 cfg(Keys, Cfg) when is_list(Keys) ->
     [cfg(K, Cfg) || K <- Keys];

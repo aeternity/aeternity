@@ -295,23 +295,21 @@ get_top(NodeName) ->
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
-    Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
     Expiration = make_expiration(Timeout),
     CheckF =
-        fun(Addr) ->
-                case http_addr_get(Addr, [v2, account, balance, PubKey], #{}) of
+        fun(Node) ->
+                case request(Node, 'GetAccountBalance', #{account_pubkey => PubKey}) of
                     {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> done;
                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, Addrs, [], 500, Expiration);
+    wait_for_value(CheckF, NodeNames, [], 500, Expiration);
 wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, Ctx) ->
-    Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
     Expiration = make_expiration(Timeout),
-    Params = #{tx_encoding => json},
+    Params = #{account_pubkey => SenderPubKey, tx_encoding => json},
     CheckF =
-        fun(Addr) ->
-                case http_addr_get(Addr, [v2, account, txs, SenderPubKey], Params) of
+        fun(Node) ->
+                case request(Node, 'GetAccountTransactions', Params) of
                     {ok, 200, #{transactions := Txs}} ->
                         case lists:any(
                                fun(#{block_hash := BH, tx := #{nonce := N}})
@@ -327,19 +325,18 @@ wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, Ctx) ->
                         wait
                 end
         end,
-    wait_for_value(CheckF, Addrs, [], 500, Expiration);
+    wait_for_value(CheckF, NodeNames, [], 500, Expiration);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     Start = erlang:system_time(millisecond),
-    Addrs = [get_service_address(N, ext_http, Ctx) || N <- NodeNames],
     Expiration = make_expiration(Timeout),
     CheckF =
-        fun(Addr) ->
-                case http_addr_get(Addr, [v2, 'block-by-height'], #{height => MinHeight}) of
+        fun(Node) ->
+                case request(Node, 'GetBlockByHeight', #{height => MinHeight}) of
                     {ok, 200, _} -> done;
                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, Addrs, [], 500, Expiration),
+    wait_for_value(CheckF, NodeNames, [], 500, Expiration),
     Duration = (erlang:system_time(millisecond) - Start) / 1000,
     ct:log("Height ~p reached on nodes ~p after ~.2f seconds",
         [MinHeight, NodeNames, Duration]
@@ -430,10 +427,10 @@ wait_for_value(CheckF, [], Rem, Delay, Expiration) ->
     assert_expiration(Expiration),
     timer:sleep(Delay),
     wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration);
-wait_for_value(CheckF, [Addr | Addrs], Rem, Delay, Expiration) ->
-    case CheckF(Addr) of
-        done -> wait_for_value(CheckF, Addrs, Rem, Delay, Expiration);
-        wait -> wait_for_value(CheckF, Addrs, [Addr | Rem], Delay, Expiration)
+wait_for_value(CheckF, [Node | Nodes], Rem, Delay, Expiration) ->
+    case CheckF(Node) of
+        done -> wait_for_value(CheckF, Nodes, Rem, Delay, Expiration);
+        wait -> wait_for_value(CheckF, Nodes, [Node | Rem], Delay, Expiration)
     end.
 
 http_addr_get(Addr, Path, Query) ->

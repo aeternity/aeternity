@@ -106,7 +106,8 @@
           "in" : "query",
           "description" : "Height of the header to fetch",
           "required" : true,
-          "type" : "integer"
+          "type" : "integer",
+          "minimum" : 0
         } ],
         "responses" : {
           "200" : {
@@ -124,70 +125,6 @@
         }
       }
     },
-    "/block-by-height" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get a block by height",
-        "operationId" : "GetBlockByHeightDeprecated",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "height",
-          "in" : "query",
-          "description" : "Height of the block to fetch",
-          "required" : true,
-          "type" : "integer"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The block being found",
-            "schema" : {
-              "$ref" : "#/definitions/Block"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
-    "/block-by-hash" : {
-      "get" : {
-        "tags" : [ "external", "gossip" ],
-        "description" : "Get a block by hash",
-        "operationId" : "GetBlockByHashDeprecated",
-        "produces" : [ "application/json" ],
-        "parameters" : [ {
-          "name" : "hash",
-          "in" : "query",
-          "description" : "Hash of the block to fetch",
-          "required" : true,
-          "type" : "string"
-        } ],
-        "responses" : {
-          "200" : {
-            "description" : "The block being found",
-            "schema" : {
-              "$ref" : "#/definitions/Block"
-            }
-          },
-          "400" : {
-            "description" : "Invalid hash",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          },
-          "404" : {
-            "description" : "Block not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
-          }
-        }
-      }
-    },
     "/block" : {
       "post" : {
         "tags" : [ "external", "gossip" ],
@@ -198,7 +135,7 @@
         "parameters" : [ {
           "in" : "body",
           "name" : "body",
-          "description" : "Put a new block to node",
+          "description" : "A new block",
           "required" : true,
           "schema" : {
             "$ref" : "#/definitions/Block"
@@ -227,7 +164,7 @@
         "parameters" : [ {
           "in" : "body",
           "name" : "body",
-          "description" : "Put a new transaction to node",
+          "description" : "A new transaction",
           "required" : true,
           "schema" : {
             "$ref" : "#/definitions/Tx"
@@ -295,7 +232,7 @@
     "/tx/contract/create" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a contract_create transaction",
+        "description" : "Get a contract_create transaction object",
         "operationId" : "PostContractCreate",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -332,7 +269,7 @@
     "/tx/contract/call" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a contract_call transaction",
+        "description" : "Get a contract_call transaction object",
         "operationId" : "PostContractCall",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -369,7 +306,7 @@
     "/tx/contract/call/compute" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Compute the call_data for SOPHIA and get contract_call transaction",
+        "description" : "Compute the call_data for SOPHIA and get contract_call transaction object",
         "operationId" : "PostContractCallCompute",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -406,7 +343,7 @@
     "/tx/oracle/register" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a oracle_register transaction",
+        "description" : "Get a oracle_register transaction object",
         "operationId" : "PostOracleRegister",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -443,7 +380,7 @@
     "/tx/oracle/extend" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get an oracle_extend transaction",
+        "description" : "Get an oracle_extend transaction object",
         "operationId" : "PostOracleExtend",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -480,7 +417,7 @@
     "/tx/oracle/query" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a oracle_query transaction",
+        "description" : "Get an oracle_query transaction object",
         "operationId" : "PostOracleQuery",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -517,7 +454,7 @@
     "/tx/oracle/response" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a oracle_response transaction",
+        "description" : "Get an oracle_response transaction object",
         "operationId" : "PostOracleResponse",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
@@ -554,7 +491,7 @@
     "/tx/name/preclaim" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a name_preclaim transaction",
+        "description" : "Get a name_preclaim transaction object",
         "operationId" : "PostNamePreclaim",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -590,7 +527,7 @@
     "/tx/name/claim" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a name_claim transaction",
+        "description" : "Get a name_claim transaction object",
         "operationId" : "PostNameClaim",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -626,7 +563,7 @@
     "/tx/name/update" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a name_update transaction",
+        "description" : "Get a name_update transaction object",
         "operationId" : "PostNameUpdate",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -662,7 +599,7 @@
     "/tx/name/transfer" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a name_transfer transaction",
+        "description" : "Get a name_transfer transaction object",
         "operationId" : "PostNameTransfer",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -698,7 +635,7 @@
     "/tx/name/revoke" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a name_revoke transaction",
+        "description" : "Get a name_revoke transaction object",
         "operationId" : "PostNameRevoke",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -734,13 +671,14 @@
     "/tx/spend" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a spend transaction",
+        "description" : "Get a spend transaction object",
         "operationId" : "PostSpend",
         "consumes" : [ "application/json" ],
         "produces" : [ "application/json" ],
         "parameters" : [ {
           "in" : "body",
           "name" : "body",
+          "description" : "A spend transaction",
           "required" : true,
           "schema" : {
             "$ref" : "#/definitions/SpendTx"
@@ -771,7 +709,7 @@
     "/tx/channel/create" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_create transaction",
+        "description" : "Get a channel_create transaction object",
         "operationId" : "PostChannelCreate",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -807,7 +745,7 @@
     "/tx/channel/deposit" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_deposit transaction",
+        "description" : "Get a channel_deposit transaction object",
         "operationId" : "PostChannelDeposit",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -837,7 +775,7 @@
     "/tx/channel/withdrawal" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_withdrawal transaction",
+        "description" : "Get a channel_withdrawal transaction object",
         "operationId" : "PostChannelWithdrawal",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -867,7 +805,7 @@
     "/tx/channel/close/mutual" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_close_mutual transaction",
+        "description" : "Get a channel_close_mutual transaction object",
         "operationId" : "PostChannelCloseMutual",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -897,7 +835,7 @@
     "/tx/channel/close/solo" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_close_solo transaction",
+        "description" : "Get a channel_close_solo transaction object",
         "operationId" : "PostChannelCloseSolo",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -927,7 +865,7 @@
     "/tx/channel/slash" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_slash transaction",
+        "description" : "Get a channel_slash transaction object",
         "operationId" : "PostChannelSlash",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -957,7 +895,7 @@
     "/tx/channel/settle" : {
       "post" : {
         "tags" : [ "external", "dev" ],
-        "description" : "Get a channel_settle transaction",
+        "description" : "Get a channel_settle transaction object",
         "operationId" : "PostChannelSettle",
         "produces" : [ "application/json" ],
         "parameters" : [ {
@@ -1532,7 +1470,8 @@
           "in" : "query",
           "description" : "Height of the block to show balance at",
           "required" : false,
-          "type" : "integer"
+          "type" : "integer",
+          "minimum" : 0
         }, {
           "name" : "hash",
           "in" : "query",
