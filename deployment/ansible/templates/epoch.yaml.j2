@@ -5,10 +5,12 @@ sync:
 peers:
 {% for host in groups[hosts_group] | difference([inventory_hostname]) %}
 {% set public_ip = hostvars[host]['ansible_ssh_host']|default(hostvars[host]['ansible_host']) -%}
+{% if hostvars[host]['configure_peers'] is defined  and %}
 {% if hostvars[host]['sync_public_key'] is defined %}
     - "aenode://{{ hostvars[host]['sync_public_key'] }}@{{ public_ip }}:{{ config.sync.port }}"
 {% else %}
     - "aenode://pp$nokeyfoundpeerwillbeignored@{{ public_ip }}:{{ config.sync.port }}"
+{% endif %}
 {% endif %}
 {% endfor %}
 

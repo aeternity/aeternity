@@ -1,1 +1,2 @@
 log_level: warning
+configure_peers: false
