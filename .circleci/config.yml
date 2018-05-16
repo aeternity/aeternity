@@ -301,7 +301,7 @@ jobs:
           name: UAT Tests
           command: |
             epmd -daemon
-            make python-env && make swagger && make multi-build
+            make python-env && make multi-build
             make python-uats
       - run:
           name: Prepare JUnit Report
