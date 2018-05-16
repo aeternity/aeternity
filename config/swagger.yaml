@@ -107,7 +107,7 @@ paths:
           description: Header not found
           schema:
             $ref: '#/definitions/Error'
-      security:        
+      security:
   /block:
     post:
       tags:
@@ -582,7 +582,7 @@ paths:
     post:
       tags:
         - external
-        - dev 
+        - dev
       operationId: PostChannelCreate
       description: 'Get a channel_create transaction object'
       produces:
@@ -603,7 +603,7 @@ paths:
           schema:
             $ref: '#/definitions/Error'
         '404':
-          description: Initiator not found 
+          description: Initiator not found
           schema:
             $ref: '#/definitions/Error'
   /tx/channel/deposit:
@@ -2507,7 +2507,7 @@ definitions:
     - push_amount
     - channel_reserve
     - lock_period
-    - ttl 
+    - ttl
     - fee
   ChannelDepositTx:
     type: object
