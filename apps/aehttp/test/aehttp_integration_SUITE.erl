@@ -940,12 +940,12 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
-    ExtEncoded = #{oracle => Name,
-                   fee => 2,
-                   ttl => #{type => <<"delta">>, value => 500}},
+    ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+                   fee    => 2,
+                   ttl    => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
-        #{oracle => Name,
-          ttl => {delta, 500}}),
+                            #{oracle => MinerPubkey,
+                              ttl    => {delta, 500}}),
     unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
         fun get_oracle_extend/1,
         fun aeo_extend_tx:new/1, MinerPubkey),
