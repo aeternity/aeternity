@@ -101,7 +101,7 @@ enter_store_nodes(Prefix, MergedStore, Store, OldStore, CtTree) ->
 
 -spec get_contract(aect_contracts:id(), tree()) -> aect_contracts:contract().
 get_contract(Id, #contract_tree{ contracts = CtTree }) ->
-    Contract = aect_contracts:deserialize(aeu_mtrees:get(Id, CtTree)),
+    Contract = aect_contracts:deserialize(Id, aeu_mtrees:get(Id, CtTree)),
     add_store(Contract, CtTree).
 
 add_store(Contract, CtTree) ->
@@ -129,7 +129,7 @@ find_store_keys(Id, {PrefixedKey, Val, Iter}, PrefixSize, Store) ->
 lookup_contract(Id, Tree) ->
     CtTree = Tree#contract_tree.contracts,
     case aeu_mtrees:lookup(Id, CtTree) of
-        {value, Val} -> {value, add_store(aect_contracts:deserialize(Val), CtTree)};
+        {value, Val} -> {value, add_store(aect_contracts:deserialize(Id, Val), CtTree)};
         none         -> none
     end.
 

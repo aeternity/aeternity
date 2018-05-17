@@ -602,7 +602,7 @@ contract_transactions(_Config) ->
                       deposit => 2,
                       amount => 1,
                       gas => 30,
-                      gas_price => 3,
+                      gas_price => 1,
                       fee => 1,
                       call_data => EncodedCallData},
     ValidDecoded = maps:merge(ValidEncoded,

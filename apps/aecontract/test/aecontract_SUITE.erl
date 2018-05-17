@@ -148,7 +148,7 @@ call_contract(_Cfg) ->
     CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
     Overrides    = #{ code => IdContract
 		    , call_data => CallData
-		    , gas => 100000
+		    , gas => 10000
 		    },
     CreateTx     = aect_test_utils:create_tx(Owner, Overrides, S2),
 
@@ -189,7 +189,7 @@ make_contract(PubKey = <<_:32, Rest/binary>>, Code, S) ->
     Tx = aect_test_utils:create_tx(PubKey, #{ code => Code }, S),
     ContractKey = <<"CODE", Rest/binary>>,
     {contract_create_tx, CTx} = aetx:specialize_type(Tx),
-    aect_contracts:new(ContractKey, CTx, 1).
+    aect_contracts:new(ContractKey, CTx).
 
 make_call(PubKey, ContractKey,_Call,_S) ->
     aect_call:new(PubKey, 0, ContractKey, 1).

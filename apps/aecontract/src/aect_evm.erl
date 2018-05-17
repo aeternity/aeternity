@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
-%%% API functions for compiling and encoding Sophia contracts.
+%%% API functions for compiling and encoding Solidity contracts.
 %%% @end
 %%%-------------------------------------------------------------------
 
@@ -30,10 +30,9 @@ call(Code, CallData) ->
     {Block, Trees} = aec_chain:top_block_with_state(),
     BlockHeight = aec_blocks:height(Block) + 1,
     Amount = 0,
-    VmVersion = 1,
+    VmVersion = ?AEVM_01_Solidity_01,
     Deposit = 0,
-    Contract = aect_contracts:new(DummyPubKey, BlockHeight, Amount,
-                                  Owner, VmVersion, Code, Deposit),
+    Contract = aect_contracts:new(DummyPubKey, Owner, VmVersion, Code, Deposit),
     Trees1 = insert_contract(Contract, Trees),
     ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
     Spec = #{ code => Code
@@ -51,7 +50,7 @@ call(Code, CallData) ->
             , currentTimestamp => 1
             , chainState => ChainState
             , chainAPI => aec_vm_chain
-            , vm_version => ?AEVM_01_Solidity_01
+            , vm_version => VmVersion
             },
     try execute_call(Spec, true) of
         {ok, #{ out := Out }} -> {ok, aeu_hex:hexstring_encode(Out)};

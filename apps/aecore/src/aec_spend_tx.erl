@@ -89,10 +89,16 @@ payload(#spend_tx{payload = Payload}) ->
     Payload.
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#spend_tx{} = SpendTx, _Context, Trees0, Height, _ConsensusVersion) ->
+check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
     RecipientPubkey = recipient(SpendTx),
-    Checks = [fun check_tx_fee/3,
-              fun check_sender_account/3],
+    Checks =
+        case Context of
+            aetx_contract ->
+                [fun check_sender_account/3];
+            aetx_transaction ->
+                [fun check_tx_fee/3,
+                 fun check_sender_account/3]
+        end,
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
         ok ->
             case aec_trees:ensure_account_at_height(RecipientPubkey, Trees0, Height) of

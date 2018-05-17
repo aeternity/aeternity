@@ -39,6 +39,8 @@ apps/aevarna/src/aeva_parse.erl
 apps/aevarna/src/aeva_scan.erl
 aevm_external
 apps/aebytecode/src/aeb_asm_scan.erl
+apps/aevarna/src/aeva_parse.erl
+apps/aevarna/src/aeva_scan.erl
 apps/*/doc/*.html
 apps/*/doc/edoc-info
 apps/*/doc/erlang.png

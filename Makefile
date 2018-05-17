@@ -1,6 +1,6 @@
 CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
-
+EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
 CT_TEST_FLAGS =
 EUNIT_TEST_FLAGS =
 ifdef SUITE
@@ -156,7 +156,7 @@ test:
 	fi
 
 eunit:
-	@./rebar3 do eunit $(EUNIT_TEST_FLAGS)
+	@ERL_FLAGS="-args_file $(EUNIT_VM_ARGS)" ./rebar3 do eunit $(EUNIT_TEST_FLAGS)
 
 all-tests: eunit test
 

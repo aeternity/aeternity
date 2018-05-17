@@ -60,10 +60,9 @@ simple_call(Code, Function, Argument) ->
             {Block, Trees} = aec_chain:top_block_with_state(),
             BlockHeight = aec_blocks:height(Block) + 1,
             Amount = 0,
-            VmVersion = 1,
+            VmVersion = ?AEVM_01_Sophia_01,
             Deposit = 0,
-            Contract = aect_contracts:new(DummyPubKey, BlockHeight, Amount,
-                                          Owner, VmVersion, Code, Deposit),
+            Contract = aect_contracts:new(DummyPubKey, Owner, VmVersion, Code, Deposit),
             Trees1 = insert_contract(Contract, Trees),
             ChainState  = aec_vm_chain:new_state(Trees1, BlockHeight, DummyPubKey),
             Spec = #{ code => Code
@@ -81,7 +80,7 @@ simple_call(Code, Function, Argument) ->
                     , currentTimestamp => 1
                     , chainAPI => aec_vm_chain
                     , chainState => ChainState
-                    , vm_version => ?AEVM_01_Sophia_01
+                    , vm_version => VmVersion
                     },
             case aect_evm:execute_call(Spec, true) of
                 {ok, #{ out := Out } = _RetState} ->
