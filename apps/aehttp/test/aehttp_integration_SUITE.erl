@@ -3872,7 +3872,7 @@ swagger_validation_body(_Config) ->
     Type = "application/json",
     Body = <<"{broken_json">>,
 
-    R = httpc:request(post, {URL, [], Type, Body}, [], []),
+    R = httpc_request(post, {URL, [], Type, Body}, [], []),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
             <<"parameter">> := <<"">>,
@@ -4218,7 +4218,7 @@ http_request(Host, get, Path, Params) ->
     URL = binary_to_list(
             iolist_to_binary([Host, "/v2/", Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
-    R = httpc:request(get, {URL, []}, [], []),
+    R = httpc_request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
     URL = binary_to_list(iolist_to_binary([Host, "/v2/", Path])),
@@ -4232,9 +4232,17 @@ http_request(Host, post, Path, Params) ->
                    end,
     %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
-    R = httpc:request(post, {URL, [], Type, Body}, [], []),
+    R = httpc_request(post, {URL, [], Type, Body}, [], []),
     process_http_return(R).
 
+httpc_request(Method, Request, HTTPOptions, Options) ->
+    httpc_request(Method, Request, HTTPOptions, Options, test_browser).
+
+httpc_request(Method, Request, HTTPOptions, Options, Profile) ->
+    {ok, Pid} = inets:start(httpc, [{profile, Profile}], stand_alone),
+    Response = httpc:request(Method, Request, HTTPOptions, Options, Pid),
+    ok = gen_server:stop(Pid, normal, infinity),
+    Response.
 
 encode_get_params(#{} = Ps) ->
     encode_get_params(maps:to_list(Ps));
