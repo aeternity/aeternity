@@ -149,10 +149,10 @@ ct_setup(Config) ->
         [PrivDir, PrivDir]
     ),
     LogFun = fun(Fmt, Args) -> ct:log(Fmt, Args) end,
-    case aest_nodes_mgr:start([aest_docker], #{ test_id => uid(),
-                                                log_fun => LogFun,
-                                                data_dir => DataDir,
-                                                temp_dir => PrivDir}) of
+    case aest_nodes_mgr:start_link([aest_docker], #{ test_id => uid(),
+                                                     log_fun => LogFun,
+                                                     data_dir => DataDir,
+                                                     temp_dir => PrivDir}) of
         {ok, Pid} -> [{?CT_CONF_KEY, Pid} | Config];
         {error, Reason} ->
             erlang:error({system_test_setup_failed, [{reason, Reason}]})

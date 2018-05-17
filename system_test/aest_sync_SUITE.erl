@@ -30,6 +30,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %=== MACROS ====================================================================
+               
 
 -define(MINING_TIMEOUT,   2000).
 -define(SYNC_TIMEOUT,      100).
@@ -330,6 +331,7 @@ net_split_recovery(Cfg) ->
     Length = 10,
 
     setup_nodes([?NET1_NODE1, ?NET1_NODE2, ?NET2_NODE1, ?NET2_NODE2], Cfg),
+    Nodes = [net1_node1, net1_node2, net2_node1, net2_node2],
     start_node(net1_node1, Cfg),
     start_node(net1_node2, Cfg),
     start_node(net2_node1, Cfg),
@@ -337,8 +339,7 @@ net_split_recovery(Cfg) ->
 
     %% Starts with a net split
 
-    wait_for_value({height, Length}, [net1_node1, net1_node2, net2_node1, net2_node2],
-                    Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
     {ok, 200, A1} = request(net1_node1, 'GetBlockByHeight', #{height => Length}),
     {ok, 200, A2} = request(net1_node2, 'GetBlockByHeight', #{height => Length}),
@@ -355,19 +356,29 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
+    T0 = erlang:system_time(millisecond),
 
-    wait_for_value({height, Length * 3}, [net1_node1, net1_node2, net2_node1, net2_node2],
-                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+    %% Mine Length blocks, this may take longer than ping interval
+    %% if so, the chains should be in sync when it's done.
+    wait_for_value({height, Length * 2}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, B1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 3}),
-    {ok, 200, B2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 3}),
-    {ok, 200, B3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 3}),
-    {ok, 200, B4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 3}),
+    %% Wait at least as long as the ping timer can take 
+    try_until(T0 + 2 * ping_interval(),
+            fun() ->
 
-    %% Check that the chain merged
-    ?assertEqual(B1, B2),
-    ?assertEqual(B1, B3),
-    ?assertEqual(B1, B4),
+              {ok, 200, B1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 2}),
+              {ok, 200, B2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 2}),
+              {ok, 200, B3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 2}),
+              {ok, 200, B4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 2}),
+              
+              %% Check that the chain merged
+              ?assertEqual(B1, B2),
+              ?assertEqual(B1, B3),
+              ?assertEqual(B1, B4)
+            end),
+
+    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}), 
+    ct:log("Height reached ~p", [Top2]),
 
     %% Split again the nodes in two cluster of 2 nodes
     disconnect_node(net1_node1, net2, Cfg),
@@ -375,13 +386,12 @@ net_split_recovery(Cfg) ->
     disconnect_node(net2_node1, net1, Cfg),
     disconnect_node(net2_node2, net1, Cfg),
 
-    wait_for_value({height, Length * 5}, [net1_node1, net1_node2, net2_node1, net2_node2],
-                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Top2 + Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
  
-    {ok, 200, C1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 5}),
-    {ok, 200, C2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 5}),
-    {ok, 200, C3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 5}),
-    {ok, 200, C4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 5}),
+    {ok, 200, C1} = request(net1_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
+    {ok, 200, C2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length}),
+    {ok, 200, C3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
+    {ok, 200, C4} = request(net2_node2, 'GetBlockByHeight', #{height => Top2 + Length}),
 
     %% Check the the chains forked
     ?assertEqual(C1, C2),
@@ -393,18 +403,44 @@ net_split_recovery(Cfg) ->
     connect_node(net1_node2, net2, Cfg),
     connect_node(net2_node1, net1, Cfg),
     connect_node(net2_node2, net1, Cfg),
+    T1 = erlang:system_time(millisecond),
 
-    wait_for_value({height, Length * 7}, [net1_node1, net1_node2, net2_node1, net2_node2],
-                    Length * 2 * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({height, Top2 + Length * 2}, Nodes, Length * 2 * ?MINING_TIMEOUT, Cfg),
 
-    {ok, 200, D1} = request(net1_node1, 'GetBlockByHeight', #{height => Length * 7}),
-    {ok, 200, D2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 7}),
-    {ok, 200, D3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 7}),
-    {ok, 200, D4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 7}),
-
-    %% Check the chain merged again
-    ?assertEqual(D1, D2),
-    ?assertEqual(D1, D3),
-    ?assertEqual(D1, D4),
+    try_until(T1 + 2 * ping_interval(),
+            fun() ->
+              {ok, 200, D1} = request(net1_node1, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
+              {ok, 200, D2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
+              {ok, 200, D3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
+              {ok, 200, D4} = request(net2_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
+              
+              %% Check the chain merged again
+              ?assertEqual(D1, D2),
+              ?assertEqual(D1, D3),
+              ?assertEqual(D1, D4)
+            end),
+  
+    {ok, 200,#{height := Top3}} = request(net1_node1, 'GetTop', #{}), 
+    ct:log("Top reached ~p", [Top3]),
 
     ok.
+
+
+%% helper functions
+
+ping_interval() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"ping_interval">>],
+                               aecore, ping_interval, 120000).
+
+try_until(MSec, F) ->
+    try F()
+    catch 
+      _:Reason ->
+        case erlang:system_time(millisecond) > MSec of
+          true ->
+            error(Reason);
+          false ->
+            timer:sleep(100),
+            try_until(MSec, F)
+        end
+    end.

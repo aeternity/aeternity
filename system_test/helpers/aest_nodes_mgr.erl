@@ -12,7 +12,7 @@
 -define(SERVER, ?MODULE).
 
 %% API
--export([start/2, stop/0]).
+-export([start/2, start_link/2, stop/0]).
 -export([cleanup/0, dump_logs/0, setup_nodes/1, start_node/1, stop_node/2, 
          get_service_address/2, get_log_paths/0, log/2]).
 
@@ -42,6 +42,11 @@ start(Backends, #{data_dir := _DataDir,
                   temp_dir := _TempDir} = EnvMap) ->
     {ok, _} = application:ensure_all_started(hackney),
     gen_server:start({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
+
+start_link(Backends, #{data_dir := _DataDir,
+                  temp_dir := _TempDir} = EnvMap) ->
+    {ok, _} = application:ensure_all_started(hackney),
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Backends, EnvMap], []).
 
 stop() ->
     gen_server:stop(?SERVER).
