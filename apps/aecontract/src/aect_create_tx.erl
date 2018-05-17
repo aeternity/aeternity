@@ -202,7 +202,7 @@ process(#contract_create_tx{owner = OwnerPubKey,
                         %% Spend Gas
                         GasCost = aect_call:gas_used(CallRes) * GasPrice,
                         Trees5 =
-                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce+1,
+                            spend(OwnerPubKey, ContractPubKey, 0, GasCost, Nonce,
                                   Context, Height, Trees4,
                                   ConsensusVersion),
 
