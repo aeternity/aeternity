@@ -171,6 +171,7 @@ jobs:
 
   test:
     <<: *container_config
+    parallelism: 2
     steps:
       - checkout
       - *restore_rebar_cache
@@ -179,7 +180,7 @@ jobs:
           name: Test
           command: |
             epmd -daemon
-            make test
+            make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
       - store_test_results:
           path: _build/test/logs
       - store_artifacts:
