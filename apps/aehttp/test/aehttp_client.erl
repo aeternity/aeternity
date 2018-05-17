@@ -14,22 +14,22 @@ request(OpId, Params, Cfg) ->
     BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),
     Path = endpoints:path(Method, OpId, Params),
     Query = endpoints:query(Method, OpId, Params),
-    inets:start(httpc, [{profile, test_browser}]),
-    Response = request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], Cfg),
-    inets:stop(httpc, test_browser),
+    {ok, ClientPid} = inets:start(httpc, [{profile, test_browser}], stand_alone),
+    Response = request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], ClientPid, Cfg),
+    ok = inets:stop(stand_alone, ClientPid),
     Response.
 
-request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Cfg) ->
+request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Profile, Cfg) ->
     Url = binary_to_list(iolist_to_binary([BaseUrl, Path, Query])),
     log("GET ~p", [Url], Cfg),
-    Resp = httpc:request(get, {Url, Headers}, HttpOpts, Opts, test_browser),
+    Resp = httpc:request(get, {Url, Headers}, HttpOpts, Opts, Profile),
     process_response(Resp, Cfg);
-request(post, BaseUrl, Path, _Query, BodyParams, Headers, HttpOpts, Opts, Cfg) ->
+request(post, BaseUrl, Path, _Query, BodyParams, Headers, HttpOpts, Opts, Profile, Cfg) ->
     Url = binary_to_list(iolist_to_binary([BaseUrl, Path])),
     {ContentType, Body} = make_body(BodyParams, Path),
     log("POST ~p~nContentType ~p~n~p", [Url, ContentType, BodyParams], Cfg),
     Resp = httpc:request(post, {Url, Headers, ContentType, Body},
-                         HttpOpts, Opts, test_browser),
+                         HttpOpts, Opts, Profile),
     process_response(Resp, Cfg).
 
 %%=============================================================================
