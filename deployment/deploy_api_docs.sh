@@ -14,6 +14,6 @@ if [ -z "$STATUS" ]; then
 else
     git config user.name "CircleCI"
     git config user.email "circleci@aeternity.com"
-    git commit -a -m 'Update epoch docs CircleCI';
+    git commit -a -m "Update epoch version: $CIRCLE_TAG docs CircleCI";
     git push origin master
 fi
