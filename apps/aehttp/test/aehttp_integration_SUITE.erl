@@ -494,7 +494,7 @@ get_top_empty_chain(_Config) ->
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    HeaderMap = ExpectedMap,
+    {ExpectedMap, _} = {HeaderMap, {expected, ExpectedMap}},
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -507,7 +507,7 @@ get_top_non_empty_chain(_Config) ->
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     {ok, 200, HeaderMap} = get_top(),
-    HeaderMap = ExpectedMap,
+    {ExpectedMap, _} = {HeaderMap, {expected, ExpectedMap}},
     #{<<"height">> := Height} = HeaderMap,
     true = Height > 0,
     ok.
@@ -1557,7 +1557,9 @@ all_accounts_balances(_Config) ->
     AllTxsCnt = length(AllTxs),
     AllTxsCnt = Receivers + 1, % all spendTxs and a coinbaseTx
 
-    true = length(Balances) =:= length(ExpectedBalances),
+    case {length(Balances), length(ExpectedBalances)} of
+        {ExpectedBalancesCnt, ExpectedBalancesCnt} -> ok
+    end,
     true =
         lists:all(
             fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
@@ -2707,7 +2709,7 @@ ws_get_genesis(_Config) ->
     {ok, 200, BlockMap} = get_block_by_height(0, message_pack),
     ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
-    Block = ExpectedBlockMap,
+    {ExpectedBlockMap, _} = {Block, {expected, ExpectedBlockMap}},
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
