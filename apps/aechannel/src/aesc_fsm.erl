@@ -489,7 +489,7 @@ awaiting_locked(timeout, awaiting_locked = T, D) ->
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
 awaiting_initial_state(cast, {update, Msg}, #data{role = responder} = D) ->
     lager:debug("got {update, ~p}", [Msg]),
-    case check_update_msg(fun check_initial_state/2, Msg, D) of
+    case check_update_msg(initial, Msg, D) of
         {ok, SignedTx, D1} ->
             lager:debug("update_msg checks out", []),
             report(info, update, D1),
@@ -577,7 +577,7 @@ open(enter, _OldSt, D) ->
          end,
     keep_state(D1);
 open(cast, {update, Msg}, D) ->
-    case check_update_msg(none, Msg, D) of
+    case check_update_msg(normal, Msg, D) of
         {ok, SignedTx, D1} ->
             report(info, update, D1),
             ok = request_signing(update_ack, aetx_sign:tx(SignedTx), D1),
@@ -674,7 +674,7 @@ handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
             keep_state(D, [{reply, From, {error, invalid_pubkeys}}])
     end;
 handle_call_(open, shutdown, From, #data{state = State} = D) ->
-    try  {_Round, Latest} = get_latest_state_tx(State),
+    try  {_Round, Latest} = aesc_offchain_state:get_latest_state_tx(State),
          {ok, CloseTx} = close_mutual_tx(Latest, D),
          ok = request_signing(shutdown, CloseTx, D),
          gen_statem:reply(From, ok),
@@ -930,35 +930,41 @@ send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
     aesc_session_noise:update(Sn, Msg),
     Data.
 
-check_update_msg(F, Msg, D) ->
+check_update_msg(Type, Msg, D) ->
     lager:debug("check_update_msg(~p)", [Msg]),
-    try check_update_msg_(F, Msg, D)
+    try check_update_msg_(Type, Msg, D)
     catch
         error:E ->
             lager:error("CAUGHT ~p, Trace = ~p", [E, erlang:get_stacktrace()]),
             {error, E}
     end.
 
-check_update_msg_(F, #{ channel_id := ChanId
-                      , data       := TxBin },
+check_update_msg_(Type, #{ channel_id := ChanId
+                         , data       := TxBin },
                   #data{ on_chain_id = ChanId } = D) ->
     try aetx_sign:deserialize_from_binary(TxBin) of
         SignedTx ->
-            check_signed_update_tx(F, SignedTx, D)
+            check_signed_update_tx(Type, SignedTx, D)
     catch
         error:E ->
             lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()]),
             {error, {deserialize, E}}
     end.
 
-check_signed_update_tx(F, SignedTx, #data{state = State, opts = Opts} = D) ->
+check_signed_update_tx(Type, SignedTx, #data{state = State, opts = Opts} = D) ->
     lager:debug("check_signed_update_tx(~p)", [SignedTx]),
-    case check_update_tx(F, SignedTx, State, Opts) of
+    case check_update_tx(Type, SignedTx, State, Opts) of
         ok ->
             {ok, SignedTx, D};
         {error, _} = Error ->
             Error
     end.
+
+check_update_tx(initial, SignedTx, State, Opts) ->
+    aesc_offchain_state:check_initial_update_tx(SignedTx, State, Opts);
+check_update_tx(normal, SignedTx, State, Opts) ->
+    aesc_offchain_state:check_update_tx(SignedTx, State, Opts).
+
 
 check_update_ack_msg(Msg, D) ->
     lager:debug("check_update_ack_msg(~p)", [Msg]),
@@ -1002,16 +1008,13 @@ check_update_ack_(SignedTx, HalfSignedTx) ->
 
 handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
-    {Round, SignedTx} = get_latest_state_tx(State),
+    {_Round, SignedTx} = aesc_offchain_state:get_latest_state_tx(State),
     Tx = aetx_sign:tx(SignedTx),
     Updates = [{FromPub, ToPub, Amount}],
-    try  Tx1 = apply_updates(Updates, Tx, Opts),
-         Tx2 = set_tx_values([{round         , Round+1},
-                              {previous_round, Round},
-                              {updates       , Updates}], Tx1),
-         ok = request_signing(update, Tx2, D),
+    try  Tx1 = aesc_offchain_state:apply_updates(Updates, Tx, Opts),
+         ok = request_signing(update, Tx1, D),
          gen_statem:reply(From, ok),
-         D1 = D#data{latest = {sign, update, Tx2}},
+         D1 = D#data{latest = {sign, update, Tx1}},
          next_state(awaiting_signature, D1)
     catch
         error:Reason ->
@@ -1037,7 +1040,7 @@ shutdown_msg(SignedTx, #data{ on_chain_id = OnChainId }) ->
 check_shutdown_msg(#{channel_id := ChanId, data := TxBin} = _Msg,
                    #data{on_chain_id = ChanId, state = State} = D) ->
     SignedTx = aetx_sign:deserialize_from_binary(TxBin),
-    {_, LatestSignedTx} = get_latest_state_tx(State),
+    {_, LatestSignedTx} = aesc_offchain_state:get_latest_state_tx(State),
     OtherAcct = other_account(D),
     {ok, FakeCloseTx} = close_mutual_tx(OtherAcct, 0, LatestSignedTx, D),
     RealCloseTx = aetx_sign:tx(SignedTx),
@@ -1097,29 +1100,9 @@ check_inband_msg(#{ channel_id := ChanId
 check_inband_msg(_, _) ->
     {error, chain_id_mismatch}.
 
-
-get_latest_state_tx(State) ->
-    [SignedTx|_] = drop_until_mutually_signed(State),
-    {tx_round(aetx_sign:tx(SignedTx)), SignedTx}.
-
-get_fallback_state(State) ->
-    [SignedTx|_] = L = drop_until_mutually_signed(State),
-    {tx_round(aetx_sign:tx(SignedTx)), L}.
-
 fallback_to_stable_state(#data{state = State} = D) ->
-    [_|_] = NewState = drop_until_mutually_signed(State),
-    D#data{state = NewState}.
+    D#data{state = aesc_offchain_state:fallback_to_stable_state(State)}.
 
-drop_until_mutually_signed([SignedTx|T] = State) ->
-    case aetx_sign:signatures(SignedTx) of
-        [_, _] ->
-            %% mutually signed
-            State;
-        _ ->
-            drop_until_mutually_signed(T)
-    end;
-drop_until_mutually_signed([]) ->
-    error(no_latest_state).
 
 clean_state([]) ->
     [];
@@ -1130,51 +1113,12 @@ clean_state([SignedTx|T]) ->
         []    -> clean_state(T)
     end.
 
-check_update_tx(F, SignedTx, State, Opts) ->
-    lager:debug("check_update_tx(State = ~p)", [State]),
-    Tx = aetx_sign:tx(SignedTx),
-    lager:debug("Tx = ~p", [Tx]),
-    case tx_previous_round(Tx) of
-        0 when State == [] ->
-            lager:debug("previous round = 0", []),
-            check_update_tx_(F, Tx, SignedTx, Opts);
-        PrevRound ->
-            lager:debug("PrevRound = ~p", [PrevRound]),
-            {LastRound, LastSignedTx} = get_latest_state_tx(State),
-            lager:debug("LastRound = ~p", [LastRound]),
-            case PrevRound == LastRound of
-                true ->
-                    lager:debug("PrevRound == LastRound", []),
-                    check_update_tx_(F, Tx, LastSignedTx, Opts);
-                false -> {error, invalid_previous_round}
-            end
-    end.
-
-check_update_tx_(F, Tx, SignedTx, Opts) ->
-    LastTx = aetx_sign:tx(SignedTx),
-    Updates = tx_updates(Tx),
-    try  CheckTx = apply_updates(Updates, LastTx, Opts),
-         case {{tx_initiator_amount(CheckTx), tx_responder_amount(CheckTx)},
-               {tx_initiator_amount(Tx)     , tx_responder_amount(Tx)}} of
-             {X, X} ->
-                 run_extra_checks(F, Tx);
-             Other ->
-                 {error, {amount_mismatch, Other}}
-         end
-    catch
-        error:Reason ->
-            {error, Reason}
-    end.
-
 
 tx_round(Tx)            -> call_cb(Tx, round, []).
-tx_previous_round(Tx)   -> call_cb(Tx, previous_round, []).
 tx_initiator(Tx)        -> call_cb(Tx, initiator, []).
 tx_responder(Tx)        -> call_cb(Tx, responder, []).
 tx_initiator_amount(Tx) -> call_cb(Tx, initiator_amount, []).
 tx_responder_amount(Tx) -> call_cb(Tx, responder_amount, []).
-tx_serialize(Tx)        -> call_cb(Tx, serialize, []).
-tx_updates(Tx)          -> call_cb(Tx, updates, []).
 
 -spec call_cb(aetx:tx(), atom(), list()) -> any().
 call_cb(Tx, F, Args) ->
@@ -1186,68 +1130,6 @@ specialize_cb(Tx) ->
 
 do_apply(M, F, A) ->
     apply(M, F, A).
-
-
-set_tx_values(Values, Tx) ->
-    {Mod, TxI} = aetx:specialize_callback(Tx),
-    NewTxI = set_tx_values_(Values, Mod, TxI),
-    aetx:update_tx(Tx, NewTxI).
-
-set_tx_values_([{K, V}|T], Mod, Tx) ->
-    set_tx_values_(T, Mod, Mod:set_value(Tx, K, V));
-set_tx_values_([], _, Tx) ->
-    Tx.
-
-apply_updates([], Tx, _Opts) ->
-    Tx;
-apply_updates([{From, To, Amount}|Ds], Tx, Opts) ->
-    Initiator = tx_initiator(Tx),
-    Responder = tx_responder(Tx),
-    IAmt = tx_initiator_amount(Tx),
-    RAmt = tx_responder_amount(Tx),
-    Reserve = maps:get(channel_reserve, Opts, 0),
-    {FA, FB, A, B} =
-        case {From, To} of
-            {Initiator, Responder} ->
-                {initiator_amount, responder_amount, IAmt, RAmt};
-            {Responder, Initiator} ->
-                {responder_amount, initiator_amount, RAmt, IAmt};
-            _Other ->
-                %% TODO: If multi-party channel, this could be valid
-                error(unknown_pubkeys)
-        end,
-    {A1, B1} = {A - Amount, B + Amount},
-    Tx1 = if A1 < Reserve ->
-                  %% TODO: consider minimum balance
-                  error(insufficient_balance);
-             true ->
-                  set_tx_values([{FA, A1},
-                                 {FB, B1}], Tx)
-          end,
-    apply_updates(Ds, Tx1, Opts).
-
-run_extra_checks(none, _) -> ok;
-run_extra_checks(F, Tx) when is_function(F, 2) ->
-    {_Vsn, Vals} = tx_serialize(Tx),
-    case [Err ||
-             {error,_} = Err <- [F(E, Tx) || E <- Vals]] of
-        [] ->
-            ok;
-        [_|_] = Errors ->
-            {error, Errors}
-    end.
-
-%% update_tx checks
-check_initial_state({previous_round, N}, _) ->
-    assert(N =:= 0, {error, not_initial_round});
-check_initial_state({round, N}, _) ->
-    assert(N =:= 1, {error, invalid_round});
-check_initial_state({updates, Ds}, _) ->
-    assert(Ds == [], {error, updates_in_initial_round});
-check_initial_state(_, _) -> ok.
-
-assert(true ,  _   ) -> ok;
-assert(false, Error) -> Error.
 
 
 send_update_ack_msg(SignedTx, #data{ on_chain_id = OnChainId
@@ -1274,7 +1156,7 @@ check_update_err_msg(#{ channel_id := ChanId
                            state = State} = D) ->
     case ChanId == ChanId0 of
         true ->
-            case get_fallback_state(State) of
+            case aesc_offchain_state:get_fallback_state(State) of
                 {Round, State1} ->
                     {ok, D#data{state = State1}};
                 _Other ->
@@ -1328,8 +1210,7 @@ initial_state(#data{ create_tx    = SignedTx
                , state            => <<>>
                , previous_round   => 0
                , round            => 1 },
-    lager:debug("offchain_tx:new(~p)", [NewOpts]),
-    aesc_offchain_tx:new(NewOpts).
+    aesc_offchain_state:new(NewOpts).
 
 
 gproc_register(#data{role = Role, channel_id = ChanId}) ->
@@ -1342,7 +1223,7 @@ evt(_Msg) ->
     ok.
 
 report_update(#data{state = State, last_reported_update = Last} = D) ->
-    case get_latest_state_tx(State) of
+    case aesc_offchain_state:get_latest_state_tx(State) of
         {Last, _} ->
             D;
         {New, SignedTx} ->
