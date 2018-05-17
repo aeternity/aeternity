@@ -532,16 +532,16 @@ next_known_hash(Cs, N) ->
         end,
     Hash.
 
-do_get_header_by_height([], _TopHash, _N) ->
+do_get_header_by_height([], _N, _TopHash) ->
     {error, header_not_found};
-do_get_header_by_height([PeerId | PeerIds], TopHash, N) ->
+do_get_header_by_height([PeerId | PeerIds], N, TopHash) ->
     case aec_peer_connection:get_header_by_height(PeerId, N, TopHash) of
         {ok, Header} ->
             {ok, Header};
         {error, Reason} ->
             epoch_sync:debug("fetching header at height ~p under ~p from ~p failed: ~p",
                              [N, pp(TopHash), ppp(PeerId), Reason]),
-            do_get_header_by_height(PeerIds, TopHash, N)
+            do_get_header_by_height(PeerIds, N, TopHash)
     end.
 
 
