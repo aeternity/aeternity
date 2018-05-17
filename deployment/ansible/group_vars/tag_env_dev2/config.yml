@@ -1,2 +1,2 @@
 log_level: debug
-configure_peers: false
+configure_peers: true
