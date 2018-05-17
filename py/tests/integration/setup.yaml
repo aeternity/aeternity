@@ -107,7 +107,7 @@ tests: # test specific settings
     test_contract_create:
       nodes:
         node: dev1
-      blocks_to_mine: 3
+      blocks_to_mine: 115
       alice:
         amount: 1120
         fee: 1
@@ -124,7 +124,7 @@ tests: # test specific settings
     test_contract_call:
       nodes:
         node: dev1
-      blocks_to_mine: 7
+      blocks_to_mine: 123
       alice:
         amount: 1200
         fee: 1
