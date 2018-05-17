@@ -2488,36 +2488,6 @@
         }
       } ]
     },
-    "BlockWithJSONTxs" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/GenericBlock"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "transactions" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/definitions/SignedTxJSON"
-            }
-          }
-        }
-      } ]
-    },
-    "BlockWithMsgPackTxs" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/GenericBlock"
-      }, {
-        "type" : "object",
-        "properties" : {
-          "transactions" : {
-            "type" : "array",
-            "items" : {
-              "$ref" : "#/definitions/Tx"
-            }
-          }
-        }
-      } ]
-    },
     "Top" : {
       "allOf" : [ {
         "$ref" : "#/definitions/Header"
