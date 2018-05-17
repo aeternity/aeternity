@@ -16,7 +16,7 @@ request(OpId, Params, Cfg) ->
     Query = endpoints:query(Method, OpId, Params),
     {ok, ClientPid} = inets:start(httpc, [{profile, test_browser}], stand_alone),
     Response = request(Method, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [], ClientPid, Cfg),
-    ok = inets:stop(stand_alone, ClientPid),
+    ok = gen_server:stop(ClientPid, normal, infinity),
     Response.
 
 request(get, BaseUrl, Path, Query, _Params, Headers, HttpOpts, Opts, Profile, Cfg) ->
