@@ -82,7 +82,7 @@ check(#channel_slash_tx{channel_id = ChannelId,
                         nonce        = Nonce}, _Context, Trees, Height,
                                                 _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_payload(ChannelId, FromPubKey, Payload, Height, Trees) end],
     case aeu_validation:run(Checks) of
@@ -103,7 +103,7 @@ process(#channel_slash_tx{channel_id = ChannelId,
     ChannelsTree0 = aec_trees:channels(Trees),
 
     FromAccount0       = aec_accounts_trees:get(FromPubKey, AccountsTree0),
-    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce, Height),
+    {ok, FromAccount1} = aec_accounts:spend(FromAccount0, Fee, Nonce),
     AccountsTree1           = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     {ok, _SignedTx, StateTx} = deserialize_from_binary(Payload),

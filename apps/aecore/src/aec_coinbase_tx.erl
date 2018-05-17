@@ -63,11 +63,11 @@ origin(#coinbase_tx{}) ->
 check(#coinbase_tx{block_height = CBHeight}, _Context, _Trees, Height, _ConsensusVersion)
     when CBHeight =/= Height ->
     {error, wrong_height};
-check(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees, Height, _ConsensusVersion) ->
+check(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees, _Height, _ConsensusVersion) ->
     ExpectedReward = aec_governance:block_mine_reward(),
     case Reward =:= ExpectedReward of
         true ->
-            aec_trees:ensure_account_at_height(AccountPubkey, Trees, Height);
+            {ok, aec_trees:ensure_account(AccountPubkey, Trees)};
         false ->
             {error, wrong_reward}
     end.
@@ -76,11 +76,11 @@ check(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees, H
 %% Amount from all the fees of transactions included in the block
 %% is added to miner's account in aec_trees:apply_signed_txs/4.
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees0, Height, _ConsensusVersion) ->
+process(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     {value, Account0} = aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0),
 
-    {ok, Account} = aec_accounts:earn(Account0, Reward, Height),
+    {ok, Account} = aec_accounts:earn(Account0, Reward),
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
     Trees = aec_trees:set_accounts(Trees0, AccountsTrees),

@@ -136,10 +136,10 @@ check(#contract_create_tx{owner = OwnerPubKey,
                           amount     = Amount,
                           gas        = Gas,
                           gas_price  = GasPrice,
-                          fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+                          fee = Fee}, _Context, Trees, _Height, _ConsensusVersion) ->
     TotalAmount = Fee + Amount + Gas * GasPrice,
     Checks =
-        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Height, Nonce, TotalAmount) end
+        [fun() -> aetx_utils:check_account(OwnerPubKey, Trees, Nonce, TotalAmount) end
          %% TODO: Check minum gas price.
         ],
     case aeu_validation:run(Checks) of
@@ -283,7 +283,7 @@ spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
                        , fee => Fee
                        , nonce => Nonce
                        , payload => <<>>}),
-    {ok, Trees1} = aec_trees:ensure_account_at_height(ReceiverPubKey, Trees, Height),
+    Trees1 = aec_trees:ensure_account(ReceiverPubKey, Trees),
     case Context of
         aetx_contract ->
             {ok, Trees2} =

@@ -30,9 +30,9 @@ apply_signed_txs_test_() ->
                %% Init state tree with 2 accounts
                {ok, MinerPubkey} = aec_keys:pubkey(),
                MinerAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100, 10), 10),
+                    aec_accounts:set_nonce(aec_accounts:new(MinerPubkey, 100), 10),
                AnotherAccount =
-                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80, 7), 12),
+                    aec_accounts:set_nonce(aec_accounts:new(?RECIPIENT_PUBKEY, 80), 12),
                StateTree0 = aec_test_utils:create_state_tree_with_accounts(
                               [MinerAccount, AnotherAccount]),
 
@@ -67,7 +67,7 @@ apply_signed_txs_test_() ->
                {value, ResultMinerAccount} = aec_accounts_trees:lookup(MinerPubkey, ResultAccountsTree),
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
-               %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + coinbase_t[x reward
+               %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + coinbase_tx reward
                ?assertEqual(100 - 40 - 9 + 9 + 10, aec_accounts:balance(ResultMinerAccount)),
                ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
        end

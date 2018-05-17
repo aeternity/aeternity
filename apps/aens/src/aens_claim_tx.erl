@@ -87,7 +87,7 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             BurnedFee = aec_governance:name_claim_burned_fee(),
 
             Checks =
-                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee + BurnedFee) end,
+                [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee + BurnedFee) end,
                  fun() -> check_commitment(NameAscii, NameSalt, AccountPubKey, Trees, Height) end,
                  fun() -> check_name(NameAscii, Trees) end],
 
@@ -107,7 +107,7 @@ process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
 
     TotalFee = Fee + aec_governance:name_claim_burned_fee(),
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, TotalFee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, TotalFee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     {ok, PlainNameAscii} = aens_utils:to_ascii(PlainName),

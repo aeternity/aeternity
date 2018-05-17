@@ -22,7 +22,7 @@ coinbase_tx_existing_account_test_() ->
     {foreach,
      fun() ->
              PubKey = <<"my_pubkey">>,
-             Account0 = aec_accounts:new(PubKey, 23, 6),
+             Account0 = aec_accounts:new(PubKey, 23),
              {PubKey, aec_test_utils:create_state_tree_with_account(Account0)}
      end,
      fun(_) ->
@@ -38,15 +38,6 @@ coinbase_tx_existing_account_test_() ->
                        ?assertEqual(undefined, aetx:nonce(CoinbaseTx)),
                        ?assertEqual(0, aetx:fee(CoinbaseTx)),
                        ?assertEqual({ok, Trees0}, aetx:check(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION))
-               end}
-      end,
-      fun({PubKey, Trees0}) ->
-              {"Check coinbase trx with existing account, but with too high height",
-               fun() ->
-                       {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => PubKey,
-                                                                block_height => 3}),
-                       ?assertEqual({error, account_height_too_big},
-                                    aetx:check(CoinbaseTx, Trees0, 3, ?PROTOCOL_VERSION))
                end}
       end,
       fun({PubKey, Trees0}) ->
@@ -91,8 +82,7 @@ coinbase_tx_existing_account_test_() ->
                        {coinbase_tx, CbTx} = aetx:specialize_type(CoinbaseTx),
                        Reward = aec_coinbase_tx:reward(CbTx),
                        ?assertEqual(Reward, aec_governance:block_mine_reward()),
-                       ?assertEqual(23 + Reward, aec_accounts:balance(Account)),
-                       ?assertEqual(9, aec_accounts:height(Account))
+                       ?assertEqual(23 + Reward, aec_accounts:balance(Account))
                end}
       end
      ]
@@ -116,7 +106,7 @@ create_coinbase_tx_no_account_test() ->
                        {Succ, Trees} = aec_coinbase_tx:check(CoinbaseTx, Trees0, 9, ?PROTOCOL_VERSION),
                        ?assertEqual(ok, Succ),
                        AccountsTrees = aec_trees:accounts(Trees),
-                       Account = aec_accounts:set_nonce(aec_accounts:new(PubKey, 0, 0), 9),
+                       Account = aec_accounts:set_nonce(aec_accounts:new(PubKey, 0), 9),
                        ?assertEqual({value, Account},
                                     aec_accounts_trees:lookup(PubKey, AccountsTrees))
                end}

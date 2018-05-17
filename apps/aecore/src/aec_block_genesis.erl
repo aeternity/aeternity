@@ -24,11 +24,13 @@
 
 %% API
 -export([ genesis_header/0,
-          height/0,
           genesis_block_with_state/0,
           populated_trees/0 ]).
 
+-export([genesis_difficulty/0]).
+
 -export([prev_hash/0,
+         height/0,
          pow/0,
          txs_hash/0,
          transactions/0]).
@@ -72,7 +74,7 @@ genesis_block_with_state(Map) ->
     Block =
         #block{
            version = ?GENESIS_VERSION,
-           height = ?GENESIS_HEIGHT,
+           height = height(),
            prev_hash = prev_hash(),
            txs_hash = txs_hash(),
            root_hash = aec_trees:hash(Trees),
@@ -92,10 +94,15 @@ populated_trees(Map) ->
     StateTrees = maps:get(state_tree, Map, aec_trees:new()),
     PopulatedAccountsTree =
         lists:foldl(fun({PubKey, Amount}, T) ->
-                            Account = aec_accounts:new(PubKey, Amount, ?GENESIS_HEIGHT),
+                            Account = aec_accounts:new(PubKey, Amount),
                             aec_accounts_trees:enter(Account, T)
                     end, aec_trees:accounts(StateTrees), PresetAccounts),
     aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
 
 height() ->
     ?GENESIS_HEIGHT.
+
+%% Returns the difficulty of the genesis block meant to be used in the
+%% computation of the chain difficulty.
+genesis_difficulty() ->
+    0. %% Genesis block is unmined.

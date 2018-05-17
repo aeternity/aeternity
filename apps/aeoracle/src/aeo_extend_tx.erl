@@ -80,7 +80,7 @@ origin(#oracle_extend_tx{oracle = OraclePK}) ->
 check(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce,
                         ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(OraclePK, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_EXTEND_TX_FEE) end],
 
@@ -99,12 +99,12 @@ signers(#oracle_extend_tx{oracle = OraclePK}, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL},
-        _Context, Trees0, Height, _ConsensusVersion) ->
+        _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
     Account0 = aec_accounts_trees:get(OraclePK, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle0 = aeo_state_tree:get_oracle(OraclePK, OraclesTree0),

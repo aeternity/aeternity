@@ -34,6 +34,7 @@
         , blocks_only_chain/1
         , genesis_block/0
         , genesis_block_with_state/0
+        , genesis_block_with_state/1
         , preset_accounts/0
         , create_state_tree/0
         , create_state_tree_with_account/1
@@ -193,7 +194,10 @@ genesis_block() ->
     B.
 
 genesis_block_with_state() ->
-    aec_block_genesis:genesis_block_with_state(#{preset_accounts => ?PRESET_ACCOUNTS}).
+    genesis_block_with_state(?PRESET_ACCOUNTS).
+
+genesis_block_with_state(PresetAccounts) ->
+    aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}).
 
 %% Generic blockchain with only coinbase transactions
 gen_block_chain_with_state(Length) ->
@@ -220,25 +224,27 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Tre
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
     {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
     Targets    = maps:get(targets, Data),
+    TxsFun     = maps:get(txs_by_height_fun, Data),
     Nonce      = maps:get(nonce, Data, 12345),
     Timestamps = maps:get(timestamps, Data, lists:duplicate(length(Targets), undefined)),
-    extend_block_chain_with_state(PrevBlock, PrevBlockState, Targets, Timestamps, Nonce, MinerAccount, []).
+    extend_block_chain_with_state(PrevBlock, PrevBlockState, Targets, Timestamps, TxsFun, Nonce, MinerAccount, []).
 
 
-extend_block_chain_with_state(_, _, [], _, _, _, Chain) ->
+extend_block_chain_with_state(_, _, [], _, _, _, _, Chain) ->
     lists:reverse(Chain);
-extend_block_chain_with_state(PrevBlock, PrevBlockState, [Tgt | Tgts], [Ts | Tss], Nonce, MinerAcc, Chain) ->
-    {Block, BlockState} = next_block_with_state(PrevBlock, PrevBlockState, Tgt, Ts, Nonce, MinerAcc),
-    extend_block_chain_with_state(Block, BlockState, Tgts, Tss, Nonce, MinerAcc, [{Block, BlockState} | Chain]).
+extend_block_chain_with_state(PrevBlock, PrevBlockState, [Tgt | Tgts], [Ts | Tss], TxsFun, Nonce, MinerAcc, Chain) ->
+    {Block, BlockState} = next_block_with_state(PrevBlock, PrevBlockState, Tgt, Ts, TxsFun, Nonce, MinerAcc),
+    extend_block_chain_with_state(Block, BlockState, Tgts, Tss, TxsFun, Nonce, MinerAcc, [{Block, BlockState} | Chain]).
 
 
 blocks_only_chain(Chain) ->
     lists:map(fun({B, _S}) -> B end, Chain).
 
 
-next_block_with_state(PrevBlock, Trees, Target, Time0, Nonce, MinerAcc) ->
+next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) ->
     Height = aec_blocks:height(PrevBlock) + 1,
-    {B, S} = aec_blocks:new_with_state(PrevBlock, [signed_coinbase_tx(MinerAcc, Height)], Trees),
+    Txs = TxsFun(Height),
+    {B, S} = aec_blocks:new_with_state(PrevBlock, [signed_coinbase_tx(MinerAcc, Height) | Txs], Trees),
     {B#block{ target = Target, nonce  = Nonce,
               time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
      S}.

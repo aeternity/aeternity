@@ -82,7 +82,7 @@ check(#channel_withdraw_tx{channel_id   = ChannelId,
                            nonce        = Nonce}, _Context, Trees, Height,
                                                 _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(ToPubKey, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(ToPubKey, Trees, Nonce, Fee) end,
          fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, Amount, ToPubKey, Trees) end],
     case aeu_validation:run(Checks) of
@@ -97,14 +97,14 @@ process(#channel_withdraw_tx{channel_id   = ChannelId,
                              to           = ToPubKey,
                              amount       = Amount,
                              fee          = Fee,
-                             nonce        = Nonce}, _Context, Trees, Height,
+                             nonce        = Nonce}, _Context, Trees, _Height,
                                                    _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
     ToAccount0       = aec_accounts_trees:get(ToPubKey, AccountsTree0),
-    {ok, ToAccount1} = aec_accounts:spend(ToAccount0, Fee, Nonce, Height),
-    {ok, ToAccount2} = aec_accounts:earn(ToAccount1, Amount, Height),
+    {ok, ToAccount1} = aec_accounts:spend(ToAccount0, Fee, Nonce),
+    {ok, ToAccount2} = aec_accounts:earn(ToAccount1, Amount),
 
     AccountsTree1 = aec_accounts_trees:enter(ToAccount2, AccountsTree0),
 

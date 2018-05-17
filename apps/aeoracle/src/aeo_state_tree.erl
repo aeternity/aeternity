@@ -227,7 +227,7 @@ delete({oracle, Id}, H, OTree, ATree) ->
             true ->
                 TreeIds = find_oracle_query_tree_ids(Id, OTree),
                 OTree0 = aeu_mtrees:delete(Id, OTree#oracle_tree.otree),
-                int_delete(TreeIds, H, {OTree0, ATree});
+                int_delete(TreeIds, {OTree0, ATree});
             false ->
                 {OTree#oracle_tree.otree, ATree}
         end,
@@ -238,7 +238,7 @@ delete({query, OracleId, Id}, H, OTree, ATree) ->
         case oracle_query_expired(OracleId, Id, H, OTree) of
             true ->
                 TreeId = <<OracleId/binary, Id/binary>>,
-                int_delete_query(TreeId, H, {OTree#oracle_tree.otree, ATree});
+                int_delete_query(TreeId, {OTree#oracle_tree.otree, ATree});
             false ->
                 {OTree#oracle_tree.otree, ATree}
         end,
@@ -256,28 +256,28 @@ oracle_query_expired(OracleId, Id, H, OTree) ->
         none       -> false
     end.
 
-int_delete([Id|Left], H, Trees) ->
-    int_delete(Left, H, int_delete_query(Id, H, Trees));
-int_delete([], _H, Trees) ->
+int_delete([Id|Left], Trees) ->
+    int_delete(Left, int_delete_query(Id, Trees));
+int_delete([], Trees) ->
     Trees.
 
-int_delete_query(Id, H, {OTree, ATree}) ->
+int_delete_query(Id, {OTree, ATree}) ->
     ATree1 =
         case aeu_mtrees:lookup(Id, OTree) of
             {value, Val} ->
                 Q = aeo_query:deserialize(Val),
-                oracle_refund(Q, H, ATree);
+                oracle_refund(Q, ATree);
             none ->
                 ATree
         end,
     {aeu_mtrees:delete(Id, OTree), ATree1}.
 
-oracle_refund(Q, H, ATree) ->
+oracle_refund(Q, ATree) ->
     case aeo_query:is_closed(Q) of
         false ->
             case aec_accounts_trees:lookup(aeo_query:sender_address(Q), ATree) of
                 {value, Account} ->
-                    {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Q), H),
+                    {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Q)),
                     aec_accounts_trees:enter(Account1, ATree);
                 none ->
                     lager:error("Account ~p could not be found for refunding oracle query ~p",

@@ -85,7 +85,7 @@ check(#channel_settle_tx{channel_id = ChannelId,
                          nonce        = Nonce}, _Context, Trees, Height,
                                                 _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
          fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, FromPubKey, InitiatorAmount,
                                 ResponderAmount, Height, Trees) end],
@@ -102,7 +102,7 @@ process(#channel_settle_tx{channel_id = ChannelId,
                            initiator_amount = InitiatorAmount,
                            responder_amount = ResponderAmount,
                            fee              = Fee,
-                           nonce        = Nonce}, _Context, Trees, Height,
+                           nonce        = Nonce}, _Context, Trees, _Height,
                                                   _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
@@ -116,16 +116,16 @@ process(#channel_settle_tx{channel_id = ChannelId,
 
     InitiatorAccount0       = aec_accounts_trees:get(Initiator, AccountsTree0),
     ResponderAccount0       = aec_accounts_trees:get(Responder, AccountsTree0),
-    {ok, InitiatorAccount1} = aec_accounts:earn(InitiatorAccount0, InitiatorAmount, Height),
-    {ok, ResponderAccount1} = aec_accounts:earn(ResponderAccount0, ResponderAmount, Height),
+    {ok, InitiatorAccount1} = aec_accounts:earn(InitiatorAccount0, InitiatorAmount),
+    {ok, ResponderAccount1} = aec_accounts:earn(ResponderAccount0, ResponderAmount),
 
     {InitiatorAccount3, ResponderAccount3} =
         case FromPubKey of
             Initiator ->
-                {ok, InitiatorAccount2} = aec_accounts:spend(InitiatorAccount1, Fee, Nonce, Height),
+                {ok, InitiatorAccount2} = aec_accounts:spend(InitiatorAccount1, Fee, Nonce),
                 {InitiatorAccount2, ResponderAccount1};
             Responder ->
-                {ok, ResponderAccount2} = aec_accounts:spend(ResponderAccount1, Fee, Nonce, Height),
+                {ok, ResponderAccount2} = aec_accounts:spend(ResponderAccount1, Fee, Nonce),
                 {InitiatorAccount1, ResponderAccount2}
         end,
 

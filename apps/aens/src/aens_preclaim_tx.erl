@@ -76,9 +76,9 @@ origin(#ns_preclaim_tx{account = AccountPubKey}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_preclaim_tx{account = AccountPubKey, nonce = Nonce,
-                      fee = Fee, commitment = Commitment}, _Context, Trees, Height, _ConsensusVersion) ->
+                      fee = Fee, commitment = Commitment}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
-        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Height, Nonce, Fee) end,
+        [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> check_not_commitment(Commitment, Trees) end],
 
     case aeu_validation:run(Checks) of
@@ -93,7 +93,7 @@ process(#ns_preclaim_tx{account = AccountPubKey, fee = Fee,
     NSTree0 = aec_trees:ns(Trees0),
 
     Account0 = aec_accounts_trees:get(AccountPubKey, AccountsTree0),
-    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
+    {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     TTL = aec_governance:name_preclaim_expiration(),

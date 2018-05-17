@@ -69,24 +69,23 @@ insert_key_pair(Pub, Priv, S) ->
 -define(PRIV_SIZE, 32).
 
 setup_new_account(State) ->
-    setup_new_account(1000, 1, State).
+    setup_new_account(1000, State).
 
 set_account_balance(PubKey, NewBalance, State) ->
     A        = get_account(PubKey, State),
     Balance  = aec_accounts:balance(A),
-    Height   = aec_accounts:height(A),
     Nonce    = aec_accounts:nonce(A),
-    {ok, A1} = aec_accounts:spend(A, Balance, Nonce, Height),
-    {ok, A2} = aec_accounts:earn(A1, NewBalance, Height),
+    {ok, A1} = aec_accounts:spend(A, Balance, Nonce),
+    {ok, A2} = aec_accounts:earn(A1, NewBalance),
     set_account(A2, State).
 
 get_account(PubKey, State) ->
     aec_accounts_trees:get(PubKey, aec_trees:accounts(trees(State))).
 
-setup_new_account(Balance, Height, State) ->
+setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),
     State1 = insert_key_pair(PubKey, PrivKey, State),
-    State2 = set_account(aec_accounts:new(PubKey, Balance, Height), State1),
+    State2 = set_account(aec_accounts:new(PubKey, Balance), State1),
     {PubKey, State2}.
 
 new_key_pair() ->

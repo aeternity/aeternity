@@ -6,13 +6,12 @@
 -module(aec_accounts).
 
 %% API
--export([new/3,
+-export([new/2,
          pubkey/1,
          balance/1,
          nonce/1,
-         height/1,
-         earn/3,
-         spend/4,
+         earn/2,
+         spend/3,
          set_nonce/2,
          serialize/1,
          deserialize/1]).
@@ -26,17 +25,16 @@
 -record(account, {
           pubkey = <<>>  :: pubkey(),
           balance = 0    :: non_neg_integer(),
-          nonce = 0      :: non_neg_integer(),
-          height = 0     :: height()}).
+          nonce = 0      :: non_neg_integer()}).
 
 -opaque account() :: #account{}.
 -export_type([account/0, deterministic_account_binary_with_pubkey/0]).
 
 -type deterministic_account_binary_with_pubkey() :: binary().
 
--spec new(pubkey(), non_neg_integer(), height()) -> account().
-new(Pubkey, Balance, Height) ->
-    #account{pubkey = Pubkey, balance = Balance, height = Height}.
+-spec new(pubkey(), non_neg_integer()) -> account().
+new(Pubkey, Balance) ->
+    #account{pubkey = Pubkey, balance = Balance}.
 
 -spec pubkey(account()) -> pubkey().
 pubkey(#account{pubkey = Pubkey}) ->
@@ -50,25 +48,19 @@ balance(#account{balance = Balance}) ->
 nonce(#account{nonce = Nonce}) ->
     Nonce.
 
--spec height(account()) -> height().
-height(#account{height = Height}) ->
-    Height.
-
 %% Only used for tests
 -spec set_nonce(account(), non_neg_integer()) -> account().
 set_nonce(Account, NewNonce) ->
     Account#account{nonce = NewNonce}.
 
--spec earn(account(), non_neg_integer(), height()) -> {ok, account()}.
-earn(#account{balance = Balance0} = Account0, Amount, Height) ->
-    {ok, Account0#account{balance = Balance0 + Amount,
-                          height = Height}}.
+-spec earn(account(), non_neg_integer()) -> {ok, account()}.
+earn(#account{balance = Balance0} = Account0, Amount) ->
+    {ok, Account0#account{balance = Balance0 + Amount}}.
 
--spec spend(account(), non_neg_integer(), non_neg_integer(), height()) -> {ok, account()}.
-spend(#account{balance = Balance0} = Account0, Amount, Nonce, Height) ->
+-spec spend(account(), non_neg_integer(), non_neg_integer()) -> {ok, account()}.
+spend(#account{balance = Balance0} = Account0, Amount, Nonce) ->
     {ok, Account0#account{balance = Balance0 - Amount,
-                          nonce = Nonce,
-                          height = Height}}.
+                          nonce = Nonce}}.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(Account) ->
@@ -77,7 +69,6 @@ serialize(Account) ->
       serialization_template(?ACCOUNT_VSN),
       [ {pubkey, pubkey(Account)}
       , {nonce, nonce(Account)}
-      , {height, height(Account)}
       , {balance, balance(Account)}
       ]).
 
@@ -85,7 +76,6 @@ serialize(Account) ->
 deserialize(SerializedAccount) ->
     [ {pubkey, Pubkey}
     , {nonce, Nonce}
-    , {height, Height}
     , {balance, Balance}
     ] = aec_object_serialization:deserialize(
           ?ACCOUNT_TYPE,
@@ -95,12 +85,10 @@ deserialize(SerializedAccount) ->
     #account{ pubkey = Pubkey
             , balance = Balance
             , nonce = Nonce
-            , height = Height
             }.
 
 serialization_template(?ACCOUNT_VSN) ->
     [ {pubkey, binary}
     , {nonce, int}
-    , {height, int}
     , {balance, int}
     ].

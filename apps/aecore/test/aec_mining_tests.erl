@@ -181,7 +181,7 @@ setup() ->
                             220,250,64,226,125,99,147,224,227,56,197,82,7,211,9,
                             129,211,75,78,174,188,130,254,42,200,229>>]},
     Trees =
-    aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0, 0)),
+    aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
     meck:expect(aec_trees, apply_signed_txs, 4, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
