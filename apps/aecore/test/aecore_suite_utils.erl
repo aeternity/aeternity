@@ -326,7 +326,7 @@ await_aehttp(N) ->
                 {app_started, #{info := aehttp}} ->
                     ct:log("aehttp started", []),
                     ok
-            after 20000 ->
+            after 30000 ->
                     error(timeout_waiting_for_aehttp)
             end;
         [_|_] ->
