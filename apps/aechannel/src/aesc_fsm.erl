@@ -401,6 +401,7 @@ awaiting_signature(cast, {signed, funding_created, SignedTx},
                     HSCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_funding_signed_msg(NewSignedTx, D#data{create_tx = NewSignedTx}),
     {ok, Watcher, D2} = start_min_depth_watcher(D1),
+    report(on_chain_tx, NewSignedTx, D1),
     next_state(awaiting_locked, D2#data{latest = {watcher, Watcher}});
 awaiting_signature(cast, {signed, update, SignedTx}, D) ->
     D1 = send_update_msg(SignedTx, D#data{state = [SignedTx|D#data.state]}),
@@ -427,6 +428,7 @@ awaiting_signature(cast, {signed, shutdown_ack, SignedTx},
                     CMTx, aetx_sign:signatures(SignedTx)),
     D1 = send_shutdown_ack_msg(NewSignedTx, D),
     D2 = D1#data{latest = undefined},
+    report(on_chain_tx, NewSignedTx, D1),
     close(close_mutual, D2);
 awaiting_signature(timeout, awaiting_signature = T, D) ->
     close({timeout, T}, D);
@@ -461,6 +463,7 @@ half_signed(cast, {funding_signed, Msg}, #data{role = initiator} = D) ->
     case check_funding_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report(info, funding_signed, D1),
+            report(on_chain_tx, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             D2 = D1#data{create_tx = SignedTx},
             {ok, Watcher, D3} = start_min_depth_watcher(D2),
@@ -626,6 +629,7 @@ closing(cast, {shutdown_ack, Msg}, D) ->
     case check_shutdown_ack_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             ok = aec_tx_pool:push(SignedTx),
+            report(on_chain_tx, SignedTx, D1),
             close(close_mutual, D1);
         {error, _} = Error ->
             close(Error, D)
@@ -1354,14 +1358,15 @@ report_update(#data{state = State, last_reported_update = Last} = D) ->
     end.
 
 report_tags() ->
-    [info, update, conflict, message, error].
+    [info, update, conflict, message, error, on_chain_tx].
 
 default_report_flags() ->
-    #{ info     => true
-     , update   => true
-     , conflict => true
-     , message  => true
-     , error    => true}.
+    #{ info         => true
+     , update       => true
+     , conflict     => true
+     , message      => true
+     , error        => true
+     , on_chain_tx  => true}.
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 

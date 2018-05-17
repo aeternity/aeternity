@@ -83,9 +83,10 @@ websocket_info(_Info, State) ->
 terminate(_Reason, _PartialReq, #{} = _State) ->
     % not initialized yet
     ok;
-terminate(_Reason, _PartialReq, State) ->
+terminate(Reason, _PartialReq, State) ->
     FsmPid = fsm_pid(State),
     true = unlink(FsmPid),
+    lager:debug("WebSocket dying because of ~p", [Reason]),
     ok = aesc_fsm:client_died(FsmPid),
     jobs:done(job_id(State)),
     ok.
@@ -292,11 +293,16 @@ process_fsm({Tag, Event}) when Tag =:= info
                         orelse Tag =:= update
                         orelse Tag =:= conflict
                         orelse Tag =:= message
-                        orelse Tag =:= error ->
+                        orelse Tag =:= error
+                        orelse Tag =:= on_chain_tx ->
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
             {info, _} when is_atom(Event) -> #{event => atom_to_binary(Event, utf8)};
+            {on_chain_tx, Tx} ->
+                EncodedTx = aec_base58c:encode(transaction,
+                                               aetx_sign:serialize_to_binary(Tx)), 
+                #{tx => EncodedTx};
             {update, NewState} ->
                 Bin = aec_base58c:encode(transaction,
                                          aetx_sign:serialize_to_binary(NewState)),

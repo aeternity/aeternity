@@ -2940,13 +2940,11 @@ sc_ws_open(Config) ->
     ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt),
     {ok, IConnPid} = channel_ws_start(initiator,
                                            maps:put(host, <<"localhost">>, ChannelOpts)),
-    ok = ?WS:register_test_for_channel_event(IConnPid, info),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [info, sign, on_chain_tx]),
 
     {ok, RConnPid} = channel_ws_start(responder, ChannelOpts),
 
-    ok = ?WS:register_test_for_channel_event(RConnPid, info),
-    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [info, sign, on_chain_tx]),
 
     channel_send_conn_open_infos(RConnPid, IConnPid),
 
@@ -2967,12 +2965,6 @@ sc_ws_open(Config) ->
     UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
 
     channel_send_chan_open_infos(RConnPid, IConnPid),
-
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
-
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
 
     ChannelClients = #{initiator => IConnPid,
                        responder => RConnPid},
@@ -3015,20 +3007,29 @@ channel_create(Config, IConnPid, RConnPid) ->
     CrTx = channel_sign_tx(RConnPid, RPrivkey, <<"responder_sign">>),
     {ok, #{<<"event">> := <<"funding_signed">>}} = ?WS:wait_for_channel_event(IConnPid, info),
 
+    %% both of them receive the same co-signed channel_create_tx
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = ?WS:wait_for_channel_event(IConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedCrTx}} = ?WS:wait_for_channel_event(RConnPid, on_chain_tx),
+
+    {ok, SSignedCrTx} = aec_base58c:safe_decode(transaction, EncodedSignedCrTx),
+    SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
+    %% same transaction 
+    CrTx = aetx_sign:tx(SignedCrTx),
+
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
     IPubkey = aesc_create_tx:initiator(Tx),
     RPubkey = aesc_create_tx:responder(Tx),
     ChannelCreateFee = aesc_create_tx:fee(Tx),
 
     %% ensure the tx is in the mempool
-    ok = wait_for_unsigned_transaction_in_pool(CrTx),
+    ok = wait_for_signed_transaction_in_pool(SignedCrTx),
 
     %% balances hadn't changed yet
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
 
     % mine the create_tx
-    ok = wait_for_unsigned_transaction_in_block(CrTx),
+    ok = wait_for_signed_transaction_in_block(SignedCrTx),
 
     ChannelCreateFee.
 
@@ -3150,12 +3151,8 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
             responder ->
                 {RConnPid, IConnPid, RPubkey, RPrivkey, IPubkey, IPrivkey}
         end,
-    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
-
-    ok = ?WS:register_test_for_channel_event(IConnPid, conflict),
-    ok = ?WS:register_test_for_channel_event(RConnPid, conflict),
-
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, conflict]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, conflict]),
 
     SignUpdate =
         fun TrySignUpdate(ConnPid, Privkey) ->
@@ -3191,10 +3188,8 @@ channel_conflict(#{initiator := IConnPid, responder :=RConnPid},
     {ok, _} = ?WS:wait_for_channel_event(StarterPid, conflict),
     {ok, _} = ?WS:wait_for_channel_event(AcknowledgerPid, conflict),
 
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, conflict),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, conflict),
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, conflict]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, conflict]),
 
     ok.
 
@@ -3205,6 +3200,8 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                  responder := #{pub_key := RPubkey,
                                 priv_key := RPrivkey}},
                Amount, Round) ->
+    true = undefined =/= process_info(IConnPid),
+    true = undefined =/= process_info(RConnPid),
     {StarterPid, AcknowledgerPid, StarterPubkey, StarterPrivkey,
      AcknowledgerPubkey, AcknowledgerPrivkey} =
         case StarterRole of
@@ -3215,14 +3212,8 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
                 {RConnPid, IConnPid, RPubkey, RPrivkey,
                                     IPubkey, IPrivkey}
         end,
-    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
-
-    ok = ?WS:register_test_for_channel_event(IConnPid, info),
-    ok = ?WS:register_test_for_channel_event(RConnPid, info),
-
-    ok = ?WS:register_test_for_channel_event(IConnPid, update),
-    ok = ?WS:register_test_for_channel_event(RConnPid, update),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, update]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, update]),
 
     %% sender initiates an update
     ?WS:send_tagged(StarterPid, <<"update">>, <<"new">>,
@@ -3258,13 +3249,9 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     {UnsignedStateTx, _} = % same transaction that was signed
         {aetx_sign:tx(SignedStateTx), UnsignedStateTx},
 
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, sign),
+    ok = ?WS:unregister_test_for_channel_events(IConnPid, [sign, info, update]),
+    ok = ?WS:unregister_test_for_channel_events(RConnPid, [sign, info, update]),
 
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, info),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, info),
-    ok = ?WS:unregister_test_for_channel_event(IConnPid, update),
-    ok = ?WS:unregister_test_for_channel_event(RConnPid, update),
     ok.
 
 
@@ -3323,11 +3310,9 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     {IStartB, RStartB} = channel_participants_balances(IPubkey, RPubkey),
     #{initiator := IConnPid,
       responder := RConnPid} = proplists:get_value(channel_clients, ConfigList),
-    ok = ?WS:register_test_for_channel_event(IConnPid, sign),
-    ok = ?WS:register_test_for_channel_event(RConnPid, sign),
+    ok = ?WS:register_test_for_channel_events(IConnPid, [sign, info, on_chain_tx]),
+    ok = ?WS:register_test_for_channel_events(RConnPid, [sign, info, on_chain_tx]),
 
-    ok = ?WS:register_test_for_channel_event(IConnPid, info),
-    ok = ?WS:register_test_for_channel_event(RConnPid, info),
 
     CloseMutual =
         fun(CloserConn, CloserPrivkey, OtherConn, OtherPrivkey) ->
@@ -3342,14 +3327,22 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
             responder -> CloseMutual(RConnPid, RPrivkey, IConnPid, IPrivkey)
         end,
 
+    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = ?WS:wait_for_channel_event(IConnPid, on_chain_tx),
+    {ok, #{<<"tx">> := EncodedSignedMutualTx}} = ?WS:wait_for_channel_event(RConnPid, on_chain_tx),
+
+    {ok, SSignedMutualTx} = aec_base58c:safe_decode(transaction, EncodedSignedMutualTx),
+    SignedMutualTx = aetx_sign:deserialize_from_binary(SSignedMutualTx),
+    %% same transaction 
+    ShutdownTx = aetx_sign:tx(SignedMutualTx),
+
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
 
-    ok = wait_for_unsigned_transaction_in_pool(ShutdownTx),
+    ok = wait_for_signed_transaction_in_pool(SignedMutualTx),
 
     assert_balance(IPubkey, IStartB),
     assert_balance(RPubkey, RStartB),
 
-    ok = wait_for_unsigned_transaction_in_block(ShutdownTx),
+    ok = wait_for_signed_transaction_in_block(SignedMutualTx),
 
     IChange = aesc_close_mutual_tx:initiator_amount(MutualTx),
     RChange = aesc_close_mutual_tx:responder_amount(MutualTx),
@@ -3359,25 +3352,34 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     ok.
 
-wait_for_unsigned_transaction_in_pool(Tx) ->
+wait_for_signed_transaction_in_pool(SignedTx) ->
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
     WaitForTx =
         fun Try(0) -> no_transaction;
             Try(Attempts) ->
-                {ok, STxs} = rpc(aec_tx_pool, peek, [infinity]),
-                case lists:any(fun(STx) -> Tx =:= aetx_sign:tx(STx) end, STxs) of
-                    true  -> ok;
-                    false -> Try(Attempts - 1)
+                case get_tx(TxHash, json) of
+                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := -1}}} ->
+                        ok;
+                     _ ->
+                        timer:sleep(10),
+                        Try(Attempts - 1)
                 end
             end,
     ok = WaitForTx(30). % 30 attempts * 10ms
 
-wait_for_unsigned_transaction_in_block(Tx) ->
-    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    Txs = aec_blocks:txs(Block),
-    case lists:any(fun(STx) -> Tx =:= aetx_sign:tx(STx) end, Txs) of
-        true  -> ok;
-        false -> did_not_mine
-    end.
+wait_for_signed_transaction_in_block(SignedTx) ->
+    TxHash = aec_base58c:encode(tx_hash, aetx_sign:hash(SignedTx)),
+    MineTx =
+        fun Try(0) -> did_not_mine;
+            Try(Attempts) ->
+                aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+                case get_tx(TxHash, json) of
+                    {ok, 200, #{<<"transaction">> := #{<<"block_height">> := H}}}
+                        when H =/= -1-> ok;
+                    _ -> Try(Attempts - 1)
+                end
+        end,
+    ok = MineTx(5).
 
 sc_ws_timeout_open(Config) ->
     #{initiator := #{pub_key := IPubkey},
