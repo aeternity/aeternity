@@ -447,7 +447,8 @@ init_per_group(channel_websocket, Config) ->
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    [_Coinbase, _Spend1, _Spend2] = aec_blocks:txs(Block),
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
     Participants = #{initiator => #{pub_key => IPubkey,
