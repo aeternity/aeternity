@@ -232,17 +232,26 @@ parse_map_to_atom_keys() ->
                 maps:from_list(
                     lists:map(
                         fun({K0, V0}) ->
-                            K = binary_to_existing_atom(K0, utf8),
-                            V = case is_map(V0) of
-                                  true -> P(V0);
-                                  false -> V0
-                                end,
-                            {K, V}
+                            case safe_binary_to_atom(K0) of
+                                {ok, K} ->
+                                    V = case is_map(V0) of
+                                          true -> P(V0);
+                                          false -> V0
+                                        end,
+                                    {K, V};
+                                {error, non_existing} ->
+                                    throw({unknown_key, K0})
+                            end
                         end,
                         maps:to_list(Map)))
             end,
-        Req1 = Parse(Req), 
-        {ok, Req1, State}
+        try Parse(Req) of
+            Req1 ->
+              {ok, Req1, State}
+        catch
+            throw:{unknown_key, K} when is_binary(K) ->
+                {error, {400, [], #{<<"reason">> => <<"Invalid papram ", K/binary>>}}}
+        end
     end.
 
 ttl_decode(TTLKey) ->
@@ -262,11 +271,11 @@ ttl_decode(TTLKey, AllowedTypes) ->
             {undefined, _} -> ErrorBrokenTTL;
             {_, undefined} -> ErrorBrokenTTL;
             {Type, Value} ->
-                case lists:member(Type, AllowedTypes) of
-                    true ->
-                        TTL = {binary_to_existing_atom(Type, utf8), Value},
+                case {lists:member(Type, AllowedTypes), safe_binary_to_atom(Type)} of
+                    {true, {ok, TypeAtom}} ->
+                        TTL = {TypeAtom, Value},
                         {ok, maps:put(TTLKey, TTL, State)};
-                    false ->
+                    _ ->
                         TypesBin = list_to_binary(string:join(
                             [binary_to_list(T) || T <- AllowedTypes],
                             ",")),
@@ -474,4 +483,12 @@ get_block(Fun, Req, DefaultEncoding, AddHash) when is_function(Fun, 0) ->
               end;
         {_Code, _, _Reason} = Err ->
             Err
+    end.
+
+-spec safe_binary_to_atom(binary()) -> {ok, atom()} | {error, non_existing}.
+safe_binary_to_atom(Binary) when is_binary(Binary) ->
+    try binary_to_existing_atom(Binary, utf8) of
+        Atom -> {ok, Atom}
+    catch
+        error:badarg -> {error, non_existing}
     end.

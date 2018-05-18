@@ -44,6 +44,7 @@
     nameservice_transactions/1,
     spend_transaction/1,
     state_channels_onchain_transactions/1,
+    unknown_atom_in_spend_tx/1,
 
     get_transaction/1,
 
@@ -246,6 +247,7 @@ groups() ->
         nameservice_transactions,
         spend_transaction,
         state_channels_onchain_transactions,
+        unknown_atom_in_spend_tx,
 
         get_transaction,
 
@@ -1225,6 +1227,25 @@ spend_transaction(_Config) ->
     test_invalid_hash(MinerPubkey, sender, Encoded, fun get_spend/1),
     test_invalid_hash(MinerPubkey, {recipient_pubkey, recipient}, Encoded, fun get_spend/1),
     test_missing_address(sender, Encoded, fun get_spend/1),
+    ok.
+
+%% tests the following
+%% GET spend_tx unsigned transaction with an non-present key in request
+unknown_atom_in_spend_tx(_Config) ->
+    {ok, 200, _} = get_balance_at_top(),
+    {ok, 200, #{<<"pub_key">> := MinerAddress}} = get_miner_pub_key(),
+    RandAddress = random_hash(),
+    Encoded = #{sender => MinerAddress,
+                recipient_pubkey => aec_base58c:encode(account_pubkey,
+                                                       RandAddress),
+                amount => 2,
+                fee => 1,
+                %% this tests relies on this being an atom unknown to the VM
+                %% if someone adds this atom in particular, please modify the
+                %% binary below accordingly
+                <<"hejsan_svejsan_atom">> => 10,
+                payload => <<"hejsan svejsan">>},
+    {ok, 400, #{<<"reason">> := <<"Invalid papram hejsan_svejsan_atom">>}} = get_spend(Encoded),
     ok.
 
 unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey) ->
