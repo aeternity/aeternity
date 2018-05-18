@@ -30,6 +30,7 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 %%%===================================================================
 %%% Common test framework
@@ -91,6 +92,20 @@ create(Cfg) ->
     PubKey2 = aesc_channels:responder(Ch),
     0       = aesc_channels:round(Ch),
     true    = aesc_channels:is_active(Ch),
+
+    %% Check that the nonce was bumped for the initiator, but not for
+    %% the responder.
+    ATreesBefore = aec_trees:accounts(Trees),
+    {value, AccountBefore1} = aec_accounts_trees:lookup(PubKey1, ATreesBefore),
+    {value, AccountBefore2} = aec_accounts_trees:lookup(PubKey2, ATreesBefore),
+    ATreesAfter = aec_trees:accounts(Trees2),
+    {value, AccountAfter1} = aec_accounts_trees:lookup(PubKey1, ATreesAfter),
+    {value, AccountAfter2} = aec_accounts_trees:lookup(PubKey2, ATreesAfter),
+    ?assertEqual(aec_accounts:nonce(AccountBefore1) + 1,
+                 aec_accounts:nonce(AccountAfter1)),
+    ?assertEqual(aec_accounts:nonce(AccountBefore2),
+                 aec_accounts:nonce(AccountAfter2)),
+
     {PubKey1, PubKey2, ChannelId, S3}.
 
 create_negative(Cfg) ->
@@ -370,6 +385,7 @@ close_mutual(Cfg) ->
         fun(From, IAmt, PAmt, Fee) ->
             TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId, From,
                                                     #{initiator_amount => IAmt,
+                                                      initiator_account => PubKey1,
                                                       responder_amount => PAmt,
                                                       fee    => Fee}, S),
             {ok, Tx} = aesc_close_mutual_tx:new(TxSpec),

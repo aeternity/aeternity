@@ -835,7 +835,8 @@ create_tx_defaults(Initiator) ->
 
 close_mutual_tx(LatestSignedTx, D) ->
     Account = my_account(D),
-    {ok, Nonce} = aec_next_nonce:pick_for_account(Account),
+    Initiator = initiator_account(D),
+    {ok, Nonce} = aec_next_nonce:pick_for_account(Initiator),
     close_mutual_tx(Account, Nonce, LatestSignedTx, D).
 
 close_mutual_tx(Account, Nonce, LatestSignedTx,
@@ -876,6 +877,7 @@ my_account(#data{role = responder, opts = #{responder := R}}) -> R.
 other_account(#data{role = initiator, opts = #{responder := R}}) -> R;
 other_account(#data{role = responder, opts = #{initiator := I}}) -> I.
 
+initiator_account(#data{opts = #{initiator := I}}) -> I.
 
 send_funding_created_msg(SignedTx, #data{channel_id = Ch,
                                          session    = Sn} = Data) ->

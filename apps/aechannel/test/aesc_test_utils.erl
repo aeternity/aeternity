@@ -188,7 +188,8 @@ close_mutual_tx_spec(ChannelId, FromPubKey, State) ->
     close_mutual_tx_spec(ChannelId, FromPubKey, #{}, State).
 
 close_mutual_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
-    Spec = maps:merge(close_mutual_tx_default_spec(FromPubKey, State), Spec0),
+    Initiator = maps:get(initiator_account, Spec0, FromPubKey),
+    Spec = maps:merge(close_mutual_tx_default_spec(Initiator, State), Spec0),
     #{channel_id        => ChannelId,
       from              => FromPubKey,
       initiator_amount  => maps:get(initiator_amount, Spec),
@@ -197,12 +198,12 @@ close_mutual_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
       fee               => maps:get(fee, Spec),
       nonce             => maps:get(nonce, Spec)}.
 
-close_mutual_tx_default_spec(FromPubKey, State) ->
+close_mutual_tx_default_spec(Initiator, State) ->
     #{initiator_amount => 10,
       responder_amount => 10,
       ttl              => 100,
       fee              => 3,
-      nonce            => try next_nonce(FromPubKey, State) catch _:_ -> 0 end}.
+      nonce            => try next_nonce(Initiator, State) catch _:_ -> 0 end}.
 
 %%%===================================================================
 %%% Close solo tx
