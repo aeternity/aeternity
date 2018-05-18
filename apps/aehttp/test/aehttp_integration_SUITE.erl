@@ -1451,8 +1451,7 @@ post_broken_blocks(Config) ->
     lists:foreach(
         fun({BrokenField, BlockMap}) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
-            {ok, Block} = aehttp_api_parser:decode(block, BlockMap),
-            {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
+            {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block_map(BlockMap),
             H = rpc(aec_chain, top_header, []),
             0 = aec_headers:height(H) %chain is still empty
         end,
@@ -3762,9 +3761,10 @@ get_account_transactions(EncodedPubKey, Params) ->
                  Params).
 
 post_block(Block) ->
+    post_block_map(aehttp_api_parser:encode(block, Block)).
+
+post_block_map(BlockMap) ->
     Host = external_address(),
-    BlockMap =
-        aehttp_api_parser:encode(block, Block),
     http_request(Host, post, "block", BlockMap).
 
 post_tx(TxSerialized) ->
