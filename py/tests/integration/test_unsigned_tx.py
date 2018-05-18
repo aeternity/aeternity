@@ -69,6 +69,7 @@ def test_contract_create():
                   alice_balance
                   + test_settings["create_contract"]["fee"]
                   + test_settings["create_contract"]["gas_used"]
+                  + test_settings["create_contract"]["deposit"]
                   + test_settings["create_contract"]["amount"])
 
     print("Fee was consumed, transaction is part of the chain")
@@ -109,6 +110,7 @@ def test_contract_call():
                   alice_balance
                   + create_settings["create_contract"]["fee"]
                   + create_settings["create_contract"]["gas_used"]
+                  + create_settings["create_contract"]["deposit"]
                   + create_settings["create_contract"]["amount"])
 
     call_input = ContractCallInput("sophia", create_settings["create_contract"]["code"],\
