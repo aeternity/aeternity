@@ -9,6 +9,7 @@ category info and up will still be directed to the console.
 * Does that. This impacts the persisted DB.
 * Does that.
 * Stops using hashes of unsigned transactions, and uses the hash of the signed transaction instead. This reduces the memory footprint of the system (removes one index). This affects the API by removing the transaction hash when constructing unsigned transactions. This affects the API by returning the hash of the signed transaction in all other applicable places. The latter should not affects users of the API as all transaction hashes are now constructed from the signed transaction. Note that this does not affect consensus, only the http and websocket API:s. This impacts the persisted DB.
+* Changes the miner reward to 10,000,000,000,000,000,000 atto-Aeternity-tokens. This impacts consensus.
 * Improves the stability of the testnet.
 * Enhances user HTTP API with fine tuning paths for getting account balance and transactions
 * Moves contract account balances to account state tree. Also removes height and contract ID from contract state trees. This impacts consensus.
