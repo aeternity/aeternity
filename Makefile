@@ -1,8 +1,10 @@
 CORE = rel/epoch/bin/epoch
 VER := $(shell cat VERSION)
+
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
-CT_TEST_FLAGS =
-EUNIT_TEST_FLAGS =
+CT_TEST_FLAGS ?=
+EUNIT_TEST_FLAGS ?=
+
 ifdef SUITE
 CT_TEST_FLAGS += --suite=$(SUITE)_SUITE
 unexport SUITE
