@@ -13,7 +13,8 @@
          to_ascii/1,
          from_ascii/1,
          validate_name/1,
-         base58c_decode_safe_or_valid_name/2]).
+         base58c_decode_safe_or_valid_name/2,
+         base58c_encode_or_valid_name/2]).
 
 %%%===================================================================
 %%% Types
@@ -90,6 +91,13 @@ base58c_decode_safe_or_valid_name(Type, EncodedOrName) ->
                 ok             -> {ok, EncodedOrName};
                 {error, Error} -> {error, Error}
             end
+    end.
+
+-spec base58c_encode_or_valid_name(atom(), binary()) -> binary().
+base58c_encode_or_valid_name(Type, DecodedOrName) ->
+    case validate_name(DecodedOrName) of
+        ok              -> DecodedOrName;
+        {error, _Error} -> aec_base58c:encode(Type, DecodedOrName)
     end.
 
 %%%===================================================================
