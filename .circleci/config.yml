@@ -447,7 +447,7 @@ jobs:
           no_output_timeout: 2h
           command: |
             sudo -u ubuntu -E -H make system-test
-      # - *fail_notification
+      - *fail_notification
       - store_test_results:
           path: system_test/logs
       - store_artifacts:
