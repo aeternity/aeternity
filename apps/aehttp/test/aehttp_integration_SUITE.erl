@@ -436,14 +436,16 @@ init_per_group(all_endpoints, Config) ->
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    {ok, 404, _} = get_balance_at_top(),
     %% prepare participants
     {IPubkey, IPrivkey} = generate_key_pair(),
     {RPubkey, RPrivkey} = generate_key_pair(),
     IStartAmt = 50,
     RStartAmt = 50,
     Fee = 1,
+    BlocksToMine = 10,
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
@@ -4507,4 +4509,3 @@ make_params([{K, V} | T], Accum) ->
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
-
