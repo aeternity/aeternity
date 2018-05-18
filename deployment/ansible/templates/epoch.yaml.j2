@@ -2,7 +2,7 @@
 sync:
     port: {{ config.sync.port }}
 
-{% if configure_peers|default(false) %}
+{% if configure_peers|default(true) %}
 peers:
 {% for host in groups[hosts_group] | difference([inventory_hostname]) %}
 {% set public_ip = hostvars[host]['ansible_ssh_host']|default(hostvars[host]['ansible_host']) -%}
