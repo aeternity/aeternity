@@ -162,7 +162,7 @@ for_client(#ns_transfer_tx{account           = AccountPubKey,
       <<"account">>          => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>            => Nonce,
       <<"name_hash">>        => aec_base58c:encode(name, NameHash),
-      <<"recipient_pubkey">> => aec_base58c:encode(account_pubkey, RecipientPubKey),
+      <<"recipient_pubkey">> => aens_utils:base58c_encode_or_valid_name(account_pubkey, RecipientPubKey),
       <<"fee">>              => Fee}.
 
 %%%===================================================================
