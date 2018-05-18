@@ -12,6 +12,7 @@
          nonce/1,
          earn/2,
          spend/3,
+         spend_without_nonce_bump/2,
          set_nonce/2,
          serialize/1,
          deserialize/1]).
@@ -61,6 +62,12 @@ earn(#account{balance = Balance0} = Account0, Amount) ->
 spend(#account{balance = Balance0} = Account0, Amount, Nonce) ->
     {ok, Account0#account{balance = Balance0 - Amount,
                           nonce = Nonce}}.
+
+-spec spend_without_nonce_bump(account(), non_neg_integer()) -> {ok, account()}.
+%%% NOTE: Only use this if you actually don't want to update the nonce
+%%% of the account (e.g., when opening a state channel).
+spend_without_nonce_bump(#account{balance = Balance0} = Account0, Amount) ->
+    {ok, Account0#account{balance = Balance0 - Amount}}.
 
 -spec serialize(account()) -> deterministic_account_binary_with_pubkey().
 serialize(Account) ->

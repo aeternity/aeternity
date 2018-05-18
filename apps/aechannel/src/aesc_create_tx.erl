@@ -120,11 +120,11 @@ process(#channel_create_tx{initiator          = InitiatorPubKey,
     AccountsTree0 = aec_trees:accounts(Trees0),
     ChannelsTree0 = aec_trees:channels(Trees0),
 
-    InitiatorAccount0   = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
+    InitiatorAccount0 = aec_accounts_trees:get(InitiatorPubKey, AccountsTree0),
     ResponderAccount0 = aec_accounts_trees:get(ResponderPubKey, AccountsTree0),
 
-    {ok, InitiatorAccount1}   = aec_accounts:spend(InitiatorAccount0, Fee + InitiatorAmount, Nonce),
-    {ok, ResponderAccount1} = aec_accounts:spend(ResponderAccount0, ResponderAmount, Nonce),
+    {ok, InitiatorAccount1} = aec_accounts:spend(InitiatorAccount0, Fee + InitiatorAmount, Nonce),
+    {ok, ResponderAccount1} = aec_accounts:spend_without_nonce_bump(ResponderAccount0, ResponderAmount),
 
     AccountsTree1 = aec_accounts_trees:enter(InitiatorAccount1, AccountsTree0),
     AccountsTree2 = aec_accounts_trees:enter(ResponderAccount1, AccountsTree1),
