@@ -27,7 +27,7 @@
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 10).
 -define(EXPECTED_BLOCK_MINE_RATE, 300000). %% 60secs * 1000ms * 5 = 300000msecs
--define(BLOCK_MINE_REWARD, 10).
+-define(BLOCK_MINE_REWARD, 10000000000000000000).
 
 
 %% Maps consensus protocol version to minimum height at which such

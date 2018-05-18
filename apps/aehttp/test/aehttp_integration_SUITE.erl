@@ -2034,7 +2034,7 @@ block_txs_count_pending(_Config) ->
     {ok, #{<<"count">> := TxsCount}} = GetPending(),
     ct:log("Inserted transactions count ~p, transactions count in the pending block ~p",
            [InsertedTxsCount, TxsCount]),
-    % the assert bellow rellies on no block being mined durring the test run
+    % the assert below relies on no block being mined during the test run
     % this is achieved by mining BlocksToPremine number of blocks and setting
     % a high value for expected_mine_rate
     true = TxsCount =:= InsertedTxsCount + 1,
@@ -2043,15 +2043,25 @@ block_txs_count_pending(_Config) ->
 
 generic_counts_test(GetBlock, CallApi) ->
     BlocksToMine = 5,
+    {ok, 200, #{<<"height">> := ChainHeight}} = get_top(),
+
+    Check = fun(H) ->
+                {ok, B} = GetBlock(H),
+                TxsCount = length(aec_blocks:txs(B)),
+                {ok, 200, #{<<"count">> := TxsCount}} = CallApi(H)
+            end,
+
+    %% Check genesis
+    Check(aec_block_genesis:height()),
+
+    %% Check BlocksToMine blocks
     lists:foreach(
         fun(Height) ->
-            {ok, B} = GetBlock(Height),
-            TxsCount = length(aec_blocks:txs(B)),
-            {ok, 200, #{<<"count">> := TxsCount}} = CallApi(Height),
+            add_spend_txs(),
             aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-            add_spend_txs()
+            Check(Height + 1)
         end,
-        lists:seq(0, BlocksToMine)), % from genesis
+        lists:seq(ChainHeight, ChainHeight + BlocksToMine)),
     ok.
 
 block_txs_count_by_height_not_found(_Config) ->
@@ -4367,7 +4377,9 @@ get_pending_block() ->
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, []),
     MinFee = rpc(aec_governance, minimum_tx_fee, []),
-    MaxSpendTxsInBlock = rpc(aec_governance, max_txs_in_block, []) - 1, % coinbase
+    %% For now. Mining is severly slowed down by having too many Tx:s in
+    %% the tx pool
+    MaxSpendTxsInBlock = 20,
     MinimalAmount = 1,
     MaxTxs = min(MineReward div (MinimalAmount + MinFee), % enough tokens
                  MaxSpendTxsInBlock), % so it can fit in one block
