@@ -28,7 +28,7 @@ nodes:
       external_api: 3033
       internal_api: 3133
       internal_ws: 3134
-coinbase_reward: 10
+coinbase_reward: 10000000000000000000
 tests: # test specific settings
   test_use_cases:
     test_syncing:
@@ -78,7 +78,7 @@ tests: # test specific settings
       blocks_to_mine: 3
       spend_tx:
         alice_pubkey: ak$v6kQV2Z6uXv2PsUJdv955gE
-        amount: 1000
+        amount: 1000000000000000000000
         fee: 20
     test_send_by_name:
     # Bob registers a name 'bob.aet'
@@ -107,7 +107,7 @@ tests: # test specific settings
     test_contract_create:
       nodes:
         node: dev1
-      blocks_to_mine: 115
+      blocks_to_mine: 5
       alice:
         amount: 1120
         fee: 1
@@ -124,7 +124,7 @@ tests: # test specific settings
     test_contract_call:
       nodes:
         node: dev1
-      blocks_to_mine: 123
+      blocks_to_mine: 7
       alice:
         amount: 1200
         fee: 1

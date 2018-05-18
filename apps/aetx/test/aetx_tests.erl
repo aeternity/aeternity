@@ -68,7 +68,7 @@ apply_signed_txs_test_() ->
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
                %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + coinbase_tx reward
-               ?assertEqual(100 - 40 - 9 + 9 + 10, aec_accounts:balance(ResultMinerAccount)),
+               ?assertEqual(100 - 40 - 9 + 9 + aec_governance:block_mine_reward(), aec_accounts:balance(ResultMinerAccount)),
                ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
        end
       }]}.
