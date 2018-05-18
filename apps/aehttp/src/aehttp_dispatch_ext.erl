@@ -123,18 +123,21 @@ handle_request('GetTxs', _Req, _Context) ->
     {200, [], Txs};
 
 handle_request('PostBlock', Req, _Context) ->
-    %TODO: possibly return an error on a broken block intead of crashing?
-    {ok, Block} = aehttp_api_parser:decode(block, maps:get('Block', Req)),
-
-    %% Only for logging
-    Header = aec_blocks:to_header(Block),
-    {ok, HH} = aec_headers:hash_header(Header),
-    lager:debug("'PostBlock'; header hash: ~p", [HH]),
-    case aec_conductor:post_block(Block) of
-        ok -> {200, [], #{}};
+    case aehttp_api_parser:decode(block, maps:get('Block', Req)) of
         {error, Reason} ->
-            lager:error("Post block failed: ~p", [Reason]),
-            {400, [], #{reason => <<"Block rejected">>}}
+            lager:info("Post block failed: ~p", [Reason]),
+            {400, [], #{reason => <<"Block rejected">>}};
+        {ok, Block} ->
+            %% Only for logging
+            Header = aec_blocks:to_header(Block),
+            {ok, HH} = aec_headers:hash_header(Header),
+            lager:debug("'PostBlock'; header hash: ~p", [HH]),
+            case aec_conductor:post_block(Block) of
+                ok -> {200, [], #{}};
+                {error, Reason} ->
+                    lager:info("Post block failed: ~p", [Reason]),
+                    {400, [], #{reason => <<"Block rejected">>}}
+            end
     end;
 
 handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
