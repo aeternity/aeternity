@@ -13,6 +13,7 @@ It:
 * Enhances user experience for Channels' websockets with broadcasting co-signed on-chain transactions to participants before posting. This allows them to track the progress of the transactions as well to store them locally in case of conflict resolution.
 * This release removes deprecated http API endpoints block-by-height and block-by-hash. Instead use the endpoints as defined [online in swagger.yaml][swagger-yaml].
 * Improves the stability of the testnet.
+* Resolve name to pubkey pointers during mining for spend receiver, name transfer receiver and oracle query address, clear text names will be persisted in these transaction structures. Corresponding HTTP-endpoints now accept and return clear text names or encoded pubkeys for these fields.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
 
