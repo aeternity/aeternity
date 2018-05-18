@@ -70,7 +70,6 @@
 
 %% State of a node
 -type node_state() :: #{
-    spec := node_spec(),        % Backup of the spec used when adding the node
     postfix := binary(),        % A unique postfix to add to container and networks names.
     log_fun := log_fun(),       % Function to use for logging
     hostname := atom(),         % Hostname of the container running the node
@@ -131,7 +130,7 @@ prepare_spec(#{pubkey := PubKey, privkey := PrivKey} = Spec, BackendState) ->
 prepare_spec(#{pubkey := _PubKey}, _BackendState) ->
     error(pubkey_without_privkey);
 prepare_spec(#{privkey := _PrivKey}, _BackendState) ->
-    error(provkey_without_pubkey);
+    error(privkey_without_pubkey);
 prepare_spec(Spec, BackendState) ->
     #{data_dir := DataDir} = BackendState,
     #{name := Name} = Spec,
@@ -170,7 +169,6 @@ setup_node(Spec, BackendState) ->
     },
     {LocalPorts, Sockets} = allocate_ports([sync, ext_http, int_http, int_ws]),
     NodeState = #{
-        spec => spec,
         postfix => Postfix,
         log_fun => LogFun,
         name => Name,
