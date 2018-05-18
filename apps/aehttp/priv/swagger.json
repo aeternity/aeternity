@@ -1570,12 +1570,6 @@
             "schema" : {
               "$ref" : "#/definitions/Error"
             }
-          },
-          "404" : {
-            "description" : "Account not found",
-            "schema" : {
-              "$ref" : "#/definitions/Error"
-            }
           }
         }
       }

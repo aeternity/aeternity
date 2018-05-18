@@ -468,22 +468,16 @@ handle_request('GetAccountsBalances', _Req, _Context) ->
 handle_request('GetAccountTransactions', Req, _Context) ->
     case aec_base58c:safe_decode(account_pubkey, maps:get('account_pubkey', Req)) of
         {ok, AccountPubkey} ->
-            {ok, TopBlockHash} = aehttp_logic:get_top_hash(),
-            case aehttp_logic:get_account_balance_at_hash(AccountPubkey, TopBlockHash) of
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}};
-                {ok, _} ->
-                    case get_account_transactions(AccountPubkey, Req) of
-                        {error, unknown_type} ->
-                            {400, [], #{reason => <<"Unknown transaction type">>}};
-                        {ok, HeaderTxs} ->
-                            case encode_txs(HeaderTxs, Req) of
-                                {error, Err} ->
-                                    Err;
-                                {ok, EncodedTxs, DataSchema} ->
-                                    {200, [], #{transactions => EncodedTxs,
-                                                data_schema => DataSchema}}
-                            end
+            case get_account_transactions(AccountPubkey, Req) of
+                {error, unknown_type} ->
+                    {400, [], #{reason => <<"Unknown transaction type">>}};
+                {ok, HeaderTxs} ->
+                    case encode_txs(HeaderTxs, Req) of
+                        {error, Err} ->
+                            Err;
+                        {ok, EncodedTxs, DataSchema} ->
+                            {200, [], #{transactions => EncodedTxs,
+                                        data_schema => DataSchema}}
                     end
             end;
         _ ->

@@ -1697,7 +1697,8 @@ account_transactions(_Config) ->
     ok = rpc(aec_conductor, reinit_chain, []),
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_miner_pub_key(),
     %% no transactions but no account either
-    {ok, 404, #{<<"reason">> := <<"Account not found">>}} =
+    {ok, 200, #{<<"transactions">> := [],
+                <<"data_schema">> := _}} =
         get_account_transactions(EncodedPubKey, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     %% miner has 1 transaction - coinbase
@@ -1743,6 +1744,15 @@ account_transactions(_Config) ->
         end,
         [default, true, false]),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+
+    % test in pool tx of a new address without being present in trees
+    RandKey = random_hash(),
+    RandAddr = aec_base58c:encode(account_pubkey, RandKey),
+    {ok, 200, #{<<"transactions">> := [],
+                <<"data_schema">> := _}} = get_account_transactions(RandAddr, []),
+    ct:log("Posting a spend tx to random address ~p", [RandAddr]),
+    post_spend_tx(RandKey, 1, 1),
+    acc_txs_test(RandAddr, 0, 2),
     ok.
 
 acc_txs_test(Pubkey, Offset, Limit) ->

@@ -1312,10 +1312,6 @@ paths:
           description: Invalid account hash
           schema:
             $ref: '#/definitions/Error'
-        '404':
-          description: Account not found
-          schema:
-            $ref: '#/definitions/Error'
 
 ## CAUTION: debug endpoints, implementation may be inefficient
   /balances:
