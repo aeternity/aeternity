@@ -9,9 +9,14 @@
          send/3, send/4, send/5,
          send_tagged/4,
          register_test_for_event/3,
+         register_test_for_events/3,
          unregister_test_for_event/3,
+         unregister_test_for_events/3,
          register_test_for_channel_event/2,
+         register_test_for_channel_events/2,
+         register_test_for_all_channel_events/1,
          unregister_test_for_channel_event/2,
+         unregister_test_for_channel_events/2,
          wait_for_event/3,
          wait_for_event/4,
          wait_for_channel_event/2,
@@ -34,8 +39,11 @@
 
 -define(CHANNEL, channel).
 
+-record(register, {mon_refs = #{} :: map(),
+                   events   = #{} :: map()}).
+
 -record(state, {role :: atom() | undefined,
-                regs:: map() | undefined
+                regs:: #register{}
                }).
 
 start_link(Host, Port) ->
@@ -60,7 +68,7 @@ start_channel(Host, Port, RoleA, Opts) when is_atom(RoleA) ->
         {ok, Pid} = Res ->
             set_role(Pid, RoleA),
             Res;
-        {error, _} = Err -> Err
+        {error, _, _} = Err -> Err
     end.
 
 
@@ -127,22 +135,45 @@ send_(ConnPid, Target, Action, Payload, Msg0) ->
 %% where the Origin and Action are the same as the ones for which the process
 %% had registered. This message is consumed by wait_for_event/2,3
 register_test_for_event(ConnPid, Origin, Action) ->
-    Event = {Origin, Action},
+    Event = {Origin, [Action]},
+    ConnPid ! {register_test, self(), Event},
+    ok = wait_for_event(ConnPid, registered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    ok.
+
+register_test_for_events(ConnPid, Origin, Actions) ->
+    Event = {Origin, Actions},
     ConnPid ! {register_test, self(), Event},
     ok = wait_for_event(ConnPid, registered_test, Event, ?DEFAULT_SUB_TIMEOUT),
     ok.
 
 unregister_test_for_event(ConnPid, Origin, Action) ->
-    Event = {Origin, Action},
+    Event = {Origin, [Action]},
+    ConnPid ! {unregister_test, self(), Event},
+    ok = wait_for_event( ConnPid, unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
+    ok.
+
+unregister_test_for_events(ConnPid, Origin, Actions) ->
+    Event = {Origin, Actions},
     ConnPid ! {unregister_test, self(), Event},
     ok = wait_for_event( ConnPid, unregistered_test, Event, ?DEFAULT_SUB_TIMEOUT),
     ok.
 
 register_test_for_channel_event(ConnPid, Action) ->
-    register_test_for_event(ConnPid, ?CHANNEL, Action).
+    register_test_for_events(ConnPid, ?CHANNEL, [Action]).
+
+register_test_for_channel_events(ConnPid, Actions) when is_list(Actions)->
+    register_test_for_events(ConnPid, ?CHANNEL, Actions).
+
+register_test_for_all_channel_events(ConnPid) ->
+    Actions = aesc_fsm:report_tags(),
+    register_test_for_events(ConnPid, ?CHANNEL, Actions).
+
 
 unregister_test_for_channel_event(ConnPid, Action) ->
-    unregister_test_for_event(ConnPid, ?CHANNEL, Action).
+    unregister_test_for_events(ConnPid, ?CHANNEL, [Action]).
+
+unregister_test_for_channel_events(ConnPid, Actions) ->
+    unregister_test_for_events(ConnPid, ?CHANNEL, Actions).
 
 
 %% consumes messages from the mailbox:
@@ -213,8 +244,8 @@ inform_registered(RegisteredPid, Origin, Action, Tag, Payload) ->
     end.
 
 init(WaitingPid) ->
-    Regs = put_registration(WaitingPid, waiting_connected, #{}),
-    {once, #state{regs = Regs}}.
+    Register = put_registration(WaitingPid, waiting_connected, #register{}),
+    {once, #state{regs = Register}}.
 
 onconnect(_WSReq, State) ->
     ct:log("Ws connected"),
@@ -228,18 +259,18 @@ ondisconnect({remote, closed}, State) ->
     ct:log("Connection closed, closing"),
     {close, normal, State}.
 
-websocket_handle({pong, Nonce}, _ConnState, #state{regs=Regs}=State) ->
-    case get_registered(waiting_nonce, Regs) of
+websocket_handle({pong, Nonce}, _ConnState, #state{regs=Register}=State) ->
+    case get_registered_pids(waiting_nonce, Register) of
         [Nonce] ->
-            Regs1 = delete_registered(Nonce, waiting_nonce, Regs),
-            [WaitingPid] = get_registered(waiting_connected, Regs1),
+            Reg1 = delete_registered(Nonce, waiting_nonce, Register),
+            [WaitingPid] = get_registered_pids(waiting_connected, Reg1),
             inform_registered(WaitingPid, websocket, connected),
-            Regs2 = delete_registered(WaitingPid, waiting_connected, Regs1),
-            {ok, State#state{regs=Regs2}};
+            Reg2 = delete_registered(WaitingPid, waiting_connected, Reg1),
+            {ok, State#state{regs=Reg2}};
         [] ->
             {ok, State}
     end;
-websocket_handle({text, MsgBin}, _ConnState, #state{regs=Regs, role=Role}=State) ->
+websocket_handle({text, MsgBin}, _ConnState, #state{regs=Register, role=Role}=State) ->
     Msg = jsx:decode(MsgBin, [return_maps]),
     case Role of
         undefined ->
@@ -252,36 +283,55 @@ websocket_handle({text, MsgBin}, _ConnState, #state{regs=Regs, role=Role}=State)
     Action = binary_to_existing_atom(maps:get(<<"action">>, Msg), utf8),
     Tag = maps:get(<<"tag">>, Msg, undefined),
     Payload = maps:get(<<"payload">>, Msg, []),
-    Registered = get_registered({Origin, Action}, Regs),
+    RegisteredPids = get_registered_pids({Origin, Action}, Register),
     lists:foreach(
         fun(Pid) -> inform_registered(Pid, Origin, Action, Tag, Payload) end,
-        Registered),
+        RegisteredPids),
 
     % for easier debugging
-    case Registered == [] of
+    case RegisteredPids == [] of
         true -> ct:log("No test registered for this event");
         false -> pass
     end,
     {ok, State}.
 
-websocket_info(ping, _ConnState, #state{regs=Regs}=State) ->
+websocket_info(ping, _ConnState, #state{regs=Register}=State) ->
     Nonce = list_to_binary(ref_to_list(make_ref())),
-    Regs1 = put_registration(Nonce, waiting_nonce, Regs),
-    {reply, {ping, Nonce}, State#state{regs=Regs1}};
+    Register1 = put_registration(Nonce, waiting_nonce, Register),
+    {reply, {ping, Nonce}, State#state{regs=Register1}};
 websocket_info(stop, _ConnState, _State) ->
     {close, <<>>, "stopped"};
-websocket_info({register_test, RegisteredPid, Event}, _ConnState,
-                #state{regs=Regs0}=State) ->
-    Regs = put_registration(RegisteredPid, Event, Regs0),
-    inform_registered(RegisteredPid, registered_test, Event),
-    {ok, State#state{regs=Regs}};
-websocket_info({unregister_test, RegisteredPid, Event}, _ConnState,
-                #state{regs=Regs0}=State) ->
-    Regs = delete_registered(RegisteredPid, Event, Regs0),
-    inform_registered(RegisteredPid, unregistered_test, Event),
-    {ok, State#state{regs=Regs}};
+websocket_info({register_test, RegisteredPid, Events}, _ConnState,
+                #state{regs=Register0}=State) ->
+    {Origin, Actions} = Events,
+    Register =
+        lists:foldl(
+            fun(Action, AccumRegister) ->
+                Event = {Origin, Action},
+                put_registration(RegisteredPid, Event, AccumRegister)
+            end,
+            Register0,
+            Actions),
+    inform_registered(RegisteredPid, registered_test, Events),
+    {ok, State#state{regs=Register}};
+websocket_info({unregister_test, RegisteredPid, Events}, _ConnState,
+                #state{regs=Register0}=State) ->
+    {Origin, Actions} = Events,
+    Register =
+        lists:foldl(
+            fun(Action, AccumRegister) ->
+                Event = {Origin, Action},
+                delete_registered(RegisteredPid, Event, AccumRegister)
+            end,
+            Register0,
+            Actions),
+    inform_registered(RegisteredPid, unregistered_test, Events),
+    {ok, State#state{regs=Register}};
 websocket_info({set_role, Role}, _ConnState, #state{role=undefined}=State) ->
     {ok, State#state{role=Role}};
+websocket_info({'DOWN', _Ref, process, Pid, _}, _ConnState,
+               #state{regs=Register0}=State) ->
+    {ok, State#state{regs= delete_pid(Pid, Register0)}};
 websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
     case Role of
         undefined ->
@@ -296,23 +346,62 @@ websocket_terminate(Reason, _ConnState, State) ->
               [State, Reason]),
     ok.
 
-get_registered(Event, Regs) ->
-    maps:get(Event, Regs, []).
+get_registered_pids(Event, #register{events=Events}) ->
+    maps:get(Event, Events, []).
 
-put_registration(RegPid, Event, Regs) ->
-    Pids0 = get_registered(Event, Regs),
+delete_registered_event(Event, #register{events=Events}=R) ->
+    R#register{events=maps:remove(Event, Events)}.
+
+set_registered_event(Event, Pids, #register{events=Events}=R) ->
+    R#register{events=maps:put(Event, Pids, Events)}.
+
+delete_registered_ref(Pid, #register{mon_refs=Refs}=R) when is_pid(Pid) ->
+    case maps:get(Pid, Refs, no_ref) of
+        no_ref -> pass;
+        Ref -> demonitor(Ref)
+    end,
+    R#register{mon_refs=maps:remove(Pid, Refs)};
+delete_registered_ref(_NotPid, R) -> R.
+
+put_registered_ref(Pid, Ref, #register{mon_refs=Refs}=R) ->
+    R#register{mon_refs=maps:put(Pid, Ref, Refs)}.
+
+put_registration(RegPid, Event, Register0) ->
+    Pids0 = get_registered_pids(Event, Register0),
     false = lists:member(RegPid, Pids0), % assert there is no double registration
-    maps:put(Event, [RegPid | Pids0], Regs).
+    Register =
+        case is_pid(RegPid) of
+            false -> Register0;
+            true ->
+                Ref = monitor(process, RegPid),
+                put_registered_ref(RegPid, Ref, Register0)
+        end,
+    set_registered_event(Event, [RegPid | Pids0], Register).
 
-delete_registered(RegPid, Event, Regs) ->
+delete_registered(RegPid, Event, Register) ->
+    %% do no demonitor the pid because other events could still be registered
     PidsLeft =
         lists:filter(
             fun(Pid) -> Pid =/= RegPid end,
-            get_registered(Event, Regs)),
+            get_registered_pids(Event, Register)),
     case PidsLeft == [] of
-        true -> maps:remove(Event, Regs);
-        false -> maps:put(Event, PidsLeft, Regs)
+        true -> delete_registered_event(Event, Register);
+        false -> set_registered_event(Event, PidsLeft, Register)
     end.
+
+delete_pid(RegPid, #register{events=Events0} = Register0) ->
+    Events =
+        maps:fold(
+            fun(Event, Pids0, Acc) ->
+                case lists:filter(fun(Pid) -> Pid =/= RegPid end, Pids0) of
+                    [] -> Acc; % no more pids for that event
+                    Pids -> maps:put(Event, Pids)
+                end
+            end,
+            #{},
+            Events0),
+    Register = delete_registered_ref(RegPid, Register0),
+    Register#register{events=Events}.
 
 encode_params(#{} = Ps) ->
     encode_params(maps:to_list(Ps));
