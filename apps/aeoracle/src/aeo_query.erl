@@ -71,7 +71,7 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:tx(), pubkey(), aec_blocks:height()) -> query().
+-spec new(aeo_query_tx:tx(), aec_keys:pubkey(), aec_blocks:height()) -> query().
 new(QTx, OraclePK, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
     I = #query{ sender_address = aeo_query_tx:sender(QTx)

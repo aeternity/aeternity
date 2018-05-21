@@ -2428,6 +2428,9 @@
     "EncodedHash" : {
       "type" : "string"
     },
+    "EncodedHashOrName" : {
+      "type" : "string"
+    },
     "Pow" : {
       "type" : "array",
       "items" : {
@@ -2622,7 +2625,7 @@
       "required" : [ "amount", "fee", "payload", "recipient_pubkey" ],
       "properties" : {
         "recipient_pubkey" : {
-          "$ref" : "#/definitions/EncodedHash"
+          "$ref" : "#/definitions/EncodedHashOrName"
         },
         "amount" : {
           "type" : "integer",
@@ -2646,7 +2649,7 @@
       },
       "example" : {
         "amount" : 0,
-        "sender" : null,
+        "sender" : { },
         "payload" : "payload",
         "fee" : 6,
         "recipient_pubkey" : { },
@@ -2744,7 +2747,7 @@
       "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
       "properties" : {
         "oracle_pubkey" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHashOrName"
         },
         "query" : {
           "type" : "string"
@@ -2786,7 +2789,7 @@
         "fee" : 1,
         "query_fee" : 0,
         "nonce" : 5,
-        "oracle_pubkey" : "oracle_pubkey"
+        "oracle_pubkey" : { }
       }
     },
     "OracleResponseTx" : {
@@ -3000,7 +3003,7 @@
           "type" : "string"
         },
         "recipient_pubkey" : {
-          "type" : "string"
+          "$ref" : "#/definitions/EncodedHashOrName"
         },
         "fee" : {
           "type" : "integer",
@@ -3017,7 +3020,7 @@
       "example" : {
         "name_hash" : "name_hash",
         "fee" : 0,
-        "recipient_pubkey" : "recipient_pubkey",
+        "recipient_pubkey" : { },
         "nonce" : 6,
         "account" : { }
       }

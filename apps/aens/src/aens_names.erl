@@ -72,7 +72,7 @@ revoke(Name, Expiration, BlockHeight) ->
     Name#name{status  = revoked,
               expires = Expires}.
 
--spec transfer(pubkey(), name()) -> name().
+-spec transfer(aec_keys:pubkey(), name()) -> name().
 transfer(PubKey, Name) ->
     Name#name{owner = PubKey}.
 
