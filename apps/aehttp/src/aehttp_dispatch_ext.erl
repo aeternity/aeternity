@@ -354,12 +354,11 @@ handle_request('PostChannelWithdrawal', #{'ChannelWithdrawalTx' := Req}, _Contex
 
 handle_request('PostChannelCloseMutual', #{'ChannelCloseMutualTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([channel_id, from,
+                 read_required_params([channel_id,
                                        initiator_amount, responder_amount,
                                        ttl,
                                        fee, nonce]),
-                 base58_decode([{channel_id, channel_id, channel},
-                                {from, from, account_pubkey}]),
+                 base58_decode([{channel_id, channel_id, channel}]),
                  unsigned_tx_response(fun aesc_close_mutual_tx:new/1)
                 ],
     process_request(ParseFuns, Req);

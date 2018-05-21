@@ -15,7 +15,7 @@ category info and up will still be directed to the console.
 * Moves contract account balances to account state tree. Also removes height and contract ID from contract state trees. This impacts consensus.
 * Removes unneeded height from the account object in the block state. This impacts consensus.
 * Enhances user experience for Channels' websockets with broadcasting co-signed on-chain transactions to participants before posting. This allows them to track the progress of the transactions as well to store them locally in case of conflict resolution.
-
+* Changes the format of the state channel's on-chain close mutual transaction. This impacts consensus.
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
 
 This release removes deprecated http API endpoints block-by-height

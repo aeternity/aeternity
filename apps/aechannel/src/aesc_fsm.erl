@@ -850,7 +850,6 @@ close_mutual_tx(Account, Nonce, LatestSignedTx,
     {IAmt1, RAmt1} = pay_close_mutual_fee(maps:get(fee, Opts1), IAmt, RAmt),
     #{ttl := TTL, fee := Fee} = Opts1,
     aesc_close_mutual_tx:new(#{ channel_id       => ChanId
-                              , from             => Account
                               , initiator_amount => IAmt1
                               , responder_amount => RAmt1
                               , ttl              => TTL

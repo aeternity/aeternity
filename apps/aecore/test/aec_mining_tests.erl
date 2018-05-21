@@ -38,7 +38,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 16698938705582207892),
+                 meck:expect(aec_pow, pick_nonce, 0, 4845645033533946566),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),

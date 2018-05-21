@@ -3177,13 +3177,10 @@
     },
     "ChannelCloseMutualTx" : {
       "type" : "object",
-      "required" : [ "channel_id", "fee", "from", "initiator_amount", "nonce", "responder_amount", "ttl" ],
+      "required" : [ "channel_id", "fee", "initiator_amount", "nonce", "responder_amount", "ttl" ],
       "properties" : {
         "channel_id" : {
           "type" : "string"
-        },
-        "from" : {
-          "$ref" : "#/definitions/EncodedHash"
         },
         "initiator_amount" : {
           "type" : "integer",
@@ -3215,7 +3212,6 @@
         "responder_amount" : 0,
         "initiator_amount" : 0,
         "fee" : 0,
-        "from" : { },
         "channel_id" : "channel_id",
         "ttl" : 0,
         "nonce" : 0

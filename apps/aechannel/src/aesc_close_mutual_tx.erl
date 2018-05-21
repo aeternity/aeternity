@@ -46,7 +46,6 @@
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{channel_id        := ChannelId,
-      from              := From,
       initiator_amount  := InitiatorAmount,
       responder_amount  := ResponderAmount,
       ttl               := TTL,
@@ -54,7 +53,6 @@ new(#{channel_id        := ChannelId,
       nonce             := Nonce}) ->
     Tx = #channel_close_mutual_tx{
             channel_id        = ChannelId,
-            from              = From,
             initiator_amount  = InitiatorAmount,
             responder_amount  = ResponderAmount,
             ttl               = TTL,
@@ -83,7 +81,6 @@ origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{channel_id       = ChannelId,
-                               from             = From,
                                initiator_amount = InitiatorAmount,
                                responder_amount = ResponderAmount,
                                ttl              = TTL,
@@ -96,8 +93,7 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
         {value, Channel} ->
             InitiatorPubKey = aesc_channels:initiator(Channel),
             Checks =
-                [fun() -> aesc_utils:check_is_peer(From, aesc_channels:peers(Channel)) end,
-                 % the fee is being split between parties so no check if the
+                [% the fee is being split between parties so no check if the
                  % initiator can pay the fee; just a check for the nonce correctness
                  fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, 0) end,
                  fun() ->
@@ -128,7 +124,6 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_close_mutual_tx{channel_id       = ChannelId,
-                                 from             = _From,
                                  initiator_amount = InitiatorAmount,
                                  responder_amount = ResponderAmount,
                                  ttl              = _TTL,
@@ -178,7 +173,6 @@ signers(#channel_close_mutual_tx{channel_id = ChannelId}, Trees) ->
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_mutual_tx{channel_id       = ChannelId,
-                                   from             = From,
                                    initiator_amount = InitiatorAmount,
                                    responder_amount = ResponderAmount,
                                    ttl              = TTL,
@@ -186,7 +180,6 @@ serialize(#channel_close_mutual_tx{channel_id       = ChannelId,
                                    nonce            = Nonce}) ->
     {version(),
      [ {channel_id        , ChannelId}
-     , {from              , From}
      , {initiator_amount  , InitiatorAmount}
      , {responder_amount  , ResponderAmount}
      , {ttl               , TTL}
@@ -197,14 +190,12 @@ serialize(#channel_close_mutual_tx{channel_id       = ChannelId,
 -spec deserialize(vsn(), list()) -> tx().
 deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
             [ {channel_id       , ChannelId}
-            , {from             , From}
             , {initiator_amount , InitiatorAmount}
             , {responder_amount , ResponderAmount}
             , {ttl              , TTL}
             , {fee              , Fee}
             , {nonce            , Nonce}]) ->
     #channel_close_mutual_tx{channel_id       = ChannelId,
-                             from             = From,
                              initiator_amount = InitiatorAmount,
                              responder_amount = ResponderAmount,
                              ttl              = TTL,
@@ -213,7 +204,6 @@ deserialize(?CHANNEL_CLOSE_MUTUAL_TX_VSN,
 
 -spec for_client(tx()) -> map().
 for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
-                                    from             = From,
                                     initiator_amount = InitiatorAmount,
                                     responder_amount = ResponderAmount,
                                     ttl              = TTL,
@@ -222,7 +212,6 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
     #{<<"data_schema">> => <<"ChannelCloseMutualTxJSON">>, % swagger schema name
       <<"vsn">>               => version(),
       <<"channel_id">>        => aec_base58c:encode(channel, ChannelId),
-      <<"from">>              => aec_base58c:encode(account_pubkey, From),
       <<"initiator_amount">>  => InitiatorAmount,
       <<"responder_amount">>  => ResponderAmount,
       <<"ttl">>               => TTL,
@@ -231,7 +220,6 @@ for_client(#channel_close_mutual_tx{channel_id  = ChannelId,
 
 serialization_template(?CHANNEL_CLOSE_MUTUAL_TX_VSN) ->
     [ {channel_id       , binary}
-    , {from             , binary}
     , {initiator_amount , int}
     , {responder_amount , int}
     , {ttl              , int}
