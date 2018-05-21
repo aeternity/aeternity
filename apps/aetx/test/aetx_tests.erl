@@ -55,12 +55,13 @@ apply_signed_txs_test_() ->
                                          nonce => 13,
                                          payload => <<"">>}),
                {ok, SignedCoinbase} = aec_keys:sign(CoinbaseTx),
+               {ok, Miner} = aec_keys:pubkey(),
                {ok, SignedSpendTx} = aec_keys:sign(SpendTx),
                {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
                SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =
-                  aec_trees:apply_signed_txs(SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+                  aec_trees:apply_signed_txs(Miner, SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
                ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),

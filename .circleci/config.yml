@@ -568,9 +568,6 @@ workflows:
       - uat_tests:
           requires:
             - build
-          filters:
-            branches:
-              only: master
 
       - static_analysis:
           requires:

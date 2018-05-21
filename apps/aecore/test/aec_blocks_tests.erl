@@ -12,6 +12,8 @@
 -include("blocks.hrl").
 
 -define(TEST_MODULE, aec_blocks).
+-define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
+-define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
 
 new_block_test_() ->
     {setup,
@@ -22,7 +24,7 @@ new_block_test_() ->
              meck:expect(
                aec_txs_trees, root_hash,
                fun(fake_txs_tree) ->
-                       {ok, <<"fake_txs_tree_hash">>}
+                       {ok, ?FAKE_TXS_TREE_HASH}
                end),
              meck:expect(aec_trees, hash, 1, <<>>)
      end,
@@ -38,14 +40,14 @@ new_block_test_() ->
                                  version = ?GENESIS_VERSION},
               BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
-              NewBlock = ?TEST_MODULE:new(PrevBlock, [], aec_trees:new()),
+              NewBlock = ?TEST_MODULE:new(PrevBlock, ?MINER_PUBKEY, [], aec_trees:new()),
 
               ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
               SerializedBlockHeader =
                   aec_headers:serialize_to_binary(BlockHeader),
               ?assertEqual(aec_hash:hash(header, SerializedBlockHeader),
                            ?TEST_MODULE:prev_hash(NewBlock)),
-              ?assertEqual(<<"fake_txs_tree_hash">>, NewBlock#block.txs_hash),
+              ?assertEqual(?FAKE_TXS_TREE_HASH, NewBlock#block.txs_hash),
               ?assertEqual([], NewBlock#block.txs),
               ?assertEqual(17, NewBlock#block.target),
               ?assertEqual(?GENESIS_VERSION, NewBlock#block.version)

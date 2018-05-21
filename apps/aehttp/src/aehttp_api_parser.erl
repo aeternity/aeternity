@@ -5,13 +5,18 @@
          encode_client_readable_block/2,
          decode/2]).
 
+-include_lib("apps/aecore/include/common.hrl").
+-include_lib("apps/aecore/include/blocks.hrl").
+
 -define(HEADER_OBJ, [{<<"prev_hash">>, block_hash},
                      {<<"state_hash">>, block_state_hash},
                      {<<"pow">>, {fun aec_headers:serialize_pow_evidence/1,
                                     fun(Pow) ->
                                         {ok, aec_headers:deserialize_pow_evidence(Pow)}
                                     end}},
-                     {<<"txs_hash">>, block_tx_hash}]).
+                     {<<"txs_hash">>, block_tx_hash},
+                     {<<"miner">>, {fun(Val) -> aec_base58c:encode(account_pubkey, Val) end,
+                                    fun decode_miner/1}}]).
 -define(OBJECTS, #{header_map => ?HEADER_OBJ,
                    block_map => [ {<<"transactions">>, {list, tx}} | ?HEADER_OBJ],
                    block => {fun(Block) ->
@@ -202,3 +207,12 @@ encode_block_for_client(Block, Encoding) ->
             aec_blocks:txs(Block)),
     maps:put(<<"transactions">>, Txs, EncodedHeader).
 
+decode_miner(Miner) ->
+    case aec_base58c:safe_decode(account_pubkey, Miner) of
+        {error, _} = Err -> Err;
+        {ok, X} when is_binary(X) ->
+            case byte_size(X) of
+                ?MINER_PUB_BYTES -> {ok, X};
+                Size -> {error, {bad_miner_size, Size}}
+            end
+    end.

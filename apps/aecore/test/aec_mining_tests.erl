@@ -38,7 +38,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 16698938705582207892),
+                 meck:expect(aec_pow, pick_nonce, 0, 7961156648328043739),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
@@ -95,7 +95,7 @@ difficulty_recalculation_test_() ->
                  BlockHeight = 30,
                  {ok, CoinbaseTx} = aec_coinbase_tx:new(#{ account => ?TEST_PUB,
                                                            block_height => BlockHeight}),
-                 meck:expect(aec_blocks, new, 3,
+                 meck:expect(aec_blocks, new, 4,
                              #block{height = BlockHeight,
                                     target = ?HIGHEST_TARGET_SCI,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
@@ -133,7 +133,7 @@ difficulty_recalculation_test_() ->
 
                  {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => ?TEST_PUB,
                                                           block_height => BlockHeight}),
-                 meck:expect(aec_blocks, new, 3,
+                 meck:expect(aec_blocks, new, 4,
                              #block{height = BlockHeight,
                                     target = PastTarget,
                                     txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
@@ -183,7 +183,7 @@ setup() ->
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
-    meck:expect(aec_trees, apply_signed_txs, 4, {ok, [SignedTx], Trees}),
+    meck:expect(aec_trees, apply_signed_txs, 5, {ok, [SignedTx], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     %% We hardcode the signed_tx because crypto adds salt and gives
     %% non-deterministic result.

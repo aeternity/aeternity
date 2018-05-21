@@ -74,7 +74,7 @@ check(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees, _
 
 %% Only aec_governance:block_mine_reward() is granted to miner's account here.
 %% Amount from all the fees of transactions included in the block
-%% is added to miner's account in aec_trees:apply_signed_txs/4.
+%% is added to miner's account in aec_trees:apply_signed_txs.
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#coinbase_tx{account = AccountPubkey, reward = Reward}, _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),

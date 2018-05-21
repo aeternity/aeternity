@@ -35,6 +35,13 @@
 -include_lib("apps/aens/include/ns_txs.hrl").
 -include_lib("apps/aens/include/aens.hrl").
 
+%% Distinct miner keys for working around account height check.
+-define(MINER_PUBKEY_PRECLAIM, <<12301:?MINER_PUB_BYTES/unit:8>>).
+-define(MINER_PUBKEY_CLAIM,    <<12302:?MINER_PUB_BYTES/unit:8>>).
+-define(MINER_PUBKEY_UPDATE,   <<12303:?MINER_PUB_BYTES/unit:8>>).
+-define(MINER_PUBKEY_TRANSFER, <<12304:?MINER_PUB_BYTES/unit:8>>).
+-define(MINER_PUBKEY_REVOKE,   <<12305:?MINER_PUB_BYTES/unit:8>>).
+
 %%%===================================================================
 %%% Common test framework
 %%%===================================================================
@@ -86,7 +93,7 @@ preclaim(Cfg) ->
     TxSpec = aens_test_utils:preclaim_tx_spec(PubKey, CHash, S1),
     {ok, Tx} = aens_preclaim_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY_PRECLAIM, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment created
@@ -158,7 +165,7 @@ claim(Cfg) ->
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY_CLAIM, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
     S2 = aens_test_utils:set_trees(Trees1, S1),
 
     %% Check commitment removed and name entry added
@@ -261,7 +268,7 @@ update(Cfg) ->
     {ok, Tx} = aens_update_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY_UPDATE, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
 
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
@@ -349,7 +356,7 @@ transfer(Cfg) ->
     {ok, Tx} = aens_transfer_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees2} = aec_trees:apply_signed_txs([SignedTx], Trees1, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees2} = aec_trees:apply_signed_txs(?MINER_PUBKEY_TRANSFER, [SignedTx], Trees1, Height, ?PROTOCOL_VERSION),
 
     %% Check name new owner
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
@@ -426,7 +433,7 @@ revoke(Cfg) ->
     {ok, Tx} = aens_revoke_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
 
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs([SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY_REVOKE, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
 
     %% Check name revoked
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
