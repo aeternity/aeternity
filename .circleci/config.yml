@@ -142,7 +142,7 @@ references:
           }
       command: |
         if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:?}" "${CIRCLE_BUILD_URL:?}")
+          HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
           curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
         fi
       when: on_fail
