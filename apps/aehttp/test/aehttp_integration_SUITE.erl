@@ -6,6 +6,7 @@
 %% take care of that at the end of the test.
 %%
 
+-include_lib("stdlib/include/assert.hrl").
 -include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
@@ -497,7 +498,7 @@ get_top_empty_chain(_Config) ->
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    {ExpectedMap, _} = {HeaderMap, {expected, ExpectedMap}},
+    ?assertEqual(ExpectedMap, HeaderMap),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -510,7 +511,7 @@ get_top_non_empty_chain(_Config) ->
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     {ok, 200, HeaderMap} = get_top(),
-    {ExpectedMap, _} = {HeaderMap, {expected, ExpectedMap}},
+    ?assertEqual(ExpectedMap, HeaderMap),
     #{<<"height">> := Height} = HeaderMap,
     true = Height > 0,
     ok.
@@ -1549,7 +1550,7 @@ all_accounts_balances(_Config) ->
 
     % mine a block to include the txs
     {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
+    {ok, 200, #{<<"accounts_balances">> := BalancesMap}} = get_all_accounts_balances(),
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
     {ok, MinerBal} = rpc(aec_mining, get_miner_account_balance, []),
     ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisAccounts] ++  ReceiversAccounts,
@@ -1559,16 +1560,12 @@ all_accounts_balances(_Config) ->
     AllTxsCnt = length(AllTxs),
     AllTxsCnt = Receivers + 1, % all spendTxs and a coinbaseTx
 
-    case {length(Balances), length(ExpectedBalances)} of
-        {ExpectedBalancesCnt, ExpectedBalancesCnt} -> ok
-    end,
-    true =
-        lists:all(
-            fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                    {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
-                    Account = {AccDec, Bal},
-                lists:member(Account, ExpectedBalances) end,
-            Balances),
+    Balances =
+        lists:map(fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
+                          {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
+                          {AccDec, Bal}
+                  end, BalancesMap),
+    ?assertEqual(lists:sort(ExpectedBalances), lists:sort(Balances)),
     ok.
 
 all_accounts_balances_empty(_Config) ->
@@ -2711,7 +2708,7 @@ ws_get_genesis(_Config) ->
     {ok, 200, BlockMap} = get_block_by_height(0, message_pack),
     ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
-    {ExpectedBlockMap, _} = {Block, {expected, ExpectedBlockMap}},
+    ?assertEqual(ExpectedBlockMap, Block),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
