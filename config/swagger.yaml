@@ -2552,8 +2552,6 @@ definitions:
     properties:
       channel_id:
         type: string
-      from:
-        $ref: '#/definitions/EncodedHash'
       initiator_amount:
         type: integer
         format: int64
@@ -2576,7 +2574,6 @@ definitions:
         minimum: 0
     required:
     - channel_id
-    - from
     - initiator_amount
     - responder_amount
     - ttl

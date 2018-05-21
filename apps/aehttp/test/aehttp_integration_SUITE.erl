@@ -1129,25 +1129,22 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     test_invalid_hash(MinerPubkey, to, Encoded1, fun get_channel_withdrawal/1),
     ok.
 
-state_channels_close_mutual(ChannelId, SenderPubkey) ->
+state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
-                from => aec_base58c:encode(account_pubkey, SenderPubkey),
                 initiator_amount => 4,
                 responder_amount => 3,
                 ttl => 100,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{channel_id => ChannelId,
-                          from => SenderPubkey}),
+                        #{channel_id => ChannelId}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_mutual/1,
-                               fun aesc_close_mutual_tx:new/1, SenderPubkey,
+                               fun aesc_close_mutual_tx:new/1, InitiatorPubkey,
                                _NonceRequred = true),
-    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [SenderPubkey]),
-                            SenderPubkey},
+    {{ok, NextNonce}, _} = {rpc(aec_next_nonce, pick_for_account, [InitiatorPubkey]),
+                            InitiatorPubkey},
     Encoded1 = maps:put(nonce, NextNonce, Encoded),
     test_invalid_hash(ChannelId, channel_id, Encoded1, fun get_channel_close_mutual/1),
-    test_invalid_hash(SenderPubkey, from, Encoded1, fun get_channel_close_mutual/1),
     ok.
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->

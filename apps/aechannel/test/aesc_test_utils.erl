@@ -28,7 +28,6 @@
          create_tx_spec/4,
 
          close_mutual_tx_spec/3,
-         close_mutual_tx_spec/4,
 
          payload/5,
 
@@ -184,14 +183,10 @@ create_tx_default_spec(InitiatorPubKey, State) ->
 %%% Close mutual tx
 %%%===================================================================
 
-close_mutual_tx_spec(ChannelId, FromPubKey, State) ->
-    close_mutual_tx_spec(ChannelId, FromPubKey, #{}, State).
-
-close_mutual_tx_spec(ChannelId, FromPubKey, Spec0, State) ->
-    Initiator = maps:get(initiator_account, Spec0, FromPubKey),
+close_mutual_tx_spec(ChannelId, Spec0, State) ->
+    Initiator = maps:get(initiator_account, Spec0),
     Spec = maps:merge(close_mutual_tx_default_spec(Initiator, State), Spec0),
     #{channel_id        => ChannelId,
-      from              => FromPubKey,
       initiator_amount  => maps:get(initiator_amount, Spec),
       responder_amount  => maps:get(responder_amount, Spec),
       ttl               => maps:get(ttl, Spec),

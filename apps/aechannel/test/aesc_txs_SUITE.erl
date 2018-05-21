@@ -382,8 +382,8 @@ close_mutual(Cfg) ->
 
     %% Create close_mutual tx and apply it on state trees
     Test =
-        fun(From, IAmt, PAmt, Fee) ->
-            TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId, From,
+        fun(IAmt, PAmt, Fee) ->
+            TxSpec = aesc_test_utils:close_mutual_tx_spec(ChannelId,
                                                     #{initiator_amount => IAmt,
                                                       initiator_account => PubKey1,
                                                       responder_amount => PAmt,
@@ -403,23 +403,22 @@ close_mutual(Cfg) ->
             {IAmt, PAmt}
         end,
     100 = ChannelAmount, % expectation on aesc_test_utils:create_tx_spec/3
-    lists:foreach(
-        fun(From) ->
-            Fee = 10,
-            % normal cases
-            {45, 45} = Test(From, 45, ChannelAmount - 45 - Fee, Fee),
-            {15, 75} = Test(From, 15, ChannelAmount - 15 - Fee, Fee),
-            % fee edge cases
 
-            % amount - HalfFee = 0
-            {0, 90} = Test(From, 0, ChannelAmount - Fee, Fee),
-            {90, 0} = Test(From, ChannelAmount - Fee, 0, Fee),
+    Fee = 10,
 
-            % amount - HalfFee < 0
-            {1, 89} = Test(From, 1 , ChannelAmount - Fee - 1, Fee),
-            {89, 1} = Test(From, ChannelAmount - Fee - 1, 1, Fee)
-        end,
-        [PubKey1, PubKey2]),
+    %% normal cases
+    {45, 45} = Test(45, ChannelAmount - 45 - Fee, Fee),
+    {15, 75} = Test(15, ChannelAmount - 15 - Fee, Fee),
+
+    %% fee edge cases
+    %% amount - HalfFee = 0
+    {0, 90} = Test(0, ChannelAmount - Fee, Fee),
+    {90, 0} = Test(ChannelAmount - Fee, 0, Fee),
+
+    %% amount - HalfFee < 0
+    {1, 89} = Test(1 , ChannelAmount - Fee - 1, Fee),
+    {89, 1} = Test(ChannelAmount - Fee - 1, 1, Fee),
+
     ok.
 
 
@@ -431,18 +430,11 @@ close_mutual_negative(Cfg) ->
     Ch = aesc_test_utils:get_channel(ChannelId, S),
     ChannelAmount = aesc_channels:total_amount(Ch),
 
-    %% Test bad from account key
-    BadPubKey = <<42:32/unit:8>>,
-    TxSpec1 = aesc_test_utils:close_mutual_tx_spec(ChannelId, BadPubKey,
-                                                   #{nonce => 2}, S),
-    {ok, Tx1} = aesc_close_mutual_tx:new(TxSpec1),
-    {error, account_not_peer} =
-        aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
-
     %% Test insufficient tokens in channel
     TxSpec2 = aesc_test_utils:close_mutual_tx_spec(
-                ChannelId, PubKey1,
+                ChannelId,
                 #{initiator_amount => 1,
+                  initiator_account => PubKey1,
                   responder_amount => ChannelAmount,
                   fee    => 2}, S),
     {ok, Tx2} = aesc_close_mutual_tx:new(TxSpec2),
@@ -450,14 +442,18 @@ close_mutual_negative(Cfg) ->
         aetx:check(Tx2, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test too high from account nonce
-    TxSpec3 = aesc_test_utils:close_mutual_tx_spec(ChannelId, PubKey1,
-                                                   #{nonce => 0}, S),
+    TxSpec3 = aesc_test_utils:close_mutual_tx_spec(
+                ChannelId, #{nonce => 0, initiator_account => PubKey1},
+                S),
     {ok, Tx3} = aesc_close_mutual_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
         aetx:check(Tx3, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:close_mutual_tx_spec(<<"abcdefghi">>, PubKey1, S),
+    TxSpec4 = aesc_test_utils:close_mutual_tx_spec(
+                <<"abcdefghi">>,
+                #{initiator_account => PubKey1},
+                S),
     {ok, Tx4} = aesc_close_mutual_tx:new(TxSpec4),
     {error, channel_does_not_exist} =
         aetx:check(Tx4, Trees, Height, ?PROTOCOL_VERSION),
@@ -466,7 +462,10 @@ close_mutual_negative(Cfg) ->
     Ch51 = aesc_test_utils:get_channel(ChannelId, S),
     Ch52 = aesc_test_utils:close_solo(Ch51),
     S5   = aesc_test_utils:set_channel(Ch52, S),
-    TxSpec5 = aesc_test_utils:close_mutual_tx_spec(ChannelId, PubKey1, S5),
+    TxSpec5 = aesc_test_utils:close_mutual_tx_spec(
+                ChannelId,
+                #{initiator_account => PubKey1},
+                S5),
     Trees5 = aesc_test_utils:trees(S5),
     {ok, Tx5} = aesc_close_mutual_tx:new(TxSpec5),
     {error, channel_not_active} =
