@@ -47,10 +47,19 @@ signatures_check_test_() ->
      end,
      [ {"Correctly signed transactions are not rejected",
         fun () ->
-            SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
-            SignedTxs = [SignedCoinbase],
+            SignedSpend =
+                    aec_test_utils:signed_spend_tx(
+                      #{recipient => <<1:32/unit:8>>,
+                        amount => 1,
+                        fee => 1,
+                        nonce => 1,
+                        payload => <<>>}),
+            SignedTxs = [SignedSpend],
+            {ok, SenderPubkey} = aec_keys:wait_for_pubkey(),
+            Account = aec_accounts:new(SenderPubkey, 1000),
+            TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             {ok, ApprovedTxs, _Trees} =
-                ?TEST_MODULE:apply_signed_txs(?MINER_PUBKEY, SignedTxs, aec_trees:new(), 1,
+                ?TEST_MODULE:apply_signed_txs(?MINER_PUBKEY, SignedTxs, TreesIn, 1,
                                           ?PROTOCOL_VERSION),
             ?assertEqual(SignedTxs, ApprovedTxs),
             ok
