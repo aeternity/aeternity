@@ -23,6 +23,7 @@
         , next_nonce/2
         , trees/1
         , compile_contract/1
+        , assert_state_equal/2
         ]).
 
 -include_lib("apps/aecontract/include/contract_txs.hrl").
@@ -52,6 +53,22 @@ next_nonce(PubKey, S) ->
 
 priv_key(PubKey, State) ->
     maps:get(PubKey, key_pairs(State)).
+
+%% Errs if actual test state is different from expected one.
+assert_state_equal(Exp, Act) ->
+    case {maps:take(trees, Exp), maps:take(trees, Act)} of
+        {error, error} ->
+            {Exp, _} = {Act, {expected_state, Exp}};
+        {{ExpTs, Exp2}, {ActTs, Act2}} ->
+            ExpTsHash = aec_trees:hash(ExpTs),
+            ActTsHash = aec_trees:hash(ActTs),
+            {ExpTsHash, _} = {ActTsHash,
+                              {{expected_trees_root_hash, ExpTsHash},
+                               {trees, {{actual, ActTs},
+                                        {expected, ExpTs}}}}},
+            {Exp2, _} = {Act2, {expected_state_except_trees, Exp2}},
+            ok
+    end.
 
 %%%===================================================================
 %%% Info API

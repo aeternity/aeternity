@@ -6,6 +6,7 @@
 %% take care of that at the end of the test.
 %%
 
+-include_lib("stdlib/include/assert.hrl").
 -include_lib("aecore/include/aec_crypto.hrl").
 %% common_test exports
 -export(
@@ -438,18 +439,21 @@ init_per_group(all_endpoints, Config) ->
 init_per_group(channel_websocket, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(?NODE)),
+    {ok, 404, _} = get_balance_at_top(),
     %% prepare participants
     {IPubkey, IPrivkey} = generate_key_pair(),
     {RPubkey, RPrivkey} = generate_key_pair(),
     IStartAmt = 50,
     RStartAmt = 50,
     Fee = 1,
+    BlocksToMine = 10,
 
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
 
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
+    [_Coinbase, _Spend1, _Spend2] = aec_blocks:txs(Block),
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
     Participants = #{initiator => #{pub_key => IPubkey,
@@ -496,7 +500,7 @@ get_top_empty_chain(_Config) ->
     {ok, GenBlock} = aehttp_api_parser:decode(block, GenBlockMap),
     ExpectedMap = header_to_endpoint_top(aec_blocks:to_header(GenBlock)),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
-    HeaderMap = ExpectedMap,
+    ?assertEqual(ExpectedMap, HeaderMap),
 
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
@@ -509,7 +513,7 @@ get_top_non_empty_chain(_Config) ->
     ExpectedMap = header_to_endpoint_top(ExpectedH),
     ct:log("Cleaned top header = ~p", [ExpectedMap]),
     {ok, 200, HeaderMap} = get_top(),
-    HeaderMap = ExpectedMap,
+    ?assertEqual(ExpectedMap, HeaderMap),
     #{<<"height">> := Height} = HeaderMap,
     true = Height > 0,
     ok.
@@ -1469,8 +1473,7 @@ post_broken_blocks(Config) ->
     lists:foreach(
         fun({BrokenField, BlockMap}) ->
             ct:log("Testing with a broken ~p", [BrokenField]),
-            {ok, Block} = aehttp_api_parser:decode(block, BlockMap),
-            {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block(Block),
+            {ok, 400, #{<<"reason">> := <<"Block rejected">>}} = post_block_map(BlockMap),
             H = rpc(aec_chain, top_header, []),
             0 = aec_headers:height(H) %chain is still empty
         end,
@@ -1568,7 +1571,7 @@ all_accounts_balances(_Config) ->
 
     % mine a block to include the txs
     {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    {ok, 200, #{<<"accounts_balances">> := Balances}} = get_all_accounts_balances(),
+    {ok, 200, #{<<"accounts_balances">> := BalancesMap}} = get_all_accounts_balances(),
     {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
     {ok, MinerBal} = rpc(aec_mining, get_miner_account_balance, []),
     ExpectedBalances = [{MinerPubKey, MinerBal} | GenesisAccounts] ++  ReceiversAccounts,
@@ -1578,14 +1581,12 @@ all_accounts_balances(_Config) ->
     AllTxsCnt = length(AllTxs),
     AllTxsCnt = Receivers + 1, % all spendTxs and a coinbaseTx
 
-    true = length(Balances) =:= length(ExpectedBalances),
-    true =
-        lists:all(
-            fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
-                    {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
-                    Account = {AccDec, Bal},
-                lists:member(Account, ExpectedBalances) end,
-            Balances),
+    Balances =
+        lists:map(fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
+                          {account_pubkey, AccDec} = aec_base58c:decode(PKEncoded),
+                          {AccDec, Bal}
+                  end, BalancesMap),
+    ?assertEqual(lists:sort(ExpectedBalances), lists:sort(Balances)),
     ok.
 
 all_accounts_balances_empty(_Config) ->
@@ -2728,7 +2729,7 @@ ws_get_genesis(_Config) ->
     {ok, 200, BlockMap} = get_block_by_height(0, message_pack),
     ExpectedBlockMap =
         maps:remove(<<"hash">>, maps:remove(<<"data_schema">>, BlockMap)),
-    Block = ExpectedBlockMap,
+    ?assertEqual(ExpectedBlockMap, Block),
 
     ok = aehttp_ws_test_utils:stop(ConnPid),
     ok.
@@ -3778,9 +3779,10 @@ get_account_transactions(EncodedPubKey, Params) ->
                  Params).
 
 post_block(Block) ->
+    post_block_map(aehttp_api_parser:encode(block, Block)).
+
+post_block_map(BlockMap) ->
     Host = external_address(),
-    BlockMap =
-        aehttp_api_parser:encode(block, Block),
     http_request(Host, post, "block", BlockMap).
 
 post_tx(TxSerialized) ->
@@ -4525,4 +4527,3 @@ make_params([{K, V} | T], Accum) ->
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
     {Pubkey, Privkey}.
-
