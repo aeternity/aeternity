@@ -219,7 +219,7 @@ assemble_expr(Funs, Stack, _, {lambda, Args, Body}) ->
     NoMatch  = make_ref(),
     FreeVars = free_vars({lambda, Args, Body}),
     {NewVars, MatchingCode} = assemble_pattern(FunBody, NoMatch, {tuple, [{var_ref, "_"}|FreeVars]}),
-    BodyCode = assemble_expr(Funs, NewVars++lists:reverse(Args), tail, Body),
+    BodyCode = assemble_expr(Funs, NewVars ++ lists:reverse([ {Arg#arg.name, Arg#arg.type} || Arg <- Args ]), tail, Body),
     [assemble_expr(Funs, Stack, nontail, {tuple, [{label, Function}|FreeVars]}),
      jump(Continue), %% will be optimized away
      jumpdest(Function),
@@ -624,7 +624,7 @@ free_vars({switch, E, Cases}) ->
                  lists:umerge([free_vars(Body)--free_vars(Pattern)
                                || {Pattern, Body} <- Cases]));
 free_vars({lambda, Args, Body}) ->
-    free_vars(Body) -- [{var_ref, V} || {V, _} <- Args];
+    free_vars(Body) -- [{var_ref, Arg#arg.name} || Arg <- Args];
 free_vars(T) when is_tuple(T) ->
     free_vars(tuple_to_list(T));
 free_vars([H|T]) ->

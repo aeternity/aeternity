@@ -194,7 +194,7 @@ ast_body({block,As,[E|Rest]}) ->
     #switch{expr=ast_body(E),
 	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
 ast_body({lam,_,Args,Body}) ->
-    #lambda{args=[{ast_id(P),ast_type(T)} || {arg,_,P,T} <- Args],
+    #lambda{args=[#arg{name = ast_id(P), type = ast_type(T)} || {arg,_,P,T} <- Args],
 	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
