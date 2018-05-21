@@ -9,6 +9,14 @@
 -define(UPDATE       , update).
 -define(UPDATE_ACK   , update_ack).
 -define(UPDATE_ERR   , update_error).
+-define(DEP_CREATED  , deposit_created).
+-define(DEP_SIGNED   , deposit_signed).
+-define(DEP_LOCKED   , deposit_locked).
+-define(DEP_ERR      , deposit_error).
+-define(WDRAW_CREATED, withdrawal_created).
+-define(WDRAW_SIGNED , withdrawal_signed).
+-define(WDRAW_LOCKED , withdrawal_locked).
+-define(WDRAW_ERR    , withdrawal_error).
 -define(ERROR        , error).
 -define(SHUTDOWN     , shutdown).
 -define(SHUTDOWN_ACK , shutdown_ack).
@@ -23,8 +31,20 @@
 -define(ID_UPDATE       , 7).
 -define(ID_UPDATE_ACK   , 8).
 -define(ID_UPDATE_ERR   , 9).
+-define(ID_DEP_CREATED  , 10).
+-define(ID_DEP_SIGNED   , 11).
+-define(ID_DEP_LOCKED   , 12).
+-define(ID_DEP_ERR      , 13).
+-define(ID_WDRAW_CREATED, 14).
+-define(ID_WDRAW_SIGNED , 15).
+-define(ID_WDRAW_LOCKED , 16).
+-define(ID_WDRAW_ERR    , 17).
 -define(ID_INBAND_MSG   , 96).
 -define(ID_ERROR        , 97).
 -define(ID_SHUTDOWN     , 98).
 -define(ID_SHUTDOWN_ACK , 99).
 
+%% Non-encoded cast types
+-define(DISCONNECT, disconnect).
+-define(SIGNED, signed).
+-define(MIN_DEPTH_ACHIEVED, minimum_depth_achieved).

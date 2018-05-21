@@ -271,7 +271,7 @@ pool_db_put(Mempool, Key, Tx, Event) ->
             lager:debug("Already have tx: ~p in ~p", [Hash, BlockHash]),
             {error, already_accepted};
         mempool ->
-            lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
+            %% lager:debug("Already have tx: ~p in ~p", [Hash, mempool]),
             ok;
         none ->
             Checks = [ fun check_signature/2

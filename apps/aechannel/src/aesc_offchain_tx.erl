@@ -198,7 +198,7 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     , {responder         , binary}
     , {initiator_amount  , int}
     , {responder_amount  , int}
-    , {updates           , [{binary,binary,int}]}
+    , {updates           , [{int,binary,binary,int}]}
     , {state             , binary}
     ].
 

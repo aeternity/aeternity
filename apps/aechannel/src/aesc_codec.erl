@@ -45,26 +45,42 @@ enc(?FND_LOCKED   , Msg) -> enc_fnd_locked(Msg);
 enc(?UPDATE       , Msg) -> enc_update(Msg);
 enc(?UPDATE_ACK   , Msg) -> enc_update_ack(Msg);
 enc(?UPDATE_ERR   , Msg) -> enc_update_err(Msg);
+enc(?DEP_CREATED  , Msg) -> enc_dep_created(Msg);
+enc(?DEP_SIGNED   , Msg) -> enc_dep_signed(Msg);
+enc(?DEP_LOCKED   , Msg) -> enc_dep_locked(Msg);
+enc(?DEP_ERR      , Msg) -> enc_dep_err(Msg);
+enc(?WDRAW_CREATED, Msg) -> enc_wdraw_created(Msg);
+enc(?WDRAW_SIGNED , Msg) -> enc_wdraw_signed(Msg);
+enc(?WDRAW_LOCKED , Msg) -> enc_wdraw_locked(Msg);
+enc(?WDRAW_ERR    , Msg) -> enc_wdraw_err(Msg);
 enc(?ERROR        , Msg) -> enc_error(Msg);
 enc(?SHUTDOWN     , Msg) -> enc_shutdown(Msg);
 enc(?SHUTDOWN_ACK , Msg) -> enc_shutdown_ack(Msg);
 enc(?INBAND_MSG   , Msg) -> enc_inband_msg(Msg).
 
--define(id(C), C:1/unit:8).
+-define(c(C), C:1/unit:8).
 
-dec(<<?id(?ID_CH_OPEN)      , B/bytes>>) -> {?CH_OPEN     , dec_ch_open(B)};
-dec(<<?id(?ID_CH_ACCEPT)    , B/bytes>>) -> {?CH_ACCEPT   , dec_ch_accept(B)};
-dec(<<?id(?ID_CH_REESTABL)  , B/bytes>>) -> {?CH_REESTABL , dec_ch_reestabl(B)};
-dec(<<?id(?ID_FND_CREATED)  , B/bytes>>) -> {?FND_CREATED , dec_fnd_created(B)};
-dec(<<?id(?ID_FND_SIGNED)   , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
-dec(<<?id(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
-dec(<<?id(?ID_UPDATE)       , B/bytes>>) -> {?UPDATE      , dec_update(B)};
-dec(<<?id(?ID_UPDATE_ACK)   , B/bytes>>) -> {?UPDATE_ACK  , dec_update_ack(B)};
-dec(<<?id(?ID_UPDATE_ERR)   , B/bytes>>) -> {?UPDATE_ERR  , dec_update_err(B)};
-dec(<<?id(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
-dec(<<?id(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
-dec(<<?id(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
-dec(<<?id(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
+dec(<<?c(?ID_CH_OPEN)      , B/bytes>>) -> {?CH_OPEN     , dec_ch_open(B)};
+dec(<<?c(?ID_CH_ACCEPT)    , B/bytes>>) -> {?CH_ACCEPT   , dec_ch_accept(B)};
+dec(<<?c(?ID_CH_REESTABL)  , B/bytes>>) -> {?CH_REESTABL , dec_ch_reestabl(B)};
+dec(<<?c(?ID_FND_CREATED)  , B/bytes>>) -> {?FND_CREATED , dec_fnd_created(B)};
+dec(<<?c(?ID_FND_SIGNED)   , B/bytes>>) -> {?FND_SIGNED  , dec_fnd_signed(B)};
+dec(<<?c(?ID_FND_LOCKED)   , B/bytes>>) -> {?FND_LOCKED  , dec_fnd_locked(B)};
+dec(<<?c(?ID_UPDATE)       , B/bytes>>) -> {?UPDATE      , dec_update(B)};
+dec(<<?c(?ID_UPDATE_ACK)   , B/bytes>>) -> {?UPDATE_ACK  , dec_update_ack(B)};
+dec(<<?c(?ID_UPDATE_ERR)   , B/bytes>>) -> {?UPDATE_ERR  , dec_update_err(B)};
+dec(<<?c(?ID_DEP_CREATED)  , B/bytes>>) -> {?DEP_CREATED , dec_dep_created(B)};
+dec(<<?c(?ID_DEP_SIGNED)   , B/bytes>>) -> {?DEP_SIGNED  , dec_dep_signed(B)};
+dec(<<?c(?ID_DEP_LOCKED)   , B/bytes>>) -> {?DEP_LOCKED  , dec_dep_locked(B)};
+dec(<<?c(?ID_DEP_ERR)      , B/bytes>>) -> {?DEP_ERR     , dec_dep_err(B)};
+dec(<<?c(?ID_WDRAW_CREATED), B/bytes>>) -> {?DEP_CREATED , dec_wdraw_created(B)};
+dec(<<?c(?ID_WDRAW_SIGNED) , B/bytes>>) -> {?DEP_SIGNED  , dec_wdraw_signed(B)};
+dec(<<?c(?ID_WDRAW_LOCKED) , B/bytes>>) -> {?DEP_LOCKED  , dec_wdraw_locked(B)};
+dec(<<?c(?ID_WDRAW_ERR)    , B/bytes>>) -> {?DEP_ERR     , dec_wdraw_err(B)};
+dec(<<?c(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
+dec(<<?c(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
+dec(<<?c(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
+dec(<<?c(?ID_INBAND_MSG)   , B/bytes>>) -> {?INBAND_MSG  , dec_inband_msg(B)}.
 
 -type ch_open_msg() :: #{chain_hash           := hash()
                        , temporary_channel_id := chan_id()
@@ -277,45 +293,145 @@ dec_update_err(<< ChanId:32/binary
     #{ channel_id => ChanId
      , round      => Round }.
 
-%% -type upd_deposit_msg() :: #{temporary_channel_id := chan_id()
-%%                            , data                 := binary()}.
+-type deposit_msg() :: #{ channel_id := chan_id()
+                        , data       := binary()}.
 
-%% -spec enc_upd_deposit(upd_deposit_msg()) -> binary().
-%% enc_upd_deposit(#{ temporary_channel_id := ChanId
-%%                  , data   := Data }) ->
-%%     Length = byte_size(Data),
-%%     << ?ID_UPD_DEPOSIT:1 /unit:8
-%%      , ChanId         :32/binary
-%%      , Length         :2 /unit:8
-%%      , Data           :Length/bytes >>.
+-spec enc_dep_created(deposit_msg()) -> binary().
+enc_dep_created(#{ channel_id := ChanId
+                 , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_DEP_CREATED:1 /unit:8
+     , ChanId         :32/binary
+     , Length         :2 /unit:8
+     , Data/bytes >>.
 
-%% -spec dec_upd_deposit(binary()) -> upd_deposit_msg().
-%% dec_upd_deposit(<< ChanId:32/binary
-%%                  , Length:2 /unit:8
-%%                  , Data/bytes >>) ->
-%%     Length = byte_size(Data),
-%%     #{ temporary_channel_id => ChanId
-%%      , data   => Data }.
+-spec dec_dep_created(binary()) -> deposit_msg().
+dec_dep_created(<< ChanId:32/binary
+                 , Length:2 /unit:8
+                 , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
 
-%% -type upd_withdrawal_msg() :: #{temporary_channel_id := chan_id()
-%%                               , data                 := binary()}.
+-spec enc_dep_signed(deposit_msg()) -> binary().
+enc_dep_signed(#{ channel_id := ChanId
+                , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_DEP_SIGNED:1 /unit:8
+     , ChanId        :32/binary
+     , Length        :2 /unit:8
+     , Data/bytes >>.
 
-%% -spec enc_upd_withdraw(upd_withdrawal_msg()) -> binary().
-%% enc_upd_withdraw(#{temporary_channel_id := ChanId
-%%                  , data                 := Data}) ->
-%%     Length = byte_size(Data),
-%%     << ?ID_UPD_WITHDRAW :1 /unit:8
-%%      , ChanId           :32/binary
-%%      , Length           :2 /unit:8
-%%      , Data             :Length/bytes >>.
+-spec dec_dep_signed(binary()) -> deposit_msg().
+dec_dep_signed(<< ChanId:32/binary
+                , Length:2 /unit:8
+                , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
 
-%% -spec dec_upd_withdraw(binary()) -> upd_withdrawal_msg().
-%% dec_upd_withdraw(<< ChanId:32/binary
-%%                   , Length:2 /unit:8
-%%                   , Data/bytes >>) ->
-%%     Length = byte_size(Data),
-%%     #{temporary_channel_id => ChanId
-%%     , data   => Data}.
+-spec enc_dep_locked(deposit_msg()) -> binary().
+enc_dep_locked(#{ channel_id := ChanId
+                , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_DEP_LOCKED:1 /unit:8
+     , ChanId        :32/binary
+     , Length        :2 /unit:8
+     , Data/bytes >>.
+
+-spec dec_dep_locked(binary()) -> deposit_msg().
+dec_dep_locked(<< ChanId:32/binary
+                , Length:2 /unit:8
+                , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
+
+-type dep_err_msg() :: #{ channel_id := chan_id()
+                        , round      := non_neg_integer() }.
+
+-spec enc_dep_err(dep_err_msg()) -> binary().
+enc_dep_err(#{ channel_id := ChanId
+             , round      := Round }) ->
+    << ?ID_DEP_ERR:1 /unit:8
+     , ChanId        :32/binary
+     , Round         :4 /unit:8 >>.
+
+-spec dec_dep_err(binary()) -> dep_err_msg().
+dec_dep_err(<< ChanId:32/binary
+             , Round :4 /unit:8 >>) ->
+    #{ channel_id => ChanId
+     , round      => Round }.
+
+-type withdrawal_msg() :: #{ channel_id := chan_id()
+                           , data       := binary()}.
+
+-spec enc_wdraw_created(withdrawal_msg()) -> binary().
+enc_wdraw_created(#{ channel_id := ChanId
+                   , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_WDRAW_SIGNED:1 /unit:8
+     , ChanId          :32/binary
+     , Length          :2 /unit:8
+     , Data/bytes >>.
+
+-spec dec_wdraw_created(binary()) -> withdrawal_msg().
+dec_wdraw_created(<< ChanId:32/binary
+                   , Length:2 /unit:8
+                   , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
+
+-spec enc_wdraw_signed(withdrawal_msg()) -> binary().
+enc_wdraw_signed(#{ channel_id := ChanId
+                  , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_WDRAW_SIGNED:1 /unit:8
+     , ChanId          :32/binary
+     , Length          :2 /unit:8
+     , Data/bytes >>.
+
+-spec dec_wdraw_signed(binary()) -> withdrawal_msg().
+dec_wdraw_signed(<< ChanId:32/binary
+                   , Length:2 /unit:8
+                   , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
+
+-spec enc_wdraw_locked(withdrawal_msg()) -> binary().
+enc_wdraw_locked(#{ channel_id := ChanId
+                  , data       := Data }) ->
+    Length = byte_size(Data),
+    << ?ID_WDRAW_LOCKED:1 /unit:8
+     , ChanId          :32/binary
+     , Length          :2 /unit:8
+     , Data/bytes >>.
+
+-spec dec_wdraw_locked(binary()) -> withdrawal_msg().
+dec_wdraw_locked(<< ChanId:32/binary
+                  , Length:2 /unit:8
+                  , Data/bytes >>) ->
+    Length = byte_size(Data),
+    #{ channel_id => ChanId
+     , data       => Data }.
+
+-type wdraw_err_msg() :: #{ channel_id := chan_id()
+                          , round      := non_neg_integer() }.
+
+-spec enc_wdraw_err(wdraw_err_msg()) -> binary().
+enc_wdraw_err(#{ channel_id := ChanId
+               , round      := Round }) ->
+    << ?ID_WDRAW_ERR:1 /unit:8
+     , ChanId       :32/binary
+     , Round        :4 /unit:8 >>.
+
+-spec dec_wdraw_err(binary()) -> wdraw_err_msg().
+dec_wdraw_err(<< ChanId:32/binary
+               , Round:4 /unit:8 >>) ->
+    #{ channel_id => ChanId
+     , round      => Round }.
 
 -type error_msg() :: #{ channel_id := chan_id()
                       , data       := binary() }.

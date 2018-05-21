@@ -12,10 +12,21 @@
        , funding_created/2
        , funding_signed/2
        , funding_locked/2
+       , deposit_created/2
+       , deposit_signed/2
+       , deposit_locked/2
        , channel_reestablish/2
        , update/2
        , update_ack/2
        , update_error/2
+       , dep_created/2
+       , dep_signed/2
+       , dep_locked/2
+       , dep_error/2
+       , wdraw_created/2
+       , wdraw_signed/2
+       , wdraw_locked/2
+       , wdraw_error/2
        , error/2
        , inband_msg/2
        , shutdown/2
@@ -32,19 +43,30 @@
            , parent_mon_ref :: reference()
            , econn }).
 
-channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN     , Msg}).
-channel_accept     (Session, Msg) -> cast(Session, {msg, ?CH_ACCEPT   , Msg}).
-funding_created    (Session, Msg) -> cast(Session, {msg, ?FND_CREATED , Msg}).
-funding_signed     (Session, Msg) -> cast(Session, {msg, ?FND_SIGNED  , Msg}).
-funding_locked     (Session, Msg) -> cast(Session, {msg, ?FND_LOCKED  , Msg}).
-channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL , Msg}).
-update             (Session, Msg) -> cast(Session, {msg, ?UPDATE      , Msg}).
-update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK  , Msg}).
-update_error       (Session, Msg) -> cast(Session, {msg, ?UPDATE_ERR  , Msg}).
-error              (Session, Msg) -> cast(Session, {msg, ?ERROR       , Msg}).
-inband_msg         (Session, Msg) -> cast(Session, {msg, ?INBAND_MSG  , Msg}).
-shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN    , Msg}).
-shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK, Msg}).
+channel_open       (Session, Msg) -> cast(Session, {msg, ?CH_OPEN      , Msg}).
+channel_accept     (Session, Msg) -> cast(Session, {msg, ?CH_ACCEPT    , Msg}).
+funding_created    (Session, Msg) -> cast(Session, {msg, ?FND_CREATED  , Msg}).
+funding_signed     (Session, Msg) -> cast(Session, {msg, ?FND_SIGNED   , Msg}).
+funding_locked     (Session, Msg) -> cast(Session, {msg, ?FND_LOCKED   , Msg}).
+deposit_created    (Session, Msg) -> cast(Session, {msg, ?DEP_CREATED  , Msg}).
+deposit_signed     (Session, Msg) -> cast(Session, {msg, ?DEP_SIGNED   , Msg}).
+deposit_locked     (Session, Msg) -> cast(Session, {msg, ?DEP_LOCKED   , Msg}).
+channel_reestablish(Session, Msg) -> cast(Session, {msg, ?CH_REESTABL  , Msg}).
+update             (Session, Msg) -> cast(Session, {msg, ?UPDATE       , Msg}).
+update_ack         (Session, Msg) -> cast(Session, {msg, ?UPDATE_ACK   , Msg}).
+update_error       (Session, Msg) -> cast(Session, {msg, ?UPDATE_ERR   , Msg}).
+dep_created        (Session, Msg) -> cast(Session, {msg, ?DEP_CREATED  , Msg}).
+dep_signed         (Session, Msg) -> cast(Session, {msg, ?DEP_SIGNED   , Msg}).
+dep_locked         (Session, Msg) -> cast(Session, {msg, ?DEP_LOCKED   , Msg}).
+dep_error          (Session, Msg) -> cast(Session, {msg, ?DEP_ERR      , Msg}).
+wdraw_created      (Session, Msg) -> cast(Session, {msg, ?WDRAW_CREATED, Msg}).
+wdraw_signed       (Session, Msg) -> cast(Session, {msg, ?WDRAW_SIGNED , Msg}).
+wdraw_locked       (Session, Msg) -> cast(Session, {msg, ?WDRAW_LOCKED , Msg}).
+wdraw_error        (Session, Msg) -> cast(Session, {msg, ?WDRAW_ERR    , Msg}).
+error              (Session, Msg) -> cast(Session, {msg, ?ERROR        , Msg}).
+inband_msg         (Session, Msg) -> cast(Session, {msg, ?INBAND_MSG   , Msg}).
+shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
+shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 
 close(Session) ->
     try call(Session, close)

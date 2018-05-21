@@ -21,6 +21,7 @@
 -export([
           create_channel/1
         , upd_transfer/1
+        , deposit/1
         , inband_msgs/1
         ]).
 
@@ -41,6 +42,7 @@ groups() ->
       [ create_channel
       , inband_msgs
       , upd_transfer
+      , deposit
       ]
      }
     ].
@@ -101,6 +103,7 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
+    mine_blocks(dev1, 3),
     #{ i := #{fsm := FsmI}
      , r := #{fsm := FsmR} } = _Ch = create_channel_([{port, 9325}|Cfg]),
     rpc(dev1, aesc_fsm, shutdown, [FsmI]),
@@ -125,6 +128,26 @@ upd_transfer(Cfg) ->
     {ok, [Tx]} = rpc(dev1, aec_tx_pool, peek, [1]),
     ct:log("From mempool: ~p", [Tx]),
     ok.
+
+deposit(Cfg) ->
+    Deposit = 10,
+    #{ i := #{fsm := FsmI} = I
+     , r := #{} = R
+     , spec := #{ initiator := PubI
+                , responder := PubR }} = create_channel_([{port, 9327}|Cfg]),
+    ct:log("I = ~p", [I]),
+    #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
+    check_info(),
+    ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => Deposit}]),
+    check_info(),
+    {I1, _} = await_signing_request(deposit_tx, I),
+    {R1, _} = await_signing_request(deposit_created, R),
+    mine_blocks(dev1, 4),
+    {I2, R2} = await_initial_state(I1, R1),
+    ct:log("I2 = ~p", [I2]),
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
+    {IAmt2, RAmt2} = {IAmt0 + Deposit, RAmt0},
+    check_info(100).
 
 inband_msgs(Cfg) ->
     #{ i := #{fsm := FsmI} = _I
@@ -193,7 +216,7 @@ await_funding_signed_i(I, R) ->
 
 await_funding_locked(I, R) ->
     ct:log("mining blocks on dev1 for minimum depth", []),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(dev1), 4),
+    mine_blocks(dev1, 4),
     await_initial_state(I, R).
 
 await_initial_state(I, R) ->
@@ -210,7 +233,7 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout) ->
             ct:log("await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
-            {R#{chan_id => ChanId}, SignedTx}
+            {check_amounts(R#{chan_id => ChanId}, SignedTx), SignedTx}
     after Timeout ->
             error(timeout)
     end.
@@ -248,12 +271,16 @@ check_info(Timeout) ->
             []
     end.
 
+mine_blocks(Node, N) ->
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), N).
+
+
 prep_account(Role, Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
     {ok, PrivKey} = rpc(Node, aec_keys, sign_privkey, []),
     ct:log("~p: Pubkey = ~p", [Role, PubKey]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 9),
-    ct:log("~p: 6 blocks mined on ~p", [Role, Node]),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
+    ct:log("~p: 1 block mined on ~p", [Role, Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
     #{role => Role,
       priv => PrivKey,
@@ -264,3 +291,14 @@ rpc(Node, Mod, Fun, Args) ->
     Res = rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000),
     ct:log("rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
     Res.
+
+check_amounts(R, SignedTx) ->
+    case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
+        {aesc_offchain_tx, TxI} ->
+            IAmt = aesc_offchain_tx:initiator_amount(TxI),
+            RAmt = aesc_offchain_tx:responder_amount(TxI),
+            R#{ initiator_amount => IAmt
+                , responder_amount => RAmt };
+        _ ->
+            R
+    end.
