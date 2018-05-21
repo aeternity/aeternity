@@ -46,16 +46,10 @@
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
 %% all the extra lines following the log lines.
-%% In addition, it filter out the error lines caused by eper/watchdog.
-%% Update when https://www.pivotaltracker.com/story/show/157215253 is fixed.
 -define(EPOCH_LOG_SCAN_AWK_SCRIPT, "
     /^.*\\[(error|critical|alert|emergency)\\].*$/ {
       matched = 1
       buff = $0
-    }
-    /{badarg,\\[{erlang,process_flag,\\[<[0-9.]*>,save_calls,16\\],\\[\\]},{prfPrc,/ {
-      matched = 1
-      buff = \"\"
     }
     /^.*\\[(debug|info|notice|warning)\\].*$/ {
       matched = 1
@@ -73,7 +67,6 @@
 ).
 
 %% AWK script to filter out the crash from eper/watchdog
-%% Update when https://www.pivotaltracker.com/story/show/157215253 is fixed.
 -define(CRASH_LOG_SCAN_AWK_SCRIPT, "
     /^[-0-9: ]*=ERROR REPORT====$/ {
         matched = 1
@@ -86,13 +79,6 @@
             matched = 1
             state = 2
             buff = buff \"\\n\" $0
-        }
-    }
-    /^{badarg,\\[{erlang,process_flag,\\[<[0-9.]*>,save_calls,16],\\[\\]},{prfPrc,/ {
-        if (state == 2) {
-            matched = 1
-            state = 0
-            buff = \"\"
         }
     }
     {
