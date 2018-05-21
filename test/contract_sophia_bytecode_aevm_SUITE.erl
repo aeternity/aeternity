@@ -185,6 +185,14 @@ complex_types(_Cfg) ->
     {<<"answer:">>, 21}     = successful_call_(101, {tuple, [string, word]}, remote_triangle, "(101,6)", Env),
     <<"string">>            = successful_call_(101, string, remote_string, "()", Env),
     {99, <<"luftballons">>} = successful_call_(101, {tuple, [word, string]}, remote_pair, "(99,\"luftballons\")", Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, filter_some, "[None, Some(1), Some(2), None, Some(3)]", Env),
+    [1, 2, 3]               = successful_call_(101, {list, word}, remote_filter_some, "[None, Some(1), Some(2), None, Some(3)]", Env),
+
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, all_some, "[Some(1), Some(2), Some(3)]", Env),
+    none                    = successful_call_(101, {option, {list, word}}, all_some, "[Some(1), None, Some(3)]", Env),
+
+    {some, [1, 2, 3]}       = successful_call_(101, {option, {list, word}}, remote_all_some, "[Some(1), Some(2), Some(3)]", Env),
+    none                    = successful_call_(101, {option, {list, word}}, remote_all_some, "[Some(1), None, Some(3)]", Env),
 
     N       = 10,
     Squares = [ {I, I * I} || I <- lists:seq(1, N) ],

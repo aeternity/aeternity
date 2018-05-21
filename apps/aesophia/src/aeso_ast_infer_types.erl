@@ -44,6 +44,8 @@ global_env() ->
      {"put",   Fun(State, Unit)}
     ].
 
+option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
+
 infer([{contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
     [{contract, Attribs, ConName, infer_contract(Code)}|infer(Rest)];
@@ -165,6 +167,13 @@ infer_expr(Env, {list, As, Elems}) ->
     ElemType = fresh_uvar(As),
     [unify(ElemType, T) || {typed, _, _, T} <- NewElems],
     {typed, As, {list, As, NewElems}, {app_t, As, {id, As, "list"}, [ElemType]}};
+%% TODO: not hardwired!
+infer_expr(_Env, E = {con, As, "None"}) ->
+    ElemType = fresh_uvar(As),
+    {typed, As, E, option_t(As, ElemType)};
+infer_expr(_Env, E = {con, As, "Some"}) ->
+    ElemType = fresh_uvar(As),
+    {typed, As, E, {fun_t, As, [ElemType], option_t(As, ElemType)}};
 infer_expr(Env, {typed, As, Body, Type}) ->
     AnnotType = case Type of
 		    {id, Attrs, "_"} ->
@@ -321,11 +330,15 @@ free_vars({string, _, _}) ->
     [];
 free_vars(Id={id, _, _}) ->
     [Id];
+free_vars({con, _, _}) ->
+    [];
 free_vars({tuple, _, Cpts}) ->
     free_vars(Cpts);
 free_vars({list, _, Elems}) ->
     free_vars(Elems);
 free_vars({app, _, {'::', _}, Args}) ->
+    free_vars(Args);
+free_vars({app, _, {con, _, _}, Args}) ->
     free_vars(Args);
 free_vars({record, _, Fields}) ->
     free_vars([E || {field, _, _, E} <- Fields]);
@@ -686,6 +699,8 @@ pp([T]) ->
 pp([T|Ts]) ->
     [pp(T), ", "|pp(Ts)];
 pp({id, _, Name}) ->
+    Name;
+pp({con, _, Name}) ->
     Name;
 pp({tvar, _, Name}) ->
     Name;
