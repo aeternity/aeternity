@@ -611,7 +611,7 @@ wdraw_signed(enter, _OldSt, _D) -> keep_state_and_data;
 wdraw_signed(cast, {?WDRAW_LOCKED, Msg}, #data{latest = {withdraw, SignedTx}} = D) ->
     case check_withdraw_locked_msg(Msg, SignedTx, D) of
         {ok, D1} ->
-            report(info, deposit_locked, D1),
+            report(info, withdraw_locked, D1),
             withdraw_locked_complete(SignedTx, D1#data{latest = undefined});
         {error, _} = Error ->
             close(Error, D)

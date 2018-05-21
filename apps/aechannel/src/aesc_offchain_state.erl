@@ -273,7 +273,6 @@ op_deposit(Acct, Amount) ->
 op_withdraw(Acct, Amount) ->
     {?OP_WITHDRAW, Acct, Acct, Amount}.
 
-
 tx_round(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
     Mod:round(TxI).

@@ -24,6 +24,7 @@
         , deposit/1
         , withdraw/1
         , inband_msgs/1
+        , multiple_channels/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -45,6 +46,7 @@ groups() ->
       , upd_transfer
       , deposit
       , withdraw
+      , multiple_channels
       ]
      }
     ].
@@ -117,10 +119,10 @@ upd_transfer(Cfg) ->
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
     check_info(),
-    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, PubI, PubR, 2]),
-    {I1, _} = await_signing_request(update, I),
-    {R1, _} = await_signing_request(update_ack, R),
-    check_info(100),
+    {I0, R0} = do_update(PubI, PubR, 2, I, R, true),
+    %%
+    {I1, R1} = update_bench(I0, R0),
+    %%
     ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
     {_I2, _} = await_signing_request(shutdown, I1),
     {_R2, _} = await_signing_request(shutdown_ack, R1),
@@ -128,6 +130,36 @@ upd_transfer(Cfg) ->
     {ok, [Tx]} = rpc(dev1, aec_tx_pool, peek, [1]),
     ct:log("From mempool: ~p", [Tx]),
     ok.
+
+update_bench(I, R) ->
+    {Time, I1, R1} = do_n(1000, fun update_volley/2, I, R),
+    Fmt = "Time (1*2*1000): ~.1f s; ~.1f mspt; ~.1f tps",
+    Args = [Time/1000, Time/2000, 2000*1000/Time],
+    ct:log(Fmt, Args),
+    ct:comment(Fmt, Args),
+    {I1, R1}.
+
+do_n(N, F, I, R) ->
+    TS = erlang:system_time(millisecond),
+    {I1, R1} = do_n_(N, F, I, R),
+    {erlang:system_time(millisecond) - TS, I1, R1}.
+
+do_n_(0, _, I, R) ->
+    {I, R};
+do_n_(N, F, I, R) when N > 0 ->
+    {I1, R1} = F(I, R),
+    do_n_(N-1, F, I1, R1).
+
+update_volley(#{pub := PubI} = I, #{pub := PubR} = R) ->
+    {I1, R1} = do_update(PubR, PubI, 1, I, R, false),
+    do_update(PubI, PubR, 1, I1, R1, false).
+
+do_update(From, To, Amount, #{fsm := FsmI} = I, R, Debug) ->
+    rpc(dev1, aesc_fsm, upd_transfer, [FsmI, From, To, Amount], Debug),
+    {I1, _} = await_signing_request(update, I, Debug),
+    {R1, _} = await_signing_request(update_ack, R, Debug),
+    check_info(if_debug(Debug, 100, 0), Debug),
+    {I1, R1}.
 
 deposit(Cfg) ->
     Deposit = 10,
@@ -176,13 +208,75 @@ inband_msgs(Cfg) ->
                 , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
     check_info(),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
-    receive_from_fsm(message, R, fun(#{info := <<"i2r hello">>}) -> ok end, 1000),
+    receive_from_fsm(message, R, fun(#{info := <<"i2r hello">>}) -> ok end, 1000, true),
     rpc(dev1, erlang, exit, [FsmI, kill]),
     rpc(dev1, erlang, exit, [FsmR, kill]),
     check_info(1000),
     ok.
 
+multiple_channels(Cfg) ->
+    ct:log("spawning multiple channels", []),
+    Me = self(),
+    NumCs = 10,
+    Cs = [create_multi_channel([{port, 9330 + N},
+                                {ack_to, Me}|Cfg], #{mine_blocks => {ask, Me},
+                                                     debug => false})
+          || N <- lists:seq(1, NumCs)],
+    ct:log("channels spawned", []),
+    Cs = collect_acks(Cs, mine_blocks, NumCs),
+    ct:log("mining requests collected", []),
+    mine_blocks(dev1, 10),
+    Cs = collect_acks(Cs, channel_ack, NumCs),
+    ct:log("channel pids collected: ~p", [Cs]),
+    [P ! {transfer, 100} || P <- Cs],
+    T0 = erlang:system_time(millisecond),
+    Cs = collect_acks(Cs, transfer_ack, NumCs),
+    T1 = erlang:system_time(millisecond),
+    Time = T1 - T0,
+    Transfers = NumCs*2*100,
+    Fmt = "Time (~w*2*100) ~.1f s: ~.1f mspt; ~.1f tps",
+    Args = [NumCs, Time/1000, Time/Transfers, (Transfers*1000)/Time],
+    ct:log(Fmt, Args),
+    ct:comment(Fmt, Args),
+    [P ! die || P <- Cs],
+    ok.
+
+collect_acks([Pid | Pids], Tag, N) ->
+    Timeout = 10000 + (N div 10)*5000,  % wild guess
+    receive
+        {Pid, Tag} ->
+            [Pid | collect_acks(Pids, Tag, N)]
+    after Timeout ->
+            error(timeout)
+    end;
+collect_acks([], _Tag, _) ->
+    [].
+
+
+create_multi_channel(Cfg, Debug) ->
+    spawn_link(fun() ->
+                       create_multi_channel_(Cfg, Debug)
+               end).
+
+create_multi_channel_(Cfg, Debug) ->
+    #{i := I, r := R} = create_channel_(Cfg, Debug),
+    Parent = ?config(ack_to, Cfg),
+    Parent ! {self(), channel_ack},
+    ch_loop(I, R, Parent).
+
+ch_loop(I, R, Parent) ->
+    receive
+        {transfer, N} ->
+            {_, I1, R1} = do_n(N, fun update_volley/2, I, R),
+            Parent ! {self(), transfer_ack},
+            ch_loop(I1, R1, Parent);
+        die -> ok
+    end.
+
 create_channel_(Cfg) ->
+    create_channel_(Cfg, true).
+
+create_channel_(Cfg, Debug) ->
     I = ?config(initiator, Cfg),
     R = ?config(responder, Cfg),
 
@@ -205,15 +299,15 @@ create_channel_(Cfg) ->
              timeouts         => #{idle => 20000},
              report_info      => true},
 
-    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec]),
-    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec]),
+    {ok, FsmR} = rpc(dev1, aesc_fsm, respond, [Port, Spec], Debug),
+    {ok, FsmI} = rpc(dev1, aesc_fsm, initiate, ["localhost", Port, Spec], Debug),
 
-    ct:log("FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
+    log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
     I1 = I#{fsm => FsmI},
     R1 = R#{fsm => FsmR},
 
-    {I2, R2} = try await_create_tx_i(I1, R1)
+    {I2, R2} = try await_create_tx_i(I1, R1, Debug)
                catch
                    error:Err ->
                        ct:log("Caught Err = ~p~nMessages = ~p",
@@ -222,35 +316,48 @@ create_channel_(Cfg) ->
                end,
     #{i => I2, r => R2, spec => Spec}.
 
-await_create_tx_i(I, R) ->
-    {I1, _} = await_signing_request(create_tx, I),
-    await_funding_created_p(I1, R).
+await_create_tx_i(I, R) -> await_create_tx_i(I, R, true).
 
-await_funding_created_p(I, R) ->
-    {R1, _} = await_signing_request(funding_created, R),
-    await_funding_signed_i(I, R1).
+await_create_tx_i(I, R, Debug) ->
+    {I1, _} = await_signing_request(create_tx, I, Debug),
+    await_funding_created_p(I1, R, Debug).
 
-await_funding_signed_i(I, R) ->
-    receive_info(I, funding_signed),
-    await_funding_locked(I, R).
+await_funding_created_p(I, R) -> await_funding_created_p(I, R, true).
 
-await_funding_locked(I, R) ->
-    ct:log("mining blocks on dev1 for minimum depth", []),
-    mine_blocks(dev1, 4),
-    await_initial_state(I, R).
+await_funding_created_p(I, R, Debug) ->
+    {R1, _} = await_signing_request(funding_created, R, Debug),
+    await_funding_signed_i(I, R1, Debug).
 
-await_initial_state(I, R) ->
-    {I1, _} = await_signing_request(update, I, ?LONG_TIMEOUT),
-    {R1, _} = await_signing_request(update_ack, R),
+await_funding_signed_i(I, R) -> await_funding_signed_i(I, R, true).
+
+await_funding_signed_i(I, R, Debug) ->
+    receive_info(I, funding_signed, Debug),
+    await_funding_locked(I, R, Debug).
+
+await_funding_locked(I, R) -> await_funding_locked(I, R, true).
+
+await_funding_locked(I, R, Debug) ->
+    log(Debug, "mining blocks on dev1 for minimum depth", []),
+    mine_blocks(dev1, 4, Debug),
+    await_initial_state(I, R, Debug).
+
+await_initial_state(I, R) -> await_initial_state(I, R, true).
+
+await_initial_state(I, R, Debug) ->
+    {I1, _} = await_signing_request(update, I, ?LONG_TIMEOUT, Debug),
+    {R1, _} = await_signing_request(update_ack, R, Debug),
     {I1, R1}.
 
 await_signing_request(Tag, R) ->
-    await_signing_request(Tag, R, ?TIMEOUT).
+    await_signing_request(Tag, R, ?TIMEOUT, true).
 
-await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout) ->
-    check_info(),
+await_signing_request(Tag, R, Debug) ->
+    await_signing_request(Tag, R, ?TIMEOUT, Debug).
+
+await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
+    check_info(0, Debug),
     receive {aesc_fsm, Fsm, ChanId, {sign, Tag, Tx}} = Msg ->
-            ct:log("await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
+            log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
             {check_amounts(R#{chan_id => ChanId}, SignedTx), SignedTx}
@@ -259,12 +366,14 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout) ->
     end.
 
 receive_info(R, Msg) ->
-    receive_from_fsm(info, R, Msg, ?TIMEOUT).
+    receive_from_fsm(info, R, Msg, ?TIMEOUT, true).
+receive_info(R, Msg, Debug) ->
+    receive_from_fsm(info, R, Msg, ?TIMEOUT, Debug).
 
-receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Msg, Timeout) ->
+receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Msg, Timeout, Debug) ->
     receive
         {aesc_fsm, Fsm, _ChanId, {Tag, Msg1}} ->
-            ct:log("~p: received ~p:~p", [Role, Tag, Msg1]),
+            log(Debug, "~p: received ~p:~p", [Role, Tag, Msg1]),
             match_msgs(Msg, Msg1)
     after Timeout ->
             error(timeout)
@@ -279,19 +388,27 @@ match_msgs(A, B) ->
     erlang:error({message_mismatch, [A, B]}).
 
 
-check_info() ->
-    check_info(0).
+check_info() -> check_info(0, true).
 
-check_info(Timeout) ->
+check_info(Timeout) -> check_info(Timeout, true).
+
+check_info(Timeout, Debug) ->
     receive
         {aesc_fsm, Fsm, ChanId, {Tag, Msg}} = Info ->
-            ct:log("Received ~p: ~p", [Tag, Info]),
-            [{Fsm, ChanId, Msg}|check_info(Timeout)]
+            log(Debug, "Received ~p: ~p", [Tag, Info]),
+            [{Fsm, ChanId, Msg}|check_info(Timeout, Debug)]
     after Timeout ->
             []
     end.
 
-mine_blocks(Node, N) ->
+mine_blocks(Node, N) -> mine_blocks(Node, N, true).
+
+mine_blocks(Node, N, #{mine_blocks := {ask, Pid}}) when is_pid(Pid) ->
+    Pid ! {self(), mine_blocks},
+    ok;
+mine_blocks(_, _, #{mine_blocks := false}) ->
+    ok;
+mine_blocks(Node, N, _) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), N).
 
 
@@ -319,9 +436,11 @@ prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
       pub  => Pub,
       balance => Amount}.
 
-rpc(Node, Mod, Fun, Args) ->
+rpc(Node, Mod, Fun, Args) -> rpc(Node, Mod, Fun, Args, true).
+
+rpc(Node, Mod, Fun, Args, Debug) ->
     Res = rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000),
-    ct:log("rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
+    log(Debug, "rpc(~p,~p,~p,~p) -> ~p", [Node, Mod, Fun, Args, Res]),
     Res.
 
 check_amounts(R, SignedTx) ->
@@ -334,3 +453,14 @@ check_amounts(R, SignedTx) ->
         _ ->
             R
     end.
+
+log(true, Fmt, Args) ->
+    ct:log(Fmt, Args);
+log(#{debug := true}, Fmt, Args) ->
+    ct:log(Fmt, Args);
+log(_, _, _) ->
+    ok.
+
+if_debug(true, X, _) -> X;
+if_debug(#{debug := true}, X, _) -> X;
+if_debug(_, _, Y) -> Y.
