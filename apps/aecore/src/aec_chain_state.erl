@@ -416,7 +416,6 @@ update_main_chain(OldTopHash, NewTopHash, State) ->
 remove_locations(Hash, Hash) ->
     ok;
 remove_locations(StopHash, CurrentHash) ->
-    %% TODO: Maybe special treat coinbase
     lists:foreach(fun(TxHash) ->
                           aec_db:remove_tx_location(TxHash),
                           aec_db:add_tx_hash_to_mempool(TxHash)

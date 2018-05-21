@@ -25,8 +25,7 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1,
-         cointains_coinbase_tx/1]).
+         validate/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
 
@@ -255,28 +254,8 @@ hash_internal_representation(B = #block{}) ->
 validate(Block) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
-    Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1],
+    Validators = [fun validate_txs_hash/1],
     aeu_validation:run(Validators, [Block]).
-
--spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
-validate_coinbase_txs_count(#block{txs = Txs}) ->
-    CoinbaseTxsCount =
-        lists:foldl(
-          fun(SignedTx, Count) ->
-                  case aetx_sign:is_coinbase(SignedTx) of
-                      true ->
-                          Count + 1;
-                      false ->
-                          Count
-                  end
-          end, 0, Txs),
-    case CoinbaseTxsCount == 1 of
-        true ->
-            ok;
-        false ->
-            {error, multiple_coinbase_txs}
-    end.
 
 -spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
 validate_txs_hash(#block{txs = Txs,
@@ -288,8 +267,3 @@ validate_txs_hash(#block{txs = Txs,
         _Other ->
             {error, malformed_txs_hash}
     end.
-
-cointains_coinbase_tx(#block{txs = []}) ->
-    false;
-cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
-    aetx_sign:is_coinbase(CoinbaseTx).

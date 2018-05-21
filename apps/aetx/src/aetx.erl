@@ -11,7 +11,6 @@
         , check_from_contract/4
         , deserialize_from_binary/1
         , fee/1
-        , is_coinbase/1
         , is_tx_type/1
         , new/2
         , nonce/1
@@ -39,7 +38,6 @@
 -opaque tx() :: #aetx{}.
 
 -type tx_type() :: spend_tx
-                 | coinbase_tx
                  | oracle_register_tx
                  | oracle_extend_tx
                  | oracle_query_tx
@@ -61,7 +59,6 @@
                  | channel_offchain_tx.
 
 -type tx_instance() :: aec_spend_tx:tx()
-                     | aec_coinbase_tx:tx()
                      | aeo_register_tx:tx()
                      | aeo_extend_tx:tx()
                      | aeo_query_tx:tx()
@@ -174,7 +171,7 @@ signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 check(#aetx{ cb = CB, tx = Tx } = O, Trees, Height, ConsensusVersion) ->
-    case is_coinbase(O) orelse (CB:fee(Tx) >= aec_governance:minimum_tx_fee()) of
+    case CB:fee(Tx) >= aec_governance:minimum_tx_fee() of
         true ->
             CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
         false ->
@@ -224,7 +221,6 @@ deserialize_from_binary(Bin) ->
     #aetx{cb = CB, type = Type, tx = CB:deserialize(Vsn, Fields)}.
 
 type_to_cb(spend_tx)                -> aec_spend_tx;
-type_to_cb(coinbase_tx)             -> aec_coinbase_tx;
 type_to_cb(oracle_register_tx)      -> aeo_register_tx;
 type_to_cb(oracle_extend_tx)        -> aeo_extend_tx;
 type_to_cb(oracle_query_tx)         -> aeo_query_tx;
@@ -246,10 +242,6 @@ type_to_cb(channel_slash_tx)        -> aesc_slash_tx;
 type_to_cb(channel_settle_tx)       -> aesc_settle_tx;
 type_to_cb(channel_offchain_tx)     -> aesc_offchain_tx.
 
--spec is_coinbase(Tx :: tx()) -> boolean().
-is_coinbase(#aetx{ type = Type }) ->
-    Type == coinbase_tx.
-
 -spec specialize_type(Tx :: tx()) -> {tx_type(), tx_instance()}.
 specialize_type(#aetx{ type = Type, tx = Tx }) -> {Type, Tx}.
 
@@ -263,7 +255,6 @@ update_tx(#aetx{} = Tx, NewTxI) ->
 -spec tx_types() -> list(tx_type()).
 tx_types() ->
     [ spend_tx
-    , coinbase_tx
     , oracle_register_tx
     , oracle_extend_tx
     , oracle_query_tx

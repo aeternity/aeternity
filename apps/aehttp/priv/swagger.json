@@ -3598,27 +3598,6 @@
         }
       }
     },
-    "CoinbaseTxJSON" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
-      }, {
-        "type" : "object",
-        "required" : [ "account", "height", "reward" ],
-        "properties" : {
-          "account" : {
-            "$ref" : "#/definitions/EncodedHash"
-          },
-          "height" : {
-            "type" : "integer",
-            "format" : "int64"
-          },
-          "reward" : {
-            "type" : "integer",
-            "format" : "int64"
-          }
-        }
-      } ]
-    },
     "SpendTxJSON" : {
       "allOf" : [ {
         "$ref" : "#/definitions/JSONTx"

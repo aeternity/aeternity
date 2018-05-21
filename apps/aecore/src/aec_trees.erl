@@ -168,14 +168,13 @@ internal_commit_to_db(Trees) ->
                , accounts  = aec_accounts_trees:commit_to_db(accounts(Trees))
                }.
 
-apply_signed_txs_common(Miner, SignedTxs0, Trees0, Height, ConsensusVersion, Strict) ->
-    {CoinbaseTxs, SignedTxs} = lists:partition(fun aetx_sign:is_coinbase/1, SignedTxs0), %% TODO Delete once coinbase removed.
+apply_signed_txs_common(Miner, SignedTxs, Trees0, Height, ConsensusVersion, Strict) ->
     Trees1 = perform_pre_transformations(Trees0, Height),
     case apply_txs_on_state_trees(SignedTxs, Trees1, Height, ConsensusVersion, Strict) of
         {ok, SignedTxs1, Trees2} ->
             TotalFee = calculate_total_fee(SignedTxs1),
             Trees3 = grant_fee_to_miner(Miner, Trees2, TotalFee),
-            {ok, CoinbaseTxs ++ SignedTxs1, Trees3};
+            {ok, SignedTxs1, Trees3};
         {error, _} = E -> E
     end.
 

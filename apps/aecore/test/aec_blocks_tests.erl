@@ -93,36 +93,57 @@ validate_test_() ->
      fun(TmpKeysDir) ->
              ok = aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
-     [ {"Multiple coinbase txs in the block",
-        fun validate_test_multiple_coinbase/0}
-     , {"Malformed txs merkle tree hash",
+     [ {"Malformed txs merkle tree hash",
         fun validate_test_malformed_txs_root_hash/0}
-     , {"Pass validation",
+     , {"Pass validation - case no txs",
+        fun validate_test_pass_validation_no_txs/0}
+     , {"Pass validation - case some txs",
         fun validate_test_pass_validation/0}
      ]}.
 
-validate_test_multiple_coinbase() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
-    Block = #block{txs = [SignedCoinbase, SignedCoinbase],
-                   version = ?PROTOCOL_VERSION},
-
-    ?assertEqual({error, multiple_coinbase_txs}, ?TEST_MODULE:validate(Block)).
-
 validate_test_malformed_txs_root_hash() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
-    {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<"malformed_account">>,
-                                                 block_height => 1}),
-    MalformedTxs = [SignedCoinbase, aetx_sign:sign(BadCoinbaseTx, <<0:64/unit:8>>)],
+    SignedSpend =
+        aec_test_utils:signed_spend_tx(
+          #{recipient => <<1:32/unit:8>>,
+            amount => 1,
+            fee => 1,
+            nonce => 1,
+            payload => <<>>}),
+
+    {ok, Spend} = aec_spend_tx:new(#{sender => <<42:32/unit:8>>,
+                                     recipient => <<4242:32/unit:8>>,
+                                     amount => 1,
+                                     fee => 1,
+                                     nonce => 1,
+                                     payload => <<>>}),
+    BadSignedSpend = aetx_sign:sign(Spend, <<0:64/unit:8>>),
+
+    MalformedTxs = [SignedSpend, BadSignedSpend],
     MalformedTree = aec_txs_trees:from_txs(MalformedTxs),
     {ok, MalformedRootHash} = aec_txs_trees:root_hash(MalformedTree),
-    Block = #block{txs = [SignedCoinbase], txs_hash = MalformedRootHash,
+    Block = #block{txs = [SignedSpend], txs_hash = MalformedRootHash,
                    version = ?PROTOCOL_VERSION},
 
     ?assertEqual({error, malformed_txs_hash}, ?TEST_MODULE:validate(Block)).
 
+validate_test_pass_validation_no_txs() ->
+    Txs = [],
+    Tree = aec_txs_trees:from_txs(Txs),
+    RootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(Tree)),
+    Block = #block{txs = Txs, txs_hash = RootHash,
+        version = ?PROTOCOL_VERSION},
+
+    ?assertEqual(ok, ?TEST_MODULE:validate(Block)).
+
 validate_test_pass_validation() ->
-    SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
-    Txs = [SignedCoinbase],
+    SignedSpend =
+        aec_test_utils:signed_spend_tx(
+          #{recipient => <<1:32/unit:8>>,
+            amount => 1,
+            fee => 1,
+            nonce => 1,
+            payload => <<>>}),
+    Txs = [SignedSpend],
     Tree = aec_txs_trees:from_txs(Txs),
     {ok, RootHash} = aec_txs_trees:root_hash(Tree),
     Block = #block{txs = Txs, txs_hash = RootHash,

@@ -98,7 +98,7 @@ tx_pool_test_() ->
                ?assertEqual(CHash1, aec_chain:top_block_hash()),
 
                %% Check that we uses all the txs in mempool
-               [_|Included] = aec_blocks:txs(Candidate1),
+               Included = aec_blocks:txs(Candidate1),
                ?assertEqual(lists:sort(Included), lists:sort([STx1, STx2])),
 
                %% Ping tx_pool for top change

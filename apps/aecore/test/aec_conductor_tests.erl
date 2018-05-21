@@ -370,12 +370,7 @@ test_get_block_candidate() ->
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
-                Tx = aetx_sign:tx(SignedTx),
-                case aetx:tx_type(Tx) of
-                    <<"coinbase_tx">> -> true;
-                    _ ->
-                        lists:member(SignedTx, AllTxsInPool)
-                end
+                lists:member(SignedTx, AllTxsInPool)
             end,
             aec_blocks:txs(BlockCandidate))),
     ?TEST_MODULE:stop_mining(),

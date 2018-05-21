@@ -453,7 +453,7 @@ init_per_group(channel_websocket, Config) ->
     {ok, 200, _} = post_spend_tx(IPubkey, IStartAmt, Fee),
     {ok, 200, _} = post_spend_tx(RPubkey, RStartAmt, Fee),
     {ok, [Block]} = aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    [_Coinbase, _Spend1, _Spend2] = aec_blocks:txs(Block),
+    [_Spend1, _Spend2] = aec_blocks:txs(Block),
     assert_balance(IPubkey, IStartAmt),
     assert_balance(RPubkey, RStartAmt),
     Participants = #{initiator => #{pub_key => IPubkey,
@@ -1310,7 +1310,7 @@ get_transaction(_Config) ->
                     ct:log("Expected transaction: ~p~nActual transaction: ~p", [Tx, ReceivedTx]),
                     Tx = ReceivedTx
                 end,
-                [<<"coinbase_tx">>, <<"spend_tx">>])
+                [<<"spend_tx">>])
         end,
         Encodings),
 
@@ -1578,7 +1578,7 @@ all_accounts_balances(_Config) ->
     % make sure all spend txs are part of the block
     AllTxs = aec_blocks:txs(Block),
     AllTxsCnt = length(AllTxs),
-    AllTxsCnt = Receivers + 1, % all spendTxs and a coinbaseTx
+    AllTxsCnt = Receivers,
 
     Balances =
         lists:map(fun(#{<<"pub_key">> := PKEncoded, <<"balance">> := Bal}) ->
@@ -1723,14 +1723,11 @@ account_transactions(_Config) ->
                 <<"data_schema">> := _}} =
         get_account_transactions(EncodedPubKey, []),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
-    %% miner has 1 transaction - coinbase
-    acc_txs_test(EncodedPubKey, 0, 1),
-    acc_txs_test(EncodedPubKey, 0, 20),
 
-    %% prepare some coinbases and spends
+    %% prepare some spends
     ForkHeight = aecore_suite_utils:latest_fork_height(),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE),
-                                   max(5, ForkHeight)),
+                                   ForkHeight),
     add_spend_txs(), % in mempool
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
@@ -1783,7 +1780,7 @@ acc_txs_test(Pubkey, Offset, Limit) ->
 acc_txs_test(Pubkey, Offset, Limit, ShowPending) ->
     {account_pubkey, PKDecoded} = aec_base58c:decode(Pubkey),
     TxEncodings = [default, message_pack, json],
-    AllTestedTxTypes = [[<<"coinbase_tx">>], [<<"coinbase_tx">>, <<"spend_tx">>]],
+    AllTestedTxTypes = [[<<"spend_tx">>]],
     {ok, 200, #{<<"height">> := ToHeight}} = get_block_number(),
     ct:log("Offset: ~p, Limit: ~p, Pending: ~p", [Offset, Limit, ShowPending]),
     lists:foreach(
@@ -2259,7 +2256,7 @@ generic_range_test(GetTxsApi, HeightToKey) ->
 
 single_range_test(HeightFrom, HeightTo, GetTxsApi, HeightToKey) ->
     TxEncoding = [default, message_pack, json],
-    AllTestedTxTypes = [[<<"coinbase_tx">>], [<<"coinbase_tx">>, <<"spend_tx">>]],
+    AllTestedTxTypes = [[<<"spend_tx">>]],
     lists:foreach(
         fun({Encoding, TxTypes}) ->
             From = HeightToKey(HeightFrom),
@@ -4347,10 +4344,6 @@ block_to_endpoint_map(Block, Options) ->
 
     %% Validate that all transactions have the correct block height and hash
     ExpectedTxs = maps:get(<<"transactions">>, Expected, []),
-    case ExpectedTxs =:= [] of
-        true -> 0 = aec_blocks:height(Block); % only allowed for gen block
-        false -> pass
-    end,
     BlockHeight = aec_blocks:height(Block),
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     lists:foreach(

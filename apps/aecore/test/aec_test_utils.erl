@@ -43,7 +43,6 @@
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
         , copy_genesis_dir/2
-        , signed_coinbase_tx/1
         , signed_spend_tx/1
         , fake_start_aehttp/0
         ]).
@@ -204,7 +203,7 @@ genesis_block_with_state() ->
 genesis_block_with_state(PresetAccounts) ->
     aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}).
 
-%% Generic blockchain with only coinbase transactions
+%% Generic blockchain without transactions
 gen_block_chain_with_state(Length) ->
     gen_block_chain_with_state(Length, ?PRESET_ACCOUNTS).
 
@@ -221,9 +220,7 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, []) ->
     {B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
-    Height = aec_blocks:height(PreviousBlock) + 1,
-    Txs = [signed_coinbase_tx(MinerAccount, Height)],
-    {B, S} = aec_blocks:new_with_state(PreviousBlock, MinerAccount, Txs, Trees),
+    {B, S} = aec_blocks:new_with_state(PreviousBlock, MinerAccount, [], Trees),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
@@ -249,20 +246,10 @@ blocks_only_chain(Chain) ->
 next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) ->
     Height = aec_blocks:height(PrevBlock) + 1,
     Txs = TxsFun(Height),
-    {B, S} = aec_blocks:new_with_state(PrevBlock, MinerAcc, [signed_coinbase_tx(MinerAcc, Height) | Txs], Trees),
+    {B, S} = aec_blocks:new_with_state(PrevBlock, MinerAcc, Txs, Trees),
     {B#block{ target = Target, nonce  = Nonce,
               time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
      S}.
-
-signed_coinbase_tx(BlockHeight) ->
-    {ok, MinerAccount} = aec_keys:wait_for_pubkey(),
-    signed_coinbase_tx(MinerAccount, BlockHeight).
-
-%% In order to find the secret key to sign with, we use the aec_key process
-signed_coinbase_tx(Account, BlockHeight) ->
-    {ok, Tx} = aec_coinbase_tx:new(#{account => Account, block_height => BlockHeight}),
-    {ok, STx} = aec_keys:sign(Tx),
-    STx.
 
 signed_spend_tx(ArgsMap) ->
     {ok, SenderAccount} = aec_keys:wait_for_pubkey(),

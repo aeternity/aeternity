@@ -745,15 +745,15 @@ fork_get_transaction() ->
     HardChain = blocks_only_chain(extend_chain_with_state(CommonChain, HardChainExtensionTargets, 222, TxsFun)),
 
     EasyTopBlock = lists:last(EasyChain),
-    [_EasyCoinbase, EasySpend] = aec_blocks:txs(EasyTopBlock),
+    [EasySpend] = aec_blocks:txs(EasyTopBlock),
     EasyTxHash = aetx_sign:hash(EasySpend),
 
     HardTopBlock = lists:last(HardChain),
-    [_HardCoinbase, HardSpend] = aec_blocks:txs(HardTopBlock),
+    [HardSpend] = aec_blocks:txs(HardTopBlock),
     HardTxHash = aetx_sign:hash(HardSpend),
 
     HardButLastBlock = lists:last(lists:droplast(HardChain)),
-    [_HardButLastCoinbase, HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
+    [HardButLastSpend] = aec_blocks:txs(HardButLastBlock),
     HardButLastTxHash = aetx_sign:hash(HardButLastSpend),
 
     ?assertEqual(HardButLastTxHash, EasyTxHash),
