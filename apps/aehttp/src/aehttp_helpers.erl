@@ -250,7 +250,7 @@ parse_map_to_atom_keys() ->
               {ok, Req1, State}
         catch
             throw:{unknown_key, K} when is_binary(K) ->
-                {error, {400, [], #{<<"reason">> => <<"Invalid papram ", K/binary>>}}}
+                {error, {400, [], #{<<"reason">> => <<"Invalid parameter: ", K/binary>>}}}
         end
     end.
 

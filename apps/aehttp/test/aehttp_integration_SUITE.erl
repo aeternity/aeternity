@@ -1245,7 +1245,7 @@ unknown_atom_in_spend_tx(_Config) ->
                 %% binary below accordingly
                 <<"hejsan_svejsan_atom">> => 10,
                 payload => <<"hejsan svejsan">>},
-    {ok, 400, #{<<"reason">> := <<"Invalid papram hejsan_svejsan_atom">>}} = get_spend(Encoded),
+    {ok, 400, #{<<"reason">> := <<"Invalid parameter: hejsan_svejsan_atom">>}} = get_spend(Encoded),
     ok.
 
 unsigned_tx_positive_test(Data, Params0, HTTPCallFun, NewFun, Pubkey) ->
