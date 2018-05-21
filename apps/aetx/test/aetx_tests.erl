@@ -37,9 +37,7 @@ apply_signed_txs_test_() ->
                               [MinerAccount, AnotherAccount]),
 
                BlockHeight = 30,
-               %% Create 3 signed transactions (2 valid, 1 invalid)
-               {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => MinerPubkey,
-                                                        block_height => BlockHeight}),
+               %% Create 2 signed transactions (1 valid, 1 invalid)
                {ok, SpendTx} = aec_spend_tx:new(
                                  #{sender => MinerPubkey,
                                    recipient => ?RECIPIENT_PUBKEY,
@@ -54,20 +52,19 @@ apply_signed_txs_test_() ->
                                          fee => 10,
                                          nonce => 13,
                                          payload => <<"">>}),
-               {ok, SignedCoinbase} = aec_keys:sign(CoinbaseTx),
                {ok, SignedSpendTx} = aec_keys:sign(SpendTx),
                {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
-               SignedTxs = [SignedCoinbase, SignedSpendTx, SignedOverBalanceTx],
+               SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =
                   aec_trees:apply_signed_txs(MinerPubkey, SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
-               ?assertEqual([SignedCoinbase, SignedSpendTx], ValidSignedTxs),
+               ?assertEqual([SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),
                {value, ResultMinerAccount} = aec_accounts_trees:lookup(MinerPubkey, ResultAccountsTree),
                {value, ResultRecipientAccount} = aec_accounts_trees:lookup(?RECIPIENT_PUBKEY, ResultAccountsTree),
 
-               %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + coinbase_tx reward
+               %% Initial balance - spend_tx amount - spend_tx fee + spend_tx fee + block mining reward
                ?assertEqual(100 - 40 - 9 + 9 + aec_governance:block_mine_reward(), aec_accounts:balance(ResultMinerAccount)),
                ?assertEqual(80 + 40, aec_accounts:balance(ResultRecipientAccount))
        end
