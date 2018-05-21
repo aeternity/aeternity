@@ -10,13 +10,13 @@
 -include_lib("common_test/include/ct.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
--define(STARTED_APPS_WHITELIST, [{erlexec,"OS Process Manager","1.7.1"}]).
+-define(STARTED_APPS_WHITELIST, [erlexec, runtime_tools]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, [erlexec]).
 -define(REGISTERED_PROCS_WHITELIST,
         [cover_server, timer_server, %% by test framework
          exec_app, exec, %% by erlexec
          inet_gethost_native_sup, inet_gethost_native, %% by inet
-         prfTarg,  %% by eper
+         prfTarg, runtime_tools_sup, %% by eper
          dets_sup, dets  %% by mnesia
         ]).
 
@@ -55,7 +55,8 @@ init_per_testcase(_TC, Config) ->
 end_per_testcase(_TC, Config) ->
     Apps0 = ?config(running_apps, Config),
     Names0 = ?config(regnames, Config),
-    Apps = application:which_applications() -- ?STARTED_APPS_WHITELIST,
+    Apps = [ A || A = {ATag, _, _} <- application:which_applications(),
+                  not lists:member(ATag, ?STARTED_APPS_WHITELIST) ],
     Names = registered() -- ?REGISTERED_PROCS_WHITELIST,
     case {(Apps -- Apps0), Names -- Names0, lager_common_test_backend:get_logs()} of
         {[], [], []} ->
