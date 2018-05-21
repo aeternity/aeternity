@@ -397,12 +397,12 @@ uid2postfix(Uid) -> <<"_", Uid/binary>>.
 free_port() ->
     {ok, Socket} = gen_tcp:listen(0, [{reuseaddr, true}]),
     {ok, Port} = inet:port(Socket),
-    gen_tcp:close(Socket),
     {ok, Port, Socket}.
 
 allocate_ports(Labels) -> allocate_ports(Labels, #{}, []).
 
-allocate_ports([], Ports, Sockets) -> {Ports, Sockets};
+allocate_ports([], Ports, Sockets) ->
+    {Ports, Sockets};
 allocate_ports([Label | Labels], Ports, Sockets) ->
     {ok, Port, Socket} = free_port(),
     allocate_ports(Labels, Ports#{Label => Port}, [Socket | Sockets]).
