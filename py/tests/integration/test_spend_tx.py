@@ -83,7 +83,6 @@ def test_send_by_name():
     # Bob registers a name 'bob.aet'
     # Alice should be able to send tokens to Bob using that name
     test_settings = settings["test_send_by_name"]
-    coinbase_reward = common.coinbase_reward()
     (root_dir, node, ext_api, top) = setup_node_with_tokens(test_settings, "miner")
     int_api = common.internal_api(node)
 
