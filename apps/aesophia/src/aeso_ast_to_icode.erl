@@ -151,6 +151,14 @@ ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
     #list{elems = [ast_body(A) || A <- Args]};
+%% Hardwired option types. TODO: Remove when we have arbitrary variant types.
+ast_body({con, _, "None"}) ->
+    #list{elems = []};
+ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}) ->
+    #tuple{cpts = [ast_body(Elem)]};
+ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}) ->
+    #lambda{ args = [#arg{name = "x", type = ast_type(A)}]
+           , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 ast_body({app,As,Fun,Args}) ->
     case aeso_syntax:get_ann(format, As) of
         infix  ->
@@ -235,6 +243,8 @@ ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
     word;
+ast_typerep({app_t, _, {id, _, "option"}, [A]}) ->
+    {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;

@@ -42,6 +42,8 @@ encode_call1(FunctionHandle, ArgumentAsts) ->
 ast_to_erlang({int, _, N}) -> N;
 ast_to_erlang({string, _, Bin}) -> Bin;
 ast_to_erlang({unit, _}) -> {};
+ast_to_erlang({con, _, "None"}) -> none;
+ast_to_erlang({app, _, {con, _, "Some"}, [A]}) -> {some, ast_to_erlang(A)};
 ast_to_erlang({tuple, _, Elems}) ->
     list_to_tuple(lists:map(fun ast_to_erlang/1, Elems));
 ast_to_erlang({list, _, Elems}) ->
@@ -52,6 +54,8 @@ encode_function(_Contract, Function) ->
 
 %% TODO: Handle all sophia data types.
 get_type(I) when is_integer(I) -> int;
+get_type(none) -> nil;
+get_type({some, X}) -> {option, get_type(X)};
 get_type(T) when is_tuple(T) ->
     ListOfTypes = [get_type(E) || E <- tuple_to_list(T)],
     {tuple, list_to_tuple(ListOfTypes)};

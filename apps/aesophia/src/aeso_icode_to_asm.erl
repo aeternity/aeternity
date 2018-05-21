@@ -665,6 +665,7 @@ all_type_reps([TR|InSource], Found) ->
             Nested = case TR of
                          {tuple, TRs} -> TRs;
                          {list, T}    -> [T];
+                         {option, T}  -> [T];
                          _            -> []
                      end,
             all_type_reps(Nested ++ InSource, [TR|Found])
@@ -734,6 +735,15 @@ make_encoder_body({list, TR}) ->
                  [{var_ref, "base"}, {var_ref, "tail"}]}]},
         {var_ref, "base"}}}
      ]};
+make_encoder_body({option, TR}) ->
+    {switch, {var_ref, "value"},
+     [{{list, []}, {list, []}},
+      {{tuple, [{var_ref, "elem"}]},
+       {binop, '-',
+        {tuple, [{funcall, {var_ref, encoder_name(TR)},
+                 [{var_ref, "base"}, {var_ref, "elem"}]}]},
+        {var_ref, "base"}}}
+     ]};
 make_encoder_body(function) ->
     {integer, 33333333333333333}.
 
@@ -766,6 +776,19 @@ make_decoder_body({list, TR}) ->
          {{var_ref, "_"},
             {switch, Ptr, [{{tuple, [Head, Tail]},
                 {tuple, [Decode(TR, Head), Decode({list, TR}, Tail)]}}]}}]};
+make_decoder_body({option, TR}) ->
+    Ptr  = {binop, '+', {var_ref, "value"}, {var_ref, "base"}},
+    Elem = {var_ref, "elem"},
+    None = {list, []},
+    Decode = fun(T, V) ->
+                {funcall, {var_ref, decoder_name(T)},
+                          [{var_ref, "base"}, V]}
+             end,
+    {switch, {var_ref, "value"},
+        [{None, None},
+         {{var_ref, "_"},
+            {switch, Ptr, [{{tuple, [Elem]},
+                {tuple, [Decode(TR, Elem)]}}]}}]};
 make_decoder_body(function) ->
     error(cannot_decode_function_types).
 
