@@ -1464,7 +1464,7 @@ post_broken_blocks(Config) ->
          {<<"time">>, 42},
          {<<"version">>, 42},
          {<<"pow">>, lists:seq(1, 42)},
-         {<<"transactions">>, []},
+         {<<"transactions">>, [#{<<"tx">> => <<"foo">>}]},
          {<<"miner">>, aec_base58c:encode(account_pubkey, <<"foo">>)}
         ]),
 
