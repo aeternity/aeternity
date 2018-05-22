@@ -273,7 +273,20 @@ parse1({tok_bind, Map}, Ts, Acc, Err) ->
         {T, Ts1} ->
             case maps:get(tag(T), Map, '$not_found') of
                 '$not_found' ->
-                    {Acc, mk_error(Ts, io_lib:format("Unexpected token '~s'.", [tag(T)]))};
+                    %% Insert a vclose (if required) on unexpected tokens. This lets you have layout
+                    %% blocks inside parens without having to put the closing paren on a separate
+                    %% line. Example:
+                    %%      ((x) =>
+                    %%            let y = x + 1
+                    %%            y + y)(4)
+                    case maps:get(vclose, Map, '$not_found') of
+                        '$not_found' ->
+                            {Acc, mk_error(Ts, io_lib:format("Unexpected token '~s'.", [tag(T)]))};
+                        F ->
+                            VClose = {vclose, pos(T)},
+                            Ts2    = pop_layout(VClose, Ts#ts{ last = VClose }),
+                            parse1(F(VClose), Ts2, Acc, Err)
+                    end;
                 F -> parse1(F(T), Ts1, Acc, Err)
             end;
         false ->
