@@ -2066,7 +2066,7 @@ block_txs_count_pending(_Config) ->
     % the assert below relies on no block being mined during the test run
     % this is achieved by mining BlocksToPremine number of blocks and setting
     % a high value for expected_mine_rate
-    true = TxsCount =:= InsertedTxsCount + 1,
+    ?assertEqual(InsertedTxsCount, TxsCount),
     rpc(aec_conductor, start_mining, []),
     ok.
 
