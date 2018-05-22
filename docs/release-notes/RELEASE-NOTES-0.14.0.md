@@ -16,6 +16,8 @@ category info and up will still be directed to the console.
 * Removes unneeded height from the account object in the block state. This impacts consensus.
 * Enhances user experience for Channels' websockets with broadcasting co-signed on-chain transactions to participants before posting. This allows them to track the progress of the transactions as well to store them locally in case of conflict resolution.
 * Changes the format of the state channel's on-chain close mutual transaction. This impacts consensus.
+* Adds miner's account in block header, removing coinbase transaction. This also: removes the capability to query from the HTTP API which blocks were mined by a specified miner; moves the assignment of the block mining reward to the miner to after the application of the txs in the block. This impacts consensus.
+
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
 
 This release removes deprecated http API endpoints block-by-height
