@@ -16,7 +16,8 @@
 
 convert(Tree, Options) ->
     TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n  ~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree))]) || lists:member(pp_typed,Options)],
+    %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
     code(TypedTree,
 %%    code(Tree,
 	 #{ functions => []
@@ -88,6 +89,10 @@ ast_type(T) ->
 -define(qid_app(Fun, Args, ArgTypes, OutType),
     {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
 
+-define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
+-define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
+-define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
+
 ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
@@ -138,6 +143,50 @@ ast_body(?id_app("put", [NewState], _, _)) ->
     #prim_put{ state = ast_body(NewState) };
 ast_body({id, _, "put"}) ->
     error({underapplied_primitive, put});   %% TODO: eta
+
+%% Oracles
+ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, TTL], _, ?oracle_t(QType, RType))) ->
+    prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee),
+              [ast_body(Acct), ast_body(Sign), ast_body(TTL),
+               ast_type_value(QType), ast_type_value(RType)],
+              [word, word, word, typerep, typerep], word);
+
+ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _)) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
+              [ast_body(Oracle)], [word], word);
+
+ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee),
+              [ast_body(Oracle), ast_body(Q), ast_body(QTTL), ast_body(RTTL)],
+              [word, ast_type(QType), word, word], word);
+
+ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
+    prim_call(?PRIM_CALL_ORACLE_EXTEND, ast_body(Fee),
+              [ast_body(Oracle), ast_body(Sign), ast_body(TTL)],
+              [word, word, word], {tuple, []});
+
+ast_body(?qid_app(["Oracle", "respond"], [Oracle, Sign, R], [_, _, RType], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
+              [ast_body(Oracle), ast_body(Sign), ast_body(R)],
+              [word, word, ast_type(RType)], {tuple, []});
+
+ast_body(?qid_app(["Oracle", "get_question"], [Q], [?query_t(QType, _)], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_GET_QUESTION, #integer{value = 0},
+              [ast_body(Q)], [word], ast_type(QType));
+
+ast_body(?qid_app(["Oracle", "get_answer"], [Q], [?query_t(_, RType)], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
+              [ast_body(Q)], [word], {option, ast_type(RType)});
+
+ast_body({qid, _, ["Oracle", "register"]})     -> error({underapplied_primitive, 'Oracle.register'});
+ast_body({qid, _, ["Oracle", "query"]})        -> error({underapplied_primitive, 'Oracle.query'});
+ast_body({qid, _, ["Oracle", "extend"]})       -> error({underapplied_primitive, 'Oracle.extend'});
+ast_body({qid, _, ["Oracle", "respond"]})      -> error({underapplied_primitive, 'Oracle.respond'});
+ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive, 'Oracle.query_fee'});
+ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
+ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
+
+%% Other terms
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -254,7 +303,11 @@ ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
     word;
-ast_typerep({app_t, _, {id, _, "option"}, [A]}) ->
+ast_typerep(?oracle_t(_, _)) ->
+    word;
+ast_typerep(?query_t(_, _)) ->
+    word;
+ast_typerep(?option_t(A)) ->
     {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
