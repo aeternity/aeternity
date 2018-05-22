@@ -12,10 +12,12 @@
     new_node_joins_network/1,
     docker_keeps_data/1,
     stop_and_continue_sync/1,
-    net_split_recovery/1
+    net_split_recovery/1,
+    quick_start_stop/1
 ]).
 
 -import(aest_nodes, [
+    cluster/2,
     setup_nodes/2,
     start_node/2,
     stop_node/3,
@@ -30,7 +32,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %=== MACROS ====================================================================
-               
 
 -define(MINING_TIMEOUT,   2000).
 -define(SYNC_TIMEOUT,      100).
@@ -96,7 +97,8 @@ all() -> [
     new_node_joins_network,
     docker_keeps_data,
     stop_and_continue_sync,
-    net_split_recovery
+    net_split_recovery,
+    quick_start_stop
 ].
 
 init_per_testcase(_TC, Config) ->
@@ -279,7 +281,7 @@ stop_and_continue_sync(Cfg) ->
                     peers   => [node2],
                     backend => aest_docker,
                     source  => {pull, "aeternity/epoch:local"}
-                  }, 
+                  },
                  #{ name    => node2,
                     peers   => [node1],
                     backend => aest_docker,
@@ -362,7 +364,7 @@ net_split_recovery(Cfg) ->
     %% if so, the chains should be in sync when it's done.
     wait_for_value({height, Length * 2}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
 
-    %% Wait at least as long as the ping timer can take 
+    %% Wait at least as long as the ping timer can take
     try_until(T0 + 2 * ping_interval(),
             fun() ->
 
@@ -370,14 +372,14 @@ net_split_recovery(Cfg) ->
               {ok, 200, B2} = request(net1_node2, 'GetBlockByHeight', #{height => Length * 2}),
               {ok, 200, B3} = request(net2_node1, 'GetBlockByHeight', #{height => Length * 2}),
               {ok, 200, B4} = request(net2_node2, 'GetBlockByHeight', #{height => Length * 2}),
-              
+
               %% Check that the chain merged
               ?assertEqual(B1, B2),
               ?assertEqual(B1, B3),
               ?assertEqual(B1, B4)
             end),
 
-    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}), 
+    {ok, 200, #{height := Top2}} = request(net1_node1, 'GetTop', #{}),
     ct:log("Height reached ~p", [Top2]),
 
     %% Split again the nodes in two cluster of 2 nodes
@@ -387,7 +389,7 @@ net_split_recovery(Cfg) ->
     disconnect_node(net2_node2, net1, Cfg),
 
     wait_for_value({height, Top2 + Length}, Nodes, Length * ?MINING_TIMEOUT, Cfg),
- 
+
     {ok, 200, C1} = request(net1_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
     {ok, 200, C2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length}),
     {ok, 200, C3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length}),
@@ -413,18 +415,26 @@ net_split_recovery(Cfg) ->
               {ok, 200, D2} = request(net1_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
               {ok, 200, D3} = request(net2_node1, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
               {ok, 200, D4} = request(net2_node2, 'GetBlockByHeight', #{height => Top2 + Length * 2}),
-              
+
               %% Check the chain merged again
               ?assertEqual(D1, D2),
               ?assertEqual(D1, D3),
               ?assertEqual(D1, D4)
             end),
-  
-    {ok, 200,#{height := Top3}} = request(net1_node1, 'GetTop', #{}), 
+
+    {ok, 200,#{height := Top3}} = request(net1_node1, 'GetTop', #{}),
     ct:log("Top reached ~p", [Top3]),
 
     ok.
 
+quick_start_stop(Cfg) ->
+    setup_nodes(cluster([n1, n2], #{}), Cfg),
+    start_node(n2, Cfg),
+    start_node(n1, Cfg),
+    stop_node(n2, 2000, Cfg),
+    timer:sleep(2000),
+    start_node(n2, Cfg),
+    ok.
 
 %% helper functions
 
@@ -434,7 +444,7 @@ ping_interval() ->
 
 try_until(MSec, F) ->
     try F()
-    catch 
+    catch
       _:Reason ->
         case erlang:system_time(millisecond) > MSec of
           true ->

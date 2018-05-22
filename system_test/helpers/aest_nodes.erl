@@ -25,6 +25,8 @@
 -export([export/3]).
 
 %% Helper function exports
+-export([cluster/2]).
+-export([spec/3]).
 -export([request/3]).
 -export([request/4]).
 -export([get/5]).
@@ -43,6 +45,11 @@
 -define(CALL_TIMEOUT, 60000).
 -define(NODE_TEARDOWN_TIMEOUT, 0).
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
+
+-define(BASE_SPEC, #{
+    backend => aest_docker,
+    source  => {pull, "aeternity/epoch:local"}
+}).
 
 %% AWK script to keep only error, critical, alert and emergency log lines with
 %% all the extra lines following the log lines.
@@ -247,6 +254,11 @@ export(NodeName, Name, Ctx) ->
 
 %=== HELPER FUNCTIONS ==========================================================
 
+cluster(Names, Spec) -> [spec(N, Names -- [N], Spec) || N <- Names].
+
+spec(Name, Peers, Spec) ->
+    maps:merge(maps:merge(?BASE_SPEC, Spec), #{name => Name, peers => Peers}).
+
 request(Node, Id, Params) ->
     aehttp_client:request(Id, Params, [
         {ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)},
@@ -280,7 +292,7 @@ get_top(NodeName) ->
 -spec wait_for_value({balance, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
-wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
+wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
     Expiration = make_expiration(Timeout),
     CheckF =
         fun(Node) ->
@@ -290,7 +302,7 @@ wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
                 end
         end,
     wait_for_value(CheckF, NodeNames, [], 500, Expiration);
-wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, Ctx) ->
+wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, _Ctx) ->
     Expiration = make_expiration(Timeout),
     Params = #{account_pubkey => SenderPubKey, tx_encoding => json},
     CheckF =
@@ -312,7 +324,7 @@ wait_for_value({contract_tx, SenderPubKey, Nonce}, NodeNames, Timeout, Ctx) ->
                 end
         end,
     wait_for_value(CheckF, NodeNames, [], 500, Expiration);
-wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
+wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
     Start = erlang:system_time(millisecond),
     Expiration = make_expiration(Timeout),
     CheckF =

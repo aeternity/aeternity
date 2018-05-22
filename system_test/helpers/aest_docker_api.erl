@@ -141,6 +141,7 @@ stop_container(ID, Opts) ->
 kill_container(ID) ->
     case docker_post([containers, ID, kill]) of
         {ok, 204, _} -> ok;
+        {ok, 409, _} -> ok; % Not running
         {ok, 404, _} -> throw({container_not_found, ID});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, Response)})
