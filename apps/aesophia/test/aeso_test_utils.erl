@@ -10,7 +10,7 @@
 
 -include("apps/aecontract/src/aecontract.hrl").
 
--export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1]).
+-export([read_contract/1, contract_path/0, run_contract/4, pp/1, pp/2, dump_words/1, compile/1]).
 
 -export([spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2]).
 
@@ -67,8 +67,11 @@ dummy_state(Code, Data) ->
      , pre => #{}
      }, #{ trace => true }).
 
+compile(Name) ->
+  aeso_compiler:from_string(read_contract(Name), [pp_ring_code, pp_typed, pp_icode]).
+
 run_contract(Name, Fun, Args, Type) ->
-  Code = aeso_compiler:from_string(read_contract(Name), [pp_ring_code, pp_typed, pp_icode]),
+  Code = compile(Name),
 %%  io:format("\nCompiled code:\n"),
 %%  io:format("~p\n\n",[Code]),
   ok = aeb_disassemble:pp(Code),
