@@ -152,6 +152,7 @@
 %% first argument encoding the transaction type according to the below.
 -define(PRIM_CALL_SPEND, 1).
 
+-define(PRIM_CALL_IN_ORACLE_RANGE(__TTYPE__), (((__TTYPE__) > 99) andalso ((__TTYPE__) < 200))).
 -define(PRIM_CALL_ORACLE_REGISTER,     100).
 -define(PRIM_CALL_ORACLE_QUERY,        101).
 -define(PRIM_CALL_ORACLE_RESPOND,      102).

@@ -21,7 +21,16 @@ call(Value, Data, State) ->
     case Data of
         <<?BASE_ADDRESS:256, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
             spend(Recipient, Value, State);
-        _ ->
+	<<?BASE_ADDRESS:256, Type:256, Argument/binary>> ->
+	    case Type of
+		T when ?PRIM_CALL_IN_ORACLE_RANGE(T) ->
+		    oracle_call(T, Argument, State);
+		_ ->
+		    %% Throw out of gas for illegal call
+		    %% TODO: Better error for illegal call.
+		    {error, out_of_gas}
+	    end;
+	_ ->
             %% Throw out of gas for illegal call
             %% TODO: Better error for illegal call.
             {error, out_of_gas}
@@ -46,3 +55,61 @@ spend(Recipient, Value, State) ->
         {error, _} = Err -> Err
     end.
 
+%% ------------------------------------------------------------------
+%% Oracle operations.
+%% ------------------------------------------------------------------
+
+oracle_call(?PRIM_CALL_ORACLE_REGISTER, Data, State) ->
+    oracle_call_register(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_QUERY, Data, State) ->
+    oracle_call_query(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_RESPOND, Data, State) ->
+    oracle_call_respond(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_EXTEND, Data, State) ->
+    oracle_call_extend(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_GET_ANSWER, Data, State) ->
+    oracle_call_get_answer(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION, Data, State) ->
+    oracle_call_get_question(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Data, State) ->
+    oracle_call_query_fee(Data, State);
+oracle_call(_, _, _) ->
+    {error, out_of_gas}.
+
+oracle_call_register(<<Acct:256, Sign:256, TTL:256, QType:256, RType:256, Rest/binary>>, State) ->
+    ChainAPI   = aevm_eeevm_state:chain_api(State),
+    ChainState = aevm_eeevm_state:chain_state(State),
+    DecodedQType = get_type(QType, Rest),
+    DecodedRType = get_type(RType, Rest),
+
+    case ChainAPI:oracle_register(Acct, Sign, TTL, DecodedQType, DecodedRType, ChainState) of
+        {ok, ChainState1} ->
+            UnitReturn = {ok, <<0:256>>},
+            GasSpent   = 0,         %% Already costs lots of gas
+            {ok, UnitReturn, GasSpent,
+             aevm_eeevm_state:set_chain_state(ChainState1, State)};
+        {error, _} = Err -> Err
+    end.
+
+
+oracle_call_query(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_respond(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_extend(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_get_answer(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_get_question(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_query_fee(Data, State) ->
+    {ok, {ok, <<0:256>>}, 0, State}.
+
+
+get_type(TypeDef,_Mem) ->
+    TypeDef.
