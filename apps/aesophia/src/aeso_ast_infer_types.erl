@@ -599,12 +599,11 @@ unify(T1, T2) ->
 
 unify1({uvar, _, R}, {uvar, _, R}) ->
     true;
-unify1({uvar, _A, R}, T) ->
+unify1({uvar, A, R}, T) ->
     case occurs_check(R, T) of
-        %% TODO:
-	%% true ->
-	%%     cannot_unify({uvar, A, R}, T),
-	%%     false;
+	true ->
+	    cannot_unify({uvar, A, R}, T),
+	    false;
 	false ->
 	    ets:insert(type_vars, {R, T}),
 	    true
@@ -646,9 +645,20 @@ dereference(T = {uvar, _, R}) ->
 dereference(T) ->
     T.
 
-occurs_check(_R, _T) ->
-    %% TODO
-    false.
+occurs_check(R, T) ->
+    occurs_check1(R, dereference(T)).
+
+occurs_check1(R, {uvar, _, R1}) -> R == R1;
+occurs_check1(_, {id, _, _}) -> false;
+occurs_check1(R, {fun_t, _, Args, Res}) ->
+    occurs_check(R, [Res | Args]);
+occurs_check1(R, {app_t, _, T, Ts}) ->
+    occurs_check(R, [T | Ts]);
+occurs_check1(R, {tuple_t, _, Ts}) ->
+    occurs_check(R, Ts);
+occurs_check1(R, [H | T]) ->
+    occurs_check(R, H) orelse occurs_check(R, T);
+occurs_check1(_, []) -> false.
 
 fresh_uvar(Attrs) ->
     {uvar, Attrs, make_ref()}.
