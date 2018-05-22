@@ -366,7 +366,6 @@ test_get_block_candidate() ->
     {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     ?assertEqual(TopBlockHash, aec_blocks:prev_hash(BlockCandidate)),
     {ok, AllTxsInPool} = aec_tx_pool:peek(infinity),
-    ?assertEqual(true, length(aec_blocks:txs(BlockCandidate)) > 0),
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
