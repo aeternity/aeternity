@@ -82,7 +82,13 @@ ast_args([], Acc) -> lists:reverse(Acc).
 ast_type(T) ->
     ast_typerep(T).
 
-ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, Value, {typed, _, Arg, ArgT}]}, OutT}) ->
+-define(id_app(Fun, Args, ArgTypes, OutType),
+    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+
+-define(qid_app(Fun, Args, ArgTypes, OutType),
+    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+
+ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
         case Arg of %% Hack: unpack tuples
@@ -97,18 +103,13 @@ ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, 
                          arg      = #tuple{cpts = [ast_body(X) || X <- [Fun | Args]]},
                          arg_type = {tuple, [string | lists:map(fun ast_typerep/1, ArgTypes)]},
                          out_type = ast_typerep(OutT) };
-ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
-    %% Implemented as a contract call to the contract with address 0.
-    #prim_call_contract{ gas      = #integer{ value = 0 },
-                         address  = #integer{ value = 0 },
-                         value    = ast_body(Amount),
-                         arg      = #tuple{cpts = [ast_body({int, [], ?PRIM_CALL_SPEND}),
-                                                   ast_body(To)]},
-                         arg_type = {tuple, [word, word]},
-                         out_type = {tuple, []} };
-ast_body({app, _, {typed, _, {qid, _, ["Chain", "balance"]}, _}, [Address]}) ->
+ast_body(?id_app("raw_spend", [To, Amount], _, _)) ->
+    prim_call(?PRIM_CALL_SPEND, ast_body(Amount), [ast_body(To)], [word], {tuple, []});
+
+%% Chain environment
+ast_body(?qid_app(["Chain", "balance"], [Address], _, _)) ->
     #prim_balance{ address = ast_body(Address) };
-ast_body({app, _, {typed, _, {qid, _, ["Chain", "block_hash"]}, _}, [Height]}) ->
+ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _)) ->
     #prim_block_hash{ height = ast_body(Height) };
 ast_body({qid, _, ["Contract", "address"]})      -> prim_contract_address;
 ast_body({qid, _, ["Contract", "balance"]})      -> #prim_balance{ address = prim_contract_address };
@@ -130,9 +131,10 @@ ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
 ast_body({id, _, "raw_spend"}) ->
     error({underapplied_primitive, raw_spend});
-%% State stuff
+
+%% State
 ast_body({id, _, "state"}) -> prim_state;
-ast_body({app, _, {typed, _, {id, _, "put"}, _}, [NewState]}) ->
+ast_body(?id_app("put", [NewState], _, _)) ->
     #prim_put{ state = ast_body(NewState) };
 ast_body({id, _, "put"}) ->
     error({underapplied_primitive, put});   %% TODO: eta
@@ -234,6 +236,15 @@ ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
 		   ]};
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
+
+%% Implemented as a contract call to the contract with address 0.
+prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
+    #prim_call_contract{ gas      = #integer{ value = 0 },
+                         address  = #integer{ value = 0 },
+                         value    = Amount,
+                         arg      = #tuple{cpts = [#integer{ value = Prim } | Args]},
+                         arg_type = {tuple, [word | ArgTypes]},
+                         out_type = OutType }.
 
 ast_typerep({id,_,"bool"}) ->		%BOOL as ints
     word;
