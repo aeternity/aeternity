@@ -226,8 +226,15 @@ jobs:
           command: |
             epmd -daemon
             make test CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
+      # Isolates the junit.xml report because additional files in _build/test/logs
+      # are somehow causing issue with xunit report upload, parsing and merging
+      - run:
+          name: move test report
+          command: |
+            mkdir _build/test/reports
+            mv _build/test/logs/junit.xml _build/test/reports/
       - store_test_results:
-          path: _build/test/logs
+          path: _build/test/reports
       - store_artifacts:
           path: _build/test/logs
       - *fail_notification
