@@ -21,6 +21,8 @@
 ]).
 
 -import(aest_nodes, [
+    cluster/2,
+    spec/3,
     setup_nodes/2,
     start_node/2,
     kill_node/2,
@@ -35,11 +37,6 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %=== MACROS ====================================================================
-
--define(BASE, #{
-    backend => aest_docker,
-    source  => {pull, "aeternity/epoch:local"}
-}).
 
 -define(cfg(Keys), cfg(Keys, Cfg)).
 
@@ -164,11 +161,6 @@ stay_in_sync(Cfg) ->
     [?assertEqual(AB, BB) || {AN, AB} <- Blocks, {BN, BB} <- Blocks, AN =/= BN].
 
 %=== INTERNAL FUNCTIONS ========================================================
-
-cluster(Names, Spec) -> [spec(N, Names -- [N], Spec) || N <- Names].
-
-spec(Name, Peers, Spec) ->
-    maps:merge(maps:merge(?BASE, Spec), #{name => Name, peers => Peers}).
 
 sync_node(Node, Height, Cfg) ->
     start_node(Node, Cfg),
