@@ -220,7 +220,7 @@ gen_block_chain_with_state(N, MinerAccount, PresetAccounts, []) ->
     {B, S} = aec_block_genesis:genesis_block_with_state(#{preset_accounts => PresetAccounts}),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S}]);
 gen_block_chain_with_state(N, MinerAccount, PresetAccounts, [{PreviousBlock, Trees} | _] = Acc) ->
-    {B, S} = aec_blocks:new_with_state(PreviousBlock, MinerAccount, [], Trees),
+    {B, S} = aec_block_candidate:create_with_state(PreviousBlock, MinerAccount, [], Trees),
     gen_block_chain_with_state(N - 1, MinerAccount, PresetAccounts, [{B, S} | Acc]).
 
 extend_block_chain_with_state(PrevBlock, PrevBlockState, Data) ->
@@ -246,7 +246,7 @@ blocks_only_chain(Chain) ->
 next_block_with_state(PrevBlock, Trees, Target, Time0, TxsFun, Nonce, MinerAcc) ->
     Height = aec_blocks:height(PrevBlock) + 1,
     Txs = TxsFun(Height),
-    {B, S} = aec_blocks:new_with_state(PrevBlock, MinerAcc, Txs, Trees),
+    {B, S} = aec_block_candidate:create_with_state(PrevBlock, MinerAcc, Txs, Trees),
     {B#block{ target = Target, nonce  = Nonce,
               time   = case Time0 of undefined -> B#block.time; _ -> Time0 end },
      S}.

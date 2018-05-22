@@ -80,21 +80,14 @@ genesis_block_with_state() ->
 
 genesis_block_with_state(Map) ->
     Txs = transactions(),
-    {ok, _, Trees} = aec_trees:apply_signed_txs_strict(miner(), Txs, populated_trees(Map), height(), ?GENESIS_VERSION),
-    Block =
-        #block{
-           version = ?GENESIS_VERSION,
-           height = height(),
-           prev_hash = prev_hash(),
-           txs_hash = txs_hash(Txs),
-           root_hash = aec_trees:hash(Trees),
-           target = ?HIGHEST_TARGET_SCI,
-           txs = transactions(),
-           pow_evidence = pow(),
-           nonce = 0,
-           time = 0, %% Epoch.
-           miner = miner()
-          },
+    {ok, Txs, Trees} =
+        aec_block_candidate:apply_block_txs_strict(Txs, miner(), populated_trees(Map),
+                                                   height(), ?GENESIS_VERSION),
+
+    Block = aec_blocks:new(height(), prev_hash(), aec_trees:hash(Trees),
+                           txs_hash(Txs), Txs, ?HIGHEST_TARGET_SCI, 0, 0, %%Epoch
+                           ?GENESIS_VERSION, miner()),
+
     {Block, Trees}.
 
 %% Returns state trees at genesis block.

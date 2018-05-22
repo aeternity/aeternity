@@ -38,12 +38,14 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 3650718748619880306),
+                 Nonce = 3650718748619880306,
 
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+                 {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
+                                                                             [], aec_trees:new()),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
+
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, Block#block.height),
@@ -59,7 +61,9 @@ mine_block_test_() ->
                                    target = ?LOWEST_TARGET_SCI,
                                    version = ?GENESIS_VERSION},
                  meck:expect(aec_pow, pick_nonce, 0, 18),
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
+                 {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
+                                                                             [], aec_trees:new()),
+                 Nonce = 18,
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
                  Target = aec_blocks:target(BlockCandidate),
                  ?assertEqual({error, no_solution},
@@ -67,92 +71,6 @@ mine_block_test_() ->
          end}}
       ]}.
 
-difficulty_recalculation_test_() ->
-    {foreach,
-      fun() ->
-              setup(),
-              %% This group of tests tests the difficulty
-              %% recalculation inside the aec_mining module, hence the
-              %% PoW module can be mocked.
-              meck:new(aec_pow_cuckoo),
-              meck:expect(aec_pow_cuckoo, generate,
-                          fun(_, _, Nonce) ->
-                              Evd = lists:duplicate(42, 0),
-                              {ok, {Nonce, Evd}}
-                          end),
-              meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10)
-      end,
-      fun(_) ->
-              meck:unload(aec_pow_cuckoo),
-              cleanup(unused_arg)
-      end,
-      [
-       {timeout, 60,
-        {"For good mining speed mine block with the same difficulty",
-         fun() ->
-                 Now = 1504731164584,
-                 OneBlockExpectedMineTime = 300000,
-                 BlockHeight = 30,
-                 meck:expect(aec_blocks, new, 4,
-                             #block{height = BlockHeight,
-                                    target = ?HIGHEST_TARGET_SCI,
-                                    txs = [],
-                                    time = Now,
-                                    version = ?PROTOCOL_VERSION}),
-                 Chain = lists:duplicate(10, #header{height = 20,
-                                                     target = ?HIGHEST_TARGET_SCI,
-                                                     time = Now - (10 * OneBlockExpectedMineTime),
-                                                     version = ?PROTOCOL_VERSION}),
-                 meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
-                 meck:expect(aec_governance, expected_block_mine_rate, 0, OneBlockExpectedMineTime),
-
-                 TopBlock = #block{version = ?PROTOCOL_VERSION},
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
-                 HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
-                 Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
-                 Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
-
-                 ?assertEqual(30, Block#block.height),
-
-                 ?assertEqual(?HIGHEST_TARGET_SCI, Block#block.target),
-                 ?assertEqual(1, meck:num_calls(aec_governance, blocks_to_check_difficulty_count, 0))
-         end}},
-       {timeout, 60,
-        {"Too few blocks mined in time increases new block's target threshold",
-         fun() ->
-                 Now = 1504731164584,
-                 BlockHeight = 200,
-                 TS  = [ {X, Now - X * 300001} || X <- lists:seq(1, 10) ], %% Almost perfect timing!!
-                 PastTarget = aec_pow:integer_to_scientific(?HIGHEST_TARGET_INT div 2),
-                 Chain = [ #header{ height = BlockHeight - I, target = PastTarget, time = T,
-                                    version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
-
-
-                 meck:expect(aec_blocks, new, 4,
-                             #block{height = BlockHeight,
-                                    target = PastTarget,
-                                    txs = [],
-                                    time = Now,
-                                    version = ?PROTOCOL_VERSION}),
-
-                 meck:expect(aec_governance, blocks_to_check_difficulty_count, 0, 10),
-                 %% One block should be mined every 5 mins
-                 meck:expect(aec_governance, expected_block_mine_rate, 0, 300000),
-
-                 TopBlock = #block{version = ?PROTOCOL_VERSION},
-                 {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), Chain),
-                 HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
-                 Target = aec_blocks:target(BlockCandidate),
-                 {ok, {Nonce1, Evd}} = ?TEST_MODULE:mine(HeaderBin, Target, Nonce),
-                 Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
-
-                 ?assertEqual(200, Block#block.height),
-
-                 ?assertEqual(true, PastTarget < Block#block.target),
-                 ?assertEqual(true, ?HIGHEST_TARGET_SCI >= Block#block.target)
-         end}}
-      ]}.
 
 setup() ->
     ok = meck:new(aeu_env, [passthrough]),
@@ -172,7 +90,7 @@ setup() ->
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
-    meck:expect(aec_trees, apply_signed_txs, 5, {ok, [], Trees}),
+    meck:expect(aec_trees, apply_txs_on_state_trees, 4, {ok, [], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
     ok.
 

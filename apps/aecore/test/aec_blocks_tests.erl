@@ -40,7 +40,9 @@ new_block_test_() ->
                                  version = ?GENESIS_VERSION},
               BlockHeader = ?TEST_MODULE:to_header(PrevBlock),
 
-              NewBlock = ?TEST_MODULE:new(PrevBlock, ?MINER_PUBKEY, [], aec_trees:new()),
+              {NewBlock, _} =
+                  aec_block_candidate:create_with_state(PrevBlock, ?MINER_PUBKEY,
+                                                        [], aec_trees:new()),
 
               ?assertEqual(12, ?TEST_MODULE:height(NewBlock)),
               SerializedBlockHeader =

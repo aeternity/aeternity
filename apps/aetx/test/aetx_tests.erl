@@ -57,7 +57,8 @@ apply_signed_txs_test_() ->
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =
-                  aec_trees:apply_signed_txs(MinerPubkey, SignedTxs, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+                  aec_block_candidate:apply_block_txs(SignedTxs, MinerPubkey, StateTree0, BlockHeight, ?PROTOCOL_VERSION),
+
                ?assertEqual([SignedSpendTx], ValidSignedTxs),
 
                ResultAccountsTree = aec_trees:accounts(StateTree),

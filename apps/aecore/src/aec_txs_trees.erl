@@ -7,8 +7,10 @@
 
 %% API
 -export([from_txs/1,
-         root_hash/1,
-         pad_empty/1]).
+         add_txs/3,
+         pad_empty/1,
+         root_hash/1
+        ]).
 
 -export_type([txs_tree/0,
               root_hash/0]).
@@ -32,6 +34,11 @@
 -spec from_txs([aetx_sign:signed_tx()]) -> txs_tree().
 from_txs(Txs) ->
     from_txs(Txs, 0, aeu_mtrees:empty()).
+
+-spec add_txs([aetx_sign:signed_tx()], non_neg_integer(), txs_tree()) ->
+        txs_tree().
+add_txs(Txs, StartPos, TxsTree) ->
+    from_txs(Txs, StartPos, TxsTree).
 
 -spec root_hash(txs_tree()) -> root_hash_result().
 root_hash(TxsTree) ->

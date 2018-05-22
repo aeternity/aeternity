@@ -79,7 +79,7 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
-               {TopBlock, TopState} = aec_chain:top_block_with_state(),
+               {TopBlock, _TopState} = aec_chain:top_block_with_state(),
                TopBlockHash = aec_chain:top_block_hash(),
 
                %% Prepare a few txs.
@@ -91,8 +91,7 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx2]), lists:sort(PoolTxs)),
 
                %% Insert a block in chain.
-               {ok, Candidate1,_Nonce} =
-                   aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, Candidate1, _} = aec_block_candidate:create(TopBlock),
                {ok, CHash1} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(CHash1, aec_chain:top_block_hash()),
@@ -112,8 +111,7 @@ tx_pool_test_() ->
                STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx3)),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
-               {ok, Candidate2,_Nonce2} =
-                   aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, Candidate2, _} = aec_block_candidate:create(TopBlock),
                {ok, CHash2} = aec_blocks:hash_internal_representation(Candidate2),
 
                %% Ensure that the new fork takes over by
@@ -219,13 +217,12 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
-               {TopBlock, TopState} = aec_chain:top_block_with_state(),
+               {TopBlock, _TopState} = aec_chain:top_block_with_state(),
 
                %% Add a transaction to the chain
                STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
-               {ok, Candidate1,_Nonce} =
-                   aec_mining:create_block_candidate(TopBlock, TopState, []),
+               {ok, Candidate1, _} = aec_block_candidate:create(TopBlock),
                {ok, Top} = aec_blocks:hash_internal_representation(Candidate1),
                ok = aec_chain_state:insert_block(Candidate1),
                ?assertEqual(Top, aec_chain:top_block_hash()),

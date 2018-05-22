@@ -144,7 +144,7 @@ deserialize_from_binary(Bin) ->
              txs_hash = TxsHash,
              miner = Miner }.
 
--spec hash_header(header()) -> {ok, block_header_hash()}.
+-spec hash_header(header()) -> {ok, aec_blocks:block_header_hash()}.
 hash_header(H) ->
     BinaryH = serialize_to_binary(H),
     {ok, aec_hash:hash(header, BinaryH)}.

@@ -446,7 +446,7 @@ apply_node_transactions(Node, Trees) ->
     Height = node_height(Node),
     Version = node_version(Node),
     Miner = node_miner(Node),
-    case aec_trees:apply_signed_txs_strict(Miner, Txs, Trees, Height, Version) of
+    case aec_block_candidate:apply_block_txs_strict(Txs, Miner, Trees, Height, Version) of
         {ok, _, NewTrees} -> NewTrees;
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.

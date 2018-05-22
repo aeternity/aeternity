@@ -15,8 +15,8 @@
          pow/1,
          set_pow/3,
          set_target/2,
-         new/4,
-         new_with_state/4,
+         miner/1,
+         new/10,
          from_header_and_txs/2,
          to_header/1,
          serialize_to_binary/1,
@@ -25,7 +25,8 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1]).
+         validate/1,
+         version/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
 
@@ -39,7 +40,7 @@
 %% block() can't be opaque since aec_block_genesis also needs to
 %% be able to handle the raw #block{} record - TODO: change this
 -type block() :: #block{}.
--export_type([block/0]).
+-export_type([block/0, block_header_hash/0]).
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
@@ -64,6 +65,14 @@ time_in_msecs(Block) ->
 root_hash(Block) ->
     Block#block.root_hash.
 
+-spec miner(block()) -> pubkey().
+miner(Block) ->
+    Block#block.miner.
+
+-spec version(block()) -> non_neg_integer().
+version(Block) ->
+    Block#block.version.
+
 %% Sets the evidence of PoW,too,  for Cuckoo Cycle
 -spec set_pow(block(), aec_pow:nonce(), aec_pow:pow_evidence()) -> block().
 set_pow(Block, Nonce, Evd) ->
@@ -86,46 +95,21 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(),
-          pubkey(), list(aetx_sign:signed_tx()),
-          aec_trees:trees()) -> block().
-new(LastBlock, Miner, Txs, Trees0) ->
-    {B, _} = new_with_state(LastBlock, Miner, Txs, Trees0),
-    B.
-
--spec new_with_state(block(),
-                     pubkey(), list(aetx_sign:signed_tx()),
-                     aec_trees:trees()) ->
-                                {block(), aec_trees:trees()}.
-new_with_state(LastBlock, Miner, Txs, Trees1) ->
-    LastBlockHeight = height(LastBlock),
-
-    %% Assert correctness of last block protocol version, as minimum
-    %% sanity check on previous block and state (mainly for potential
-    %% stale state persisted in DB and for development testing).
-    ExpectedLastBlockVersion = protocol_effective_at_height(LastBlockHeight),
-    {ExpectedLastBlockVersion, _} = {LastBlock#block.version,
-                                     {expected, ExpectedLastBlockVersion}},
-    {ok, LastBlockHeaderHash} = hash_internal_representation(LastBlock),
-
-    Height = LastBlockHeight + 1,
-    Version = protocol_effective_at_height(Height),
-
-    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Miner, Txs, Trees1, Height, Version),
-    TxsRootHash =
-        aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
-                                                          Txs1))),
-    NewBlock =
-        #block{height = Height,
-               prev_hash = LastBlockHeaderHash,
-               root_hash = aec_trees:hash(Trees),
-               txs_hash = TxsRootHash,
-               txs = Txs1,
-               target = target(LastBlock),
-               time = aeu_time:now_in_msecs(),
-               version = Version,
-               miner = Miner},
-    {NewBlock, Trees}.
+-spec new(height(), block_header_hash(), state_hash(), txs_hash(),
+          list(aetx_sign:signed_tx()), aec_pow:sci_int(),
+          non_neg_integer(), non_neg_integer(), non_neg_integer(),
+          miner_pubkey()) -> block().
+new(Height, PrevHash, RootHash, TxsHash, Txs, Target, Nonce, Time, Version, Miner) ->
+    #block{ height = Height
+          , prev_hash = PrevHash
+          , root_hash = RootHash
+          , txs_hash  = TxsHash
+          , txs       = Txs
+          , target    = Target
+          , nonce     = Nonce
+          , time      = Time
+          , version   = Version
+          , miner     = Miner }.
 
 -spec to_header(block()) -> aec_headers:header().
 to_header(#block{height = Height,

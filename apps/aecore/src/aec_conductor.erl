@@ -151,6 +151,7 @@ init(Options) ->
     TopBlockHash = aec_chain:top_block_hash(),
     State3 = State2#state{seen_top_block_hash = TopBlockHash},
     epoch_mining:info("Miner process initilized ~p", [State3]),
+    aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
     {ok, State3}.
@@ -193,6 +194,7 @@ handle_call({post_block, Block},_From, State) ->
 handle_call(stop_mining,_From, State) ->
     epoch_mining:info("Mining stopped"),
     State1 = kill_all_workers(State),
+    aec_block_generator:stop_generation(),
     {reply, ok, State1#state{mining_state = 'stopped',
                              block_candidate = undefined}};
 handle_call(start_mining,_From, State) ->
@@ -229,6 +231,24 @@ handle_cast(Other, State) ->
     epoch_mining:error("Received unknown cast: ~p", [Other]),
     {noreply, State}.
 
+handle_info({gproc_ps_event, candidate_block, #{info := Block}}, State) ->
+
+    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
+    LastNonce = aec_pow:pick_nonce(),
+    Nonce     = aec_pow:next_nonce(LastNonce),
+    Candidate = #candidate{block = Block,
+                           bin = HeaderBin,
+                           nonce = Nonce,
+                           max_nonce = LastNonce,
+                           top_hash = State#state.seen_top_block_hash
+                          },
+    State1 = State#state{ block_candidate = Candidate },
+    case is_tag_blocked(mining, State1) of
+        false ->
+            {noreply, start_mining(State1)};
+        true ->
+            {noreply, State1}
+    end;
 handle_info(init_continue, State) ->
     %% Continue the initialization by (possibly) starting the miner
     {noreply, start_mining(State)};
@@ -357,8 +377,6 @@ spawn_worker(Tag, Fun) ->
     Timeout = worker_timeout(Tag),
     spawn_worker(Tag, Fun, Timeout).
 
-worker_timeout(create_block_candidate) ->
-    infinity;
 worker_timeout(mining) ->
     aeu_env:get_env(aecore, mining_attempt_timeout, ?DEFAULT_MINING_ATTEMPT_TIMEOUT);
 worker_timeout(wait_for_keys) ->
@@ -399,8 +417,6 @@ handle_worker_reply(Pid, Reply, State) ->
             State
     end.
 
-worker_reply(create_block_candidate, Res, State) ->
-    handle_block_candidate_reply(Res, State);
 worker_reply(mining, Res, State) ->
     handle_mining_reply(Res, State);
 worker_reply(wait_for_keys, Res, State) ->
@@ -417,8 +433,7 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
             maybe_publish_top(Publish, NewHash),
             State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
-            State3 = kill_all_workers_with_tag(create_block_candidate, State2),
-            {changed, State3#state{block_candidate = undefined}}
+            {changed, State2#state{block_candidate = undefined}}
     end.
 
 maybe_publish_top(none,_TopHash) -> ok;
@@ -521,14 +536,15 @@ start_mining(#state{keys_ready = false} = State) ->
 start_mining(#state{mining_state = 'stopped'} = State) ->
     State;
 start_mining(#state{block_candidate = undefined} = State) ->
-    %% We need to generate a new block candidate first.
-    create_block_candidate(State);
+    %% We have to wait for a new block candidate first.
+    aec_block_generator:start_generation(),
+    State;
 start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
                     seen_top_block_hash = SeenHash
                    } = State) when OldHash =/= SeenHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
-    create_block_candidate(State#state{block_candidate = undefined});
+    State#state{block_candidate = undefined};
 start_mining(#state{block_candidate = Candidate} = State) ->
     epoch_mining:info("Starting mining"),
     HeaderBin = Candidate#candidate.bin,
@@ -586,31 +602,18 @@ retry_mining(#state{block_candidate = #candidate{top_hash = Hash1},
                     seen_top_block_hash = Hash2} = State) when Hash1 =/= Hash2 ->
     %% Stale hash for candidate. Rebuild it.
     epoch_mining:info("Stale hash for candidate"),
-    start_mining(State#state{block_candidate = undefined});
-retry_mining(#state{block_candidate = Candidate,
-                    fetch_new_txs_from_pool = true} = State) ->
-    Block = Candidate#candidate.block,
-    %% We should first see if we can get a new candidate.
-    case aec_mining:need_to_regenerate(Block) of
-        false ->
-            epoch_mining:debug("No new txs available"),
-            retry_mining_with_new_nonce(Candidate, State);
-        true ->
-            epoch_mining:debug("New txs added for mining"),
-            start_mining(State#state{block_candidate = undefined})
-    end;
+    State#state{block_candidate = undefined};
 retry_mining(#state{block_candidate = Candidate} = State) ->
     retry_mining_with_new_nonce(Candidate, State).
 
 retry_mining_with_new_nonce(#candidate{nonce = N, max_nonce = N}, State) ->
     epoch_mining:info("Failed to mine block, "
                       "nonce range exhausted (was ~p)", [N]),
-    start_mining(State#state{block_candidate = undefined});
+    State#state{block_candidate = undefined};
 retry_mining_with_new_nonce(Candidate, State) ->
     Nonce = Candidate#candidate.nonce,
     NewNonce = aec_pow:next_nonce(Nonce),
-    epoch_mining:debug("Not fetching new txs; "
-                       "continuing mining with bumped nonce "
+    epoch_mining:debug("continuing mining with bumped nonce "
                        "(was ~p, is ~p).", [Nonce, NewNonce]),
     NewCandidate = Candidate#candidate{nonce = NewNonce},
     start_mining(State#state{block_candidate = NewCandidate}).
@@ -618,65 +621,6 @@ retry_mining_with_new_nonce(Candidate, State) ->
 %%%===================================================================
 %%% Worker: Generate new block candidates
 
-new_candidate(Block, Nonce, MaxNonce, State) ->
-    HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
-    #candidate{block = Block,
-               bin = HeaderBin,
-               nonce = Nonce,
-               max_nonce = MaxNonce,
-               top_hash = State#state.seen_top_block_hash
-              }.
-
-create_block_candidate(#state{keys_ready = false} = State) ->
-    %% Keys are needed for creating a candidate
-    wait_for_keys(State);
-create_block_candidate(State) ->
-    epoch_mining:info("Creating block candidate"),
-    Fun = fun() ->
-                  {TopBlock, TopBlockState} = aec_chain:top_block_with_state(),
-                  AdjChain = get_adjustment_headers(TopBlock),
-                  {aec_mining:create_block_candidate(TopBlock, TopBlockState,
-                                                     AdjChain),
-                   State#state.seen_top_block_hash}
-          end,
-    dispatch_worker(create_block_candidate, Fun, State).
-
-get_adjustment_headers(TopBlock) ->
-    {ok, TopHash} = aec_blocks:hash_internal_representation(TopBlock),
-    N = aec_governance:blocks_to_check_difficulty_count(),
-    case aec_blocks:height(TopBlock) < N of
-        true  -> [];
-        false ->
-            {ok, Headers} = aec_chain:get_n_headers_backwards_from_hash(TopHash, N),
-            Headers
-    end.
-
-handle_block_candidate_reply({_Result, OldTopHash}, State)
-  when OldTopHash =/= State#state.seen_top_block_hash ->
-    %% The top hash is stale. Regenerate the candidate.
-    start_mining(State#state{block_candidate = undefined});
-handle_block_candidate_reply({Result,_OldTopHash}, State) ->
-    case Result of
-        {ok, BlockCandidate, RandomNonce} ->
-            Nonce = aec_pow:next_nonce(RandomNonce),
-            epoch_mining:info("Created block candidate and nonce "
-                              "(max ~p, current ~p). "
-                              "Its target is ~p (= difficulty ~p).",
-                              [RandomNonce, Nonce,
-                               aec_blocks:target(BlockCandidate),
-                               aec_blocks:difficulty(BlockCandidate)]),
-            Candidate = new_candidate(BlockCandidate, Nonce,
-                                      RandomNonce, State),
-            State1 = State#state{block_candidate = Candidate},
-            start_mining(State1);
-        {error, key_not_found} ->
-            start_mining(State#state{keys_ready = false});
-        {error, Reason} ->
-            epoch_mining:error("Creation of block candidate failed: ~p",
-                               [Reason]),
-            %% TODO: Should we wait for something else here?
-            create_block_candidate(State)
-    end.
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
