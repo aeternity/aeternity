@@ -1,5 +1,15 @@
 
--type type() :: term().
+-type type() :: word | string | typerep | function
+              | {list, type()}
+              | {option, type()}
+              | {tuple, [type()]}.
+
+-define(TYPEREP_WORD_TAG,   0).
+-define(TYPEREP_STRING_TAG, 1).
+-define(TYPEREP_LIST_TAG,   2).
+-define(TYPEREP_TUPLE_TAG,  3).
+-define(TYPEREP_OPTION_TAG, 4).
+
 -record(arg, {name::string(), type::type()}).
 
 -type expr() :: term().

@@ -268,7 +268,20 @@ ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
 ast_typerep({fun_t,_,_,_}) ->
     function.
 
+ast_type_value(T) ->
+    type_value(ast_type(T)).
 
+type_value(word)   ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_WORD_TAG }] };
+type_value(string) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }] };
+type_value({list, A}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_LIST_TAG }, type_value(A)] };
+type_value({option, A}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }, type_value(A)] };
+type_value({tuple, As}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_TUPLE_TAG },
+                    #list{ elems = [ type_value(A) || A <- As ] }] }.
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],

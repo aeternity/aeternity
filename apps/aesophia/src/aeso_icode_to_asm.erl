@@ -666,6 +666,7 @@ all_type_reps([TR|InSource], Found) ->
                          {tuple, TRs} -> TRs;
                          {list, T}    -> [T];
                          {option, T}  -> [T];
+                         typerep      -> [{list, typerep}]; %% tuple case has a list of typereps
                          _            -> []
                      end,
             all_type_reps(Nested ++ InSource, [TR|Found])
@@ -698,6 +699,19 @@ make_decoder(TR) ->
 
 make_encoder_body(word) ->
     {var_ref, "value"};
+make_encoder_body(typerep) ->
+    Con = fun(Tag, Args) -> {tuple, [{integer, Tag} | Args]} end,
+    Rel = fun(E) -> {binop, '-', E, {var_ref, "base"}} end,
+    Enc = fun(T, X) -> {funcall, {var_ref, encoder_name(T)}, [{var_ref, X}]} end,
+    {switch, {var_ref, "value"},
+        [{Con(?TYPEREP_WORD_TAG, []),   Rel(Con(?TYPEREP_WORD_TAG, []))},
+         {Con(?TYPEREP_STRING_TAG, []), Rel(Con(?TYPEREP_STRING_TAG, []))},
+         {Con(?TYPEREP_LIST_TAG, [{var_ref, "t"}]),
+            Rel(Con(?TYPEREP_LIST_TAG, [Enc(typerep, "t")]))},
+         {Con(?TYPEREP_OPTION_TAG, [{var_ref, "t"}]),
+            Rel(Con(?TYPEREP_OPTION_TAG, [Enc(typerep, "t")]))},
+         {Con(?TYPEREP_TUPLE_TAG, [{var_ref, "ts"}]),
+            Rel(Con(?TYPEREP_TUPLE_TAG, [Enc({list, typerep}, "ts")]))}]};
 make_encoder_body(string) ->
     %% matching against a singleton tuple reads an address
     {switch, {var_ref, "value"},
@@ -748,6 +762,7 @@ make_encoder_body(function) ->
     {integer, 33333333333333333}.
 
 %% TODO: update pointers in-place so save memory!
+%% Note: we never need to decode typereps.
 make_decoder_body(word) ->
     {var_ref, "value"};
 make_decoder_body({tuple, []}) ->
