@@ -22,7 +22,7 @@
 -type pos()    :: {integer(), integer()}.
 -type token()  :: {atom(), pos(), term()} | {atom(), pos()}.
 -type tokens() :: [token()].
--type error()  :: {pos(), string()}.
+-type error()  :: {pos(), string() | no_error}.
 
 -define(lazy(F),     {aeso_parse_lazy, F}).
 -define(fail(Err),   {aeso_parse_fail, Err}).
@@ -155,10 +155,14 @@ layout() -> ?layout.
 -spec parse(parser(A), tokens()) -> {ok, A} | {error, term()}.
 parse(P, S) ->
   case parse1(apply_p(P, fun(X) -> {return_plus, X, {fail, no_error}} end), S) of
-    {[], {Pos, Err}} -> {error, {Pos, parse_error, lists:flatten(Err)}};
+    {[], {Pos, Err}} -> {error, {Pos, parse_error, flatten_error(Err)}};
     {[A], _}         -> {ok, A};
     {As, _}          -> {error, {{1, 1}, ambiguous_parse, As}}
   end.
+
+-spec flatten_error(iolist() | no_error) -> string().
+flatten_error(no_error) -> "Unspecified error";
+flatten_error(Err)      -> lists:flatten(Err).
 
 %% -- Derived combinators ----------------------------------------------------
 
@@ -281,7 +285,7 @@ parse1({tok_bind, Map}, Ts, Acc, Err) ->
                     %%            y + y)(4)
                     case maps:get(vclose, Map, '$not_found') of
                         '$not_found' ->
-                            {Acc, mk_error(Ts, io_lib:format("Unexpected token '~s'.", [tag(T)]))};
+                            {Acc, unexpected_token_error(Ts, T)};
                         F ->
                             VClose = {vclose, pos(T)},
                             Ts2    = pop_layout(VClose, Ts#ts{ last = VClose }),
@@ -301,9 +305,14 @@ parse1({layout, F, P}, Ts, Acc, Err) ->
 parse1({return_plus, X, P}, Ts, Acc,  Err) ->
     case next_token(Ts) of
         false  -> parse1(P, Ts, [X | Acc], Err);
-        {T, _} -> parse1(P, Ts, Acc, mk_error(Ts, io_lib:format("Unexpected token ~p", [tag(T)])))
+        {T, _} -> parse1(P, Ts, Acc, unexpected_token_error(Ts, T))
     end;
-parse1({fail, Err}, Ts, Acc, Err1) -> {Acc, add_error(mk_error(Ts, Err), Err1)}.
+parse1({fail, Err}, Ts, Acc, Err1) ->
+    Err2 = case next_token(Ts) of
+             {T, _} -> unexpected_token_error(Ts, T);
+             _      -> no_error
+           end,
+    {Acc, add_error(add_error(mk_error(Ts, Err), Err2), Err1)}.
 
 %% Get the current position of the token stream. This is the position of the next token if any, and
 %% the line after the last token if at the end of the stream.
@@ -313,7 +322,12 @@ current_pos(#ts{ tokens   = [T | _] }) -> pos(T);
 current_pos(#ts{ last     = T })       -> end_pos(pos(T)).
 
 -spec mk_error(#ts{}, term()) -> error().
-mk_error(Ts, Err) -> {current_pos(Ts), Err}.
+mk_error(Ts, Err) ->
+    {current_pos(Ts), Err}.
+
+-spec unexpected_token_error(#ts{}, token()) -> error().
+unexpected_token_error(Ts, T) ->
+    mk_error(Ts, io_lib:format("Unexpected token ~p", [tag(T)])).
 
 %% Get the next token from a token stream. Inserts layout tokens if necessary.
 -spec next_token(#ts{}) -> false | {token(), #ts{}}.
@@ -377,9 +391,11 @@ insert_layout_tokens([], _Last, _S, Acc) ->
 end_pos({L, _}) -> {L + 1, 1}.
 
 %% Combine two error messages. Discard no_error's otherwise pick the first error.
-add_error(no_error, Err) -> Err;
-add_error(Err, no_error) -> Err;
-add_error(Err, _Err1)    -> Err.
+add_error(no_error, Err)      -> Err;
+add_error({_, no_error}, Err) -> Err;
+add_error(Err, no_error)      -> Err;
+add_error(Err, {_, no_error}) -> Err;
+add_error(Err, _Err1)         -> Err.
 
 %% For some unfathomable reason the maps module does not have a merge_with function.
 -spec merge_with(fun((term(), term()) -> term()), map(), map()) -> map().
