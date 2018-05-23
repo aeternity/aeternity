@@ -16,8 +16,9 @@
     stop_and_continue_sync/1,
     tx_pool_sync/1,
     net_split_recovery/1,
-    quick_start_stop/1,
-    net_split_mining_power/1
+    net_split_mining_power/1,
+    abrupt_stop_new_node/1,
+    abrupt_stop_mining_node/1
 ]).
 
 -import(aest_nodes, [
@@ -30,7 +31,8 @@
     wait_for_startup/3,
     get_block/2,
     get_top/1,
-    request/3
+    request/3,
+    assert_in_sync/1
 ]).
 
 %=== INCLUDES ==================================================================
@@ -124,8 +126,9 @@ all() -> [
     stop_and_continue_sync,
     tx_pool_sync,
     net_split_recovery,
-    quick_start_stop,
-    net_split_mining_power
+    net_split_mining_power,
+    abrupt_stop_new_node,
+    abrupt_stop_mining_node
 ].
 
 init_per_suite(Config) ->
@@ -702,16 +705,42 @@ net_split_mining_power(Cfg) ->
 
     ok.
 
-quick_start_stop(Cfg) ->
+abrupt_stop_new_node(Cfg) ->
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
+    % Start both nodes
     [start_node(N, Cfg) || N <- Nodes],
-    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    % Stop node 2 abruptly
     stop_node(n2, 2000, Cfg),
-    timer:sleep(2000),
+    % Restart node 2
     start_node(n2, Cfg),
-    NewBlocks = wait_for_startup(Nodes, 5, Cfg),
-    ?assertEqual(Blocks, NewBlocks).
+    % Check that they synchronize
+    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    assert_in_sync(Blocks).
+
+abrupt_stop_mining_node(Cfg) ->
+    NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
+    Nodes = [n1, n2],
+    setup_nodes(cluster(Nodes, #{}), Cfg),
+    % Start both nodes
+    [start_node(N, Cfg) || N <- Nodes],
+    % Let them build some chain
+    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    assert_in_sync(Blocks),
+    % Stop node 2
+    stop_node(n2, NodeShutdownTime, Cfg),
+    % Start node 2
+    start_node(n2, Cfg),
+    % Stop node 2 abruptly
+    stop_node(n2, 2000, Cfg),
+    % Restart node 2
+    start_node(n2, Cfg),
+    % Check that they synchronize
+    NewBlocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    ?assertEqual(Blocks, NewBlocks),
+    % Check that they continue mining
+    LatestBlocks = wait_for_value({height, 10}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    assert_in_sync(LatestBlocks).
 
 %% helper functions
 

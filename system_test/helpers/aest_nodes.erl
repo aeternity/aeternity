@@ -1,5 +1,7 @@
 -module(aest_nodes).
 
+-include_lib("eunit/include/eunit.hrl").
+
 %=== EXPORTS ===================================================================
 
 %% Common Test API exports
@@ -41,6 +43,7 @@
 -export([wait_for_time/4]).
 -export([wait_for_startup/3]).
 -export([time_to_ms/1]).
+-export([assert_in_sync/1]).
 
 %=== MACROS ====================================================================
 
@@ -417,6 +420,14 @@ time_to_ms({milliseconds, Time})       -> Time;
 time_to_ms({seconds, Time})            -> Time * 1000;
 time_to_ms({minutes, Time})            -> Time * 1000 * 60;
 time_to_ms({hours, Time})              -> Time * 1000 * 60 * 60.
+
+assert_in_sync(Blocks) when is_map(Blocks) ->
+    assert_in_sync(maps:values(Blocks));
+assert_in_sync([_Block]) ->
+    ok;
+assert_in_sync([B1, B2|Blocks]) ->
+    ?assertEqual(B1, B2),
+    assert_in_sync([B2|Blocks]).
 
 %=== INTERNAL FUNCTIONS ========================================================
 
