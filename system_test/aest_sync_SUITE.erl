@@ -4,8 +4,10 @@
 
 % Common Test exports
 -export([all/0]).
+-export([init_per_suite/1]).
 -export([init_per_testcase/2]).
 -export([end_per_testcase/2]).
+-export([end_per_suite/1]).
 
 % Test cases
 -export([
@@ -101,16 +103,24 @@ all() -> [
     quick_start_stop
 ].
 
-init_per_testcase(_TC, Config) ->
+init_per_suite(Config) ->
     %% Some parameters depend on the speed and capacity of the docker containers:
     %% timers must be less than gen_server:call timeout.
-    aest_nodes:ct_setup([ {blocks_per_second, 3},
-                          {node_startup_time, 20000}, %% Time may take to get the node to respond to http
-                          {node_shutdown_time, 20000}  %% Time it may take to stop node cleanly
-                          | Config]).
+    [
+        {blocks_per_second, 3},
+        {node_startup_time, 20000}, %% Time may take to get the node to respond to http
+        {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
+    |Config].
+
+init_per_testcase(quick_start_stop, Config) ->
+    aest_nodes:ct_setup([{verify_logs, false}|Config]);
+init_per_testcase(_TC, Config) ->
+    aest_nodes:ct_setup(Config).
 
 end_per_testcase(_TC, Config) ->
     aest_nodes:ct_cleanup(Config).
+
+end_per_suite(_Config) -> ok.
 
 %=== TEST CASES ================================================================
 
