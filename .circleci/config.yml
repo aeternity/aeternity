@@ -108,7 +108,7 @@ references:
         if [ "$(uname -s)" == "Darwin" ]; then
             PKG_SUFFIX="osx-$(sw_vers -productVersion)"
         elif [ "$(uname -s)" == "Linux" ]; then
-            PKG_SUFFIX="ubuntu"
+            PKG_SUFFIX="ubuntu-"`uname -m`
         fi
         export PACKAGE_TARBALL=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-${PKG_SUFFIX}.tar.gz
         echo "export PACKAGE_TARBALL=${PACKAGE_TARBALL}" >> $BASH_ENV
@@ -153,7 +153,7 @@ references:
         environment:
           PACKAGES_DIR: *packages_workspace
         command: |
-          export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu.tar.gz
+          export PACKAGE=${PACKAGES_DIR:?}/epoch-$(cat VERSION)-ubuntu-x86_64.tar.gz
           cd deployment/ansible
           ansible-playbook --limit="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}" \
             --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?}" \
