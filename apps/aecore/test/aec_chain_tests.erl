@@ -727,8 +727,8 @@ fork_get_transaction() ->
     RecipientPubKey = <<42:32/unit:8>>,
     PresetAccounts = [{SenderPubKey, 100}],
     meck:expect(aec_genesis_block_settings, preset_accounts, 0, PresetAccounts),
-    Spend1 = aetx_sign:sign(make_a_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
-    Spend2 = aetx_sign:sign(make_a_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
+    Spend1 = aetx_sign:sign(make_spend_tx(SenderPubKey, 1, RecipientPubKey), SenderPrivKey),
+    Spend2 = aetx_sign:sign(make_spend_tx(SenderPubKey, 2, RecipientPubKey), SenderPrivKey),
     CommonChainTargets = [?GENESIS_TARGET, 1, 1],
     EasyChainExtensionTargets = [2, 2],
     HardChainExtensionTargets = [1, 1, 1],
@@ -894,7 +894,7 @@ block_hash(Block) ->
     {ok, H} = aec_blocks:hash_internal_representation(Block),
     H.
 
-make_a_spend_tx(Sender, SenderNonce, Recipient) ->
+make_spend_tx(Sender, SenderNonce, Recipient) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
                                        recipient => Recipient,
                                        amount => 1,

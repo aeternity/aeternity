@@ -66,7 +66,7 @@ signatures_check_test_() ->
         end}
      , {"Transactions with broken signatures are rejected",
         fun () ->
-            Tx = make_a_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
+            Tx = make_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
             MalformedTxs = [aetx_sign:sign(Tx, <<0:64/unit:8>>)],
             {ok, ApprovedTxs, _Trees} =
                 ?TEST_MODULE:apply_signed_txs(?MINER_PUBKEY, MalformedTxs, aec_trees:new(), 1,
@@ -76,7 +76,7 @@ signatures_check_test_() ->
         end}
      ]}.
 
-make_a_spend_tx(Sender, Recipient) ->
+make_spend_tx(Sender, Recipient) ->
     {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
                                        recipient => Recipient,
                                        amount => 1,
