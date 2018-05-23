@@ -158,7 +158,7 @@ opcode(?DELEGATECALL)   -> ?DELEGATECALL;
 opcode(?CALLBLACKBOX)   -> ?CALLBLACKBOX; %% TODO
 opcode(?STATICCALL)     -> ?STATICCALL; %% TODO
 opcode(?REVERT)         -> ?REVERT;
-opcode(?COMMENT)        -> ?COMMENT;
+opcode({comment,X})     -> ?COMMENT(X);
 opcode(?SUICIDE)        -> ?SUICIDE.
 
 
@@ -296,7 +296,7 @@ mnemonic(?DELEGATECALL)   -> 'DELEGATECALL'   ;
 mnemonic(?CALLBLACKBOX)   -> 'CALLBLACKBOX'   ;
 mnemonic(?STATICCALL)     -> 'STATICCALL'     ;
 mnemonic(?REVERT)         -> 'REVERT'         ;
-mnemonic(?COMMENT)        -> 'COMMENT'        ;
+mnemonic({comment,_})     -> 'COMMENT'        ;
 mnemonic(?SUICIDE)        -> 'SUICIDE'        .
 
 
@@ -435,7 +435,7 @@ m_to_op('DELEGATECALL')   -> ?DELEGATECALL   ;
 m_to_op('CALLBLACKBOX')   -> ?CALLBLACKBOX   ;
 m_to_op('STATICCALL')     -> ?STATICCALL     ;
 m_to_op('REVERT')         -> ?REVERT         ;
-m_to_op('COMMENT')        -> ?COMMENT        ;
+m_to_op('COMMENT')        -> ?COMMENT("")    ;
 m_to_op('SUICIDE')        -> ?SUICIDE        ;
 m_to_op(Data) when 0=<Data, Data=<255
 	      	          -> Data            .
@@ -446,5 +446,6 @@ swap(N) when N >= 1, N =< 16 -> ?SWAP1 + N - 1.
 
 op_size(OP) when OP >= ?PUSH1 andalso OP =< ?PUSH32 ->
     (OP - ?PUSH1) + 2;
+op_size({comment, _}) -> 0;
 op_size(_) -> 1.
 

@@ -28,6 +28,8 @@
 
 %% -- Callback API -----------------------------------------------------------
 
+%% -- Accounts --
+
 %% Execute a spend transaction from the contract account.
 -callback spend(Recipient :: pubkey(),
                 Amount    :: non_neg_integer(),
@@ -36,6 +38,17 @@
 %% Get the current balance of an account.
 -callback get_balance(Account :: pubkey(), State :: chain_state()) ->
     non_neg_integer().
+
+%% -- Oracles --
+
+-callback oracle_register(Account :: pubkey(),
+                          Sign :: binary(),
+                          TTL :: non_neg_integer(),
+                          DecodedQType :: binary(),
+                          DecodedRType :: binary(),
+                          ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

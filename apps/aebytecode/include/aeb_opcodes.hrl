@@ -146,7 +146,7 @@
 -define(        'INVALID', 16#fe).
 -define(        'SUICIDE', 16#ff).
 
--define(        'COMMENT', comment).
+-define(       COMMENT(X), {comment, X}).
 
 %% Transactions are implemented as contract calls to address zero, with the
 %% first argument encoding the transaction type according to the below.

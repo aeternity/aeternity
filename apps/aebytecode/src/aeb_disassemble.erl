@@ -23,7 +23,7 @@ format(Binary) ->
 
 pp(Address, [Op|Ops], Assembly) ->
     case Op of
-        X when (X >= ?STOP) andalso (X =< ?SIGNEXTEND) -> 
+        X when (X >= ?STOP) andalso (X =< ?SIGNEXTEND) ->
             Instr = pp_instruction(Address, aeb_opcodes:mnemonic(Op), []),
             next(Address, Ops, Instr, Assembly);
         X when (X >= ?LT) andalso (X =< ?BYTE) ->
@@ -82,7 +82,7 @@ pad_op(Op) ->
     [Op,lists:duplicate(Pad, 32)].
 
 pp_args([]) -> [];
-pp_args([{Arg, Size}]) -> 
+pp_args([{Arg, Size}]) ->
     case Size of
         8 -> io_lib:format("0x~2.16.0B",[Arg]);
         160 -> io_lib:format("0x~64.16.0B",[Arg]);

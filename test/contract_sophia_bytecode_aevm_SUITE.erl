@@ -18,15 +18,17 @@
    , stack/1
    , simple_storage/1
    , dutch_auction/1
+   , oracle_register/1
    ]).
 
 %% chain API exports
--export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2 ]).
+-export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
+          oracle_register/6]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
-all() -> [ execute_identity_fun_from_sophia_file,
+fall() -> [ execute_identity_fun_from_sophia_file,
            sophia_remote_call,
            sophia_factorial,
            simple_multi_argument_call,
@@ -37,14 +39,17 @@ all() -> [ execute_identity_fun_from_sophia_file,
            counter,
            stack,
            simple_storage,
-           dutch_auction ].
+           dutch_auction,
+           oracle_register].
+
+all() -> [oracle_register].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
-    Options           = [],
-    %% Options           = [pp_ast, pp_icode, pp_bytecode],
+    %% Options           = [],
+    Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
     Code = aeso_compiler:from_string(binary_to_list(ContractBin), Options),
     aeu_hex:hexstring_encode(Code).
 
@@ -54,7 +59,7 @@ compile_contract(Name) ->
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := Code} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
-    Trace = false,
+    Trace = true,
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
@@ -312,6 +317,25 @@ increment_account(Account, Value, Env) ->
                      end,
                      Env).
 
+
+oracle_register(_Cfg) ->
+    Code = compile_contract(oracles),
+    Env0 = initial_state(#{}),
+    Env1 = create_contract(101, Code, "()", Env0),
+    {0, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 10)", Env1),
+    #{oracles :=
+          [#{account := 101,
+             nonce := 1,
+             query_spec := 288,
+             response_spec := 64,
+             sign := 3,
+             ttl := 10}]} = Env2,
+
+    ok.
+
+
+
+
 %% -- Chain API implementation -----------------------------------------------
 
 initial_state(Contracts) ->
@@ -365,3 +389,13 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
+oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec, State) ->
+    {ok,
+     State#{ oracles =>
+                 [#{account       => AccountKey,
+                    sign          => Sign,
+                    nonce         => 1,
+                    query_spec    => QuerySpec,
+                    response_spec => ResponseSpec,
+                    ttl           => TTL}
+                 ]}}.

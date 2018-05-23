@@ -15,6 +15,7 @@
 	 get_store/1,
 	 set_store/2,
          spend/3,
+         oracle_register/6,
          call_contract/6]).
 
 -record(state, { trees   :: aec_trees:trees()
@@ -60,6 +61,9 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
     State#state{ trees = Trees1 }.
 
 
+%% -- Primops ----------------------------
+%%    Account
+
 %% @doc Spend money from the contract account.
 -spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
@@ -71,6 +75,46 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
         Err = {error, _} -> Err
     end.
 
+%%    Oracle
+-spec oracle_register(pubkey(), binary(), non_neg_integer(),
+                  binary(), binary(), chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec,
+                State = #state{ trees   = Trees,
+                                height  = Height,
+                                account = ContractKey}) ->
+
+    AT = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(AccountKey, AT),
+    %% Note: The nonce of the account is incremented.
+    %% This means that if you register an oracle for an account other than
+    %% the contract account through a contract that contract nonce is incremented
+    %% "behind your back".
+    Nonce = aec_accounts:nonce(Account) + 1,
+
+    Spec =
+        #{account       => AccountKey,
+          nonce         => Nonce,
+          query_spec    => QuerySpec,
+          response_spec => ResponseSpec,
+          query_fee     => 0, %% TODO: Think about fees.
+          ttl           => TTL,
+          fee           => 0},
+
+    Result =
+        if AccountKey =:= ContractKey -> do_oracle_register(Spec, Height, Trees);
+           true ->
+                %% TODO: Check that Sign is correct for external accounts.
+                {error, signature_check_failed}
+        end,
+    case Result of
+        {ok, Trees1}     -> {ok, State#state{ trees = Trees1 }};
+        Err = {error, _} -> Err
+    end.
+
+
+%%    Contracts
+
 %% @doc Call another contract.
 -spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
@@ -78,7 +122,8 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 call_contract(Target, Gas, Value, CallData, CallStack,
               State = #state{ trees   = Trees,
                               height  = Height,
-                              account = ContractKey }) ->
+                              account = ContractKey
+                            }) ->
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     CT = aec_trees:contracts(Trees),
     case aect_state_tree:lookup_contract(Target, CT) of
@@ -172,4 +217,11 @@ do_spend(Recipient, ContractKey, Amount, Trees, Height) ->
         Error -> Error
     end.
 
-
+do_oracle_register(Spec, Height, Trees) ->
+    {ok, Tx} = aeo_register_tx:new(Spec),
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
+        {ok, Trees1} ->
+            aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion);
+        Error -> Error
+    end.

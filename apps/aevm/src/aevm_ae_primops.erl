@@ -13,6 +13,7 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
 -define(BASE_ADDRESS, 64). %% Byte offset for data
+-define(PRIMOP_BASE_ADDRESS, 96). %% Byte offset for data in primops
 -spec call( non_neg_integer(), binary(), aevm_eeevm_state:state()) ->
                   {ok, binary(), non_neg_integer(), aevm_eeevm_state:state()}
                       | {error, any()}.
@@ -21,7 +22,7 @@ call(Value, Data, State) ->
     case Data of
         <<?BASE_ADDRESS:256, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
             spend(Recipient, Value, State);
-	<<?BASE_ADDRESS:256, Type:256, Argument/binary>> ->
+	<<?PRIMOP_BASE_ADDRESS:256, _:256, Type:256, Argument/binary>> ->
 	    case Type of
 		T when ?PRIM_CALL_IN_ORACLE_RANGE(T) ->
 		    oracle_call(T, Argument, State);

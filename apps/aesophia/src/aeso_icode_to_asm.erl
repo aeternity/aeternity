@@ -403,7 +403,8 @@ assemble_expr(Funs, Stack, Tail,
                 %%       our EVM implementation doesn't actually need it.
     %% Note: assemble expressions first, since this may allocate memory.
     Exprs = [Value, Gas, To],                 %% Stack
-    [ assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
+    [%% i(?COMMENT(io_lib:format("Call primop: To ~p, Value: ~p", [To, Value]))),
+      assemble_exprs(Funs, Stack, Exprs)      %%  To Gas Value
     , assemble_expr(Funs, [dummy, dummy, dummy | Stack],
             nontail, {encode, 32, ArgT, Arg}) %%  IOffset To Gas Value
     , i(?MSIZE)                               %%  OOffset IOffset To Gas Value
@@ -1010,9 +1011,9 @@ use_labels(_, I) ->
 %% The compilation of conditionals can introduce jumps depending on
 %% constants 1 and 0. These are removed by peep-hole optimization.
 
-peep_hole(['PUSH1', 0, {push_label, _}, 'JUMP1'|More]) ->
+peep_hole(['PUSH1', 0, {push_label, _}, 'JUMPI'|More]) ->
     peep_hole(More);
-peep_hole(['PUSH1', 1, {push_label, Lab}, 'JUMP1'|More]) ->
+peep_hole(['PUSH1', 1, {push_label, Lab}, 'JUMPI'|More]) ->
     [{push_label, Lab}, 'JUMP'|peep_hole(More)];
 peep_hole([{pop_args, M}, {pop_args, N}|More]) when M + N =< 16 ->
     peep_hole([{pop_args, M + N}|More]);
