@@ -108,13 +108,17 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 %% Fee should cover TTL
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
-                       oracle = OraclePubKey, query_fee = QFee,
+                       oracle = OraclePubKeyOrName, query_fee = QFee,
                        query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, _Context, Trees, Height, _ConsensusVersion) ->
+
+    NamesTree = aec_trees:ns(Trees),
+    {ok, OraclePubKey} = aens:resolve_decoded(oracle_pubkey, OraclePubKeyOrName, NamesTree),
+
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
          fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
          fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, TTL, RTTL) end,
-         fun() -> check_query(Q, Trees, Height) end
+         fun() -> check_query(Q, OraclePubKey, Trees, Height) end
         ],
 
     case aeu_validation:run(Checks) of
@@ -133,15 +137,18 @@ signers(#oracle_query_tx{sender = SenderPubKey}, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
-                         query_fee = QueryFee} = QueryTx, _Context, Trees0, Height, _ConsensusVersion) ->
+                         query_fee = QueryFee, oracle = OraclePKOrName} = QueryTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
+    NamesTree0 = aec_trees:ns(Trees0),
+
+    {ok, OraclePK} = aens:resolve_decoded(oracle_pubkey, OraclePKOrName, NamesTree0),
 
     Sender0 = aec_accounts_trees:get(SenderPubKey, AccountsTree0),
     {ok, Sender1} = aec_accounts:spend(Sender0, QueryFee + Fee, Nonce),
     AccountsTree1 = aec_accounts_trees:enter(Sender1, AccountsTree0),
 
-    Query = aeo_query:new(QueryTx, Height),
+    Query = aeo_query:new(QueryTx, OraclePK, Height),
     OraclesTree1 = aeo_state_tree:insert_query(Query, OraclesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
@@ -227,7 +234,7 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
       <<"vsn">> => version(),
       <<"sender">> => aec_base58c:encode(account_pubkey, SenderPubKey),
       <<"nonce">> => Nonce,
-      <<"oracle">> => aec_base58c:encode(oracle_pubkey, OraclePubKey),
+      <<"oracle">> => aens_utils:base58c_encode_or_valid_name(oracle_pubkey, OraclePubKey),
       <<"query">> => Query,
       <<"query_fee">> => QueryFee,
       <<"query_ttl">> => #{<<"type">> => QueryTLLType,
@@ -238,9 +245,9 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
 
 %% -- Local functions  -------------------------------------------------------
 
-check_query(Q, Trees, Height) ->
+check_query(Q, OraclePubKey, Trees, Height) ->
     Oracles  = aec_trees:oracles(Trees),
-    I        = aeo_query:new(Q, Height),
+    I        = aeo_query:new(Q, OraclePubKey, Height),
     OracleId = aeo_query:oracle_address(I),
     Id       = aeo_query:id(I),
     case aeo_state_tree:lookup_query(OracleId, Id, Oracles) of

@@ -88,8 +88,8 @@ check(#ns_transfer_tx{account = AccountPubKey, nonce = Nonce,
     end.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#ns_transfer_tx{account = AccountPubKey, fee = Fee,
-                        name_hash = NameHash, nonce = Nonce} = TransferTx, _Context, Trees0, _Height, _ConsensusVersion) ->
+process(#ns_transfer_tx{account = AccountPubKey, fee = Fee, name_hash = NameHash, nonce = Nonce,
+                        recipient_account = RecipientPubKeyOrName}, _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     NamesTree0 = aec_trees:ns(Trees0),
 
@@ -98,7 +98,9 @@ process(#ns_transfer_tx{account = AccountPubKey, fee = Fee,
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Name0 = aens_state_tree:get_name(NameHash, NamesTree0),
-    Name1 = aens_names:transfer(TransferTx, Name0),
+
+    {ok, RecipientPubKey} = aens:resolve_decoded(account_pubkey, RecipientPubKeyOrName, NamesTree0),
+    Name1 = aens_names:transfer(RecipientPubKey, Name0),
     NamesTree1 = aens_state_tree:enter_name(Name1, NamesTree0),
 
     Trees1 = aec_trees:set_accounts(Trees0, AccountsTree1),
@@ -160,7 +162,7 @@ for_client(#ns_transfer_tx{account           = AccountPubKey,
       <<"account">>          => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>            => Nonce,
       <<"name_hash">>        => aec_base58c:encode(name, NameHash),
-      <<"recipient_pubkey">> => aec_base58c:encode(account_pubkey, RecipientPubKey),
+      <<"recipient_pubkey">> => aens_utils:base58c_encode_or_valid_name(account_pubkey, RecipientPubKey),
       <<"fee">>              => Fee}.
 
 %%%===================================================================

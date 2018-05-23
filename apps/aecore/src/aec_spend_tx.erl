@@ -90,7 +90,7 @@ payload(#spend_tx{payload = Payload}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
-    RecipientPubkey = recipient(SpendTx),
+    RecipientPubkeyOrName = recipient(SpendTx),
     Checks =
         case Context of
             aetx_contract ->
@@ -101,7 +101,13 @@ check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
         end,
     case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
         ok ->
-            {ok, aec_trees:ensure_account(RecipientPubkey, Trees0)};
+            NSTrees0 = aec_trees:ns(Trees0),
+            case aens:resolve_decoded(account_pubkey, RecipientPubkeyOrName, NSTrees0) of
+                {ok, RecipientPubkey} ->
+                    {ok, aec_trees:ensure_account(RecipientPubkey, Trees0)};
+                {error, _Reason} = Error ->
+                    Error
+            end;
         {error, _Reason} = Error ->
             Error
     end.
@@ -115,15 +121,18 @@ signers(#spend_tx{sender = SenderPubKey}, _) -> {ok, [SenderPubKey]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{sender = SenderPubkey,
-                  recipient = RecipientPubkey,
+                  recipient = RecipientPubkeyOrName,
                   amount = Amount,
                   fee = Fee,
                   nonce = Nonce}, _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
+    NSTrees0 = aec_trees:ns(Trees0),
 
     {value, SenderAccount0} = aec_accounts_trees:lookup(SenderPubkey, AccountsTrees0),
     {ok, SenderAccount} = aec_accounts:spend(SenderAccount0, Amount + Fee, Nonce),
     AccountsTrees1 = aec_accounts_trees:enter(SenderAccount, AccountsTrees0),
+
+    {ok, RecipientPubkey} = aens:resolve_decoded(account_pubkey, RecipientPubkeyOrName, NSTrees0),
 
     {value, RecipientAccount0} = aec_accounts_trees:lookup(RecipientPubkey, AccountsTrees1),
     {ok, RecipientAccount} = aec_accounts:earn(RecipientAccount0, Amount),
@@ -178,7 +187,7 @@ for_client(#spend_tx{sender = Sender,
                      payload = Payload}) ->
     #{<<"sender">> => aec_base58c:encode(account_pubkey, Sender),
       <<"data_schema">> => <<"SpendTxJSON">>, % swagger schema name
-      <<"recipient">> => aec_base58c:encode(account_pubkey, Recipient),
+      <<"recipient">> => aens_utils:base58c_encode_or_valid_name(account_pubkey, Recipient),
       <<"amount">> => Amount,
       <<"fee">> => Fee,
       <<"nonce">> => Nonce,

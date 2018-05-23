@@ -5,6 +5,7 @@
         , read_required_params/1
         , read_optional_params/1
         , base58_decode/1
+        , base58_decode_or_name/1
         , hexstrings_decode/1
         , ttl_decode/1
         , parse_tx_encoding/1
@@ -90,6 +91,22 @@ base58_decode(Params) ->
         end,
         "Invalid hash").
 
+base58_decode_or_name(Params) ->
+    params_read_fun(Params,
+        fun({Name, Type}, _, Data) ->
+            Encoded = maps:get(Name, Data),
+             case aec_base58c:safe_decode(Type, Encoded) of
+                {error, _} ->
+                    case aens_utils:validate_name(Encoded) of
+                        ok -> {ok, Encoded};
+                        {error, _} -> error
+                    end;
+                {ok, Hash} ->
+                    {ok, Hash}
+            end
+        end,
+        "Invalid hash").
+
 hexstrings_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
@@ -150,6 +167,13 @@ get_nonce(AccountKey) ->
         end
     end.
 
+resolve_name_for_type(PubkeyOrName, NameType) ->
+    {ok, PubkeyMaybeEnc} = aec_chain:resolve_name_decoded(NameType, PubkeyOrName),
+    case aec_base58c:safe_decode(NameType, PubkeyMaybeEnc) of
+        {ok, PubkeyDec} -> PubkeyDec;
+        {error, _}      -> PubkeyMaybeEnc
+    end.
+
 print_state() ->
     fun(Req, State) ->
         lager:info("Req: ~p", [Req]),
@@ -174,25 +198,26 @@ get_contract_code(ContractKey, CodeKey) ->
 verify_oracle_existence(OracleKey) ->
     verify_key_in_state_tree(OracleKey, fun aec_trees:oracles/1,
                              fun aeo_state_tree:lookup_oracle/2,
-                             "Oracle address"). 
+                             oracle_pubkey, "Oracle address").
 
 verify_oracle_query_existence(OracleKey, QueryKey) ->
     fun(Req, State) ->
-        OraclePubKey = maps:get(OracleKey, State),
+        OraclePubKeyOrName = maps:get(OracleKey, State),
+        OraclePubKey = resolve_name_for_type(OraclePubKeyOrName, oracle_pubkey),
         Lookup =
             fun(QId, Tree) ->
                 aeo_state_tree:lookup_query(OraclePubKey, QId, Tree)
             end,
         Fun = verify_key_in_state_tree(QueryKey, fun aec_trees:oracles/1,
-                                        Lookup, "Oracle query"),
+                                        Lookup, oracle_pubkey, "Oracle query"),
         Fun(Req, State)
     end.
 
-verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
+verify_key_in_state_tree(Key, StateTreeFun, Lookup, NameType, Entity) ->
     fun(_Req, State) ->
-        ReceivedAddress = maps:get(Key, State),
-        TopBlockHash = aec_chain:top_block_hash(),
-        {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
+        ReceivedAddressOrName = maps:get(Key, State),
+        ReceivedAddress = resolve_name_for_type(ReceivedAddressOrName, NameType),
+        {ok, Trees}  = aec_chain:get_top_state(),
         Tree = StateTreeFun(Trees),
         case Lookup(ReceivedAddress, Tree) of
             none ->

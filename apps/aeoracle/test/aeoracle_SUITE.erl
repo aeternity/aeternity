@@ -230,7 +230,7 @@ query_oracle(Cfg, Opts) ->
         aec_trees:apply_signed_txs([SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
-    ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
+    ID = aeo_query:id(aeo_query:new(QTx, OracleKey, CurrHeight)),
     {OracleKey, ID, S3}.
 
 %%%===================================================================

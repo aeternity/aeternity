@@ -73,9 +73,9 @@ revoke(Name, Expiration, BlockHeight) ->
     Name#name{status  = revoked,
               expires = Expires}.
 
--spec transfer(aens_transfer_tx:tx(), name()) -> name().
-transfer(TransferTx, Name) ->
-    Name#name{owner = aens_transfer_tx:recipient_account(TransferTx)}.
+-spec transfer(pubkey(), name()) -> name().
+transfer(PubKey, Name) ->
+    Name#name{owner = PubKey}.
 
 -spec serialize(name()) -> binary().
 serialize(#name{} = N) ->

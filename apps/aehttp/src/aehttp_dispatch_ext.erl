@@ -8,6 +8,7 @@
                         , read_optional_params/1
                         , parse_map_to_atom_keys/0
                         , base58_decode/1
+                        , base58_decode_or_name/1
                         , hexstrings_decode/1
                         , nameservice_pointers_decode/1
                         , get_nonce/1
@@ -228,8 +229,8 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender, oracle_pubkey, query,
                                        query_fee, fee, query_ttl, response_ttl]),
-                 base58_decode([{sender, sender, account_pubkey},
-                               {oracle_pubkey, oracle, oracle_pubkey}]),
+                 base58_decode_or_name([{sender, sender, account_pubkey},
+                                        {oracle_pubkey, oracle, oracle_pubkey}]),
                  get_nonce(sender),
                  ttl_decode(query_ttl),
                  relative_ttl_decode(response_ttl),
@@ -242,8 +243,8 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle, query_id,
                                        response, fee]),
-                 base58_decode([{oracle, oracle, account_pubkey},
-                               {query_id, query_id, oracle_query_id}]),
+                 base58_decode_or_name([{oracle, oracle, oracle_pubkey},
+                                        {query_id, query_id, oracle_query_id}]),
                  get_nonce(oracle),
                  verify_oracle_query_existence(oracle, query_id),
                  unsigned_tx_response(fun aeo_response_tx:new/1)
@@ -441,10 +442,12 @@ handle_request('GetName', Req, _Context) ->
             #{<<"name">>     := Name,
               <<"hash">>     := Hash,
               <<"name_ttl">> := NameTTL,
+              <<"owner">>    := Owner,
               <<"pointers">> := Pointers} = NameEntry,
             {200, [], #{name      => Name,
                         name_hash => aec_base58c:encode(name, Hash),
                         name_ttl  => NameTTL,
+                        owner     => aec_base58c:encode(account_pubkey, Owner),
                         pointers  => Pointers}};
         {error, name_not_found} ->
             {404, [], #{reason => <<"Name not found">>}};
