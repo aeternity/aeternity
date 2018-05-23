@@ -13,10 +13,10 @@
 -define(DEP_SIGNED   , deposit_signed).
 -define(DEP_LOCKED   , deposit_locked).
 -define(DEP_ERR      , deposit_error).
--define(WDRAW_CREATED, withdrawal_created).
--define(WDRAW_SIGNED , withdrawal_signed).
--define(WDRAW_LOCKED , withdrawal_locked).
--define(WDRAW_ERR    , withdrawal_error).
+-define(WDRAW_CREATED, withdraw_created).
+-define(WDRAW_SIGNED , withdraw_signed).
+-define(WDRAW_LOCKED , withdraw_locked).
+-define(WDRAW_ERR    , withdraw_error).
 -define(ERROR        , error).
 -define(SHUTDOWN     , shutdown).
 -define(SHUTDOWN_ACK , shutdown_ack).
