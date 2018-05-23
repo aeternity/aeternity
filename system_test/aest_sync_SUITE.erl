@@ -27,6 +27,7 @@
     stop_node/3,
     connect_node/3, disconnect_node/3,
     wait_for_value/4,
+    wait_for_startup/3,
     get_block/2,
     get_top/1,
     request/3
@@ -243,7 +244,7 @@ new_node_joins_network(Cfg) ->
 %% that we had in the chain before stopping: data is persistent.
 docker_keeps_data(Cfg) ->
     Length = 20,
-    NodeStartupTime = proplists:get_value(node_startup_time, Cfg),
+    NodeStartupTime = proplists:get_value(startup_timeout, Cfg),
     NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
 
     setup_nodes([?STANDALONE_NODE], Cfg),
@@ -706,13 +707,15 @@ net_split_mining_power(Cfg) ->
     ok.
 
 quick_start_stop(Cfg) ->
-    setup_nodes(cluster([n1, n2], #{}), Cfg),
-    start_node(n2, Cfg),
-    start_node(n1, Cfg),
+    Nodes = [n1, n2],
+    setup_nodes(cluster(Nodes, #{}), Cfg),
+    [start_node(N, Cfg) || N <- Nodes],
+    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
     stop_node(n2, 2000, Cfg),
     timer:sleep(2000),
     start_node(n2, Cfg),
-    ok.
+    NewBlocks = wait_for_startup(Nodes, 5, Cfg),
+    ?assertEqual(Blocks, NewBlocks).
 
 %% helper functions
 

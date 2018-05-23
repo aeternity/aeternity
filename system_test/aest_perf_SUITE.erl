@@ -32,6 +32,7 @@
     wait_for_value/4,
     wait_for_time/4,
     get_block/2,
+    wait_for_startup/3,
     time_to_ms/1
 ]).
 
@@ -190,10 +191,6 @@ sync_node(Node, Height, Cfg) ->
     % Sanity check that syncing does not take longer than mining
     ?assert(End - Start =< time_to_ms(?cfg(mine_time))),
     Block.
-
-wait_for_startup(Nodes, Height, Cfg) ->
-    StartupTimeout = proplists:get_value(startup_timeout, Cfg),
-    wait_for_value({height, Height}, Nodes, StartupTimeout, Cfg).
 
 wait_for_sync(Nodes, Height, Cfg) ->
     SyncTimeout = proplists:get_value(sync_timeout, Cfg),

@@ -39,6 +39,7 @@
 -export([wait_for_value/4]).
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
+-export([wait_for_startup/3]).
 -export([time_to_ms/1]).
 
 %=== MACROS ====================================================================
@@ -348,30 +349,29 @@ get_top(NodeName) ->
                     ({contract_tx, binary(), non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok;
                     ({height, non_neg_integer()}, [atom()], milliseconds(), test_ctx()) -> ok.
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, _Ctx) ->
-    Expiration = make_expiration(Timeout),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetAccountBalance', #{address => PubKey}) of
-                    {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> done;
+                    {ok, 200, #{balance := Balance}} when Balance >= MinBalance -> {done, #{PubKey => Balance}};
                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, NodeNames, [], 500, Expiration);
+    wait_for_value(CheckF, NodeNames, [], 500, Timeout);
 wait_for_value({height, MinHeight}, NodeNames, Timeout, _Ctx) ->
     Start = erlang:system_time(millisecond),
-    Expiration = make_expiration(Timeout),
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', #{height => MinHeight}) of
-                    {ok, 200, _} -> done;
+                    {ok, 200, Block} -> {done, Block};
                     _ -> wait
                 end
         end,
-    wait_for_value(CheckF, NodeNames, [], 500, Expiration),
+    Result = wait_for_value(CheckF, NodeNames, [], 500, Timeout),
     Duration = (erlang:system_time(millisecond) - Start) / 1000,
     ct:log("Height ~p reached on nodes ~p after ~.2f seconds",
         [MinHeight, NodeNames, Duration]
-    ).
+    ),
+    Result.
 
 wait_for_time(height, NodeNames, Time) ->
     wait_for_time(height, NodeNames, Time, #{}).
@@ -391,6 +391,10 @@ wait_for_time(height, NodeNames, TimeUnit, Opts) ->
     end,
     Block = repeat(ProgressFun, Interval, Time),
     maps:get(height, Block).
+
+wait_for_startup(Nodes, Height, Cfg) ->
+    StartupTimeout = proplists:get_value(startup_timeout, Cfg),
+    wait_for_value({height, Height}, Nodes, StartupTimeout, Cfg).
 
 repeat(Fun, Interval, Max) ->
     Start = erlang:system_time(millisecond),
@@ -457,15 +461,21 @@ assert_expiration({StartTime, Timeout}) ->
         false -> ok
     end.
 
-wait_for_value(_CheckF, [], [], _Delay, _Expiration) -> ok;
-wait_for_value(CheckF, [], Rem, Delay, Expiration) ->
+wait_for_value(CheckF, Nodes, Rem, Delay, Timeout) ->
+    Expiration = make_expiration(Timeout),
+    wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, #{}).
+
+wait_for_value(_CheckF, [], [], _Delay, _Expiration, Results) -> Results;
+wait_for_value(CheckF, [], Rem, Delay, Expiration, Results) ->
     assert_expiration(Expiration),
     timer:sleep(Delay),
-    wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration);
-wait_for_value(CheckF, [Node | Nodes], Rem, Delay, Expiration) ->
+    wait_for_value(CheckF, lists:reverse(Rem), [], Delay, Expiration, Results);
+wait_for_value(CheckF, [Node | Nodes], Rem, Delay, Expiration, Results) ->
     case CheckF(Node) of
-        done -> wait_for_value(CheckF, Nodes, Rem, Delay, Expiration);
-        wait -> wait_for_value(CheckF, Nodes, [Node | Rem], Delay, Expiration)
+        {done, Result} ->
+            wait_for_value(CheckF, Nodes, Rem, Delay, Expiration, maps:put(Node, Result, Results));
+        wait ->
+            wait_for_value(CheckF, Nodes, [Node | Rem], Delay, Expiration, Results)
     end.
 
 http_addr_get(Addr, Path, Query) ->
