@@ -20,6 +20,7 @@
         , return_value/1
         , gas_used/1
         , serialize/1
+        , serialize_for_client/1
         , set_contract_address/2
         , set_caller_address/2
         , set_caller_nonce/2
@@ -146,6 +147,15 @@ deserialize_return_type(0) -> ok;
 deserialize_return_type(1) -> error;
 deserialize_return_type(2) -> revert.
 
+serialize_for_client(#call{} = I) ->
+    #{ <<"caller_address">>   => aec_base58c:encode(account_pubkey, caller_address(I))
+     , <<"caller_nonce">>     => caller_nonce(I)
+     , <<"height">>           => height(I)
+     , <<"contract_address">> => aec_base58c:encode(contract_pubkey, contract_address(I))
+     , <<"gas_used">>         => gas_used(I)
+     , <<"return_value">>     => list_to_binary(aect_utils:hex_bytes(return_value(I)))
+     , <<"return_type">>      => atom_to_binary(return_type(I), utf8)
+     }.
 
 
 %%%===================================================================

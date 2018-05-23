@@ -13,7 +13,7 @@
         , empty_with_backend/0
         , get_call/3
         , insert_call/2
-        , lookup_call/2
+        , lookup_call/3
         , prune/2
         , root_hash/1]).
 
@@ -66,9 +66,10 @@ insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
     %% Update the calls tree
     Tree#call_tree{ calls = CtTree1}.
 
--spec lookup_call(aect_call:id(), tree()) -> {value, aect_call:call()} | none.
-lookup_call(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#call_tree.calls) of
+-spec lookup_call(aect_contracts:id(), aect_call:id(), tree()) -> {value, aect_call:call()} | none.
+lookup_call(CtId, CallId, Tree) ->
+    CallTreeId = <<CtId/binary, CallId/binary>>,
+    case aeu_mtrees:lookup(CallTreeId, Tree#call_tree.calls) of
         {value, Val} -> {value, aect_call:deserialize(Val)};
         none         -> none
     end.

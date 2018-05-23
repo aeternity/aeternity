@@ -197,6 +197,34 @@ paths:
           schema:
             $ref: '#/definitions/Error'
       security:
+  /tx/{tx_hash}/contract-call:
+    get:
+      tags:
+        - external
+        - transactions
+      operationId: GetContractCallFromTx
+      description: 'Get the call result for a contract_call transaction'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: tx_hash
+          description: Hash of the transaction
+          required: true
+          type: string
+      responses:
+        '200':
+          description: The contract call result was found
+          schema:
+            $ref: '#/definitions/ContractCallObject'
+        '400':
+          description: Invalid transaction
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: Transaction not found
+          schema:
+            $ref: '#/definitions/Error'
   /tx/contract/create:
     post:
       tags:
@@ -1403,7 +1431,7 @@ paths:
       parameters:
       responses:
         '200':
-          description: The current block's height
+          description: 'The current block''s height'
           schema:
             $ref: '#/definitions/BlockHeight'
       security:
@@ -2726,7 +2754,7 @@ definitions:
       height:
         type: integer
         format: int64
-        description: Blocks's height
+        description: 'Blocks''s height'
     required:
     - height
 
@@ -2859,6 +2887,33 @@ definitions:
     allOf:
       - $ref: '#/definitions/JSONTx'
       - $ref: '#/definitions/ContractCallData'
+  ContractCallObject:
+    type: object
+    properties:
+      caller_address:
+        $ref: '#/definitions/EncodedHash'
+      caller_nonce:
+        type: integer
+      height:
+        type: integer
+      contract_address:
+        $ref: '#/definitions/EncodedHash'
+      gas_used:
+        type: integer
+      return_value:
+        description: Hex encoded return value of the call
+        type: string
+      return_type:
+        description: The status of the call 'ok | error | revert'.
+        type: string
+    required:
+      - caller_address
+      - caller_nonce
+      - height
+      - contract_address
+      - gas_used
+      - return_value
+      - return_type
   Error:
     type: object
     properties:
@@ -2920,7 +2975,7 @@ definitions:
         type: string
         description: Contract owner pub_key
       nonce:
-        description: Owner's nonce
+        description: 'Owner''s nonce'
         type: integer
       code:
         description: 'Contract''s code'
@@ -2970,7 +3025,7 @@ definitions:
         description: Contract caller pub_key
         type: string
       nonce:
-        description: Caller's nonce
+        description: 'Caller''s nonce'
         type: integer
       contract:
         description: 'Contract''s pub_key'

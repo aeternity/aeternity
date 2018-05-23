@@ -229,6 +229,41 @@
         }
       }
     },
+    "/tx/{tx_hash}/contract-call" : {
+      "get" : {
+        "tags" : [ "external", "transactions" ],
+        "description" : "Get the call result for a contract_call transaction",
+        "operationId" : "GetContractCallFromTx",
+        "produces" : [ "application/json" ],
+        "parameters" : [ {
+          "name" : "tx_hash",
+          "in" : "path",
+          "description" : "Hash of the transaction",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The contract call result was found",
+            "schema" : {
+              "$ref" : "#/definitions/ContractCallObject"
+            }
+          },
+          "400" : {
+            "description" : "Invalid transaction",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          },
+          "404" : {
+            "description" : "Transaction not found",
+            "schema" : {
+              "$ref" : "#/definitions/Error"
+            }
+          }
+        }
+      }
+    },
     "/tx/contract/create" : {
       "post" : {
         "tags" : [ "external", "dev" ],
@@ -3681,6 +3716,44 @@
       }, {
         "$ref" : "#/definitions/ContractCallData"
       } ]
+    },
+    "ContractCallObject" : {
+      "type" : "object",
+      "required" : [ "caller_address", "caller_nonce", "contract_address", "gas_used", "height", "return_type", "return_value" ],
+      "properties" : {
+        "caller_address" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "caller_nonce" : {
+          "type" : "integer"
+        },
+        "height" : {
+          "type" : "integer"
+        },
+        "contract_address" : {
+          "$ref" : "#/definitions/EncodedHash"
+        },
+        "gas_used" : {
+          "type" : "integer"
+        },
+        "return_value" : {
+          "type" : "string",
+          "description" : "Hex encoded return value of the call"
+        },
+        "return_type" : {
+          "type" : "string",
+          "description" : "The status of the call 'ok | error | revert'."
+        }
+      },
+      "example" : {
+        "gas_used" : 1,
+        "contract_address" : null,
+        "height" : 6,
+        "return_value" : "return_value",
+        "caller_address" : { },
+        "return_type" : "return_type",
+        "caller_nonce" : 0
+      }
     },
     "Error" : {
       "type" : "object",

@@ -13,6 +13,7 @@
                         , get_nonce/1
                         , print_state/0
                         , get_contract_code/2
+                        , get_contract_call_object_from_tx/2
                         , verify_oracle_existence/1
                         , verify_oracle_query_existence/2
                         , verify_name/1
@@ -433,6 +434,18 @@ handle_request('GetCommitmentHash', Req, _Context) ->
             ReasonBin = atom_to_binary(Reason, utf8),
             {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
     end;
+
+handle_request('GetContractCallFromTx', Req, _Context) ->
+    ParseFuns = [read_required_params([tx_hash]),
+                 base58_decode([{tx_hash, tx_hash, tx_hash}]),
+                 get_transaction(tx_hash, tx),
+                 get_contract_call_object_from_tx(tx, contract_call),
+                 ok_response(
+                    fun(#{contract_call := Call}) ->
+                            aect_call:serialize_for_client(Call)
+                    end)
+                ],
+    process_request(ParseFuns, Req);
 
 handle_request('GetName', Req, _Context) ->
     Name = maps:get('name', Req),

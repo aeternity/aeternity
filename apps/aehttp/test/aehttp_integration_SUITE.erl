@@ -652,6 +652,15 @@ contract_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     tx_is_mined_test(MinerAddress, ContractCallTxHash),
 
+    %% Get the call object
+    {ok, 200, CallObject} = get_contract_call_object(ContractCallTxHash),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
+    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+                 maps:get(<<"contract_address">>, CallObject, <<>>)),
+
+    ct:log("Call object: ~p\n", [CallObject]),
+
+
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => ContractPubKey,
                              vm_version => 1,
@@ -3607,6 +3616,10 @@ get_contract_call(Data) ->
 get_contract_call_compute(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/call/compute", Data).
+
+get_contract_call_object(TxHash) ->
+    Host = external_address(),
+    http_request(Host, get, "tx/"++binary_to_list(TxHash)++"/contract-call", []).
 
 get_spend(Data) ->
     Host = external_address(),
