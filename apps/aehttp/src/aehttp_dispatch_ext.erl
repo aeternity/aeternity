@@ -242,7 +242,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([oracle, query_id,
                                        response, fee]),
-                 base58_decode([{oracle, oracle, account_pubkey},
+                 base58_decode([{oracle, oracle, oracle_pubkey},
                                {query_id, query_id, oracle_query_id}]),
                  get_nonce(oracle),
                  verify_oracle_query_existence(oracle, query_id),
