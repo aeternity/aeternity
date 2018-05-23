@@ -7,6 +7,7 @@
 -define(BLOCK_HEADER_HASH_BYTES, 32).
 -define(TXS_HASH_BYTES, 32).
 -define(STATE_HASH_BYTES, 32).
+-define(MINER_PUB_BYTES, 32).
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, 30 * 60 * 1000). %% 30 min
 
@@ -17,6 +18,7 @@
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 -type(txs_hash() :: <<_:(?TXS_HASH_BYTES*8)>>).
 -type(state_hash() :: <<_:(?STATE_HASH_BYTES*8)>>).
+-type(miner_pubkey() :: <<_:(?MINER_PUB_BYTES*8)>>).
 
 -record(block, {
           height = 0              :: height(),
@@ -28,7 +30,8 @@
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
-          pow_evidence = no_value :: aec_pow:pow_evidence()}).
+          pow_evidence = no_value :: aec_pow:pow_evidence(),
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey()}).
 
 -record(header, {
           height = 0              :: height(),
@@ -39,7 +42,8 @@
           nonce = 0               :: non_neg_integer(),
           time = 0                :: non_neg_integer(),
           version                 :: non_neg_integer(),
-          pow_evidence = no_value :: aec_pow:pow_evidence()}).
+          pow_evidence = no_value :: aec_pow:pow_evidence(),
+          miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey()}).
 
 -type(header_binary() :: binary()).
 -type(deterministic_header_binary() :: binary()).

@@ -22,16 +22,7 @@ all_test_() ->
              aec_test_utils:aec_keys_cleanup(TmpKeysDir)
      end,
      [fun(_) ->
-              [{"Sign coinbase transaction",
-                fun() ->
-                        {ok, PubKey} = aec_keys:pubkey(),
-                        {ok, Tx} =
-                            aec_coinbase_tx:new(#{account => PubKey,
-                                                  block_height => 1}),
-                        {ok, SignedTx} = aec_keys:sign(Tx),
-                        ?assertEqual(Tx, aetx_sign:tx(SignedTx))
-                end},
-               {"Sign spend transaction",
+              [{"Sign spend transaction",
                 fun() ->
                         {ok, PubKey} = aec_keys:pubkey(),
                         #{ public := RecipientPubkey } = enacl:sign_keypair(),

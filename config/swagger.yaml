@@ -2069,6 +2069,8 @@ definitions:
         type: integer
       pow:
         $ref: '#/definitions/Pow'
+      miner:
+        $ref: '#/definitions/EncodedHash'
   Block:
     allOf:
       - $ref: '#/definitions/Header'
@@ -2809,23 +2811,6 @@ definitions:
         type: integer
     required:
     - data_schema
-  CoinbaseTxJSON:
-    allOf:
-      - $ref: '#/definitions/JSONTx'
-      - type: object
-        properties:
-          account:
-            $ref: '#/definitions/EncodedHash'
-          height:
-            type: integer
-            format: int64
-          reward:
-            type: integer
-            format: int64
-        required:
-        - account
-        - height
-        - reward
   SpendTxJSON:
     allOf:
       - $ref: '#/definitions/JSONTx'

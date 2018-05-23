@@ -10,6 +10,7 @@
 -include("blocks.hrl").
 
 -define(TEST_MODULE, aec_trees).
+-define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).
 
 ensure_account_test_() ->
     [{"Not existing account is created with 0 balance",
@@ -46,24 +47,40 @@ signatures_check_test_() ->
      end,
      [ {"Correctly signed transactions are not rejected",
         fun () ->
-            SignedCoinbase = aec_test_utils:signed_coinbase_tx(1),
-            SignedTxs = [SignedCoinbase],
+            SignedSpend =
+                    aec_test_utils:signed_spend_tx(
+                      #{recipient => <<1:32/unit:8>>,
+                        amount => 1,
+                        fee => 1,
+                        nonce => 1,
+                        payload => <<>>}),
+            SignedTxs = [SignedSpend],
+            {ok, SenderPubkey} = aec_keys:wait_for_pubkey(),
+            Account = aec_accounts:new(SenderPubkey, 1000),
+            TreesIn = aec_test_utils:create_state_tree_with_account(Account),
             {ok, ApprovedTxs, _Trees} =
-                ?TEST_MODULE:apply_signed_txs(SignedTxs, aec_trees:new(), 1,
+                ?TEST_MODULE:apply_signed_txs(?MINER_PUBKEY, SignedTxs, TreesIn, 1,
                                           ?PROTOCOL_VERSION),
             ?assertEqual(SignedTxs, ApprovedTxs),
             ok
         end}
      , {"Transactions with broken signatures are rejected",
         fun () ->
-            {ok, BadCoinbaseTx} = aec_coinbase_tx:new(#{ account => <<0:32/unit:8>>,
-                                                        block_height => 1}),
-            MalformedTxs = [aetx_sign:sign(BadCoinbaseTx, <<0:64/unit:8>>)],
+            Tx = make_a_spend_tx(<<0:32/unit:8>>, <<1:32/unit:8>>),
+            MalformedTxs = [aetx_sign:sign(Tx, <<0:64/unit:8>>)],
             {ok, ApprovedTxs, _Trees} =
-                ?TEST_MODULE:apply_signed_txs(MalformedTxs, aec_trees:new(), 1,
+                ?TEST_MODULE:apply_signed_txs(?MINER_PUBKEY, MalformedTxs, aec_trees:new(), 1,
                                           ?PROTOCOL_VERSION),
             ?assertEqual([], ApprovedTxs),
             ok
         end}
      ]}.
 
+make_a_spend_tx(Sender, Recipient) ->
+    {ok, SpendTx} = aec_spend_tx:new(#{sender => Sender,
+                                       recipient => Recipient,
+                                       amount => 1,
+                                       fee => 1,
+                                       nonce => 1,
+                                       payload => <<>>}),
+    SpendTx.

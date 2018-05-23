@@ -127,6 +127,8 @@ node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
 
 node_root_hash(#node{header = H}) -> aec_headers:root_hash(H).
 
+node_miner(#node{header = H}) -> aec_headers:miner(H).
+
 maybe_add_genesis_hash(#{genesis_block_hash := undefined} = State, Node) ->
     case node_height(Node) =:= aec_block_genesis:height() of
         true  -> State#{genesis_block_hash => hash(Node)};
@@ -414,7 +416,6 @@ update_main_chain(OldTopHash, NewTopHash, State) ->
 remove_locations(Hash, Hash) ->
     ok;
 remove_locations(StopHash, CurrentHash) ->
-    %% TODO: Maybe special treat coinbase
     lists:foreach(fun(TxHash) ->
                           aec_db:remove_tx_location(TxHash),
                           aec_db:add_tx_hash_to_mempool(TxHash)
@@ -444,7 +445,8 @@ apply_node_transactions(Node, Trees) ->
     Txs = db_get_txs(hash(Node)),
     Height = node_height(Node),
     Version = node_version(Node),
-    case aec_trees:apply_signed_txs_strict(Txs, Trees, Height, Version) of
+    Miner = node_miner(Node),
+    case aec_trees:apply_signed_txs_strict(Miner, Txs, Trees, Height, Version) of
         {ok, _, NewTrees} -> NewTrees;
         {error,_What} -> internal_error(invalid_transactions_in_block)
     end.

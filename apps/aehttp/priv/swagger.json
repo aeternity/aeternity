@@ -2436,6 +2436,9 @@
         },
         "pow" : {
           "$ref" : "#/definitions/Pow"
+        },
+        "miner" : {
+          "$ref" : "#/definitions/EncodedHash"
         }
       },
       "example" : {
@@ -2446,6 +2449,7 @@
         "time" : 5,
         "nonce" : 1,
         "version" : 5,
+        "miner" : null,
         "height" : 0,
         "target" : 6
       }
@@ -3593,27 +3597,6 @@
           "type" : "integer"
         }
       }
-    },
-    "CoinbaseTxJSON" : {
-      "allOf" : [ {
-        "$ref" : "#/definitions/JSONTx"
-      }, {
-        "type" : "object",
-        "required" : [ "account", "height", "reward" ],
-        "properties" : {
-          "account" : {
-            "$ref" : "#/definitions/EncodedHash"
-          },
-          "height" : {
-            "type" : "integer",
-            "format" : "int64"
-          },
-          "reward" : {
-            "type" : "integer",
-            "format" : "int64"
-          }
-        }
-      } ]
     },
     "SpendTxJSON" : {
       "allOf" : [ {

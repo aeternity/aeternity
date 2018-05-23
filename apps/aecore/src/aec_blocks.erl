@@ -15,8 +15,8 @@
          pow/1,
          set_pow/3,
          set_target/2,
-         new/3,
-         new_with_state/3,
+         new/4,
+         new_with_state/4,
          from_header_and_txs/2,
          to_header/1,
          serialize_to_binary/1,
@@ -25,8 +25,7 @@
          deserialize_from_map/1,
          hash_internal_representation/1,
          root_hash/1,
-         validate/1,
-         cointains_coinbase_tx/1]).
+         validate/1]).
 
 -import(aec_hard_forks, [protocol_effective_at_height/1]).
 
@@ -87,14 +86,18 @@ txs(Block) ->
 txs_hash(Block) ->
     Block#block.txs_hash.
 
--spec new(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) -> block().
-new(LastBlock, Txs, Trees0) ->
-    {B, _} = new_with_state(LastBlock, Txs, Trees0),
+-spec new(block(),
+          pubkey(), list(aetx_sign:signed_tx()),
+          aec_trees:trees()) -> block().
+new(LastBlock, Miner, Txs, Trees0) ->
+    {B, _} = new_with_state(LastBlock, Miner, Txs, Trees0),
     B.
 
--spec new_with_state(block(), list(aetx_sign:signed_tx()), aec_trees:trees()) ->
+-spec new_with_state(block(),
+                     pubkey(), list(aetx_sign:signed_tx()),
+                     aec_trees:trees()) ->
                                 {block(), aec_trees:trees()}.
-new_with_state(LastBlock, Txs, Trees1) ->
+new_with_state(LastBlock, Miner, Txs, Trees1) ->
     LastBlockHeight = height(LastBlock),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -108,8 +111,10 @@ new_with_state(LastBlock, Txs, Trees1) ->
     Height = LastBlockHeight + 1,
     Version = protocol_effective_at_height(Height),
 
-    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Txs, Trees1, Height, Version),
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs1)),
+    {ok, Txs1, Trees} = aec_trees:apply_signed_txs(Miner, Txs, Trees1, Height, Version),
+    TxsRootHash =
+        aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
+                                                          Txs1))),
     NewBlock =
         #block{height = Height,
                prev_hash = LastBlockHeaderHash,
@@ -118,7 +123,8 @@ new_with_state(LastBlock, Txs, Trees1) ->
                txs = Txs1,
                target = target(LastBlock),
                time = aeu_time:now_in_msecs(),
-               version = Version},
+               version = Version,
+               miner = Miner},
     {NewBlock, Trees}.
 
 -spec to_header(block()) -> aec_headers:header().
@@ -130,7 +136,8 @@ to_header(#block{height = Height,
                  nonce = Nonce,
                  time = Time,
                  version = Version,
-                 pow_evidence = Evd}) ->
+                 pow_evidence = Evd,
+                 miner = Miner}) ->
     #header{height = Height,
             prev_hash = PrevHash,
             txs_hash = TxsHash,
@@ -139,7 +146,8 @@ to_header(#block{height = Height,
             nonce = Nonce,
             time = Time,
             pow_evidence = Evd,
-            version = Version}.
+            version = Version,
+            miner = Miner}.
 
 from_header_and_txs(#header{height = Height,
                             prev_hash = PrevHash,
@@ -149,7 +157,8 @@ from_header_and_txs(#header{height = Height,
                             nonce = Nonce,
                             time = Time,
                             pow_evidence = Evd,
-                            version = Version}, Txs) ->
+                            version = Version,
+                            miner = Miner}, Txs) ->
     #block{height = Height,
            prev_hash = PrevHash,
            txs_hash = TxsHash,
@@ -159,7 +168,8 @@ from_header_and_txs(#header{height = Height,
            time = Time,
            version = Version,
            pow_evidence = Evd,
-           txs = Txs
+           txs = Txs,
+           miner = Miner
           }.
 
 serialize_to_binary(B = #block{}) ->
@@ -202,7 +212,8 @@ serialize_to_map(B = #block{}) ->
       <<"time">> => B#block.time,
       <<"version">> => B#block.version,
       <<"pow">> => B#block.pow_evidence,
-      <<"transactions">> => B#block.txs
+      <<"transactions">> => B#block.txs,
+      <<"miner">> => B#block.miner
      }.
 
 deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
@@ -219,7 +230,8 @@ deserialize_from_map(#{<<"height">> := Height,
                        <<"time">> := Time,
                        <<"version">> := Version,
                        <<"pow">> := PowEvidence,
-                       <<"transactions">> := Txs}) ->
+                       <<"transactions">> := Txs,
+                       <<"miner">> := Miner}) ->
     {ok, #block{
             height = Height,
             prev_hash = PrevHash,
@@ -230,7 +242,8 @@ deserialize_from_map(#{<<"height">> := Height,
             time = Time,
             version = Version,
             txs = Txs,
-            pow_evidence = PowEvidence}}.
+            pow_evidence = PowEvidence,
+            miner = Miner}}.
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->
@@ -241,41 +254,16 @@ hash_internal_representation(B = #block{}) ->
 validate(Block) ->
     % since trees are required for transaction signature validation, this is
     % performed while applying transactions
-    Validators = [fun validate_coinbase_txs_count/1,
-                  fun validate_txs_hash/1],
+    Validators = [fun validate_txs_hash/1],
     aeu_validation:run(Validators, [Block]).
-
--spec validate_coinbase_txs_count(block()) -> ok | {error, multiple_coinbase_txs}.
-validate_coinbase_txs_count(#block{txs = Txs}) ->
-    CoinbaseTxsCount =
-        lists:foldl(
-          fun(SignedTx, Count) ->
-                  case aetx_sign:is_coinbase(SignedTx) of
-                      true ->
-                          Count + 1;
-                      false ->
-                          Count
-                  end
-          end, 0, Txs),
-    case CoinbaseTxsCount == 1 of
-        true ->
-            ok;
-        false ->
-            {error, multiple_coinbase_txs}
-    end.
 
 -spec validate_txs_hash(block()) -> ok | {error, malformed_txs_hash}.
 validate_txs_hash(#block{txs = Txs,
                          txs_hash = BlockTxsHash}) ->
-    {ok, TxsRootHash} = aec_txs_trees:root_hash(aec_txs_trees:from_txs(Txs)),
-    case TxsRootHash of
+    case aec_txs_trees:pad_empty(aec_txs_trees:root_hash(aec_txs_trees:from_txs(
+                                                           Txs))) of
         BlockTxsHash ->
             ok;
         _Other ->
             {error, malformed_txs_hash}
     end.
-
-cointains_coinbase_tx(#block{txs = []}) ->
-    false;
-cointains_coinbase_tx(#block{txs = [CoinbaseTx | _Rest]}) ->
-    aetx_sign:is_coinbase(CoinbaseTx).

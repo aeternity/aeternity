@@ -38,7 +38,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 meck:expect(aec_pow, pick_nonce, 0, 4845645033533946566),
+                 meck:expect(aec_pow, pick_nonce, 0, 5537317755641284530),
 
                  {ok, BlockCandidate, Nonce} = ?TEST_MODULE:create_block_candidate(TopBlock, aec_trees:new(), []),
                  HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
@@ -47,7 +47,7 @@ mine_block_test_() ->
                  Block = aec_blocks:set_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, Block#block.height),
-                 ?assertEqual(1, length(Block#block.txs)),
+                 ?assertEqual(0, length(Block#block.txs)),
 
                  ?assertEqual(ok, aec_headers:validate(
                                     aec_blocks:to_header(Block)))
@@ -93,12 +93,10 @@ difficulty_recalculation_test_() ->
                  Now = 1504731164584,
                  OneBlockExpectedMineTime = 300000,
                  BlockHeight = 30,
-                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{ account => ?TEST_PUB,
-                                                           block_height => BlockHeight}),
-                 meck:expect(aec_blocks, new, 3,
+                 meck:expect(aec_blocks, new, 4,
                              #block{height = BlockHeight,
                                     target = ?HIGHEST_TARGET_SCI,
-                                    txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
+                                    txs = [],
                                     time = Now,
                                     version = ?PROTOCOL_VERSION}),
                  Chain = lists:duplicate(10, #header{height = 20,
@@ -131,12 +129,10 @@ difficulty_recalculation_test_() ->
                                     version = ?PROTOCOL_VERSION } || {I, T} <- TS ],
 
 
-                 {ok, CoinbaseTx} = aec_coinbase_tx:new(#{account => ?TEST_PUB,
-                                                          block_height => BlockHeight}),
-                 meck:expect(aec_blocks, new, 3,
+                 meck:expect(aec_blocks, new, 4,
                              #block{height = BlockHeight,
                                     target = PastTarget,
-                                    txs = [aetx_sign:sign(CoinbaseTx, <<42:64/unit:8>>)],
+                                    txs = [],
                                     time = Now,
                                     version = ?PROTOCOL_VERSION}),
 
@@ -173,22 +169,12 @@ setup() ->
     meck:new(aeu_time, [passthrough]),
     meck:expect(aeu_time, now_in_msecs, 0, 1519659148405),
     {ok, _} = aec_tx_pool:start_link(),
-    SignedTx = {signed_tx,{aetx, coinbase_tx, aec_coinbase_tx,
-                           {coinbase_tx, ?TEST_PUB, 1, 10}},
-                         [<<48,69,2,33,0,151,160,64,156,110,97,161,160,237,140,
-                            18,232,182,37,68,99,200,144,40,65,103,163,173,53,90,
-                            247,6,157,166,84,220,124,2,32,80,201,195,212,6,205,
-                            220,250,64,226,125,99,147,224,227,56,197,82,7,211,9,
-                            129,211,75,78,174,188,130,254,42,200,229>>]},
     Trees =
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<>>),
-    meck:expect(aec_trees, apply_signed_txs, 4, {ok, [SignedTx], Trees}),
+    meck:expect(aec_trees, apply_signed_txs, 5, {ok, [], Trees}),
     meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
-    %% We hardcode the signed_tx because crypto adds salt and gives
-    %% non-deterministic result.
-    meck:expect(aec_keys, sign, 1,
-                {ok, SignedTx}).
+    ok.
 
 
 cleanup(_) ->

@@ -255,7 +255,8 @@ test_chain_genesis_state() ->
     ?assertEqual(GHH, aec_chain:top_block_hash()),
 
     %% Check chain state functions
-    GenesisAccountsBalances = aec_test_utils:preset_accounts(),
+    GenesisAccountsBalances = aec_test_utils:genesis_accounts_balances(
+                                aec_test_utils:preset_accounts()),
     ?assertEqual({ok, GenesisAccountsBalances},
                  aec_chain:all_accounts_balances_at_hash(GHH)),
     [{PK, Balance} | _] = GenesisAccountsBalances,
@@ -365,16 +366,10 @@ test_get_block_candidate() ->
     {ok, TopBlockHash} = aec_blocks:hash_internal_representation(TopBlock),
     ?assertEqual(TopBlockHash, aec_blocks:prev_hash(BlockCandidate)),
     {ok, AllTxsInPool} = aec_tx_pool:peek(infinity),
-    ?assertEqual(true, length(aec_blocks:txs(BlockCandidate)) > 1),
     ?assertEqual(true,
         lists:all(
             fun(SignedTx) ->
-                Tx = aetx_sign:tx(SignedTx),
-                case aetx:tx_type(Tx) of
-                    <<"coinbase_tx">> -> true;
-                    _ ->
-                        lists:member(SignedTx, AllTxsInPool)
-                end
+                lists:member(SignedTx, AllTxsInPool)
             end,
             aec_blocks:txs(BlockCandidate))),
     ?TEST_MODULE:stop_mining(),

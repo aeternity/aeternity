@@ -52,7 +52,6 @@ deserialize(Type, Vsn, Template, Binary) ->
 tag(account) -> 10;
 tag(signed_tx) -> 11;
 tag(spend_tx) -> 12;
-tag(coinbase_tx) -> 13;
 tag(oracle) -> 20;
 tag(oracle_query) -> 21;
 tag(oracle_register_tx) -> 22;
@@ -84,7 +83,6 @@ tag(block) -> 100.
 rev_tag(10) -> account;
 rev_tag(11) -> signed_tx;
 rev_tag(12) -> spend_tx;
-rev_tag(13) -> coinbase_tx;
 rev_tag(20) -> oracle;
 rev_tag(21) -> oracle_query;
 rev_tag(22) -> oracle_register_tx;

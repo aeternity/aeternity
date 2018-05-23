@@ -23,8 +23,7 @@
          add_signatures/2,
          tx/1,
          verify/2,
-         signatures/1,
-         is_coinbase/1]).
+         signatures/1]).
 
 %% API that should be avoided to be used
 -export([serialize_for_client/3,
@@ -78,7 +77,7 @@ add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
 -spec tx(signed_tx()) -> aetx:tx().
 %% @doc Get the original transaction from a signed transaction.
 %% Note that no verification is performed, it just returns the transaction.
-%% We have no type yest for any transaction, and coinbase_tx() | spend_tx()
+%% We have no type yest for any transaction, and spend_tx()
 %% seems restricted as type.
 tx(#signed_tx{tx = Tx}) ->
     Tx.
@@ -217,8 +216,3 @@ meta_data_from_client_serialized(json, Serialized) ->
     #{block_height => BlockHeight,
       block_hash => BlockHash,
       hash => TxHash}.
-
--spec is_coinbase(Tx :: signed_tx()) -> boolean().
-is_coinbase(#signed_tx{tx = Tx}) ->
-    aetx:is_coinbase(Tx).
-

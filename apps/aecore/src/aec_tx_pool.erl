@@ -44,7 +44,7 @@
 -type non_pos_integer() :: neg_integer() | 0.
 
 -type pool_db_key() ::
-        {negated_fee(), pubkey(), non_neg_integer()} | undefined.
+        {negated_fee(), pubkey(), non_neg_integer()}.
 -type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
@@ -206,12 +206,7 @@ pool_db_key(SignedTx) ->
     %%         the following key is unique for a transaction
     %%       * negative fee places high profit transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    exclude_coinbase({-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx)}).
-
-exclude_coinbase({_, undefined, undefined}) ->
-    undefined; %% Identify coinbase
-exclude_coinbase({Fee, Origin, Nonce}) ->
-    {Fee, Origin, Nonce}.
+    {-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx)}.
 
 -spec pool_db_open() -> {ok, pool_db()}.
 pool_db_open() ->
@@ -263,20 +258,12 @@ update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
                     %% Added to chain
                     ets:delete(Mempool, pool_db_key(Tx));
                 true ->
-                    case pool_db_key(Tx) of
-                        undefined ->
-                            aec_db:remove_tx_from_mempool(TxHash);
-                        Key ->
-                            ets:insert(Mempool, {Key, Tx})
-                    end
+                    ets:insert(Mempool, {pool_db_key(Tx), Tx})
             end
     end.
 
 -spec pool_db_put(pool_db(), pool_db_key(), aetx_sign:signed_tx(), event()) ->
                          'ok' | {'error', atom()}.
-pool_db_put(_, undefined, _, _) ->
-    %% TODO: This is probably not needed anymore
-    {error, coinbase};
 pool_db_put(Mempool, Key, Tx, Event) ->
     Hash = aetx_sign:hash(Tx),
     case aec_db:find_tx_location(Hash) of
