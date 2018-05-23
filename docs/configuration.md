@@ -58,15 +58,15 @@ keys:
 
 http:
     external:
-        port: 3003
+        port: 3013
     internal:
-        port: 3103
+        port: 3113
 
 websocket:
     internal:
-        port: 3104
+        port: 3114
     channel:
-        port: 3004
+        port: 3014
 
 mining:
     autostart: true
