@@ -23,6 +23,8 @@
 %% TODO: replace language string with vm_version number.
 call(<<"sophia">>, Code, Function, Argument) ->
     aect_sophia:simple_call(Code, Function, Argument);
+call(<<"sophia-address">>, ContractKey, Function, Argument) ->
+    aect_sophia:on_chain_call(ContractKey, Function, Argument);
 call(<<"evm">>, Code, _, Argument) ->
     aect_evm:call(Code, Argument);
 call(_, _, _, _) ->

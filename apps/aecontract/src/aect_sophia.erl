@@ -13,6 +13,7 @@
         , create_call/3
         , encode_call_data/3
         , simple_call/3
+        , on_chain_call/3
         ]).
 
 -spec compile(binary(), binary()) -> {ok, binary()} | {error, binary()}.
@@ -114,3 +115,43 @@ create_call(Contract, Function, Argument) ->
         _ -> Res
     end.
 
+
+-spec on_chain_call(binary(), binary(), binary()) -> {ok, binary()} | {error, binary()}.
+on_chain_call(ContractKey, Function, Argument) ->
+    {Block, Trees} = aec_chain:top_block_with_state(),
+    ContractsTree  = aec_trees:contracts(Trees),
+    Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
+    Code           = aect_contracts:code(Contract),
+
+    case create_call(Code, Function, Argument) of
+        {error, E} -> {error, E};
+        CallData ->
+            BlockHeight = aec_blocks:height(Block),
+            Amount = 0,
+            VmVersion = ?AEVM_01_Sophia_01,
+            Deposit = 0,
+            ChainState  = aec_vm_chain:new_state(Trees, BlockHeight, ContractKey),
+            Spec = #{ code => Code
+                    , address => ContractKey
+                    , caller => 0
+                    , data => CallData
+                    , gas => 100000000000000000
+                    , gasPrice => 1
+                    , origin => 0
+                    , value => 0
+		      %% TODO:
+                    , currentCoinbase => 1
+                    , currentDifficulty => 1
+                    , currentGasLimit => 1000000
+                    , currentNumber => 1
+                    , currentTimestamp => 1
+                    , chainAPI => aec_vm_chain
+                    , chainState => ChainState
+                    , vm_version => VmVersion
+                    },
+            case aect_evm:execute_call(Spec, true) of
+                {ok, #{ out := Out } = _RetState} ->
+                    {ok, aeu_hex:hexstring_encode(Out)};
+                E -> {error, list_to_binary(io_lib:format("~p", [E]))}
+            end
+    end.
