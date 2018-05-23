@@ -170,7 +170,7 @@ signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
 -spec check(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),
             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
-check(#aetx{ cb = CB, tx = Tx } = O, Trees, Height, ConsensusVersion) ->
+check(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
     case CB:fee(Tx) >= aec_governance:minimum_tx_fee() of
         true ->
             CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
