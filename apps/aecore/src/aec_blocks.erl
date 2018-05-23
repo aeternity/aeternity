@@ -177,86 +177,136 @@ new_key_with_state(LastBlock, CurrentKeyBlock, Txs, Trees0) ->
     {UncompleteBlock#block{height = NewHeight, version = Version, key = KeyToClaimLeader, key_hash = undefined}, Trees}.
 
 -spec to_header(block()) -> aec_headers:header().
-to_header(#block{height = Height,
-                 key = LeaderKey,
-                 key_hash = PreviousKeyBlockHash,
-                 signature = LeaderSignature,
-                 prev_hash = PrevHash,
-                 txs_hash = TxsHash,
-                 root_hash = RootHash,
-                 target = Target,
-                 nonce = Nonce,
-                 time = Time,
-                 version = Version,
-                 pow_evidence = Evd}) ->
+to_header(#block{} = B) ->
+    to_header(type(B), B).
+
+to_header(key, #block{height = Height,
+                      prev_hash = PrevHash,
+                      root_hash = RootHash,
+                      key = LeaderKey,
+                      target = Target,
+                      pow_evidence = Evd,
+                      nonce = Nonce,
+                      time = Time,
+                      version = Version}) ->
     #header{height = Height,
-            key = LeaderKey,
-            key_hash = PreviousKeyBlockHash,
-            signature = LeaderSignature,
             prev_hash = PrevHash,
-            txs_hash = TxsHash,
             root_hash = RootHash,
+            key = LeaderKey,
             target = Target,
+            pow_evidence = Evd,
             nonce = Nonce,
             time = Time,
-            pow_evidence = Evd,
+            version = Version};
+to_header(micro, #block{height = Height,
+                        prev_hash = PrevHash,
+                        root_hash = RootHash,
+                        txs_hash = TxsHash,
+                        key_hash = LeaderKeyHash,
+                        signature = Signature,
+                        time = Time,
+                        version = Version}) ->
+    #header{height = Height,
+            prev_hash = PrevHash,
+            root_hash = RootHash,
+            txs_hash = TxsHash,
+            key_hash = LeaderKeyHash,
+            signature = Signature,
+            time = Time,
             version = Version}.
 
-from_header_and_txs(#header{height = Height,
-                            prev_hash = PrevHash,
-                            key = LeaderKey,
-                            key_hash = PreviousKeyBlockHash,
-                            signature = LeaderSignature,
-                            txs_hash = TxsHash,
-                            root_hash = RootHash,
-                            target = Target,
-                            nonce = Nonce,
-                            time = Time,
-                            pow_evidence = Evd,
-                            version = Version}, Txs) ->
+from_header_and_txs(#header{} = H, Txs) ->
+    from_header_and_txs(aec_headers:type(H), H, Txs).
+
+from_header_and_txs(key, #header{height = Height,
+                                 prev_hash = PrevHash,
+                                 root_hash = RootHash,
+                                 key = LeaderKey,
+                                 target = Target,
+                                 pow_evidence = Evd,
+                                 nonce = Nonce,
+                                 time = Time,
+                                 version = Version}, Txs) ->
     #block{height = Height,
            prev_hash = PrevHash,
-           key = LeaderKey,
-           key_hash = PreviousKeyBlockHash,
-           signature = LeaderSignature,
-           txs_hash = TxsHash,
            root_hash = RootHash,
+           key = LeaderKey,
            target = Target,
+           pow_evidence = Evd,
            nonce = Nonce,
            time = Time,
            version = Version,
-           pow_evidence = Evd,
-           txs = Txs
-          }.
+           txs = Txs};
+from_header_and_txs(micro, #header{height = Height,
+                                   prev_hash = PrevHash,
+                                   root_hash = RootHash,
+                                   txs_hash = TxsHash,
+                                   key_hash = LeaderKeyHash,
+                                   signature = Signature,
+                                   time = Time,
+                                   version = Version}, _Txs) ->
+    #block{height = Height,
+           prev_hash = PrevHash,
+           root_hash = RootHash,
+           txs_hash = TxsHash,
+           key_hash = LeaderKeyHash,
+           signature = Signature,
+           time = Time,
+           version = Version}.
 
 serialize_to_binary(B = #block{}) ->
+    serialize_to_binary(type(B), B).
+
+serialize_to_binary(key, B) ->
+    Hdr = aec_headers:serialize_to_binary(to_header(B)),
+    Vsn = B#block.version,
+    {ok, Template} = serialization_template(key, Vsn),
+    aec_object_serialization:serialize(
+      key_block,
+      Vsn,
+      Template,
+      [{header, Hdr}]);
+serialize_to_binary(micro, B) ->
     Hdr = aec_headers:serialize_to_binary(to_header(B)),
     Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- B#block.txs ],
     Vsn = B#block.version,
-    {ok, Template} = serialization_template(Vsn),
+    {ok, Template} = serialization_template(micro, Vsn),
     aec_object_serialization:serialize(
-      block,
+      micro_block,
       Vsn,
       Template,
       [{header, Hdr}, {txs, Txs}]).
 
 deserialize_from_binary(Bin) ->
-    {block, Vsn, _RawFields} =
-        aec_object_serialization:deserialize_type_and_vsn(Bin),
-    case serialization_template(Vsn) of
-        {ok, Template} ->
-            [{header, Hdr0}, {txs, Txs0}] =
-                aec_object_serialization:deserialize(block, Vsn, Template, Bin),
-            Hdr = aec_headers:deserialize_from_binary(Hdr0),
-            Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
-            {ok, from_header_and_txs(Hdr, Txs)};
-        Err = {error, _} ->
-            Err
+    case aec_object_serialization:deserialize_type_and_vsn(Bin) of
+        {key_block, Vsn, _RawFields} ->
+            case serialization_template(key, Vsn) of
+                {ok, Template} ->
+                    [{header, Hdr0}] =
+                        aec_object_serialization:deserialize(key_block, Vsn, Template, Bin),
+                    Hdr = aec_headers:deserialize_from_binary(Hdr0),
+                    {ok, from_header_and_txs(Hdr, [])};
+                Err = {error, _} ->
+                    Err
+            end;
+        {micro_block, Vsn, _RawFields} ->
+            case serialization_template(micro, Vsn) of
+                {ok, Template} ->
+                    [{header, Hdr0}, {txs, Txs0}] =
+                        aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
+                    Hdr = aec_headers:deserialize_from_binary(Hdr0),
+                    Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
+                    {ok, from_header_and_txs(Hdr, Txs)};
+                Err = {error, _} ->
+                    Err
+            end
     end.
 
-serialization_template(Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
+serialization_template(key, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
+    {ok, [{header, binary}]};
+serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
     {ok, [{header, binary}, {txs, [binary]}]};
-serialization_template(Vsn) ->
+serialization_template(_BlockType, Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
 
 serialize_to_map(B = #block{}) ->

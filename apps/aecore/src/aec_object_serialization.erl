@@ -79,7 +79,8 @@ tag(channel_slash_tx) -> 55;
 tag(channel_settle_tx) -> 56;
 tag(channel_offchain_tx) -> 57;
 tag(channel) -> 58;
-tag(block) -> 100.
+tag(key_block) -> 100;
+tag(micro_block) -> 101.
 
 rev_tag(10) -> account;
 rev_tag(11) -> signed_tx;
@@ -111,4 +112,6 @@ rev_tag(55) -> channel_slash_tx;
 rev_tag(56) -> channel_settle_tx;
 rev_tag(57) -> channel_offchain_tx;
 rev_tag(58) -> channel;
-rev_tag(100) -> block.
+rev_tag(100) -> key_block;
+rev_tag(101) -> micro_block.
+
