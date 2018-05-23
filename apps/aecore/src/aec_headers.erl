@@ -65,76 +65,128 @@ time_in_msecs(Header) ->
 
 -spec serialize_to_map(header()) -> {ok, map()}.
 serialize_to_map(H = #header{}) ->
+    serialize_to_map(type(H), H).
+
+serialize_to_map(key, H) ->
     Serialized =
-      #{<<"height">> =>  height(H),
-        <<"prev_hash">> => prev_hash(H),
+      #{<<"height">> =>  H#header.height,
+        <<"prev_hash">> => H#header.prev_hash,
         <<"state_hash">> => H#header.root_hash,
+        <<"miner">> => H#header.key,
         <<"target">> => H#header.target,
+        <<"pow">> => H#header.pow_evidence,
         <<"nonce">> => H#header.nonce,
         <<"time">> => H#header.time,
-        <<"pow">> => H#header.pow_evidence,
-        <<"version">> => H#header.version,
-        <<"txs_hash">> => H#header.txs_hash
+        <<"version">> => H#header.version
+      },
+    {ok, Serialized};
+serialize_to_map(micro, H) ->
+    Serialized =
+      #{<<"prev_hash">> => H#header.prev_hash,
+        <<"state_hash">> => H#header.root_hash,
+        <<"txs_hash">> => H#header.txs_hash,
+        <<"miner_hash">> => H#header.key_hash,
+        <<"signature">> => H#header.signature,
+        <<"time">> => H#header.time,
+        <<"version">> => H#header.version
       },
     {ok, Serialized}.
 
-
 -spec deserialize_from_map(map()) -> header().
-deserialize_from_map(H = #{}) ->
-    #{<<"height">> := Height,
-      <<"prev_hash">> := PrevHash,
-      <<"state_hash">> := RootHash,
-      <<"target">> := Target,
-      <<"nonce">> := Nonce,
-      <<"time">> := Time,
-      <<"version">> := Version,
-      <<"pow">> := PowEvidence,
-      <<"txs_hash">> := TxsHash
-    } = H,
+deserialize_from_map(#{<<"height">> := Height,
+                       <<"prev_hash">> := PrevHash,
+                       <<"state_hash">> := RootHash,
+                       <<"miner">> := Key,
+                       <<"target">> := Target,
+                       <<"pow">> := PowEvidence,
+                       <<"nonce">> := Nonce,
+                       <<"time">> := Time,
+                       <<"version">> := Version}) ->
     #header{ height = Height,
              prev_hash = PrevHash,
              root_hash = RootHash,
+             key = Key,
              target = Target,
+             pow_evidence = PowEvidence,
              nonce = Nonce,
              time = Time,
-             version = Version,
-             pow_evidence = PowEvidence,
-             txs_hash = TxsHash}.
+             version = Version};
+deserialize_from_map(#{<<"prev_hash">> := PrevHash,
+                       <<"state_hash">> := RootHash,
+                       <<"txs_hash">> := TxsHash,
+                       <<"miner_hash">> := KeyHash,
+                       <<"signature">> := Signature,
+                       <<"time">> := Time,
+                       <<"version">> := Version}) ->
+    #header{ prev_hash = PrevHash,
+             root_hash = RootHash,
+             txs_hash = TxsHash,
+             key_hash = KeyHash,
+             signature = Signature,
+             time = Time,
+             version = Version}.
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(H) ->
+    serialize_to_binary(type(H), H).
+
+serialize_to_binary(key, H) ->
     PowEvidence = serialize_pow_evidence_to_binary(H#header.pow_evidence),
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
     <<(H#header.version):64,
       (H#header.height):64,
       (H#header.prev_hash)/binary,
-      (H#header.txs_hash)/binary,
       (H#header.root_hash)/binary,
+      (H#header.key)/binary,
       (H#header.target):64,
       PowEvidence/binary,
       (H#header.nonce):64,
       (H#header.time):64
+    >>;
+serialize_to_binary(micro, H) ->
+    <<(H#header.version):64,
+      (H#header.prev_hash)/binary,
+      (H#header.root_hash)/binary,
+      (H#header.txs_hash)/binary,
+      (H#header.key_hash)/binary,
+      (H#header.signature)/binary,
+      (H#header.time):64
     >>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
-deserialize_from_binary(Bin) ->
-    <<Version:64, Height:64,
-      PrevHash:32/binary,
-      TxsHash:32/binary,
-      RootHash:32/binary,
-      Target:64,
-      PowEvidenceBin:168/binary,
-      Nonce:64, Time:64 >> = Bin,
+deserialize_from_binary(<<Version:64,
+                          Height:64,
+                          PrevHash:32/binary,
+                          RootHash:32/binary,
+                          Key:32/binary,
+                          Target:64,
+                          PowEvidenceBin:168/binary,
+                          Nonce:64,
+                          Time:64 >>) ->
     PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
     #header{ height = Height,
              prev_hash = PrevHash,
              root_hash = RootHash,
+             key = Key,
              target = Target,
+             pow_evidence = PowEvidence,
              nonce = Nonce,
              time = Time,
-             version = Version,
-             pow_evidence = PowEvidence,
-             txs_hash = TxsHash }.
+             version = Version};
+deserialize_from_binary(<<Version:64,
+                          PrevHash:32/binary,
+                          RootHash:32/binary,
+                          TxsHash:32/binary,
+                          KeyHash:32/binary,
+                          Signature:64,
+                          Time:64>>) ->
+    #header{ prev_hash = PrevHash,
+             root_hash = RootHash,
+             txs_hash = TxsHash,
+             key_hash = KeyHash,
+             signature = Signature,
+             time = Time,
+             version = Version}.
 
 -spec hash_header(header()) -> {ok, block_header_hash()}.
 hash_header(H) ->
