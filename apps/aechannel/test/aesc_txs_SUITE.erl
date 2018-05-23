@@ -11,9 +11,6 @@
 -export([all/0,
          groups/0]).
 
--export([init_per_suite/1,
-         end_per_suite/1]).
-
 %% test case exports
 -export([create/1,
          create_negative/1,
@@ -63,15 +60,6 @@ groups() ->
        settle_negative]
      }
     ].
-
-init_per_suite(Config) ->
-    {ok, Apps} = application:ensure_all_started(aechannel),
-    aec_db:check_db(),
-    [{started_apps, Apps}|Config].
-
-end_per_suite(Config) ->
-    [application:stop(A) || A <- lists:reverse(?config(started_apps,Config))],
-    ok.
 
 %%%===================================================================
 

@@ -54,7 +54,7 @@ new(#{channel_id  := ChannelId,
                 channel_id  = ChannelId,
                 from        = FromPubKey,
                 amount      = Amount,
-                ttl         = adjust_ttl(TTL),
+                ttl         = TTL,
                 fee         = Fee,
                 nonce       = Nonce},
          {ok, aetx:new(?MODULE, Tx)}
@@ -213,23 +213,3 @@ check_channel(ChannelId, FromPubKey, Trees) ->
 -spec version() -> non_neg_integer().
 version() ->
     ?CHANNEL_DEPOSIT_TX_VSN.
-
-adjust_ttl({delta, N}) ->
-    cur_height() + N;
-adjust_ttl(N) when is_integer(N), N > 0 ->
-    case N > cur_height() of
-        true ->
-            N;
-        false ->
-            erlang:error(invalid_ttl)
-    end;
-adjust_ttl(_) ->
-    erlang:error(invalid_ttl).
-
-
-cur_height() ->
-    case aec_chain:top_header() of
-        undefined -> 0;
-        Hdr ->
-            aec_headers:height(Hdr)
-    end.

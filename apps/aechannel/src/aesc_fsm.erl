@@ -428,6 +428,7 @@ awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx},
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_funding_signed_msg(NewSignedTx, D#data{create_tx = NewSignedTx}),
+    report(on_chain_tx, NewSignedTx, D1),
     {ok, D2} = start_min_depth_watcher(?WATCH_FND, NewSignedTx, D1),
     next_state(awaiting_locked, D2);
 awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx},
@@ -960,7 +961,7 @@ check_accept_msg(#{ chain_hash           := ChainHash
     end.
 
 dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId}) ->
-    Def = deposit_tx_defaults(ChanId, From),
+    Def = deposit_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
     Opts1 = maps:merge(Def, Opts),
     lager:debug("deposit_tx Opts = ~p", [Opts1]),
     {ok, _} = Ok = aesc_deposit_tx:new(Opts1),
@@ -979,11 +980,17 @@ create_tx_defaults(Initiator) ->
     #{ fee   => Fee
      , nonce => Nonce }.
 
-deposit_tx_defaults(ChanId, Acct) ->
+deposit_tx_defaults(ChanId, Acct, TTL) ->
     maps:merge(
       create_tx_defaults(Acct),
-      #{ ttl        => {delta, 40}
+      #{ ttl        => adjust_ttl(TTL)
        , channel_id => ChanId }).
+
+adjust_ttl(undefined) ->
+    CurHeight = aec_headers:height(aec_chain:top_header()),
+    CurHeight + 100;
+adjust_ttl(TTL) when is_integer(TTL), TTL > 0 ->
+    TTL.
 
 close_mutual_tx(LatestSignedTx, D) ->
     Account = my_account(D),

@@ -133,8 +133,8 @@ deposit(Cfg) ->
     Deposit = 10,
     #{ i := #{fsm := FsmI} = I
      , r := #{} = R
-     , spec := #{ initiator := PubI
-                , responder := PubR }} = create_channel_([{port, 9327}|Cfg]),
+     , spec := #{ initiator := _PubI
+                , responder := _PubR }} = create_channel_([{port, 9327}|Cfg]),
     ct:log("I = ~p", [I]),
     #{initiator_amount := IAmt0, responder_amount := RAmt0} = I,
     check_info(),
@@ -143,7 +143,7 @@ deposit(Cfg) ->
     {I1, _} = await_signing_request(deposit_tx, I),
     {R1, _} = await_signing_request(deposit_created, R),
     mine_blocks(dev1, 4),
-    {I2, R2} = await_initial_state(I1, R1),
+    {I2, _R2} = await_initial_state(I1, R1),
     ct:log("I2 = ~p", [I2]),
     #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
     {IAmt2, RAmt2} = {IAmt0 + Deposit, RAmt0},
