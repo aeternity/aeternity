@@ -1,28 +1,20 @@
 # About this release
 
-[This release][this-release] is focused on TODOFILLMEIN.
+[This][this-release] is a maintenance release.
 It:
-* Redirects all the log lines related to the synchronization protocol
-to the new log file `epoch_sync.log` instead of `epoch.log`; log lines with
-category info and up will still be directed to the console.
-* Does this. This impacts consesus.
-* Does that. This impacts the persisted DB.
-* Does that.
-* Stops using hashes of unsigned transactions, and uses the hash of the signed transaction instead. This reduces the memory footprint of the system (removes one index). This affects the API by removing the transaction hash when constructing unsigned transactions. This affects the API by returning the hash of the signed transaction in all other applicable places. The latter should not affects users of the API as all transaction hashes are now constructed from the signed transaction. Note that this does not affect consensus, only the http and websocket API:s. This impacts the persisted DB.
 * Changes the miner reward to 10,000,000,000,000,000,000 atto-Aeternity-tokens. This impacts consensus.
-* Improves the stability of the testnet.
-* Enhances user HTTP API with fine tuning paths for getting account balance and transactions
 * Moves contract account balances to account state tree. Also removes height and contract ID from contract state trees. This impacts consensus.
 * Removes unneeded height from the account object in the block state. This impacts consensus.
-* Enhances user experience for Channels' websockets with broadcasting co-signed on-chain transactions to participants before posting. This allows them to track the progress of the transactions as well to store them locally in case of conflict resolution.
 * Changes the format of the state channel's on-chain close mutual transaction. This impacts consensus.
 * Adds miner's account in block header, removing coinbase transaction. This also: removes the capability to query from the HTTP API which blocks were mined by a specified miner; moves the assignment of the block mining reward to the miner to after the application of the txs in the block. This impacts consensus.
+* Redirects all the log lines related to the synchronization protocol to the new log file `epoch_sync.log` instead of `epoch.log`; log lines with category info and up will still be directed to the console.
+* Stops using hashes of unsigned transactions, and uses the hash of the signed transaction instead. This reduces the memory footprint of the system (removes one index). This affects the API by removing the transaction hash when constructing unsigned transactions. This affects the API by returning the hash of the signed transaction in all other applicable places. The latter should not affects users of the API as all transaction hashes are now constructed from the signed transaction. Note that this does not affect consensus, only the http and websocket API:s. This impacts the persisted DB.
+* Enhances user HTTP API with fine tuning paths for getting account balance and transactions.
+* Enhances user experience for Channels' websockets with broadcasting co-signed on-chain transactions to participants before posting. This allows them to track the progress of the transactions as well to store them locally in case of conflict resolution.
+* This release removes deprecated http API endpoints block-by-height and block-by-hash. Instead use the endpoints as defined [online in swagger.yaml][swagger-yaml].
+* Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
-
-This release removes deprecated http API endpoints block-by-height
-and block-by-hash. Instead use the endpoints as defined
-[online in swagger.yaml][swagger-yaml].
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
