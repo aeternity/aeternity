@@ -155,7 +155,7 @@ ct_setup(Config) ->
 -spec ct_cleanup(test_ctx()) -> ok.
 ct_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
-    Result = validate_logs(),
+    Result = validate_logs(Ctx),
     call(Pid, dump_logs),
     call(Pid, cleanup),
     call(Pid, stop),
@@ -181,7 +181,7 @@ eqc_setup(DataDir, TempDir) ->
 -spec eqc_cleanup(test_ctx()) -> ok.
 eqc_cleanup(Ctx) ->
     Pid = ctx2pid(Ctx),
-    Result = validate_logs(),
+    Result = validate_logs(Ctx),
     call(Pid, cleanup),
     call(Pid, stop),
     wait_for_exit(Pid, 120000),
@@ -471,15 +471,15 @@ decode_json(Data) ->
         error:badarg -> {error, {bad_json, Data}}
     end.
 
-validate_logs() ->
+validate_logs(Cfg) ->
     Logs = aest_nodes_mgr:get_log_paths(),
     maps:fold(fun(NodeName, LogPath, Result) ->
-        Result1 = check_crash_log(NodeName, LogPath, Result),
-        Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Result1),
-        check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Result2)
+        Result1 = check_crash_log(NodeName, LogPath, Cfg, Result),
+        Result2 = check_log_for_errors(NodeName, LogPath, "epoch.log", Cfg, Result1),
+        check_log_for_errors(NodeName, LogPath, "epoch_sync.log", Cfg, Result2)
     end, ok, Logs).
 
-check_crash_log(NodeName, LogPath, Result) ->
+check_crash_log(NodeName, LogPath, Cfg, Result) ->
     LogFile = binary_to_list(filename:join(LogPath, "crash.log")),
     case filelib:is_file(LogFile) of
         false -> Result;
@@ -493,12 +493,15 @@ check_crash_log(NodeName, LogPath, Result) ->
                         ErrorLines ->
                             aest_nodes_mgr:log("Node ~p's crash logs is not empty:~n~s",
                                                [NodeName, ErrorLines]),
-                            {error, crash_log_not_empty}
+                            case proplists:get_value(verify_logs, Cfg, true) of
+                                true -> {error, crash_log_not_empty};
+                                false -> Result
+                            end
                     end
             end
     end.
 
-check_log_for_errors(NodeName, LogPath, LogName, Result) ->
+check_log_for_errors(NodeName, LogPath, LogName, Cfg, Result) ->
     LogFile = binary_to_list(filename:join(LogPath, LogName)),
     case filelib:is_file(LogFile) of
         false -> Result;
@@ -509,6 +512,10 @@ check_log_for_errors(NodeName, LogPath, LogName, Result) ->
                 ErrorLines ->
                     aest_nodes_mgr:log("Node ~p's log ~p contains errors:~n~s",
                                        [NodeName, LogName, ErrorLines]),
-                    {error, log_has_errors}
+                    case proplists:get_value(verify_logs, Cfg, true) of
+                        true -> {error, log_has_errors};
+                        false -> Result
+                    end
+
             end
     end.
