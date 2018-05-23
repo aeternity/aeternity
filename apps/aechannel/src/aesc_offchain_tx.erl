@@ -30,7 +30,8 @@
          responder_amount/1,
          updates/1,
          previous_round/1,
-         round/1]).
+         round/1,
+         state_hash/1]).
 
 -export([set_value/3]).
 
@@ -58,8 +59,8 @@ new(#{channel_id         := ChannelId,
       responder          := ResponderPubKey,
       initiator_amount   := InitiatorAmount,
       responder_amount   := ResponderAmount,
+      state_hash         := StateHash,
       updates            := Updates,
-      state              := State,
       previous_round     := Prev,
       round              := Round}) ->
     Tx = #channel_offchain_tx{
@@ -69,7 +70,7 @@ new(#{channel_id         := ChannelId,
             initiator_amount   = InitiatorAmount,
             responder_amount   = ResponderAmount,
             updates            = Updates,
-            state              = State,
+            state_hash         = StateHash,
             previous_round     = Prev,
             round              = Round},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -98,7 +99,7 @@ check(#channel_offchain_tx{
          initiator_amount   = _InitiatorAmount,
          responder_amount   = _ResponderAmount,
          updates            = _Updates,
-         state              = _State,
+         state_hash         = _State,
          previous_round     = _Prev,
          round              = _Round}, _Context, Trees, _Height,
                                                 _ConsensusVersion) ->
@@ -129,7 +130,7 @@ serialize(#channel_offchain_tx{
              initiator_amount   = InitiatorAmount,
              responder_amount   = ResponderAmount,
              updates            = Updates,
-             state              = State,
+             state_hash         = StateHash,
              previous_round     = Prev,
              round              = Round}) ->
     {version(),
@@ -141,7 +142,7 @@ serialize(#channel_offchain_tx{
      , {initiator_amount  , InitiatorAmount}
      , {responder_amount  , ResponderAmount}
      , {updates           , Updates}
-     , {state             , State}
+     , {state_hash        , StateHash}
      ]}.
 
 -spec deserialize(vsn(), list()) -> tx().
@@ -154,7 +155,7 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
             , {initiator_amount  , InitiatorAmount}
             , {responder_amount  , ResponderAmount}
             , {updates           , Updates}
-            , {state             , State}]) ->
+            , {state_hash        , StateHash}]) ->
     #channel_offchain_tx{
        channel_id         = ChannelId,
        initiator          = InitiatorPubKey,
@@ -162,7 +163,7 @@ deserialize(?CHANNEL_OFFCHAIN_TX_VSN,
        initiator_amount   = InitiatorAmount,
        responder_amount   = ResponderAmount,
        updates            = Updates,
-       state              = State,
+       state_hash         = StateHash,
        previous_round     = Prev,
        round              = Round}.
 
@@ -174,7 +175,7 @@ for_client(#channel_offchain_tx{
               initiator_amount   = InitiatorAmount,
               responder_amount   = ResponderAmount,
               updates            = Updates,
-              state              = State,
+              state_hash         = StateHash,
               previous_round     = Prev,
               round              = Round}) ->
     #{<<"vsn">>                => ?CHANNEL_OFFCHAIN_TX_VSN,
@@ -188,7 +189,7 @@ for_client(#channel_offchain_tx{
       <<"initiator_amount">>   => InitiatorAmount,
       <<"responder_amount">>   => ResponderAmount,
       <<"updates">>            => [update_for_client(D) || D <- Updates],
-      <<"state">>              => aec_base58c:encode(state, State)}.
+      <<"state_hash">>         => aec_base58c:encode(state, StateHash)}.
 
 serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     [ {channel_id        , binary}
@@ -199,7 +200,7 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
     , {initiator_amount  , int}
     , {responder_amount  , int}
     , {updates           , [{int,binary,binary,int}]}
-    , {state             , binary}
+    , {state_hash        , binary}
     ].
 
 %%%===================================================================
@@ -238,6 +239,10 @@ previous_round(#channel_offchain_tx{previous_round = PreviousRound}) ->
 round(#channel_offchain_tx{round = Round}) ->
     Round.
 
+-spec state_hash(tx()) -> binary().
+state_hash(#channel_offchain_tx{state_hash = StateHash}) ->
+    StateHash.
+
 -type settable_field() :: initiator_amount
                         | responder_amount
                         | updates
@@ -258,7 +263,10 @@ set_value(#channel_offchain_tx{round = Seq} = Tx, previous_round, N)
     Tx#channel_offchain_tx{previous_round = N};
 set_value(#channel_offchain_tx{round = Seq} = Tx, round, N)
   when is_integer(N), N >= 0, N > Seq ->
-    Tx#channel_offchain_tx{round = N}.
+    Tx#channel_offchain_tx{round = N};
+set_value(#channel_offchain_tx{} = Tx, state_hash, Hash) when
+  is_binary(Hash) ->
+    Tx#channel_offchain_tx{state_hash=Hash}.
 
 
 %%%===================================================================

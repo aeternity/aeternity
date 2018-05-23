@@ -316,15 +316,26 @@ state_tx(ChannelId, Initiator, Responder) ->
 
 state_tx(ChannelId, Initiator, Responder, Spec0) ->
     Spec = maps:merge(state_tx_spec(), Spec0),
+    InitiatorAmount = maps:get(initiator_amount, Spec),
+    ResponderAmount = maps:get(responder_amount, Spec),
+    StateHash =
+        case maps:get(state_hash, Spec, <<>>) of
+            <<>> -> %not set, calculate
+                Trees = aesc_trees:new([{Initiator, InitiatorAmount},
+                                        {Responder, ResponderAmount}]),
+                aesc_trees:hash(Trees);
+            V -> V
+        end,
     {ok, StateTx} =
         aesc_offchain_tx:new(
             #{channel_id         => ChannelId,
               initiator          => Initiator,
               responder          => Responder,
               updates            => maps:get(updates, Spec, []),
-              initiator_amount   => maps:get(initiator_amount, Spec),
-              responder_amount   => maps:get(responder_amount, Spec),
+              initiator_amount   => InitiatorAmount,
+              responder_amount   => ResponderAmount,
               state              => maps:get(state, Spec, <<>>),
+              state_hash         => StateHash,
               previous_round     => maps:get(previous_round, Spec),
               round              => maps:get(round, Spec)}),
     StateTx.
