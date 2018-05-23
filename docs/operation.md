@@ -7,8 +7,7 @@ This document describes how to start your epoch node installed using a release b
 The instructions below assume that:
 * The node is deployed in directory `/tmp/node`;
 * No custom peers are specified under the `peers:` key in the config. If the `peers:` key is undefined, the *testnet* seed peers (built-in in the package source) are used.
-* The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3003;
-* The internal HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3103.
+* The external HTTP endpoint of the user API of the node can be contacted at 127.0.0.1 port 3003.
 
 If any of the assumptions does not hold, you need to amend the instructions accordingly.
 
@@ -87,7 +86,7 @@ $ curl http://31.13.249.70:3013/v2/top
 
 This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
 ```bash
-$ curl http://localhost:3103/v2/block/pending
+$ curl http://127.0.0.1:3003/v2/block/pending
 {...,"height":... ,"prev_hash":"bh$2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}
 ```
 Height would be +1 of what is in the `/top` of the remote node but this is not
