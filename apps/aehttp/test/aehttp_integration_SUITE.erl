@@ -621,7 +621,9 @@ contract_transactions(_Config) ->
 
     %% prepare a contract_create_tx and post it
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_address">> := ContractPubKey}} = get_contract_create(ValidEncoded),
+                <<"contract_address">> := EncodedContractPubKey}} =
+        get_contract_create(ValidEncoded),
+    {ok, ContractPubKey} = aec_base58c:safe_decode(contract_pubkey, EncodedContractPubKey),
     ContractCreateTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCreateTx),
 
     % mine a block

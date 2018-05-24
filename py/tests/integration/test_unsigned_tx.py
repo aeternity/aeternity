@@ -91,8 +91,9 @@ def test_contract_call():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
+    contract_address = common.base58_decode(encoded_contract_address)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 

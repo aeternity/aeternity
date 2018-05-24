@@ -172,7 +172,9 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
                             aect_contracts:compute_contract_pubkey(Owner, Nonce),
                         #{tx => aec_base58c:encode(transaction,
                                                   aetx:serialize_to_binary(Tx)),
-                          contract_address => ContractPubKey}
+                          contract_address =>
+                              aec_base58c:encode(contract_pubkey, ContractPubKey)
+                         }
                     end)
                 ],
     process_request(ParseFuns, Req);
