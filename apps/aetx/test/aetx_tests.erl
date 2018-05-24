@@ -52,8 +52,8 @@ apply_signed_txs_test_() ->
                                          fee => 10,
                                          nonce => 13,
                                          payload => <<"">>}),
-               {ok, SignedSpendTx} = aec_keys:sign(SpendTx),
-               {ok, SignedOverBalanceTx} = aec_keys:sign(OverBalanceTx),
+               {ok, SignedSpendTx} = aec_keys:sign_tx(SpendTx),
+               {ok, SignedOverBalanceTx} = aec_keys:sign_tx(OverBalanceTx),
                SignedTxs = [SignedSpendTx, SignedOverBalanceTx],
 
                {ok, ValidSignedTxs, StateTree} =

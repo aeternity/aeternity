@@ -261,7 +261,7 @@ a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     STx.
 
 sign(me, Tx) ->
-    aec_keys:sign(Tx);  %% why via keys here?
+    aec_keys:sign_tx(Tx);  %% why via keys here?
 sign(PubKey, Tx) ->
     try
         [{_, PrivKey}] = ets:lookup(?TAB, PubKey),

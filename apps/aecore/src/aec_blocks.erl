@@ -19,6 +19,7 @@
          set_signature/2,
          miner_hash/1,
          set_target/2,
+         sign/2,
          new_key/4,
          new_micro/5,
          new_key_with_state/4,
@@ -102,6 +103,12 @@ signature(Block) ->
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
+
+-spec sign(block(), binary()) -> block().
+sign(MicroBlock, PrivKey) ->
+    Bin = aec_headers:serialize_to_binary(to_header(micro, MicroBlock)),
+    Signature = enacl:sign_detached(Bin, PrivKey),
+    MicroBlock#block{signature = Signature}.
 
 %% TODO: have a spec for list of transactions
 -spec txs(block()) -> list(aetx_sign:signed_tx()).
