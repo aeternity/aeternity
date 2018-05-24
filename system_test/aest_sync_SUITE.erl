@@ -706,6 +706,7 @@ net_split_mining_power(Cfg) ->
     ok.
 
 abrupt_stop_new_node(Cfg) ->
+    RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
     % Start both nodes
@@ -715,10 +716,11 @@ abrupt_stop_new_node(Cfg) ->
     % Restart node 2
     start_node(n2, Cfg),
     % Check that they synchronize
-    Blocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    Blocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
     assert_in_sync(Blocks).
 
 abrupt_stop_mining_node(Cfg) ->
+    RepairTimeout = 30000, % Time allowed for node to repair DB and finish sync
     NodeShutdownTime = proplists:get_value(node_shutdown_time, Cfg),
     Nodes = [n1, n2],
     setup_nodes(cluster(Nodes, #{}), Cfg),
@@ -736,7 +738,7 @@ abrupt_stop_mining_node(Cfg) ->
     % Restart node 2
     start_node(n2, Cfg),
     % Check that they synchronize
-    NewBlocks = wait_for_value({height, 5}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
+    NewBlocks = wait_for_value({height, 5}, Nodes, RepairTimeout, Cfg),
     ?assertEqual(Blocks, NewBlocks),
     % Check that they continue mining
     LatestBlocks = wait_for_value({height, 10}, Nodes, 5 * ?MINING_TIMEOUT, Cfg),
