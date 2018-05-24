@@ -3746,13 +3746,13 @@
         }
       },
       "example" : {
-        "gas_used" : 1,
-        "contract_address" : null,
-        "height" : 6,
-        "return_value" : "return_value",
-        "caller_address" : { },
         "return_type" : "return_type",
-        "caller_nonce" : 0
+        "caller_address" : { },
+        "return_value" : "return_value",
+        "gas_used" : 1,
+        "caller_nonce" : 0,
+        "contract_address" : null,
+        "height" : 6
       }
     },
     "Error" : {
