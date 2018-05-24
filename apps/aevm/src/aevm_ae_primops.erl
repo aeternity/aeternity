@@ -13,25 +13,27 @@
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 
 -define(BASE_ADDRESS, 64). %% Byte offset for data
--define(PRIMOP_BASE_ADDRESS, 96). %% Byte offset for data in primops
 -spec call( non_neg_integer(), binary(), aevm_eeevm_state:state()) ->
                   {ok, binary(), non_neg_integer(), aevm_eeevm_state:state()}
                       | {error, any()}.
 call(Value, Data, State) ->
     %% TODO: use aeso_data:from_binary() (but it doesn't take a base address at the moment)
-    case Data of
-        <<?BASE_ADDRESS:256, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
-            spend(Recipient, Value, State);
-	<<?PRIMOP_BASE_ADDRESS:256, _:256, Type:256, Argument/binary>> ->
-	    case Type of
-		T when ?PRIM_CALL_IN_ORACLE_RANGE(T) ->
-		    oracle_call(T, Argument, State);
+    <<Offset:256, CallData/binary>> = Data,
+    if Offset >= ?BASE_ADDRESS ->
+            FirstWord = Offset - ?BASE_ADDRESS,
+            case CallData of
+                <<_Skip:FirstWord, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
+                    spend(Recipient, Value, State);
+                <<_Skip:FirstWord, Type:256,_Argument/binary>>
+                  when ?PRIM_CALL_IN_ORACLE_RANGE(Type) ->
+                    Size = size(Data),
+		    oracle_call(Type, Offset + 32 , <<Size:256,0:256, Data/binary>>, State);
 		_ ->
 		    %% Throw out of gas for illegal call
 		    %% TODO: Better error for illegal call.
 		    {error, out_of_gas}
 	    end;
-	_ ->
+       true ->
             %% Throw out of gas for illegal call
             %% TODO: Better error for illegal call.
             {error, out_of_gas}
@@ -60,30 +62,29 @@ spend(Recipient, Value, State) ->
 %% Oracle operations.
 %% ------------------------------------------------------------------
 
-oracle_call(?PRIM_CALL_ORACLE_REGISTER, Data, State) ->
-    oracle_call_register(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_QUERY, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_REGISTER, Offset, Data, State) ->
+    oracle_call_register(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_QUERY,_Offset, Data, State) ->
     oracle_call_query(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_RESPOND, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_RESPOND,_Offset, Data, State) ->
     oracle_call_respond(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_EXTEND, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_EXTEND,_Offset, Data, State) ->
     oracle_call_extend(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_GET_ANSWER, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_GET_ANSWER,_Offset, Data, State) ->
     oracle_call_get_answer(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION,_Offset, Data, State) ->
     oracle_call_get_question(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Data, State) ->
+oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE,_Offset, Data, State) ->
     oracle_call_query_fee(Data, State);
-oracle_call(_, _, _) ->
+oracle_call(_, _, _,_) ->
     {error, out_of_gas}.
 
-oracle_call_register(<<Acct:256, Sign:256, TTL:256, QType:256, RType:256, Rest/binary>>, State) ->
+oracle_call_register(Offset, Data, State) ->
+    [Acct, Sign, TTL, QType, RType] = get_args([word, word, word, typerep, typerep], Offset, Data),
     ChainAPI   = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
-    DecodedQType = get_type(QType, Rest),
-    DecodedRType = get_type(RType, Rest),
 
-    case ChainAPI:oracle_register(Acct, Sign, TTL, DecodedQType, DecodedRType, ChainState) of
+    case ChainAPI:oracle_register(Acct, Sign, TTL, QType, RType, ChainState) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
             GasSpent   = 0,         %% Already costs lots of gas
@@ -114,3 +115,42 @@ oracle_call_query_fee(Data, State) ->
 
 get_type(TypeDef,_Mem) ->
     TypeDef.
+
+-define(TYPEREP_WORD_TAG,   0).
+-define(TYPEREP_STRING_TAG, 1).
+-define(TYPEREP_LIST_TAG,   2).
+-define(TYPEREP_TUPLE_TAG,  3).
+-define(TYPEREP_OPTION_TAG, 4).
+
+get_args([word|TypeSpecs], Offset, Data) ->
+    [get_word(Offset, Data) |
+     get_args(TypeSpecs, Offset + 32, Data)];
+get_args([typerep|TypeSpecs], Offset, Data) ->
+    Tag = get_word(Offset, Data),
+    Arg = fun(T) -> get_args([T], Offset + 32, Data) end,
+    Value =
+        case Tag of
+            ?TYPEREP_WORD_TAG   -> word;
+            ?TYPEREP_STRING_TAG -> string;
+            ?TYPEREP_LIST_TAG   -> {list,   Arg(typerep)};
+            ?TYPEREP_OPTION_TAG -> {option, Arg(typerep)};
+            ?TYPEREP_TUPLE_TAG  -> {tuple,  Arg({list, typerep})}
+        end,
+    [Value| get_args(TypeSpecs, Offset + 32, Data)];
+get_args([{list, Elem}|TypeSpecs], Offset, Data) ->
+    <<Nil:256>> = <<(-1):256>>,
+    V = get_word(Offset, Data),
+    Value =
+        if V==Nil ->
+                [];
+           true ->
+                {H,T} = get_args([{tuple,[Elem,{list,Elem}]}],V, Data),
+                [H|T]
+        end,
+    [Value| get_args(TypeSpecs, Offset + 32, Data)].
+
+
+get_word(Offset, Data) ->
+    BitOffset = Offset*8,
+    <<_:BitOffset, Word:256, _/binary>> = Data,
+    Word.
