@@ -634,7 +634,7 @@ contract_transactions(_Config) ->
                              contract => ContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 10,
+                             gas => 100,
                              gas_price => 1,
                              fee => 1,
                              call_data => EncodedCallData},
@@ -664,11 +664,20 @@ contract_transactions(_Config) ->
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject, <<>>)),
 
+    %% Test to call the contract without a transaction.
+    {ok, 200, #{<<"out">> := DirectCallResult}} =
+        call_contract_directly(#{<<"abi">> => <<"sophia-address">>,
+                                 <<"code">> => ContractPubKey,
+                                 <<"function">> => Function,
+                                 <<"arg">> => Argument}),
+
+    ?assertEqual(maps:get(<<"return_value">>, CallObject), DirectCallResult),
+
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => ContractPubKey,
                              vm_version => 1,
                              amount => 1,
-                             gas => 10,
+                             gas => 100,
                              gas_price => 1,
                              fee => 1,
                              function => Function,
@@ -698,6 +707,9 @@ contract_transactions(_Config) ->
     ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject1, <<>>)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject1, <<>>)),
+
+    %% Check that it is also the same as the direct call result
+    ?assertEqual(maps:get(<<"return_value">>, CallObject1), DirectCallResult),
 
     %% negative tests
     %% Invalid hashes
@@ -3623,6 +3635,10 @@ get_top() ->
 get_contract_create(Data) ->
     Host = external_address(),
     http_request(Host, post, "tx/contract/create", Data).
+
+call_contract_directly(Data) ->
+    Host = external_address(),
+    http_request(Host, post, "contract/call", Data).
 
 get_contract_call(Data) ->
     Host = external_address(),
