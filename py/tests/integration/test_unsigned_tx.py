@@ -190,7 +190,8 @@ def test_contract_on_chain_call_off_chain():
                                    call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)
 
-    '0x000000000000000000000000000000000000000000000000000000000000002a' = result.out
+     assert_equals('0x000000000000000000000000000000000000000000000000000000000000002a',
+                   result.out)
 
     cleanup(node, root_dir)
 
