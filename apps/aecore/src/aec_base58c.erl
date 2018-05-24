@@ -8,6 +8,7 @@
                     | block_tx_hash
                     | block_state_hash
                     | channel
+                    | contract_pubkey
                     | transaction
                     | tx_hash
                     | oracle_pubkey
@@ -75,6 +76,7 @@ type2pfx(block_hash)       -> <<"bh">>;
 type2pfx(block_tx_hash)    -> <<"bx">>;
 type2pfx(block_state_hash) -> <<"bs">>;
 type2pfx(channel)          -> <<"ch">>;
+type2pfx(contract_pubkey)  -> <<"ct">>;
 type2pfx(transaction)      -> <<"tx">>;
 type2pfx(tx_hash)          -> <<"th">>;
 type2pfx(oracle_pubkey)    -> <<"ok">>;
@@ -90,6 +92,7 @@ pfx2type(<<"bh">>) -> block_hash;
 pfx2type(<<"bx">>) -> block_tx_hash;
 pfx2type(<<"bs">>) -> block_state_hash;
 pfx2type(<<"ch">>) -> channel;
+pfx2type(<<"ct">>) -> contract_pubkey;
 pfx2type(<<"tx">>) -> transaction;
 pfx2type(<<"th">>) -> tx_hash;
 pfx2type(<<"ok">>) -> oracle_pubkey;

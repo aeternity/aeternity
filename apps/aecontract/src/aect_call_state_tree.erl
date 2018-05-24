@@ -13,7 +13,7 @@
         , empty_with_backend/0
         , get_call/3
         , insert_call/2
-        , lookup_call/2
+        , lookup_call/3
         , prune/2
         , root_hash/1]).
 
@@ -57,7 +57,7 @@ insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
     %% Construct the Id to store in the tree.
     CtId       = aect_call:contract_address(Call),
     CallId     = aect_call:id(Call),
-    CallTreeId = <<CtId/binary, CallId/binary>>,
+    CallTreeId = call_tree_id(CtId, CallId),
 
     %% Insert the new call into the history
     Serialized = aect_call:serialize(Call),
@@ -66,16 +66,16 @@ insert_call(Call, Tree = #call_tree{ calls = CtTree}) ->
     %% Update the calls tree
     Tree#call_tree{ calls = CtTree1}.
 
--spec lookup_call(aect_call:id(), tree()) -> {value, aect_call:call()} | none.
-lookup_call(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#call_tree.calls) of
+-spec lookup_call(aect_contracts:id(), aect_call:id(), tree()) -> {value, aect_call:call()} | none.
+lookup_call(CtId, CallId, Tree) ->
+    case aeu_mtrees:lookup(call_tree_id(CtId, CallId), Tree#call_tree.calls) of
         {value, Val} -> {value, aect_call:deserialize(Val)};
         none         -> none
     end.
 
 -spec get_call(aect_contracts:id(), aect_call:id(), tree()) -> aect_call:call().
 get_call(CtId, CallId, #call_tree{ calls = CtTree }) ->
-    CallTreeId = <<CtId/binary, CallId/binary>>,
+    CallTreeId = call_tree_id(CtId, CallId),
     aect_call:deserialize(aeu_mtrees:get(CallTreeId, CtTree)).
 
 %% -- Hashing --
@@ -89,3 +89,10 @@ root_hash(#call_tree{calls = CtTree}) ->
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(#call_tree{calls = CtTree} = Tree) ->
     Tree#call_tree{calls = aeu_mtrees:commit_to_db(CtTree)}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+
+call_tree_id(ContractId, CallId) ->
+    <<ContractId/binary, CallId/binary>>.

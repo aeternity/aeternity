@@ -53,6 +53,7 @@
 
 %%% Contracts API
 -export([ get_contract/1
+        , get_contract_call/3
         ]).
 
 %%% Channels API
@@ -196,6 +197,19 @@ get_contract(PubKey) ->
         error -> {error, no_state_trees}
     end.
 
+-spec get_contract_call(aect_contracts:id(), aect_call:id(), binary()) ->
+                               {'ok', aect_call:call()} |
+                               {'error', atom()}.
+get_contract_call(ContractId, CallId, BlockHash) ->
+    case get_block_state(BlockHash) of
+        error -> {error, no_state_trees};
+        {ok, Trees} ->
+            CallTree = aec_trees:calls(Trees),
+            case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
+                none -> {error, call_not_found};
+                {value, Call} -> {ok, Call}
+            end
+    end.
 
 %%%===================================================================
 %%% Time summary.

@@ -12,7 +12,8 @@
         , nameservice_pointers_decode/1
         , get_nonce/1
         , print_state/0
-        , get_contract_code/2 
+        , get_contract_code/2
+        , get_contract_call_object_from_tx/2
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
@@ -169,6 +170,33 @@ get_contract_code(ContractKey, CodeKey) ->
             {value, Contract} ->
                 {ok, maps:put(CodeKey, aect_contracts:code(Contract), State)}
         end
+    end.
+
+get_contract_call_object_from_tx(TxKey, CallKey) ->
+    fun(_Req, State) ->
+            case maps:get(TxKey, State) of
+                #{tx_block_hash := mempool} ->
+                    {error, {400, [], #{<<"reason">> => <<"Tx not mined">>}}};
+                #{tx_block_hash := BlockHash, tx := STx} ->
+                    Tx = aetx_sign:tx(STx),
+                    case aetx:specialize_type(Tx) of
+                        {contract_call_tx, CallTx} ->
+                            {CB, _} = aetx:specialize_callback(Tx),
+                            Nonce  = CB:nonce(CallTx),
+                            Caller = CB:caller(CallTx),
+                            Contract = CB:contract(CallTx),
+                            CallId = aect_call:id(Caller, Nonce, Contract),
+                            case aec_chain:get_contract_call(Contract, CallId, BlockHash) of
+                                {error, Why} ->
+                                    Msg = atom_to_binary(Why, utf8),
+                                    {error, {400, [], #{<<"reason">> => Msg}}};
+                                {ok, CallObject} ->
+                                    {ok, maps:put(CallKey, CallObject, State)}
+                            end;
+                        {_, _} ->
+                            {error, {400, [], #{<<"reason">> => <<"Tx is not a call">>}}}
+                    end
+            end
     end.
 
 verify_oracle_existence(OracleKey) ->
