@@ -20,15 +20,16 @@ call(Value, Data, State) ->
     %% TODO: use aeso_data:from_binary() (but it doesn't take a base address at the moment)
     <<Offset:256, CallData/binary>> = Data,
     if Offset >= ?BASE_ADDRESS ->
-            FirstWord = Offset - ?BASE_ADDRESS,
-            case CallData of
+            FirstWord = Offset * 8,
+            case <<0:256, Data/binary>> of
                 <<_Skip:FirstWord, ?PRIM_CALL_SPEND:256, Recipient:256>> ->
                     spend(Recipient, Value, State);
                 <<_Skip:FirstWord, Type:256,_Argument/binary>>
                   when ?PRIM_CALL_IN_ORACLE_RANGE(Type) ->
                     Size = size(Data),
-		    oracle_call(Type, Offset + 32 , <<Size:256,0:256, Data/binary>>, State);
+		    oracle_call(Type, Offset + 64, <<Size:256,0:256, Data/binary>>, State);
 		_ ->
+                    2 = Data,
 		    %% Throw out of gas for illegal call
 		    %% TODO: Better error for illegal call.
 		    {error, out_of_gas}
@@ -64,53 +65,94 @@ spend(Recipient, Value, State) ->
 
 oracle_call(?PRIM_CALL_ORACLE_REGISTER, Offset, Data, State) ->
     oracle_call_register(Offset, Data, State);
-oracle_call(?PRIM_CALL_ORACLE_QUERY,_Offset, Data, State) ->
-    oracle_call_query(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_RESPOND,_Offset, Data, State) ->
-    oracle_call_respond(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_EXTEND,_Offset, Data, State) ->
-    oracle_call_extend(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_GET_ANSWER,_Offset, Data, State) ->
-    oracle_call_get_answer(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION,_Offset, Data, State) ->
-    oracle_call_get_question(Data, State);
-oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE,_Offset, Data, State) ->
-    oracle_call_query_fee(Data, State);
+oracle_call(?PRIM_CALL_ORACLE_QUERY, Offset, Data, State) ->
+    oracle_call_query(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_RESPOND, Offset, Data, State) ->
+    oracle_call_respond(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_EXTEND, Offset, Data, State) ->
+    oracle_call_extend(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_GET_ANSWER, Offset, Data, State) ->
+    oracle_call_get_answer(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_GET_QUESTION, Offset, Data, State) ->
+    oracle_call_get_question(Offset, Data, State);
+oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Offset, Data, State) ->
+    oracle_call_query_fee(Offset, Data, State);
 oracle_call(_, _, _,_) ->
     {error, out_of_gas}.
 
-oracle_call_register(Offset, Data, State) ->
-    [Acct, Sign, TTL, QType, RType] = get_args([word, word, word, typerep, typerep], Offset, Data),
+call_chain(Callback, State) ->
     ChainAPI   = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
 
-    case ChainAPI:oracle_register(Acct, Sign, TTL, QType, RType, ChainState) of
+    case Callback(ChainAPI, ChainState) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
             GasSpent   = 0,         %% Already costs lots of gas
             {ok, UnitReturn, GasSpent,
              aevm_eeevm_state:set_chain_state(ChainState1, State)};
+        {ok, ChainState1, Retval} ->
+            GasSpent   = 0,         %% Already costs lots of gas
+            {ok, Retval, GasSpent,
+             aevm_eeevm_state:set_chain_state(ChainState1, State)};
         {error, _} = Err -> Err
     end.
 
+oracle_call_register(Offset, Data, State) ->
+    %% TODO: Use the right argument types when typreps can be decode.
+    %% ArgumentTypes = [word, word, word, typerep, typerep],
+    ArgumentTypes = [word, word, word, word, word],
+    [Acct, Sign, TTL, QType, RType] = get_args(ArgumentTypes, Offset, Data),
+    Callback =
+        fun(API, ChainState) ->
+                API:oracle_register(Acct, Sign, TTL, QType, RType, ChainState)
+        end,
+    call_chain(Callback, State).
 
-oracle_call_query(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
+oracle_call_query(Offset, Data, State) ->
+    %% TODO: the querytype has to be encoded by the caller
+    %% and decoded here
+    %% ArgumentTypes = [word, 'unnkown', word, word],
+    ArgumentTypes = [word, word, word, word],
+    [Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_query(Oracle, Q, QTTL, RTTL, ChainState) end,
+    call_chain(Callback, State).
 
-oracle_call_respond(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
 
-oracle_call_extend(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
+oracle_call_respond(Offset, Data, State) ->
+    %% [word, word, ast_type(RType)]
+    ArgumentTypes = [word, word, word],
+    [Oracle, Sign, R] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_respond(Oracle, Sign, R, ChainState) end,
+    call_chain(Callback, State).
 
-oracle_call_get_answer(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
 
-oracle_call_get_question(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
+oracle_call_extend(Offset, Data, State) ->
+    ArgumentTypes = [word, word, word],
+    [Oracle, Sign, TTL] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_extend(Oracle, Sign, TTL, ChainState) end,
+    call_chain(Callback, State).
 
-oracle_call_query_fee(Data, State) ->
-    {ok, {ok, <<0:256>>}, 0, State}.
+
+oracle_call_get_answer(Offset, Data, State) ->
+    ArgumentTypes = [word],
+    [Q] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_get_answer(Q, ChainState) end,
+    call_chain(Callback, State).
+
+
+oracle_call_get_question(Offset, Data, State) ->
+    ArgumentTypes = [word],
+    [Q] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_get_question(Q, ChainState) end,
+    call_chain(Callback, State).
+
+
+oracle_call_query_fee(Offset, Data, State) ->
+    ArgumentTypes = [word],
+    [Oracle] = get_args(ArgumentTypes, Offset, Data),
+    Callback = fun(API, ChainState) -> API:oracle_query_fee(Oracle, ChainState) end,
+    call_chain(Callback, State).
+
 
 
 get_type(TypeDef,_Mem) ->
@@ -122,11 +164,19 @@ get_type(TypeDef,_Mem) ->
 -define(TYPEREP_TUPLE_TAG,  3).
 -define(TYPEREP_OPTION_TAG, 4).
 
+get_args([],_Offset,_Data) -> [];
 get_args([word|TypeSpecs], Offset, Data) ->
     [get_word(Offset, Data) |
      get_args(TypeSpecs, Offset + 32, Data)];
+get_args([{tuple,Cpts}|TypeSpecs], Offset, Data) ->
+    Value =
+        list_to_tuple([get_args([T], Offset+32*I, Data)
+                       || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]),
+    [Value| get_args(TypeSpecs, Offset + 32, Data)];
 get_args([typerep|TypeSpecs], Offset, Data) ->
-    Tag = get_word(Offset, Data),
+    %% TODO: There is something strange with the enocding of typedefs
+    Address = get_word(Offset, Data),
+    Tag = get_word(Address, Data),
     Arg = fun(T) -> get_args([T], Offset + 32, Data) end,
     Value =
         case Tag of

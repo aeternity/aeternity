@@ -101,6 +101,11 @@ oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec,
           ttl           => TTL,
           fee           => 0},
 
+    %% TODO: To register an oracle for another account than the contract
+    %%       we need a safe way to sign the register call.
+    %%       It should probably do with sign(PubKey+Nonce)
+    %%       Then we need to check that signature here.
+    %% Registering an oracle on the contract is ok.
     Result =
         if AccountKey =:= ContractKey -> do_oracle_register(Spec, Height, Trees);
            true ->
