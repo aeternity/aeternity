@@ -73,10 +73,10 @@ dec(<<?c(?ID_DEP_CREATED)  , B/bytes>>) -> {?DEP_CREATED , dec_dep_created(B)};
 dec(<<?c(?ID_DEP_SIGNED)   , B/bytes>>) -> {?DEP_SIGNED  , dec_dep_signed(B)};
 dec(<<?c(?ID_DEP_LOCKED)   , B/bytes>>) -> {?DEP_LOCKED  , dec_dep_locked(B)};
 dec(<<?c(?ID_DEP_ERR)      , B/bytes>>) -> {?DEP_ERR     , dec_dep_err(B)};
-dec(<<?c(?ID_WDRAW_CREATED), B/bytes>>) -> {?DEP_CREATED , dec_wdraw_created(B)};
-dec(<<?c(?ID_WDRAW_SIGNED) , B/bytes>>) -> {?DEP_SIGNED  , dec_wdraw_signed(B)};
-dec(<<?c(?ID_WDRAW_LOCKED) , B/bytes>>) -> {?DEP_LOCKED  , dec_wdraw_locked(B)};
-dec(<<?c(?ID_WDRAW_ERR)    , B/bytes>>) -> {?DEP_ERR     , dec_wdraw_err(B)};
+dec(<<?c(?ID_WDRAW_CREATED), B/bytes>>) -> {?WDRAW_CREATED, dec_wdraw_created(B)};
+dec(<<?c(?ID_WDRAW_SIGNED) , B/bytes>>) -> {?WDRAW_SIGNED, dec_wdraw_signed(B)};
+dec(<<?c(?ID_WDRAW_LOCKED) , B/bytes>>) -> {?WDRAW_LOCKED, dec_wdraw_locked(B)};
+dec(<<?c(?ID_WDRAW_ERR)    , B/bytes>>) -> {?WDRAW_ERR   , dec_wdraw_err(B)};
 dec(<<?c(?ID_ERROR)        , B/bytes>>) -> {?ERROR       , dec_error(B)};
 dec(<<?c(?ID_SHUTDOWN)     , B/bytes>>) -> {?SHUTDOWN    , dec_shutdown(B)};
 dec(<<?c(?ID_SHUTDOWN_ACK) , B/bytes>>) -> {?SHUTDOWN_ACK, dec_shutdown_ack(B)};
@@ -370,9 +370,9 @@ dec_dep_err(<< ChanId:32/binary
 enc_wdraw_created(#{ channel_id := ChanId
                    , data       := Data }) ->
     Length = byte_size(Data),
-    << ?ID_WDRAW_SIGNED:1 /unit:8
-     , ChanId          :32/binary
-     , Length          :2 /unit:8
+    << ?ID_WDRAW_CREATED:1 /unit:8
+     , ChanId           :32/binary
+     , Length           :2 /unit:8
      , Data/bytes >>.
 
 -spec dec_wdraw_created(binary()) -> withdrawal_msg().

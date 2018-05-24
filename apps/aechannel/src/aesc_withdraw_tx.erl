@@ -16,6 +16,7 @@
          fee/1,
          nonce/1,
          origin/1,
+         amount/1,
          check/5,
          process/5,
          accounts/1,
@@ -72,6 +73,10 @@ nonce(#channel_withdraw_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> pubkey().
 origin(#channel_withdraw_tx{to = ToPubKey}) ->
     ToPubKey.
+
+-spec amount(tx()) -> non_neg_integer().
+amount(#channel_withdraw_tx{amount = Amt}) ->
+    Amt.
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_withdraw_tx{channel_id   = ChannelId,
