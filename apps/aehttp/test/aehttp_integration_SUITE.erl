@@ -648,6 +648,10 @@ contract_transactions(_Config) ->
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
     ContractCallTxHash = sign_and_post_tx(MinerAddress, EncodedUnsignedContractCallTx),
 
+    %% Try to get the call object while in mempool
+    {ok, 400, #{<<"reason">> := <<"Tx not mined">>}} =
+        get_contract_call_object(ContractCallTxHash),
+
     % mine a block
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     tx_is_mined_test(MinerAddress, ContractCallTxHash),
@@ -657,9 +661,6 @@ contract_transactions(_Config) ->
     ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject, <<>>)),
     ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
                  maps:get(<<"contract_address">>, CallObject, <<>>)),
-
-    ct:log("Call object: ~p\n", [CallObject]),
-
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
                              contract => ContractPubKey,
@@ -690,9 +691,15 @@ contract_transactions(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     tx_is_mined_test(MinerAddress, ContractCallComputeTxHash),
 
+    %% Get the call object
+    {ok, 200, CallObject1} = get_contract_call_object(ContractCallComputeTxHash),
+    ?assertEqual(MinerAddress, maps:get(<<"caller_address">>, CallObject1, <<>>)),
+    ?assertEqual(aec_base58c:encode(contract_pubkey, ContractPubKey),
+                 maps:get(<<"contract_address">>, CallObject1, <<>>)),
+
     %% negative tests
     %% Invalid hashes
-    % invalid owner hash
+    %% invalid owner hash
     <<_, InvalidHash/binary>> = MinerAddress,
     {ok, 400, #{<<"reason">> := <<"Invalid hash: owner">>}} =
         get_contract_create(maps:put(owner, InvalidHash, ValidEncoded)),
@@ -746,6 +753,10 @@ contract_transactions(_Config) ->
     {ok, 400, #{<<"reason">> := <<"Failed to compute call_data, reason: bad argument">>}} =
         get_contract_call_compute(maps:put(arguments, <<"garbadge">>,
                                            ComputeCCallEncoded)),
+    %% Call objects
+    {ok, 400, #{<<"reason">> := <<"Tx is not a call">>}} =
+        get_contract_call_object(ContractCreateTxHash),
+
     ok.
 
 oracle_transactions(_Config) ->

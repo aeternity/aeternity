@@ -189,12 +189,12 @@ get_contract_call_object_from_tx(TxKey, CallKey) ->
                             case aec_chain:get_contract_call(Contract, CallId, BlockHash) of
                                 {error, Why} ->
                                     Msg = atom_to_binary(Why, utf8),
-                                    {error, {404, [], #{<<"reason">> => Msg}}};
+                                    {error, {400, [], #{<<"reason">> => Msg}}};
                                 {ok, CallObject} ->
                                     {ok, maps:put(CallKey, CallObject, State)}
                             end;
                         {_, _} ->
-                            {error, {404, [], #{<<"reason">> => <<"Tx is not a call">>}}}
+                            {error, {400, [], #{<<"reason">> => <<"Tx is not a call">>}}}
                     end
             end
     end.
