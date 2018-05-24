@@ -7,6 +7,8 @@
 -export([initiate/3,     %% (host(), port(), Opts :: #{})
          respond/2,      %% (port(), Opts :: #{})
          upd_transfer/4, %% (fsm() , from(), to(), amount())
+         upd_deposit/2,  %% (fsm() , map())
+         upd_withdraw/2, %% (fsm() , map())
          shutdown/1,     %% (fsm())
          client_died/1,  %% (fsm())
          inband_msg/3]).
@@ -18,7 +20,7 @@
 -export([signing_response/3]).    %% (Fsm, Tag, Obj)
 
 %% Used by min-depth watcher
--export([own_funding_locked/2]).  %% (Fsm, OnChainId)
+-export([minimum_depth_achieved/4]).  %% (Fsm, OnChainId, Type, TxHash)
 
 -export([init/1,
          callback_mode/0,
@@ -35,8 +37,14 @@
          awaiting_locked/3,
          awaiting_initial_state/3,
          awaiting_update_ack/3,
+         awaiting_deposit_update/3,
+         awaiting_withdraw_update/3,
          half_signed/3,
          signed/3,
+         dep_half_signed/3,
+         wdraw_half_signed/3,
+         dep_signed/3,
+         wdraw_signed/3,
          open/3,
          closing/3,
          disconnected/3]).
@@ -44,6 +52,7 @@
 -export([timeouts/0,
          report_tags/0]).
 
+-include("aesc_codec.hrl").
 -include_lib("apps/aecore/include/common.hrl").
 
 -type role() :: initiator | responder.
@@ -55,6 +64,10 @@
 
 -define(GEN_STATEM_OPTS, []).  % Use e.g. [{debug, [trace]}] for debugging
 
+-define(WATCH_FND, funding).
+-define(WATCH_DEP, deposit).
+-define(WATCH_WDRAW, withdraw).
+
 -record(data, { role                   :: role()
               , channel_status         :: undefined | open
               , cur_statem_state       :: undefined | atom()
@@ -65,6 +78,7 @@
               , channel_id             :: undefined | binary()
               , on_chain_id            :: undefined | binary()
               , create_tx              :: undefined | any()
+              , watcher                :: undefined | pid()
               , latest = undefined     :: undefined | any()
               , last_reported_update   :: undefined | non_neg_integer()
               }).
@@ -121,19 +135,27 @@ callback_mode() -> [state_functions, state_enter].
 %%   |                                                                          |
 %%   +--------------------------------------------------------------------------+
 
-message(Fsm, {T, _} = Msg) when T =:= channel_open
-                              ; T =:= channel_accept
-                              ; T =:= funding_created
-                              ; T =:= funding_signed
-                              ; T =:= funding_locked
-                              ; T =:= update
-                              ; T =:= update_ack
-                              ; T =:= update_error
-                              ; T =:= inband_msg
+message(Fsm, {T, _} = Msg) when T =:= ?CH_OPEN
+                              ; T =:= ?CH_ACCEPT
+                              ; T =:= ?FND_CREATED
+                              ; T =:= ?FND_SIGNED
+                              ; T =:= ?FND_LOCKED
+                              ; T =:= ?UPDATE
+                              ; T =:= ?UPDATE_ACK
+                              ; T =:= ?UPDATE_ERR
+                              ; T =:= ?DEP_CREATED
+                              ; T =:= ?DEP_SIGNED
+                              ; T =:= ?DEP_LOCKED
+                              ; T =:= ?DEP_ERR
+                              ; T =:= ?WDRAW_CREATED
+                              ; T =:= ?WDRAW_SIGNED
+                              ; T =:= ?WDRAW_LOCKED
+                              ; T =:= ?WDRAW_ERR
+                              ; T =:= ?INBAND_MSG
                               ; T =:= disconnect
-                              ; T =:= shutdown
-                              ; T =:= shutdown_ack
-                              ; T =:= channel_reestablish ->
+                              ; T =:= ?SHUTDOWN
+                              ; T =:= ?SHUTDOWN_ACK
+                              ; T =:= ?CH_REESTABL ->
     lager:debug("message(~p, ~p)", [Fsm, Msg]),
     gen_statem:cast(Fsm, Msg).
 
@@ -152,8 +174,8 @@ message(Fsm, {T, _} = Msg) when T =:= channel_open
 signing_response(Fsm, Tag, Obj) ->
     gen_statem:cast(Fsm, {signed, Tag, Obj}).
 
-own_funding_locked(Fsm, ChanId) ->
-    gen_statem:cast(Fsm, {own_funding_locked, ChanId}).
+minimum_depth_achieved(Fsm, ChanId, Type, TxHash) ->
+    gen_statem:cast(Fsm, {?MIN_DEPTH_ACHIEVED, ChanId, Type, TxHash}).
 
 where(ChanId, Role) ->
     gproc:where(gproc_name(ChanId, Role)).
@@ -178,17 +200,23 @@ timer_for_state(St, #data{opts = #{timeouts := TOs}} = D) ->
             timer(Alias, St, D)
     end.
 
-timer_subst(open                   ) -> idle;
-timer_subst(awaiting_open          ) -> idle;
-timer_subst(awaiting_signature     ) -> sign;
-timer_subst(awaiting_locked        ) -> funding_lock;
-timer_subst(awaiting_initial_state ) -> accept;
-timer_subst(awaiting_update_ack    ) -> accept;
-timer_subst(accepted               ) -> funding_create;
-timer_subst(half_signed            ) -> funding_sign;
-timer_subst(signed                 ) -> funding_lock;
-timer_subst(initialized            ) -> accept;
-timer_subst(closing                ) -> accept.
+timer_subst(open                    ) -> idle;
+timer_subst(awaiting_open           ) -> idle;
+timer_subst(awaiting_signature      ) -> sign;
+timer_subst(awaiting_locked         ) -> funding_lock;
+timer_subst(awaiting_initial_state  ) -> accept;
+timer_subst(awaiting_update_ack     ) -> accept;
+timer_subst(awaiting_deposit_update ) -> accept;
+timer_subst(awaiting_withdraw_update) -> accept;
+timer_subst(accepted                ) -> funding_create;
+timer_subst(half_signed             ) -> funding_sign;
+timer_subst(signed                  ) -> funding_lock;
+timer_subst(dep_half_signed         ) -> funding_sign;
+timer_subst(wdraw_half_signed       ) -> funding_sign;
+timer_subst(dep_signed              ) -> funding_lock;
+timer_subst(wdraw_signed            ) -> funding_lock;
+timer_subst(initialized             ) -> accept;
+timer_subst(closing                 ) -> accept.
 
 default_timeouts() ->
     #{ open           => 120000
@@ -226,6 +254,14 @@ upd_transfer(_Fsm, _From, _To, Amount) when Amount < 0 ->
 upd_transfer(Fsm, From, To, Amount) ->
     lager:debug("upd_transfer(~p, ~p, ~p, ~p)", [Fsm, From, To, Amount]),
     gen_statem:call(Fsm, {upd_transfer, From, To, Amount}).
+
+upd_deposit(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
+    lager:debug("upd_deposit(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_deposit, Opts}).
+
+upd_withdraw(Fsm, #{amount := Amt} = Opts) when is_integer(Amt), Amt > 0 ->
+    lager:debug("upd_withdraw(~p)", [Opts]),
+    gen_statem:call(Fsm, {upd_withdraw, Opts}).
 
 inband_msg(Fsm, To, Msg) ->
     lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
@@ -354,7 +390,7 @@ cur_st(St, D) ->
 %% FSM states
 
 awaiting_open(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_open(cast, {channel_open, Msg}, #data{role = responder} = D) ->
+awaiting_open(cast, {?CH_OPEN, Msg}, #data{role = responder} = D) ->
     case check_open_msg(Msg, D) of
         {ok, D1} ->
             report(info, channel_open, D1),
@@ -365,11 +401,11 @@ awaiting_open(cast, {channel_open, Msg}, #data{role = responder} = D) ->
     end;
 awaiting_open(timeout, awaiting_open = T, D) ->
     close({timeout, T}, D);
-awaiting_open(cast, {disconnect, _Msg}, D) ->
+awaiting_open(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D).
 
 initialized(enter, _OldSt, _D) -> keep_state_and_data;
-initialized(cast, {channel_accept, Msg}, #data{role = initiator} = D) ->
+initialized(cast, {?CH_ACCEPT, Msg}, #data{role = initiator} = D) ->
     case check_accept_msg(Msg, D) of
         {ok, D1} ->
             gproc_register(D1),
@@ -383,47 +419,69 @@ initialized(cast, {channel_accept, Msg}, #data{role = initiator} = D) ->
     end;
 initialized(timeout, initialized = T, D) ->
     close({timeout, T}, D);
-initialized(cast, {disconnect, _Msg}, D) ->
+initialized(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 initialized({call, From}, Req, D) ->
     handle_call(initialized, Req, From, D).
 
 
 awaiting_signature(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_signature(cast, {signed, create_tx, Tx},
+awaiting_signature(cast, {?SIGNED, create_tx, Tx},
                    #data{role = initiator, latest = {sign, create_tx, _CTx}} = D) ->
     next_state(half_signed,
                send_funding_created_msg(Tx, D#data{latest = undefined}));
-awaiting_signature(cast, {signed, funding_created, SignedTx},
+awaiting_signature(cast, {?SIGNED, deposit_tx, Tx},
+                   #data{latest = {sign, deposit_tx, _DTx}} = D) ->
+    next_state(dep_half_signed,
+               send_deposit_created_msg(Tx, D#data{latest = undefined}));
+awaiting_signature(cast, {?SIGNED, withdraw_tx, Tx},
+                   #data{latest = {sign, withdraw_tx, _DTx}} = D) ->
+    next_state(wdraw_half_signed,
+               send_withdraw_created_msg(Tx, D#data{latest = undefined}));
+awaiting_signature(cast, {?SIGNED, ?FND_CREATED, SignedTx},
                    #data{role = responder,
-                         latest = {sign, funding_created, HSCTx}} = D) ->
+                         latest = {sign, ?FND_CREATED, HSCTx}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     HSCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_funding_signed_msg(NewSignedTx, D#data{create_tx = NewSignedTx}),
-    {ok, Watcher, D2} = start_min_depth_watcher(D1),
     report(on_chain_tx, NewSignedTx, D1),
-    next_state(awaiting_locked, D2#data{latest = {watcher, Watcher}});
-awaiting_signature(cast, {signed, update, SignedTx}, D) ->
+    {ok, D2} = start_min_depth_watcher(?WATCH_FND, NewSignedTx, D1),
+    next_state(awaiting_locked, D2);
+awaiting_signature(cast, {?SIGNED, ?DEP_CREATED, SignedTx},
+                   #data{latest = {sign, ?DEP_CREATED, HSCTx}} = D) ->
+    NewSignedTx = aetx_sign:add_signatures(
+                    HSCTx, aetx_sign:signatures(SignedTx)),
+    D1 = send_deposit_signed_msg(NewSignedTx, D),
+    {ok, D2} = start_min_depth_watcher(?WATCH_DEP, NewSignedTx, D1),
+    next_state(awaiting_locked, D2);
+awaiting_signature(cast, {?SIGNED, ?WDRAW_CREATED, SignedTx},
+                   #data{latest = {sign, ?WDRAW_CREATED, HSCTx}} = D) ->
+    NewSignedTx = aetx_sign:add_signatures(
+                    HSCTx, aetx_sign:signatures(SignedTx)),
+    D1 = send_withdraw_signed_msg(NewSignedTx, D),
+    {ok, D2} = start_min_depth_watcher(?WATCH_WDRAW, NewSignedTx, D1),
+    next_state(awaiting_locked, D2);
+awaiting_signature(cast, {?SIGNED, ?UPDATE, SignedTx}, D) ->
     D1 = send_update_msg(SignedTx, D#data{state = [SignedTx|D#data.state]}),
     next_state(awaiting_update_ack, D1#data{latest = undefined});
-awaiting_signature(cast, {signed, update_ack, SignedTx},
-                   #data{latest = {sign, update_ack, OCTx}} = D) ->
+awaiting_signature(cast, {?SIGNED, ?UPDATE_ACK, SignedTx},
+                   #data{latest = {sign, ?UPDATE_ACK, OCTx}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     OCTx, aetx_sign:signatures(SignedTx)),
     D1 = send_update_ack_msg(NewSignedTx, D),
     D2 = D1#data{state = [NewSignedTx | clean_state(D1#data.state)]},
     next_state(open, D2);
-awaiting_signature(cast, {update, _Msg},
-                   #data{latest = {sign, Upd, _}} = D) when Upd==update;
-                                                            Upd==update_ack ->
+awaiting_signature(cast, {?UPDATE, _Msg},
+                   #data{latest = {sign, Upd, _}} = D) when Upd==?UPDATE;
+                                                            Upd==?UPDATE_ACK ->
     D1 = send_update_err_msg(fallback_to_stable_state(D)),
     next_state(open, D1);
-awaiting_signature(cast, {signed, shutdown, SignedTx}, D) ->
+awaiting_signature(cast, {?SIGNED, ?SHUTDOWN, SignedTx}, D) ->
     D1 = send_shutdown_msg(SignedTx, D),
     D2 = D1#data{latest = {shutdown, SignedTx}},
     next_state(closing, D2);
-awaiting_signature(cast, {signed, shutdown_ack, SignedTx},
-                   #data{latest = {sign, shutdown_ack, CMTx}} = D) ->
+awaiting_signature(cast, {?SIGNED, ?SHUTDOWN_ACK, SignedTx},
+                   #data{latest = {sign, ?SHUTDOWN_ACK, CMTx}} = D) ->
     NewSignedTx = aetx_sign:add_signatures(
                     CMTx, aetx_sign:signatures(SignedTx)),
     D1 = send_shutdown_ack_msg(NewSignedTx, D),
@@ -432,25 +490,25 @@ awaiting_signature(cast, {signed, shutdown_ack, SignedTx},
     close(close_mutual, D2);
 awaiting_signature(timeout, awaiting_signature = T, D) ->
     close({timeout, T}, D);
-awaiting_signature(cast, {disconnect, _Msg}, D) ->
+awaiting_signature(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_signature({call, From}, Req, D) ->
     handle_call(awaiting_signature, Req, From, D).
 
 
 accepted(enter, _OldSt, _D) -> keep_state_and_data;
-accepted(cast, {funding_created, Msg}, #data{role = responder} = D) ->
+accepted(cast, {?FND_CREATED, Msg}, #data{role = responder} = D) ->
     case check_funding_created_msg(Msg, D) of
         {ok, SignedTx, D1} ->
             report(info, funding_created, D1),
             lager:debug("funding_created: ~p", [SignedTx]),
-            ok = request_signing(funding_created, aetx_sign:tx(SignedTx), D1),
-            D2 = D1#data{latest = {sign, funding_created, SignedTx}},
+            ok = request_signing(?FND_CREATED, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?FND_CREATED, SignedTx}},
             next_state(awaiting_signature, D2)
         %% {error, _} = Error ->
         %%     close(Error, D)
     end;
-accepted(cast, {disconnect, _Msg}, D) ->
+accepted(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 accepted(timeout, accepted = T, D) ->
     close({timeout, T}, D);
@@ -459,54 +517,180 @@ accepted({call, From}, Req, D) ->
 
 
 half_signed(enter, _OldSt, _D) -> keep_state_and_data;
-half_signed(cast, {funding_signed, Msg}, #data{role = initiator} = D) ->
+half_signed(cast, {?FND_SIGNED, Msg}, #data{role = initiator} = D) ->
     case check_funding_signed_msg(Msg, D) of
         {ok, SignedTx, D1} ->
+            lager:debug("funding_signed ok", []),
             report(info, funding_signed, D1),
             report(on_chain_tx, SignedTx, D1),
             ok = aec_tx_pool:push(SignedTx),
             D2 = D1#data{create_tx = SignedTx},
-            {ok, Watcher, D3} = start_min_depth_watcher(D2),
-            next_state(awaiting_locked, D3#data{latest = {watcher, Watcher}})
+            {ok, D3} = start_min_depth_watcher(?WATCH_FND, SignedTx, D2),
+            next_state(awaiting_locked, D3)
         %% {error, _} = Error ->
         %%     close(Error, D)
     end;
 half_signed(timeout, half_signed = T, D) ->
     close({timeout, T}, D);
-half_signed(cast, {disconnect, _Msg}, D) ->
+half_signed(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 half_signed({call, From}, Req, D) ->
     handle_call(half_signed, Req, From, D).
 
+dep_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+dep_half_signed(cast, {?DEP_SIGNED, Msg}, D) ->
+    case check_deposit_signed_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, deposit_signed, D1),
+            ok = aec_tx_pool:push(SignedTx),
+            {ok, D2} = start_min_depth_watcher(deposit, SignedTx, D1),
+            next_state(awaiting_locked, D2)
+    end;
+dep_half_signed(timeout, dep_half_signed = T, D) ->
+    close({timeout, T}, D);
+dep_half_signed(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+dep_half_signed({call, From}, Req, D) ->
+    handle_call(dep_half_signed, Req, From, D).
+
+dep_signed(enter, _OldSt, _D) -> keep_state_and_data;
+dep_signed(cast, {?DEP_LOCKED, Msg}, #data{latest = {deposit, SignedTx}} = D) ->
+    case check_deposit_locked_msg(Msg, SignedTx, D) of
+        {ok, D1} ->
+            report(info, deposit_locked, D1),
+            deposit_locked_complete(SignedTx, D1#data{latest = undefined});
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+dep_signed(timeout, dep_signed = T, D) ->
+    close({timeout, T}, D);
+dep_signed(cast, {?SHUTDOWN, _Msg}, D) ->
+    next_state(closing, D);
+dep_signed(cast, {?DISCONNECT, _Msg}, D) ->
+    next_state(disconnected, D);
+dep_signed({call, From}, Req, D) ->
+    handle_call(dep_signed, Req, From, D).
+
+deposit_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
+    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    MyAcct = my_account(D),
+    case Mod:origin(TxI) of
+        MyAcct ->
+            {_, StateTx} = aesc_offchain_state:get_latest_state_tx(State),
+            Amt = Mod:amount(TxI),
+            Updates = [aesc_offchain_state:op_deposit(MyAcct, Amt)],
+            NewTx = aesc_offchain_state:apply_updates(
+                      Updates, aetx_sign:tx(StateTx), Opts),
+            ok = request_signing(?UPDATE, NewTx, D),
+            D1 = D#data{latest = {sign, ?UPDATE, NewTx}},
+            next_state(awaiting_signature, D1);
+        _ ->
+            D1 = D#data{latest = {deposit, SignedTx}},
+            next_state(awaiting_deposit_update, D1)
+    end.
+
+wdraw_half_signed(enter, _OldSt, _D) -> keep_state_and_data;
+wdraw_half_signed(cast, {?WDRAW_SIGNED, Msg}, D) ->
+    case check_withdraw_signed_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, withdraw_signed, D1),
+            ok = aec_tx_pool:push(SignedTx),
+            {ok, D2} = start_min_depth_watcher(withdraw, SignedTx, D1),
+            next_state(awaiting_locked, D2)
+    end;
+wdraw_half_signed(timeout, wdraw_half_signed = T, D) ->
+    close({timeout, T}, D);
+wdraw_half_signed(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+wdraw_half_signed({call, From}, Req, D) ->
+    handle_call(wdraw_half_signed, Req, From, D).
+
+wdraw_signed(enter, _OldSt, _D) -> keep_state_and_data;
+wdraw_signed(cast, {?WDRAW_LOCKED, Msg}, #data{latest = {withdraw, SignedTx}} = D) ->
+    case check_withdraw_locked_msg(Msg, SignedTx, D) of
+        {ok, D1} ->
+            report(info, deposit_locked, D1),
+            withdraw_locked_complete(SignedTx, D1#data{latest = undefined});
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+wdraw_signed(timeout, wdraw_signed = T, D) ->
+    close({timeout, T}, D);
+wdraw_signed(cast, {?SHUTDOWN, _Msg}, D) ->
+    next_state(closing, D);
+wdraw_signed(cast, {?DISCONNECT, _Msg}, D) ->
+    next_state(disconnected, D);
+wdraw_signed({call, From}, Req, D) ->
+    handle_call(wdraw_signed, Req, From, D).
+
+withdraw_locked_complete(SignedTx, #data{state = State, opts = Opts} = D) ->
+    {Mod, TxI} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    MyAcct = my_account(D),
+    case Mod:origin(TxI) of
+        MyAcct ->
+            {_, StateTx} = aesc_offchain_state:get_latest_state_tx(State),
+            Amt = Mod:amount(TxI),
+            Updates = [aesc_offchain_state:op_withdraw(MyAcct, Amt)],
+            NewTx = aesc_offchain_state:apply_updates(
+                      Updates, aetx_sign:tx(StateTx), Opts),
+            ok = request_signing(?UPDATE, NewTx, D),
+            D1 = D#data{latest = {sign, ?UPDATE, NewTx}},
+            next_state(awaiting_signature, D1);
+        _ ->
+            D1 = D#data{latest = {withdraw, SignedTx}},
+            next_state(awaiting_withdraw_update, D1)
+    end.
+
 
 awaiting_locked(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_locked(cast, {own_funding_locked, ChainId}, D) ->
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_FND, TxHash},
+                #data{latest = {watch, ?WATCH_FND, TxHash, _}} = D) ->
     report(info, own_funding_locked, D),
     next_state(
       signed, send_funding_locked_msg(D#data{on_chain_id = ChainId,
                                              latest = undefined}));
-awaiting_locked(cast, {funding_locked, _Msg}, D) ->
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_DEP, TxHash},
+                #data{on_chain_id = ChainId,
+                      latest = {watch, ?WATCH_DEP, TxHash, SignedTx}} = D) ->
+    report(info, own_deposit_locked, D),
+    next_state(
+      dep_signed, send_deposit_locked_msg(
+                    TxHash,
+                    D#data{latest = {deposit, SignedTx}}));
+awaiting_locked(cast, {?MIN_DEPTH_ACHIEVED, ChainId, ?WATCH_WDRAW, TxHash},
+                #data{on_chain_id = ChainId,
+                      latest = {watch, ?WATCH_WDRAW, TxHash, SignedTx}} = D) ->
+    report(info, own_withdraw_locked, D),
+    next_state(
+      wdraw_signed, send_withdraw_locked_msg(
+                      TxHash,
+                      D#data{latest = {withdraw, SignedTx}}));
+awaiting_locked(cast, {?FND_LOCKED, _Msg}, D) ->
     postpone(D);
-awaiting_locked(cast, {disconnect, _Msg}, D) ->
+awaiting_locked(cast, {?DEP_LOCKED, _Msg}, D) ->
+    postpone(D);
+awaiting_locked(cast, {?WDRAW_LOCKED, _Msg}, D) ->
+    postpone(D);
+awaiting_locked(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_locked(timeout, awaiting_locked = T, D) ->
     close({timeout, T}, D).
 
 awaiting_initial_state(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_initial_state(cast, {update, Msg}, #data{role = responder} = D) ->
+awaiting_initial_state(cast, {?UPDATE, Msg}, #data{role = responder} = D) ->
     lager:debug("got {update, ~p}", [Msg]),
     case check_update_msg(initial, Msg, D) of
         {ok, SignedTx, D1} ->
             lager:debug("update_msg checks out", []),
             report(info, update, D1),
-            ok = request_signing(update_ack, aetx_sign:tx(SignedTx), D1),
-            D2 = D1#data{latest = {sign, update_ack, SignedTx}},
+            ok = request_signing(?UPDATE_ACK, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?UPDATE_ACK, SignedTx}},
             next_state(awaiting_signature, D2);
         {error,_} = Error ->
             %% TODO: do we do a dispute challenge here?
             close(Error, D)
     end;
-awaiting_initial_state(cast, {disconnect, _Msg}, D) ->
+awaiting_initial_state(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_initial_state(timeout, awaiting_initial_state = T, D) ->
     close({timeout, T}, D);
@@ -516,17 +700,17 @@ awaiting_initial_state(Evt, Msg, D) ->
     close({unexpected, Msg}, D).
 
 awaiting_update_ack(enter, _OldSt, _D) -> keep_state_and_data;
-awaiting_update_ack(cast, {update_ack, Msg}, #data{} = D) ->
+awaiting_update_ack(cast, {?UPDATE_ACK, Msg}, #data{} = D) ->
     case check_update_ack_msg(Msg, D) of
         {ok, D1} ->
             next_state(open, D1);
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_update_ack(cast, {update, _Msg}, D) ->
+awaiting_update_ack(cast, {?UPDATE, _Msg}, D) ->
     D1 = send_update_err_msg(fallback_to_stable_state(D)),
     next_state(open, D1);
-awaiting_update_ack(cast, {update_error, Msg}, D) ->
+awaiting_update_ack(cast, {?UPDATE_ERR, Msg}, D) ->
     lager:debug("received update_err: ~p", [Msg]),
     case check_update_err_msg(Msg, D) of
         {ok, D1} ->
@@ -535,15 +719,53 @@ awaiting_update_ack(cast, {update_error, Msg}, D) ->
         {error, _} = Error ->
             close(Error, D)
     end;
-awaiting_update_ack(cast, {disconnect, _Msg}, D) ->
+awaiting_update_ack(cast, {?DISCONNECT, _Msg}, D) ->
     close(disconnect, D);
 awaiting_update_ack(timeout, awaiting_update_ack = T, D) ->
     close({timeout, T}, D);
 awaiting_update_ack({call, _}, _Req, D) ->
     postpone(D).
 
+awaiting_deposit_update(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_deposit_update(cast, {?UPDATE, Msg}, D) ->
+    case check_deposit_update_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, deposit_update, D1),
+            ok = request_signing(?UPDATE_ACK, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?UPDATE_ACK, SignedTx}},
+            next_state(awaiting_signature, D2);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+awaiting_deposit_update(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_deposit_update(timeout, awaiting_deposit_update = T, D) ->
+    close({timeout, T}, D);
+awaiting_deposit_update(Evt, Msg, D) ->
+    lager:debug("unexpected: awaiting_deposit_update(~p, ~p, ~p)", [Evt, Msg, D]),
+    close({unexpected, Msg}, D).
+
+awaiting_withdraw_update(enter, _OldSt, _D) -> keep_state_and_data;
+awaiting_withdraw_update(cast, {?UPDATE, Msg}, D) ->
+    case check_withdraw_update_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, withdraw_update, D1),
+            ok = request_signing(?UPDATE_ACK, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?UPDATE_ACK, SignedTx}},
+            next_state(awaiting_signature, D2);
+        {error, _} = Error ->
+            close(Error, D)
+    end;
+awaiting_withdraw_update(cast, {?DISCONNECT, _Msg}, D) ->
+    close(disconnect, D);
+awaiting_withdraw_update(timeout, awaiting_withdraw_update = T, D) ->
+    close({timeout, T}, D);
+awaiting_withdraw_update(Evt, Msg, D) ->
+    lager:debug("unexpected: awaiting_withdraw_update(~p, ~p, ~p)", [Evt, Msg, D]),
+    close({unexpected, Msg}, D).
+
 signed(enter, _OldSt, _D) -> keep_state_and_data;
-signed(cast, {funding_locked, Msg}, D) ->
+signed(cast, {?FND_LOCKED, Msg}, D) ->
     case check_funding_locked_msg(Msg, D) of
         {ok, D1} ->
             report(info, funding_locked, D1),
@@ -553,9 +775,9 @@ signed(cast, {funding_locked, Msg}, D) ->
     end;
 signed(timeout, signed = T, D) ->
     close({timeout, T}, D);
-signed(cast, {shutdown, _Msg}, D) ->
+signed(cast, {?SHUTDOWN, _Msg}, D) ->
     next_state(closing, D);
-signed(cast, {disconnect, _Msg}, D) ->
+signed(cast, {?DISCONNECT, _Msg}, D) ->
     next_state(disconnected, D);
 signed({call, From}, Req, D) ->
     handle_call(signed, Req, From, D).
@@ -565,8 +787,8 @@ funding_locked_complete(D) ->
     case D#data.role of
         initiator ->
             {ok, OCTx} = initial_state(D),
-            ok   = request_signing(update, OCTx, D),
-            D1   = D#data{latest = {sign, update, OCTx}},
+            ok   = request_signing(?UPDATE, OCTx, D),
+            D1   = D#data{latest = {sign, ?UPDATE, OCTx}},
             next_state(awaiting_signature, D1);
         responder ->
             next_state(awaiting_initial_state, D)
@@ -582,18 +804,36 @@ open(enter, _OldSt, D) ->
                  report_update(D)
          end,
     keep_state(D1);
-open(cast, {update, Msg}, D) ->
+open(cast, {?UPDATE, Msg}, D) ->
     case check_update_msg(normal, Msg, D) of
         {ok, SignedTx, D1} ->
             report(info, update, D1),
-            ok = request_signing(update_ack, aetx_sign:tx(SignedTx), D1),
-            D2 = D1#data{latest = {sign, update_ack, SignedTx}},
+            ok = request_signing(?UPDATE_ACK, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?UPDATE_ACK, SignedTx}},
             next_state(awaiting_signature, D2);
         {error,_} = Error ->
             %% TODO: do we do a dispute challenge here?
             close(Error, D)
     end;
-open(cast, {inband_msg, Msg}, D) ->
+open(cast, {?DEP_CREATED, Msg}, D) ->
+    case check_deposit_created_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, deposit_created, D1),
+            lager:debug("deposit_created: ~p", [SignedTx]),
+            ok = request_signing(?DEP_CREATED, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?DEP_CREATED, SignedTx}},
+            next_state(awaiting_signature, D2)
+    end;
+open(cast, {?WDRAW_CREATED, Msg}, D) ->
+    case check_withdraw_created_msg(Msg, D) of
+        {ok, SignedTx, D1} ->
+            report(info, withdraw_created, D1),
+            lager:debug("withdraw_created: ~p", [SignedTx]),
+            ok = request_signing(?WDRAW_CREATED, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?WDRAW_CREATED, SignedTx}},
+            next_state(awaiting_signature, D2)
+    end;
+open(cast, {?INBAND_MSG, Msg}, D) ->
     NewD = case check_inband_msg(Msg, D) of
                {ok, D1} ->
                    report(message, Msg, D1),
@@ -605,16 +845,16 @@ open(cast, {inband_msg, Msg}, D) ->
     keep_state(NewD);
 open({call, From}, Request, D) ->
     handle_call(open, Request, From, D);
-open(cast, {shutdown, Msg}, D) ->
+open(cast, {?SHUTDOWN, Msg}, D) ->
     case check_shutdown_msg(Msg, D) of
         {ok, SignedTx, D1} ->
-            ok = request_signing(shutdown_ack, aetx_sign:tx(SignedTx), D1),
-            D2 = D1#data{latest = {sign, shutdown_ack, SignedTx}},
+            ok = request_signing(?SHUTDOWN_ACK, aetx_sign:tx(SignedTx), D1),
+            D2 = D1#data{latest = {sign, ?SHUTDOWN_ACK, SignedTx}},
             next_state(awaiting_signature, D2);
         {error, E} ->
             close({shutdown_error, E}, D)
     end;
-open(cast, {disconnect, _Msg}, D) ->
+open(cast, {?DISCONNECT, _Msg}, D) ->
     next_state(disconnected, D);
 open(cast, _Msg, D) ->
     lager:error("Discarding cast in 'open' state: ~p", [_Msg]),
@@ -625,21 +865,22 @@ open(timeout, open = T, D) ->
     close({timeout, T}, D).
 
 closing(enter, _OldSt, _D) -> keep_state_and_data;
-closing(cast, {shutdown_ack, Msg}, D) ->
+closing(cast, {?SHUTDOWN_ACK, Msg}, D) ->
     case check_shutdown_ack_msg(Msg, D) of
         {ok, SignedTx, D1} ->
+            lager:debug("shutdown_ack ok", []),
             ok = aec_tx_pool:push(SignedTx),
             report(on_chain_tx, SignedTx, D1),
             close(close_mutual, D1);
         {error, _} = Error ->
             close(Error, D)
     end;
-closing(cast, {disconnect, _Msg}, D) ->
+closing(cast, {?DISCONNECT, _Msg}, D) ->
     next_state(disconnected, D);
-closing(cast, {closing_signed, _Msg}, D) ->
+closing(cast, {closing_signed, _Msg}, D) ->  %% TODO: not using this, right?
     close(closing_signed, D).
 
-disconnected(cast, {channel_reestablish, _Msg}, D) ->
+disconnected(cast, {?CH_REESTABL, _Msg}, D) ->
     next_state(closing, D).
 
 close(close_mutual, D) ->
@@ -680,12 +921,38 @@ handle_call_(open, {upd_transfer, FromPub, ToPub, Amount}, From,
         false ->
             keep_state(D, [{reply, From, {error, invalid_pubkeys}}])
     end;
+handle_call_(open, {upd_deposit, #{amount := Amt} = Opts}, From,
+             #data{} = D) when is_integer(Amt), Amt > 0 ->
+    FromPub = my_account(D),
+    case maps:find(from, Opts) of
+        {ok, FromPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    {ok, DepTx} = dep_tx_for_signing(Opts#{from => FromPub}, D),
+    ok = request_signing(deposit_tx, DepTx, D),
+    gen_statem:reply(From, ok),
+    D1 = D#data{latest = {sign, deposit_tx, DepTx}},
+    next_state(awaiting_signature, D1);
+handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
+             #data{} = D) when is_integer(Amt), Amt > 0 ->
+    ToPub = my_account(D),
+    case maps:find(to, Opts) of
+        {ok, ToPub} -> ok;
+        {ok, _Other}  -> error(conflicting_accounts);
+        error         -> ok
+    end,
+    {ok, DepTx} = wdraw_tx_for_signing(Opts#{to => ToPub}, D),
+    ok = request_signing(withdraw_tx, DepTx, D),
+    gen_statem:reply(From, ok),
+    D1 = D#data{latest = {sign, withdraw_tx, DepTx}},
+    next_state(awaiting_signature, D1);
 handle_call_(open, shutdown, From, #data{state = State} = D) ->
     try  {_Round, Latest} = aesc_offchain_state:get_latest_state_tx(State),
          {ok, CloseTx} = close_mutual_tx(Latest, D),
-         ok = request_signing(shutdown, CloseTx, D),
+         ok = request_signing(?SHUTDOWN, CloseTx, D),
          gen_statem:reply(From, ok),
-         D1 = D#data{latest = {sign, shutdown, CloseTx}},
+         D1 = D#data{latest = {sign, ?SHUTDOWN, CloseTx}},
          next_state(awaiting_signature, D1)
     catch
         error:E ->
@@ -819,6 +1086,20 @@ check_accept_msg(#{ chain_hash           := ChainHash
             {error, chain_hash_mismatch}
     end.
 
+dep_tx_for_signing(#{from := From} = Opts, #data{on_chain_id = ChanId}) ->
+    Def = deposit_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
+    Opts1 = maps:merge(Def, Opts),
+    lager:debug("deposit_tx Opts = ~p", [Opts1]),
+    {ok, _} = Ok = aesc_deposit_tx:new(Opts1),
+    Ok.
+
+wdraw_tx_for_signing(#{to := From} = Opts, #data{on_chain_id = ChanId}) ->
+    Def = withdraw_tx_defaults(ChanId, From, maps:get(ttl, Opts, undefined)),
+    Opts1 = maps:merge(Def, Opts),
+    lager:debug("withdraw_tx Opts = ~p", [Opts1]),
+    {ok, _} = Ok = aesc_withdraw_tx:new(Opts1),
+    Ok.
+
 create_tx_for_signing(#data{opts = #{initiator := Initiator} = Opts}) ->
     Def = create_tx_defaults(Initiator),
     Opts1 = maps:merge(Def, Opts),
@@ -832,6 +1113,23 @@ create_tx_defaults(Initiator) ->
     #{ fee   => Fee
      , nonce => Nonce }.
 
+deposit_tx_defaults(ChanId, Acct, TTL) ->
+    maps:merge(
+      create_tx_defaults(Acct),
+      #{ ttl        => adjust_ttl(TTL)
+       , channel_id => ChanId }).
+
+withdraw_tx_defaults(ChanId, Acct, TTL) ->
+    maps:merge(
+      create_tx_defaults(Acct),
+      #{ ttl        => adjust_ttl(TTL)
+       , channel_id => ChanId }).
+
+adjust_ttl(undefined) ->
+    CurHeight = aec_headers:height(aec_chain:top_header()),
+    CurHeight + 100;
+adjust_ttl(TTL) when is_integer(TTL), TTL > 0 ->
+    TTL.
 
 close_mutual_tx(LatestSignedTx, D) ->
     Account = my_account(D),
@@ -930,6 +1228,176 @@ check_funding_locked_msg(#{ temporary_channel_id := TmpChanId
             {error, temporary_channel_id_mismatch}
     end.
 
+send_deposit_created_msg(SignedTx, #data{on_chain_id = Ch,
+                                         session     = Sn} = Data) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ channel_id => Ch
+           , data       => TxBin},
+    aesc_session_noise:deposit_created(Sn, Msg),
+    Data.
+
+check_deposit_created_msg(#{ channel_id := ChanId
+                           , data       := TxBin},
+                          #data{on_chain_id = ChanId} = Data) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    {ok, SignedTx, Data}.
+
+send_deposit_signed_msg(SignedTx, #data{on_chain_id = Ch,
+                                        session     = Sn} = Data) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ channel_id  => Ch
+           , data        => TxBin},
+    aesc_session_noise:deposit_signed(Sn, Msg),
+    Data.
+
+check_deposit_signed_msg(#{ channel_id := ChanId
+                          , data       := TxBin},
+                          #data{on_chain_id = ChanId} = Data) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    {ok, SignedTx, Data}.
+
+send_deposit_locked_msg(TxHash, #data{on_chain_id = ChanId,
+                                      session     = Sn} = Data) ->
+    Msg = #{ channel_id => ChanId
+           , data       => TxHash },
+    aesc_session_noise:deposit_locked(Sn, Msg),
+    Data.
+
+check_deposit_locked_msg(#{ channel_id := ChanId
+                          , data       := TxHash },
+                         SignedTx,
+                         #data{on_chain_id = MyChanId} = Data) ->
+    case ChanId == MyChanId of
+        true ->
+            case aetx_sign:hash(SignedTx) of
+                TxHash ->
+                    {ok, Data};
+                _ ->
+                    {error, deposit_tx_hash_mismatch}
+            end;
+        false ->
+            {error, channel_id_mismatch}
+    end.
+
+check_deposit_update_msg(#{ channel_id := ChanId
+                          , data       := TxBin },
+                         #data{ on_chain_id = ChanId
+                              , latest = {deposit, SignedDepTx}
+                              , state = State
+                              , opts  = Opts } = D) ->
+    try aetx_sign:deserialize_from_binary(TxBin) of
+        SignedUpdTx ->
+            UpdTx = aetx_sign:tx(SignedUpdTx),
+            {ModU, TxUI} = aetx:specialize_callback(aetx_sign:tx(SignedUpdTx)),
+            PrevRound = ModU:previous_round(TxUI),
+            case aesc_offchain_state:get_latest_state_tx(State) of
+                {PrevRound, SignedStTx} ->
+                    {ModD, TxDI} = aetx:specialize_callback(
+                                     aetx_sign:tx(SignedDepTx)),
+                    From = ModD:origin(TxDI),
+                    Amount = ModD:amount(TxDI),
+                    Updates = [aesc_offchain_state:op_deposit(From, Amount)],
+                    NewStTx = aesc_offchain_state:apply_updates(
+                                Updates, aetx_sign:tx(SignedStTx), Opts),
+                    case NewStTx == UpdTx of
+                        true ->
+                            {ok, SignedUpdTx, D};
+                        false ->
+                            {error, invalid_deposit_update}
+                    end;
+                _ ->
+                    {error, invalid_previous_round}
+            end
+    catch
+        error:E ->
+            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()])
+    end.
+
+send_withdraw_created_msg(SignedTx, #data{on_chain_id = Ch,
+                                          session     = Sn} = Data) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ channel_id => Ch
+           , data       => TxBin},
+    aesc_session_noise:wdraw_created(Sn, Msg),
+    Data.
+
+check_withdraw_created_msg(#{ channel_id := ChanId
+                            , data       := TxBin},
+                           #data{on_chain_id = ChanId} = Data) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    {ok, SignedTx, Data}.
+
+send_withdraw_signed_msg(SignedTx, #data{on_chain_id = Ch,
+                                         session     = Sn} = Data) ->
+    TxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Msg = #{ channel_id  => Ch
+           , data        => TxBin},
+    aesc_session_noise:wdraw_signed(Sn, Msg),
+    Data.
+
+check_withdraw_signed_msg(#{ channel_id := ChanId
+                           , data       := TxBin},
+                          #data{on_chain_id = ChanId} = Data) ->
+    SignedTx = aetx_sign:deserialize_from_binary(TxBin),
+    {ok, SignedTx, Data}.
+
+send_withdraw_locked_msg(TxHash, #data{on_chain_id = ChanId,
+                                       session     = Sn} = Data) ->
+    Msg = #{ channel_id => ChanId
+           , data       => TxHash },
+    aesc_session_noise:wdraw_locked(Sn, Msg),
+    Data.
+
+check_withdraw_locked_msg(#{ channel_id := ChanId
+                           , data       := TxHash },
+                          SignedTx,
+                          #data{on_chain_id = MyChanId} = Data) ->
+    case ChanId == MyChanId of
+        true ->
+            case aetx_sign:hash(SignedTx) of
+                TxHash ->
+                    {ok, Data};
+                _ ->
+                    {error, withdraw_tx_hash_mismatch}
+            end;
+        false ->
+            {error, channel_id_mismatch}
+    end.
+
+check_withdraw_update_msg(#{ channel_id := ChanId
+                           , data       := TxBin },
+                          #data{ on_chain_id = ChanId
+                               , latest = {withdraw, SignedDepTx}
+                               , state = State
+                               , opts  = Opts } = D) ->
+    try aetx_sign:deserialize_from_binary(TxBin) of
+        SignedUpdTx ->
+            UpdTx = aetx_sign:tx(SignedUpdTx),
+            {ModU, TxUI} = aetx:specialize_callback(aetx_sign:tx(SignedUpdTx)),
+            PrevRound = ModU:previous_round(TxUI),
+            case aesc_offchain_state:get_latest_state_tx(State) of
+                {PrevRound, SignedStTx} ->
+                    {ModD, TxDI} = aetx:specialize_callback(
+                                     aetx_sign:tx(SignedDepTx)),
+                    From = ModD:origin(TxDI),
+                    Amount = ModD:amount(TxDI),
+                    Updates = [aesc_offchain_state:op_withdraw(From, Amount)],
+                    NewStTx = aesc_offchain_state:apply_updates(
+                                Updates, aetx_sign:tx(SignedStTx), Opts),
+                    case NewStTx == UpdTx of
+                        true ->
+                            {ok, SignedUpdTx, D};
+                        false ->
+                            {error, invalid_withdraw_update}
+                    end;
+                _ ->
+                    {error, invalid_previous_round}
+            end
+    catch
+        error:E ->
+            lager:error("CAUGHT ~p, trace = ~p", [E, erlang:get_stacktrace()])
+    end.
+
 send_update_msg(SignedTx, #data{ on_chain_id = OnChainId
                                , session     = Sn} = Data) ->
     TxBin = aetx_sign:serialize_to_binary(SignedTx),
@@ -1018,11 +1486,11 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, #data{ state = State
                                                        , opts = Opts } = D) ->
     {_Round, SignedTx} = aesc_offchain_state:get_latest_state_tx(State),
     Tx = aetx_sign:tx(SignedTx),
-    Updates = [{FromPub, ToPub, Amount}],
+    Updates = [aesc_offchain_state:op_transfer(FromPub, ToPub, Amount)],
     try  Tx1 = aesc_offchain_state:apply_updates(Updates, Tx, Opts),
-         ok = request_signing(update, Tx1, D),
+         ok = request_signing(?UPDATE, Tx1, D),
          gen_statem:reply(From, ok),
-         D1 = D#data{latest = {sign, update, Tx1}},
+         D1 = D#data{latest = {sign, ?UPDATE, Tx1}},
          next_state(awaiting_signature, D1)
     catch
         error:Reason ->
@@ -1186,21 +1654,35 @@ request_signing(Tag, Obj, #data{client    = Client,
 default_minimum_depth(initiator  ) -> undefined;
 default_minimum_depth(responder) -> ?MINIMUM_DEPTH.
 
-start_min_depth_watcher(#data{create_tx = SignedTx,
+start_min_depth_watcher(Type, SignedTx,
+                        #data{watcher = Watcher0,
                               opts = #{initiator     := Initiator,
                                        responder     := Responder,
-                                       minimum_depth := MinDepth}} = Data) ->
+                                       minimum_depth := MinDepth}} = D) ->
     Tx = aetx_sign:tx(SignedTx),
     TxHash = aetx_sign:hash(SignedTx),
     evt({tx_hash, TxHash}),
     Nonce = aetx:nonce(Tx),
     evt({nonce, Nonce}),
-    OnChainId = aesc_channels:id(Initiator, Nonce, Responder),
-    evt({on_chain_id, OnChainId}),
-    {ok, Watcher} = aesc_fsm_min_depth_watcher:start_link(
-                      TxHash, OnChainId, MinDepth),
-    evt({watcher, Watcher}),
-    {ok, Watcher, Data#data{on_chain_id = OnChainId}}.
+    {OnChainId, D1} = on_chain_id(D, Initiator, Nonce, Responder),
+    case {Type, Watcher0} of
+        {funding, undefined} ->
+            {ok, Watcher1} = aesc_fsm_min_depth_watcher:start_link(
+                               Type, TxHash, OnChainId, MinDepth),
+            evt({watcher, Watcher1}),
+            {ok, D1#data{watcher = Watcher1,
+                         latest = {watch, Type, TxHash, SignedTx}}};
+        {_, Pid} when Pid =/= undefined ->  % assertion
+            ok = aesc_fsm_min_depth_watcher:watch(Pid, Type, TxHash, MinDepth),
+            {ok, D1#data{latest = {watch, Type, TxHash, SignedTx}}}
+    end.
+
+on_chain_id(#data{on_chain_id = ID} = D, _, _, _) when ID =/= undefined ->
+    {ID, D};
+on_chain_id(D, Initiator, Nonce, Responder) ->
+    ID = aesc_channels:id(Initiator, Nonce, Responder),
+    evt({on_chain_id, ID}),
+    {ID, D#data{on_chain_id = ID}}.
 
 initial_state(#data{ create_tx    = SignedTx
                    ,  on_chain_id = ChanId }) ->

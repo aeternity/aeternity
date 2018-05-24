@@ -3269,7 +3269,9 @@ channel_update(#{initiator := IConnPid, responder :=RConnPid},
     Round = aesc_offchain_tx:round(OffchainTx),
     true = Round - 1 =:= aesc_offchain_tx:previous_round(OffchainTx),
     [Update] = aesc_offchain_tx:updates(OffchainTx),
-    {StarterPubkey, AcknowledgerPubkey, Amount} = Update,
+    Expected = aesc_offchain_state:op_transfer(StarterPubkey,
+                                               AcknowledgerPubkey, Amount),
+    Expected = Update,
 
 
     %% acknowledger signs the new state

@@ -16,6 +16,7 @@
          fee/1,
          nonce/1,
          origin/1,
+         amount/1,
          check/5,
          process/5,
          accounts/1,
@@ -42,21 +43,25 @@
 %%% Behaviour API
 %%%===================================================================
 
--spec new(map()) -> {ok, aetx:tx()}.
+-spec new(map()) -> {ok, aetx:tx()} | {error, any()}.
 new(#{channel_id  := ChannelId,
       from        := FromPubKey,
       amount      := Amount,
       ttl         := TTL,
       fee         := Fee,
       nonce       := Nonce}) ->
-    Tx = #channel_deposit_tx{
-            channel_id  = ChannelId,
-            from        = FromPubKey,
-            amount      = Amount,
-            ttl         = TTL,
-            fee         = Fee,
-            nonce       = Nonce},
-    {ok, aetx:new(?MODULE, Tx)}.
+    try Tx = #channel_deposit_tx{
+                channel_id  = ChannelId,
+                from        = FromPubKey,
+                amount      = Amount,
+                ttl         = TTL,
+                fee         = Fee,
+                nonce       = Nonce},
+         {ok, aetx:new(?MODULE, Tx)}
+    catch
+        error:E ->
+            {error, E}
+    end.
 
 type() ->
     ?CHANNEL_DEPOSIT_TX_TYPE.
@@ -72,6 +77,10 @@ nonce(#channel_deposit_tx{nonce = Nonce}) ->
 -spec origin(tx()) -> pubkey().
 origin(#channel_deposit_tx{from = FromPubKey}) ->
     FromPubKey.
+
+-spec amount(tx()) -> non_neg_integer().
+amount(#channel_deposit_tx{amount = Amount}) ->
+    Amount.
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_deposit_tx{channel_id   = ChannelId,

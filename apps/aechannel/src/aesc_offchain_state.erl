@@ -9,14 +9,19 @@
         , get_fallback_state/1      %%  (State) -> {Round, State'}
         , fallback_to_stable_state/1 %% (State) -> State'
         ]).
+-export([ op_transfer/3
+        , op_deposit/2
+        , op_withdraw/2
+        ]).
 
-
+-define(OP_TRANSFER, 0).
+-define(OP_WITHDRAW, 1).
+-define(OP_DEPOSIT , 2).
 
 
 new(Opts) ->
     lager:debug("offchain_tx:new(~p)", [Opts]),
     aesc_offchain_tx:new(Opts).
-
 
 %% update_tx checks
 check_initial_state({previous_round, N}, _) ->
@@ -88,13 +93,36 @@ apply_updates(Updates, Mod, Tx, Opts) ->
 
 apply_updates_([], _Mod, Tx, _Opts) ->
     Tx;
-apply_updates_([{From, To, Amount}|Ds], Mod, Tx, Opts)
+apply_updates_([{?OP_DEPOSIT, Acct, Acct, Amount}|Ds], Mod, Tx, Opts) ->
+    Initiator = Mod:initiator(Tx),
+    Responder = Mod:responder(Tx),
+    IAmt = Mod:initiator_amount(Tx),
+    RAmt = Mod:responder_amount(Tx),
+    Vals =
+        case Acct of
+            Initiator -> [{initiator_amount, IAmt + Amount}];
+            Responder -> [{responder_amount, RAmt + Amount}]
+        end,
+    Tx1 = set_tx_values(Vals, Mod, Tx),
+    apply_updates_(Ds, Mod, Tx1, Opts);
+apply_updates_([{?OP_WITHDRAW, Acct, Acct, Amount}|Ds], Mod, Tx, Opts) ->
+    Initiator = Mod:initiator(Tx),
+    Responder = Mod:responder(Tx),
+    IAmt = Mod:initiator_amount(Tx),
+    RAmt = Mod:responder_amount(Tx),
+    Vals =
+        case Acct of
+            Initiator -> [{initiator_amount, check_min_amt(IAmt - Amount, Opts)}];
+            Responder -> [{responder_amount, check_min_amt(RAmt - Amount, Opts)}]
+        end,
+    Tx1 = set_tx_values(Vals, Mod, Tx),
+    apply_updates_(Ds, Mod, Tx1, Opts);
+apply_updates_([{?OP_TRANSFER, From, To, Amount}|Ds], Mod, Tx, Opts)
   when is_binary(From), is_binary(To), is_integer(Amount) ->
     Initiator = Mod:initiator(Tx),
     Responder = Mod:responder(Tx),
     IAmt = Mod:initiator_amount(Tx),
     RAmt = Mod:responder_amount(Tx),
-    Reserve = maps:get(channel_reserve, Opts, 0),
     {FA, FB, A, B} =
         case {From, To} of
             {Initiator, Responder} ->
@@ -105,15 +133,18 @@ apply_updates_([{From, To, Amount}|Ds], Mod, Tx, Opts)
                 %% TODO: If multi-party channel, this could be valid
                 error(unknown_pubkeys)
         end,
-    {A1, B1} = {A - Amount, B + Amount},
-    Tx1 = if A1 < Reserve ->
-                  %% TODO: consider minimum balance
-                  error(insufficient_balance);
-             true ->
-                  set_tx_values([{FA, A1},
-                                 {FB, B1}], Mod, Tx)
-          end,
+    {A1, B1} = {check_min_amt(A - Amount, Opts), B + Amount},
+    Tx1 = set_tx_values([{FA, A1},
+                         {FB, B1}], Mod, Tx),
     apply_updates_(Ds, Mod, Tx1, Opts).
+
+check_min_amt(Amt, Opts) ->
+    Reserve = maps:get(channel_reserve, Opts, 0),
+    if Amt < Reserve ->
+            erlang:error(insufficient_balance);
+       true ->
+            Amt
+    end.
 
 run_extra_checks(none, _, _) -> ok;
 run_extra_checks(F, Mod, Tx) when is_function(F, 2) ->
@@ -133,6 +164,16 @@ get_latest_state_tx(State) ->
 get_fallback_state(State) ->
     [SignedTx|_] = L = drop_until_mutually_signed(State),
     {tx_round(aetx_sign:tx(SignedTx)), L}.
+
+op_transfer(From, To, Amount) ->
+    {?OP_TRANSFER, From, To, Amount}.
+
+op_deposit(Acct, Amount) ->
+    {?OP_DEPOSIT, Acct, Acct, Amount}.
+
+op_withdraw(Acct, Amount) ->
+    {?OP_WITHDRAW, Acct, Acct, Amount}.
+
 
 tx_round(Tx) ->
     {Mod, TxI} = aetx:specialize_callback(Tx),
