@@ -122,7 +122,7 @@ on_chain_call(ContractKey, Function, Argument) ->
     ContractsTree  = aec_trees:contracts(Trees),
     Contract       = aect_state_tree:get_contract(ContractKey, ContractsTree),
     Code           = aect_contracts:code(Contract),
-
+    <<Address:256>> = ContractKey,
     case create_call(Code, Function, Argument) of
         {error, E} -> {error, E};
         CallData ->
@@ -131,8 +131,8 @@ on_chain_call(ContractKey, Function, Argument) ->
             VmVersion = ?AEVM_01_Sophia_01,
             Deposit = 0,
             ChainState  = aec_vm_chain:new_state(Trees, BlockHeight, ContractKey),
-            Spec = #{ code => Code
-                    , address => ContractKey
+            Spec = #{ code => aeu_hex:hexstring_encode(Code)
+                    , address => Address
                     , caller => 0
                     , data => CallData
                     , gas => 100000000000000000
