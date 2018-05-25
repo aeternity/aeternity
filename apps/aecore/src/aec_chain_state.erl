@@ -115,7 +115,7 @@ set_top_block_hash(H, State) when is_binary(H) -> State#{top_block_hash => H}.
               , hash    :: binary()
               , height  :: pos_integer()
               , type    :: block_type()
-              , key_hash :: binary()
+              , miner_hash :: binary()
               }).
 
 hash(#node{hash = Hash}) -> Hash.
@@ -138,7 +138,7 @@ node_miner(#node{header = H}) -> aec_headers:miner(H).
 
 node_type(#node{type = T}) -> T.
 
-node_key_hash(#node{key_hash = KeyHash}) -> KeyHash.
+node_miner_hash(#node{miner_hash = KeyHash}) -> KeyHash.
 
 node_time(#node{header = H}) -> aec_headers:time_in_msecs(H).
 
@@ -304,7 +304,7 @@ assert_key_block_target(Node) ->
 assert_target_equal_to_prev(Node, PrevNode) ->
     PrevKeyNode = case is_key_block(PrevNode) of
                       true  -> PrevNode;
-                      false -> db_find_node(node_key_hash(PrevNode))
+                      false -> db_find_node(node_miner_hash(PrevNode))
                   end,
     case {node_target(Node), node_target(PrevKeyNode)} of
         {X, X} -> ok;
@@ -328,7 +328,7 @@ get_n_key_headers_from(Node, N, Acc) ->
     {ok, PrevNode} = db_find_node(prev_hash(Node)),
     case node_type(PrevNode) of
         micro ->
-            PrevKeyHash       = node_key_hash(PrevNode),
+            PrevKeyHash       = node_miner_hash(PrevNode),
             {ok, PrevKeyNode} = db_find_node(PrevKeyHash),
             get_n_key_headers_from(PrevKeyNode, N-1, [export_header(PrevKeyNode) | Acc]);
         key ->
@@ -613,9 +613,9 @@ db_node_has_sibling_blocks(Node) ->
                  aec_headers:prev_hash(Header) =:= PrevHash]) > 1.
 
 %%% TODO: fix NG-genesis flow
-set_height(#node{type = micro, key_hash = KeyHash} = Node) ->
+set_height(#node{type = micro, miner_hash = KeyHash} = Node) ->
     Height = case aec_db:get_header(KeyHash) of
-                [] -> error({key_hash_not_found, KeyHash});
+                [] -> error({miner_hash_not_found, KeyHash});
                 Header -> aec_headers:height(Header)
             end,
     Node#node{height = Height};

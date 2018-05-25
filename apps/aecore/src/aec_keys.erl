@@ -23,7 +23,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--export([sign/1, pubkey/0,
+-export([sign_tx/1, sign_micro_block/1, pubkey/0,
          wait_for_pubkey/0,
          setup_peer_keys/2,
          save_peer_keys/4,
@@ -67,6 +67,7 @@
 
 -type tx() :: aetx:tx().
 -type signed_tx() :: aetx_sign:signed_tx().
+-type block() :: aec_blocks:block().
 
 %%%===================================================================
 %%% API
@@ -93,9 +94,13 @@ start_link(Args) ->
 stop() ->
     gen_server:stop(?SERVER).
 
--spec sign(tx()) -> {ok, signed_tx()} | {error, term()}.
-sign(Tx) ->
-    gen_server:call(?MODULE, {sign, Tx}).
+-spec sign_tx(tx()) -> {ok, signed_tx()} | {error, term()}.
+sign_tx(Tx) ->
+    gen_server:call(?MODULE, {sign_tx, Tx}).
+
+-spec sign_micro_block(block()) -> {ok, block()} | {error, term()}.
+sign_micro_block(Block) ->
+    gen_server:call(?MODULE, {sign_micro_block, Block}).
 
 -spec pubkey() -> {ok, binary()} | {error, key_not_found}.
 pubkey() ->
@@ -190,15 +195,16 @@ init([SignPwd, PeerPwd, KeysDir]) when is_binary(SignPwd), is_binary(PeerPwd) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_call({sign, _}, _From, #state{sign_priv=undefined} = State) ->
+handle_call({sign_tx, _}, _From, #state{sign_priv=undefined} = State) ->
     {reply, {error, key_not_found}, State};
-handle_call({sign, Bin}, _From, #state{sign_priv=PrivKey} = State)
-    when is_binary(Bin) ->
-    {Bin, Signatures} = aetx_sign:sign(Bin, PrivKey),
-    {reply, {ok, {Bin, Signatures}}, State};
-handle_call({sign, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
+handle_call({sign_micro_block, _}, _From, #state{sign_priv=undefined} = State) ->
+    {reply, {error, key_not_found}, State};
+handle_call({sign_tx, Tx}, _From, #state{sign_priv=PrivKey} = State) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     {reply, {ok, SignedTx}, State};
+handle_call({sign_micro_block, Block}, _From, #state{sign_priv=PrivKey} = State) ->
+    SignedBlock = aec_blocks:sign(Block, PrivKey),
+    {reply, {ok, SignedBlock}, State};
 handle_call(pubkey, _From, #state{sign_pub=undefined} = State) ->
     {reply, {error, key_not_found}, State};
 handle_call(pubkey, _From, #state{sign_pub=PubKey} = State) ->

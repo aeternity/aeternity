@@ -17,8 +17,9 @@
          set_pow/3,
          signature/1,
          set_signature/2,
-         key_hash/1,
+         miner_hash/1,
          set_target/2,
+         sign/2,
          new_key/4,
          new_micro/5,
          new_key_with_state/4,
@@ -91,9 +92,9 @@ pow(Block) ->
 set_signature(Block, Signature) ->
     Block#block{signature = Signature}.
 
--spec key_hash(block()) -> binary().
-key_hash(Block) ->
-    Block#block.key_hash.
+-spec miner_hash(block()) -> binary().
+miner_hash(Block) ->
+    Block#block.miner_hash.
 
 -spec signature(block()) -> binary().
 signature(Block) ->
@@ -102,6 +103,12 @@ signature(Block) ->
 -spec set_target(block(), non_neg_integer()) -> block().
 set_target(Block, Target) ->
     Block#block{target = Target}.
+
+-spec sign(block(), binary()) -> block().
+sign(MicroBlock, PrivKey) ->
+    Bin = aec_headers:serialize_to_binary(to_header(micro, MicroBlock)),
+    Signature = enacl:sign_detached(Bin, PrivKey),
+    MicroBlock#block{signature = Signature}.
 
 %% TODO: have a spec for list of transactions
 -spec txs(block()) -> list(aetx_sign:signed_tx()).
@@ -136,7 +143,7 @@ new_with_state(LastBlock, CurrentKeyBlock, Miner, Txs, Trees0) ->
 
     NewBlock =
         #block{height = LastBlockHeight,
-               key_hash = key_hash(CurrentKeyBlock),
+               miner_hash = miner_hash(CurrentKeyBlock),
                prev_hash = LastBlockHeaderHash,
                root_hash = aec_trees:hash(Trees),
                txs_hash = TxsRootHash,
@@ -149,7 +156,7 @@ new_with_state(LastBlock, CurrentKeyBlock, Miner, Txs, Trees0) ->
 
 new_key_with_state(LastBlock, CurrentKeyBlock, Miner, Trees0) ->
 
-    {UncompleteBlock, Trees} = new_with_state(LastBlock, CurrentKeyBlock, Miner, [], Trees0),
+    {IncompleteBlock, Trees} = new_with_state(LastBlock, CurrentKeyBlock, Miner, [], Trees0),
     {ok, KeyToClaimLeader} = aec_keys:pubkey(),
 
     %% Assert correctness of last block protocol version, as minimum
@@ -162,133 +169,209 @@ new_key_with_state(LastBlock, CurrentKeyBlock, Miner, Trees0) ->
     NewHeight = LastBlockHeight + 1,
     Version = protocol_effective_at_height(NewHeight),
 
-    {UncompleteBlock#block{height = NewHeight, version = Version, miner = KeyToClaimLeader, key_hash = undefined}, Trees}.
+    {IncompleteBlock#block{height = NewHeight, version = Version, miner = KeyToClaimLeader, miner_hash = undefined}, Trees}.
 
 -spec to_header(block()) -> aec_headers:header().
-to_header(#block{height = Height,
-                 key_hash = PreviousKeyBlockHash,
-                 signature = LeaderSignature,
-                 prev_hash = PrevHash,
-                 txs_hash = TxsHash,
-                 root_hash = RootHash,
-                 target = Target,
-                 nonce = Nonce,
-                 time = Time,
-                 version = Version,
-                 pow_evidence = Evd,
-                 miner = Miner}) ->
+to_header(#block{} = B) ->
+    to_header(type(B), B).
+
+to_header(key, #block{height = Height,
+                      prev_hash = PrevHash,
+                      root_hash = RootHash,
+                      miner = Miner,
+                      target = Target,
+                      pow_evidence = Evd,
+                      nonce = Nonce,
+                      time = Time,
+                      version = Version}) ->
     #header{height = Height,
-            key_hash = PreviousKeyBlockHash,
-            signature = LeaderSignature,
             prev_hash = PrevHash,
-            txs_hash = TxsHash,
             root_hash = RootHash,
+            miner = Miner,
             target = Target,
+            pow_evidence = Evd,
             nonce = Nonce,
             time = Time,
-            pow_evidence = Evd,
-            version = Version,
-            miner = Miner}.
+            version = Version};
+to_header(micro, #block{height = Height,
+                        prev_hash = PrevHash,
+                        root_hash = RootHash,
+                        txs_hash = TxsHash,
+                        miner_hash = MinerHash,
+                        signature = Signature,
+                        time = Time,
+                        version = Version}) ->
+    #header{height = Height,
+            prev_hash = PrevHash,
+            root_hash = RootHash,
+            txs_hash = TxsHash,
+            miner_hash = MinerHash,
+            signature = Signature,
+            time = Time,
+            version = Version}.
 
-from_header_and_txs(#header{height = Height,
-                            prev_hash = PrevHash,
-                            key_hash = PreviousKeyBlockHash,
-                            signature = LeaderSignature,
-                            txs_hash = TxsHash,
-                            root_hash = RootHash,
-                            target = Target,
-                            nonce = Nonce,
-                            time = Time,
-                            pow_evidence = Evd,
-                            version = Version,
-                            miner = Miner}, Txs) ->
+from_header_and_txs(#header{} = H, Txs) ->
+    from_header_and_txs(aec_headers:type(H), H, Txs).
+
+from_header_and_txs(key, #header{height = Height,
+                                 prev_hash = PrevHash,
+                                 root_hash = RootHash,
+                                 miner = Miner,
+                                 target = Target,
+                                 pow_evidence = Evd,
+                                 nonce = Nonce,
+                                 time = Time,
+                                 version = Version}, _Txs) ->
     #block{height = Height,
            prev_hash = PrevHash,
-           key_hash = PreviousKeyBlockHash,
-           signature = LeaderSignature,
-           txs_hash = TxsHash,
            root_hash = RootHash,
+           miner = Miner,
            target = Target,
+           pow_evidence = Evd,
            nonce = Nonce,
            time = Time,
+           version = Version};
+from_header_and_txs(micro, #header{height = Height,
+                                   prev_hash = PrevHash,
+                                   root_hash = RootHash,
+                                   txs_hash = TxsHash,
+                                   miner_hash = MinerHash,
+                                   signature = Signature,
+                                   time = Time,
+                                   version = Version}, Txs) ->
+    #block{height = Height,
+           prev_hash = PrevHash,
+           root_hash = RootHash,
+           txs_hash = TxsHash,
+           miner_hash = MinerHash,
+           signature = Signature,
+           time = Time,
            version = Version,
-           pow_evidence = Evd,
-           txs = Txs,
-           miner = Miner
-          }.
+           txs = Txs}.
 
 serialize_to_binary(B = #block{}) ->
+    serialize_to_binary(type(B), B).
+
+serialize_to_binary(key, B) ->
+    Hdr = aec_headers:serialize_to_binary(to_header(B)),
+    Vsn = B#block.version,
+    {ok, Template} = serialization_template(key, Vsn),
+    aec_object_serialization:serialize(
+      key_block,
+      Vsn,
+      Template,
+      [{header, Hdr}]);
+serialize_to_binary(micro, B) ->
     Hdr = aec_headers:serialize_to_binary(to_header(B)),
     Txs = [ aetx_sign:serialize_to_binary(Tx) || Tx <- B#block.txs ],
     Vsn = B#block.version,
-    {ok, Template} = serialization_template(Vsn),
+    {ok, Template} = serialization_template(micro, Vsn),
     aec_object_serialization:serialize(
-      block,
+      micro_block,
       Vsn,
       Template,
       [{header, Hdr}, {txs, Txs}]).
 
 deserialize_from_binary(Bin) ->
-    {block, Vsn, _RawFields} =
-        aec_object_serialization:deserialize_type_and_vsn(Bin),
-    case serialization_template(Vsn) of
-        {ok, Template} ->
-            [{header, Hdr0}, {txs, Txs0}] =
-                aec_object_serialization:deserialize(block, Vsn, Template, Bin),
-            Hdr = aec_headers:deserialize_from_binary(Hdr0),
-            Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
-            {ok, from_header_and_txs(Hdr, Txs)};
-        Err = {error, _} ->
-            Err
+    case aec_object_serialization:deserialize_type_and_vsn(Bin) of
+        {key_block, Vsn, _RawFields} ->
+            case serialization_template(key, Vsn) of
+                {ok, Template} ->
+                    [{header, Hdr0}] =
+                        aec_object_serialization:deserialize(key_block, Vsn, Template, Bin),
+                    Hdr = aec_headers:deserialize_from_binary(Hdr0),
+                    {ok, from_header_and_txs(Hdr, [])};
+                Err = {error, _} ->
+                    Err
+            end;
+        {micro_block, Vsn, _RawFields} ->
+            case serialization_template(micro, Vsn) of
+                {ok, Template} ->
+                    [{header, Hdr0}, {txs, Txs0}] =
+                        aec_object_serialization:deserialize(micro_block, Vsn, Template, Bin),
+                    Hdr = aec_headers:deserialize_from_binary(Hdr0),
+                    Txs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- Txs0 ],
+                    {ok, from_header_and_txs(Hdr, Txs)};
+                Err = {error, _} ->
+                    Err
+            end
     end.
 
-serialization_template(Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
+serialization_template(key, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
+    {ok, [{header, binary}]};
+serialization_template(micro, Vsn) when Vsn >= ?GENESIS_VERSION andalso Vsn =< ?PROTOCOL_VERSION ->
     {ok, [{header, binary}, {txs, [binary]}]};
-serialization_template(Vsn) ->
+serialization_template(_BlockType, Vsn) ->
     {error, {bad_block_vsn, Vsn}}.
 
 serialize_to_map(B = #block{}) ->
-    #{<<"height">> => height(B),
-      <<"prev_hash">> => prev_hash(B),
+    serialize_to_map(type(B), B).
+
+serialize_to_map(key, B) ->
+    #{<<"height">> => B#block.height,
+      <<"prev_hash">> => B#block.prev_hash,
       <<"state_hash">> => B#block.root_hash,
-      <<"txs_hash">> => B#block.txs_hash,
+      <<"miner">> => B#block.miner,
       <<"target">> => B#block.target,
+      <<"pow">> => B#block.pow_evidence,
       <<"nonce">> => B#block.nonce,
       <<"time">> => B#block.time,
+      <<"version">> => B#block.version
+     };
+serialize_to_map(micro, B) ->
+    #{<<"prev_hash">> => B#block.prev_hash,
+      <<"state_hash">> => B#block.root_hash,
+      <<"txs_hash">> => B#block.txs_hash,
+      <<"miner_hash">> => B#block.miner_hash,
+      <<"signature">> => B#block.signature,
+      <<"time">> => B#block.time,
       <<"version">> => B#block.version,
-      <<"pow">> => B#block.pow_evidence,
-      <<"transactions">> => B#block.txs,
-      <<"miner">> => B#block.miner
+      <<"transactions">> => B#block.txs
      }.
 
-deserialize_from_map(#{<<"nonce">> := Nonce}) when Nonce < 0;
-                                                   Nonce > ?MAX_NONCE ->
-    %% Prevent forging a solution without performing actual work by prefixing digits
-    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
-    {error, bad_nonce};
 deserialize_from_map(#{<<"height">> := Height,
                        <<"prev_hash">> := PrevHash,
                        <<"state_hash">> := RootHash,
-                       <<"txs_hash">> := TxsHash,
+                       <<"miner">> := Miner,
                        <<"target">> := Target,
+                       <<"pow">> := PowEvidence,
                        <<"nonce">> := Nonce,
                        <<"time">> := Time,
+                       <<"version">> := Version}) ->
+    case Nonce of
+    %% Prevent forging a solution without performing actual work by prefixing digits
+    %% to a valid nonce (produces valid PoW after truncating to the allowed range)
+        N when N < 0; N > ?MAX_NONCE ->
+            {error, bad_nonce};
+        _ ->
+            {ok, #block{
+                    height = Height,
+                    prev_hash = PrevHash,
+                    root_hash = RootHash,
+                    miner = Miner,
+                    target = Target,
+                    pow_evidence = PowEvidence,
+                    nonce = Nonce,
+                    time = Time,
+                    version = Version}}
+    end;
+deserialize_from_map(#{<<"prev_hash">> := PrevHash,
+                       <<"state_hash">> := RootHash,
+                       <<"txs_hash">> := TxsHash,
+                       <<"miner_hash">> := MinerHash,
+                       <<"signature">> := Signature,
+                       <<"time">> := Time,
                        <<"version">> := Version,
-                       <<"pow">> := PowEvidence,
-                       <<"transactions">> := Txs,
-                       <<"miner">> := Miner}) ->
+                       <<"transactions">> := Txs}) ->
     {ok, #block{
-            height = Height,
             prev_hash = PrevHash,
             root_hash = RootHash,
             txs_hash = TxsHash,
-            target = Target,
-            nonce = Nonce,
+            miner_hash = MinerHash,
+            signature = Signature,
             time = Time,
             version = Version,
-            txs = Txs,
-            pow_evidence = PowEvidence,
-            miner = Miner}}.
+            txs = Txs}}.
 
 -spec hash_internal_representation(block()) -> {ok, block_header_hash()}.
 hash_internal_representation(B = #block{}) ->

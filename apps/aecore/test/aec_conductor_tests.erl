@@ -352,7 +352,7 @@ test_get_block_candidate() ->
                                           amount => 0,
                                           nonce => X, fee => 1,
                                           payload => <<"">>}),
-            {ok, STx} = aec_keys:sign(Tx),
+            {ok, STx} = aec_keys:sign_tx(Tx),
             ok = aec_tx_pool:push(STx, tx_received)
         end,
         lists:seq(1, 3)),
