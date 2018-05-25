@@ -58,7 +58,7 @@ ansible-playbook --limit="tag_role_epoch:&tag_env_integration"
 
 Deploy playbook supports local or remote build packages.
 ```bash
-ansible-playbook --extra-vars "package=/path/to/epoch-0.14.0.tar.gz" deploy.yml
+ansible-playbook --extra-vars "package=/path/to/epoch-0.15.0.tar.gz" deploy.yml
 ```
 
 Full example deploying remote package from [aeternity/epoch GitHub releases](https://github.com/aeternity/epoch/releases)
@@ -66,7 +66,7 @@ to all instances in groups "tag_role_epoch" **and** "tag_env_integration".
 Make sure you have SSH access to "epoch" remote user.
 
 ```bash
-PACKAGE="https://github.com/aeternity/epoch/releases/download/v0.14.0/epoch-0.14.0-ubuntu-x86_64.tar.gz"
+PACKAGE="https://github.com/aeternity/epoch/releases/download/v0.15.0/epoch-0.15.0-ubuntu-x86_64.tar.gz"
 DEPLOY_ENV=integration
 cd ansible && ansible-playbook --limit="tag_role_epoch:&tag_env_${DEPLOY_ENV:?}" \
    --extra-vars "package=${PACKAGE:?} hosts_group=tag_env_${DEPLOY_ENV:?} env=${DEPLOY_ENV:?}" deploy.yml
