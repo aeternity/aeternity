@@ -329,7 +329,7 @@ ast_type_value(T) ->
 type_value(word)   ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_WORD_TAG }] };
 type_value(string) ->
-    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }] };
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_STRING_TAG }] };
 type_value({list, A}) ->
     #tuple{ cpts = [#integer{ value = ?TYPEREP_LIST_TAG }, type_value(A)] };
 type_value({option, A}) ->
