@@ -93,7 +93,6 @@ def test_contract_call():
     ## create contract
     encoded_tx, encoded_contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
-    contract_address = common.base58_decode(encoded_contract_address)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
 
@@ -120,7 +119,7 @@ def test_contract_call():
     result = external_api.call_contract(call_input)
     contract_call_obj = ContractCallData(
         caller=test_settings["alice"]["pubkey"],
-        contract=contract_address,
+        contract=encoded_contract_address,
         vm_version=call_contract["vm_version"],
         fee=call_contract["fee"],
         amount=call_contract["amount"],
@@ -172,7 +171,7 @@ def test_contract_on_chain_call_off_chain():
     send_tokens_to_user("alice", test_settings, external_api, internal_api)
 
     ## create contract
-    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    encoded_tx, encoded_contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
     unsigned_tx = common.base58_decode(encoded_tx)
 
     signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
@@ -185,7 +184,7 @@ def test_contract_on_chain_call_off_chain():
     common.wait_until_height(external_api, top.height + 3)
 
     call_contract = test_settings["contract_call"]
-    call_input = ContractCallInput("sophia-address", contract_address,\
+    call_input = ContractCallInput("sophia-address", encoded_contract_address,\
                                    call_contract["data"]["function"],\
                                    call_contract["data"]["argument"])
     result = external_api.call_contract(call_input)

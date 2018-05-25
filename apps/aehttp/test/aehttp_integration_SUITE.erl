@@ -631,7 +631,7 @@ contract_transactions(_Config) ->
     tx_is_mined_test(MinerAddress, ContractCreateTxHash),
 
     ContractCallEncoded = #{ caller => MinerAddress,
-                             contract => ContractPubKey,
+                             contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
                              gas => 100,
@@ -641,6 +641,7 @@ contract_transactions(_Config) ->
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
                               #{caller => MinerPubkey,
+                                contract => ContractPubKey,
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ContractCallDecoded, ContractCallEncoded,
@@ -667,14 +668,14 @@ contract_transactions(_Config) ->
     %% Test to call the contract without a transaction.
     {ok, 200, #{<<"out">> := DirectCallResult}} =
         call_contract_directly(#{<<"abi">> => <<"sophia-address">>,
-                                 <<"code">> => ContractPubKey,
+                                 <<"code">> => EncodedContractPubKey,
                                  <<"function">> => Function,
                                  <<"arg">> => Argument}),
 
     ?assertEqual(maps:get(<<"return_value">>, CallObject), DirectCallResult),
 
     ComputeCCallEncoded = #{ caller => MinerAddress,
-                             contract => ContractPubKey,
+                             contract => EncodedContractPubKey,
                              vm_version => 1,
                              amount => 1,
                              gas => 100,
@@ -687,6 +688,7 @@ contract_transactions(_Config) ->
                                                          Argument),
     ComputeCCallDecoded = maps:merge(ComputeCCallEncoded,
                               #{caller => MinerPubkey,
+                                contract => ContractPubKey,
                                 call_data => aeu_hex:hexstring_decode(EncodedCallData)}),
 
     unsigned_tx_positive_test(ComputeCCallDecoded, ComputeCCallEncoded,
@@ -726,6 +728,7 @@ contract_transactions(_Config) ->
                                            ComputeCCallEncoded)),
     %% account not found
     RandAddress = aec_base58c:encode(account_pubkey, random_hash()),
+    RandContractAddress =aec_base58c:encode(contract_pubkey, random_hash()),
     %% owner not found
     {ok, 404, #{<<"reason">> := <<"Account of owner not found">>}} =
         get_contract_create(maps:put(owner, RandAddress, ValidEncoded)),
@@ -734,14 +737,15 @@ contract_transactions(_Config) ->
         get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call(maps:put(contract, RandAddress, ContractCallEncoded)),
+        get_contract_call(maps:put(contract, RandContractAddress, 
+                                   ContractCallEncoded)),
     %% caller not found
     {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
         get_contract_call_compute(maps:put(caller, RandAddress,
                                            ComputeCCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call_compute(maps:put(contract, RandAddress,
+        get_contract_call_compute(maps:put(contract, RandContractAddress,
                                            ComputeCCallEncoded)),
 
     %% Invalid hexstrings
