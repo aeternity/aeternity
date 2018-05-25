@@ -16,7 +16,8 @@
 
 convert(Tree, Options) ->
     TypedTree = aeso_ast_infer_types:infer(Tree),
-    [io:format("Typed tree:\n  ~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
+    [io:format("Typed tree:\n~s\n",[prettypr:format(aeso_pretty:decls(TypedTree))]) || lists:member(pp_typed,Options)],
+    %% [io:format("Typed tree:\n~p\n",[TypedTree]) || lists:member(pp_typed,Options)],
     code(TypedTree,
 %%    code(Tree,
 	 #{ functions => []
@@ -82,7 +83,17 @@ ast_args([], Acc) -> lists:reverse(Acc).
 ast_type(T) ->
     ast_typerep(T).
 
-ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, Value, {typed, _, Arg, ArgT}]}, OutT}) ->
+-define(id_app(Fun, Args, ArgTypes, OutType),
+    {app, _, {typed, _, {id, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+
+-define(qid_app(Fun, Args, ArgTypes, OutType),
+    {app, _, {typed, _, {qid, _, Fun}, {fun_t, _, ArgTypes, OutType}}, Args}).
+
+-define(oracle_t(Q, R), {app_t, _, {id, _, "oracle"}, [Q, R]}).
+-define(query_t(Q, R),  {app_t, _, {id, _, "oracle_query"}, [Q, R]}).
+-define(option_t(A),    {app_t, _, {id, _, "option"}, [A]}).
+
+ast_body(?id_app("raw_call", [To, Fun, Gas, Value, {typed, _, Arg, ArgT}], _, OutT)) ->
     %% TODO: temp hack before we have contract calls properly in the type checker
     {Args, ArgTypes} =
         case Arg of %% Hack: unpack tuples
@@ -97,18 +108,13 @@ ast_body({typed, _, {app, _, {typed, _, {id, _, "raw_call"}, _}, [To, Fun, Gas, 
                          arg      = #tuple{cpts = [ast_body(X) || X <- [Fun | Args]]},
                          arg_type = {tuple, [string | lists:map(fun ast_typerep/1, ArgTypes)]},
                          out_type = ast_typerep(OutT) };
-ast_body({app, _, {typed, _, {id, _, "raw_spend"}, _}, [To, Amount]}) ->
-    %% Implemented as a contract call to the contract with address 0.
-    #prim_call_contract{ gas      = #integer{ value = 0 },
-                         address  = #integer{ value = 0 },
-                         value    = ast_body(Amount),
-                         arg      = #tuple{cpts = [ast_body({int, [], ?PRIM_CALL_SPEND}),
-                                                   ast_body(To)]},
-                         arg_type = {tuple, [word, word]},
-                         out_type = {tuple, []} };
-ast_body({app, _, {typed, _, {qid, _, ["Chain", "balance"]}, _}, [Address]}) ->
+ast_body(?id_app("raw_spend", [To, Amount], _, _)) ->
+    prim_call(?PRIM_CALL_SPEND, ast_body(Amount), [ast_body(To)], [word], {tuple, []});
+
+%% Chain environment
+ast_body(?qid_app(["Chain", "balance"], [Address], _, _)) ->
     #prim_balance{ address = ast_body(Address) };
-ast_body({app, _, {typed, _, {qid, _, ["Chain", "block_hash"]}, _}, [Height]}) ->
+ast_body(?qid_app(["Chain", "block_hash"], [Height], _, _)) ->
     #prim_block_hash{ height = ast_body(Height) };
 ast_body({qid, _, ["Contract", "address"]})      -> prim_contract_address;
 ast_body({qid, _, ["Contract", "balance"]})      -> #prim_balance{ address = prim_contract_address };
@@ -130,12 +136,57 @@ ast_body({id, _, "raw_call"}) ->
     error({underapplied_primitive, raw_call});
 ast_body({id, _, "raw_spend"}) ->
     error({underapplied_primitive, raw_spend});
-%% State stuff
+
+%% State
 ast_body({id, _, "state"}) -> prim_state;
-ast_body({app, _, {typed, _, {id, _, "put"}, _}, [NewState]}) ->
+ast_body(?id_app("put", [NewState], _, _)) ->
     #prim_put{ state = ast_body(NewState) };
 ast_body({id, _, "put"}) ->
     error({underapplied_primitive, put});   %% TODO: eta
+
+%% Oracles
+ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, TTL], _, ?oracle_t(QType, RType))) ->
+    prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee),
+              [ast_body(Acct), ast_body(Sign), ast_body(TTL),
+               ast_type_value(QType), ast_type_value(RType)],
+              [word, word, word, typerep, typerep], word);
+
+ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _)) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},
+              [ast_body(Oracle)], [word], word);
+
+ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee),
+              [ast_body(Oracle), ast_body(Q), ast_body(QTTL), ast_body(RTTL)],
+              [word, ast_type(QType), word, word], word);
+
+ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
+    prim_call(?PRIM_CALL_ORACLE_EXTEND, ast_body(Fee),
+              [ast_body(Oracle), ast_body(Sign), ast_body(TTL)],
+              [word, word, word], {tuple, []});
+
+ast_body(?qid_app(["Oracle", "respond"], [Oracle, Sign, R], [_, _, RType], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
+              [ast_body(Oracle), ast_body(Sign), ast_body(R)],
+              [word, word, ast_type(RType)], {tuple, []});
+
+ast_body(?qid_app(["Oracle", "get_question"], [Q], [?query_t(QType, _)], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_GET_QUESTION, #integer{value = 0},
+              [ast_body(Q)], [word], ast_type(QType));
+
+ast_body(?qid_app(["Oracle", "get_answer"], [Q], [?query_t(_, RType)], _)) ->
+    prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
+              [ast_body(Q)], [word], {option, ast_type(RType)});
+
+ast_body({qid, _, ["Oracle", "register"]})     -> error({underapplied_primitive, 'Oracle.register'});
+ast_body({qid, _, ["Oracle", "query"]})        -> error({underapplied_primitive, 'Oracle.query'});
+ast_body({qid, _, ["Oracle", "extend"]})       -> error({underapplied_primitive, 'Oracle.extend'});
+ast_body({qid, _, ["Oracle", "respond"]})      -> error({underapplied_primitive, 'Oracle.respond'});
+ast_body({qid, _, ["Oracle", "query_fee"]})    -> error({underapplied_primitive, 'Oracle.query_fee'});
+ast_body({qid, _, ["Oracle", "get_answer"]})   -> error({underapplied_primitive, 'Oracle.get_answer'});
+ast_body({qid, _, ["Oracle", "get_question"]}) -> error({underapplied_primitive, 'Oracle.get_question'});
+
+%% Other terms
 ast_body({id, _, Name}) ->
     %% TODO Look up id in env
     #var_ref{name = Name};
@@ -151,6 +202,14 @@ ast_body({tuple,_,Args}) ->
     #tuple{cpts = [ast_body(A) || A <- Args]};
 ast_body({list,_,Args}) ->
     #list{elems = [ast_body(A) || A <- Args]};
+%% Hardwired option types. TODO: Remove when we have arbitrary variant types.
+ast_body({con, _, "None"}) ->
+    #list{elems = []};
+ast_body({app, _, {typed, _, {con, _, "Some"}, _}, [Elem]}) ->
+    #tuple{cpts = [ast_body(Elem)]};
+ast_body({typed, _, {con, _, "Some"}, {fun_t, _, [A], _}}) ->
+    #lambda{ args = [#arg{name = "x", type = ast_type(A)}]
+           , body = #tuple{cpts = [#var_ref{name = "x"}]} };
 ast_body({app,As,Fun,Args}) ->
     case aeso_syntax:get_ann(format, As) of
         infix  ->
@@ -186,7 +245,7 @@ ast_body({block,As,[E|Rest]}) ->
     #switch{expr=ast_body(E),
 	    cases=[{#var_ref{name="_"},ast_body({block,As,Rest})}]};
 ast_body({lam,_,Args,Body}) ->
-    #lambda{args=[{ast_id(P),ast_type(T)} || {arg,_,P,T} <- Args],
+    #lambda{args=[#arg{name = ast_id(P), type = ast_type(T)} || {arg,_,P,T} <- Args],
 	    body=ast_body(Body)};
 ast_body({typed,_,{record,Attrs,Fields},{record_t,DefFields}}) ->
     %% Compile as a tuple with the fields in the order they appear in the definition.
@@ -227,6 +286,15 @@ ast_body({record,Attrs,{typed,_,Record,RecType={record_t,Fields}},Update}) ->
 ast_body({typed, _, Body, _}) ->
     ast_body(Body).
 
+%% Implemented as a contract call to the contract with address 0.
+prim_call(Prim, Amount, Args, ArgTypes, OutType) ->
+    #prim_call_contract{ gas      = #integer{ value = 0 },
+                         address  = #integer{ value = 0 },
+                         value    = Amount,
+                         arg      = #tuple{cpts = [#integer{ value = Prim } | Args]},
+                         arg_type = {tuple, [word | ArgTypes]},
+                         out_type = OutType }.
+
 ast_typerep({id,_,"bool"}) ->		%BOOL as ints
     word;
 ast_typerep({id,_,"int"}) ->
@@ -235,6 +303,12 @@ ast_typerep({id,_,"string"}) ->
     string;
 ast_typerep({id,_,"address"}) ->
     word;
+ast_typerep(?oracle_t(_, _)) ->
+    word;
+ast_typerep(?query_t(_, _)) ->
+    word;
+ast_typerep(?option_t(A)) ->
+    {option, ast_typerep(A)};   %% For now, but needs to be generalised to arbitrary datatypes later.
 ast_typerep({tvar,_,_}) ->
     %% We serialize type variables just as addresses in the originating VM.
     word;
@@ -247,7 +321,20 @@ ast_typerep({app_t,_,{id,_,"list"},[Elem]}) ->
 ast_typerep({fun_t,_,_,_}) ->
     function.
 
+ast_type_value(T) ->
+    type_value(ast_type(T)).
 
+type_value(word)   ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_WORD_TAG }] };
+type_value(string) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }] };
+type_value({list, A}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_LIST_TAG }, type_value(A)] };
+type_value({option, A}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_OPTION_TAG }, type_value(A)] };
+type_value({tuple, As}) ->
+    #tuple{ cpts = [#integer{ value = ?TYPEREP_TUPLE_TAG },
+                    #list{ elems = [ type_value(A) || A <- As ] }] }.
 
 ast_fun_to_icode(Name, Args, Body, TypeRep, #{functions := Funs} = Icode) ->
     NewFuns = [{Name, Args, Body, TypeRep}| Funs],

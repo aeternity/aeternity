@@ -2,6 +2,8 @@
 
 -export([to_binary/1,binary_to_words/1,from_binary/2]).
 
+-include("aeso_icode.hrl").
+
 %% Encode the data as a heap fragment starting at address 64. The first word is
 %% a pointer into the heap fragment. The reason we store it at address 64 is to
 %% leave room for the state pointer at address 0.
@@ -18,6 +20,8 @@ to_binary(Data, Address) when is_binary(Data) ->
     %% a string
     Words = binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
+to_binary(none, Address) -> to_binary([], Address);
+to_binary({some, Value}, Address) -> to_binary({Value}, Address);
 to_binary(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
@@ -68,6 +72,23 @@ from_binary({list,Elem},Heap,V) ->
        true ->
 	    {H,T} = from_binary({tuple,[Elem,{list,Elem}]},Heap,V),
 	    [H|T]
+    end;
+from_binary({option, A}, Heap, V) ->
+    <<None:256>> = <<(-1):256>>,
+    if V == None -> none;
+       true      ->
+         {Elem} = from_binary({tuple, [A]}, Heap, V),
+         {some, Elem}
+    end;
+from_binary(typerep, Heap, V) ->
+    Tag = from_binary(word, Heap, heap_word(Heap, V)),
+    Arg = fun(T) -> from_binary(T, Heap, heap_word(Heap, V + 32)) end,
+    case Tag of
+        ?TYPEREP_WORD_TAG   -> word;
+        ?TYPEREP_STRING_TAG -> string;
+        ?TYPEREP_LIST_TAG   -> {list,   Arg(typerep)};
+        ?TYPEREP_OPTION_TAG -> {option, Arg(typerep)};
+        ?TYPEREP_TUPLE_TAG  -> {tuple,  Arg({list, typerep})}
     end.
 
 heap_word(Heap,Addr) ->

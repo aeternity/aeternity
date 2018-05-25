@@ -16,14 +16,21 @@ global_env() ->
     String  = {id, Ann, "string"},
     Address = {id, Ann, "address"},
     State   = {id, Ann, "state"},
+    Oracle  = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle"}, [Q, R]} end,
+    Query   = fun(Q, R) -> {app_t, Ann, {id, Ann, "oracle_query"}, [Q, R]} end,
     Unit    = {tuple_t, Ann, []},
-    Fun     = fun(S, T) -> {type_sig, [S], T} end,
+    Fun     = fun(Ts, T) -> {type_sig, Ts, T} end,
+    Fun1    = fun(S, T) -> Fun([S], T) end,
     TVar    = fun(X) -> {tvar, Ann, "'" ++ X} end,
+    Signature = Int,
+    TTL       = Int,
+    Fee       = Int,
+    [A, B, Q, R] = lists:map(TVar, ["a", "b", "q", "r"]),
      %% Placeholder for inter-contract calls until we get proper type checking
      %% of contracts.
-    [{"raw_call", {type_sig, [Address, String, Int, Int, TVar("a")], TVar("b")}},
+    [{"raw_call", Fun([Address, String, Int, Int, A], B)},
      %% Spend transaction. Also not the proper version.
-     {"raw_spend", {type_sig, [Address, Int], Unit}},
+     {"raw_spend", Fun([Address, Int], Unit)},
      %% Environment variables
      %% {["Contract", "owner"],   Int},    %% Not in EVM?
      {["Contract", "address"],      Address},
@@ -32,8 +39,8 @@ global_env() ->
      {["Call",     "caller"],       Address},
      {["Call",     "value"],        Int},
      {["Call",     "gas_price"],    Int},
-     {["Chain",    "balance"],      Fun(Address, Int)},
-     {["Chain",    "block_hash"],   Fun(Int, Int)},
+     {["Chain",    "balance"],      Fun1(Address, Int)},
+     {["Chain",    "block_hash"],   Fun1(Int, Int)},
      {["Chain",    "coinbase"],     Address},
      {["Chain",    "timestamp"],    Int},
      {["Chain",    "block_height"], Int},
@@ -41,8 +48,18 @@ global_env() ->
      {["Chain",    "gas_limit"],    Int},
      %% State
      {"state", State},
-     {"put",   Fun(State, Unit)}
+     {"put",   Fun1(State, Unit)},
+     %% Oracles
+     {["Oracle", "register"],     Fun([Address, Signature, Fee, TTL], Oracle(Q, R))},
+     {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Int)},
+     {["Oracle", "query"],        Fun([Oracle(Q, R), Q, Fee, TTL, TTL], Query(Q, R))},
+     {["Oracle", "get_question"], Fun([Query(Q, R)], Q)},
+     {["Oracle", "respond"],      Fun([Query(Q, R), Signature, R], Unit)},
+     {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
+     {["Oracle", "get_answer"],   Fun1(Query(Q, R), option_t(Ann, R))}
     ].
+
+option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.
 
 infer([{contract, Attribs, ConName, Code}|Rest]) ->
     %% do type inference on each contract independently.
@@ -165,6 +182,13 @@ infer_expr(Env, {list, As, Elems}) ->
     ElemType = fresh_uvar(As),
     [unify(ElemType, T) || {typed, _, _, T} <- NewElems],
     {typed, As, {list, As, NewElems}, {app_t, As, {id, As, "list"}, [ElemType]}};
+%% TODO: not hardwired!
+infer_expr(_Env, E = {con, As, "None"}) ->
+    ElemType = fresh_uvar(As),
+    {typed, As, E, option_t(As, ElemType)};
+infer_expr(_Env, E = {con, As, "Some"}) ->
+    ElemType = fresh_uvar(As),
+    {typed, As, E, {fun_t, As, [ElemType], option_t(As, ElemType)}};
 infer_expr(Env, {typed, As, Body, Type}) ->
     AnnotType = case Type of
 		    {id, Attrs, "_"} ->
@@ -321,11 +345,15 @@ free_vars({string, _, _}) ->
     [];
 free_vars(Id={id, _, _}) ->
     [Id];
+free_vars({con, _, _}) ->
+    [];
 free_vars({tuple, _, Cpts}) ->
     free_vars(Cpts);
 free_vars({list, _, Elems}) ->
     free_vars(Elems);
 free_vars({app, _, {'::', _}, Args}) ->
+    free_vars(Args);
+free_vars({app, _, {con, _, _}, Args}) ->
     free_vars(Args);
 free_vars({record, _, Fields}) ->
     free_vars([E || {field, _, _, E} <- Fields]);
@@ -686,6 +714,8 @@ pp([T]) ->
 pp([T|Ts]) ->
     [pp(T), ", "|pp(Ts)];
 pp({id, _, Name}) ->
+    Name;
+pp({con, _, Name}) ->
     Name;
 pp({tvar, _, Name}) ->
     Name;

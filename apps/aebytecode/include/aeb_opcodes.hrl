@@ -152,3 +152,11 @@
 %% first argument encoding the transaction type according to the below.
 -define(PRIM_CALL_SPEND, 1).
 
+-define(PRIM_CALL_ORACLE_REGISTER,     100).
+-define(PRIM_CALL_ORACLE_QUERY,        101).
+-define(PRIM_CALL_ORACLE_RESPOND,      102).
+-define(PRIM_CALL_ORACLE_EXTEND,       103).
+-define(PRIM_CALL_ORACLE_GET_ANSWER,   104).
+-define(PRIM_CALL_ORACLE_GET_QUESTION, 105).
+-define(PRIM_CALL_ORACLE_QUERY_FEE,    106).
+

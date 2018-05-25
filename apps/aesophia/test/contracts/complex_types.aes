@@ -48,3 +48,26 @@ contract ComplexTypes =
   function remote_squares(n) : list((int, int)) =
     raw_call(Contract.address, "squares", 10000, 0, n)
 
+  // option types
+
+  function filter_some(xs : list(option(int))) : list(int) =
+    switch(xs)
+      []            => []
+      None    :: ys => filter_some(ys)
+      Some(x) :: ys => x :: filter_some(ys)
+
+  function remote_filter_some(xs : list(option(int))) : list(int) =
+    raw_call(Contract.address, "filter_some", 10000, 0, xs)
+
+  function all_some(xs : list(option(int))) : option(list(int)) =
+    switch(xs)
+      []         => Some([])
+      None :: ys => None
+      Some(x) :: ys =>
+        switch(all_some(ys))
+          None     => None
+          Some(xs) => Some(x :: xs)
+
+  function remote_all_some(xs : list(option(int))) : option(list(int)) =
+    raw_call(Contract.address, "all_some", 10000, 0, xs)
+
