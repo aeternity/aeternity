@@ -183,9 +183,23 @@ contract_compile(Code, Options) ->
     end.
 
 contract_call(ABI, Code, Function, Argument) ->
-    case aect_dispatch:call(ABI, Code, Function, Argument) of
-        {ok, _Result} = OK -> OK;
-        {error, _ErrorMsg} = Err -> Err
+    Call =
+        fun(CodeOrAddress) ->
+          case aect_dispatch:call(ABI, CodeOrAddress, Function, Argument) of
+              {ok, _Result} = OK -> OK;
+              {error, _ErrorMsg} = Err -> Err
+          end
+        end,
+    case ABI of
+        <<"sophia-address">> ->
+            case aec_base58c:safe_decode(contract_pubkey, Code) of
+                {ok, ContractAddress} ->
+                    Call(ContractAddress);
+                _ ->
+                    {error, <<"Invalid hash for contract address">>}
+            end;
+        _ ->
+            Call(Code)
     end.
 
 contract_encode_call_data(ABI, Code, Function, Argument) ->
