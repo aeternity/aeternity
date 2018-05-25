@@ -1,6 +1,6 @@
 -module(aeso_data).
 
--export([to_binary/1,binary_to_words/1,from_binary/2]).
+-export([to_binary/1,binary_to_words/1,from_binary/2,from_binary/3]).
 
 -include("aeso_icode.hrl").
 
@@ -49,40 +49,44 @@ binary_to_words(Bin) ->
 
 %% Interpret a return value (a binary) using a type rep.
 
-from_binary(T,Heap= <<V:256,_/binary>>) ->
-    from_binary(T,Heap,V).
+%% Base address is the address of the first word of the given heap.
+from_binary(BaseAddr, T, Heap = <<V:256, _/binary>>) ->
+    from_binary1(T, <<0:BaseAddr/unit:8, Heap/binary>>, V).
 
-from_binary(word,_,V) ->
+from_binary(T,Heap= <<V:256,_/binary>>) ->
+    from_binary1(T,Heap,V).
+
+from_binary1(word,_,V) ->
     V;
-from_binary(signed_word, _, V) ->
+from_binary1(signed_word, _, V) ->
     <<N:256/signed>> = <<V:256>>,
     N;
-from_binary(string,Heap,V) ->
+from_binary1(string,Heap,V) ->
     StringSize = heap_word(Heap,V),
     BitAddr = 8*(V+32),
     <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
     Bytes;
-from_binary({tuple,Cpts},Heap,V) ->
-    list_to_tuple([from_binary(T,Heap,heap_word(Heap,V+32*I))
+from_binary1({tuple,Cpts},Heap,V) ->
+    list_to_tuple([from_binary1(T,Heap,heap_word(Heap,V+32*I))
 		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]);
-from_binary({list,Elem},Heap,V) ->
+from_binary1({list,Elem},Heap,V) ->
     <<Nil:256>> = <<(-1):256>>,
     if V==Nil ->
 	    [];
        true ->
-	    {H,T} = from_binary({tuple,[Elem,{list,Elem}]},Heap,V),
+	    {H,T} = from_binary1({tuple,[Elem,{list,Elem}]},Heap,V),
 	    [H|T]
     end;
-from_binary({option, A}, Heap, V) ->
+from_binary1({option, A}, Heap, V) ->
     <<None:256>> = <<(-1):256>>,
     if V == None -> none;
        true      ->
-         {Elem} = from_binary({tuple, [A]}, Heap, V),
+         {Elem} = from_binary1({tuple, [A]}, Heap, V),
          {some, Elem}
     end;
-from_binary(typerep, Heap, V) ->
-    Tag = from_binary(word, Heap, heap_word(Heap, V)),
-    Arg = fun(T) -> from_binary(T, Heap, heap_word(Heap, V + 32)) end,
+from_binary1(typerep, Heap, V) ->
+    Tag = from_binary1(word, Heap, heap_word(Heap, V)),
+    Arg = fun(T) -> from_binary1(T, Heap, heap_word(Heap, V + 32)) end,
     case Tag of
         ?TYPEREP_WORD_TAG   -> word;
         ?TYPEREP_STRING_TAG -> string;

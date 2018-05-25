@@ -326,8 +326,8 @@ oracle_register(_Cfg) ->
     #{oracles :=
           [#{account := 101,
              nonce := 1,
-             query_spec := 288,
-             response_spec := 64,
+             query_spec := string,
+             response_spec := word,
              sign := 3,
              ttl := 10}]} = Env2,
 
