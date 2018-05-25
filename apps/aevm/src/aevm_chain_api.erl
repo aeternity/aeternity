@@ -57,6 +57,17 @@
                        ChainState :: chain_state()) ->
     {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
 
+-callback oracle_respond(Query :: pubkey(),
+                         Sign :: binary(),
+                         Response :: term(),
+                         ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
+-callback oracle_get_answer(Query :: pubkey(),
+                            ChainState :: chain_state()) ->
+    {ok, none | {some, term()}, chain_state()} | {error, term()}.
+
+
 %% TODO: not here
 -type type_spec() :: word | string
                    | {option, type_spec()}
@@ -70,6 +81,10 @@
 -callback oracle_response_spec(Oracle :: pubkey(),
                                ChainState :: chain_state()) ->
     {ok, type_spec()} | {error, term()}.
+
+-callback oracle_query_oracle(Query :: pubkey(),
+                              ChainState :: chain_state()) ->
+    {ok, pubkey()} | {error, term()}.
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

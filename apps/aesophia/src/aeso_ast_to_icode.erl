@@ -165,9 +165,9 @@ ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
               [ast_body(Oracle), ast_body(Sign), ast_body(TTL)],
               [word, word, word], {tuple, []});
 
-ast_body(?qid_app(["Oracle", "respond"], [Oracle, Sign, R], [_, _, RType], _)) ->
+ast_body(?qid_app(["Oracle", "respond"], [Query, Sign, R], [_, _, RType], _)) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
-              [ast_body(Oracle), ast_body(Sign), ast_body(R)],
+              [ast_body(Query), ast_body(Sign), ast_body(R)],
               [word, word, ast_type(RType)], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "get_question"], [Q], [?query_t(QType, _)], _)) ->
