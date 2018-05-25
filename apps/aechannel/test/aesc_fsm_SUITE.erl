@@ -67,32 +67,31 @@ init_per_suite(Config) ->
       Config1, #{<<"chain">> => #{<<"persist">> => false}}),
     aecore_suite_utils:make_multi(Config1, [dev1, dev2]),
     [{nodes, [aecore_suite_utils:node_tuple(N)
-              || N <- [dev1, dev2]]} | Config1].
+              || N <- [dev1]]} | Config1].
 
 end_per_suite(_Config) ->
     ok.
 
 init_per_group(_Group, Config) ->
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:start_node(dev2, Config),
     aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
     ct:log("dev1 connected", []),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev2)),
-    ct:log("dev2 connected", []),
-    try [{initiator, prep_account(initiator, dev1)},
-         {responder, prep_account(responder, dev2)}
-         | Config]
+    try begin
+            Initiator = prep_initiator(dev1),
+            Responder = prep_responder(Initiator, dev1),
+            [{initiator, Initiator},
+             {responder, Responder}
+             | Config]
+        end
     catch
         error:Reason ->
             Trace = erlang:get_stacktrace(),
             catch stop_node(dev1, Config),
-            catch stop_node(dev2, Config),
             error(Reason, Trace)
     end.
 
 end_per_group(_Group, Config) ->
-    Config1 = stop_node(dev1, Config),
-    _Config2 = stop_node(dev2, Config1),
+    _Config1 = stop_node(dev1, Config),
     ok.
 
 stop_node(N, Config) ->
@@ -105,7 +104,6 @@ stop_node(N, Config) ->
 %%%===================================================================
 
 create_channel(Cfg) ->
-    mine_blocks(dev1, 3),
     #{ i := #{fsm := FsmI}
      , r := #{fsm := FsmR} } = _Ch = create_channel_([{port, 9325}|Cfg]),
     rpc(dev1, aesc_fsm, shutdown, [FsmI]),
@@ -297,17 +295,29 @@ mine_blocks(Node, N) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), N).
 
 
-prep_account(Role, Node) ->
+prep_initiator(Node) ->
     {ok, PubKey} = rpc(Node, aec_keys, pubkey, []),
     {ok, PrivKey} = rpc(Node, aec_keys, sign_privkey, []),
-    ct:log("~p: Pubkey = ~p", [Role, PubKey]),
+    ct:log("initiator Pubkey = ~p", [PubKey]),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(Node), 1),
-    ct:log("~p: 1 block mined on ~p", [Role, Node]),
+    ct:log("initiator: 1 block mined on ~p", [Node]),
     {ok, Balance} = rpc(Node, aehttp_logic, get_account_balance, [PubKey]),
-    #{role => Role,
+    #{role => initiator,
       priv => PrivKey,
       pub  => PubKey,
       balance => Balance}.
+
+prep_responder(#{pub := IPub, balance := IBal} = _Initiator, Node) ->
+    NodeName = aecore_suite_utils:node_name(Node),
+    #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
+    Amount = IBal div 10,
+    aecore_suite_utils:spend(NodeName, IPub, Pub, Amount),
+    mine_blocks(Node, 2), % one extra for good measure (TODO: ensure tx in block)
+    {ok, Amount} = rpc(Node, aehttp_logic, get_account_balance, [Pub]),
+    #{role => responder,
+      priv => Priv,
+      pub  => Pub,
+      balance => Amount}.
 
 rpc(Node, Mod, Fun, Args) ->
     Res = rpc:call(aecore_suite_utils:node_name(Node), Mod, Fun, Args, 5000),
