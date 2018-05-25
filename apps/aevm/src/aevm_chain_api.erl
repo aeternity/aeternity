@@ -49,6 +49,27 @@
                           ChainState :: chain_state()) ->
     {ok, OracleKey :: non_neg_integer(), chain_state()} | {error, term()}.
 
+-callback oracle_query(Oracle :: pubkey(),
+                       Query :: term(),
+                       Value :: non_neg_integer(),
+                       QueryTTL :: non_neg_integer(),
+                       ResponseTTL :: non_neg_integer(),
+                       ChainState :: chain_state()) ->
+    {ok, QueryId :: non_neg_integer(), chain_state()} | {error, term()}.
+
+%% TODO: not here
+-type type_spec() :: word | string
+                   | {option, type_spec()}
+                   | {list, type_spec()}
+                   | {tuple, [type_spec()]}.
+
+-callback oracle_query_spec(Oracle :: pubkey(),
+                            ChainState :: chain_state()) ->
+    {ok, type_spec()} | {error, term()}.
+
+-callback oracle_response_spec(Oracle :: pubkey(),
+                               ChainState :: chain_state()) ->
+    {ok, type_spec()} | {error, term()}.
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

@@ -23,7 +23,7 @@
 
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
-          oracle_register/6]).
+          oracle_register/6, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -46,8 +46,8 @@ compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
     FileName          = filename:join([CodeDir, "contracts", lists:concat([Name, ".aes"])]),
     {ok, ContractBin} = file:read_file(FileName),
-    %% Options           = [],
-    Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
+    Options           = [],
+    %% Options           = [pp_ast, pp_icode, pp_assembler, pp_bytecode],
     Code = aeso_compiler:from_string(binary_to_list(ContractBin), Options),
     aeu_hex:hexstring_encode(Code).
 
@@ -57,7 +57,7 @@ compile_contract(Name) ->
 execute_call(Contract, CallData, ChainState, Options) ->
     #{Contract := Code} = ChainState,
     ChainState1 = ChainState#{ running => Contract },
-    Trace = true,
+    Trace = false,
     Res = aect_evm:execute_call(
           maps:merge(
           #{ code              => Code,
@@ -321,14 +321,18 @@ oracles(_Cfg) ->
     Env0 = initial_state(#{}),
     Env1 = create_contract(101, Code, "()", Env0),
     {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 10)", Env1),
+    {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", 4, 10, 11)", Env2),
     #{oracles :=
-          [#{account := 101,
+          #{101 := #{
              nonce := 1,
              query_spec := string,
              response_spec := word,
              sign := 3,
-             ttl := 10}]} = Env2,
-
+             ttl := 10}},
+      oracle_queries :=
+          #{Q := #{ query := <<"why?">>,
+                    q_ttl := 10,
+                    r_ttl := 11 }}} = Env3,
     ok.
 
 
@@ -387,13 +391,38 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec, State) ->
+oracle_register(<<AccountKey:256>>, <<Sign:256>>, TTL, QuerySpec, ResponseSpec, State) ->
     io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [AccountKey, Sign, TTL, QuerySpec, ResponseSpec]),
-    State1 = State#{ oracles =>
-                        [#{account       => AccountKey,
-                           sign          => Sign,
-                           nonce         => 1,
-                           query_spec    => QuerySpec,
-                           response_spec => ResponseSpec,
-                           ttl           => TTL} | maps:get(oracles, State, [])] },
+    Oracles = maps:get(oracles, State, #{}),
+    State1 = State#{ oracles => Oracles#{ AccountKey =>
+                        #{account       => AccountKey,
+                          sign          => Sign,
+                          nonce         => 1,
+                          query_spec    => QuerySpec,
+                          response_spec => ResponseSpec,
+                          ttl           => TTL} } },
     {ok, AccountKey, State1}.
+
+oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
+    io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
+    <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
+    Queries = maps:get(oracle_queries, State, #{}),
+    State1  = State#{ oracle_queries =>
+                Queries#{ QueryId =>
+                    #{query => Q,
+                      q_ttl => QTTL,
+                      r_ttl => RTTL} } },
+    {ok, QueryId, State1}.
+
+oracle_query_spec(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_spec := Spec} } -> {ok, Spec};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+
+oracle_response_spec(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{response_spec := Spec} } -> {ok, Spec};
+        _ -> {error, {no_such_oracle, Oracle}}
+    end.
+

@@ -157,9 +157,7 @@ ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _)) ->
 
 ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, _, _, _], _)) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY, ast_body(Fee),
-              %% TODO: The type of QType has to be encoded
-              [ast_body(Oracle),
-               ast_body(Q), ast_body(QTTL), ast_body(RTTL)],
+              [ast_body(Oracle), ast_body(Q), ast_body(QTTL), ast_body(RTTL)],
               [word, ast_type(QType), word, word], word);
 
 ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
