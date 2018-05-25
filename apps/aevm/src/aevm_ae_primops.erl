@@ -96,8 +96,10 @@ oracle_call_register(_Value, Data, State) ->
     [Acct, Sign, TTL, QType, RType] = get_args(ArgumentTypes, Data),
     Callback =
         fun(API, ChainState) ->
-                API:oracle_register(<<Acct:256>>, <<Sign:256>>, TTL, QType, RType, ChainState)
-        end,
+            case API:oracle_register(<<Acct:256>>, <<Sign:256>>, TTL, QType, RType, ChainState) of
+                {ok, <<OKey:256>>, ChainState1} -> {ok, OKey, ChainState1};
+                {error, _} = Err                -> Err
+            end end,
     call_chain(Callback, State).
 
 oracle_call_query(Value, Data, State) ->
@@ -107,7 +109,11 @@ oracle_call_query(Value, Data, State) ->
         {ok, QueryType} ->
             ArgumentTypes = [word, QueryType, word, word],
             [_Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
-            Callback = fun(API, ChainState) -> API:oracle_query(OracleKey, Q, Value, QTTL, RTTL, ChainState) end,
+            Callback = fun(API, ChainState) ->
+                case API:oracle_query(OracleKey, Q, Value, QTTL, RTTL, ChainState) of
+                    {ok, <<QKey:256>>, ChainState1} -> {ok, QKey, ChainState1};
+                    {error, _} = Err                -> Err
+                end end,
             call_chain(Callback, State);
         {error, _} = Err -> Err
     end.

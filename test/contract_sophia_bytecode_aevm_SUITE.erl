@@ -330,7 +330,8 @@ oracles(_Cfg) ->
              sign := 3,
              ttl := 10}},
       oracle_queries :=
-          #{Q := #{ query := <<"why?">>,
+          #{Q := #{ oracle := 101,
+                    query := <<"why?">>,
                     q_ttl := 10,
                     r_ttl := 11 }}} = Env3,
     ok.
@@ -391,28 +392,28 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(<<AccountKey:256>>, <<Sign:256>>, TTL, QuerySpec, ResponseSpec, State) ->
-    io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [AccountKey, Sign, TTL, QuerySpec, ResponseSpec]),
+oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, TTL, QuerySpec, ResponseSpec, State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, TTL, QuerySpec, ResponseSpec]),
     Oracles = maps:get(oracles, State, #{}),
-    State1 = State#{ oracles => Oracles#{ AccountKey =>
-                        #{account       => AccountKey,
-                          sign          => Sign,
+    State1 = State#{ oracles => Oracles#{ Account =>
+                        #{sign          => Sign,
                           nonce         => 1,
                           query_spec    => QuerySpec,
                           response_spec => ResponseSpec,
                           ttl           => TTL} } },
-    {ok, AccountKey, State1}.
+    {ok, PubKey, State1}.
 
 oracle_query(<<Oracle:256>>, Q, Value, QTTL, RTTL, State) ->
     io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
-    <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
+    QueryKey = <<QueryId:256>> = crypto:hash(sha256, term_to_binary(make_ref())),
     Queries = maps:get(oracle_queries, State, #{}),
     State1  = State#{ oracle_queries =>
                 Queries#{ QueryId =>
-                    #{query => Q,
-                      q_ttl => QTTL,
-                      r_ttl => RTTL} } },
-    {ok, QueryId, State1}.
+                    #{oracle => Oracle,
+                      query  => Q,
+                      q_ttl  => QTTL,
+                      r_ttl  => RTTL} } },
+    {ok, QueryKey, State1}.
 
 oracle_query_spec(<<Oracle:256>>, State) ->
     case maps:get(oracles, State, []) of

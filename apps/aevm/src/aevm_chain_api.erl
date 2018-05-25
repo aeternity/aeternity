@@ -47,7 +47,7 @@
                           DecodedQType :: binary(),
                           DecodedRType :: binary(),
                           ChainState :: chain_state()) ->
-    {ok, OracleKey :: non_neg_integer(), chain_state()} | {error, term()}.
+    {ok, OracleKey :: pubkey(), chain_state()} | {error, term()}.
 
 -callback oracle_query(Oracle :: pubkey(),
                        Query :: term(),
@@ -55,7 +55,7 @@
                        QueryTTL :: non_neg_integer(),
                        ResponseTTL :: non_neg_integer(),
                        ChainState :: chain_state()) ->
-    {ok, QueryId :: non_neg_integer(), chain_state()} | {error, term()}.
+    {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
 
 %% TODO: not here
 -type type_spec() :: word | string
