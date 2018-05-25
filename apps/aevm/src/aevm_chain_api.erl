@@ -47,7 +47,7 @@
                           DecodedQType :: binary(),
                           DecodedRType :: binary(),
                           ChainState :: chain_state()) ->
-    {ok, chain_state()} | {error, term()}.
+    {ok, OracleKey :: non_neg_integer(), chain_state()} | {error, term()}.
 
 
 %% Make a call to another contract.

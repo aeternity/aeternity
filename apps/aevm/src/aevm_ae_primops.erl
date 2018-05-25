@@ -81,15 +81,15 @@ call_chain(Callback, State) ->
             GasSpent   = 0,         %% Already costs lots of gas
             {ok, UnitReturn, GasSpent,
              aevm_eeevm_state:set_chain_state(ChainState1, State)};
-        {ok, ChainState1, Retval} ->
+        {ok, Retval, ChainState1} ->
             GasSpent   = 0,         %% Already costs lots of gas
-            {ok, Retval, GasSpent,
+            Return     = {ok, aeso_data:to_binary(Retval, 0)},
+            {ok, Return, GasSpent,
              aevm_eeevm_state:set_chain_state(ChainState1, State)};
         {error, _} = Err -> Err
     end.
 
 oracle_call_register(Data, State) ->
-    %% TODO: Use the right argument types when typreps can be decode.
     ArgumentTypes = [word, word, word, typerep, typerep],
     [Acct, Sign, TTL, QType, RType] = get_args(ArgumentTypes, Data),
     Callback =
@@ -99,10 +99,8 @@ oracle_call_register(Data, State) ->
     call_chain(Callback, State).
 
 oracle_call_query(Data, State) ->
-    %% TODO: the querytype has to be encoded by the caller
-    %% and decoded here
-    %% ArgumentTypes = [word, 'unnkown', word, word],
-    ArgumentTypes = [word, word, word, word],
+    QueryType = word, %% TODO
+    ArgumentTypes = [word, QueryType, word, word],
     [Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_query(Oracle, Q, QTTL, RTTL, ChainState) end,
     call_chain(Callback, State).

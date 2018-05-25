@@ -113,7 +113,7 @@ oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec,
                 {error, signature_check_failed}
         end,
     case Result of
-        {ok, Trees1}     -> {ok, State#state{ trees = Trees1 }};
+        {ok, Trees1}     -> {ok, {ok, <<AccountKey:256>>}, State#state{ trees = Trees1 }};
         Err = {error, _} -> Err
     end.
 

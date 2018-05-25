@@ -18,7 +18,7 @@
    , stack/1
    , simple_storage/1
    , dutch_auction/1
-   , oracle_register/1
+   , oracles/1
    ]).
 
 %% chain API exports
@@ -28,7 +28,7 @@
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
 
-fall() -> [ execute_identity_fun_from_sophia_file,
+all() -> [ execute_identity_fun_from_sophia_file,
            sophia_remote_call,
            sophia_factorial,
            simple_multi_argument_call,
@@ -40,9 +40,7 @@ fall() -> [ execute_identity_fun_from_sophia_file,
            stack,
            simple_storage,
            dutch_auction,
-           oracle_register].
-
-all() -> [oracle_register].
+           oracles].
 
 compile_contract(Name) ->
     CodeDir           = code:lib_dir(aesophia, test),
@@ -318,11 +316,11 @@ increment_account(Account, Value, Env) ->
                      Env).
 
 
-oracle_register(_Cfg) ->
+oracles(_Cfg) ->
     Code = compile_contract(oracles),
     Env0 = initial_state(#{}),
     Env1 = create_contract(101, Code, "()", Env0),
-    {0, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 10)", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 10)", Env1),
     #{oracles :=
           [#{account := 101,
              nonce := 1,
@@ -390,12 +388,12 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
     end.
 
 oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec, State) ->
-    {ok,
-     State#{ oracles =>
-                 [#{account       => AccountKey,
-                    sign          => Sign,
-                    nonce         => 1,
-                    query_spec    => QuerySpec,
-                    response_spec => ResponseSpec,
-                    ttl           => TTL}
-                 ]}}.
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [AccountKey, Sign, TTL, QuerySpec, ResponseSpec]),
+    State1 = State#{ oracles =>
+                        [#{account       => AccountKey,
+                           sign          => Sign,
+                           nonce         => 1,
+                           query_spec    => QuerySpec,
+                           response_spec => ResponseSpec,
+                           ttl           => TTL} | maps:get(oracles, State, [])] },
+    {ok, AccountKey, State1}.

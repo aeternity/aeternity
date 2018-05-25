@@ -1,42 +1,45 @@
 -module(aeso_data).
 
--export([to_binary/1,binary_to_words/1,from_binary/2,from_binary/3]).
+-export([to_binary/1,to_binary/2,binary_to_words/1,from_binary/2,from_binary/3]).
 
 -include("aeso_icode.hrl").
 
-%% Encode the data as a heap fragment starting at address 64. The first word is
-%% a pointer into the heap fragment. The reason we store it at address 64 is to
+%% Encode the data as a heap fragment starting at address 32. The first word is
+%% a pointer into the heap fragment. The reason we store it at address 32 is to
 %% leave room for the state pointer at address 0.
 to_binary(Data) ->
-    {Address, Memory} = to_binary(Data, 64),
+    to_binary(Data, 32).
+
+to_binary(Data, BaseAddress) ->
+    {Address, Memory} = to_binary1(Data, BaseAddress + 32),
     <<Address:256, Memory/binary>>.
 
 %% Allocate the data in memory, from the given address.  Return a pair
 %% of memory contents from that address and the value representing the
 %% data.
-to_binary(Data,_Address) when is_integer(Data) ->
+to_binary1(Data,_Address) when is_integer(Data) ->
     {Data,<<>>};
-to_binary(Data, Address) when is_binary(Data) ->
+to_binary1(Data, Address) when is_binary(Data) ->
     %% a string
     Words = binary_to_words(Data),
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
-to_binary(none, Address) -> to_binary([], Address);
-to_binary({some, Value}, Address) -> to_binary({Value}, Address);
-to_binary(Data, Address) when is_tuple(Data) ->
+to_binary1(none, Address) -> to_binary1([], Address);
+to_binary1({some, Value}, Address) -> to_binary1({Value}, Address);
+to_binary1(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
     {Address,<< ElemsBin/binary, Memory/binary >>};
-to_binary([],_Address) ->
+to_binary1([],_Address) ->
     <<Nil:256>> = <<(-1):256>>,
     {Nil,<<>>};
-to_binary([H|T],Address) ->
-    to_binary({H,T},Address).
+to_binary1([H|T],Address) ->
+    to_binary1({H,T},Address).
 
 
 to_binaries([],_Address) ->
     {[],<<>>};
 to_binaries([H|T],Address) ->
-    {HRep,HMem} = to_binary(H,Address),
+    {HRep,HMem} = to_binary1(H,Address),
     {TRep,TMem} = to_binaries(T,Address+size(HMem)),
     {[HRep|TRep],<<HMem/binary, TMem/binary>>}.
 
