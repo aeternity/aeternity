@@ -79,7 +79,7 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
-               {TopBlock, _TopState} = aec_chain:top_block_with_state(),
+               TopBlock = aec_chain:top_block(),
                TopBlockHash = aec_chain:top_block_hash(),
 
                %% Prepare a few txs.
@@ -217,7 +217,7 @@ tx_pool_test_() ->
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
                ok = aec_chain_state:insert_block(GenesisBlock),
-               {TopBlock, _TopState} = aec_chain:top_block_with_state(),
+               TopBlock = aec_chain:top_block(),
 
                %% Add a transaction to the chain
                STx1 = a_signed_tx(PubKey1, new_pubkey(), 1, 1),

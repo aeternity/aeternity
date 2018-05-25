@@ -9,6 +9,8 @@
 %% API
 -export([start_link/0, stop/0]).
 
+-export([get_candidate/0]).
+
 -export([start_generation/0, stop_generation/0]).
 
 %% gen_server callbacks
@@ -37,6 +39,14 @@ start_link() ->
 stop() ->
     gen_server:stop(?MODULE).
 
+-spec get_candidate() -> {ok, aec_blocks:block()} | {error, no_candidate}.
+get_candidate() ->
+    try
+        gen_server:call(?MODULE, get_candidate, 100)
+    catch _:_ ->
+        {error, no_candidate}
+    end.
+
 start_generation() ->
     gen_server:cast(?MODULE, start_generation).
 
@@ -52,6 +62,10 @@ init([]) ->
     aec_events:subscribe(top_changed),
     {ok, #state{}}.
 
+handle_call(get_candidate, _From, State = #state{ candidate = undefined }) ->
+    {reply, {error, no_candidate}, State};
+handle_call(get_candidate, _From, State = #state{ candidate = Candidate }) ->
+    {reply, {ok, Candidate}, State};
 handle_call(Req, _From, State) ->
     lager:info("Unexpected call: ~p", [Req]),
     {reply, ok, State}.
@@ -65,7 +79,7 @@ handle_cast(stop_generation, State) ->
 handle_cast({new_candidate, Candidate, CandidateState}, State) ->
     epoch_mining:info("New candidate generated", []),
     lager:debug("New candidate generated", []),
-    aec_events:publish(candidate_block, Candidate),
+    publish_candidate(Candidate),
     State1 = finish_worker(State),
     State2 = State1#state{ candidate = Candidate
                          , candidate_state = CandidateState },
@@ -116,7 +130,9 @@ code_change(_OldVsn, State, _Extra) ->
 do_start_generation(S = #state{ generating = false }) ->
     S1 = start_worker(S),
     S1#state{ generating = true };
-do_start_generation(S) ->
+do_start_generation(S = #state{ candidate = Candidate }) ->
+    %% If we are asked to start generation and already have a block, signal this.
+    [ publish_candidate(Candidate) || Candidate /= undefined ],
     S.
 
 do_stop_generation(S = #state{ generating = true }) ->
@@ -131,9 +147,9 @@ add_new_tx(S = #state{ worker = Worker }, Tx) ->
         {_WPid, _WRef} -> S#state{ new_txs = [Tx | S#state.new_txs] }
     end.
 
-preempt_generation(S, NewTopBlock) ->
+preempt_generation(S, NewTop) ->
     S1 = stop_worker(S),
-    start_worker_block(S1, NewTopBlock).
+    start_worker_block(S1, NewTop).
 
 stop_worker(S = #state{ worker = {WPid, WRef} }) ->
     erlang:demonitor(WRef, [flush]),
@@ -153,8 +169,8 @@ start_worker(S) ->
         Block     -> start_worker_block(S, Block)
     end.
 
-start_worker_block(S = #state{ worker = undefined }, Block) ->
-    Pid = spawn(fun() -> create_block_candidate(Block) end),
+start_worker_block(S = #state{ worker = undefined }, BlockOrBlockHash) ->
+    Pid = spawn(fun() -> create_block_candidate(BlockOrBlockHash) end),
     lager:debug("Worker ~p created", [Pid]),
     Ref = erlang:monitor(process, Pid),
     S#state{ worker = {Pid, Ref}, new_txs = [], candidate = undefined }.
@@ -173,8 +189,8 @@ maybe_start_worker_txs(S) ->
     end.
 
 %% Generate block candidate
-create_block_candidate(Block) ->
-    case aec_block_candidate:create(Block) of
+create_block_candidate(BlockOrBlockHash) ->
+    case aec_block_candidate:create(BlockOrBlockHash) of
         {ok, NewBlock, BlockInfo} ->
             gen_server:cast(?MODULE, {new_candidate, NewBlock, BlockInfo});
         {error, Reason} ->
@@ -239,6 +255,9 @@ add_txs_to_trees(N, Trees, [Tx | Txs], Acc, Height, Version) ->
 
 failed_attempt(Reason) ->
     gen_server:cast(?MODULE, {worker_done, {failed, Reason}}).
+
+publish_candidate(_Block) ->
+    aec_events:publish(candidate_block, new_candidate).
 
 %% Respect nonces order
 sort_txs(Txs) ->
