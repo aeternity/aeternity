@@ -53,3 +53,4 @@ swagger/swagger-codegen-cli-*.jar
 *.retry
 system_test/logs
 system_test/aest_hard_fork_SUITE_data/db
+docker/keys/*/sign_key*
