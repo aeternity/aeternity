@@ -103,7 +103,9 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
             top_changed   -> preempt_generation(State, Info);
             tx_created    -> add_new_tx(State, Info);
             tx_received   -> add_new_tx(State, Info);
-            _             -> State
+            _             ->
+                lager:info("Ignoring spurious event ~p", [Event]),
+                State
         end,
     {noreply, State1};
 handle_info({'DOWN', Ref, process, Pid, Reason}, State = #state{ worker = {Pid, Ref} }) ->

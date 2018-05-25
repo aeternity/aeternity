@@ -8,11 +8,15 @@
 %%%```
 %%%       aecore_sup  (one_for_one)
 %%%           |
-%%%           ------------------------------------------------------------
-%%%           |         |         |           |            |             |
-%%%           |   aec_metrics  aec_keys  aec_tx_pool aec_conductor aec_subscribe
-%%%           |
-%%%   aec_connection_sup  (one_for_all)
+%%%           --------------------------------------------------
+%%%           |         |         |           |       |        |
+%%%           |   aec_metrics  aec_keys  aec_tx_pool  |  aec_subscribe
+%%%           |                                       |
+%%%   aec_connection_sup  (one_for_all)         aec_conductor_sup (rest_for_one)
+%%%           |                                       |
+%%%           |                                       ---------------------
+%%%           |                                       |                   |
+%%%           |                                 aec_block_generator  aec_conductor
 %%%           |
 %%%           ---------------------------------------------------
 %%%           |                     |          |                |
@@ -60,8 +64,7 @@ init([]) ->
                                  ?CHILD(aec_metrics_rpt_dest, 5000, worker),
                                  ?CHILD(aec_keys, 5000, worker),
                                  ?CHILD(aec_tx_pool, 5000, worker),
-                                 ?CHILD(aec_block_generator, 5000, worker),
-                                 ?CHILD(aec_conductor, 5000, worker),
+                                 ?CHILD(aec_conductor_sup, 5000, supervisor),
                                  ?CHILD(aec_subscribe, 5000, worker),
                                  ?CHILD(aec_connection_sup, 5000, supervisor)
                                 ]
