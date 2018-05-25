@@ -2,6 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Enables depositing additional funds on an already established state channel. This impacts consensus.
 * TODO Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.15.0
