@@ -4,11 +4,11 @@
 It:
 * TODO Improves the stability of the testnet.
 
-[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.14.0
+[this-release]: https://github.com/aeternity/epoch/releases/tag/v0.15.0
 
 This release introduces backward incompatible changes in the chain format:
 * After upgrading your node, you will not have your previous balance (even if you keep your key pair);
-* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.13.x".
+* Please ensure that you do not reuse a persisted blockchain produced by the previous releases "v0.14.x".
 
 Please join the testnet by following the instructions below, and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/epoch/issues).
 Troubleshooting of common issues is documented [in the wiki](https://github.com/aeternity/epoch/wiki/Troubleshooting).
@@ -25,8 +25,8 @@ You can run a node by either:
 * Running the published [Docker image `aeternity/epoch`][docker]; or
 * [Building a release binary from source][build].
 
-[docker]: https://github.com/aeternity/epoch/blob/v0.14.0/docs/docker.md
-[build]: https://github.com/aeternity/epoch/blob/v0.14.0/docs/build.md
+[docker]: https://github.com/aeternity/epoch/blob/v0.15.0/docs/docker.md
+[build]: https://github.com/aeternity/epoch/blob/v0.15.0/docs/build.md
 
 The user configuration is documented in the [wiki](https://github.com/aeternity/epoch/wiki/User-provided-configuration).
 For specifying configuration using the Docker image, please refer to [its documentation][docker].
@@ -38,9 +38,9 @@ The node user API is documented:
 * WebSocket API endpoints are [specified online][api-doc];
 * The intended usage of the user API (HTTP and WebSocket) is [documented online][api-doc].
 
-[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.14.0/config/swagger.yaml
-[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.14.0/apps/aehttp/priv/swagger.json
-[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.14.0/epoch/api/README.md
+[swagger-yaml]: https://github.com/aeternity/epoch/blob/v0.15.0/config/swagger.yaml
+[swagger-ui]: https://aeternity.github.io/epoch-api-docs/?config=https://raw.githubusercontent.com/aeternity/epoch/v0.15.0/apps/aehttp/priv/swagger.json
+[api-doc]: https://github.com/aeternity/protocol/blob/epoch-v0.15.0/epoch/api/README.md
 
 ## Install node
 

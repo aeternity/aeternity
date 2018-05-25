@@ -39,5 +39,5 @@ Create a directory and unpack the downloaded package (you may need to amend the 
 ```bash
 mkdir /tmp/node
 cd /tmp/node
-tar xf ~/Downloads/epoch-0.14.0-osx-10.12.6.tar.gz
+tar xf ~/Downloads/epoch-0.15.0-osx-10.12.6.tar.gz
 ```
