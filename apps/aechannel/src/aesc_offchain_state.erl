@@ -238,8 +238,8 @@ add_signed_tx(SignedTx, #state{signed_txs=Txs0}=State) ->
     Trees =
         lists:foldl(
             fun(Update, TrAccum) ->
-                {TAccum1, _, _} = modify_trees(Update, TrAccum),
-                TAccum1
+                {TrAccum1, _, _} = modify_trees(Update, TrAccum),
+                TrAccum1
             end,
             State#state.trees,
             Mod:updates(TxI)),
@@ -279,7 +279,6 @@ tx_round(Tx) ->
     Mod:round(TxI).
 
 -spec fallback_to_stable_state(state()) -> state().
-%% TODO: handle empty state?
 fallback_to_stable_state(#state{signed_txs=[_|_]}=State) ->
     State#state{half_signed_txs=[]}.
 
