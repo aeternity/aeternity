@@ -92,7 +92,7 @@
           initiator_amount   :: aesc_channels:amount(),
           responder_amount   :: aesc_channels:amount(),
           updates            :: [offchain_update()],
-          state              :: binary(),
+          state_hash         :: binary(),
           previous_round     :: non_neg_integer(),
           round              :: non_neg_integer()
          }).
