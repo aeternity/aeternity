@@ -2,6 +2,7 @@
 
 [This release][this-release] is focused on TODOFILLMEIN.
 It:
+* Enables retrieving via user API the contract call object for an on-chain transaction.
 * TODO Improves the stability of the testnet.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v0.15.0
