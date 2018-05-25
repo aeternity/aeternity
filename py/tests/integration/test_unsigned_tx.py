@@ -157,6 +157,45 @@ def test_contract_call():
     cleanup(node, root_dir)
 
 
+def test_contract_on_chain_call_off_chain():
+    test_settings = settings["test_contract_call"]
+    create_settings = settings["test_contract_create"]
+    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
+    internal_api = common.internal_api(node)
+
+    private_key = keys.new_private()
+    public_key = keys.public_key(private_key)
+
+    alice_address = keys.address(public_key)
+
+    test_settings["alice"]["pubkey"] = alice_address
+    send_tokens_to_user("alice", test_settings, external_api, internal_api)
+
+    ## create contract
+    encoded_tx, contract_address = get_unsigned_contract_create(alice_address, create_settings["create_contract"], external_api)
+    unsigned_tx = common.base58_decode(encoded_tx)
+
+    signed = keys.sign_verify_encode_tx(unsigned_tx, private_key, public_key)
+
+    alice_balance0 = common.get_account_balance(external_api, internal_api, pub_key=alice_address).balance
+    tx_object = Tx(tx=signed)
+    external_api.post_tx(tx_object)
+
+    top = external_api.get_top()
+    common.wait_until_height(external_api, top.height + 3)
+
+    call_contract = test_settings["contract_call"]
+    call_input = ContractCallInput("sophia-address", contract_address,\
+                                   call_contract["data"]["function"],\
+                                   call_contract["data"]["argument"])
+    result = external_api.call_contract(call_input)
+
+    assert_equals('0x000000000000000000000000000000000000000000000000000000000000002a',
+                   result.out)
+
+    cleanup(node, root_dir)
+
+
 def test_spend():
     # Alice should be able to create a spend transaction to send tokens to
     # Bob. In a controlled environment, Alice should see her transaction
@@ -170,7 +209,7 @@ def test_spend():
 
     # Setup
     test_settings = settings["test_spend"]
-    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node") 
+    (root_dir, node, external_api, top) = setup_node_with_tokens(test_settings, "node")
     internal_api = common.internal_api(node)
 
     private_key = keys.new_private()
