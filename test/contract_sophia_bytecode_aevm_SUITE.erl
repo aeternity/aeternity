@@ -25,7 +25,7 @@
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
           oracle_query_oracle/2, oracle_respond/4, oracle_get_answer/2,
-          oracle_query_fee/2, oracle_get_question/2]).
+          oracle_query_fee/2, oracle_get_question/2, oracle_extend/4]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -330,19 +330,20 @@ oracles(_Cfg) ->
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, QArg, Env4),
     <<"why?">>  = successful_call_(101, string, getQuestion, QArg, Env4),
     100         = successful_call_(101, word, queryFee, "101", Env4),
+    {{}, Env5}  = successful_call(101, {tuple, []}, extendOracle, "(101, 1111, 10, 100)", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
              query_spec := string,
              response_spec := word,
              sign := 3,
-             ttl := 10}},
+             ttl := 100}},
       oracle_queries :=
           #{Q := #{ oracle := 101,
                     query := <<"why?">>,
                     q_ttl := 10,
                     r_ttl := 11,
-                    answer := {some, 42} }}} = Env4,
+                    answer := {some, 42} }}} = Env5,
     ok.
 
 
@@ -432,6 +433,15 @@ oracle_respond(<<Query:256>>, Sign, R, State) ->
             State1 = State#{ oracle_queries := Queries#{ Query := Q#{ answer => {some, R} } } },
             {ok, State1};
         _ -> {error, {no_such_query, Query}}
+    end.
+
+oracle_extend(<<Oracle:256>>, Sign, TTL, State) ->
+    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle, Sign, TTL]),
+    case maps:get(oracles, State, #{}) of
+        #{Oracle := O} = Oracles ->
+            State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },
+            {ok, State1};
+        _ -> {error, {no_such_oracle, Oracle}}
     end.
 
 oracle_get_answer(<<Query:256>>, State) ->

@@ -64,6 +64,12 @@
                          ChainState :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
+-callback oracle_extend(Oracle :: pubkey(),
+                        Sign :: binary(),
+                        TTL :: non_neg_integer(),
+                        ChainState :: chain_state()) ->
+    {ok, chain_state()} | {error, term()}.
+
 -callback oracle_get_answer(Query :: pubkey(),
                             ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.

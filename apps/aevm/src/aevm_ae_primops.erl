@@ -147,7 +147,7 @@ oracle_call_respond(_Value, Data, State) ->
 oracle_call_extend(_Value, Data, State) ->
     ArgumentTypes = [word, word, word],
     [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_extend(Oracle, Sign, TTL, ChainState) end,
+    Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
     call_chain(Callback, State).
 
 
