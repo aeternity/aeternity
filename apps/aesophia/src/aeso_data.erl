@@ -25,6 +25,11 @@ to_binary1(Data, Address) when is_binary(Data) ->
     {Address,<<(size(Data)):256, << <<W:256>> || W <- Words>>/binary>>};
 to_binary1(none, Address) -> to_binary1([], Address);
 to_binary1({some, Value}, Address) -> to_binary1({Value}, Address);
+to_binary1(word, Address)        -> to_binary1({?TYPEREP_WORD_TAG}, Address);
+to_binary1(string, Address)      -> to_binary1({?TYPEREP_STRING_TAG}, Address);
+to_binary1({list, T}, Address)   -> to_binary1({?TYPEREP_LIST_TAG, T}, Address);
+to_binary1({option, T}, Address) -> to_binary1({?TYPEREP_OPTION_TAG, T}, Address);
+to_binary1({tuple, Ts}, Address) -> to_binary1({?TYPEREP_TUPLE_TAG, Ts}, Address);
 to_binary1(Data, Address) when is_tuple(Data) ->
     {Elems,Memory} = to_binaries(tuple_to_list(Data),Address+32*size(Data)),
     ElemsBin = << <<W:256>> || W <- Elems>>,
