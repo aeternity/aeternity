@@ -79,10 +79,9 @@ create(Cfg) ->
     TxSpec = aesc_test_utils:create_tx_spec(PubKey1, PubKey2, S2),
     {ok, Tx} = aesc_create_tx:new(TxSpec),
     SignedTx = aetx_sign:sign(Tx, [PrivKey1, PrivKey2]),
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY,
-                                                          [SignedTx], Trees,
-                                                          Height,
-                                                          ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} =
+        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees,
+                                            Height, ?PROTOCOL_VERSION),
     S3 = aesc_test_utils:set_trees(Trees1, S2),
 
     %% Check channel created

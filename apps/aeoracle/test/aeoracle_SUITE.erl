@@ -104,7 +104,8 @@ register_oracle(_Cfg) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
     Trees    = aeo_test_utils:trees(S1),
     Height   = ?ORACLE_REG_HEIGHT,
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY, [SignedTx], Trees, Height, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} =
+        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, Height, ?PROTOCOL_VERSION),
     S2       = aeo_test_utils:set_trees(Trees1, S1),
     {PubKey, S2}.
 
@@ -161,7 +162,8 @@ extend_oracle(Cfg) ->
     %% Test that ExtendTX is accepted
     Tx       = aeo_test_utils:extend_tx(OracleKey, S),
     SignedTx = aetx_sign:sign(Tx, PrivKey),
-    {ok, [SignedTx], Trees1} = aec_trees:apply_signed_txs(?MINER_PUBKEY, [SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+    {ok, [SignedTx], Trees1} =
+        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
     S1       = aeo_test_utils:set_trees(Trees1, S),
 
     OTrees1  = aec_trees:oracles(Trees1),
@@ -229,7 +231,7 @@ query_oracle(Cfg, Opts) ->
     %% Test that QueryTX is accepted
     SignedTx = aetx_sign:sign(Q1, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed_txs(?MINER_PUBKEY, [SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
     S3 = aeo_test_utils:set_trees(Trees2, S2),
     {oracle_query_tx, QTx} = aetx:specialize_type(Q1),
     ID = aeo_query:id(aeo_query:new(QTx, CurrHeight)),
@@ -280,7 +282,7 @@ query_response(Cfg, QueryOpts) ->
     PrivKey  = aeo_test_utils:priv_key(OracleKey, S1),
     SignedTx = aetx_sign:sign(RTx, PrivKey),
     {ok, [SignedTx], Trees2} =
-        aec_trees:apply_signed_txs(?MINER_PUBKEY, [SignedTx], Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aec_block_candidate:apply_block_txs([SignedTx], ?MINER_PUBKEY, Trees, CurrHeight, ?PROTOCOL_VERSION),
     S2 = aeo_test_utils:set_trees(Trees2, S1),
 
     %% Test that the query is now closed.

@@ -165,7 +165,9 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_created -> enqueue(block, Info, NonSyncingPeerIds);
-        top_changed   -> enqueue(block, Info, NonSyncingPeerIds);
+        top_changed   ->
+            {ok, Block} = aec_chain:get_block(Info),
+            enqueue(block, Block, NonSyncingPeerIds);
         tx_created    -> enqueue(tx, Info, NonSyncingPeerIds);
         tx_received   -> enqueue(tx, Info, NonSyncingPeerIds);
         _             -> ignore

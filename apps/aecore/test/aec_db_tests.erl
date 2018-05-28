@@ -36,6 +36,7 @@ wait_for_conductor() ->
 write_chain_test_() ->
     {foreach,
      fun() ->
+             ok = application:ensure_started(gproc),
              aec_test_utils:start_chain_db(),
              meck:new(aec_pow_cuckoo, [passthrough]),
              meck:expect(aec_pow_cuckoo, verify, fun(_, _, _, _) -> true end),
@@ -50,6 +51,7 @@ write_chain_test_() ->
      fun(TmpDir) ->
              ok = aec_conductor:stop(),
              ok = aec_tx_pool:stop(),
+             ok = application:stop(gproc),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis(),
@@ -111,6 +113,7 @@ write_chain_test_() ->
 restart_test_() ->
     {foreach,
      fun() ->
+             ok = application:ensure_started(gproc),
              TmpDir = aec_test_utils:aec_keys_setup(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
@@ -126,6 +129,7 @@ restart_test_() ->
              ok = aec_tx_pool:stop(),
              meck:unload(aec_pow_cuckoo),
              meck:unload(aec_events),
+             ok = application:stop(gproc),
              aec_test_utils:unmock_genesis(),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:aec_keys_cleanup(TmpDir)

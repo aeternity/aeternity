@@ -74,9 +74,13 @@ handle_cast({unsubscribe, Id, Event}, S = #state{ subscribed = Sub }) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({gproc_ps_event, Event, #{ info := Block }},
-            State = #state{ subscribed = Subs })
-        when Event == top_changed; Event == block_created ->
+handle_info({gproc_ps_event, Event = top_changed, #{ info := BlockHash }}, State) ->
+    {ok, Block} = aec_chain:get_block(BlockHash),
+    notify_subscribers(Event, Block, State);
+handle_info({gproc_ps_event, Event = block_created, #{ info := Block }}, State) ->
+    notify_subscribers(Event, Block, State).
+
+notify_subscribers(Event, Block, State = #state{ subscribed = Subs }) ->
     notify_chain_subscribers(Event, Block, Subs),
     notify_tx_subscribers(aec_blocks:txs(Block), Subs),
     {noreply, State}.

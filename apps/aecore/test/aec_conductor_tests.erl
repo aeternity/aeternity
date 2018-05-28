@@ -18,6 +18,8 @@
 setup_minimal() ->
     ok = application:ensure_started(gproc),
     ok = aec_test_utils:start_chain_db(),
+    aec_block_generator:start_link(),
+
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
                 fun() ->
@@ -37,6 +39,7 @@ teardown_minimal(TmpKeysDir) ->
     meck:unload(aec_governance),
     aec_test_utils:unmock_genesis(),
     aec_test_utils:unmock_time(),
+    aec_block_generator:stop(),
     ok = aec_test_utils:stop_chain_db(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
@@ -320,11 +323,6 @@ block_candidate_test_() ->
           TmpKeysDir = setup_common(),
           {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
           meck:new(aec_mining, [passthrough]),
-          meck:expect(aec_mining, create_block_candidate,
-              fun(TopBlock, TopBlockState, AdjChain) ->
-                  timer:sleep(100),
-                  meck:passthrough([TopBlock, TopBlockState, AdjChain])
-              end),
           meck:expect(aec_mining, mine,
               fun(_, _, _) ->
                   timer:sleep(3000),
@@ -408,8 +406,7 @@ expect_top_event_hashes([],_AllowMissing) ->
     ok;
 expect_top_event_hashes(Expected, AllowMissing) ->
     receive
-        {gproc_ps_event, top_changed, #{info := Block}} ->
-            Hash = block_hash(Block),
+        {gproc_ps_event, top_changed, #{info := Hash}} ->
             NewExpected = Expected -- [Hash],
             case lists:member(Hash, Expected) of
                 true  -> expect_top_event_hashes(NewExpected, AllowMissing);

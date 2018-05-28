@@ -22,6 +22,7 @@
                | top_changed
                | tx_created
                | tx_received
+               | candidate_block
                | peers
                | metric
                | chain_sync

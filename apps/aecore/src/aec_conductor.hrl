@@ -23,8 +23,8 @@
                    }).
 
 -record(state, {block_candidate                   :: #candidate{} | 'undefined',
+                new_candidate_available = false   :: boolean(),
                 blocked_tags            = []      :: ordsets:ordset(atom()),
-                fetch_new_txs_from_pool = true    :: boolean(),
                 keys_ready              = false   :: boolean(),
                 mining_state            = running :: mining_state(),
                 seen_top_block_hash               :: binary() | 'undefined',
