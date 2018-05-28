@@ -23,7 +23,7 @@
 
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
-          oracle_register/6, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
+          oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
           oracle_query_oracle/2, oracle_respond/4, oracle_get_answer/2]).
 
 -include("apps/aecontract/src/aecontract.hrl").
@@ -321,7 +321,7 @@ oracles(_Cfg) ->
     Code = compile_contract(oracles),
     Env0 = initial_state(#{}),
     Env1 = create_contract(101, Code, "()", Env0),
-    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 10)", Env1),
+    {101, Env2} = successful_call(101, word, registerOracle, "(101, 3, 4, 100, 10)", Env1),
     {Q, Env3}   = successful_call(101, word, createQuery, "(101, \"why?\", 4, 10, 11)", Env2),
     QArg        = integer_to_list(Q),
     none        = successful_call_(101, {option, word}, getAnswer, QArg, Env3),
@@ -398,12 +398,13 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             {error, {no_such_contract, Contract}}
     end.
 
-oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, TTL, QuerySpec, ResponseSpec, State) ->
-    io:format("oracle_register(~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, TTL, QuerySpec, ResponseSpec]),
+oracle_register(PubKey = <<Account:256>>, <<Sign:256>>, QueryFee, TTL, QuerySpec, ResponseSpec, State) ->
+    io:format("oracle_register(~p, ~p, ~p, ~p, ~p, ~p)\n", [Account, Sign, QueryFee, TTL, QuerySpec, ResponseSpec]),
     Oracles = maps:get(oracles, State, #{}),
     State1 = State#{ oracles => Oracles#{ Account =>
                         #{sign          => Sign,
                           nonce         => 1,
+                          query_fee     => QueryFee,
                           query_spec    => QuerySpec,
                           response_spec => ResponseSpec,
                           ttl           => TTL} } },

@@ -145,11 +145,11 @@ ast_body({id, _, "put"}) ->
     error({underapplied_primitive, put});   %% TODO: eta
 
 %% Oracles
-ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, TTL], _, ?oracle_t(QType, RType))) ->
+ast_body(?qid_app(["Oracle", "register"], [Acct, Sign, Fee, QFee, TTL], _, ?oracle_t(QType, RType))) ->
     prim_call(?PRIM_CALL_ORACLE_REGISTER, ast_body(Fee),
-              [ast_body(Acct), ast_body(Sign), ast_body(TTL),
+              [ast_body(Acct), ast_body(Sign), ast_body(QFee), ast_body(TTL),
                ast_type_value(QType), ast_type_value(RType)],
-              [word, word, word, typerep, typerep], word);
+              [word, word, word, word, typerep, typerep], word);
 
 ast_body(?qid_app(["Oracle", "query_fee"], [Oracle], _, _)) ->
     prim_call(?PRIM_CALL_ORACLE_QUERY_FEE, #integer{value = 0},

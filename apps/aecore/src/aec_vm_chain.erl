@@ -15,7 +15,7 @@
 	 get_store/1,
 	 set_store/2,
          spend/3,
-         oracle_register/6,
+         oracle_register/7,
          call_contract/6]).
 
 -record(state, { trees   :: aec_trees:trees()
@@ -77,9 +77,9 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 
 %%    Oracle
 -spec oracle_register(pubkey(), binary(), non_neg_integer(),
-                  binary(), binary(), chain_state()) ->
+                      non_neg_integer(), binary(), binary(), chain_state()) ->
     {ok, chain_state()} | {error, term()}.
-oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec,
+oracle_register(AccountKey, Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
                 State = #state{ trees   = Trees,
                                 height  = Height,
                                 account = ContractKey}) ->
@@ -97,7 +97,7 @@ oracle_register(AccountKey, Sign, TTL, QuerySpec, ResponseSpec,
           nonce         => Nonce,
           query_spec    => QuerySpec,
           response_spec => ResponseSpec,
-          query_fee     => 0, %% TODO: Think about fees.
+          query_fee     => QueryFee,
           ttl           => TTL,
           fee           => 0},
 

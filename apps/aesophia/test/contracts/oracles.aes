@@ -4,8 +4,9 @@ contract Oracles =
   function registerOracle(acct : address,
                           sign : int,   // Signed account address
                           fee  : int,
+                          qfee : int,
                           ttl  : int) : oracle(string, int) =
-    Oracle.register(acct, sign, fee, ttl)
+    Oracle.register(acct, sign, fee, qfee, ttl)
 
   function queryFee(o : oracle(string, int)) : int =
     Oracle.query_fee(o)

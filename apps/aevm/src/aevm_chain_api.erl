@@ -43,6 +43,7 @@
 
 -callback oracle_register(Account :: pubkey(),
                           Sign :: binary(),
+                          QueryFee :: non_neg_integer(),
                           TTL :: non_neg_integer(),
                           DecodedQType :: binary(),
                           DecodedRType :: binary(),
