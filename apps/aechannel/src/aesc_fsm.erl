@@ -1635,7 +1635,7 @@ check_update_err_msg(#{ channel_id := ChanId
             {error, chain_id_mismatch}
     end.
 
-request_signing(Tag, Obj, #data{client    = Client} = D) ->
+request_signing(Tag, Obj, #data{client = Client} = D) ->
     Msg = rpt_message(sign, Tag, Obj, D),
     Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
