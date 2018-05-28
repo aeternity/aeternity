@@ -42,7 +42,7 @@
 -define(BACKENDS, [aest_docker]).
 -define(CALL_TAG, ?MODULE).
 -define(CT_CONF_KEY, node_manager).
--define(CALL_TIMEOUT, 60000).
+-define(CALL_TIMEOUT, 120000).
 -define(NODE_TEARDOWN_TIMEOUT, 0).
 -define(DEFAULT_HTTP_TIMEOUT, 3000).
 
@@ -159,12 +159,11 @@ ct_cleanup(Ctx) ->
     call(Pid, dump_logs),
     call(Pid, cleanup),
     call(Pid, stop),
-    wait_for_exit(Pid, 120000),
+    wait_for_exit(Pid, ?CALL_TIMEOUT),
     case Result of
         {error, Reason} -> erlang:error(Reason);
         ok -> ok
     end.
-
 
 %=== QICKCHECK API FUNCTIONS ===================================================
 
