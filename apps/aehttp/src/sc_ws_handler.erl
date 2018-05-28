@@ -12,6 +12,7 @@
 -export([terminate/3]).
 
 -record(handler, {fsm_pid            :: pid() | undefined,
+                  temp_channel_id    :: aesc_channels:id() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
                   job_id             :: term(),
                   role               :: initiator | responder | undefined,
@@ -67,11 +68,8 @@ websocket_info({push, ChannelId, Data, Options}, State) ->
             Msg = jsx:encode(Data),
 	          {reply, {text, Msg}, State}
     end;
-websocket_info({aesc_fsm, FsmPid, ChannelId, Msg}, #handler{fsm_pid=FsmPid}=H) ->
-    H1 = case channel_id(H) of
-            undefined -> H#handler{channel_id = ChannelId};
-            ChannelId -> H % assert no channel id change
-         end,
+websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
+    H1 = set_channel_id(Msg, H),
     case process_fsm(Msg) of
         %no_reply -> {ok, H1};
         %{error, _} -> {ok, H1}
@@ -79,6 +77,20 @@ websocket_info({aesc_fsm, FsmPid, ChannelId, Msg}, #handler{fsm_pid=FsmPid}=H) -
     end;
 websocket_info(_Info, State) ->
 	  {ok, State}.
+
+set_channel_id(#{} = Msg, #handler{temp_channel_id = TmpChId,
+                                   channel_id = ChId} = H) ->
+    H#handler{
+      channel_id = set_if_undefined(ChId, maps:get(channel_id, Msg, undefined),
+                                    temp_channel_id),
+      temp_channel_id = set_if_undefined(TmpChId,
+                                         maps:get(temp_channel_id, Msg, undefined),
+                                         channel_id)}.
+
+set_if_undefined(undefined, V, _Fld) -> V;
+set_if_undefined(V, V, _Fld) -> V;
+set_if_undefined(A, B, Fld) ->
+    erlang:error({channel_id_mismatch, [Fld, A, B]}).
 
 terminate(_Reason, _PartialReq, #{} = _State) ->
     % not initialized yet
@@ -271,12 +283,14 @@ process_incoming(Msg, _State) ->
     {error, unhandled}.
 
 -spec process_fsm(term()) -> no_reply | {reply, map()} | {error, atom()}.
-process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
-                           orelse Tag =:= shutdown
-                           orelse Tag =:= shutdown_ack
-                           orelse Tag =:= funding_created
-                           orelse Tag =:= update
-                           orelse Tag =:= update_ack ->
+process_fsm(#{type := sign,
+              tag  := Tag,
+              info := Tx}) when Tag =:= create_tx
+                         orelse Tag =:= shutdown
+                         orelse Tag =:= shutdown_ack
+                         orelse Tag =:= funding_created
+                         orelse Tag =:= update
+                         orelse Tag =:= update_ack ->
     EncTx = aec_base58c:encode(transaction, aetx:serialize_to_binary(Tx)),
     Tag1 =
         case Tag of
@@ -289,12 +303,14 @@ process_fsm({sign, Tag, Tx}) when Tag =:= create_tx
     {reply, #{action => <<"sign">>,
               tag => Tag1,
               payload => #{tx => EncTx}}};
-process_fsm({Tag, Event}) when Tag =:= info
-                        orelse Tag =:= update
-                        orelse Tag =:= conflict
-                        orelse Tag =:= message
-                        orelse Tag =:= error
-                        orelse Tag =:= on_chain_tx ->
+process_fsm(#{type := report,
+              tag  := Tag,
+              info := Event}) when Tag =:= info
+                            orelse Tag =:= update
+                            orelse Tag =:= conflict
+                            orelse Tag =:= message
+                            orelse Tag =:= error
+                            orelse Tag =:= on_chain_tx ->
     Payload =
         case {Tag, Event} of
             {info, {died, _}} -> #{event => <<"died">>};
