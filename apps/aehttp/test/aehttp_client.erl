@@ -49,7 +49,8 @@ process_response({ok, Code, _Head, Body}, Cfg) ->
             log("Return code: ~p, body: ~p", [Code, Body2], Cfg),
             {ok, Code, Body2}
     end;
-process_response({error, _} = Error, _Cfg) ->
+process_response({error, Reason} = Error, Cfg) ->
+    log("Return error: ~p", [Reason], Cfg),
     Error.
 
 log(Fmt, Params, Cfg) ->
