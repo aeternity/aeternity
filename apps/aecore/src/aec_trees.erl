@@ -34,6 +34,15 @@
          perform_pre_transformations/2
         ]).
 
+%% Proof of inclusion
+-export([add_poi/4,
+         deserialize_poi/1,
+         new_poi/1,
+         poi_hash/1,
+         serialize_poi/1,
+         verify_poi/4
+        ]).
+
 -record(trees, {
           accounts  :: aec_accounts_trees:tree(),
           calls     :: aect_call_state_tree:tree(),
@@ -42,8 +51,29 @@
           ns        :: aens_state_tree:tree(),
           oracles   :: aeo_state_tree:tree()}).
 
+-record(poi, {
+          accounts  :: part_poi(),
+          calls     :: part_poi(),
+          channels  :: part_poi(),
+          contracts :: part_poi(),
+          ns        :: part_poi(),
+          oracles   :: part_poi()
+         }).
+
 -opaque trees() :: #trees{}.
--export_type([trees/0]).
+-opaque poi() :: #poi{}.
+
+-type part_poi() :: 'empty' | {'poi', aec_poi:poi()}.
+-type tree_type() :: 'accounts'
+                   | 'calls'
+                   | 'channels'
+                   | 'contracts'
+                   | 'ns'
+                   | 'oracles'.
+
+-export_type([ trees/0
+             , poi/0
+             ]).
 
 %%%%=============================================================================
 %% API
@@ -58,6 +88,36 @@ new() ->
            ns        = aens_state_tree:empty_with_backend(),
            oracles   = aeo_state_tree:empty_with_backend()
           }.
+
+-spec new_poi(trees()) -> poi().
+new_poi(Trees) ->
+    internal_new_poi(Trees).
+
+-spec add_poi(tree_type(), aec_keys:pubkey(), trees(), poi()) -> {'ok', binary(), poi()}
+                                                      | {'error', term()}.
+add_poi(accounts, PubKey, Trees, #poi{} = Poi) ->
+    internal_add_accounts_poi(PubKey, accounts(Trees), Poi);
+add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
+    error({nyi, Type}).
+
+-spec poi_hash(poi()) -> state_hash().
+poi_hash(#poi{} = Poi) ->
+    internal_poi_hash(Poi).
+
+-spec serialize_poi(poi()) -> binary().
+serialize_poi(#poi{} = Poi) ->
+    internal_serialize_poi(Poi).
+
+-spec deserialize_poi(binary()) -> poi().
+deserialize_poi(Bin) when is_binary(Bin) ->
+    internal_deserialize_poi(Bin).
+
+-spec verify_poi(tree_type(), aec_keys:pubkey(), binary(), poi()) -> 'ok'
+                                                          | {'error', term()}.
+verify_poi(accounts, PubKey, SerializedAccount, #poi{} = Poi) ->
+    internal_verify_accounts_poi(PubKey, SerializedAccount, Poi);
+verify_poi(Type,_PubKey,_Account, #poi{} =_Poi) ->
+    error({nyi, Type}).
 
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
@@ -126,27 +186,35 @@ set_contracts(Trees, Contracts) ->
 %%%=============================================================================
 
 internal_hash(Trees) ->
-    AccountsHash = pad_empty(aec_accounts_trees:root_hash(accounts(Trees))),
-    CallsHash = pad_empty(aect_call_state_tree:root_hash(calls(Trees))),
-    ChannelsHash = pad_empty(aesc_state_tree:root_hash(channels(Trees))),
-    ContractsHash = pad_empty(aect_state_tree:root_hash(contracts(Trees))),
-    OraclesHash = pad_empty(aeo_state_tree:root_hash(oracles(Trees))),
-    NamingSystemHash = pad_empty(aens_state_tree:root_hash(ns(Trees))),
-    List = lists:sort([ {<<"accounts"/utf8>> , AccountsHash}
-                      , {<<"calls"/utf8>>    , CallsHash}
-                      , {<<"channels"/utf8>> , ChannelsHash}
-                      , {<<"contracts"/utf8>>, ContractsHash}
-                      , {<<"oracles"/utf8>>  , OraclesHash}
-                      , {<<"ns"/utf8>>       , NamingSystemHash}
-                      ]),
-    TopTree = lists:foldl(fun({Key, Val}, Acc) ->
-                                  aeu_mtrees:enter(Key, Val, Acc)
-                          end,
-                         aeu_mtrees:empty(), List),
-    {ok, Hash} = aeu_mtrees:root_hash(TopTree),
-    Hash.
+    %% Note that all hash sizes are checked in pad_empty/2
+    Bin = <<?PROTOCOL_VERSION:64,
+            (accounts_hash(Trees))  /binary,
+            (calls_hash(Trees))     /binary,
+            (channels_hash(Trees))  /binary,
+            (contracts_hash(Trees)) /binary,
+            (ns_hash(Trees))        /binary,
+            (oracles_hash(Trees))   /binary
+          >>,
+    aec_hash:hash(state_trees, Bin).
 
-pad_empty({ok, H}) when is_binary(H) -> H;
+accounts_hash(Trees) ->
+    pad_empty(aec_accounts_trees:root_hash(accounts(Trees))).
+
+calls_hash(Trees) ->
+    pad_empty(aect_call_state_tree:root_hash(calls(Trees))).
+
+channels_hash(Trees) ->
+    pad_empty(aesc_state_tree:root_hash(channels(Trees))).
+
+contracts_hash(Trees) ->
+    pad_empty(aect_state_tree:root_hash(contracts(Trees))).
+
+oracles_hash(Trees) ->
+    pad_empty(aeo_state_tree:root_hash(oracles(Trees))).
+
+ns_hash(Trees) -> pad_empty(aens_state_tree:root_hash(ns(Trees))).
+
+pad_empty({ok, H}) when is_binary(H), byte_size(H) =:= ?STATE_HASH_BYTES -> H;
 pad_empty({error, empty}) -> <<0:?STATE_HASH_BYTES/unit:8>>.
 
 internal_commit_to_db(Trees) ->
@@ -216,3 +284,109 @@ ensure_account(AccountPubkey, Trees0) ->
             AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees0),
             aec_trees:set_accounts(Trees0, AccountsTrees)
     end.
+
+%%%=============================================================================
+%%% Proof of Inclusion (PoI)
+%%%=============================================================================
+
+internal_new_poi(Trees) ->
+    #poi{ accounts  = new_part_poi(accounts_hash(Trees))
+        , calls     = new_part_poi(calls_hash(Trees))
+        , channels  = new_part_poi(channels_hash(Trees))
+        , contracts = new_part_poi(contracts_hash(Trees))
+        , ns        = new_part_poi(ns_hash(Trees))
+        , oracles   = new_part_poi(oracles_hash(Trees))
+        }.
+
+internal_poi_hash(#poi{} = POI) ->
+    %% Note that all hash sizes are checked in pad_empty/2
+    Bin = <<?PROTOCOL_VERSION:64,
+            (part_poi_hash(POI#poi.accounts)) /binary,
+            (part_poi_hash(POI#poi.calls))    /binary,
+            (part_poi_hash(POI#poi.channels)) /binary,
+            (part_poi_hash(POI#poi.contracts))/binary,
+            (part_poi_hash(POI#poi.ns))       /binary,
+            (part_poi_hash(POI#poi.oracles))  /binary
+          >>,
+    aec_hash:hash(state_trees, Bin).
+
+part_poi_hash(empty) -> <<0:?STATE_HASH_BYTES/unit:8>>;
+part_poi_hash({poi, Poi}) -> aec_poi:root_hash(Poi).
+
+internal_add_accounts_poi(_Pubkey,_Trees, #poi{accounts = empty}) ->
+    {error, not_present};
+internal_add_accounts_poi(Pubkey, Trees, #poi{accounts = {poi, APoi}} = Poi) ->
+    case aec_accounts_trees:add_poi(Pubkey, Trees, APoi) of
+        {ok, SerializedAccount, NewAPoi} ->
+            {ok, SerializedAccount, Poi#poi{accounts = {poi, NewAPoi}}};
+        {error, _} = E -> E
+    end.
+
+internal_verify_accounts_poi(_AccountPubkey,_Account, #poi{accounts = empty}) ->
+    {error, empty_accounts_poi};
+internal_verify_accounts_poi(AccountPubkey, Account, #poi{accounts = {poi, APoi}}) ->
+    aec_accounts_trees:verify_poi(AccountPubkey, Account, APoi).
+
+new_part_poi(<<0:?STATE_HASH_BYTES/unit:8>>) ->
+    empty;
+new_part_poi(<<_:?STATE_HASH_BYTES/unit:8>> = Hash) ->
+    {poi, aec_poi:new(Hash)}.
+
+-define(POI_VSN, 1).
+
+internal_serialize_poi(#poi{ accounts  = Accounts
+                           , calls     = Calls
+                           , channels  = Channels
+                           , contracts = Contracts
+                           , ns        = Ns
+                           , oracles   = Oracles
+                           }) ->
+
+    Fields = [ {accounts  , serialization_format(Accounts)}
+             , {calls     , serialization_format(Calls)}
+             , {channels  , serialization_format(Channels)}
+             , {contracts , serialization_format(Contracts)}
+             , {ns        , serialization_format(Ns)}
+             , {oracles   , serialization_format(Oracles)}
+             ],
+    aec_object_serialization:serialize(trees_poi,
+                                       ?POI_VSN,
+                                       internal_serialize_poi_template(?POI_VSN),
+                                       Fields).
+
+serialization_format(empty) -> [];
+serialization_format({poi, Poi}) -> [aec_poi:serialization_format(Poi)].
+
+from_serialization_format([]) -> empty;
+from_serialization_format([Poi]) -> {poi, aec_poi:from_serialization_format(Poi)}.
+
+internal_deserialize_poi(Bin) ->
+    Template = internal_serialize_poi_template(?POI_VSN),
+
+    [ {accounts  , Accounts}
+    , {calls     , Calls}
+    , {channels  , Channels}
+    , {contracts , Contracts}
+    , {ns        , Ns}
+    , {oracles   , Oracles}
+    ] = aec_object_serialization:deserialize(trees_poi, ?POI_VSN, Template, Bin),
+
+    #poi{ accounts  = from_serialization_format(Accounts)
+        , calls     = from_serialization_format(Calls)
+        , channels  = from_serialization_format(Channels)
+        , contracts = from_serialization_format(Contracts)
+        , ns        = from_serialization_format(Ns)
+        , oracles   = from_serialization_format(Oracles)
+        }.
+
+
+internal_serialize_poi_template(?POI_VSN) ->
+    PoiTemplate = aec_poi:serialization_format_template(),
+    [{X, [PoiTemplate]}
+     || X <- [ accounts
+             , calls
+             , channels
+             , contracts
+             , ns
+             , oracles
+             ]].

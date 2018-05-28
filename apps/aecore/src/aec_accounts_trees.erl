@@ -14,9 +14,12 @@
 
 %% API - Merkle tree
 -export([root_hash/1,
-         lookup_with_proof/2,
-         verify_proof/3,
          commit_to_db/1
+        ]).
+
+%% API - Proof of inclusion
+-export([ add_poi/3
+        , verify_poi/3
         ]).
 
 %% API - misc
@@ -68,23 +71,16 @@ enter(Account, Tree) ->
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
 
--spec lookup_with_proof(aec_keys:pubkey(), tree()) ->
-                               none |
-                               {value_and_proof, aec_accounts:account(), aeu_mtrees:proof()}.
-lookup_with_proof(Pubkey, Tree) ->
-    case aeu_mtrees:lookup_with_proof(Pubkey, Tree) of
-        none ->
-            none;
-        {value_and_proof, SerializedAccount, Proof} ->
-            Account = aec_accounts:deserialize(SerializedAccount),
-            Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
-            {value_and_proof, Account, Proof}
-    end.
+-spec add_poi(aec_keys:pubkey(), tree(), aec_poi:poi()) ->
+                     {'ok', binary(), aec_poi:poi()}
+                         | {'error', 'not_present' | 'wrong_root_hash'}.
+add_poi(Pubkey, Tree, Poi) ->
+    aec_poi:add_poi(Pubkey, Tree, Poi).
 
--spec verify_proof(aec_accounts:account(), aeu_mtrees:root_hash(), aeu_mtrees:proof()) ->
-                          {ok, verified} | {error, term()}.
-verify_proof(Account, RootHash, Proof) ->
-    aeu_mtrees:verify_proof(key(Account), value(Account), RootHash, Proof).
+-spec verify_poi(aec_keys:pubkey(), binary(), aec_poi:poi()) ->
+                        'ok' | {'error', term()}.
+verify_poi(AccountKey, SerializedAccount, Poi) ->
+    aec_poi:verify(AccountKey, SerializedAccount, Poi).
 
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(Tree) ->
