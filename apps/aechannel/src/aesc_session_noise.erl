@@ -105,7 +105,7 @@ establish({accept, Port, Opts}, St) ->
     %% tell_fsm({accept, EConn}, St),
     St#st{econn = EConn};
 establish({connect, Host, Port, Opts}, St) ->
-    TcpOpts = tcp_opts(listen, Opts),
+    TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
     {ok, TcpSock} = connect_tcp(Host, Port, TcpOpts),
     %% TODO: extract/check something from FinalState?
