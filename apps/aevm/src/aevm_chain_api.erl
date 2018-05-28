@@ -66,7 +66,11 @@
 
 -callback oracle_get_answer(Query :: pubkey(),
                             ChainState :: chain_state()) ->
-    {ok, none | {some, term()}, chain_state()} | {error, term()}.
+    {ok, none | {some, term()}} | {error, term()}.
+
+-callback oracle_get_question(Query :: pubkey(),
+                              ChainState :: chain_state()) ->
+    {ok, term()} | {error, term()}.
 
 
 %% TODO: not here
@@ -82,6 +86,10 @@
 -callback oracle_response_spec(Oracle :: pubkey(),
                                ChainState :: chain_state()) ->
     {ok, type_spec()} | {error, term()}.
+
+-callback oracle_query_fee(Oracle :: pubkey(),
+                           ChainState :: chain_state()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 
 -callback oracle_query_oracle(Query :: pubkey(),
                               ChainState :: chain_state()) ->

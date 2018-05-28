@@ -24,7 +24,8 @@
 %% chain API exports
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
-          oracle_query_oracle/2, oracle_respond/4, oracle_get_answer/2]).
+          oracle_query_oracle/2, oracle_respond/4, oracle_get_answer/2,
+          oracle_query_fee/2, oracle_get_question/2]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -327,6 +328,8 @@ oracles(_Cfg) ->
     none        = successful_call_(101, {option, word}, getAnswer, QArg, Env3),
     {{}, Env4}  = successful_call(101, {tuple, []}, respond, "(" ++ QArg ++ ",111,42)", Env3),
     {some, 42}  = successful_call_(101, {option, word}, getAnswer, QArg, Env4),
+    <<"why?">>  = successful_call_(101, string, getQuestion, QArg, Env4),
+    100         = successful_call_(101, word, queryFee, "101", Env4),
     #{oracles :=
           #{101 := #{
              nonce := 1,
@@ -436,8 +439,23 @@ oracle_get_answer(<<Query:256>>, State) ->
         #{Query := Q} ->
             Answer = maps:get(answer, Q, none),
             io:format("oracle_get_answer() -> ~p\n", [Answer]),
-            {ok, Answer, State};
+            {ok, Answer};
+        _ -> {ok, none}
+    end.
+
+oracle_get_question(<<Query:256>>, State) ->
+    case maps:get(oracle_queries, State, #{}) of
+        #{Query := Q} ->
+            Question = maps:get(query, Q, none),
+            io:format("oracle_get_question() -> ~p\n", [Question]),
+            {ok, Question};
         _             -> {ok, none}
+    end.
+
+oracle_query_fee(<<Oracle:256>>, State) ->
+    case maps:get(oracles, State, []) of
+        #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
+        _ -> {error, {no_such_oracle, Oracle}}
     end.
 
 oracle_query_spec(<<Oracle:256>>, State) ->

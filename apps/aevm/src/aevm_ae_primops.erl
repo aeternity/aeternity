@@ -71,13 +71,21 @@ oracle_call(?PRIM_CALL_ORACLE_QUERY_FEE, Value, Data, State) ->
 oracle_call(_, _, _, _) ->
     {error, out_of_gas}.
 
-query_chain(Callback, State) ->
+call_chain1(Callback, State) ->
     ChainAPI   = aevm_eeevm_state:chain_api(State),
     ChainState = aevm_eeevm_state:chain_state(State),
     Callback(ChainAPI, ChainState).
 
+query_chain(Callback, State) ->
+    case call_chain1(Callback, State) of
+        {ok, Res} ->
+            Return = {ok, aeso_data:to_binary(Res, 0)},
+            {ok, Return, 0, State};
+        {error, _} = Err -> Err
+    end.
+
 call_chain(Callback, State) ->
-    case query_chain(Callback, State) of
+    case call_chain1(Callback, State) of
         {ok, ChainState1} ->
             UnitReturn = {ok, <<0:256>>},
             GasSpent   = 0,         %% Already costs lots of gas
@@ -105,7 +113,7 @@ oracle_call_register(_Value, Data, State) ->
 oracle_call_query(Value, Data, State) ->
     [Oracle]  = get_args([word], Data),  %% We need the oracle address before we can decode the query
     OracleKey = <<Oracle:256>>,
-    case query_chain(fun(API, ChainState) -> API:oracle_query_spec(OracleKey, ChainState) end, State) of
+    case call_chain1(fun(API, ChainState) -> API:oracle_query_spec(OracleKey, ChainState) end, State) of
         {ok, QueryType} ->
             ArgumentTypes = [word, QueryType, word, word],
             [_Oracle, Q, QTTL, RTTL] = get_args(ArgumentTypes, Data),
@@ -122,9 +130,9 @@ oracle_call_query(Value, Data, State) ->
 oracle_call_respond(_Value, Data, State) ->
     [Query] = get_args([word], Data),
     QueryKey = <<Query:256>>,
-    case query_chain(fun(API, ChainState) -> API:oracle_query_oracle(QueryKey, ChainState) end, State) of
+    case call_chain1(fun(API, ChainState) -> API:oracle_query_oracle(QueryKey, ChainState) end, State) of
         {ok, Oracle} ->
-            case query_chain(fun(API, ChainState) -> API:oracle_response_spec(Oracle, ChainState) end, State) of
+            case call_chain1(fun(API, ChainState) -> API:oracle_response_spec(Oracle, ChainState) end, State) of
                 {ok, RType} ->
                     ArgumentTypes = [word, word, RType],
                     [_, Sign, R] = get_args(ArgumentTypes, Data),
@@ -147,21 +155,21 @@ oracle_call_get_answer(_Value, Data, State) ->
     ArgumentTypes = [word],
     [Q] = get_args(ArgumentTypes, Data),
     Callback = fun(API, ChainState) -> API:oracle_get_answer(<<Q:256>>, ChainState) end,
-    call_chain(Callback, State).
+    query_chain(Callback, State).
 
 
 oracle_call_get_question(_Value, Data, State) ->
     ArgumentTypes = [word],
     [Q] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_get_question(Q, ChainState) end,
-    call_chain(Callback, State).
+    Callback = fun(API, ChainState) -> API:oracle_get_question(<<Q:256>>, ChainState) end,
+    query_chain(Callback, State).
 
 
 oracle_call_query_fee(_Value, Data, State) ->
     ArgumentTypes = [word],
     [Oracle] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_query_fee(Oracle, ChainState) end,
-    call_chain(Callback, State).
+    Callback = fun(API, ChainState) -> API:oracle_query_fee(<<Oracle:256>>, ChainState) end,
+    query_chain(Callback, State).
 
 get_args(Types, Data) ->
     [_ | Args] = tuple_to_list(aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data)),
