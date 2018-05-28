@@ -18,7 +18,7 @@
                       | {error, any()}.
 call(Value, Data, State) ->
     try
-        DecodeAs = fun(T) -> aeso_data:from_binary(?BASE_ADDRESS, T, Data) end,
+        DecodeAs = fun(T) -> {ok, V} = aeso_data:from_binary(?BASE_ADDRESS, T, Data), V end,
         case DecodeAs({tuple, [word]}) of
             {?PRIM_CALL_SPEND} ->
                 {?PRIM_CALL_SPEND, Recipient} = DecodeAs({tuple, [word, word]}),
@@ -172,6 +172,7 @@ oracle_call_query_fee(_Value, Data, State) ->
     query_chain(Callback, State).
 
 get_args(Types, Data) ->
-    [_ | Args] = tuple_to_list(aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data)),
+    {ok, Val} = aeso_data:from_binary(?BASE_ADDRESS, {tuple, [word | Types]}, Data),
+    [_ | Args] = tuple_to_list(Val),
     Args.
 

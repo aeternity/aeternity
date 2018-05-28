@@ -115,7 +115,11 @@ successful_call(Contract, Type, Fun, Args, Env) ->
 
 successful_call(Contract, Type, Fun, Args, Env, Options) ->
     case make_call(Contract, Fun, Args, Env, Options) of
-        {ok, Result, Env1} -> {aeso_data:from_binary(Type, Result), Env1};
+        {ok, Result, Env1} ->
+            case aeso_data:from_binary(Type, Result) of
+                {ok, V} -> {V, Env1};
+                {error, _} = Err -> exit(Err)
+            end;
         {error, Err, S} ->
             io:format("S =\n  ~p\n", [S]),
             exit({error, Err})

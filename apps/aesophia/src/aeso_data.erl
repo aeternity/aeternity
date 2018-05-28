@@ -58,49 +58,66 @@ binary_to_words(Bin) ->
 %% Interpret a return value (a binary) using a type rep.
 
 %% Base address is the address of the first word of the given heap.
+-spec from_binary(BaseAddr :: non_neg_integer(), T :: type(), Heap :: binary()) ->
+        {ok, term()} | {error, term()}.
 from_binary(BaseAddr, T, Heap = <<V:256, _/binary>>) ->
-    from_binary1(T, <<0:BaseAddr/unit:8, Heap/binary>>, V).
+    try {ok, from_binary(#{}, T, <<0:BaseAddr/unit:8, Heap/binary>>, V)}
+    catch _:Err -> {error, Err}
+    end;
+from_binary(_, _, Bin) ->
+    {error, {binary_too_short, Bin}}.
 
-from_binary(T,Heap= <<V:256,_/binary>>) ->
-    from_binary1(T,Heap,V).
+-spec from_binary(type(), binary()) -> {ok, term()} | {error, term()}.
+from_binary(T, Heap) ->
+    from_binary(0, T, Heap).
 
-from_binary1(word,_,V) ->
+from_binary(_, word, _, V) ->
     V;
-from_binary1(signed_word, _, V) ->
+from_binary(_, signed_word, _, V) ->
     <<N:256/signed>> = <<V:256>>,
     N;
-from_binary1(string,Heap,V) ->
+from_binary(_, string, Heap, V) ->
     StringSize = heap_word(Heap,V),
     BitAddr = 8*(V+32),
     <<_:BitAddr,Bytes:StringSize/binary,_/binary>> = Heap,
     Bytes;
-from_binary1({tuple,Cpts},Heap,V) ->
-    list_to_tuple([from_binary1(T,Heap,heap_word(Heap,V+32*I))
+from_binary(Visited, {tuple,Cpts}, Heap, V) ->
+    check_circular_refs(Visited, V),
+    list_to_tuple([from_binary(Visited#{V => true}, T, Heap, heap_word(Heap, V+32*I))
 		   || {T,I} <- lists:zip(Cpts,lists:seq(0,length(Cpts)-1))]);
-from_binary1({list,Elem},Heap,V) ->
+from_binary(Visited, {list, Elem}, Heap, V) ->
     <<Nil:256>> = <<(-1):256>>,
     if V==Nil ->
 	    [];
        true ->
-	    {H,T} = from_binary1({tuple,[Elem,{list,Elem}]},Heap,V),
+	    {H,T} = from_binary(Visited, {tuple,[Elem,{list,Elem}]},Heap,V),
 	    [H|T]
     end;
-from_binary1({option, A}, Heap, V) ->
+from_binary(Visited, {option, A}, Heap, V) ->
     <<None:256>> = <<(-1):256>>,
     if V == None -> none;
        true      ->
-         {Elem} = from_binary1({tuple, [A]}, Heap, V),
+         {Elem} = from_binary(Visited, {tuple, [A]}, Heap, V),
          {some, Elem}
     end;
-from_binary1(typerep, Heap, V) ->
-    Tag = from_binary1(word, Heap, heap_word(Heap, V)),
-    Arg = fun(T) -> from_binary1(T, Heap, heap_word(Heap, V + 32)) end,
+from_binary(Visited, typerep, Heap, V) ->
+    check_circular_refs(Visited, V),
+    Tag = heap_word(Heap, V),
+    Arg = fun(T) -> from_binary(Visited#{V => true}, T, Heap, heap_word(Heap, V + 32)) end,
     case Tag of
         ?TYPEREP_WORD_TAG   -> word;
         ?TYPEREP_STRING_TAG -> string;
         ?TYPEREP_LIST_TAG   -> {list,   Arg(typerep)};
         ?TYPEREP_OPTION_TAG -> {option, Arg(typerep)};
         ?TYPEREP_TUPLE_TAG  -> {tuple,  Arg({list, typerep})}
+    end.
+
+check_circular_refs(Visited, V) ->
+    case maps:is_key(V, Visited) of
+        true ->
+            io:format("~p in ~p\n", [V, Visited]),
+            exit(circular_references);
+        false -> ok
     end.
 
 heap_word(Heap,Addr) ->

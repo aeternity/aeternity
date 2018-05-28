@@ -316,7 +316,8 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
     Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
     Result   =
         case aect_call:return_type(Call) of
-            ok     -> aeso_data:from_binary(Type, aect_call:return_value(Call));
+            ok     -> {ok, Res} = aeso_data:from_binary(Type, aect_call:return_value(Call)),
+                      Res;
             error  -> error;
             revert -> revert
         end,
