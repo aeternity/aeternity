@@ -19,6 +19,7 @@
         , sophia_identity/1
         , sophia_state/1
         , sophia_spend/1
+        , sophia_oracles/1
         , create_store/1
         , update_store/1
         , read_store/1
@@ -57,7 +58,8 @@ groups() ->
     , {state_tree, [sequence], [ state_tree ]}
     , {sophia,     [sequence], [ sophia_identity,
                                  sophia_state,
-                                 sophia_spend ]}
+                                 sophia_spend,
+                                 sophia_oracles ]}
     , {store, [sequence], [ create_store
                           , update_store
                           , read_store
@@ -383,6 +385,29 @@ sophia_spend(_Cfg) ->
     2021000      = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Acc2),
     4000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct1),
     5000         = ?call(call_contract, Acc1, Ct1, get_balance_of, word, Ct2),
+    ok.
+
+%% TODO:
+%%  - TTL stuff
+%%  - signatures (when oracle is different from contract)
+%%  - Handling of fees
+%%  - Failing calls
+sophia_oracles(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc               = ?call(new_account, 1000000),
+    Ct = <<CtId:256>> = ?call(create_contract, Acc, oracles, {}, #{amount => 100000}),
+    QueryFee          = 100,
+    TTL               = 15,
+    CtId              = ?call(call_contract, Acc, Ct, registerOracle, word, {Ct, 0, 10, QueryFee, TTL}),
+    Question          = <<"Manchester United vs Brommapojkarna">>,
+    QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}),
+    Question          = ?call(call_contract, Acc, Ct, getQuestion, string, QId),
+    QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {QId, 0, 4001}),
+    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
+    {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
     ok.
 
 %%%===================================================================
