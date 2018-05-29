@@ -34,6 +34,7 @@
          lookup_with_proof/2,
          lookup_with_proof/3,
          verify_proof/4,
+         lookup_proof/3,
          commit_to_db/1,
          empty_with_backend/1
         ]).
@@ -196,6 +197,14 @@ lookup_with_proof(Key, Tree, ProofDB) when ?IS_KEY(Key) ->
 verify_proof(Key, Value, RootHash, Proof) ->
     case aeu_mp_trees:verify_proof(Key, Value, RootHash, Proof) of
         ok -> {ok, verified};
+        Other -> {error, Other}
+    end.
+
+-spec lookup_proof(key(), root_hash(), proof()) -> {ok, value()} |
+                                                   {error, term()}.
+lookup_proof(Key, RootHash, Proof) ->
+    case aeu_mp_trees:verify_proof(Key, perform_lookup, RootHash, Proof) of
+        {bad_value, Val} -> {ok, Val};
         Other -> {error, Other}
     end.
 

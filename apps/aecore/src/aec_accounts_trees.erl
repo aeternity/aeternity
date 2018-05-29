@@ -20,6 +20,7 @@
 %% API - Proof of inclusion
 -export([ add_poi/3
         , verify_poi/3
+        , lookup_poi/2
         ]).
 
 %% API - misc
@@ -81,6 +82,14 @@ add_poi(Pubkey, Tree, Poi) ->
                         'ok' | {'error', term()}.
 verify_poi(AccountKey, SerializedAccount, Poi) ->
     aec_poi:verify(AccountKey, SerializedAccount, Poi).
+
+-spec lookup_poi(aec_keys:pubkey(), aec_poi:poi()) ->
+                        {'ok', aec_accounts:account()} | {'error', term()}.
+lookup_poi(AccountKey, Poi) ->
+    case aec_poi:lookup(AccountKey, Poi) of
+        {ok, SerializedAccount} -> {ok, aec_accounts:deserialize(AccountKey, SerializedAccount)};
+        Err -> Err
+    end.
 
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(Tree) ->

@@ -148,10 +148,11 @@ construct_proof(Key, ProofDB, #mpt{db = DB, hash = Hash}) ->
     int_c_proof(Key, decode_node(Hash, DB), DB, ProofDB1).
 
 -type verify_error() :: 'bad_proof'
+                      | 'not_found'
                       | {'bad_value', term()}
                       | {'bad_hash', hash()}.
 
--spec verify_proof(key(), value(), hash(), db()) -> 'ok'
+-spec verify_proof(key(), value() | perform_lookup, hash(), db()) -> 'ok'
                                                   | {'error', verify_error()}.
 verify_proof(Key, Val, Hash, ProofDB) ->
     try decode_node_and_check_hash(Hash, ProofDB) of
@@ -449,6 +450,8 @@ proof_db_insert(Hash, DB, ProofDB) when byte_size(Hash) =:= 32 ->
 
 int_verify_proof(_Path, <<>>, <<>>, _ProofDB) ->
     ok;
+int_verify_proof(_Path, <<>>, _, _ProofDB) ->
+    bad_proof;
 int_verify_proof(<<>>, {branch, Branch}, Val, _ProofDB) ->
     case branch_value(Branch) of
         Val  -> ok;
@@ -480,7 +483,7 @@ int_verify_proof(Path, {Type, NodePath, NodeVal}, Val, ProofDB)
         _ ->
             case Val =:= <<>> of
                 true  -> ok;
-                false -> {bad_value, <<>>}
+                false -> not_found
             end
     end.
 

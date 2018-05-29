@@ -79,5 +79,7 @@ make_signed_mutual_close() ->
                                           responder_amount  => 24,
                                           ttl               => 1000,
                                           fee               => 10,
+                                          state_hash        => <<123456>>,
+                                          round             => 42,
                                           nonce             => 1234}),
     aetx_sign:sign(Tx, [PrivKey1, PrivKey2]).

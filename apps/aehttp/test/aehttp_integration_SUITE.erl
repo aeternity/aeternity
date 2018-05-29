@@ -1123,16 +1123,19 @@ state_channel_id(Tx) ->
     aesc_channels:id(Initiator, Nonce, Responder).
 
 state_channels_create(MinerPubkey, ResponderPubkey) ->
+    StateHash = <<123456>>,
     Encoded = #{initiator => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 2,
                 responder => aec_base58c:encode(account_pubkey, ResponderPubkey),
                 responder_amount => 3,
                 push_amount => 5, channel_reserve => 5,
                 lock_period => 20,
+                state_hash => aec_base58c:encode(state, StateHash),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{initiator => MinerPubkey,
-                          responder => ResponderPubkey}),
+                          responder => ResponderPubkey,
+                          state_hash => StateHash}),
     {ok, Tx} = unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_create/1,
                                fun aesc_create_tx:new/1, MinerPubkey),
@@ -1143,13 +1146,17 @@ state_channels_create(MinerPubkey, ResponderPubkey) ->
 
 state_channels_deposit(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => MinerAddress,
                 amount => 2,
+                state_hash => aec_base58c:encode(state, StateHash),
+                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => ChannelId,
-                          from => MinerPubkey}),
+                          from => MinerPubkey,
+                          state_hash => StateHash}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_deposit/1,
                                fun aesc_deposit_tx:new/1, MinerPubkey,
@@ -1162,14 +1169,17 @@ state_channels_deposit(ChannelId, MinerPubkey) ->
 
 state_channels_withdrawal(ChannelId, MinerPubkey) ->
     MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
-    MinerAddress = aec_base58c:encode(account_pubkey, MinerPubkey),
+    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 to => MinerAddress,
                 amount => 2,
+                state_hash => aec_base58c:encode(state, StateHash),
+                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{channel_id => ChannelId,
-                          to => MinerPubkey}),
+                          to => MinerPubkey,
+                          state_hash => StateHash}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_withdrawal/1,
                                fun aesc_withdraw_tx:new/1, MinerPubkey,
@@ -1181,12 +1191,16 @@ state_channels_withdrawal(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
+    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 initiator_amount => 4,
                 responder_amount => 3,
+                state_hash => aec_base58c:encode(state, StateHash),
+                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
-                        #{channel_id => ChannelId}),
+                        #{channel_id => ChannelId,
+                          state_hash => StateHash}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_mutual/1,
                                fun aesc_close_mutual_tx:new/1, InitiatorPubkey,
@@ -1198,13 +1212,16 @@ state_channels_close_mutual(ChannelId, InitiatorPubkey) ->
     ok.
 
 state_channels_close_solo(ChannelId, MinerPubkey) ->
+    PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
+                poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from => MinerPubkey,
-                          channel_id => ChannelId}),
+                          channel_id => ChannelId,
+                          poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_close_solo/1,
                                fun aesc_close_solo_tx:new/1, MinerPubkey),
@@ -1212,13 +1229,16 @@ state_channels_close_solo(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_slash(ChannelId, MinerPubkey) ->
+    PoI = aec_trees:new_poi(aec_trees:new_without_backend()),
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 payload => <<"hejsan svejsan">>, %%TODO proper payload
+                poi => aec_base58c:encode(poi, aec_trees:serialize_poi(PoI)),
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from => MinerPubkey,
-                          channel_id => ChannelId}),
+                          channel_id => ChannelId,
+                          poi => PoI}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_slash/1,
                                fun aesc_slash_tx:new/1, MinerPubkey),
@@ -1226,14 +1246,18 @@ state_channels_slash(ChannelId, MinerPubkey) ->
     ok.
 
 state_channels_settle(ChannelId, MinerPubkey) ->
+    StateHash = <<123456>>,
     Encoded = #{channel_id => aec_base58c:encode(channel, ChannelId),
                 from => aec_base58c:encode(account_pubkey, MinerPubkey),
                 initiator_amount => 4,
                 responder_amount => 3,
+                state_hash => aec_base58c:encode(state, StateHash),
+                round => 42,
                 fee => 1},
     Decoded = maps:merge(Encoded,
                         #{from => MinerPubkey,
-                          channel_id => ChannelId}),
+                          channel_id => ChannelId,
+                          state_hash => StateHash}),
     unsigned_tx_positive_test(Decoded, Encoded,
                                fun get_channel_settle/1,
                                fun aesc_settle_tx:new/1, MinerPubkey,
@@ -2882,11 +2906,6 @@ sc_ws_open(Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 4),
 
     channel_send_locking_infos(IConnPid, RConnPid),
-
-    UpdateTx = channel_sign_tx(IConnPid, IPrivkey, <<"update">>),
-
-    {ok, #{<<"event">> := <<"update">>}} = ?WS:wait_for_channel_event(RConnPid, info),
-    UpdateTx = channel_sign_tx(RConnPid, RPrivkey, <<"update_ack">>),
 
     channel_send_chan_open_infos(RConnPid, IConnPid),
 

@@ -197,6 +197,9 @@ close_solo(Cfg) ->
 
     InitiatorEndBalance = rand:uniform(ChannelAmount),
     ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
+
+    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
+                                              {PubKey2, ResponderEndBalance}]),
     %% Create close_solo tx and apply it on state trees
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     responder_amount => ResponderEndBalance},
@@ -205,7 +208,7 @@ close_solo(Cfg) ->
     Test =
         fun(From, FromPrivKey) ->
             TxSpec = aesc_test_utils:close_solo_tx_spec(ChannelId, From, Payload,
-                                                    #{fee => Fee}, S),
+                                                    PoI, #{fee => Fee}, S),
             {ok, Tx} = aesc_close_solo_tx:new(TxSpec),
             SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
@@ -242,6 +245,9 @@ close_solo_negative(Cfg) ->
 
     InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
     ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
+
+    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
+                                              {PubKey2, ResponderEndBalance}]),
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     responder_amount => ResponderEndBalance},
     Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
@@ -249,7 +255,7 @@ close_solo_negative(Cfg) ->
     %% Test bad from account key
     BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aesc_test_utils:close_solo_tx_spec(ChannelId, BadPubKey,
-                                                 Payload, S),
+                                                 PoI, Payload, S),
     {ok, Tx1} = aesc_close_solo_tx:new(TxSpec1),
     {error, account_not_found} =
         aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
@@ -261,10 +267,12 @@ close_solo_negative(Cfg) ->
                             responder_amount => PAmt},
             PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpecW),
+            PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
+                                              {PubKey2, PAmt}]),
             TxSpecW = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                         PayloadW, S),
+                                                         PayloadW, PoI2, S),
             {ok, TxW} = aesc_close_solo_tx:new(TxSpecW),
-            {error, payload_amounts_change_channel_funds} =
+            {error, poi_amounts_change_channel_funds} =
                 aetx:check(TxW, Trees, Height, ?PROTOCOL_VERSION)
         end,
     TestWrongAmounts(InitiatorEndBalance -1, ResponderEndBalance),
@@ -276,7 +284,8 @@ close_solo_negative(Cfg) ->
     {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
     PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
 
-    TxSpecNotPeer = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey3, Payload, SNotPeer),
+    TxSpecNotPeer = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey3,
+                                                       Payload, PoI, SNotPeer),
     TreesNotPeer = aesc_test_utils:trees(SNotPeer),
     {ok, TxNotPeer} = aesc_close_solo_tx:new(TxSpecNotPeer),
     {error, account_not_peer} =
@@ -284,14 +293,14 @@ close_solo_negative(Cfg) ->
 
     %% Test too high from account nonce
     TxSpecWrongNonce = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                          Payload, #{nonce => 0}, S),
+                                                          Payload, PoI, #{nonce => 0}, S),
     {ok, TxWrongNonce} = aesc_close_solo_tx:new(TxSpecWrongNonce),
     {error, account_nonce_too_high} =
         aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test payload has different channelId
     TxSpecDiffChanId = aesc_test_utils:close_solo_tx_spec(?BOGUS_CHANNEL, PubKey1,
-                                                          Payload, S),
+                                                          Payload, PoI, S),
     {ok, TxDiffChanId} = aesc_close_solo_tx:new(TxSpecDiffChanId),
     {error, bad_state_channel_id} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
@@ -301,7 +310,7 @@ close_solo_negative(Cfg) ->
     PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   [PrivKey1, PrivKey2], PayloadSpec),
     TxSpecNoChan = aesc_test_utils:close_solo_tx_spec(MissingChannelId, PubKey1,
-                                               PayloadMissingChanId, S),
+                                               PayloadMissingChanId, PoI, S),
     {ok, TxNoChan} = aesc_close_solo_tx:new(TxSpecNoChan),
     {error, channel_does_not_exist} =
         aetx:check(TxNoChan, Trees, Height, ?PROTOCOL_VERSION),
@@ -311,7 +320,7 @@ close_solo_negative(Cfg) ->
     Ch2 = aesc_test_utils:close_solo(Ch1),
     SClosed = aesc_test_utils:set_channel(Ch2, S),
     TxSpecClosed = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                      Payload, SClosed),
+                                                      Payload, PoI, SClosed),
     TreesClosed = aesc_test_utils:trees(SClosed),
     {ok, TxClosed} = aesc_close_solo_tx:new(TxSpecClosed),
     {error, channel_not_active} =
@@ -323,7 +332,7 @@ close_solo_negative(Cfg) ->
             PayloadMissingS = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   PrivKeys, PayloadSpec),
             TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey1,
-                                                      PayloadMissingS, S),
+                                                      PayloadMissingS, PoI, S),
             {ok, TxMissingS} = aesc_close_solo_tx:new(TxSpecMissingS),
             {error, signature_check_failed} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
@@ -335,10 +344,16 @@ close_solo_negative(Cfg) ->
     %% Test reject payload with wrong signers
     TestPayloadWrongPeers =
         fun(I, P, PrivKeys) ->
+            ChannelAmount = aesc_channels:total_amount(Ch),
+            IAmt = rand:uniform(ChannelAmount),
+            RAmt = ChannelAmount - IAmt,
+            PoI3 = aesc_test_utils:proof_of_inclusion([{I, IAmt}, {P, RAmt}]),
             PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
-                                                  PrivKeys, PayloadSpec),
+                                                  PrivKeys,
+                                                  PayloadSpec#{initiator_amount => IAmt,
+                                                               responder_amount => RAmt}),
             TxSpecMissingS = aesc_test_utils:close_solo_tx_spec(ChannelId, I,
-                                                      PayloadMissingS, S),
+                                                      PayloadMissingS, PoI3, S),
             {ok, TxMissingS} = aesc_close_solo_tx:new(TxSpecMissingS),
             {error, wrong_channel_peers} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
@@ -355,7 +370,7 @@ close_solo_negative(Cfg) ->
     Payload2 = aesc_test_utils:payload(ChannelId2, PubKey21, PubKey22,
                                       [PrivKey21, PrivKey22], PayloadSpec),
     TxPayload2Spec = aesc_test_utils:close_solo_tx_spec(ChannelId, PubKey21,
-                                                      Payload2, S2),
+                                                      Payload2, PoI, S2),
     {ok, TxPayload2} = aesc_close_solo_tx:new(TxPayload2Spec),
     {error, bad_state_channel_id} =
                 aetx:check(TxPayload2, Trees2, Height + 2,
@@ -689,6 +704,10 @@ slash(Cfg) ->
 
     InitiatorEndBalance = rand:uniform(ChannelAmount),
     ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
+
+    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
+                                              {PubKey2, ResponderEndBalance}]),
+
     %% Create close_solo tx and apply it on state trees
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     responder_amount => ResponderEndBalance,
@@ -699,7 +718,7 @@ slash(Cfg) ->
     Test =
         fun(From, FromPrivKey) ->
             TxSpec = aesc_test_utils:slash_tx_spec(ChannelId, From, Payload,
-                                                    #{fee    => Fee}, S),
+                                                    PoI, #{fee    => Fee}, S),
             {ok, Tx} = aesc_slash_tx:new(TxSpec),
             SignedTx = aetx_sign:sign(Tx, [FromPrivKey]),
             {ok, [SignedTx], Trees1} = aesc_test_utils:apply_on_trees_without_sigs_check(
@@ -740,6 +759,8 @@ slash_negative(Cfg) ->
 
     InitiatorEndBalance = rand:uniform(ChannelAmount - 2) + 1,
     ResponderEndBalance = ChannelAmount - InitiatorEndBalance,
+    PoI = aesc_test_utils:proof_of_inclusion([{PubKey1, InitiatorEndBalance},
+                                              {PubKey2, ResponderEndBalance}]),
     PayloadSpec = #{initiator_amount => InitiatorEndBalance,
                     responder_amount => ResponderEndBalance},
     Payload = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
@@ -747,7 +768,7 @@ slash_negative(Cfg) ->
 
     %% Test not closed channel
     TxSpec0 = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                 Payload, S0),
+                                                 Payload, PoI, S0),
     {ok, Tx0} = aesc_slash_tx:new(TxSpec0),
     {error, channel_not_closing} =
         aetx:check(Tx0, Trees0, Height, ?PROTOCOL_VERSION),
@@ -755,7 +776,7 @@ slash_negative(Cfg) ->
     %% Test bad from account key
     BadPubKey = <<42:32/unit:8>>,
     TxSpec1 = aesc_test_utils:slash_tx_spec(ChannelId, BadPubKey,
-                                                 Payload, S),
+                                                 Payload, PoI, S),
     {ok, Tx1} = aesc_slash_tx:new(TxSpec1),
     {error, account_not_found} =
         aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),
@@ -767,8 +788,10 @@ slash_negative(Cfg) ->
                             responder_amount => PAmt},
             PayloadW = aesc_test_utils:payload(ChannelId, PubKey1, PubKey2,
                                       [PrivKey1, PrivKey2], PayloadSpecW),
+            PoI2 = aesc_test_utils:proof_of_inclusion([{PubKey1, IAmt},
+                                              {PubKey2, PAmt}]),
             TxSpecW = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                         PayloadW, S),
+                                                         PayloadW, PoI2, S),
             {ok, TxW} = aesc_slash_tx:new(TxSpecW),
             {error, wrong_state_amount} =
                 aetx:check(TxW, Trees, Height, ?PROTOCOL_VERSION)
@@ -782,7 +805,8 @@ slash_negative(Cfg) ->
     {PubKey3, SNotPeer} = aesc_test_utils:setup_new_account(S),
     PrivKey3 = aesc_test_utils:priv_key(PubKey3, SNotPeer),
 
-    TxSpecNotPeer = aesc_test_utils:slash_tx_spec(ChannelId, PubKey3, Payload, SNotPeer),
+    TxSpecNotPeer = aesc_test_utils:slash_tx_spec(ChannelId, PubKey3, Payload,
+                                                  PoI, SNotPeer),
     TreesNotPeer = aesc_test_utils:trees(SNotPeer),
     {ok, TxNotPeer} = aesc_slash_tx:new(TxSpecNotPeer),
     {error, account_not_peer} =
@@ -790,14 +814,14 @@ slash_negative(Cfg) ->
 
     %% Test too high from account nonce
     TxSpecWrongNonce = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                          Payload, #{nonce => 0}, S),
+                                                          Payload, PoI, #{nonce => 0}, S),
     {ok, TxWrongNonce} = aesc_slash_tx:new(TxSpecWrongNonce),
     {error, account_nonce_too_high} =
         aetx:check(TxWrongNonce, Trees, Height, ?PROTOCOL_VERSION),
 
     %% Test payload has different channelId
     TxSpecDiffChanId = aesc_test_utils:slash_tx_spec(?BOGUS_CHANNEL, PubKey1,
-                                                          Payload, S),
+                                                          Payload, PoI, S),
     {ok, TxDiffChanId} = aesc_slash_tx:new(TxSpecDiffChanId),
     {error, bad_state_channel_id} =
         aetx:check(TxDiffChanId, Trees, Height, ?PROTOCOL_VERSION),
@@ -807,7 +831,7 @@ slash_negative(Cfg) ->
     PayloadMissingChanId = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   [PrivKey1, PrivKey2], PayloadSpec),
     TxSpecNoChan = aesc_test_utils:slash_tx_spec(MissingChannelId, PubKey1,
-                                               PayloadMissingChanId, S),
+                                               PayloadMissingChanId, PoI, S),
     {ok, TxNoChan} = aesc_slash_tx:new(TxSpecNoChan),
     {error, channel_does_not_exist} =
         aetx:check(TxNoChan, Trees, Height, ?PROTOCOL_VERSION),
@@ -818,7 +842,7 @@ slash_negative(Cfg) ->
             PayloadMissingS = aesc_test_utils:payload(MissingChannelId, PubKey1, PubKey2,
                                                   PrivKeys, PayloadSpec),
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, PubKey1,
-                                                      PayloadMissingS, S),
+                                                      PayloadMissingS, PoI, S),
             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
             {error, signature_check_failed} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
@@ -830,10 +854,16 @@ slash_negative(Cfg) ->
     %% Test reject payload with wrong signers
     TestPayloadWrongPeers =
         fun(I, P, PrivKeys) ->
+            ChannelAmount = aesc_channels:total_amount(Ch),
+            IAmt = rand:uniform(ChannelAmount),
+            RAmt = ChannelAmount - IAmt,
+            PoI3 = aesc_test_utils:proof_of_inclusion([{I, IAmt}, {P, RAmt}]),
             PayloadMissingS = aesc_test_utils:payload(ChannelId, I, P,
-                                                  PrivKeys, PayloadSpec),
+                                                  PrivKeys,
+                                                  PayloadSpec#{initiator_amount => IAmt,
+                                                               responder_amount => RAmt}),
             TxSpecMissingS = aesc_test_utils:slash_tx_spec(ChannelId, I,
-                                                      PayloadMissingS, S),
+                                                      PayloadMissingS, PoI3, S),
             {ok, TxMissingS} = aesc_slash_tx:new(TxSpecMissingS),
             {error, wrong_channel_peers} =
                 aetx:check(TxMissingS, Trees, Height, ?PROTOCOL_VERSION)
@@ -850,7 +880,7 @@ slash_negative(Cfg) ->
     Payload2 = aesc_test_utils:payload(ChannelId2, PubKey21, PubKey22,
                                       [PrivKey21, PrivKey22], PayloadSpec),
     TxPayload2Spec = aesc_test_utils:slash_tx_spec(ChannelId, PubKey21,
-                                                      Payload2, S2),
+                                                      Payload2, PoI, S2),
     {ok, TxPayload2} = aesc_slash_tx:new(TxPayload2Spec),
     {error, bad_state_channel_id} =
                 aetx:check(TxPayload2, Trees2, Height + 2, ?PROTOCOL_VERSION),
@@ -872,6 +902,7 @@ settle(Cfg) ->
 
 
     100 = ChannelAmount = aesc_channels:total_amount(Ch0),
+
     %% Create close_mutual tx and apply it on state trees
     Test =
         fun(From, IAmt, PAmt, Fee) ->

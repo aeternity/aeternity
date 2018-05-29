@@ -7,6 +7,7 @@
 -module(aesc_withdraw_tx).
 
 -behavior(aetx).
+-behaviour(aesc_payload).
 
 %% Behavior API
 -export([new/1,
@@ -25,6 +26,12 @@
          for_client/1
         ]).
 
+% payload callbacks
+-export([channel_id/1,
+         state_hash/1,
+         updates/1,
+         round/1]).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -42,12 +49,16 @@
           amount      :: non_neg_integer(),
           ttl         :: aetx:tx_ttl(),
           fee         :: non_neg_integer(),
+          state_hash  :: binary(),
+          round       :: non_neg_integer(),
           nonce       :: non_neg_integer()
          }).
 
 -opaque tx() :: #channel_withdraw_tx{}.
 
 -export_type([tx/0]).
+
+-compile({no_auto_import, [round/1]}).
 
 %%%===================================================================
 %%% Behaviour API
@@ -58,6 +69,8 @@ new(#{channel_id := ChannelIdBin,
       to         := ToPubKey,
       amount     := Amount,
       fee        := Fee,
+      state_hash := StateHash,
+      round      := Round,
       nonce      := Nonce} = Args) ->
     Tx = #channel_withdraw_tx{
             channel_id = aec_id:create(channel, ChannelIdBin),
@@ -65,6 +78,8 @@ new(#{channel_id := ChannelIdBin,
             amount     = Amount,
             ttl        = maps:get(ttl, Args, 0),
             fee        = Fee,
+            state_hash = StateHash,
+            round      = Round,
             nonce      = Nonce},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -99,14 +114,16 @@ amount(#channel_withdraw_tx{amount = Amt}) ->
 
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_withdraw_tx{amount     = Amount,
-                           fee        = Fee,
-                           nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+check(#channel_withdraw_tx{amount       = Amount,
+                           fee          = Fee,
+                           state_hash   = _StateHash,
+                           round        = Round,
+                           nonce        = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     ToPubKey = to(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(ToPubKey, Trees, Nonce, Fee) end,
-         fun() -> check_channel(ChannelId, Amount, ToPubKey, Trees) end],
+         fun() -> check_channel(ChannelId, Amount, ToPubKey, Round, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -116,9 +133,11 @@ check(#channel_withdraw_tx{amount     = Amount,
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()}.
-process(#channel_withdraw_tx{amount     = Amount,
-                             fee        = Fee,
-                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
+process(#channel_withdraw_tx{amount       = Amount,
+                             fee          = Fee,
+                             state_hash   = _StateHash,
+                             round        = Round,
+                             nonce        = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     ToPubKey = to(Tx),
     AccountsTree0 = aec_trees:accounts(Trees),
@@ -131,7 +150,7 @@ process(#channel_withdraw_tx{amount     = Amount,
     AccountsTree1 = aec_accounts_trees:enter(ToAccount2, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:withdraw(Channel0, Amount),
+    Channel1      = aesc_channels:withdraw(Channel0, Amount, Round),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -155,6 +174,8 @@ serialize(#channel_withdraw_tx{channel_id = ChannelId,
                                amount     = Amount,
                                ttl        = TTL,
                                fee        = Fee,
+                               state_hash = StateHash,
+                               round      = Round,
                                nonce      = Nonce}) ->
     {version(),
      [ {channel_id , ChannelId}
@@ -162,6 +183,8 @@ serialize(#channel_withdraw_tx{channel_id = ChannelId,
      , {amount     , Amount}
      , {ttl        , TTL}
      , {fee        , Fee}
+     , {state_hash  , StateHash}
+     , {round       , Round}
      , {nonce      , Nonce}
      ]}.
 
@@ -172,6 +195,8 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
             , {amount     , Amount}
             , {ttl        , TTL}
             , {fee        , Fee}
+            , {state_hash  , StateHash}
+            , {round       , Round}
             , {nonce      , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(ToId),
@@ -180,13 +205,17 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
                          amount     = Amount,
                          ttl        = TTL,
                          fee        = Fee,
+                         state_hash = StateHash,
+                         round      = Round,
                          nonce      = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_withdraw_tx{amount     = Amount,
-                                ttl        = TTL,
-                                fee        = Fee,
-                                nonce      = Nonce} = Tx) ->
+for_client(#channel_withdraw_tx{amount       = Amount,
+                                ttl          = TTL,
+                                fee          = Fee,
+                                state_hash   = StateHash,
+                                round        = Round,
+                                nonce        = Nonce} = Tx) ->
     #{<<"data_schema">> => <<"ChannelWithdrawalTxJSON">>, % swagger schema name
       <<"vsn">>         => version(),
       <<"channel_id">>  => aec_base58c:encode(channel, channel(Tx)),
@@ -194,6 +223,8 @@ for_client(#channel_withdraw_tx{amount     = Amount,
       <<"amount">>      => Amount,
       <<"ttl">>         => TTL,
       <<"fee">>         => Fee,
+      <<"state_hash">>  => aec_base58c:encode(state, StateHash),
+      <<"round">>       => Round,
       <<"nonce">>       => Nonce}.
 
 serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
@@ -202,23 +233,37 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
     , {amount     , int}
     , {ttl        , int}
     , {fee        , int}
+    , {state_hash , binary}
+    , {round      , int}
     , {nonce      , int}
     ].
+
+channel_id(#channel_withdraw_tx{} = Tx) -> channel(Tx).
+
+state_hash(#channel_withdraw_tx{state_hash = StateHash}) -> StateHash.
+
+updates(#channel_withdraw_tx{amount = Amount} = Tx) ->
+    [aesc_offchain_state:op_withdraw(to(Tx), Amount)].
+
+round(#channel_withdraw_tx{round = Round}) ->
+    Round.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
 -spec check_channel(aesc_channels:id(), aesc_channels:amount(),
-                    aec_keys:pubkey(), aec_trees:trees()) ->
+                    aec_keys:pubkey(), non_neg_integer(), aec_trees:trees()) ->
                            ok | {error, atom()}.
-check_channel(ChannelId, Amount, ToPubKey, Trees) ->
+check_channel(ChannelId, Amount, ToPubKey, Round, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         {value, Channel} ->
             Checks =
                 [fun() -> aesc_utils:check_is_active(Channel) end,
                  fun() -> aesc_utils:check_is_peer(ToPubKey, aesc_channels:peers(Channel)) end,
-                 fun() -> check_amount(Channel, Amount) end],
+                 fun() -> check_amount(Channel, Amount) end,
+                 fun() -> aesc_utils:check_round_greater_than_last(Channel, Round) end
+                ],
             aeu_validation:run(Checks);
         none ->
             {error, channel_does_not_exist}

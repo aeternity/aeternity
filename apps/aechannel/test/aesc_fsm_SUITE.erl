@@ -32,6 +32,10 @@
 -define(TIMEOUT, 10000).
 -define(LONG_TIMEOUT, 30000).
 
+-define(OP_TRANSFER, 0).
+-define(OP_WITHDRAW, 1).
+-define(OP_DEPOSIT , 2).
+
 all() ->
     [{group, all_tests}].
 
@@ -106,8 +110,8 @@ stop_node(N, Config) ->
 create_channel(Cfg) ->
     #{ i := #{fsm := FsmI}
      , r := #{fsm := FsmR} } = _Ch = create_channel_([{port, 9325}|Cfg]),
-    rpc(dev1, aesc_fsm, shutdown, [FsmI]),
-    rpc(dev1, aesc_fsm, shutdown, [FsmR]),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmI]),
+    ok = rpc(dev1, aesc_fsm, shutdown, [FsmR]),
     check_info(1000),
     ok.
 
@@ -171,12 +175,12 @@ deposit(Cfg) ->
     ok = rpc(dev1, aesc_fsm, upd_deposit, [FsmI, #{amount => Deposit}]),
     check_info(),
     {I1, _} = await_signing_request(deposit_tx, I),
-    {R1, _} = await_signing_request(deposit_created, R),
+    {_R1, _} = await_signing_request(deposit_created, R),
     mine_blocks(dev1, 4),
-    {I2, _R2} = await_initial_state(I1, R1),
-    ct:log("I2 = ~p", [I2]),
-    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
-    {IAmt2, RAmt2} = {IAmt0 + Deposit, RAmt0},
+    ct:log("I2 = ~p", [I1]),
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
+    Expected = {IAmt2, RAmt2},
+    {Expected, Expected} = {{IAmt0 + Deposit, RAmt0}, Expected},
     check_info(100).
 
 withdraw(Cfg) ->
@@ -191,12 +195,11 @@ withdraw(Cfg) ->
     ok = rpc(dev1, aesc_fsm, upd_withdraw, [FsmI, #{amount => Withdrawal}]),
     check_info(),
     {I1, _} = await_signing_request(withdraw_tx, I),
-    {R1, _} = await_signing_request(withdraw_created, R),
+    {_R1, _} = await_signing_request(withdraw_created, R),
     mine_blocks(dev1, 4),
-    {I2, _R2} = await_initial_state(I1, R1),
-    ct:log("I2 = ~p", [I2]),
-    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I2,
-    {IAmt2, RAmt2} = {IAmt0 - Withdrawal, RAmt0},
+    #{initiator_amount := IAmt2, responder_amount := RAmt2} = I1,
+    Expected = {IAmt2, RAmt2},
+    {Expected, Expected} = {{IAmt0 - Withdrawal, RAmt0}, Expected},
     check_info(100).
 
 inband_msgs(Cfg) ->
@@ -284,10 +287,12 @@ create_channel_(Cfg, Debug) ->
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
+    IAmt = 5,
+    RAmt = 5,
     Spec = #{initiator        => maps:get(pub, I),
              responder        => maps:get(pub, R),
-             initiator_amount => 5,
-             responder_amount => 5,
+             initiator_amount => IAmt,
+             responder_amount => RAmt,
              push_amount      => 2,
              lock_period      => 10,
              channel_reserve  => 3,
@@ -302,8 +307,8 @@ create_channel_(Cfg, Debug) ->
 
     log(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
 
-    I1 = I#{fsm => FsmI},
-    R1 = R#{fsm => FsmR},
+    I1 = I#{fsm => FsmI, initiator_amount => IAmt, responder_amount => RAmt},
+    R1 = R#{fsm => FsmR, initiator_amount => IAmt, responder_amount => RAmt},
 
     {I2, R2} = try await_create_tx_i(I1, R1, Debug)
                catch
@@ -312,6 +317,11 @@ create_channel_(Cfg, Debug) ->
                               [Err, element(2, process_info(self(), messages))]),
                        error(Err, erlang:get_stacktrace())
                end,
+    log(Debug, "mining blocks on dev1 for minimum depth", []),
+    mine_blocks(dev1, 4, Debug),
+    check_info(),
+    receive_info(I2, open, Debug),
+    receive_info(R2, open, Debug),
     #{i => I2, r => R2, spec => Spec}.
 
 await_create_tx_i(I, R, Debug) ->
@@ -324,12 +334,7 @@ await_funding_created_p(I, R, Debug) ->
 
 await_funding_signed_i(I, R, Debug) ->
     receive_info(I, funding_signed, Debug),
-    await_funding_locked(I, R, Debug).
-
-await_funding_locked(I, R, Debug) ->
-    log(Debug, "mining blocks on dev1 for minimum depth", []),
-    mine_blocks(dev1, 4, Debug),
-    await_initial_state(I, R, Debug).
+    {I, R}.
 
 await_initial_state(I, R) -> await_initial_state(I, R, true).
 
@@ -459,10 +464,39 @@ rpc(Node, Mod, Fun, Args, Debug) ->
 check_amounts(R, SignedTx) ->
     case aetx:specialize_callback(aetx_sign:tx(SignedTx)) of
         {aesc_offchain_tx, TxI} ->
-            IAmt = aesc_offchain_tx:initiator_amount(TxI),
-            RAmt = aesc_offchain_tx:responder_amount(TxI),
-            R#{ initiator_amount => IAmt
-                , responder_amount => RAmt };
+            apply_updates(aesc_offchain_tx:updates(TxI), R);
+        {aesc_deposit_tx, TxD} ->
+            Deposit = aesc_deposit_tx:amount(TxD),
+            From = aesc_deposit_tx:origin(TxD),
+            #{initiator_amount  := IAmt
+            , responder_amount  := RAmt
+            , pub               := MyKey
+            , role              := Role} = R,
+            {IAmt1, RAmt1} =
+                case {From, Role} of
+                    {MyKey, initiator} -> {IAmt + Deposit, RAmt};
+                    {MyKey, responder} -> {IAmt, RAmt + Deposit};
+                    {_OtherKey, initiator} -> {IAmt, RAmt + Deposit};
+                    {_OtherKey, responder} -> {IAmt + Deposit, RAmt}
+                end,
+            R#{ initiator_amount => IAmt1
+                , responder_amount => RAmt1 };
+        {aesc_withdraw_tx, TxD} ->
+            Withdrawal = aesc_withdraw_tx:amount(TxD),
+            From = aesc_withdraw_tx:origin(TxD),
+            #{initiator_amount  := IAmt
+            , responder_amount  := RAmt
+            , pub               := MyKey
+            , role              := Role} = R,
+            {IAmt1, RAmt1} =
+                case {From, Role} of
+                    {MyKey, initiator} -> {IAmt - Withdrawal, RAmt};
+                    {MyKey, responder} -> {IAmt, RAmt - Withdrawal};
+                    {_OtherKey, initiator} -> {IAmt, RAmt - Withdrawal};
+                    {_OtherKey, responder} -> {IAmt - Withdrawal, RAmt}
+                end,
+            R#{ initiator_amount => IAmt1
+                , responder_amount => RAmt1 };
         _ ->
             R
     end.
@@ -477,3 +511,27 @@ log(_, _, _) ->
 if_debug(true, X, _) -> X;
 if_debug(#{debug := true}, X, _) -> X;
 if_debug(_, _, Y) -> Y.
+
+apply_updates([], R) ->
+    R;
+apply_updates([{?OP_TRANSFER, From, To, Amount} | T], R) ->
+    #{ initiator_amount := IAmt0
+     , responder_amount := RAmt0 } = R,
+    {IAmt, RAmt} =
+        case {role(From, R), role(To, R)} of
+            {initiator, responder} ->
+                {IAmt0 - Amount, RAmt0 + Amount};
+            {responder, initiator} ->
+                {IAmt0 + Amount, RAmt0 - Amount}
+        end,
+    apply_updates(T, R#{ initiator_amount => IAmt
+                       , responder_amount => RAmt }).
+
+role(Pubkey, #{pub               := MyKey
+             , role              := Role}) ->
+    case {Pubkey, Role} of
+        {MyKey, initiator}     -> initiator;
+        {MyKey, responder}     -> responder;
+        {_OtherKey, initiator} -> responder;
+        {_OtherKey, responder} -> initiator
+    end.

@@ -11,6 +11,7 @@
         , new/1
         , root_hash/1
         , verify/3
+        , lookup/2
         ]).
 
 -export([ from_serialization_format/1
@@ -78,6 +79,13 @@ add_poi(Key, Tree, #aec_poi{root_hash = RootHash} = Poi) ->
 verify(Key, Value, #aec_poi{root_hash = RootHash} = Poi) ->
     case aeu_mtrees:verify_proof(Key, Value, RootHash, Poi#aec_poi.proof) of
         {ok, verified} -> ok;
+        {error, _} = E -> E
+    end.
+
+-spec lookup(key(), poi()) -> {'ok', term()} | {'error', term()}.
+lookup(Key, #aec_poi{root_hash = RootHash} = Poi) ->
+    case aeu_mtrees:lookup_proof(Key, RootHash, Poi#aec_poi.proof) of
+        {ok, Val} -> {ok, Val};
         {error, _} = E -> E
     end.
 

@@ -7,6 +7,7 @@
         , base58_decode/1
         , hexstrings_decode/1
         , ttl_decode/1
+        , poi_decode/1
         , parse_tx_encoding/1
         , relative_ttl_decode/1
         , nameservice_pointers_decode/1
@@ -281,6 +282,14 @@ parse_map_to_atom_keys() ->
                 {error, {400, [], #{<<"reason">> => <<"Invalid parameter: ", K/binary>>}}}
         end
     end.
+
+poi_decode(PoIKey) ->
+    fun(_Req, State) ->
+        PoIBin = maps:get(PoIKey, State),
+        PoI = aec_trees:deserialize_poi(PoIBin),
+        {ok, maps:put(PoIKey, PoI, State)}
+    end.
+
 
 ttl_decode(TTLKey) ->
     ttl_decode(TTLKey, [<<"delta">>, <<"block">>]).

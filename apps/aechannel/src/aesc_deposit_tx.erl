@@ -7,6 +7,7 @@
 -module(aesc_deposit_tx).
 
 -behavior(aetx).
+-behaviour(aesc_payload).
 
 %% Behavior API
 -export([new/1,
@@ -25,6 +26,11 @@
          for_client/1
         ]).
 
+% payload callbacks
+-export([channel_id/1,
+         state_hash/1,
+         updates/1,
+         round/1]).
 %%%===================================================================
 %%% Types
 %%%===================================================================
@@ -41,12 +47,16 @@
           amount      :: non_neg_integer(),
           ttl         :: aetx:tx_ttl(),
           fee         :: non_neg_integer(),
+          state_hash  :: binary(),
+          round       :: non_neg_integer(),
           nonce       :: non_neg_integer()
          }).
 
 -opaque tx() :: #channel_deposit_tx{}.
 
 -export_type([tx/0]).
+
+-compile({no_auto_import, [round/1]}).
 
 %%%===================================================================
 %%% Behaviour API
@@ -57,6 +67,8 @@ new(#{channel_id  := ChannelIdBin,
       from        := FromPubKey,
       amount      := Amount,
       fee         := Fee,
+      state_hash  := StateHash,
+      round       := Round,
       nonce       := Nonce} = Args) ->
     try Tx = #channel_deposit_tx{
                 channel_id  = aec_id:create(channel, ChannelIdBin),
@@ -64,6 +76,8 @@ new(#{channel_id  := ChannelIdBin,
                 amount      = Amount,
                 ttl         = maps:get(ttl, Args, 0),
                 fee         = Fee,
+                state_hash  = StateHash,
+                round       = Round,
                 nonce       = Nonce},
          {ok, aetx:new(?MODULE, Tx)}
     catch
@@ -104,12 +118,14 @@ channel(#channel_deposit_tx{channel_id = ChannelId}) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_deposit_tx{amount     = Amount,
                           fee        = Fee,
+                          state_hash  = _StateHash,
+                          round       = Round,
                           nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     FromPubKey = from(Tx),
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Amount + Fee) end,
-         fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
+         fun() -> check_channel(ChannelId, FromPubKey, Round, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
             {ok, Trees};
@@ -121,6 +137,8 @@ check(#channel_deposit_tx{amount     = Amount,
         {ok, aec_trees:trees()}.
 process(#channel_deposit_tx{amount     = Amount,
                             fee        = Fee,
+                            state_hash = _StateHash,
+                            round      = Round,
                             nonce      = Nonce} = Tx, _Context, Trees, _Height, _ConsensusVersion) ->
     ChannelId = channel(Tx),
     FromPubKey = from(Tx),
@@ -132,7 +150,7 @@ process(#channel_deposit_tx{amount     = Amount,
     AccountsTree1      = aec_accounts_trees:enter(FromAccount1, AccountsTree0),
 
     Channel0      = aesc_state_tree:get(ChannelId, ChannelsTree0),
-    Channel1      = aesc_channels:deposit(Channel0, Amount),
+    Channel1      = aesc_channels:deposit(Channel0, Amount, Round),
     ChannelsTree1 = aesc_state_tree:enter(Channel1, ChannelsTree0),
 
     Trees1 = aec_trees:set_accounts(Trees, AccountsTree1),
@@ -156,6 +174,8 @@ serialize(#channel_deposit_tx{channel_id  = ChannelId,
                               amount      = Amount,
                               ttl         = TTL,
                               fee         = Fee,
+                              state_hash  = StateHash,
+                              round       = Round,
                               nonce       = Nonce}) ->
     {version(),
      [ {channel_id  , ChannelId}
@@ -163,6 +183,8 @@ serialize(#channel_deposit_tx{channel_id  = ChannelId,
      , {amount      , Amount}
      , {ttl         , TTL}
      , {fee         , Fee}
+     , {state_hash  , StateHash}
+     , {round       , Round}
      , {nonce       , Nonce}
      ]}.
 
@@ -173,6 +195,8 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
             , {amount      , Amount}
             , {ttl         , TTL}
             , {fee         , Fee}
+            , {state_hash  , StateHash}
+            , {round       , Round}
             , {nonce       , Nonce}]) ->
     channel = aec_id:specialize_type(ChannelId),
     account = aec_id:specialize_type(FromId),
@@ -181,12 +205,16 @@ deserialize(?CHANNEL_DEPOSIT_TX_VSN,
                         amount      = Amount,
                         ttl         = TTL,
                         fee         = Fee,
+                        state_hash  = StateHash,
+                        round       = Round,
                         nonce       = Nonce}.
 
 -spec for_client(tx()) -> map().
 for_client(#channel_deposit_tx{amount       = Amount,
                                ttl          = TTL,
                                fee          = Fee,
+                               state_hash   = StateHash,
+                               round        = Round,
                                nonce        = Nonce} = Tx) ->
     #{<<"data_schema">>  => <<"ChannelDepositTxJSON">>, % swagger schema name
       <<"vsn">>          => version(),
@@ -195,6 +223,8 @@ for_client(#channel_deposit_tx{amount       = Amount,
       <<"amount">>       => Amount,
       <<"ttl">>          => TTL,
       <<"fee">>          => Fee,
+      <<"state_hash">>   => aec_base58c:encode(state, StateHash),
+      <<"round">>        => Round,
       <<"nonce">>        => Nonce}.
 
 serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
@@ -203,21 +233,35 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
     , {amount      , int}
     , {ttl         , int}
     , {fee         , int}
+    , {state_hash  , binary}
+    , {round       , int}
     , {nonce       , int}
     ].
+
+channel_id(#channel_deposit_tx{} = Tx) -> channel(Tx).
+
+state_hash(#channel_deposit_tx{state_hash = StateHash}) -> StateHash.
+
+updates(#channel_deposit_tx{amount = Amount} = Tx) ->
+    [aesc_offchain_state:op_deposit(from(Tx), Amount)].
+
+round(#channel_deposit_tx{round = Round}) ->
+    Round.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
--spec check_channel(aesc_channels:id(), aec_keys:pubkey(), aec_trees:trees()) ->
+-spec check_channel(aesc_channels:id(), aec_keys:pubkey(), non_neg_integer(),aec_trees:trees()) ->
                            ok | {error, atom()}.
-check_channel(ChannelId, FromPubKey, Trees) ->
+check_channel(ChannelId, FromPubKey, Round, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         {value, Channel} ->
             Checks =
                 [fun() -> aesc_utils:check_is_active(Channel) end,
-                 fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end],
+                 fun() -> aesc_utils:check_is_peer(FromPubKey, aesc_channels:peers(Channel)) end,
+                 fun() -> aesc_utils:check_round_greater_than_last(Channel, Round) end
+                ],
             aeu_validation:run(Checks);
         none ->
             {error, channel_does_not_exist}

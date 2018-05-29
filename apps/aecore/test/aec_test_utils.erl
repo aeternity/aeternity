@@ -40,6 +40,7 @@
         , create_state_tree/0
         , create_state_tree_with_account/1
         , create_state_tree_with_accounts/1
+        , create_state_tree_with_accounts/2
         , create_temp_key_dir/0
         , remove_temp_key_dir/1
         , copy_genesis_dir/2
@@ -335,7 +336,14 @@ create_state_tree_with_account(Account) ->
     create_state_tree_with_accounts([Account]).
 
 create_state_tree_with_accounts(Accounts) ->
-    StateTrees0 = create_state_tree(),
+    create_state_tree_with_accounts(Accounts, with_backend).
+
+create_state_tree_with_accounts(Accounts, Backend) ->
+    StateTrees0 =
+        case Backend of
+            with_backend -> create_state_tree();
+            no_backend -> aec_trees:new_without_backend()
+        end,
     AccountsTree0 = aec_trees:accounts(StateTrees0),
     AccountsTree1 = lists:foldl(fun aec_accounts_trees:enter/2,
                                 AccountsTree0, Accounts),
