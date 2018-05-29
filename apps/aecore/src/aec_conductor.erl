@@ -443,6 +443,9 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
         NewHash ->
             ok = aec_tx_pool:top_change(OldHash, NewHash),
             maybe_publish_top(Publish, NewHash),
+            {ok, NewBlock} = aec_chain:get_block(NewHash),
+            aec_metrics:try_update([ae,epoch,aecore,chain,height],
+                                   aec_blocks:height(NewBlock)),
             State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             {changed, State2#state{block_candidate = undefined}}
@@ -454,9 +457,7 @@ maybe_publish_top(block_created,_TopHash) ->
     ok;
 maybe_publish_top(block_received, TopHash) ->
     %% The received block changed the top. Publish the new top.
-    {ok, Block} = aec_chain:get_block(TopHash),
-    aec_events:publish(top_changed, TopHash),
-    update_chain_metrics(Block).
+    aec_events:publish(top_changed, TopHash).
 
 maybe_publish_block(none,_Block) -> ok;
 maybe_publish_block(block_received,_Block) ->
@@ -464,12 +465,7 @@ maybe_publish_block(block_received,_Block) ->
     ok;
 maybe_publish_block(block_created = T, Block) ->
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(T, Block),
-    update_chain_metrics(Block).
-
-update_chain_metrics(Block) ->
-    aec_metrics:try_update([ae,epoch,aecore,chain,height],
-                           aec_blocks:height(Block)).
+    aec_events:publish(T, Block).
 
 
 cleanup_after_worker(Info) ->
