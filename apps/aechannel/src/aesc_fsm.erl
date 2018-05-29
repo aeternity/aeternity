@@ -1634,10 +1634,9 @@ check_update_err_msg(#{ channel_id := ChanId
             {error, chain_id_mismatch}
     end.
 
-request_signing(Tag, Obj, #data{client    = Client,
-                                channel_id = ChanId}) ->
-    Msg = {sign, Tag, Obj},
-    Client ! {?MODULE, self(), ChanId, Msg},
+request_signing(Tag, Obj, #data{client = Client} = D) ->
+    Msg = rpt_message(sign, Tag, Obj, D),
+    Client ! {?MODULE, self(), Msg},
     lager:debug("signing(~p) requested", [Tag]),
     ok.
 
@@ -1727,12 +1726,26 @@ default_report_flags() ->
 
 report(Tag, St, D) -> report_info(do_rpt(Tag, D), Tag, St, D).
 
-report_info(DoRpt, Tag, St, #data{client = Client, channel_id = ChanId}) ->
-    lager:debug("report_info(~p, ~p, ~p, ~p)", [DoRpt, Tag, ChanId, St]),
-    if DoRpt -> Client ! {?MODULE, self(), ChanId, {Tag, St}};
-       true  -> ok
+report_info(DoRpt, Tag, Info, #data{client = Client} = D) ->
+    if DoRpt ->
+            Msg = rpt_message(report, Tag, Info, D),
+            lager:debug("report_info(true, ~p)", [Msg]),
+            Client ! {?MODULE, self(), Msg};
+       true  ->
+            lager:debug("report_info(~p, ~p, ~p)", [DoRpt, Tag, Info]),
+            ok
     end,
     ok.
+
+rpt_message(Type, Tag, Info, #data{on_chain_id = undefined}) ->
+    #{ type            => Type
+     , tag             => Tag
+     , info            => Info };
+rpt_message(Type, Tag, Info, #data{on_chain_id = OnChainId}) ->
+    #{ channel_id      => OnChainId
+     , type            => Type
+     , tag             => Tag
+     , info            => Info }.
 
 do_rpt(Tag, #data{opts = #{report := Rpt}}) ->
     try maps:get(Tag, Rpt, false)

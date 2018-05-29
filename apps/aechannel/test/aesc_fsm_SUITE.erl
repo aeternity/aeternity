@@ -208,7 +208,8 @@ inband_msgs(Cfg) ->
                 , responder := PubR }} = create_channel_([{port,9326}|Cfg]),
     check_info(),
     ok = rpc(dev1, aesc_fsm, inband_msg, [FsmI, PubR, <<"i2r hello">>]),
-    receive_from_fsm(message, R, fun(#{info := <<"i2r hello">>}) -> ok end, 1000, true),
+    receive_from_fsm(
+      message, R, fun(#{info := #{info := <<"i2r hello">>}}) -> ok end, 1000, true),
     rpc(dev1, erlang, exit, [FsmI, kill]),
     rpc(dev1, erlang, exit, [FsmR, kill]),
     check_info(1000),
@@ -316,25 +317,17 @@ create_channel_(Cfg, Debug) ->
                end,
     #{i => I2, r => R2, spec => Spec}.
 
-await_create_tx_i(I, R) -> await_create_tx_i(I, R, true).
-
 await_create_tx_i(I, R, Debug) ->
     {I1, _} = await_signing_request(create_tx, I, Debug),
     await_funding_created_p(I1, R, Debug).
-
-await_funding_created_p(I, R) -> await_funding_created_p(I, R, true).
 
 await_funding_created_p(I, R, Debug) ->
     {R1, _} = await_signing_request(funding_created, R, Debug),
     await_funding_signed_i(I, R1, Debug).
 
-await_funding_signed_i(I, R) -> await_funding_signed_i(I, R, true).
-
 await_funding_signed_i(I, R, Debug) ->
     receive_info(I, funding_signed, Debug),
     await_funding_locked(I, R, Debug).
-
-await_funding_locked(I, R) -> await_funding_locked(I, R, true).
 
 await_funding_locked(I, R, Debug) ->
     log(Debug, "mining blocks on dev1 for minimum depth", []),
@@ -356,24 +349,45 @@ await_signing_request(Tag, R, Debug) ->
 
 await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
     check_info(0, Debug),
-    receive {aesc_fsm, Fsm, ChanId, {sign, Tag, Tx}} = Msg ->
+    receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
+            R1 = set_chid_if_undefined(R, Msg),
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
-            {check_amounts(R#{chan_id => ChanId}, SignedTx), SignedTx}
+            {check_amounts(R1, SignedTx), SignedTx}
     after Timeout ->
             error(timeout)
     end.
 
-receive_info(R, Msg) ->
-    receive_from_fsm(info, R, Msg, ?TIMEOUT, true).
+set_chid_if_undefined(R, Msg) ->
+    case {maps:get(channel_id, R, undefined),
+          maps:get(channel_id, Msg, undefined)} of
+        {undefined, undefined} ->
+            R;
+        {undefined, V} ->
+            R#{channel_id => V};
+        {V, V} ->
+            R;
+        {A, B} ->
+            erlang:error({mismatch, [channel_id, A, B]})
+    end.
+
 receive_info(R, Msg, Debug) ->
     receive_from_fsm(info, R, Msg, ?TIMEOUT, Debug).
 
+receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Info, Timeout, Debug)
+  when is_atom(Info) ->
+    receive
+        {aesc_fsm, Fsm, #{type := _Type, tag := Tag, info := Info} = Msg} ->
+            log(Debug, "~p: received ~p:~p", [Role, Tag, Msg]),
+            ok
+    after Timeout ->
+            error(timeout)
+    end;
 receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Msg, Timeout, Debug) ->
     receive
-        {aesc_fsm, Fsm, _ChanId, {Tag, Msg1}} ->
-            log(Debug, "~p: received ~p:~p", [Role, Tag, Msg1]),
+        {aesc_fsm, Fsm, #{type := Type, tag := Tag} = Msg1} ->
+            log(Debug, "~p: received ~p:~p/~p", [Role, Type, Tag, Msg1]),
             match_msgs(Msg, Msg1)
     after Timeout ->
             error(timeout)
@@ -381,6 +395,8 @@ receive_from_fsm(Tag, #{role := Role, fsm := Fsm}, Msg, Timeout, Debug) ->
 
 match_msgs(F, Msg) when is_function(F, 1) ->
     F(Msg);
+match_msgs(M, #{info := M}) ->
+    ok;
 match_msgs(M, M) ->
     ok;
 match_msgs(A, B) ->
@@ -403,7 +419,7 @@ check_info(Timeout, Debug) ->
 
 mine_blocks(Node, N) -> mine_blocks(Node, N, true).
 
-mine_blocks(Node, N, #{mine_blocks := {ask, Pid}}) when is_pid(Pid) ->
+mine_blocks(_Node, _N, #{mine_blocks := {ask, Pid}}) when is_pid(Pid) ->
     Pid ! {self(), mine_blocks},
     ok;
 mine_blocks(_, _, #{mine_blocks := false}) ->
