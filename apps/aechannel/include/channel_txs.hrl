@@ -4,14 +4,12 @@
 %%%    Records for State Channels transactions
 %%% @end
 %%%=============================================================================
--include_lib("apps/aecore/include/common.hrl").
-
 -type vsn() :: non_neg_integer().
 
 -record(channel_create_tx, {
-          initiator          :: pubkey(),
+          initiator          :: aec_keys:pubkey(),
           initiator_amount   :: non_neg_integer(),
-          responder          :: pubkey(),
+          responder          :: aec_keys:pubkey(),
           responder_amount   :: non_neg_integer(),
           channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
@@ -22,7 +20,7 @@
 
 -record(channel_deposit_tx, {
           channel_id  :: binary(),
-          from        :: pubkey(),
+          from        :: aec_keys:pubkey(),
           amount      :: non_neg_integer(),
           ttl         :: non_neg_integer(),
           fee         :: non_neg_integer(),
@@ -31,7 +29,7 @@
 
 -record(channel_withdraw_tx, {
           channel_id  :: binary(),
-          to          :: pubkey(),
+          to          :: aec_keys:pubkey(),
           amount      :: non_neg_integer(),
           ttl         :: non_neg_integer(),
           fee         :: non_neg_integer(),
@@ -49,7 +47,7 @@
 
 -record(channel_close_solo_tx, {
           channel_id :: binary(),
-          from       :: pubkey(),
+          from       :: aec_keys:pubkey(),
           payload    :: binary(),
           ttl        :: non_neg_integer(),
           fee        :: non_neg_integer(),
@@ -58,7 +56,7 @@
 
 -record(channel_slash_tx, {
           channel_id :: binary(),
-          from       :: pubkey(),
+          from       :: aec_keys:pubkey(),
           payload    :: binary(),
           ttl        :: non_neg_integer(),
           fee        :: non_neg_integer(),
@@ -67,7 +65,7 @@
 
 -record(channel_settle_tx, {
           channel_id :: binary(),
-          from       :: pubkey(),
+          from       :: aec_keys:pubkey(),
           initiator_amount  :: non_neg_integer(),
           responder_amount  :: non_neg_integer(),
           ttl        :: non_neg_integer(),
@@ -80,15 +78,15 @@
 
 %% -type deposit_code() :: ?DEPOSIT_I2P | ?DEPOSIT_P2I.
 
--type from() :: pubkey().
--type to()   :: pubkey().
+-type from() :: aec_keys:pubkey().
+-type to()   :: aec_keys:pubkey().
 
 -type offchain_update() :: {from(), to(), aesc_channels:amount()}.
 
 -record(channel_offchain_tx, {
           channel_id         :: binary(),
-          initiator          :: pubkey(),
-          responder          :: pubkey(),
+          initiator          :: aec_keys:pubkey(),
+          responder          :: aec_keys:pubkey(),
           initiator_amount   :: aesc_channels:amount(),
           responder_amount   :: aesc_channels:amount(),
           updates            :: [offchain_update()],

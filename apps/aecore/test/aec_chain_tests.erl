@@ -8,7 +8,6 @@
 -module(aec_chain_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 -include("blocks.hrl").
 
 -import(aec_test_utils,
@@ -691,7 +690,7 @@ fork_is_connected_to_genesis() ->
     HardTopHash = block_hash(HardTop),
     ok = write_blocks_to_chain([HardTop]),
     ?assertEqual(false, aec_chain:hash_is_connected_to_genesis(HardTopHash)),
-    
+
     %% Add the rest of the hard chain.
     ok = write_blocks_to_chain(HardChain),
     [?assertEqual(true, aec_chain:hash_is_connected_to_genesis(block_hash(B)))

@@ -74,9 +74,6 @@
 -export([ max_block_range/0
         ]).
 
-
--include("common.hrl"). %% Just for types
-
 %%%===================================================================
 %%% Accounts
 %%%===================================================================
@@ -96,7 +93,7 @@ get_account_at_hash(PubKey, Hash) ->
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->
-                                           {'ok', [{pubkey(), non_neg_integer()}]}
+                                           {'ok', [{aec_keys:pubkey(), non_neg_integer()}]}
                                                | {'error', 'no_state_trees'}.
 all_accounts_balances_at_hash(Hash) when is_binary(Hash) ->
     case get_block_state(Hash) of
@@ -111,7 +108,7 @@ all_accounts_balances_at_hash(Hash) when is_binary(Hash) ->
 %%% Oracles
 %%%===================================================================
 
--spec get_open_oracle_queries(pubkey(), binary() | '$first', non_neg_integer()) ->
+-spec get_open_oracle_queries(aec_keys:pubkey(), binary() | '$first', non_neg_integer()) ->
                                      {'ok', list()} |
                                      {'error', 'no_state_trees'}.
 get_open_oracle_queries(Oracle, From, Max) ->
@@ -183,7 +180,7 @@ resolve_name(Type, Name) ->
 %%% Contracts
 %%%===================================================================
 
--spec get_contract(pubkey()) ->
+-spec get_contract(aec_keys:pubkey()) ->
                           {'ok', map()} |
                           {'error', atom()}.
 get_contract(PubKey) ->

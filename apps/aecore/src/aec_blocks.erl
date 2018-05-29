@@ -34,13 +34,13 @@
 -compile([export_all, nowarn_export_all]).
 -endif.
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% block() can't be opaque since aec_block_genesis also needs to
 %% be able to handle the raw #block{} record - TODO: change this
 -type block() :: #block{}.
--export_type([block/0, block_header_hash/0]).
+-type height() :: non_neg_integer().
+-export_type([block/0, block_header_hash/0, height/0]).
 
 -spec prev_hash(block()) -> block_header_hash().
 prev_hash(Block) ->
@@ -65,7 +65,7 @@ time_in_msecs(Block) ->
 root_hash(Block) ->
     Block#block.root_hash.
 
--spec miner(block()) -> pubkey().
+-spec miner(block()) -> aec_keys:pubkey().
 miner(Block) ->
     Block#block.miner.
 

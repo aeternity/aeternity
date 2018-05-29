@@ -7,7 +7,6 @@
 
 -module(aens_state_tree).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("aens.hrl").
 
 %% API

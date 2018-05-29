@@ -21,7 +21,6 @@
         ]).
 
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(internal_error(____E____), {aec_chain_state_error, ____E____}).
@@ -30,7 +29,7 @@
 %%% API
 %%%===================================================================
 
--spec get_hash_at_height(height()) -> {'ok', binary()} | 'error'.
+-spec get_hash_at_height(aec_blocks:height()) -> {'ok', binary()} | 'error'.
 get_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
     get_hash_at_height(Height, new_state_from_persistence()).
 

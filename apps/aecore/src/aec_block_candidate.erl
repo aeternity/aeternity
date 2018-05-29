@@ -16,8 +16,6 @@
 
 -export([adjust_target/2]).
 
--include("common.hrl").
-
 %% -- API functions ----------------------------------------------------------
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), term()} | {error, term()}.
@@ -32,15 +30,15 @@ create(Block) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     int_create(BlockHash, Block).
 
--spec apply_block_txs(list(aetx_sign:signed_tx()), pubkey(), aec_trees:trees(),
-                      height(), non_neg_integer()) ->
+-spec apply_block_txs(list(aetx_sign:signed_tx()), aec_keys:pubkey(), aec_trees:trees(),
+                      aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()}.
 apply_block_txs(Txs, Miner, Trees, Height, Version) ->
     {ok, Txs1, Trees1, _} = int_apply_block_txs(Txs, Miner, Trees, Height, Version, false),
     {ok, Txs1, Trees1}.
 
--spec apply_block_txs_strict(list(aetx_sign:signed_tx()), pubkey(),
-                             aec_trees:trees(), height(), non_neg_integer()) ->
+-spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_keys:pubkey(),
+                             aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees()} | {error, term()}.
 apply_block_txs_strict(Txs, Miner, Trees, Height, Version) ->
     case int_apply_block_txs(Txs, Miner, Trees, Height, Version, true) of
@@ -48,7 +46,7 @@ apply_block_txs_strict(Txs, Miner, Trees, Height, Version) ->
         {ok, Txs1, Trees1, _} -> {ok, Txs1, Trees1}
     end.
 
--spec create_with_state(aec_blocks:block(), pubkey(),
+-spec create_with_state(aec_blocks:block(), aec_keys:pubkey(),
                         list(aetx_sign:signed_tx()), aec_trees:trees()) ->
         {aec_blocks:block(), aec_trees:trees()}.
 create_with_state(Block, Miner, Txs, Trees) ->

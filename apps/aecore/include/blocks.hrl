@@ -21,7 +21,7 @@
 -type(block_header_hash() :: <<_:(?BLOCK_HEADER_HASH_BYTES*8)>>).
 
 -record(block, {
-          height = 0              :: height(),
+          height = 0              :: aec_blocks:height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: aec_blocks:block_header_hash(),
           root_hash = <<0:?STATE_HASH_BYTES/unit:8>> :: state_hash(), % Hash of all state Merkle trees
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
@@ -34,7 +34,7 @@
           miner = <<0:?MINER_PUB_BYTES/unit:8>> :: miner_pubkey()}).
 
 -record(header, {
-          height = 0              :: height(),
+          height = 0              :: aec_blocks:height(),
           prev_hash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: aec_blocks:block_header_hash(),
           txs_hash = <<0:?TXS_HASH_BYTES/unit:8>> :: txs_hash(),
           root_hash = <<>>        :: state_hash(),

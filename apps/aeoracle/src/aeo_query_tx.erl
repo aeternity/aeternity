@@ -6,7 +6,6 @@
 %%%=============================================================================
 -module(aeo_query_tx).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -44,11 +43,11 @@
 
 -export_type([tx/0]).
 
--spec sender(tx()) -> pubkey().
+-spec sender(tx()) -> aec_keys:pubkey().
 sender(#oracle_query_tx{sender = SenderPubKey}) ->
     SenderPubKey.
 
--spec oracle(tx()) -> pubkey().
+-spec oracle(tx()) -> aec_keys:pubkey().
 oracle(#oracle_query_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
@@ -99,14 +98,14 @@ fee(#oracle_query_tx{fee = F}) ->
 nonce(#oracle_query_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_query_tx{sender = SenderPubKey}) ->
     SenderPubKey.
 
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
                        query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, _Context, Trees, Height, _ConsensusVersion) ->
@@ -122,16 +121,16 @@ check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#oracle_query_tx{sender = SenderPubKey,
                           oracle = OraclePubKey}) ->
     [SenderPubKey, OraclePubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_query_tx{sender = SenderPubKey}, _) ->
     {ok, [SenderPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
                          query_fee = QueryFee} = QueryTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),

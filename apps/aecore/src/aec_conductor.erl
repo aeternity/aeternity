@@ -77,7 +77,6 @@
 
 -export_type([options/0]).
 
--include("common.hrl").
 -include("blocks.hrl").
 -include("aec_conductor.hrl").
 

@@ -8,7 +8,6 @@
 
 -include("aecontract.hrl").
 -include("contract_txs.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 -behavior(aetx).
 
@@ -54,7 +53,7 @@
 %%%===================================================================
 %%% Getters
 
--spec owner(tx()) -> pubkey().
+-spec owner(tx()) -> aec_keys:pubkey().
 owner(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
@@ -124,13 +123,13 @@ type() ->
 nonce(#contract_create_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_create_tx{owner = OwnerPubKey}) ->
     OwnerPubKey.
 
 %% Owner should exist, and have enough funds for the fee, the amount
 %% the deposit and the gas
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
                    {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_create_tx{owner = OwnerPubKey,
                           nonce = Nonce,
@@ -149,16 +148,16 @@ check(#contract_create_tx{owner = OwnerPubKey,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#contract_create_tx{owner = OwnerPubKey}) ->
     [OwnerPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#contract_create_tx{owner = OwnerPubKey}, _) ->
     {ok, [OwnerPubKey]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(),
-              height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+              aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_create_tx{owner = OwnerPubKey,
                             nonce = Nonce,
 			    vm_version = VmVersion,

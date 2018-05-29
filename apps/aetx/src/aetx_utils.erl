@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aetx_utils).
 
--include_lib("apps/aecore/include/common.hrl").
-
 %% API
 -export([check_account/3,
          check_account/4,
@@ -20,7 +18,7 @@
 
 %% Checks that an account (PubKey) exist at this height, has enough funds,
 %% and that the Nonce is ok.
--spec check_account(Account :: pubkey(),
+-spec check_account(Account :: aec_keys:pubkey(),
                     Trees   :: aec_trees:trees(),
                     Nonce   :: non_neg_integer(),
                     Amount  :: non_neg_integer()) -> ok | {error, term()}.
@@ -34,7 +32,7 @@ check_account(AccountPubKey, Trees, Nonce, Amount) ->
             {error, account_not_found}
     end.
 
--spec check_account(Account :: pubkey(),
+-spec check_account(Account :: aec_keys:pubkey(),
                     Trees   :: aec_trees:trees(),
                     Amount  :: non_neg_integer()) -> ok | {error, term()}.
 check_account(AccountPubKey, Trees, Amount) ->
@@ -46,7 +44,8 @@ check_account(AccountPubKey, Trees, Amount) ->
             {error, account_not_found}
     end.
 
--spec check_ttl(non_neg_integer(), non_neg_integer()) -> ok | {error, ttl_expired}.
+-spec check_ttl(non_neg_integer(), non_neg_integer()) ->
+        ok | {error, ttl_expired}.
 check_ttl(TTL, Height) ->
     case TTL >= Height of
       	true -> ok;
@@ -57,13 +56,14 @@ check_ttl(TTL, Height) ->
 %%% Internal functions
 %%%===================================================================
 
--spec get_account(pubkey(), aec_trees:trees()) -> none | {value, aec_accounts:account()}.
+-spec get_account(aec_keys:pubkey(), aec_trees:trees()) ->
+        none | {value, aec_accounts:account()}.
 get_account(AccountPubKey, Trees) ->
     AccountsTrees = aec_trees:accounts(Trees),
     aec_accounts_trees:lookup(AccountPubKey, AccountsTrees).
 
 -spec check_balance(aec_accounts:account(), non_neg_integer()) ->
-                           ok | {error, insufficient_funds}.
+        ok | {error, insufficient_funds}.
 check_balance(Account, Amount) ->
     case aec_accounts:balance(Account) >= Amount of
         true ->
@@ -73,8 +73,7 @@ check_balance(Account, Amount) ->
     end.
 
 -spec check_nonce(aec_accounts:account(), non_neg_integer()) ->
-                     ok |
-                     {error, account_nonce_too_high | account_nonce_too_low}.
+        ok | {error, account_nonce_too_high | account_nonce_too_low}.
 check_nonce(Account, Nonce) ->
     AccountNonce = aec_accounts:nonce(Account),
     if

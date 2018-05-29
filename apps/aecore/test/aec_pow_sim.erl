@@ -8,7 +8,6 @@
 
 -compile([export_all, nowarn_export_all]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% -- Block API --------------------------------------------------------------

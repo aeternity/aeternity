@@ -6,7 +6,6 @@
 %%%=============================================================================
 -module(aec_sync).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -behaviour(gen_server).

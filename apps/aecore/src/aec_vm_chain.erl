@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aec_vm_chain).
 
--include_lib("apps/aecore/include/common.hrl").
-
 -behaviour(aevm_chain_api).
 
 -export([new_state/3, get_trees/1]).
@@ -20,8 +18,8 @@
          call_contract/6]).
 
 -record(state, { trees   :: aec_trees:trees()
-               , height  :: height()
-               , account :: pubkey()            %% the contract account
+               , height  :: aec_blocks:height()
+               , account :: aec_keys:pubkey()            %% the contract account
                }).
 
 -type chain_state() :: #state{}.
@@ -31,7 +29,7 @@
 %% -- API --------------------------------------------------------------------
 
 %% @doc Create a chain state.
--spec new_state(aec_trees:trees(), height(), pubkey()) -> chain_state().
+-spec new_state(aec_trees:trees(), aec_blocks:height(), aec_keys:pubkey()) -> chain_state().
 new_state(Trees, Height, ContractAccount) ->
     #state{ trees   = Trees,
             height  = Height,
@@ -44,7 +42,7 @@ get_trees(#state{ trees = Trees}) ->
     Trees.
 
 %% @doc Get the balance of the contract account.
--spec get_balance(pubkey(), chain_state()) -> non_neg_integer().
+-spec get_balance(aec_keys:pubkey(), chain_state()) -> non_neg_integer().
 get_balance(PubKey, #state{ trees = Trees }) ->
     do_get_balance(PubKey, Trees).
 
@@ -63,7 +61,7 @@ set_store(Store,  #state{ account = PubKey, trees = Trees } = State) ->
 
 
 %% @doc Spend money from the contract account.
--spec spend(pubkey(), non_neg_integer(), chain_state()) ->
+-spec spend(aec_keys:pubkey(), non_neg_integer(), chain_state()) ->
           {ok, chain_state()} | {error, term()}.
 spend(Recipient, Amount, State = #state{ trees   = Trees,
                                          height  = Height,
@@ -74,7 +72,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
     end.
 
 %% @doc Call another contract.
--spec call_contract(pubkey(), non_neg_integer(), non_neg_integer(), binary(),
+-spec call_contract(aec_keys:pubkey(), non_neg_integer(), non_neg_integer(), binary(),
                     [non_neg_integer()], chain_state()) ->
         {ok, aevm_chain_api:call_result(), chain_state()} | {error, term()}.
 call_contract(Target, Gas, Value, CallData, CallStack,

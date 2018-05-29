@@ -12,7 +12,6 @@
 
 -define(TEST_MODULE, aec_pow).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).

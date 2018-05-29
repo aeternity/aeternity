@@ -18,13 +18,11 @@
          deserialize/1]).
 
 
--include("common.hrl").
-
 -define(ACCOUNT_VSN, 1).
 -define(ACCOUNT_TYPE, account).
 
 -record(account, {
-          pubkey = <<>>  :: pubkey(),
+          pubkey = <<>>  :: <<>> | aec_keys:pubkey(),
           balance = 0    :: non_neg_integer(),
           nonce = 0      :: non_neg_integer()}).
 
@@ -33,11 +31,11 @@
 
 -type deterministic_account_binary_with_pubkey() :: binary().
 
--spec new(pubkey(), non_neg_integer()) -> account().
+-spec new(aec_keys:pubkey(), non_neg_integer()) -> account().
 new(Pubkey, Balance) ->
     #account{pubkey = Pubkey, balance = Balance}.
 
--spec pubkey(account()) -> pubkey().
+-spec pubkey(account()) -> aec_keys:pubkey().
 pubkey(#account{pubkey = Pubkey}) ->
     Pubkey.
 

@@ -15,7 +15,6 @@
 -export_type([txs_tree/0,
               root_hash/0]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -type key() :: aec_hash:hash().

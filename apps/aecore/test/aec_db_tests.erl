@@ -1,7 +1,6 @@
 -module(aec_db_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(compareBlockResults(B1, B2),

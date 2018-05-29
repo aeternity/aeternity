@@ -7,8 +7,6 @@
 
 -module(aeo_oracles).
 
--include_lib("apps/aecore/include/common.hrl").
-
 %% API
 -export([ deserialize/1
         , expires/1
@@ -33,7 +31,7 @@
 -type amount()       :: integer().
 
 -type relative_ttl() :: {delta, non_neg_integer()}.
--type fixed_ttl()    :: {block, height()}.
+-type fixed_ttl()    :: {block, aec_blocks:height()}.
 -type ttl()          :: relative_ttl() | fixed_ttl().
 
 -type type_spec()    :: binary(). %% Utf8 encoded string
@@ -41,17 +39,17 @@
 -type query()    :: binary().             %% Don't use native types for queries
 -type response() :: binary(). %% Don't use native types for responses
 
--record(oracle, { owner           :: pubkey()
+-record(oracle, { owner           :: aec_keys:pubkey()
                 , query_format    :: type_spec()
                 , response_format :: type_spec()
                 , query_fee       :: amount()
-                , expires         :: height()
+                , expires         :: aec_blocks:height()
                 }).
 
 
 -opaque oracle() :: #oracle{}.
 
--type id() :: pubkey().
+-type id() :: aec_keys:pubkey().
 -type serialized() :: binary().
 
 -export_type([ fixed_ttl/0
@@ -74,11 +72,11 @@
 %%% API
 %%%===================================================================
 
--spec id(oracle()) -> pubkey().
+-spec id(oracle()) -> aec_keys:pubkey().
 id(O) ->
   owner(O).
 
--spec new(aeo_register_tx:tx(), height()) -> oracle().
+-spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:ttl(RTx)),
     O = #oracle{ owner = aeo_register_tx:account(RTx)
@@ -135,7 +133,7 @@ serialization_template(?ORACLE_VSN) ->
 %%%===================================================================
 %%% Getters
 
--spec owner(oracle()) -> pubkey().
+-spec owner(oracle()) -> aec_keys:pubkey().
 owner(O) -> O#oracle.owner.
 
 -spec query_format(oracle()) -> type_spec().
@@ -147,13 +145,13 @@ response_format(O) -> O#oracle.response_format.
 -spec query_fee(oracle()) -> amount().
 query_fee(O) -> O#oracle.query_fee.
 
--spec expires(oracle()) -> height().
+-spec expires(oracle()) -> aec_blocks:height().
 expires(O) -> O#oracle.expires.
 
 %%%===================================================================
 %%% Setters
 
--spec set_owner(pubkey(), oracle()) -> oracle().
+-spec set_owner(aec_keys:pubkey(), oracle()) -> oracle().
 set_owner(X, O) ->
     O#oracle{owner = assert_field(owner, X)}.
 
@@ -169,7 +167,7 @@ set_response_format(X, O) ->
 set_query_fee(X, O) ->
     O#oracle{query_fee = assert_field(query_fee, X)}.
 
--spec set_expires(height(), oracle()) -> oracle().
+-spec set_expires(aec_blocks:height(), oracle()) -> oracle().
 set_expires(X, O) ->
     O#oracle{expires = assert_field(expires, X)}.
 

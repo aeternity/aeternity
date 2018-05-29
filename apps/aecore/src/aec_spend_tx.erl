@@ -25,15 +25,14 @@
 
 -behavior(aetx).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(SPEND_TX_VSN, 1).
 -define(SPEND_TX_TYPE, spend_tx).
 
 -record(spend_tx, {
-          sender    = <<>>          :: pubkey(),
-          recipient = <<>>          :: pubkey(),
+          sender    = <<>>          :: aec_keys:pubkey(),
+          recipient = <<>>          :: aec_keys:pubkey(),
           amount    = 0             :: non_neg_integer(),
           fee       = 0             :: non_neg_integer(),
           nonce     = 0             :: non_neg_integer(),
@@ -76,11 +75,11 @@ fee(#spend_tx{fee = F}) ->
 nonce(#spend_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#spend_tx{sender = Sender}) ->
     Sender.
 
--spec recipient(tx()) -> pubkey().
+-spec recipient(tx()) -> aec_keys:pubkey().
 recipient(#spend_tx{recipient = Recipient}) ->
     Recipient.
 
@@ -88,7 +87,7 @@ recipient(#spend_tx{recipient = Recipient}) ->
 payload(#spend_tx{payload = Payload}) ->
     Payload.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
     RecipientPubkey = recipient(SpendTx),
     Checks =
@@ -106,14 +105,14 @@ check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
             Error
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#spend_tx{sender = SenderPubKey, recipient = RecipientPubKey}) ->
     [SenderPubKey, RecipientPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#spend_tx{sender = SenderPubKey}, _) -> {ok, [SenderPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#spend_tx{sender = SenderPubkey,
                   recipient = RecipientPubkey,
                   amount = Amount,
@@ -187,7 +186,7 @@ for_client(#spend_tx{sender = Sender,
 
 %% Internals
 
--spec check_tx_fee(tx(), aec_trees:trees(), height()) ->
+-spec check_tx_fee(tx(), aec_trees:trees(), aec_blocks:height()) ->
                           ok | {error, too_low_fee}.
 check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
     case Fee >= aec_governance:minimum_tx_fee() of
@@ -197,7 +196,7 @@ check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
             {error, too_low_fee}
     end.
 
--spec check_sender_account(tx(), aec_trees:trees(), height()) ->
+-spec check_sender_account(tx(), aec_trees:trees(), aec_blocks:height()) ->
                                   ok | {error, term()}.
 check_sender_account(#spend_tx{sender = SenderPubkey, amount = Amount,
                                fee = Fee, nonce = TxNonce }, Trees, _Height) ->

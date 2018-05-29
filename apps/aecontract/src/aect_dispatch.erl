@@ -8,7 +8,6 @@
 
 -include("aecontract.hrl").
 -include("contract_txs.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 
 %% API

@@ -1,7 +1,6 @@
 -module(aecore_app_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 -include("blocks.hrl").
 
 persisted_valid_gen_block_test_() ->

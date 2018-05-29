@@ -10,8 +10,6 @@
 -export([get_miner_account_balance/0]).
 -endif.
 
--include("common.hrl").
-
 -spec mine(binary(), aec_pow:sci_int(), aec_pow:nonce()) ->  aec_pow:pow_result().
 mine(HeaderBin, Target, Nonce) ->
     aec_pow_cuckoo:generate(HeaderBin, Target, Nonce).

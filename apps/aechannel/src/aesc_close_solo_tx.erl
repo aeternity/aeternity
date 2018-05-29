@@ -69,11 +69,11 @@ fee(#channel_close_solo_tx{fee = Fee}) ->
 nonce(#channel_close_solo_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_close_solo_tx{from = FromPubKey}) ->
     FromPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_solo_tx{channel_id = ChannelId,
                              from       = FromPubKey,
                              payload    = Payload,
@@ -91,7 +91,7 @@ check(#channel_close_solo_tx{channel_id = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_close_solo_tx{channel_id = ChannelId,
                                from       = FromPubKey,
                                payload    = Payload,
@@ -114,7 +114,7 @@ process(#channel_close_solo_tx{channel_id = ChannelId,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_close_solo_tx{payload = Payload}) ->
     case deserialize_from_binary(Payload) of
         {ok, SignedState, _StateTx} ->
@@ -124,7 +124,7 @@ accounts(#channel_close_solo_tx{payload = Payload}) ->
         {error, _Reason}            -> []
     end.
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_close_solo_tx{from = FromPubKey}, _) ->
     {ok, [FromPubKey]}.
 
@@ -188,7 +188,7 @@ serialization_template(?CHANNEL_CLOSE_SOLO_TX_VSN) ->
 %%% Internal functions
 %%%===================================================================
 
--spec check_payload(aesc_channels:id(), pubkey(), binary(), aec_trees:trees()) ->
+-spec check_payload(aesc_channels:id(), aec_keys:pubkey(), binary(), aec_trees:trees()) ->
                            ok | {error, term()}.
 check_payload(ChannelId, FromPubKey, Payload, Trees) ->
     case deserialize_from_binary(Payload) of

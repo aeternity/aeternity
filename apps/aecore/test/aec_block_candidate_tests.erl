@@ -10,7 +10,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include("common.hrl").
 -include("blocks.hrl").
 -define(TEST_PUB, <<181,14,1,149,98,104,64,190,242,52,152,159,190,216,30,49,
                     94,251,20,75,9,85,29,82,35,178,98,75,188,72,242,141>>).

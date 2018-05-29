@@ -11,7 +11,6 @@
 
 -behaviour(gen_server).
 
--include("common.hrl").
 -include("aec_crypto.hrl").
 
 %% API
@@ -64,9 +63,13 @@
          }).
 
 -type password() :: binary().
+-type pubkey()   :: <<_:256>>. %% 256 = 32 * 8
+-type privkey()  :: <<_:512>>. %% 512 = 64 * 8
 
 -type tx() :: aetx:tx().
 -type signed_tx() :: aetx_sign:signed_tx().
+
+-export_type([privkey/0, pubkey/0]).
 
 %%%===================================================================
 %%% API

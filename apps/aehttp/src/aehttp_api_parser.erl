@@ -5,7 +5,6 @@
          encode_client_readable_block/2,
          decode/2]).
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -define(HEADER_OBJ, [{<<"prev_hash">>, block_hash},

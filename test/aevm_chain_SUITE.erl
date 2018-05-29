@@ -17,7 +17,6 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -define(MINER_PUBKEY, <<42:?MINER_PUB_BYTES/unit:8>>).

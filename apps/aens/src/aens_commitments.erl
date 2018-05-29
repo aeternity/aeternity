@@ -7,7 +7,6 @@
 
 -module(aens_commitments).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("aens.hrl").
 
 %% API
@@ -45,7 +44,7 @@
 id(C) ->
     hash(C).
 
--spec new(aens_preclaim_tx:tx(), non_neg_integer(), height()) -> commitment().
+-spec new(aens_preclaim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> commitment().
 new(PreclaimTx, Expiration, BlockHeight) ->
     Expires = BlockHeight + Expiration,
     %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
@@ -92,14 +91,14 @@ serialization_template(?COMMITMENT_VSN) ->
 %%% Getters
 %%%===================================================================
 
--spec expires(commitment()) -> height().
+-spec expires(commitment()) -> aec_blocks:height().
 expires(C) -> C#commitment.expires.
 
--spec created(commitment()) -> height().
+-spec created(commitment()) -> aec_blocks:height().
 created(C) -> C#commitment.created.
 
 -spec hash(commitment()) -> aens_hash:commitment_hash().
 hash(C) -> C#commitment.hash.
 
--spec owner(commitment()) -> pubkey().
+-spec owner(commitment()) -> aec_keys:pubkey().
 owner(C) -> C#commitment.owner.

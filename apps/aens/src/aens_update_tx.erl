@@ -8,7 +8,6 @@
 -module(aens_update_tx).
 
 -include("ns_txs.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 -behavior(aetx).
 
@@ -77,11 +76,11 @@ fee(#ns_update_tx{fee = Fee}) ->
 nonce(#ns_update_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_update_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
                     fee = Fee, name_hash = NameHash, ttl = TTL}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
@@ -94,7 +93,7 @@ check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                       name_hash = NameHash} = UpdateTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -113,11 +112,11 @@ process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#ns_update_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_update_tx{account = AccountPubKey}, _) ->
     {ok, [AccountPubKey]}.
 

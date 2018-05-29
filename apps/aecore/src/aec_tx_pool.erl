@@ -12,8 +12,6 @@
 
 -behaviour(gen_server).
 
--include("common.hrl").
-
 -define(MEMPOOL, mempool).
 -define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1', '_'}, '_'}).
 
@@ -44,7 +42,7 @@
 -type non_pos_integer() :: neg_integer() | 0.
 
 -type pool_db_key() ::
-        {negated_fee(), pubkey(), non_neg_integer(), binary()}.
+        {negated_fee(), aec_keys:pubkey(), non_neg_integer(), binary()}.
 -type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
@@ -77,7 +75,7 @@ push(Tx, Event) when ?PUSH_EVENT(Event) ->
     end,
     gen_server:call(?SERVER, {push, Tx, Event}).
 
--spec get_max_nonce(pubkey()) -> {ok, non_neg_integer()} | undefined.
+-spec get_max_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 get_max_nonce(Sender) ->
     gen_server:call(?SERVER, {get_max_nonce, Sender}).
 
@@ -156,7 +154,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
--spec int_get_max_nonce(pool_db(), pubkey()) -> {ok, non_neg_integer()} | undefined.
+-spec int_get_max_nonce(pool_db(), aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 int_get_max_nonce(Mempool, Sender) ->
     case lists:flatten(ets:match(Mempool, ?KEY_NONCE_PATTERN(Sender))) of
         [] ->

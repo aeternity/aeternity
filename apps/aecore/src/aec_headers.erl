@@ -21,7 +21,6 @@
          root_hash/1,
          validate/1]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% header() can't be opaque since it is currently used

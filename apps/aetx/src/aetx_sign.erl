@@ -35,7 +35,6 @@
 -export_type([signed_tx/0,
               binary_signed_tx/0]).
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 -include_lib("apps/aecore/include/aec_crypto.hrl").
 

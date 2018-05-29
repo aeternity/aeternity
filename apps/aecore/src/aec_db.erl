@@ -87,7 +87,6 @@
 -export([ ix_acct2tx/3
         ]).
 
--include("common.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
 

@@ -1,6 +1,5 @@
 -module(aesc_offchain_state).
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -record(state, { trees                  :: aesc_trees:trees()
@@ -16,7 +15,7 @@
 
 -type operation() :: ?OP_TRANSFER | ?OP_WITHDRAW | ?OP_DEPOSIT.
 
--opaque update() :: {operation(), pubkey(), pubkey(), non_neg_integer()}. 
+-opaque update() :: {operation(), aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()}.
 
 -export_type([state/0, update/0]).
 
@@ -261,15 +260,15 @@ get_latest_signed_tx(#state{signed_txs=[SignedTx|_]}) ->
 get_fallback_state(#state{signed_txs=[SignedTx|_]}=State) -> %% half_signed_txs= []?
     {tx_round(aetx_sign:tx(SignedTx)), State#state{half_signed_txs=[]}}.
 
--spec op_transfer(pubkey(), pubkey(), non_neg_integer()) -> update().
+-spec op_transfer(aec_keys:pubkey(), aec_keys:pubkey(), non_neg_integer()) -> update().
 op_transfer(From, To, Amount) ->
     {?OP_TRANSFER, From, To, Amount}.
 
--spec op_deposit(pubkey(), non_neg_integer()) -> update().
+-spec op_deposit(aec_keys:pubkey(), non_neg_integer()) -> update().
 op_deposit(Acct, Amount) ->
     {?OP_DEPOSIT, Acct, Acct, Amount}.
 
--spec op_withdraw(pubkey(), non_neg_integer()) -> update().
+-spec op_withdraw(aec_keys:pubkey(), non_neg_integer()) -> update().
 op_withdraw(Acct, Amount) ->
     {?OP_WITHDRAW, Acct, Acct, Amount}.
 

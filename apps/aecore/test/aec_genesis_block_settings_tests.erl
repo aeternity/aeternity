@@ -1,7 +1,6 @@
 -module(aec_genesis_block_settings_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(TEST_MODULE, aec_genesis_block_settings).
@@ -37,7 +36,7 @@ preset_accounts_test_() ->
             %% broken json
             expect_accounts(<<"{\"Alice\":1,\"Bob\":2">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
-            %% not json at all 
+            %% not json at all
             expect_accounts(<<"Hejsan svejsan">>),
             ?assertError(invalid_accounts_json, ?TEST_MODULE:preset_accounts()),
             ok

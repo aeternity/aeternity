@@ -6,7 +6,6 @@
 %%%=============================================================================
 -module(aeo_response_tx).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -41,7 +40,7 @@
 
 -export_type([tx/0]).
 
--spec oracle(tx()) -> pubkey().
+-spec oracle(tx()) -> aec_keys:pubkey().
 oracle(#oracle_response_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
@@ -78,13 +77,13 @@ fee(#oracle_response_tx{fee = F}) ->
 nonce(#oracle_response_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_response_tx{oracle = OraclePubKey}) ->
     OraclePubKey.
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           query_id = QId, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     case fetch_query(OraclePubKey, QId, Trees) of
@@ -106,15 +105,15 @@ check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
         none -> {error, no_matching_oracle_query}
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
     [OraclePubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_response_tx{oracle = OraclePubKey}, _) ->
     {ok, [OraclePubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                             query_id = QId, response = Response,
                             fee = Fee}, _Context, Trees0, Height, _ConsensusVersion) ->

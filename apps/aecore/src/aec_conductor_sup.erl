@@ -25,9 +25,6 @@
 %% Supervisor callbacks
 -export([init/1]).
 
--include("common.hrl").
--include("blocks.hrl").
-
 -define(SERVER, ?MODULE).
 -define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
 

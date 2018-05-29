@@ -82,11 +82,11 @@ fee(#channel_create_tx{fee = Fee}) ->
 nonce(#channel_create_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_create_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_create_tx{initiator          = InitiatorPubKey,
                          initiator_amount   = InitiatorAmount,
                          responder          = ResponderPubKey,
@@ -109,7 +109,7 @@ check(#channel_create_tx{initiator          = InitiatorPubKey,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_create_tx{initiator          = InitiatorPubKey,
                            initiator_amount   = InitiatorAmount,
                            responder          = ResponderPubKey,
@@ -136,12 +136,12 @@ process(#channel_create_tx{initiator          = InitiatorPubKey,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_create_tx{initiator   = InitiatorPubKey,
                             responder   = ResponderPubKey}) ->
     [InitiatorPubKey, ResponderPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_create_tx{initiator   = InitiatorPubKey,
                            responder   = ResponderPubKey}, _) ->
     {ok, [InitiatorPubKey, ResponderPubKey]}.
@@ -227,7 +227,7 @@ serialization_template(?CHANNEL_CREATE_TX_VSN) ->
 %%% Getters
 %%%===================================================================
 
--spec initiator(tx()) -> pubkey().
+-spec initiator(tx()) -> aec_keys:pubkey().
 initiator(#channel_create_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
@@ -243,7 +243,7 @@ channel_reserve(#channel_create_tx{channel_reserve = ChannelReserve}) ->
 lock_period(#channel_create_tx{lock_period = LockPeriod}) ->
     LockPeriod.
 
--spec responder(tx()) -> pubkey().
+-spec responder(tx()) -> aec_keys:pubkey().
 responder(#channel_create_tx{responder = ResponderPubKey}) ->
     ResponderPubKey.
 
@@ -255,7 +255,7 @@ responder_amount(#channel_create_tx{responder_amount = ResponderAmount}) ->
 %%% Internal functions
 %%%===================================================================
 
--spec check_not_channel(pubkey(),non_neg_integer(), pubkey(), aec_trees:trees()) ->
+-spec check_not_channel(aec_keys:pubkey(),non_neg_integer(), aec_keys:pubkey(), aec_trees:trees()) ->
                                ok | {error, channel_exists}.
 check_not_channel(InitiatorPubKey, Nonce, ResponderPubKey, Trees) ->
     ChannelID     = aesc_channels:id(InitiatorPubKey, Nonce, ResponderPubKey),

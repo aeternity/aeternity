@@ -16,8 +16,6 @@
 
 -behaviour(gen_server).
 
--include("common.hrl").
-
 %% API
 -export([accept_peer/2,
          add_and_ping_peers/1,
@@ -61,7 +59,7 @@
 
 
 -record(peer, {
-          pubkey            :: binary(),
+          pubkey            :: aec_keys:pubkey(),
           host              :: string() | binary(),
           port              :: inet:port_number(),
           connection        :: term(),
@@ -73,8 +71,8 @@
 -type peer_id() :: binary(). %% The Peer is identified by its pubkey for now.
 -type peer_info() :: #{ host    => string() | binary(),
                         port    => inet:port_number(),
-                        pubkey  := pubkey(),
-                        seckey  => pubkey(),
+                        pubkey  := aec_keys:pubkey(),
+                        seckey  => binary(),
                         ping    => boolean(),
                         trusted => boolean() }.
 -type peer() :: #peer{}.
