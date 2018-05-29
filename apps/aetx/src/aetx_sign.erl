@@ -93,7 +93,8 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees) ->
     case aetx:signers(Tx, Trees) of
         {ok, Signers} ->
             verify_signatures(Signers, Bin, Sigs);
-        {error, _Reason} = Err -> Err
+        {error, _Reason} ->
+            {error, signature_check_failed}
     end.
 
 verify_signatures([PubKey|Left], Bin, Sigs) ->

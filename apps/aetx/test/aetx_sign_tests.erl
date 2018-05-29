@@ -53,6 +53,13 @@ sign_txs_test_() ->
                ?_assertException(error, {invalid_priv_key, [BrokenKey]},
                                  ?TEST_MODULE:sign(SpendTx, <<0:42/unit:8>>)),
                ok
+      end},
+      {"Missing channel does not validate",
+       fun() ->
+               SignedCloseMTx = make_signed_mutual_close(),
+               ?assertEqual({error, signature_check_failed},
+                            ?TEST_MODULE:verify(SignedCloseMTx, aec_trees:new())),
+               ok
       end}
      ]}.
 
@@ -64,3 +71,13 @@ make_spend_tx(Sender) ->
                                         fee => 1,
                                         nonce => 1,
                                         payload => <<>>}).
+make_signed_mutual_close() ->
+    #{ secret:= PrivKey1} = enacl:sign_keypair(),
+    #{ secret := PrivKey2} = enacl:sign_keypair(),
+    {ok, Tx} = aesc_close_mutual_tx:new(#{channel_id        => <<0:42/unit:8>>,
+                                          initiator_amount  => 42,
+                                          responder_amount  => 24,
+                                          ttl               => 1000,
+                                          fee               => 10,
+                                          nonce             => 1234}),
+    aetx_sign:sign(Tx, [PrivKey1, PrivKey2]).
