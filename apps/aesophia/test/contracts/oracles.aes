@@ -27,8 +27,8 @@ contract Oracles =
   function respond(q : oracle_query(string, int), sign : int, r : int) =
     Oracle.respond(q, sign, r)
 
-  function getQuestion(q : oracle_query(string, int)) : string =
-    Oracle.get_question(q)
+  function getQuestion(o: oracle(string, int), q : oracle_query(string, int)) : string =
+    Oracle.get_question(o, q)
 
   function hasAnswer(q : oracle_query(string, int)) =
     switch(Oracle.get_answer(q))

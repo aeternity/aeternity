@@ -105,11 +105,16 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
 -spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
         {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
-                          oracle_ttl = OTTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+                          oracle_ttl = OTTL, fee = Fee}, Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
-         fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_REGISTER_TX_FEE) end],
+         fun() -> ensure_not_oracle(AccountPubKey, Trees) end
+         | case Context of
+               %% Contract is paying tx fee as gas.
+               aetx_contract -> [];
+               _ ->
+                   [fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_REGISTER_TX_FEE) end]
+           end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};

@@ -53,7 +53,7 @@ global_env() ->
      {["Oracle", "register"],     Fun([Address, Signature, Fee, Fee, TTL], Oracle(Q, R))},
      {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Int)},
      {["Oracle", "query"],        Fun([Oracle(Q, R), Q, Fee, TTL, TTL], Query(Q, R))},
-     {["Oracle", "get_question"], Fun([Query(Q, R)], Q)},
+     {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
      {["Oracle", "respond"],      Fun([Query(Q, R), Signature, R], Unit)},
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
      {["Oracle", "get_answer"],   Fun1(Query(Q, R), option_t(Ann, R))}

@@ -25,7 +25,7 @@
 -export([ spend/3, get_balance/2, call_contract/6, get_store/1, set_store/2,
           oracle_register/7, oracle_query/6, oracle_query_spec/2, oracle_response_spec/2,
           oracle_query_oracle/2, oracle_respond/4, oracle_get_answer/2,
-          oracle_query_fee/2, oracle_get_question/2, oracle_extend/4]).
+          oracle_query_fee/2, oracle_get_question/3, oracle_extend/4]).
 
 -include("apps/aecontract/src/aecontract.hrl").
 -include_lib("common_test/include/ct.hrl").
@@ -457,7 +457,7 @@ oracle_get_answer(<<Query:256>>, State) ->
         _ -> {ok, none}
     end.
 
-oracle_get_question(<<Query:256>>, State) ->
+oracle_get_question(<<_Oracle:256>>, <<Query:256>>, State) ->
     case maps:get(oracle_queries, State, #{}) of
         #{Query := Q} ->
             Question = maps:get(query, Q, none),

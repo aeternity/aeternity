@@ -74,7 +74,8 @@
                             ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.
 
--callback oracle_get_question(Query :: pubkey(),
+-callback oracle_get_question(Oracle :: pubkey(),
+                              Query :: pubkey(),
                               ChainState :: chain_state()) ->
     {ok, term()} | {error, term()}.
 
