@@ -1,6 +1,6 @@
 
 -record(contract_create_tx, {
-          owner      :: aect_contracts:pubkey(),
+          owner      :: aec_keys:pubkey(),
           nonce      :: non_neg_integer(),
           code       :: binary(),
           vm_version :: aect_contracts:vm_version(),
@@ -13,9 +13,9 @@
         }).
 
 -record(contract_call_tx, {
-          caller     :: aect_contracts:pubkey(),
+          caller     :: aec_keys:pubkey(),
           nonce      :: integer(),
-          contract   :: aect_contracts:pubkey(),
+          contract   :: aec_keys:pubkey(),
           vm_version :: aect_contracts:vm_version(),
           fee        :: integer(),
           amount     :: aect_contracts:amount(),

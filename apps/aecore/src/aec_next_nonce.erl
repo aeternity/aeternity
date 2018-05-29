@@ -2,7 +2,6 @@
 
 -export([pick_for_account/1]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% It assumes that in order to pick a nonce for a transaction
@@ -12,7 +11,7 @@
 %% - some funds are transferred to user's account
 %% or
 %% - user mined a block, which was already added to the chain.
--spec pick_for_account(pubkey()) -> {ok, non_neg_integer()} |
+-spec pick_for_account(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
                                     {error, account_not_found}.
 pick_for_account(Pubkey) ->
     case get_state_tree_nonce(Pubkey) of
@@ -26,7 +25,7 @@ pick_for_account(Pubkey) ->
 
 %% Internals
 
--spec get_state_tree_nonce(pubkey()) -> {ok, non_neg_integer()} |
+-spec get_state_tree_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
                                         {error, account_not_found}.
 get_state_tree_nonce(AccountPubkey) ->
     case aec_chain:get_account(AccountPubkey) of
@@ -36,7 +35,7 @@ get_state_tree_nonce(AccountPubkey) ->
             {error, account_not_found}
     end.
 
--spec get_mempool_nonce(pubkey()) -> integer().
+-spec get_mempool_nonce(aec_keys:pubkey()) -> integer().
 get_mempool_nonce(AccountPubkey) ->
     case aec_tx_pool:get_max_nonce(AccountPubkey) of
         {ok, Nonce} ->

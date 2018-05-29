@@ -87,11 +87,11 @@ fee(#channel_offchain_tx{}) ->
 nonce(#channel_offchain_tx{round = N}) ->
     N.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_offchain_tx{initiator = Origin}) ->
     Origin.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_offchain_tx{
          channel_id         = _ChannelId,
          initiator          = _InitiatorPubKey,
@@ -106,17 +106,17 @@ check(#channel_offchain_tx{
     %% TODO: implement checks relevant to off-chain
     {ok, Trees}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_offchain_tx{}, _Context, _Trees, _Height, _ConsensusVersion) ->
     error(off_chain_tx).
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_offchain_tx{
             initiator   = InitiatorPubKey,
             responder   = ResponderPubKey}) ->
     [InitiatorPubKey, ResponderPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_offchain_tx{
            initiator   = InitiatorPubKey,
            responder   = ResponderPubKey}, _) ->
@@ -211,7 +211,7 @@ serialization_template(?CHANNEL_OFFCHAIN_TX_VSN) ->
 channel_id(#channel_offchain_tx{channel_id = ChannelId}) ->
     ChannelId.
 
--spec initiator(tx()) -> pubkey().
+-spec initiator(tx()) -> aec_keys:pubkey().
 initiator(#channel_offchain_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
@@ -219,7 +219,7 @@ initiator(#channel_offchain_tx{initiator = InitiatorPubKey}) ->
 initiator_amount(#channel_offchain_tx{initiator_amount = InitiatorAmount}) ->
     InitiatorAmount.
 
--spec responder(tx()) -> pubkey().
+-spec responder(tx()) -> aec_keys:pubkey().
 responder(#channel_offchain_tx{responder = ResponderPubKey}) ->
     ResponderPubKey.
 

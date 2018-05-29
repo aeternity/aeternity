@@ -6,14 +6,14 @@
 %%%=============================================================================
 
 -record(ns_preclaim_tx, {
-          account    :: pubkey(),
+          account    :: aec_keys:pubkey(),
           nonce      :: integer(),
           commitment :: binary(),
           fee        :: integer()
          }).
 
 -record(ns_claim_tx, {
-          account   :: pubkey(),
+          account   :: aec_keys:pubkey(),
           nonce     :: integer(),
           name      :: binary(),
           name_salt :: integer(),
@@ -21,7 +21,7 @@
          }).
 
 -record(ns_update_tx, {
-          account   :: pubkey(),
+          account   :: aec_keys:pubkey(),
           nonce     :: integer(),
           name_hash :: binary(),
           name_ttl  :: integer(),
@@ -31,15 +31,15 @@
          }).
 
 -record(ns_transfer_tx, {
-          account           :: pubkey(),
+          account           :: aec_keys:pubkey(),
           nonce             :: integer(),
           name_hash         :: binary(),
-          recipient_account :: pubkey(),
+          recipient_account :: aec_keys:pubkey(),
           fee               :: integer()
          }).
 
 -record(ns_revoke_tx, {
-          account   :: pubkey(),
+          account   :: aec_keys:pubkey(),
           nonce     :: integer(),
           name_hash :: binary(),
           fee       :: integer()

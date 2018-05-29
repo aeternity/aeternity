@@ -8,7 +8,6 @@
 -module(aens_claim_tx).
 
 -include("ns_txs.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 -behavior(aetx).
 
@@ -72,11 +71,11 @@ fee(#ns_claim_tx{fee = Fee}) ->
 nonce(#ns_claim_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
                    fee = Fee, name = Name, name_salt = NameSalt}, _Context, Trees, Height, _ConsensusVersion) ->
     case aens_utils:to_ascii(Name) of
@@ -99,7 +98,7 @@ check(#ns_claim_tx{account = AccountPubKey, nonce = Nonce,
             {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                      name = PlainName, name_salt = NameSalt} = ClaimTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -123,11 +122,11 @@ process(#ns_claim_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
 
     {ok, Trees2}.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#ns_claim_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_claim_tx{account = AccountPubKey}, _) ->
     {ok, [AccountPubKey]}.
 
@@ -184,7 +183,7 @@ for_client(#ns_claim_tx{account   = AccountPubKey,
 %%% Getters
 %%%===================================================================
 
--spec account(tx()) -> pubkey().
+-spec account(tx()) -> aec_keys:pubkey().
 account(#ns_claim_tx{account = AccountPubKey}) ->
     AccountPubKey.
 

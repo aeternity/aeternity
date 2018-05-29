@@ -7,8 +7,6 @@
 
 -module(aeo_utils).
 
--include_lib("apps/aecore/include/common.hrl").
-
 -export([check_ttl_fee/3,
          ttl_delta/2,
          ttl_expiry/2,
@@ -17,7 +15,7 @@
 -define(ORACLE_TTL_FEE, 0.001).
 
 %% TODO: This should also include size of the thing that has a TTL
--spec check_ttl_fee(height(), aeo_oracles:ttl(), non_neg_integer()) ->
+-spec check_ttl_fee(aec_blocks:height(), aeo_oracles:ttl(), non_neg_integer()) ->
                         ok | {error, too_low_fee} | {error, too_low_height}.
 check_ttl_fee(Height, TTL, Fee) ->
     try
@@ -30,7 +28,7 @@ check_ttl_fee(Height, TTL, Fee) ->
         {error, too_low_height}
     end.
 
--spec ttl_delta(height(), aeo_oracles:ttl()) -> non_neg_integer().
+-spec ttl_delta(aec_blocks:height(), aeo_oracles:ttl()) -> non_neg_integer().
 ttl_delta(CurrHeight, TTL) ->
     case TTL of
         {delta, D} -> D;
@@ -38,7 +36,7 @@ ttl_delta(CurrHeight, TTL) ->
         {block, H} -> error({too_low_height, H, CurrHeight})
     end.
 
--spec ttl_expiry(height(), aeo_oracles:ttl()) -> height().
+-spec ttl_expiry(aec_blocks:height(), aeo_oracles:ttl()) -> aec_blocks:height().
 ttl_expiry(CurrentHeight, TTL) ->
     CurrentHeight + ttl_delta(CurrentHeight, TTL).
 

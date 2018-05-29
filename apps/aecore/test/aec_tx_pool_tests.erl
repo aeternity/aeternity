@@ -6,7 +6,6 @@
 -module(aec_tx_pool_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 
 -define(TAB, aec_tx_pool_test_keys).
 

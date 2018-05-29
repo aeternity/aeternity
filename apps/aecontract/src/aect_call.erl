@@ -30,8 +30,6 @@
         , set_gas_used/2
         ]).
 
--include_lib("apps/aecore/include/common.hrl").
-
 -define(CONTRACT_INTERACTION_TYPE, contract_call).
 -define(CONTRACT_INTERACTION_VSN, 1).
 
@@ -39,10 +37,10 @@
 %%% Types
 %%%===================================================================
 
--record(call, { caller_address   :: pubkey()
+-record(call, { caller_address   :: aec_keys:pubkey()
               , caller_nonce     :: integer()
-              , height           :: height()
-              , contract_address :: pubkey()
+              , height           :: aec_blocks:height()
+              , contract_address :: aec_keys:pubkey()
               , gas_used         :: amount()
               , return_value     :: binary()
 	      , return_type      :: ok | error | revert
@@ -65,8 +63,8 @@
 %%% API
 %%%===================================================================
 
--spec new(Caller::pubkey(), Nonce::non_neg_integer(), Address::pubkey(),
-	  height()) -> call().
+-spec new(Caller::aec_keys:pubkey(), Nonce::non_neg_integer(), Address::aec_keys:pubkey(),
+	  aec_blocks:height()) -> call().
 new(Caller, Nonce, Address, BlockHeight) ->
     C = #call{ caller_address   = Caller
              , caller_nonce     = Nonce
@@ -84,7 +82,7 @@ id(I) ->
        I#call.caller_nonce,
        I#call.contract_address).
 
--spec id(pubkey(), non_neg_integer(), pubkey()) -> id().
+-spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> id().
 id(Caller, Nonce, Contract) ->
     Bin = <<Caller:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
@@ -161,16 +159,16 @@ serialize_for_client(#call{} = I) ->
 %%%===================================================================
 %%% Getters
 
--spec caller_address(call()) -> pubkey().
+-spec caller_address(call()) -> aec_keys:pubkey().
 caller_address(I) -> I#call.caller_address.
 
 -spec caller_nonce(call()) -> integer().
 caller_nonce(I) -> I#call.caller_nonce.
 
--spec height(call()) -> height().
+-spec height(call()) -> aec_blocks:height().
 height(I) -> I#call.height.
 
--spec contract_address(call()) -> pubkey().
+-spec contract_address(call()) -> aec_keys:pubkey().
 contract_address(I) -> I#call.contract_address.
 
 -spec return_type(call()) -> ok | error | revert.
@@ -185,7 +183,7 @@ gas_used(I) -> I#call.gas_used.
 %%%===================================================================
 %%% Setters
 
--spec set_caller_address(pubkey(), call()) -> call().
+-spec set_caller_address(aec_keys:pubkey(), call()) -> call().
 set_caller_address(X, I) ->
     I#call{caller_address = assert_field(caller_address, X)}.
 
@@ -197,7 +195,7 @@ set_caller_nonce(X, I) ->
 set_height(X, I) ->
     I#call{height = assert_field(height, X)}.
 
--spec set_contract_address(pubkey(), call()) -> call().
+-spec set_contract_address(aec_keys:pubkey(), call()) -> call().
 set_contract_address(X, I) ->
     I#call{contract_address = assert_field(contract_address, X)}.
 

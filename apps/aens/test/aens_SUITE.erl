@@ -29,7 +29,6 @@
 
 -include_lib("common_test/include/ct.hrl").
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -include_lib("apps/aens/include/ns_txs.hrl").

@@ -17,7 +17,6 @@
 
 -export_type([protocols/0]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(SORTED_VERSIONS, lists:sort(maps:keys(?PROTOCOLS))).
@@ -33,7 +32,7 @@
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
 %% the version.
--type protocols() :: #{Version::non_neg_integer() => height()}.
+-type protocols() :: #{Version::non_neg_integer() => aec_blocks:height()}.
 
 
 sorted_protocol_versions() ->

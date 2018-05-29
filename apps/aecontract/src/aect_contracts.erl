@@ -7,8 +7,6 @@
 
 -module(aect_contracts).
 
--include_lib("apps/aecore/include/common.hrl").
-
 %% API
 -export([ deserialize/2
         , id/1
@@ -48,25 +46,24 @@
 
 -record(contract, {
         %% Normal account fields
-        pubkey     :: pubkey(),
-        owner      :: pubkey(),
+        pubkey     :: aec_keys:pubkey(),
+        owner      :: aec_keys:pubkey(),
         vm_version :: vm_version(),
         code       :: binary(),     %% The byte code
         store      :: store(),      %% The current state/store (stored in a subtree in mpt)
         log        :: binary(),     %% The current event log
         active     :: boolean(),    %% false when disabled, but don't remove unless referers == []
-        referers   :: [pubkey()],   %% List of contracts depending on this contract
+        referers   :: [aec_keys:pubkey()],   %% List of contracts depending on this contract
         deposit    :: amount()
     }).
 
 -opaque contract() :: #contract{}.
 
--type id() :: pubkey().
+-type id() :: aec_keys:pubkey().
 -type serialized() :: binary().
 -type vm_version() :: byte().
 
 -export_type([ contract/0
-             , pubkey/0
              , amount/0
              , id/0
              , serialized/0
@@ -95,7 +92,7 @@ store_id(C) ->
     %% all storage nodes in one subtree under the contract tree.
     << CId/binary, ?STORE_PREFIX>>.
 
--spec new(pubkey(), aect_create_tx:tx()) -> contract().
+-spec new(aec_keys:pubkey(), aect_create_tx:tx()) -> contract().
 new(ContractPubKey, RTx) ->
     new(ContractPubKey,
         aect_create_tx:owner(RTx),
@@ -103,7 +100,7 @@ new(ContractPubKey, RTx) ->
         aect_create_tx:code(RTx),
         aect_create_tx:deposit(RTx)).
 
--spec new(pubkey(), pubkey(), integer(), binary(), amount()) -> contract().
+-spec new(aec_keys:pubkey(), aec_keys:pubkey(), integer(), binary(), amount()) -> contract().
 %% NOTE: Should only be used for contract execution without transaction
 new(ContractPubKey, Owner, VmVersion, Code, Deposit) ->
     C = #contract{ pubkey     = ContractPubKey,
@@ -134,7 +131,7 @@ serialize(#contract{} = C) ->
       , {deposit, deposit(C)}
       ]).
 
--spec deserialize(pubkey(), serialized()) -> contract().
+-spec deserialize(aec_keys:pubkey(), serialized()) -> contract().
 deserialize(Id, Bin) ->
     [ {owner, Owner}
     , {vm_version, VmVersion}
@@ -170,7 +167,7 @@ serialization_template(?CONTRACT_VSN) ->
     , {deposit, int}
     ].
 
--spec compute_contract_pubkey(pubkey(), non_neg_integer()) -> pubkey().
+-spec compute_contract_pubkey(aec_keys:pubkey(), non_neg_integer()) -> aec_keys:pubkey().
 compute_contract_pubkey(Owner, Nonce) ->
     %% TODO: do this in a less ad-hoc way?
     Hash = aec_hash:hash(pubkey, <<Nonce:64, Owner/binary>>),
@@ -182,11 +179,11 @@ compute_contract_pubkey(Owner, Nonce) ->
 %%% Getters
 
 %% The address of the contract account.
--spec pubkey(contract()) -> pubkey().
+-spec pubkey(contract()) -> aec_keys:pubkey().
 pubkey(C) -> C#contract.pubkey.
 
 %% The owner of the contract is (initially) the account that created it.
--spec owner(contract()) -> pubkey().
+-spec owner(contract()) -> aec_keys:pubkey().
 owner(C) -> C#contract.owner.
 
 %% The VM version used by the contract.
@@ -210,7 +207,7 @@ log(C) -> C#contract.log.
 active(C) -> C#contract.active.
 
 %% A list of other contracts referring to this contract.
--spec referers(contract()) -> [pubkey()].
+-spec referers(contract()) -> [aec_keys:pubkey()].
 referers(C) -> C#contract.referers.
 
 %% The amount deposited at contract creation.
@@ -220,11 +217,11 @@ deposit(C) -> C#contract.deposit.
 %%%===================================================================
 %%% Setters
 
--spec set_pubkey(pubkey(), contract()) -> contract().
+-spec set_pubkey(aec_keys:pubkey(), contract()) -> contract().
 set_pubkey(X, C) ->
     C#contract{pubkey = assert_field(pubkey, X)}.
 
--spec set_owner(pubkey(), contract()) -> contract().
+-spec set_owner(aec_keys:pubkey(), contract()) -> contract().
 set_owner(X, C) ->
     C#contract{owner = assert_field(owner, X)}.
 
@@ -248,7 +245,7 @@ set_log(X, C) ->
 set_active(X, C) ->
     C#contract{active = assert_field(active, X)}.
 
--spec set_referers([pubkey()], contract()) -> contract().
+-spec set_referers([aec_keys:pubkey()], contract()) -> contract().
 set_referers(X, C) ->
     C#contract{referers = assert_field(referers, X)}.
 

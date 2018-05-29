@@ -71,7 +71,7 @@ fee(#channel_close_mutual_tx{fee = Fee}) ->
 nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey() | undefined.
+-spec origin(tx()) -> aec_keys:pubkey() | undefined.
 origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
@@ -79,7 +79,7 @@ origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
         {error, not_found} -> undefined
     end.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{channel_id       = ChannelId,
                                initiator_amount = InitiatorAmount,
                                responder_amount = ResponderAmount,
@@ -122,7 +122,7 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
             end
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  initiator_amount = InitiatorAmount,
                                  responder_amount = ResponderAmount,
@@ -154,7 +154,7 @@ process(#channel_close_mutual_tx{channel_id       = ChannelId,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
@@ -162,7 +162,7 @@ accounts(#channel_close_mutual_tx{channel_id = ChannelId}) ->
         {error, not_found} -> []
     end.
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
 signers(#channel_close_mutual_tx{channel_id = ChannelId}, Trees) ->
     case aec_chain:get_channel(ChannelId, Trees) of

@@ -5,7 +5,6 @@
          determine_delta_header_height/1,
          verify/2]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% Return height of the header to be used as a start point for target calculations,

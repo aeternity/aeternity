@@ -6,7 +6,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -define(TEST_MODULE, aetx_sign).

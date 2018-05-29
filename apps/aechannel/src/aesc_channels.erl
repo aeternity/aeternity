@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_channels).
 
--include_lib("apps/aecore/include/common.hrl").
-
 %% API
 -export([deserialize/1,
          deposit/2,
@@ -44,14 +42,14 @@
 -type seq_number() :: non_neg_integer().
 
 -record(channel, {id               :: id(),
-                  initiator        :: pubkey(),
-                  responder        :: pubkey(),
+                  initiator        :: aec_keys:pubkey(),
+                  responder        :: aec_keys:pubkey(),
                   total_amount     :: amount(),
                   initiator_amount :: amount(),
                   channel_reserve  :: amount(),
                   round            :: seq_number(),
                   lock_period      :: non_neg_integer(),
-                  closes_at        :: height()}).
+                  closes_at        :: aec_blocks:height()}).
 
 -opaque channel() :: #channel{}.
 
@@ -73,7 +71,7 @@
 %%% API
 %%%===================================================================
 
--spec close_solo(channel(), aesc_offchain_tx:tx(), height()) -> channel().
+-spec close_solo(channel(), aesc_offchain_tx:tx(), aec_blocks:height()) -> channel().
 close_solo(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
@@ -115,15 +113,15 @@ deserialize(Bin) ->
 is_active(#channel{closes_at = ClosesAt}) ->
     ClosesAt =:= 0.
 
--spec is_solo_closed(channel(), height()) -> boolean().
+-spec is_solo_closed(channel(), aec_blocks:height()) -> boolean().
 is_solo_closed(#channel{closes_at = ClosesAt}, Height) ->
     ClosesAt =/= 0 andalso ClosesAt =< Height.
 
--spec is_solo_closing(channel(), height()) -> boolean().
+-spec is_solo_closing(channel(), aec_blocks:height()) -> boolean().
 is_solo_closing(#channel{closes_at = ClosesAt}, Height) ->
     ClosesAt > Height.
 
--spec id(pubkey(), non_neg_integer(), pubkey()) -> pubkey().
+-spec id(aec_keys:pubkey(), non_neg_integer(), aec_keys:pubkey()) -> aec_keys:pubkey().
 id(InitiatorPubKey, Nonce, ResponderPubKey) ->
     Bin = <<InitiatorPubKey:?PUB_SIZE/binary,
             Nonce:?NONCE_SIZE,
@@ -147,7 +145,7 @@ new(ChCTx) ->
              closes_at        = 0,
              lock_period      = aesc_create_tx:lock_period(ChCTx)}.
 
--spec peers(channel()) -> list(pubkey()).
+-spec peers(channel()) -> list(aec_keys:pubkey()).
 peers(#channel{} = Ch) ->
     [initiator(Ch), responder(Ch)].
 
@@ -178,7 +176,7 @@ serialization_template(?CHANNEL_VSN) ->
     , {lock_period      , int}
     , {closes_at        , int}
     ].
--spec slash(channel(), aesc_offchain_tx:tx(), height()) -> channel().
+-spec slash(channel(), aesc_offchain_tx:tx(), aec_blocks:height()) -> channel().
 slash(#channel{lock_period = LockPeriod} = Ch, State, Height) ->
     ClosesAt = Height + LockPeriod,
     Ch#channel{initiator_amount = aesc_offchain_tx:initiator_amount(State),
@@ -194,19 +192,19 @@ withdraw(#channel{total_amount = TotalAmount} = Ch, Amount) ->
 %%% Getters
 %%%===================================================================
 
--spec closes_at(channel()) -> undefined | height().
+-spec closes_at(channel()) -> undefined | aec_blocks:height().
 closes_at(#channel{closes_at = ClosesAt}) ->
     ClosesAt.
 
--spec id(channel()) -> pubkey().
+-spec id(channel()) -> aec_keys:pubkey().
 id(#channel{id = Id}) ->
     Id.
 
--spec initiator(channel()) -> pubkey().
+-spec initiator(channel()) -> aec_keys:pubkey().
 initiator(#channel{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
--spec responder(channel()) -> pubkey().
+-spec responder(channel()) -> aec_keys:pubkey().
 responder(#channel{responder = ResponderPubKey}) ->
     ResponderPubKey.
 

@@ -7,17 +7,17 @@
 
 -record(commitment,
         {hash    :: binary(),
-         owner   :: pubkey(),
-         created :: height(),
-         expires :: height()
+         owner   :: aec_keys:pubkey(),
+         created :: aec_blocks:height(),
+         expires :: aec_blocks:height()
          }).
 
 -type name_status() :: claimed | revoked.
 
 -record(name,
         {hash          :: binary(),
-         owner         :: pubkey(),
-         expires       :: height(),
+         owner         :: aec_keys:pubkey(),
+         expires       :: aec_blocks:height(),
          status        :: name_status(),
          ttl      = 0  :: integer(),
          pointers = [] :: list()}).

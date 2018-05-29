@@ -33,8 +33,6 @@
         , set_sender_nonce/2
         ]).
 
--include_lib("apps/aecore/include/common.hrl").
-
 -define(ORACLE_QUERY_TYPE, oracle_query).
 -define(ORACLE_QUERY_VSN, 1).
 
@@ -42,17 +40,16 @@
 %%% Types
 %%%===================================================================
 
--type block_height()    :: integer().
 -type oracle_query()    :: aeo_oracles:response().
 -type oracle_response() :: 'undefined' | aeo_oracles:response().
 -type relative_ttl()    :: aeo_oracles:relative_ttl().
 
--record(query, { sender_address :: pubkey()
+-record(query, { sender_address :: aec_keys:pubkey()
                , sender_nonce   :: integer()
-               , oracle_address :: pubkey()
+               , oracle_address :: aec_keys:pubkey()
                , query          :: oracle_query()
                , response       :: oracle_response()
-               , expires        :: block_height()
+               , expires        :: aec_blocks:height()
                , response_ttl   :: relative_ttl()
                , fee            :: integer()
                }).
@@ -74,7 +71,7 @@
 %%% API
 %%%===================================================================
 
--spec new(aeo_query_tx:tx(), height()) -> query().
+-spec new(aeo_query_tx:tx(), aec_blocks:height()) -> query().
 new(QTx, BlockHeight) ->
     Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_query_tx:query_ttl(QTx)),
     I = #query{ sender_address = aeo_query_tx:sender(QTx)
@@ -106,7 +103,7 @@ id(SenderAddress, Nonce, OracleAddress) ->
 is_closed(#query{response = undefined}) -> false;
 is_closed(#query{}) -> true.
 
--spec add_response(height(), oracle_response(), query()) -> query().
+-spec add_response(aec_blocks:height(), oracle_response(), query()) -> query().
 add_response(Height, Response, Q = #query{ response_ttl = RTTL }) ->
     NewExpires =  aeo_utils:ttl_expiry(Height, RTTL),
     Q#query{ response = assert_field(response, Response)
@@ -178,13 +175,13 @@ serialization_template(?ORACLE_QUERY_VSN) ->
 %%%===================================================================
 %%% Getters
 
--spec sender_address(query()) -> pubkey().
+-spec sender_address(query()) -> aec_keys:pubkey().
 sender_address(I) -> I#query.sender_address.
 
 -spec sender_nonce(query()) -> integer().
 sender_nonce(I) -> I#query.sender_nonce.
 
--spec oracle_address(query()) -> pubkey().
+-spec oracle_address(query()) -> aec_keys:pubkey().
 oracle_address(I) -> I#query.oracle_address.
 
 -spec query(query()) -> oracle_query().
@@ -193,7 +190,7 @@ query(I) -> I#query.query.
 -spec response(query()) -> oracle_response().
 response(I) -> I#query.response.
 
--spec expires(query()) -> block_height().
+-spec expires(query()) -> aec_blocks:height().
 expires(I) -> I#query.expires.
 
 -spec response_ttl(query()) -> relative_ttl().
@@ -205,7 +202,7 @@ fee(I) -> I#query.fee.
 %%%===================================================================
 %%% Setters
 
--spec set_sender_address(pubkey(), query()) -> query().
+-spec set_sender_address(aec_keys:pubkey(), query()) -> query().
 set_sender_address(X, I) ->
     I#query{sender_address = assert_field(sender_address, X)}.
 
@@ -213,7 +210,7 @@ set_sender_address(X, I) ->
 set_sender_nonce(X, I) ->
     I#query{sender_nonce = assert_field(sender_nonce, X)}.
 
--spec set_oracle_address(pubkey(), query()) -> query().
+-spec set_oracle_address(aec_keys:pubkey(), query()) -> query().
 set_oracle_address(X, I) ->
     I#query{oracle_address = assert_field(oracle_address, X)}.
 
@@ -225,7 +222,7 @@ set_query(X, I) ->
 set_response(X, I) ->
     I#query{response = assert_field(response, X)}.
 
--spec set_expires(block_height(), query()) -> query().
+-spec set_expires(aec_blocks:height(), query()) -> query().
 set_expires(X, I) ->
     I#query{expires = assert_field(expires, X)}.
 

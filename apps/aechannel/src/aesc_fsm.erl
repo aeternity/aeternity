@@ -53,7 +53,6 @@
          report_tags/0]).
 
 -include("aesc_codec.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 -type role() :: initiator | responder.
 -type sign_tag() :: create_tx

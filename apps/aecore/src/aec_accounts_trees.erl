@@ -24,9 +24,7 @@
 
 -export_type([tree/0]).
 
--include("common.hrl").
-
--type key() :: pubkey().
+-type key() :: aec_keys:pubkey().
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
 -opaque tree() :: aeu_mtrees:mtree(key(), value()).
 
@@ -41,13 +39,13 @@ empty() ->
 empty_with_backend() ->
     aeu_mtrees:empty_with_backend(aec_db_backends:accounts_backend()).
 
--spec get(pubkey(), tree()) -> aec_accounts:account().
+-spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
     Account = aec_accounts:deserialize(aeu_mtrees:get(Pubkey, Tree)),
     Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
     Account.
 
--spec lookup(pubkey(), tree()) -> none | {value, aec_accounts:account()}.
+-spec lookup(aec_keys:pubkey(), tree()) -> none | {value, aec_accounts:account()}.
 lookup(Pubkey, Tree) ->
     case aeu_mtrees:lookup(Pubkey, Tree) of
         none ->
@@ -70,7 +68,7 @@ enter(Account, Tree) ->
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
 
--spec lookup_with_proof(pubkey(), tree()) ->
+-spec lookup_with_proof(aec_keys:pubkey(), tree()) ->
                                none |
                                {value_and_proof, aec_accounts:account(), aeu_mtrees:proof()}.
 lookup_with_proof(Pubkey, Tree) ->
@@ -96,7 +94,7 @@ commit_to_db(Tree) ->
 %%% API - misc
 %%%===================================================================
 
--spec get_all_accounts_balances(tree()) -> [{pubkey(), non_neg_integer()}].
+-spec get_all_accounts_balances(tree()) -> [{aec_keys:pubkey(), non_neg_integer()}].
 get_all_accounts_balances(AccountsTree) ->
     AccountsDump = aeu_mtrees:to_list(AccountsTree),
     lists:foldl(

@@ -5,7 +5,6 @@
 %%%-------------------------------------------------------------------
 -module(aec_trees).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% API
@@ -100,7 +99,7 @@ oracles(Trees) ->
 set_oracles(Trees, Oracles) ->
     Trees#trees{oracles = Oracles}.
 
--spec perform_pre_transformations(trees(), height()) -> trees().
+-spec perform_pre_transformations(trees(), aec_blocks:height()) -> trees().
 perform_pre_transformations(Trees, Height) ->
     Trees0 = aect_call_state_tree:prune(Height, Trees),
     Trees1 = aeo_state_tree:prune(Height, Trees0),
@@ -193,7 +192,7 @@ apply_txs_on_state_trees([SignedTx | Rest], FilteredSignedTxs, Trees0, Height, C
             apply_txs_on_state_trees(Rest, FilteredSignedTxs, Trees0, Height, ConsensusVersion, Strict)
     end.
 
--spec grant_fee_to_miner(pubkey(), trees(), non_neg_integer()) ->
+-spec grant_fee_to_miner(aec_keys:pubkey(), trees(), non_neg_integer()) ->
                                 trees().
 grant_fee_to_miner(MinerPubkey, Trees0, TotalFee) ->
     Trees1 = ensure_account(MinerPubkey, Trees0),
@@ -205,7 +204,7 @@ grant_fee_to_miner(MinerPubkey, Trees0, TotalFee) ->
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),
     set_accounts(Trees1, AccountsTrees).
 
--spec ensure_account(pubkey(), trees()) -> trees().
+-spec ensure_account(aec_keys:pubkey(), trees()) -> trees().
 ensure_account(AccountPubkey, Trees0) ->
     AccountsTrees0 = aec_trees:accounts(Trees0),
     case aec_accounts_trees:lookup(AccountPubkey, AccountsTrees0) of

@@ -8,7 +8,6 @@
 
 -include("aecontract.hrl").
 -include("contract_txs.hrl").
--include_lib("apps/aecore/include/common.hrl").
 
 -behavior(aetx).
 
@@ -81,13 +80,13 @@ fee(#contract_call_tx{fee = F}) ->
 nonce(#contract_call_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#contract_call_tx{caller = CallerPubKey}) ->
     CallerPubKey.
 
 %% CallerAccount should exist, and have enough funds for the fee + gas cost
 %% Contract should exist and its vm_version should match the one in the call.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
                         fee = Fee, amount = Value,
                         gas = GasLimit, gas_price = GasPrice,
@@ -110,15 +109,15 @@ check(#contract_call_tx{caller = CallerPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(Tx) ->
     [caller(Tx)].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(Tx, _) ->
     {ok, [caller(Tx)]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#contract_call_tx{caller = CallerPubKey, contract = CalleePubKey, nonce = Nonce,
                           fee = Fee, gas =_Gas, gas_price = GasPrice, amount = Value
                          } = CallTx, Context, Trees1, Height, ConsensusVersion) ->
@@ -285,10 +284,10 @@ for_client(#contract_call_tx{caller     = CallerPubKey,
 
 %% -- Getters ----------------------------------------------------------------
 
--spec caller(tx()) -> pubkey().
+-spec caller(tx()) -> aec_keys:pubkey().
 caller(C) -> C#contract_call_tx.caller.
 
--spec contract(tx()) -> pubkey().
+-spec contract(tx()) -> aec_keys:pubkey().
 contract(C) -> C#contract_call_tx.contract.
 
 -spec vm_version(tx()) -> aect_contracts:vm_version().

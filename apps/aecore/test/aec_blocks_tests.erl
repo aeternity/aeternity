@@ -8,7 +8,6 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(TEST_MODULE, aec_blocks).

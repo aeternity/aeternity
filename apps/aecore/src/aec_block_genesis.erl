@@ -40,7 +40,6 @@
 -export([genesis_block_with_state/1]).
 -endif.
 
--include("common.hrl").
 -include("blocks.hrl").
 
 %% Since preset accounts are being loaded from a file - please use with caution

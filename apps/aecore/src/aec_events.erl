@@ -14,7 +14,6 @@
 
 -export_type([event/0]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -type event() :: block_created

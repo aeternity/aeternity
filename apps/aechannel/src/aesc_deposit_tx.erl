@@ -74,7 +74,7 @@ fee(#channel_deposit_tx{fee = Fee}) ->
 nonce(#channel_deposit_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_deposit_tx{from = FromPubKey}) ->
     FromPubKey.
 
@@ -82,7 +82,7 @@ origin(#channel_deposit_tx{from = FromPubKey}) ->
 amount(#channel_deposit_tx{amount = Amount}) ->
     Amount.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_deposit_tx{channel_id   = ChannelId,
                           from        = FromPubKey,
                           amount      = Amount,
@@ -101,7 +101,7 @@ check(#channel_deposit_tx{channel_id   = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_deposit_tx{channel_id   = ChannelId,
                             from       = FromPubKey,
                             amount     = Amount,
@@ -123,11 +123,11 @@ process(#channel_deposit_tx{channel_id   = ChannelId,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_deposit_tx{from = FromPubKey}) ->
     [FromPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
 signers(#channel_deposit_tx{channel_id = ChannelId}, Trees) ->
     case aec_chain:get_channel(ChannelId, Trees) of
@@ -197,7 +197,7 @@ serialization_template(?CHANNEL_DEPOSIT_TX_VSN) ->
 %%% Internal functions
 %%%===================================================================
 
--spec check_channel(aesc_channels:id(), pubkey(), aec_trees:trees()) ->
+-spec check_channel(aesc_channels:id(), aec_keys:pubkey(), aec_trees:trees()) ->
                            ok | {error, atom()}.
 check_channel(ChannelId, FromPubKey, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of

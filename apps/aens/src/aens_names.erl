@@ -7,7 +7,6 @@
 
 -module(aens_names).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("aens.hrl").
 
 %% API
@@ -49,7 +48,7 @@
 id(N) ->
     hash(N).
 
--spec new(aens_claim_tx:tx(), non_neg_integer(), height()) -> name().
+-spec new(aens_claim_tx:tx(), non_neg_integer(), aec_blocks:height()) -> name().
 new(ClaimTx, Expiration, BlockHeight) ->
     Expires    = BlockHeight + Expiration,
     Name       = aens_claim_tx:name(ClaimTx),
@@ -60,14 +59,14 @@ new(ClaimTx, Expiration, BlockHeight) ->
           expires = Expires,
           status  = claimed}.
 
--spec update(aens_update_tx:tx(), name(), height()) -> name().
+-spec update(aens_update_tx:tx(), name(), aec_blocks:height()) -> name().
 update(UpdateTx, Name, BlockHeight) ->
     Expires = BlockHeight + aens_update_tx:ttl(UpdateTx),
     Name#name{expires  = Expires,
               ttl      = aens_update_tx:name_ttl(UpdateTx),
               pointers = aens_update_tx:pointers(UpdateTx)}.
 
--spec revoke(name(), non_neg_integer(), height()) -> name().
+-spec revoke(name(), non_neg_integer(), aec_blocks:height()) -> name().
 revoke(Name, Expiration, BlockHeight) ->
     Expires = BlockHeight + Expiration,
     Name#name{status  = revoked,
@@ -123,13 +122,13 @@ serialization_template(?NAME_VSN) ->
 %%% Getters
 %%%===================================================================
 
--spec owner(name()) -> pubkey().
+-spec owner(name()) -> aec_keys:pubkey().
 owner(N) -> N#name.owner.
 
 -spec status(name()) -> name_status().
 status(N) -> N#name.status.
 
--spec expires(name()) -> height().
+-spec expires(name()) -> aec_blocks:height().
 expires(N) -> N#name.expires.
 
 -spec pointers(name()) -> list().

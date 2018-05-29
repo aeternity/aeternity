@@ -33,7 +33,6 @@
                         ]).
 
 -compile({parse_transform, lager_transform}).
--include_lib("aecore/include/common.hrl").
 
 -spec handle_request(
         OperationID :: atom(),

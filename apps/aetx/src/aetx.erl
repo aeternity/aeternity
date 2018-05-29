@@ -4,8 +4,6 @@
 
 -module(aetx).
 
--include_lib("apps/aecore/include/common.hrl").
-
 -export([ accounts/1
         , check/4
         , check_from_contract/4
@@ -102,13 +100,13 @@
     Nonce :: non_neg_integer() | undefined.
 
 -callback origin(Tx :: tx_instance()) ->
-    Origin :: pubkey() | undefined.
+    Origin :: aec_keys:pubkey() | undefined.
 
 -callback accounts(Tx :: tx_instance()) ->
-    [pubkey()].
+    [aec_keys:pubkey()].
 
 -callback signers(Tx :: tx_instance(), Trees :: aec_trees:trees()) ->
-    {ok, [pubkey()]} | {error, atom()}.
+    {ok, [aec_keys:pubkey()]} | {error, atom()}.
 
 -callback check(Tx :: tx_instance(), Context :: tx_context(),
                 Trees :: aec_trees:trees(), Height :: non_neg_integer(),
@@ -154,16 +152,16 @@ fee(#aetx{ cb = CB, tx = Tx }) ->
 nonce(#aetx{ cb = CB, tx = Tx }) ->
     CB:nonce(Tx).
 
--spec origin(Tx :: tx()) -> Origin :: pubkey() | undefined.
+-spec origin(Tx :: tx()) -> Origin :: aec_keys:pubkey() | undefined.
 origin(#aetx{ cb = CB, tx = Tx }) ->
     CB:origin(Tx).
 
--spec accounts(Tx :: tx()) -> [pubkey()].
+-spec accounts(Tx :: tx()) -> [aec_keys:pubkey()].
 accounts(#aetx{ cb = CB, tx = Tx }) ->
     CB:accounts(Tx).
 
 -spec signers(Tx :: tx(), Trees :: aec_trees:trees()) ->
-    {ok, [pubkey()]} | {error, atom()}.
+    {ok, [aec_keys:pubkey()]} | {error, atom()}.
 signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
     CB:signers(Tx, Trees).
 

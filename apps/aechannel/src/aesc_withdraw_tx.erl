@@ -70,7 +70,7 @@ fee(#channel_withdraw_tx{fee = Fee}) ->
 nonce(#channel_withdraw_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_withdraw_tx{to = ToPubKey}) ->
     ToPubKey.
 
@@ -78,7 +78,7 @@ origin(#channel_withdraw_tx{to = ToPubKey}) ->
 amount(#channel_withdraw_tx{amount = Amt}) ->
     Amt.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_withdraw_tx{channel_id   = ChannelId,
                            to           = ToPubKey,
                            amount       = Amount,
@@ -97,7 +97,7 @@ check(#channel_withdraw_tx{channel_id   = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_withdraw_tx{channel_id   = ChannelId,
                              to           = ToPubKey,
                              amount       = Amount,
@@ -121,11 +121,11 @@ process(#channel_withdraw_tx{channel_id   = ChannelId,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_withdraw_tx{to = ToPubKey}) ->
     [ToPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}
                                         | {error, channel_not_found}.
 signers(#channel_withdraw_tx{channel_id = ChannelId}, Trees) ->
     case aec_chain:get_channel(ChannelId, Trees) of
@@ -196,7 +196,7 @@ serialization_template(?CHANNEL_WITHDRAW_TX_VSN) ->
 %%%===================================================================
 
 -spec check_channel(aesc_channels:id(), aesc_channels:amount(),
-                    pubkey(), aec_trees:trees()) ->
+                    aec_keys:pubkey(), aec_trees:trees()) ->
                            ok | {error, atom()}.
 check_channel(ChannelId, Amount, ToPubKey, Trees) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of

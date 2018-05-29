@@ -1,7 +1,6 @@
 -module(aec_accounts_trees_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("common.hrl").
 
 smoke_test() ->
     T0 = aec_accounts_trees:empty(),

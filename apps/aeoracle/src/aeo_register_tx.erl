@@ -6,7 +6,6 @@
 %%%=============================================================================
 -module(aeo_register_tx).
 
--include_lib("apps/aecore/include/common.hrl").
 -include("oracle_txs.hrl").
 
 -behavior(aetx).
@@ -42,7 +41,7 @@
 
 -export_type([tx/0]).
 
--spec account(tx()) -> pubkey().
+-spec account(tx()) -> aec_keys:pubkey().
 account(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
@@ -91,12 +90,12 @@ type() ->
 nonce(#oracle_register_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
 %% Account should exist, and have enough funds for the fee.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
                           ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
@@ -109,15 +108,15 @@ check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec accounts(tx()) -> [pubkey()].
+-spec accounts(tx()) -> [aec_keys:pubkey()].
 accounts(#oracle_register_tx{account = AccountPubKey}) ->
     [AccountPubKey].
 
--spec signers(tx(), aec_trees:trees()) -> {ok, [pubkey()]}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_register_tx{account = AccountPubKey}, _) ->
     {ok, [AccountPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#oracle_register_tx{account       = AccountPubKey,
                             nonce         = Nonce,
                             fee           = Fee} = RegisterTx, _Context, Trees0, Height, _ConsensusVersion) ->

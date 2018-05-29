@@ -6,7 +6,6 @@
          protocol_effective_at_height/1,
          protocol_effective_at_height/2]).
 
--include("common.hrl").
 -include("blocks.hrl").
 
 -define(is_version(V), (is_integer(V) andalso (V >= 0))).
@@ -23,7 +22,7 @@ check_env() ->
     Ps = protocols(Ps),
     ok.
 
--spec protocols(#{version() => height()}) -> aec_governance:protocols().
+-spec protocols(#{version() => aec_blocks:height()}) -> aec_governance:protocols().
 protocols(M) ->
     Vs = sorted_versions(),
     {[], _} = {maps:keys(M) -- Vs, check_no_extra_protocol_versions},
@@ -35,11 +34,11 @@ protocols(M) ->
 is_known_protocol(V, Protocols) when ?is_version(V) ->
     maps:is_key(V, Protocols).
 
--spec protocol_effective_at_height(height()) -> version().
+-spec protocol_effective_at_height(aec_blocks:height()) -> version().
 protocol_effective_at_height(H) ->
     protocol_effective_at_height(H, protocols(aec_governance:protocols())).
 
--spec protocol_effective_at_height(height(), aec_governance:protocols()) ->
+-spec protocol_effective_at_height(aec_blocks:height(), aec_governance:protocols()) ->
                                           version().
 protocol_effective_at_height(H, Protocols) when ?is_height(H) ->
     SortedProtocols = protocols_sorted_by_version(Protocols),

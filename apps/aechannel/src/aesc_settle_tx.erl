@@ -71,11 +71,11 @@ fee(#channel_settle_tx{fee = Fee}) ->
 nonce(#channel_settle_tx{nonce = Nonce}) ->
     Nonce.
 
--spec origin(tx()) -> pubkey().
+-spec origin(tx()) -> aec_keys:pubkey().
 origin(#channel_settle_tx{from = FromPubKey}) ->
     FromPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_settle_tx{channel_id = ChannelId,
                          from             = FromPubKey,
                          initiator_amount = InitiatorAmount,
@@ -96,7 +96,7 @@ check(#channel_settle_tx{channel_id = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
 process(#channel_settle_tx{channel_id = ChannelId,
                            from             = FromPubKey,
                            initiator_amount = InitiatorAmount,
@@ -138,7 +138,7 @@ process(#channel_settle_tx{channel_id = ChannelId,
     Trees2 = aec_trees:set_channels(Trees1, ChannelsTree1),
     {ok, Trees2}.
 
--spec accounts(tx()) -> list(pubkey()).
+-spec accounts(tx()) -> list(aec_keys:pubkey()).
 accounts(#channel_settle_tx{channel_id = ChannelId}) ->
     case aec_chain:get_channel(ChannelId) of
         {ok, Channel} ->
@@ -146,7 +146,7 @@ accounts(#channel_settle_tx{channel_id = ChannelId}) ->
         {error, not_found} -> []
     end.
 
--spec signers(tx(), aec_trees:trees()) -> {ok, list(pubkey())}.
+-spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_settle_tx{from = FromPubKey}, _) ->
     {ok, [FromPubKey]}.
 

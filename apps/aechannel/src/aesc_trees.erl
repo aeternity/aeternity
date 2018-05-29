@@ -5,7 +5,6 @@
 %%%-------------------------------------------------------------------
 -module(aesc_trees).
 
--include_lib("apps/aecore/include/common.hrl").
 -include_lib("apps/aecore/include/blocks.hrl").
 
 -export([accounts/1,
@@ -28,7 +27,7 @@
 %% API
 %%%=============================================================================
 
--spec new([{pubkey(), integer()}]) -> trees().
+-spec new([{aec_keys:pubkey(), integer()}]) -> trees().
 new(Accts) ->
     Accounts =
         lists:foldl(
@@ -51,7 +50,7 @@ hash(Trees) ->
 accounts(Trees) ->
     Trees#trees.accounts.
 
--spec get_account(trees(), pubkey()) -> {ok, aec_accounts:account()} |
+-spec get_account(trees(), aec_keys:pubkey()) -> {ok, aec_accounts:account()} |
                                         {error, not_found}.
 get_account(#trees{accounts=Accs}, Pubkey) ->
     case aec_accounts_trees:lookup(Pubkey, Accs) of

@@ -6,8 +6,6 @@
 %%%=============================================================================
 -module(aesc_utils).
 
--include_lib("apps/aecore/include/common.hrl").
-
 %% API
 -export([check_active_channel_exists/3,
          check_is_active/1,
@@ -58,14 +56,14 @@ check_is_active(Channel) ->
         false -> {error, channel_not_active}
     end.
 
--spec check_is_peer(pubkey(), list(pubkey())) -> ok | {error, account_not_peer}.
+-spec check_is_peer(aec_keys:pubkey(), list(aec_keys:pubkey())) -> ok | {error, account_not_peer}.
 check_is_peer(PubKey, Peers) ->
     case lists:member(PubKey, Peers) of
         true  -> ok;
         false -> {error, account_not_peer}
     end.
 
--spec check_are_peers(list(pubkey()), list(pubkey())) -> ok | {error, account_not_peer}.
+-spec check_are_peers(list(aec_keys:pubkey()), list(aec_keys:pubkey())) -> ok | {error, account_not_peer}.
 check_are_peers([], _Peers) ->
     ok;
 check_are_peers([PubKey | Rest], Peers) ->
