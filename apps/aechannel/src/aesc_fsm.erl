@@ -1738,16 +1738,12 @@ report_info(DoRpt, Tag, Info, #data{client = Client} = D) ->
     end,
     ok.
 
-rpt_message(Type, Tag, Info, #data{on_chain_id = undefined,
-                                   channel_id  = TmpChId}) ->
-    #{ temp_channel_id => TmpChId
-     , type            => Type
+rpt_message(Type, Tag, Info, #data{on_chain_id = undefined}) ->
+    #{ type            => Type
      , tag             => Tag
      , info            => Info };
-rpt_message(Type, Tag, Info, #data{channel_id = TmpChId,
-                                   on_chain_id = OnChainId}) ->
-    #{ temp_channel_id => TmpChId     %% TODO: really include this?
-     , channel_id      => OnChainId
+rpt_message(Type, Tag, Info, #data{on_chain_id = OnChainId}) ->
+    #{ channel_id      => OnChainId
      , type            => Type
      , tag             => Tag
      , info            => Info }.

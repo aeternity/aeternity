@@ -12,7 +12,6 @@
 -export([terminate/3]).
 
 -record(handler, {fsm_pid            :: pid() | undefined,
-                  temp_channel_id    :: aesc_channels:id() | undefined,
                   channel_id         :: aesc_channels:id() | undefined,
                   job_id             :: term(),
                   role               :: initiator | responder | undefined,
@@ -78,19 +77,14 @@ websocket_info({aesc_fsm, FsmPid, Msg}, #handler{fsm_pid=FsmPid}=H) ->
 websocket_info(_Info, State) ->
 	  {ok, State}.
 
-set_channel_id(#{} = Msg, #handler{temp_channel_id = TmpChId,
-                                   channel_id = ChId} = H) ->
-    H#handler{
-      channel_id = set_if_undefined(ChId, maps:get(channel_id, Msg, undefined),
-                                    temp_channel_id),
-      temp_channel_id = set_if_undefined(TmpChId,
-                                         maps:get(temp_channel_id, Msg, undefined),
-                                         channel_id)}.
+set_channel_id(#{} = Msg, #handler{channel_id = ChId} = H) ->
+    H#handler{channel_id = set_chid_if_undefined(
+                             ChId, maps:get(channel_id, Msg, undefined))}.
 
-set_if_undefined(undefined, V, _Fld) -> V;
-set_if_undefined(V, V, _Fld) -> V;
-set_if_undefined(A, B, Fld) ->
-    erlang:error({channel_id_mismatch, [Fld, A, B]}).
+set_chid_if_undefined(undefined, V) -> V;
+set_chid_if_undefined(V, V) -> V;
+set_chid_if_undefined(A, B) ->
+    erlang:error({channel_id_mismatch, [A, B]}).
 
 terminate(_Reason, _PartialReq, #{} = _State) ->
     % not initialized yet

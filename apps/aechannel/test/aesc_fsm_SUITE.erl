@@ -350,7 +350,7 @@ await_signing_request(Tag, R, Debug) ->
 await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
     check_info(0, Debug),
     receive {aesc_fsm, Fsm, #{type := sign, tag := Tag, info := Tx} = Msg} ->
-            R1 = set_if_undefined([temp_channel_id, channel_id], R, Msg),
+            R1 = set_chid_if_undefined(R, Msg),
             log(Debug, "await_signing(~p, ~p) <- ~p", [Tag, Fsm, Msg]),
             SignedTx = aetx_sign:sign(Tx, [Priv]),
             aesc_fsm:signing_response(Fsm, Tag, SignedTx),
@@ -359,32 +359,18 @@ await_signing_request(Tag, #{fsm := Fsm, priv := Priv} = R, Timeout, Debug) ->
             error(timeout)
     end.
 
-set_if_undefined([], R, _) -> R;
-set_if_undefined([temp_channel_id|T], R, Msg) ->
-    R1 = case maps:find(temp_channel_id, R) of
-             {ok, V} ->
-                 case maps:get(temp_channel_id, Msg) of
-                     V -> R;
-                     Other ->
-                         erlang:error({mismatch, [temp_channel_id, V, Other]})
-                 end;
-             error ->
-                 R#{temp_channel_id => maps:get(temp_channel_id, Msg)}
-         end,
-    set_if_undefined(T, R1, Msg);
-set_if_undefined([channel_id|T], R, Msg) ->
-    R1 = case {maps:get(channel_id, R, undefined),
-               maps:get(channel_id, Msg, undefined)} of
-             {undefined, undefined} ->
-                 R;
-             {undefined, V} ->
-                 R#{channel_id => V};
-             {V, V} ->
-                 R;
-             {A, B} ->
-                 erlang:error({mismatch, [channel_id, A, B]})
-         end,
-    set_if_undefined(T, R1, Msg).
+set_chid_if_undefined(R, Msg) ->
+    case {maps:get(channel_id, R, undefined),
+          maps:get(channel_id, Msg, undefined)} of
+        {undefined, undefined} ->
+            R;
+        {undefined, V} ->
+            R#{channel_id => V};
+        {V, V} ->
+            R;
+        {A, B} ->
+            erlang:error({mismatch, [channel_id, A, B]})
+    end.
 
 receive_info(R, Msg, Debug) ->
     receive_from_fsm(info, R, Msg, ?TIMEOUT, Debug).
