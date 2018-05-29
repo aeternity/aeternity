@@ -565,7 +565,7 @@ start_mining(#state{new_candidate_available = true} = State) ->
     State1 =
         case aec_block_generator:get_candidate() of
             {ok, Block} ->
-                Candidate = make_candidate(Block, State#state.seen_top_block_hash),
+                Candidate = make_candidate(Block, aec_blocks:prev_hash(Block)),
                 State#state{block_candidate = Candidate};
             {error, no_candidate} ->
                 State
