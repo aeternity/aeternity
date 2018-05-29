@@ -58,6 +58,7 @@ init([]) ->
     aec_events:subscribe(tx_created),
     aec_events:subscribe(tx_received),
     aec_events:subscribe(block_created),
+    aec_events:subscribe(top_synced),
     aec_events:subscribe(top_changed),
     {ok, #state{}}.
 
@@ -99,6 +100,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     State1 =
         case Event of
             block_created -> preempt_generation(State, Info);
+            top_synced    -> preempt_generation(State, Info);
             top_changed   -> preempt_generation(State, Info);
             tx_created    -> add_new_tx(State, Info);
             tx_received   -> add_new_tx(State, Info);

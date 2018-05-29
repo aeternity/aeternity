@@ -451,17 +451,26 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
             {changed, State2#state{block_candidate = undefined}}
     end.
 
-maybe_publish_top(none,_TopHash) -> ok;
 maybe_publish_top(block_created,_TopHash) ->
     %% A new block we created is published unconditionally below.
     ok;
+maybe_publish_top(block_synced, TopHash) ->
+    %% We don't publish blocks pulled from network. Otherwise on
+    %% bootstrap the node would publish old blocks. Though preempt
+    %% block candidate generation.
+    aec_events:publish(top_synced, TopHash);
 maybe_publish_top(block_received, TopHash) ->
-    %% The received block changed the top. Publish the new top.
+    %% The received block pushed by a network peer changed the
+    %% top. Publish the new top.
     aec_events:publish(top_changed, TopHash).
 
-maybe_publish_block(none,_Block) -> ok;
+maybe_publish_block(block_synced,_Block) ->
+    %% We don't publish blocks pulled from network. Otherwise on
+    %% bootstrap the node would publish old blocks.
+    ok;
 maybe_publish_block(block_received,_Block) ->
-    %% We don't publish all blocks, only if it changes the top.
+    %% We don't publish all blocks pushed by network peers, only if it
+    %% changes the top.
     ok;
 maybe_publish_block(block_created = T, Block) ->
     %% This is a block we created ourselves. Always publish.
@@ -630,7 +639,7 @@ bump_nonce(C = #candidate{ nonce = N }) ->
 
 handle_synced_block(Block, State) ->
     epoch_mining:info("sync_block: ~p", [Block]),
-    handle_add_block(Block, State, none).
+    handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
     epoch_mining:info("post_block: ~p", [Block]),
