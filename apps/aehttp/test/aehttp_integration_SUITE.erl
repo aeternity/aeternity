@@ -3412,7 +3412,7 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
 
     {ok, SSignedMutualTx} = aec_base58c:safe_decode(transaction, EncodedSignedMutualTx),
     SignedMutualTx = aetx_sign:deserialize_from_binary(SSignedMutualTx),
-    %% same transaction 
+    %% same transaction
     ShutdownTx = aetx_sign:tx(SignedMutualTx),
 
     {channel_close_mutual_tx, MutualTx} = aetx:specialize_type(ShutdownTx),
@@ -3430,6 +3430,8 @@ sc_ws_close_mutual(Config, Closer) when Closer =:= initiator
     assert_balance(IPubkey, IStartB + IChange),
     assert_balance(RPubkey, RStartB + RChange),
 
+    % ensure tx is not hanging in mempool
+    {ok, 200, []} = get_transactions(),
     ok.
 
 wait_for_signed_transaction_in_pool(SignedTx) ->

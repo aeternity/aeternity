@@ -15,7 +15,7 @@
 -include("common.hrl").
 
 -define(MEMPOOL, mempool).
--define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1'}, '_'}).
+-define(KEY_NONCE_PATTERN(Sender), {{'_', Sender, '$1', '_'}, '_'}).
 
 %% API
 -export([ start_link/0
@@ -44,7 +44,7 @@
 -type non_pos_integer() :: neg_integer() | 0.
 
 -type pool_db_key() ::
-        {negated_fee(), pubkey(), non_neg_integer()}.
+        {negated_fee(), pubkey(), non_neg_integer(), binary()}.
 -type pool_db_value() :: aetx_sign:signed_tx().
 -type pool_db() :: atom().
 
@@ -176,7 +176,7 @@ int_get_candidate(0,_Mempool, _,_BlockHash, Acc) ->
     gb_trees:values(Acc);
 int_get_candidate(_N,_Mempool, '$end_of_table',_BlockHash, Acc) ->
     gb_trees:values(Acc);
-int_get_candidate(N, Mempool, {_Fee, Account, Nonce} = Key, BlockHash, Acc) ->
+int_get_candidate(N, Mempool, {_Fee, Account, Nonce, _} = Key, BlockHash, Acc) ->
     case gb_trees:is_defined({Account, Nonce}, Acc) of
         true ->
             %% The earlier must have had higher fee. Skip this tx.
@@ -197,6 +197,7 @@ int_get_candidate(N, Mempool, {_Fee, Account, Nonce} = Key, BlockHash, Acc) ->
             end
     end.
 
+-spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
     %% INFO: Sort by fee
@@ -206,7 +207,16 @@ pool_db_key(SignedTx) ->
     %%         the following key is unique for a transaction
     %%       * negative fee places high profit transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
-    {-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx)}.
+    {-aetx:fee(Tx), aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)}.
+
+-spec select_pool_db_key_by_hash(pool_db(), binary()) -> {ok, pool_db_key()} | not_in_ets.
+select_pool_db_key_by_hash(Mempool, TxHash) ->
+    case sel_return(ets_select(Mempool, [{ {{'$1', '$2', '$3', '$4'}, '_'},
+                                           [{'=:=','$4', TxHash}],
+                                           [{{'$1', '$2', '$3', '$4'}}] }], infinity)) of
+        [Key] -> {ok, Key};
+        [] -> not_in_ets
+    end.
 
 -spec pool_db_open() -> {ok, pool_db()}.
 pool_db_open() ->
@@ -256,7 +266,10 @@ update_pool_on_tx_hash(TxHash, Mempool, Handled) ->
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
-                    ets:delete(Mempool, pool_db_key(Tx));
+                    case select_pool_db_key_by_hash(Mempool, TxHash) of
+                        {ok, Key} -> ets:delete(Mempool, Key);
+                        not_in_ets -> pass
+                    end;
                 true ->
                     ets:insert(Mempool, {pool_db_key(Tx), Tx})
             end
