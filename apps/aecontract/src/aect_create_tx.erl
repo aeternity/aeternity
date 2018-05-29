@@ -15,6 +15,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -92,6 +93,10 @@ call_data(#contract_create_tx{call_data = X}) ->
 fee(#contract_create_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#contract_create_tx{ttl = TTL}) ->
+    TTL.
+
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{owner      := OwnerPubKey,
       nonce      := Nonce,
@@ -102,7 +107,8 @@ new(#{owner      := OwnerPubKey,
       gas        := Gas,
       gas_price  := GasPrice,
       call_data  := CallData,
-      fee        := Fee}) ->
+      fee        := Fee,
+      ttl        := TTL}) ->
     Tx = #contract_create_tx{owner      = OwnerPubKey,
                              nonce      = Nonce,
                              code       = Code,
@@ -112,7 +118,8 @@ new(#{owner      := OwnerPubKey,
                              gas        = Gas,
                              gas_price  = GasPrice,
                              call_data  = CallData,
-                             fee        = Fee},
+                             fee        = Fee,
+                             ttl        = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -158,14 +165,14 @@ signers(#contract_create_tx{owner = OwnerPubKey}, _) ->
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(),
               aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#contract_create_tx{owner = OwnerPubKey,
-                            nonce = Nonce,
-			    vm_version = VmVersion,
+process(#contract_create_tx{owner      = OwnerPubKey,
+                            nonce      = Nonce,
+			    vm_version = _VmVersion,
                             amount     = Amount,
-                            gas        =_Gas,
+                            gas        = _Gas,
                             gas_price  = GasPrice,
-                            deposit    = Deposit,
-                            fee   = Fee} = CreateTx,
+                            deposit    = _Deposit,
+                            fee        = Fee} = CreateTx,
         Context, Trees0, Height, ConsensusVersion) ->
 
     {ContractPubKey, Contract, Trees1} =
@@ -221,6 +228,7 @@ spend(SenderPubKey, ReceiverPubKey, Value, Fee, Nonce,
                        , recipient => ReceiverPubKey
                        , amount => Value
                        , fee => Fee
+                       , ttl => Height
                        , nonce => Nonce
                        , payload => <<>>}),
     Trees1 = aec_trees:ensure_account(ReceiverPubKey, Trees),
@@ -264,14 +272,14 @@ run_contract(#contract_create_tx{ owner      = Caller
 
     aect_dispatch:run(VmVersion, CallDef).
 
-initialize_contract(#contract_create_tx{owner = OwnerPubKey,
-                                        nonce = Nonce,
+initialize_contract(#contract_create_tx{owner      = OwnerPubKey,
+                                        nonce      = Nonce,
                                         vm_version = VmVersion,
-                                        amount     = Amount,
-                                        gas        =_Gas,
+                                        amount     = _Amount,
+                                        gas        = _Gas,
                                         gas_price  = GasPrice,
                                         deposit    = Deposit,
-                                        fee   = Fee},
+                                        fee        = _Fee},
                     ContractPubKey, Contract,
                     CallRes,  Context, Trees, Height, ConsensusVersion) ->
     %% Insert the call into the state tree for one block.
@@ -315,6 +323,7 @@ serialize(#contract_create_tx{owner      = OwnerPubKey,
                               code       = Code,
                               vm_version = VmVersion,
                               fee        = Fee,
+                              ttl        = TTL,
                               deposit    = Deposit,
                               amount     = Amount,
                               gas        = Gas,
@@ -326,6 +335,7 @@ serialize(#contract_create_tx{owner      = OwnerPubKey,
      , {code, Code}
      , {vm_version, VmVersion}
      , {fee, Fee}
+     , {ttl, TTL}
      , {deposit, Deposit}
      , {amount, Amount}
      , {gas, Gas}
@@ -339,6 +349,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
             , {code, Code}
             , {vm_version, VmVersion}
             , {fee, Fee}
+            , {ttl, TTL}
             , {deposit, Deposit}
             , {amount, Amount}
             , {gas, Gas}
@@ -349,6 +360,7 @@ deserialize(?CONTRACT_CREATE_TX_VSN,
                         code       = Code,
                         vm_version = VmVersion,
                         fee        = Fee,
+                        ttl        = TTL,
                         deposit    = Deposit,
                         amount     = Amount,
                         gas        = Gas,
@@ -361,6 +373,7 @@ serialization_template(?CONTRACT_CREATE_TX_VSN) ->
     , {code, binary}
     , {vm_version, int}
     , {fee, int}
+    , {ttl, int}
     , {deposit, int}
     , {amount, int}
     , {gas, int}
@@ -373,6 +386,7 @@ for_client(#contract_create_tx{ owner      = OwnerPubKey,
                                 code       = Code,
                                 vm_version = VmVersion,
                                 fee        = Fee,
+                                ttl        = TTL,
                                 deposit    = Deposit,
                                 amount     = Amount,
                                 gas        = Gas,
@@ -385,6 +399,7 @@ for_client(#contract_create_tx{ owner      = OwnerPubKey,
       <<"code">>        => aect_utils:hex_bytes(Code),
       <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
       <<"fee">>         => Fee,
+      <<"ttl">>         => TTL,
       <<"deposit">>     => Deposit,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,

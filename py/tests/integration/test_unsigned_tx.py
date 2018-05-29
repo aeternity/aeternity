@@ -122,6 +122,7 @@ def test_contract_call():
         contract=encoded_contract_address,
         vm_version=call_contract["vm_version"],
         fee=call_contract["fee"],
+        ttl=100,
         amount=call_contract["amount"],
         gas=call_contract["gas"],
         gas_price=call_contract["gas_price"],
@@ -229,6 +230,7 @@ def test_spend():
             recipient_pubkey=bob_address,
             amount=test_settings["spend_tx"]["amount"],
             fee=test_settings["spend_tx"]["fee"],
+            ttl=100,
             payload="foo")
     unsigned_spend_obj = external_api.post_spend(spend_data_obj)
     unsigned_spend_enc = unsigned_spend_obj.tx
@@ -284,6 +286,7 @@ def send_tokens_to_user_(address, tokens, fee, external_api, internal_api):
         recipient_pubkey=address,
         amount=tokens,
         fee=fee,
+        ttl=100,
         payload="sending tokens")
     internal_api.post_spend_tx(spend_tx_obj)
     wait(lambda: get_balance(address) == (bal0 + tokens),
@@ -299,6 +302,7 @@ def get_unsigned_contract_create(owner, contract, external_api):
         gas=contract["gas"],
         gas_price=contract["gas_price"],
         fee=contract["fee"],
+        ttl=100,
         call_data=contract["call_data"])
 
     tx_obj = external_api.post_contract_create(contract_create_data_obj)

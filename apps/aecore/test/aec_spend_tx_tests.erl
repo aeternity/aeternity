@@ -60,6 +60,20 @@ check_test_() ->
               StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
               ?assertEqual({error, account_nonce_too_high},
                            aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
+      end},
+      {"TX TTL is too small",
+      fun() ->
+              {ok, SpendTx} = spend_tx(#{sender => ?SENDER_PUBKEY,
+                                         fee => 10,
+                                         amount => 50,
+                                         ttl => 10,
+                                         nonce => 11,
+                                         payload => <<"">>}),
+              AccountNonce = 10,
+              SenderAccount = new_account(#{pubkey => ?SENDER_PUBKEY, balance => 100, nonce => AccountNonce}),
+              StateTree = aec_test_utils:create_state_tree_with_account(SenderAccount),
+              ?assertEqual({error, ttl_expired},
+                           aetx:check(SpendTx, StateTree, 20, ?PROTOCOL_VERSION))
       end}].
 
 process_test_() ->
@@ -73,6 +87,7 @@ process_test_() ->
                                                  recipient => ?RECIPIENT_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
+                                                 ttl => 100,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               <<"foo">> = aec_spend_tx:payload(aetx:tx(SpendTx)),
@@ -97,6 +112,7 @@ process_test_() ->
                                                  recipient => ?SENDER_PUBKEY,
                                                  amount => 50,
                                                  fee => 10,
+                                                 ttl => 100,
                                                  nonce => 11,
                                                  payload => <<"foo">>}),
               {ok, StateTree0} = aetx:check(SpendTx, StateTree0, 20, ?PROTOCOL_VERSION),
@@ -114,6 +130,7 @@ spend_tx(Data) ->
                     recipient => ?RECIPIENT_PUBKEY,
                     amount => 0,
                     fee => 0,
+                    ttl => 100,
                     nonce => 0},
     aec_spend_tx:new(maps:merge(DefaultData, Data)).
 

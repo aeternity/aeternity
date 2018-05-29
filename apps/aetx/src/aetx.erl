@@ -96,8 +96,11 @@
 -callback fee(Tx :: tx_instance()) ->
     Fee :: integer().
 
+-callback ttl(Tx :: tx_instance()) ->
+    TTL :: aec_blocks:height().
+
 -callback nonce(Tx :: tx_instance()) ->
-    Nonce :: non_neg_integer() | undefined.
+    Nonce :: non_neg_integer().
 
 -callback origin(Tx :: tx_instance()) ->
     Origin :: aec_keys:pubkey() | undefined.
@@ -169,11 +172,13 @@ signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
             ConsensusVersion :: non_neg_integer()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
 check(#aetx{ cb = CB, tx = Tx }, Trees, Height, ConsensusVersion) ->
-    case CB:fee(Tx) >= aec_governance:minimum_tx_fee() of
-        true ->
+    case {CB:fee(Tx) >= aec_governance:minimum_tx_fee(), CB:ttl(Tx) >= Height} of
+        {true, true} ->
             CB:check(Tx, aetx_transaction, Trees, Height, ConsensusVersion);
-        false ->
-            {error, too_low_fee}
+        {false, _} ->
+            {error, too_low_fee};
+        {_, false} ->
+            {error, ttl_expired}
     end.
 
 -spec check_from_contract(Tx :: tx(), Trees :: aec_trees:trees(), Height :: non_neg_integer(),

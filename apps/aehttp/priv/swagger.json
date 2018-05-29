@@ -2633,6 +2633,10 @@
           "type" : "integer",
           "format" : "int64"
         },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
         "sender" : {
           "$ref" : "#/definitions/EncodedHash"
         },
@@ -2650,12 +2654,13 @@
         "payload" : "payload",
         "fee" : 6,
         "recipient_pubkey" : { },
-        "nonce" : 1
+        "ttl" : 1,
+        "nonce" : 5
       }
     },
     "OracleRegisterTx" : {
       "type" : "object",
-      "required" : [ "fee", "query_fee", "query_format", "response_format", "ttl" ],
+      "required" : [ "fee", "oracle_ttl", "query_fee", "query_format", "response_format", "ttl" ],
       "properties" : {
         "query_format" : {
           "type" : "string"
@@ -2667,11 +2672,7 @@
           "type" : "integer",
           "format" : "int64"
         },
-        "fee" : {
-          "type" : "integer",
-          "format" : "int64"
-        },
-        "ttl" : {
+        "oracle_ttl" : {
           "$ref" : "#/definitions/TTL"
         },
         "account" : {
@@ -2680,17 +2681,26 @@
         "nonce" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "response_format" : "response_format",
-        "fee" : 6,
-        "query_fee" : 0,
-        "ttl" : {
+        "fee" : 5,
+        "oracle_ttl" : {
           "type" : "delta",
           "value" : 1
         },
-        "nonce" : 5,
+        "query_fee" : 0,
+        "nonce" : 1,
+        "ttl" : 5,
         "query_format" : "query_format",
         "account" : { }
       }
@@ -2712,13 +2722,13 @@
     },
     "OracleExtendTx" : {
       "type" : "object",
-      "required" : [ "fee", "ttl" ],
+      "required" : [ "fee", "oracle_ttl", "ttl" ],
       "properties" : {
         "fee" : {
           "type" : "integer",
           "format" : "int64"
         },
-        "ttl" : {
+        "oracle_ttl" : {
           "$ref" : "#/definitions/TTL"
         },
         "oracle" : {
@@ -2727,21 +2737,26 @@
         "nonce" : {
           "type" : "integer",
           "format" : "int64"
+        },
+        "ttl" : {
+          "type" : "integer",
+          "format" : "int64"
         }
       },
       "example" : {
         "oracle" : { },
         "fee" : 0,
-        "ttl" : {
+        "oracle_ttl" : {
           "type" : "delta",
           "value" : 1
         },
-        "nonce" : 6
+        "nonce" : 6,
+        "ttl" : 1
       }
     },
     "OracleQueryTx" : {
       "type" : "object",
-      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl" ],
+      "required" : [ "fee", "oracle_pubkey", "query", "query_fee", "query_ttl", "response_ttl", "ttl" ],
       "properties" : {
         "oracle_pubkey" : {
           "type" : "string"
@@ -2760,6 +2775,10 @@
           "$ref" : "#/definitions/RelativeTTL"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2785,13 +2804,14 @@
         },
         "fee" : 1,
         "query_fee" : 0,
+        "ttl" : 5,
         "nonce" : 5,
         "oracle_pubkey" : "oracle_pubkey"
       }
     },
     "OracleResponseTx" : {
       "type" : "object",
-      "required" : [ "fee", "query_id", "response" ],
+      "required" : [ "fee", "query_id", "response", "ttl" ],
       "properties" : {
         "query_id" : {
           "$ref" : "#/definitions/EncodedHash"
@@ -2800,6 +2820,10 @@
           "type" : "string"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2817,7 +2841,8 @@
         "query_id" : { },
         "response" : "response",
         "fee" : 0,
-        "nonce" : 6
+        "ttl" : 6,
+        "nonce" : 1
       }
     },
     "OracleQueryResponse" : {
@@ -2897,12 +2922,16 @@
     },
     "NamePreclaimTx" : {
       "type" : "object",
-      "required" : [ "commitment", "fee" ],
+      "required" : [ "commitment", "fee", "ttl" ],
       "properties" : {
         "commitment" : {
           "type" : "string"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2917,13 +2946,14 @@
       "example" : {
         "fee" : 0,
         "commitment" : "commitment",
-        "nonce" : 6,
+        "ttl" : 6,
+        "nonce" : 1,
         "account" : { }
       }
     },
     "NameClaimTx" : {
       "type" : "object",
-      "required" : [ "fee", "name", "name_salt" ],
+      "required" : [ "fee", "name", "name_salt", "ttl" ],
       "properties" : {
         "name" : {
           "type" : "string"
@@ -2933,6 +2963,10 @@
           "format" : "int64"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2948,13 +2982,14 @@
         "name_salt" : 0,
         "fee" : 6,
         "name" : "name",
-        "nonce" : 1,
+        "ttl" : 1,
+        "nonce" : 5,
         "account" : { }
       }
     },
     "NameUpdateTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash", "name_ttl", "pointers", "ttl" ],
+      "required" : [ "client_ttl", "fee", "name_hash", "name_ttl", "pointers", "ttl" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
@@ -2966,11 +3001,15 @@
         "pointers" : {
           "type" : "string"
         },
-        "ttl" : {
+        "client_ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -2984,9 +3023,10 @@
       },
       "example" : {
         "name_ttl" : 0,
+        "client_ttl" : 6,
         "name_hash" : "name_hash",
         "fee" : 1,
-        "ttl" : 6,
+        "ttl" : 5,
         "nonce" : 5,
         "pointers" : "pointers",
         "account" : { }
@@ -2994,7 +3034,7 @@
     },
     "NameTransferTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash", "recipient_pubkey" ],
+      "required" : [ "fee", "name_hash", "recipient_pubkey", "ttl" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
@@ -3003,6 +3043,10 @@
           "type" : "string"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -3018,18 +3062,23 @@
         "name_hash" : "name_hash",
         "fee" : 0,
         "recipient_pubkey" : "recipient_pubkey",
-        "nonce" : 6,
+        "ttl" : 6,
+        "nonce" : 1,
         "account" : { }
       }
     },
     "NameRevokeTx" : {
       "type" : "object",
-      "required" : [ "fee", "name_hash" ],
+      "required" : [ "fee", "name_hash", "ttl" ],
       "properties" : {
         "name_hash" : {
           "type" : "string"
         },
         "fee" : {
+          "type" : "integer",
+          "format" : "int64"
+        },
+        "ttl" : {
           "type" : "integer",
           "format" : "int64"
         },
@@ -3044,7 +3093,8 @@
       "example" : {
         "name_hash" : "name_hash",
         "fee" : 0,
-        "nonce" : 6,
+        "ttl" : 6,
+        "nonce" : 1,
         "account" : { }
       }
     },
@@ -3908,6 +3958,11 @@
           "description" : "Transaction fee",
           "minimum" : 0
         },
+        "ttl" : {
+          "type" : "integer",
+          "description" : "Transaction TTL",
+          "minimum" : 0
+        },
         "call_data" : {
           "type" : "string",
           "description" : "Contract call data"
@@ -3923,12 +3978,13 @@
         "fee" : 0,
         "gas" : 0,
         "deposit" : 0,
-        "nonce" : 0
+        "nonce" : 0,
+        "ttl" : 0
       }
     },
     "ContractCallData" : {
       "type" : "object",
-      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "vm_version" ],
+      "required" : [ "amount", "call_data", "caller", "contract", "fee", "gas", "gas_price", "ttl", "vm_version" ],
       "properties" : {
         "caller" : {
           "type" : "string",
@@ -3951,6 +4007,11 @@
         "fee" : {
           "type" : "integer",
           "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "ttl" : {
+          "type" : "integer",
+          "description" : "Transaction TTL",
           "minimum" : 0
         },
         "amount" : {
@@ -3982,12 +4043,13 @@
         "contract" : "contract",
         "fee" : 0,
         "gas" : 0,
-        "nonce" : 0
+        "nonce" : 0,
+        "ttl" : 0
       }
     },
     "ContractCallCompute" : {
       "type" : "object",
-      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "vm_version" ],
+      "required" : [ "amount", "arguments", "caller", "contract", "fee", "function", "gas", "gas_price", "ttl", "vm_version" ],
       "properties" : {
         "caller" : {
           "type" : "string",
@@ -4008,6 +4070,11 @@
           "maximum" : 255
         },
         "fee" : {
+          "type" : "integer",
+          "description" : "Transaction fee",
+          "minimum" : 0
+        },
+        "ttl" : {
           "type" : "integer",
           "description" : "Transaction fee",
           "minimum" : 0
@@ -4046,7 +4113,8 @@
         "function" : "function",
         "gas" : 0,
         "arguments" : "arguments",
-        "nonce" : 0
+        "nonce" : 0,
+        "ttl" : 0
       }
     },
     "UnsignedTx" : {

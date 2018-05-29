@@ -259,11 +259,11 @@ update(Cfg) ->
     %% Check name present, but neither pointers nor name TTL set
     {value, N} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees)),
     [] = aens_names:pointers(N),
-    0    = aens_names:ttl(N),
+    0  = aens_names:client_ttl(N),
 
     %% Create Update tx and apply it on trees
     Pointers = [{<<"account_pubkey">>, <<"aecore_suite_utils">>}],
-    NameTTL  = 90000,
+    NameTTL  = 40000,
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
     {ok, Tx} = aens_update_tx:new(TxSpec),
@@ -275,17 +275,24 @@ update(Cfg) ->
     %% Check name present, with both pointers and TTL set
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
     Pointers = aens_names:pointers(N1),
-    NameTTL  = aens_names:ttl(N1),
+    NameTTL  = aens_names:expires(N1) - Height,
     ok.
 
 update_negative(Cfg) ->
     {PubKey, NHash, S1} = claim(Cfg),
     Trees = aens_test_utils:trees(S1),
-    Height = ?PRE_CLAIM_HEIGHT+1,
+    Height = ?PRE_CLAIM_HEIGHT + 1,
 
-    %% Test TTL too high
+    %% Test TX TTL too low
     MaxTTL = aec_governance:name_claim_max_expiration(),
-    TxSpec1 = aens_test_utils:update_tx_spec(PubKey, NHash, #{ttl => MaxTTL + 1}, S1),
+    TxSpec0 = aens_test_utils:update_tx_spec(PubKey, NHash, #{ttl => Height - 1}, S1),
+    {ok, Tx0} = aens_update_tx:new(TxSpec0),
+    {error, ttl_expired} =
+        aetx:check(Tx0, Trees, Height, ?PROTOCOL_VERSION),
+
+    %% Test name TTL too high
+    MaxTTL = aec_governance:name_claim_max_expiration(),
+    TxSpec1 = aens_test_utils:update_tx_spec(PubKey, NHash, #{name_ttl => MaxTTL + 1}, S1),
     {ok, Tx1} = aens_update_tx:new(TxSpec1),
     {error, ttl_too_high} =
         aetx:check(Tx1, Trees, Height, ?PROTOCOL_VERSION),

@@ -8,6 +8,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          recipient/1,
@@ -35,6 +36,7 @@
           recipient = <<>>          :: aec_keys:pubkey(),
           amount    = 0             :: non_neg_integer(),
           fee       = 0             :: non_neg_integer(),
+          ttl       = 0             :: aec_blocks:height(),
           nonce     = 0             :: non_neg_integer(),
           payload   = <<>>          :: binary()}).
 
@@ -47,10 +49,12 @@ new(#{sender := SenderPubkey,
       recipient := RecipientPubkey,
       amount := Amount,
       fee := Fee,
+      ttl := TTL,
       nonce := Nonce,
       payload := Payload}) when is_integer(Amount), Amount >= 0,
                                 is_integer(Nonce), Nonce >= 0,
                                 is_integer(Fee), Fee >= 0,
+                                is_integer(TTL), TTL >= 0,
                                 is_binary(SenderPubkey),
                                 is_binary(RecipientPubkey),
                                 is_binary(Payload)
@@ -59,6 +63,7 @@ new(#{sender := SenderPubkey,
                    recipient = RecipientPubkey,
                    amount = Amount,
                    fee = Fee,
+                   ttl = TTL,
                    nonce = Nonce,
                    payload = Payload},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -70,6 +75,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#spend_tx{fee = F}) ->
     F.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#spend_tx{ttl = TTL}) ->
+    TTL.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#spend_tx{nonce = Nonce}) ->
@@ -87,20 +96,14 @@ recipient(#spend_tx{recipient = Recipient}) ->
 payload(#spend_tx{payload = Payload}) ->
     Payload.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#spend_tx{} = SpendTx, Context, Trees0, Height, _ConsensusVersion) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
+check(#spend_tx{} = SpendTx, _Context, Trees, Height, _ConsensusVersion) ->
     RecipientPubkey = recipient(SpendTx),
-    Checks =
-        case Context of
-            aetx_contract ->
-                [fun check_sender_account/3];
-            aetx_transaction ->
-                [fun check_tx_fee/3,
-                 fun check_sender_account/3]
-        end,
-    case aeu_validation:run(Checks, [SpendTx, Trees0, Height]) of
+    Checks = [fun check_sender_account/3],
+    case aeu_validation:run(Checks, [SpendTx, Trees, Height]) of
         ok ->
-            {ok, aec_trees:ensure_account(RecipientPubkey, Trees0)};
+            {ok, aec_trees:ensure_account(RecipientPubkey, Trees)};
         {error, _Reason} = Error ->
             Error
     end.
@@ -135,6 +138,7 @@ serialize(#spend_tx{sender = Sender,
                     recipient = Recipient,
                     amount = Amount,
                     fee = Fee,
+                    ttl = TTL,
                     nonce = Nonce,
                     payload = Payload}) ->
     {version(),
@@ -142,6 +146,7 @@ serialize(#spend_tx{sender = Sender,
      , {recipient, Recipient}
      , {amount, Amount}
      , {fee, Fee}
+     , {ttl, TTL}
      , {nonce, Nonce}
      , {payload, Payload}
      ]}.
@@ -151,12 +156,14 @@ deserialize(?SPEND_TX_VSN,
             , {recipient, Recipient}
             , {amount, Amount}
             , {fee, Fee}
+            , {ttl, TTL}
             , {nonce, Nonce}
             , {payload, Payload}]) ->
     #spend_tx{sender = Sender,
               recipient = Recipient,
               amount = Amount,
               fee = Fee,
+              ttl = TTL,
               nonce = Nonce,
               payload = Payload}.
 
@@ -165,6 +172,7 @@ serialization_template(?SPEND_TX_VSN) ->
     , {recipient, binary}
     , {amount, int}
     , {fee, int}
+    , {ttl, int}
     , {nonce, int}
     , {payload, binary}
     ].
@@ -173,6 +181,7 @@ for_client(#spend_tx{sender = Sender,
                      recipient = Recipient,
                      amount = Amount,
                      fee = Fee,
+                     ttl = TTL,
                      nonce = Nonce,
                      payload = Payload}) ->
     #{<<"sender">> => aec_base58c:encode(account_pubkey, Sender),
@@ -180,21 +189,12 @@ for_client(#spend_tx{sender = Sender,
       <<"recipient">> => aec_base58c:encode(account_pubkey, Recipient),
       <<"amount">> => Amount,
       <<"fee">> => Fee,
+      <<"ttl">> => TTL,
       <<"nonce">> => Nonce,
       <<"payload">> => Payload,
       <<"vsn">> => version()}.
 
 %% Internals
-
--spec check_tx_fee(tx(), aec_trees:trees(), aec_blocks:height()) ->
-                          ok | {error, too_low_fee}.
-check_tx_fee(#spend_tx{fee = Fee}, _Trees, _Height) ->
-    case Fee >= aec_governance:minimum_tx_fee() of
-        true ->
-            ok;
-        false ->
-            {error, too_low_fee}
-    end.
 
 -spec check_sender_account(tx(), aec_trees:trees(), aec_blocks:height()) ->
                                   ok | {error, term()}.

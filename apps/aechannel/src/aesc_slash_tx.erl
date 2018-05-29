@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -65,6 +66,10 @@ type() ->
 fee(#channel_slash_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_slash_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_slash_tx{nonce = Nonce}) ->
     Nonce.
@@ -73,17 +78,15 @@ nonce(#channel_slash_tx{nonce = Nonce}) ->
 origin(#channel_slash_tx{from = FromPubKey}) ->
     FromPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_slash_tx{channel_id = ChannelId,
                         from       = FromPubKey,
                         payload    = Payload,
-                        ttl        = TTL,
                         fee        = Fee,
-                        nonce        = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+                        nonce      = Nonce}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
-         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_payload(ChannelId, FromPubKey, Payload, Height, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -92,13 +95,13 @@ check(#channel_slash_tx{channel_id = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#channel_slash_tx{channel_id = ChannelId,
                           from       = FromPubKey,
                           payload    = Payload,
                           fee        = Fee,
-                          nonce        = Nonce}, _Context, Trees, Height,
-                                                  _ConsensusVersion) ->
+                          nonce      = Nonce}, _Context, Trees, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 

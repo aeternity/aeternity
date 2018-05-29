@@ -13,7 +13,7 @@
           responder_amount   :: non_neg_integer(),
           channel_reserve    :: non_neg_integer(),
           lock_period        :: non_neg_integer(),
-          ttl                :: non_neg_integer(),
+          ttl                :: aec_blocks:height(),
           fee                :: non_neg_integer(),
           nonce              :: non_neg_integer()
          }).
@@ -22,7 +22,7 @@
           channel_id  :: binary(),
           from        :: aec_keys:pubkey(),
           amount      :: non_neg_integer(),
-          ttl         :: non_neg_integer(),
+          ttl         :: aec_blocks:height(),
           fee         :: non_neg_integer(),
           nonce       :: non_neg_integer()
          }).
@@ -40,7 +40,7 @@
           channel_id        :: binary(),
           initiator_amount  :: non_neg_integer(),
           responder_amount  :: non_neg_integer(),
-          ttl               :: non_neg_integer(),
+          ttl               :: aec_blocks:height(),
           fee               :: non_neg_integer(),
           nonce             :: non_neg_integer()
          }).
@@ -49,7 +49,7 @@
           channel_id :: binary(),
           from       :: aec_keys:pubkey(),
           payload    :: binary(),
-          ttl        :: non_neg_integer(),
+          ttl        :: aec_blocks:height(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
@@ -58,7 +58,7 @@
           channel_id :: binary(),
           from       :: aec_keys:pubkey(),
           payload    :: binary(),
-          ttl        :: non_neg_integer(),
+          ttl        :: aec_blocks:height(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).
@@ -68,7 +68,7 @@
           from       :: aec_keys:pubkey(),
           initiator_amount  :: non_neg_integer(),
           responder_amount  :: non_neg_integer(),
-          ttl        :: non_neg_integer(),
+          ttl        :: aec_blocks:height(),
           fee        :: non_neg_integer(),
           nonce      :: non_neg_integer()
          }).

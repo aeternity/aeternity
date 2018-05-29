@@ -971,17 +971,24 @@ settle_negative(Cfg) ->
 
     %% Test too high from account nonce
     TxSpec3 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
-                                                   #{nonce => 0}, S),
+                                                   #{nonce => 0, ttl => 1000}, S),
     {ok, Tx3} = aesc_settle_tx:new(TxSpec3),
     {error, account_nonce_too_high} =
         aetx:check(Tx3, Trees, ClosesAt, ?PROTOCOL_VERSION),
 
-    %% Test channel does not exist
-    TxSpec4 = aesc_test_utils:settle_tx_spec(<<"abcdefghi">>, PubKey1,
-                                             #{ttl => ClosesAt}, S),
+    %% Test too low TTL
+    TxSpec4 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+                                                   #{ttl => ClosesAt - 1}, S),
     {ok, Tx4} = aesc_settle_tx:new(TxSpec4),
-    {error, channel_does_not_exist} =
+    {error, ttl_expired} =
         aetx:check(Tx4, Trees, ClosesAt, ?PROTOCOL_VERSION),
+
+    %% Test channel does not exist
+    TxSpec5 = aesc_test_utils:settle_tx_spec(<<"abcdefghi">>, PubKey1,
+                                             #{ttl => ClosesAt}, S),
+    {ok, Tx5} = aesc_settle_tx:new(TxSpec5),
+    {error, channel_does_not_exist} =
+        aetx:check(Tx5, Trees, ClosesAt, ?PROTOCOL_VERSION),
 
     %% Test only one settle
     PrivKey1 = aesc_test_utils:priv_key(PubKey1, S),
@@ -990,11 +997,11 @@ settle_negative(Cfg) ->
                                 [SignedTx], Trees, ClosesAt, ?PROTOCOL_VERSION),
     S5 = aesc_test_utils:set_trees(Trees1, S),
 
-    TxSpec5 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
+    TxSpec6 = aesc_test_utils:settle_tx_spec(ChannelId, PubKey1,
                                       #{initiator_amount => ChannelAmount,
                                         ttl => ClosesAt + 2,
                                         responder_amount => 0}, S5),
-    {ok, Tx5} = aesc_close_mutual_tx:new(TxSpec5),
+    {ok, Tx6} = aesc_close_mutual_tx:new(TxSpec6),
     {error, channel_does_not_exist} =
-        aetx:check(Tx5, Trees1, ClosesAt + 2, ?PROTOCOL_VERSION),
+        aetx:check(Tx6, Trees1, ClosesAt + 2, ?PROTOCOL_VERSION),
   ok.

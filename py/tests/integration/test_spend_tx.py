@@ -25,8 +25,8 @@ def test_not_enough_tokens():
     # should not be able to use the incoming tokens until the spend transaction
     # they are in is confirmed.
     test_settings = settings["test_not_enough_tokens"]
-    coinbase_reward = common.coinbase_reward() 
-    (root_dir, bob_node, bob_api, bob_top) = setup_node_with_tokens(test_settings, "bob") 
+    coinbase_reward = common.coinbase_reward()
+    (root_dir, bob_node, bob_api, bob_top) = setup_node_with_tokens(test_settings, "bob")
     bob_internal_api = common.internal_api(bob_node)
 
     def get_bob_balance(height):
@@ -50,6 +50,7 @@ def test_not_enough_tokens():
         recipient_pubkey=test_settings["spend_tx"]["alice_pubkey"],
         amount=spend_tx_amt,
         fee=spend_tx_fee,
+        ttl=100,
         payload="foo")
     print("Bob's spend_tx is " + str(spend_tx_obj))
     bob_internal_api.post_spend_tx(spend_tx_obj)
@@ -148,6 +149,7 @@ def miner_send_tokens(address, amount, internal_api, external_api):
         recipient_pubkey=address,
         amount=amount,
         fee=1,
+        ttl=100,
         payload="sending tokens")
 
     # populate account
@@ -163,7 +165,7 @@ def register_name(name, address, external_api, private_key):
     # preclaim
     unsigned_preclaim = common.base58_decode(\
         external_api.post_name_preclaim(\
-            NamePreclaimTx(commitment=commitment, fee=1, account=address)).tx)
+            NamePreclaimTx(commitment=commitment, fee=1, ttl=100, account=address)).tx)
     signed_preclaim = keys.sign_encode_tx(unsigned_preclaim, private_key)
 
     external_api.post_tx(Tx(tx=signed_preclaim))
@@ -174,7 +176,7 @@ def register_name(name, address, external_api, private_key):
     encoded_name = common.encode_name(name)
     unsigned_claim = common.base58_decode(\
         external_api.post_name_claim(\
-            NameClaimTx(name=encoded_name, name_salt=salt, fee=1, account=address)).tx)
+            NameClaimTx(name=encoded_name, name_salt=salt, fee=1, ttl=100, account=address)).tx)
     signed_claim = keys.sign_encode_tx(unsigned_claim, private_key)
 
     external_api.post_tx(Tx(tx=signed_claim))
@@ -187,8 +189,8 @@ def register_name(name, address, external_api, private_key):
     pointers_str = json.dumps({'account_pubkey': address})
     unsigned_update = common.base58_decode(\
         external_api.post_name_update(\
-            NameUpdateTx(name_hash=name_entry0.name_hash, name_ttl=600000, ttl=50,\
-                pointers=pointers_str, fee=1, account=address)).tx)
+            NameUpdateTx(name_hash=name_entry0.name_hash, name_ttl=6000, client_ttl=50,\
+                pointers=pointers_str, fee=1, ttl=100, account=address)).tx)
     signed_update = keys.sign_encode_tx(unsigned_update, private_key)
 
     external_api.post_tx(Tx(tx=signed_update))
@@ -205,7 +207,8 @@ def send_tokens_to_name(name, tokens, sender_address, private_key, external_api)
 
     unsigned_spend = common.base58_decode(\
         external_api.post_spend(\
-            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1, payload="foo")).tx)
+            SpendTx(sender=sender_address, recipient_pubkey=resolved_address, amount=tokens, fee=1,\
+                    ttl=100, payload="foo")).tx)
     signed_spend = keys.sign_encode_tx(unsigned_spend, private_key)
 
     external_api.post_tx(Tx(tx=signed_spend))

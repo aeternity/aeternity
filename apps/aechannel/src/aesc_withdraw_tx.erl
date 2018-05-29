@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          amount/1,
@@ -66,6 +67,10 @@ type() ->
 fee(#channel_withdraw_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_withdraw_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_withdraw_tx{nonce = Nonce}) ->
     Nonce.
@@ -78,17 +83,15 @@ origin(#channel_withdraw_tx{to = ToPubKey}) ->
 amount(#channel_withdraw_tx{amount = Amt}) ->
     Amt.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_withdraw_tx{channel_id   = ChannelId,
-                           to           = ToPubKey,
-                           amount       = Amount,
-                           ttl         = TTL,
-                           fee          = Fee,
-                           nonce        = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
+check(#channel_withdraw_tx{channel_id = ChannelId,
+                           to         = ToPubKey,
+                           amount     = Amount,
+                           fee        = Fee,
+                           nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(ToPubKey, Trees, Nonce, Fee) end,
-         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, Amount, ToPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -97,13 +100,13 @@ check(#channel_withdraw_tx{channel_id   = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#channel_withdraw_tx{channel_id   = ChannelId,
-                             to           = ToPubKey,
-                             amount       = Amount,
-                             fee          = Fee,
-                             nonce        = Nonce}, _Context, Trees, _Height,
-                                                   _ConsensusVersion) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
+process(#channel_withdraw_tx{channel_id = ChannelId,
+                             to         = ToPubKey,
+                             amount     = Amount,
+                             fee        = Fee,
+                             nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -167,12 +170,12 @@ deserialize(?CHANNEL_WITHDRAW_TX_VSN,
                          nonce      = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_withdraw_tx{channel_id   = ChannelId,
-                                to           = ToPubKey,
-                                amount       = Amount,
-                                ttl          = TTL,
-                                fee          = Fee,
-                                nonce        = Nonce}) ->
+for_client(#channel_withdraw_tx{channel_id = ChannelId,
+                                to         = ToPubKey,
+                                amount     = Amount,
+                                ttl        = TTL,
+                                fee        = Fee,
+                                nonce      = Nonce}) ->
     #{<<"data_schema">> => <<"ChannelWithdrawalTxJSON">>, % swagger schema name
       <<"vsn">>         => version(),
       <<"channel_id">>  => aec_base58c:encode(channel, ChannelId),

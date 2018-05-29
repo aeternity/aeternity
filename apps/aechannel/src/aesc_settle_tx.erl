@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -67,6 +68,10 @@ type() ->
 fee(#channel_settle_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_settle_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_settle_tx{nonce = Nonce}) ->
     Nonce.
@@ -75,18 +80,16 @@ nonce(#channel_settle_tx{nonce = Nonce}) ->
 origin(#channel_settle_tx{from = FromPubKey}) ->
     FromPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_settle_tx{channel_id = ChannelId,
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
+check(#channel_settle_tx{channel_id       = ChannelId,
                          from             = FromPubKey,
                          initiator_amount = InitiatorAmount,
                          responder_amount = ResponderAmount,
-                         ttl              = TTL,
                          fee              = Fee,
-                         nonce        = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+                         nonce            = Nonce}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Fee) end,
-         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, FromPubKey, InitiatorAmount,
                                 ResponderAmount, Height, Trees) end],
     case aeu_validation:run(Checks) of
@@ -96,14 +99,14 @@ check(#channel_settle_tx{channel_id = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#channel_settle_tx{channel_id = ChannelId,
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
+process(#channel_settle_tx{channel_id       = ChannelId,
                            from             = FromPubKey,
                            initiator_amount = InitiatorAmount,
                            responder_amount = ResponderAmount,
                            fee              = Fee,
-                           nonce        = Nonce}, _Context, Trees, _Height,
-                                                  _ConsensusVersion) ->
+                           nonce            = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 
@@ -186,22 +189,22 @@ deserialize(?CHANNEL_SETTLE_TX_VSN,
                        nonce            = Nonce}.
 
 -spec for_client(tx()) -> map().
-for_client(#channel_settle_tx{channel_id      = ChannelId,
-                              from            = FromPubKey,
-                              initiator_amount= InitiatorAmount,
-                              responder_amount= ResponderAmount,
-                              ttl             = TTL,
-                              fee             = Fee,
-                              nonce           = Nonce}) ->
-    #{<<"data_schema">>       => <<"ChannelSettleTxJSON">>, % swagger schema name
-      <<"vsn">>               => version(),
-      <<"channel_id">>        => aec_base58c:encode(channel, ChannelId),
-      <<"from">>              => aec_base58c:encode(account_pubkey, FromPubKey),
-      <<"initiator_amount">>  => InitiatorAmount,
-      <<"responder_amount">>  => ResponderAmount,
-      <<"ttl">>               => TTL,
-      <<"fee">>               => Fee,
-      <<"nonce">>             => Nonce}.
+for_client(#channel_settle_tx{channel_id       = ChannelId,
+                              from             = FromPubKey,
+                              initiator_amount = InitiatorAmount,
+                              responder_amount = ResponderAmount,
+                              ttl              = TTL,
+                              fee              = Fee,
+                              nonce            = Nonce}) ->
+    #{<<"data_schema">>      => <<"ChannelSettleTxJSON">>, % swagger schema name
+      <<"vsn">>              => version(),
+      <<"channel_id">>       => aec_base58c:encode(channel, ChannelId),
+      <<"from">>             => aec_base58c:encode(account_pubkey, FromPubKey),
+      <<"initiator_amount">> => InitiatorAmount,
+      <<"responder_amount">> => ResponderAmount,
+      <<"ttl">>              => TTL,
+      <<"fee">>              => Fee,
+      <<"nonce">>            => Nonce}.
 
 
 serialization_template(?CHANNEL_SETTLE_TX_VSN) ->

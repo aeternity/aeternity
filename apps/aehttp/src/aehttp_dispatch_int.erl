@@ -20,8 +20,9 @@ handle_request('PostSpendTx', #{'SpendTx' := SpendTxObj}, _Context) ->
     #{<<"recipient_pubkey">> := EncodedRecipientPubkey,
       <<"amount">>           := Amount,
       <<"fee">>              := Fee,
+      <<"ttl">>              := TTL,
       <<"payload">>          := Payload} = SpendTxObj,
-    case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, Payload) of
+    case aehttp_int_tx_logic:spend(EncodedRecipientPubkey, Amount, Fee, TTL, Payload) of
         {ok, _} -> {200, [], #{}};
         {error, invalid_key} ->
             {404, [], #{reason => <<"Invalid key">>}};
@@ -35,16 +36,13 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
     #{<<"query_format">>    := QueryFormat,
       <<"response_format">> := ResponseFormat,
       <<"query_fee">>       := QueryFee,
+      <<"oracle_ttl">>      := OracleTTL,
       <<"fee">>             := Fee,
       <<"ttl">>             := TTL} = OracleRegisterTxObj,
-    TTLType = binary_to_existing_atom(maps:get(<<"type">>, TTL), utf8),
-    TTLValue = maps:get(<<"value">>, TTL),
-    case aehttp_int_tx_logic:oracle_register(QueryFormat,
-                                              ResponseFormat,
-                                              QueryFee,
-                                              Fee,
-                                              TTLType,
-                                              TTLValue) of
+    TTLType = binary_to_existing_atom(maps:get(<<"type">>, OracleTTL), utf8),
+    TTLValue = maps:get(<<"value">>, OracleTTL),
+    case aehttp_int_tx_logic:oracle_register(QueryFormat, ResponseFormat,
+                                             QueryFee, Fee, TTLType, TTLValue, TTL) of
         {ok, Tx} ->
             {Pubkey, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
             {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
@@ -56,11 +54,12 @@ handle_request('PostOracleRegisterTx', #{'OracleRegisterTx' := OracleRegisterTxO
     end;
 
 handle_request('PostOracleExtendTx', #{'OracleExtendTx' := OracleExtendTxObj}, _Context) ->
-    #{<<"fee">> := Fee,
-      <<"ttl">> := TTL} = OracleExtendTxObj,
+    #{<<"oracle_ttl">> := OracleTTL,
+      <<"fee">>        := Fee,
+      <<"ttl">>        := TTL} = OracleExtendTxObj,
     TTLType = delta,
-    TTLValue = maps:get(<<"value">>, TTL),
-    case aehttp_int_tx_logic:oracle_extend(Fee, TTLType, TTLValue) of
+    TTLValue = maps:get(<<"value">>, OracleTTL),
+    case aehttp_int_tx_logic:oracle_extend(Fee, TTLType, TTLValue, TTL) of
         {ok, Tx} ->
             {Pubkey, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
             {200, [], #{oracle_id => aec_base58c:encode(oracle_pubkey, Pubkey),
@@ -79,11 +78,12 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
       <<"response_ttl">>  :=
           #{<<"type">>    := <<"delta">>,
             <<"value">>   := ResponseTTLValue},
-      <<"fee">>           := Fee} = OracleQueryTxObj,
+      <<"fee">>           := Fee,
+      <<"ttl">>           := TTL} = OracleQueryTxObj,
     QueryTTLType = binary_to_existing_atom(maps:get(<<"type">>, QueryTTL), utf8),
     QueryTTLValue= maps:get(<<"value">>, QueryTTL),
     case aehttp_int_tx_logic:oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
-             QueryTTLValue, ResponseTTLValue, Fee) of
+             QueryTTLValue, ResponseTTLValue, Fee, TTL) of
         {ok, Tx, QId} ->
             {_, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
             {200, [], #{query_id => aec_base58c:encode(oracle_query_id, QId),
@@ -99,11 +99,12 @@ handle_request('PostOracleQueryTx', #{'OracleQueryTx' := OracleQueryTxObj}, _Con
 handle_request('PostOracleResponseTx', #{'OracleResponseTx' := OracleResponseTxObj}, _Context) ->
     #{<<"query_id">> := EncodedQueryId,
       <<"response">> := Response,
-      <<"fee">>      := Fee} = OracleResponseTxObj,
+      <<"fee">>      := Fee,
+      <<"ttl">>      := TTL} = OracleResponseTxObj,
     case aec_base58c:safe_decode(oracle_query_id, EncodedQueryId) of
         {ok, DecodedQueryId} ->
             case aehttp_int_tx_logic:oracle_response(DecodedQueryId, Response,
-                                                     Fee) of
+                                                     Fee, TTL) of
                 {ok, Tx} ->
                     {_, TxHash} = aehttp_int_tx_logic:sender_and_hash(Tx),
                     {200, [], #{query_id => EncodedQueryId,
@@ -156,11 +157,12 @@ handle_request('GetOracleQuestions', Req, _Context) ->
 
 handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _Context) ->
     #{<<"commitment">> := Commitment,
-      <<"fee">>        := Fee} = NamePreclaimTxObj,
+      <<"fee">>        := Fee,
+      <<"ttl">>        := TTL} = NamePreclaimTxObj,
     case aec_base58c:safe_decode(commitment, Commitment) of
         {ok, DecodedCommitment} ->
             case aehttp_int_tx_logic:name_preclaim(DecodedCommitment,
-                                                   Fee) of
+                                                   Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{commitment => Commitment}};
                 {error, account_not_found} ->
@@ -175,8 +177,9 @@ handle_request('PostNamePreclaimTx', #{'NamePreclaimTx' := NamePreclaimTxObj}, _
 handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) ->
     #{<<"name">>      := Name,
       <<"name_salt">> := NameSalt,
-      <<"fee">>       := Fee} = NameClaimTxObj,
-    case aehttp_int_tx_logic:name_claim(Name, NameSalt, Fee) of
+      <<"fee">>       := Fee,
+      <<"ttl">>       := TTL} = NameClaimTxObj,
+    case aehttp_int_tx_logic:name_claim(Name, NameSalt, Fee, TTL) of
         {ok, _Tx, NameHash} ->
             {200, [], #{name_hash => aec_base58c:encode(name, NameHash)}};
         {error, account_not_found} ->
@@ -189,15 +192,16 @@ handle_request('PostNameClaimTx', #{'NameClaimTx' := NameClaimTxObj}, _Context) 
     end;
 
 handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Context) ->
-    #{<<"name_hash">> := NameHash,
-      <<"name_ttl">>  := NameTTL,
-      <<"pointers">>  := Pointers,
-      <<"ttl">>       := TTL,
-      <<"fee">>       := Fee} = NameUpdateTxObj,
+    #{<<"name_hash">>  := NameHash,
+      <<"name_ttl">>   := NameTTL,
+      <<"pointers">>   := Pointers,
+      <<"client_ttl">> := ClientTTL,
+      <<"fee">>        := Fee,
+      <<"ttl">>        := TTL} = NameUpdateTxObj,
     case aec_base58c:safe_decode(name, NameHash) of
         {ok, DecodedNameHash} ->
             case aehttp_int_tx_logic:name_update(DecodedNameHash, NameTTL,
-                                                 Pointers, TTL, Fee) of
+                                                 Pointers, ClientTTL, Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{name_hash => NameHash}};
                 {error, account_not_found} ->
@@ -212,13 +216,14 @@ handle_request('PostNameUpdateTx', #{'NameUpdateTx' := NameUpdateTxObj}, _Contex
 handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _Context) ->
     #{<<"name_hash">>        := NameHash,
       <<"recipient_pubkey">> := RecipientPubKey,
-      <<"fee">>              := Fee} = NameTransferTxObj,
+      <<"fee">>              := Fee,
+      <<"ttl">>              := TTL} = NameTransferTxObj,
     case {aec_base58c:safe_decode(name, NameHash),
           aec_base58c:safe_decode(account_pubkey, RecipientPubKey)} of
         {{ok, DecodedNameHash}, {ok, DecodedRecipientPubKey}} ->
             case aehttp_int_tx_logic:name_transfer(DecodedNameHash,
                                                    DecodedRecipientPubKey,
-                                                   Fee) of
+                                                   Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{name_hash => NameHash}};
                 {error, account_not_found} ->
@@ -234,11 +239,11 @@ handle_request('PostNameTransferTx', #{'NameTransferTx' := NameTransferTxObj}, _
 
 handle_request('PostNameRevokeTx', #{'NameRevokeTx' := NameRevokeTxObj}, _Context) ->
     #{<<"name_hash">> := NameHash,
-      <<"fee">>       := Fee} = NameRevokeTxObj,
+      <<"fee">>       := Fee,
+      <<"ttl">>       := TTL} = NameRevokeTxObj,
     case aec_base58c:safe_decode(name, NameHash) of
         {ok, DecodedNameHash} ->
-            case aehttp_int_tx_logic:name_revoke(DecodedNameHash,
-                                                   Fee) of
+            case aehttp_int_tx_logic:name_revoke(DecodedNameHash, Fee, TTL) of
                 {ok, _Tx} ->
                     {200, [], #{name_hash => NameHash}};
                 {error, account_not_found} ->

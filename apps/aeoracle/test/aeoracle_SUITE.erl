@@ -92,6 +92,10 @@ register_oracle_negative(_Cfg) ->
     %% Test too low fee
     RTx4 = aeo_test_utils:register_tx(PubKey, #{fee => 0}, S1),
     {error, too_low_fee} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+
+    %% Test too low TTL
+    RTx5 = aeo_test_utils:register_tx(PubKey, #{ttl => 0}, S1),
+    {error, ttl_expired} = aetx:check(RTx5, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 register_oracle(_Cfg) ->
@@ -147,6 +151,10 @@ extend_oracle_negative(Cfg) ->
     %% Test too low fee
     RTx5 = aeo_test_utils:extend_tx(OracleKey, #{fee => 0}, S2),
     {error, too_low_fee} = aetx:check(RTx5, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
+
+    %% Test too low TTL
+    RTx6 = aeo_test_utils:extend_tx(OracleKey, #{ttl => CurrHeight2 - 1}, S2),
+    {error, ttl_expired} = aetx:check(RTx6, Trees2, CurrHeight2, ?PROTOCOL_VERSION),
     ok.
 
 extend_oracle(Cfg) ->
@@ -214,6 +222,10 @@ query_oracle_negative(Cfg) ->
     %% Test too long response ttl
     Q7 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ response_ttl => {delta, 500} }, S2),
     {error, too_long_ttl} = aetx:check(Q7, Trees, CurrHeight, ?PROTOCOL_VERSION),
+
+    %% Test too short TTL
+    Q8 = aeo_test_utils:query_tx(SenderKey, OracleKey, #{ ttl => CurrHeight - 1 }, S2),
+    {error, ttl_expired} = aetx:check(Q8, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 query_oracle(Cfg) ->
@@ -260,12 +272,16 @@ query_response_negative(Cfg) ->
     RTx3 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{fee => 0}, S1),
     {error, too_low_fee} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
+    %% Test fee too low
+    RTx4 = aeo_test_utils:response_tx(OracleKey, ID, <<"42">>, #{ttl => CurrHeight - 1}, S1),
+    {error, ttl_expired} = aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+
     %% Test bad query id
     OIO = aeo_state_tree:get_query(OracleKey, ID, aec_trees:oracles(Trees)),
     BadId = aeo_query:id(aeo_query:set_sender_nonce(42, OIO)),
-    RTx4 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
+    RTx5 = aeo_test_utils:response_tx(OracleKey, BadId, <<"42">>, S1),
     {error, no_matching_oracle_query} =
-        aetx:check(RTx4, Trees, CurrHeight, ?PROTOCOL_VERSION),
+        aetx:check(RTx5, Trees, CurrHeight, ?PROTOCOL_VERSION),
     ok.
 
 query_response(Cfg) ->

@@ -70,8 +70,9 @@ register_tx(Override) ->
            , query_spec    => <<"{foo: bar}"/utf8>>
            , response_spec => <<"boolean()"/utf8>>
            , query_fee     => 10
-           , ttl           => {delta, 100}
+           , oracle_ttl    => {delta, 100}
            , fee           => 10
+           , ttl           => 100
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aeo_register_tx:new(Map1),

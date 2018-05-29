@@ -15,6 +15,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -51,6 +52,7 @@ new(#{caller     := CallerPubKey,
       contract   := Contract,
       vm_version := VmVersion,
       fee        := Fee,
+      ttl        := TTL,
       amount     := Amount,
       gas        := Gas,
       gas_price  := GasPrice,
@@ -61,6 +63,7 @@ new(#{caller     := CallerPubKey,
                            contract   = Contract,
                            vm_version = VmVersion,
                            fee        = Fee,
+                           ttl        = TTL,
                            amount     = Amount,
                            gas        = Gas,
                            gas_price  = GasPrice,
@@ -75,6 +78,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#contract_call_tx{fee = F}) ->
     F.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#contract_call_tx{ttl = TTL}) ->
+    TTL.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#contract_call_tx{nonce = Nonce}) ->
@@ -166,6 +173,7 @@ spend(CallerPubKey, CalleePubKey, Value, Nonce,_Context, Height, Trees,
                                 , recipient => CalleePubKey
                                 , amount => Value
                                 , fee => 0
+                                , ttl => Height
                                 , nonce => Nonce
                                 , payload => <<>>}),
     {ok, Trees1} =
@@ -206,6 +214,7 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
                             contract   = ContractPubKey,
                             vm_version = VmVersion,
                             fee        = Fee,
+                            ttl        = TTL,
                             amount     = Amount,
                             gas        = Gas,
                             gas_price  = GasPrice,
@@ -219,6 +228,7 @@ serialize(#contract_call_tx{caller     = CallerPubKey,
      , {contract, ContractPubKey}
      , {vm_version, VmVersion}
      , {fee, Fee}
+     , {ttl, TTL}
      , {amount, Amount}
      , {gas, Gas}
      , {gas_price, GasPrice}
@@ -231,6 +241,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             , {contract, ContractPubKey}
             , {vm_version, VmVersion}
             , {fee, Fee}
+            , {ttl, TTL}
             , {amount, Amount}
             , {gas, Gas}
             , {gas_price, GasPrice}
@@ -240,6 +251,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
                       contract   = ContractPubKey,
                       vm_version = VmVersion,
                       fee        = Fee,
+                      ttl        = TTL,
                       amount     = Amount,
                       gas        = Gas,
                       gas_price  = GasPrice,
@@ -251,6 +263,7 @@ serialization_template(?CONTRACT_CALL_TX_VSN) ->
     , {contract, binary}
     , {vm_version, int}
     , {fee, int}
+    , {ttl, int}
     , {amount, int}
     , {gas, int}
     , {gas_price, int}
@@ -266,6 +279,7 @@ for_client(#contract_call_tx{caller     = CallerPubKey,
                              contract   = ContractPubKey,
                              vm_version = VmVersion,
                              fee        = Fee,
+                             ttl        = TTL,
                              amount     = Amount,
                              gas        = Gas,
                              gas_price  = GasPrice,
@@ -277,6 +291,7 @@ for_client(#contract_call_tx{caller     = CallerPubKey,
       <<"contract">>    => aec_base58c:encode(contract_pubkey, ContractPubKey),
       <<"vm_version">>  => aect_utils:hex_byte(VmVersion),
       <<"fee">>         => Fee,
+      <<"ttl">>         => TTL,
       <<"amount">>      => Amount,
       <<"gas">>         => Gas,
       <<"gas_price">>   => GasPrice,

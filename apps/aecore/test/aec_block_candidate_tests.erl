@@ -72,7 +72,7 @@ block_extension_test_() ->
       [{"Generate a block in one step, compared with two steps",
         fun() ->
           {ok, Tx} = aec_spend_tx:new(#{ sender => ?TEST_PUB, recipient => ?TEST_PUB
-                                       , amount => 10, fee => 1, nonce => 1, payload => <<>> }),
+                                       , amount => 10, fee => 1, ttl => 100, nonce => 1, payload => <<>> }),
           STx = aetx_sign:sign(Tx, ?TEST_PRIV),
 
           AccMap = #{ preset_accounts => [{?TEST_PUB, 1000}] },

@@ -23,7 +23,7 @@
          status/1,
          expires/1,
          pointers/1,
-         ttl/1]).
+         client_ttl/1]).
 
 %%%===================================================================
 %%% Types
@@ -61,10 +61,10 @@ new(ClaimTx, Expiration, BlockHeight) ->
 
 -spec update(aens_update_tx:tx(), name(), aec_blocks:height()) -> name().
 update(UpdateTx, Name, BlockHeight) ->
-    Expires = BlockHeight + aens_update_tx:ttl(UpdateTx),
-    Name#name{expires  = Expires,
-              ttl      = aens_update_tx:name_ttl(UpdateTx),
-              pointers = aens_update_tx:pointers(UpdateTx)}.
+    Expires = BlockHeight + aens_update_tx:name_ttl(UpdateTx),
+    Name#name{expires    = Expires,
+              client_ttl = aens_update_tx:client_ttl(UpdateTx),
+              pointers   = aens_update_tx:pointers(UpdateTx)}.
 
 -spec revoke(name(), non_neg_integer(), aec_blocks:height()) -> name().
 revoke(Name, Expiration, BlockHeight) ->
@@ -86,7 +86,7 @@ serialize(#name{} = N) ->
       , {owner, owner(N)}
       , {expires, expires(N)}
       , {status, atom_to_binary(status(N), utf8)}
-      , {ttl, ttl(N)}
+      , {client_ttl, client_ttl(N)}
       , {pointers, jsx:encode(pointers(N))}]). %% TODO: This might be ambigous
 
 -spec deserialize(binary()) -> name().
@@ -95,26 +95,26 @@ deserialize(Bin) ->
     , {owner, Owner}
     , {expires, Expires}
     , {status, Status}
-    , {ttl, TTL}
+    , {client_ttl, CTTL}
     , {pointers, Pointers}
     ] = aec_object_serialization:deserialize(
           ?NAME_TYPE,
           ?NAME_VSN,
           serialization_template(?NAME_VSN),
           Bin),
-    #name{hash     = Hash,
-          owner    = Owner,
-          expires  = Expires,
-          status   = binary_to_existing_atom(Status, utf8),
-          ttl      = TTL,
-          pointers = jsx:decode(Pointers)}. %% TODO: This might be ambigous
+    #name{hash       = Hash,
+          owner      = Owner,
+          expires    = Expires,
+          status     = binary_to_existing_atom(Status, utf8),
+          client_ttl = CTTL,
+          pointers   = jsx:decode(Pointers)}. %% TODO: This might be ambigous
 
 serialization_template(?NAME_VSN) ->
     [ {hash, binary}
     , {owner, binary}
     , {expires, int}
     , {status, binary}
-    , {ttl, int}
+    , {client_ttl, int}
     , {pointers, binary} %% TODO: This needs to be stricter
     ].
 
@@ -134,8 +134,8 @@ expires(N) -> N#name.expires.
 -spec pointers(name()) -> list().
 pointers(N) -> N#name.pointers.
 
--spec ttl(name()) -> integer().
-ttl(N) -> N#name.ttl.
+-spec client_ttl(name()) -> integer().
+client_ttl(N) -> N#name.client_ttl.
 
 %%%===================================================================
 %%% Internal functions

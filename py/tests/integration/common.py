@@ -230,11 +230,12 @@ def decode_unsigned_tx(encoded_tx):
                 'code': fields[2],
                 'vm_version': bytes_to_int(fields[3]),
                 'fee': bytes_to_int(fields[4]),
-                'deposit': bytes_to_int(fields[5]),
-                'amount': bytes_to_int(fields[6]),
-                'gas': bytes_to_int(fields[7]),
-                'gas_price': bytes_to_int(fields[8]),
-                'call_data': fields[9]
+                'ttl': bytes_to_int(fields[5]),
+                'deposit': bytes_to_int(fields[6]),
+                'amount': bytes_to_int(fields[7]),
+                'gas': bytes_to_int(fields[8]),
+                'gas_price': bytes_to_int(fields[9]),
+                'call_data': fields[10]
         }
 
 def bytes_to_int(x):

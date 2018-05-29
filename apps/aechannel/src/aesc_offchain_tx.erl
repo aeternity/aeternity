@@ -10,6 +10,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -82,6 +83,11 @@ type() ->
 fee(#channel_offchain_tx{}) ->
     %% This tx should never hit the mempool or any block
     ?CHANNEL_OFFCHAIN_TX_FEE.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_offchain_tx{}) ->
+    %% This tx should never hit the mempool or any block
+    0.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_offchain_tx{round = N}) ->

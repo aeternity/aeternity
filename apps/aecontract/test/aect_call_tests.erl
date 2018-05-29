@@ -79,6 +79,7 @@ call_tx(Override) ->
            , nonce      => 42
            , contract   => <<4711:32/unit:8>>
            , fee        => 100
+           , ttl        => 100
            , vm_version => 1
            , amount     => 100
            , gas        => 100

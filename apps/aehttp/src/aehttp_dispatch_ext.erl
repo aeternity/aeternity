@@ -158,7 +158,7 @@ handle_request('PostTx', #{'Tx' := Tx} = Req, _Context) ->
 handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([owner, code, vm_version, deposit,
-                                       amount, gas, gas_price, fee,
+                                       amount, gas, gas_price, fee, ttl,
                                        call_data]),
                  base58_decode([{owner, owner, account_pubkey}]),
                  get_nonce(owner),
@@ -181,7 +181,7 @@ handle_request('PostContractCreate', #{'ContractCreateData' := Req}, _Context) -
 handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller, contract, vm_version,
-                                       amount, gas, gas_price, fee,
+                                       amount, gas, gas_price, fee, ttl,
                                        call_data]),
                  base58_decode([{caller, caller, account_pubkey},
                                 {contract, contract, contract_pubkey}]),
@@ -195,7 +195,7 @@ handle_request('PostContractCall', #{'ContractCallData' := Req}, _Context) ->
 handle_request('PostContractCallCompute', #{'ContractCallCompute' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([caller, contract, vm_version,
-                                       amount, gas, gas_price, fee,
+                                       amount, gas, gas_price, fee, ttl,
                                        function, arguments]),
                  base58_decode([{caller, caller, account_pubkey},
                                 {contract, contract, contract_pubkey}]),
@@ -210,20 +210,20 @@ handle_request('PostOracleRegister', #{'OracleRegisterTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, {query_format, query_spec},
                                        {response_format, response_spec},
-                                       query_fee, fee, ttl]),
+                                       query_fee, oracle_ttl, fee, ttl]),
                  base58_decode([{account, account, account_pubkey}]),
                  get_nonce(account),
-                 ttl_decode(ttl),
+                 ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_register_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
 
 handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, fee, ttl]),
+                 read_required_params([oracle, oracle_ttl, fee, ttl]),
                  base58_decode([{oracle, oracle, oracle_pubkey}]),
                  get_nonce(oracle),
-                 ttl_decode(ttl),
+                 ttl_decode(oracle_ttl),
                  unsigned_tx_response(fun aeo_extend_tx:new/1)
                 ],
     process_request(ParseFuns, Req);
@@ -231,7 +231,7 @@ handle_request('PostOracleExtend', #{'OracleExtendTx' := Req}, _Context) ->
 handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender, oracle_pubkey, query,
-                                       query_fee, fee, query_ttl, response_ttl]),
+                                       query_fee, fee, query_ttl, response_ttl, ttl]),
                  base58_decode([{sender, sender, account_pubkey},
                                {oracle_pubkey, oracle, oracle_pubkey}]),
                  get_nonce(sender),
@@ -244,8 +244,7 @@ handle_request('PostOracleQuery', #{'OracleQueryTx' := Req}, _Context) ->
 
 handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([oracle, query_id,
-                                       response, fee]),
+                 read_required_params([oracle, query_id, response, fee, ttl]),
                  base58_decode([{oracle, oracle, oracle_pubkey},
                                {query_id, query_id, oracle_query_id}]),
                  get_nonce(oracle),
@@ -256,7 +255,7 @@ handle_request('PostOracleResponse', #{'OracleResponseTx' := Req}, _Context) ->
 
 handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account, commitment, fee]),
+                 read_required_params([account, commitment, fee, ttl]),
                  base58_decode([{account, account, account_pubkey},
                                 {commitment, commitment, commitment}]),
                  get_nonce(account),
@@ -266,7 +265,7 @@ handle_request('PostNamePreclaim', #{'NamePreclaimTx' := Req}, _Context) ->
 
 handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account, name, name_salt, fee]),
+                 read_required_params([account, name, name_salt, fee, ttl]),
                  base58_decode([{account, account, account_pubkey},
                                 {name, name, name}]),
                  get_nonce(account),
@@ -278,7 +277,7 @@ handle_request('PostNameClaim', #{'NameClaimTx' := Req}, _Context) ->
 handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name_hash, name_ttl,
-                                       pointers, ttl, fee]),
+                                       pointers, client_ttl, fee, ttl]),
                  base58_decode([{account, account, account_pubkey},
                                 {name_hash, name_hash, name}]),
                  nameservice_pointers_decode(pointers),
@@ -290,7 +289,7 @@ handle_request('PostNameUpdate', #{'NameUpdateTx' := Req}, _Context) ->
 handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([account, name_hash, recipient_pubkey,
-                                       fee]),
+                                       fee, ttl]),
                  base58_decode([{account, account, account_pubkey},
                                 {recipient_pubkey, recipient_account, account_pubkey},
                                 {name_hash, name_hash, name}]),
@@ -301,7 +300,7 @@ handle_request('PostNameTransfer', #{'NameTransferTx' := Req}, _Context) ->
 
 handle_request('PostNameRevoke', #{'NameRevokeTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
-                 read_required_params([account, name_hash, fee]),
+                 read_required_params([account, name_hash, fee, ttl]),
                  base58_decode([{account, account, account_pubkey},
                                 {name_hash, name_hash, name}]),
                  get_nonce(account),
@@ -313,7 +312,7 @@ handle_request('PostSpend', #{'SpendTx' := Req}, _Context) ->
     ParseFuns = [parse_map_to_atom_keys(),
                  read_required_params([sender,
                                        {recipient_pubkey, recipient},
-                                       amount, fee, payload]),
+                                       amount, fee, ttl, payload]),
                  base58_decode([{sender, sender, account_pubkey},
                                 {recipient, recipient, account_pubkey}]),
                  get_nonce(sender),

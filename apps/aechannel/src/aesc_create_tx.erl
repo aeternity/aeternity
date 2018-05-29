@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -78,6 +79,10 @@ type() ->
 fee(#channel_create_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_create_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_create_tx{nonce = Nonce}) ->
     Nonce.
@@ -86,20 +91,18 @@ nonce(#channel_create_tx{nonce = Nonce}) ->
 origin(#channel_create_tx{initiator = InitiatorPubKey}) ->
     InitiatorPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_create_tx{initiator          = InitiatorPubKey,
                          initiator_amount   = InitiatorAmount,
                          responder          = ResponderPubKey,
                          responder_amount   = ResponderAmount,
                          channel_reserve    = ChannelReserve,
                          nonce              = Nonce,
-                         ttl                = TTL,
-                         fee                = Fee}, _Context, Trees, Height,
-                                                    _ConsensusVersion) ->
+                         fee                = Fee}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(InitiatorPubKey, Trees, Nonce, InitiatorAmount + Fee) end,
          fun() -> aetx_utils:check_account(ResponderPubKey, Trees, ResponderAmount) end,
-         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_reserve_amount(ChannelReserve, InitiatorAmount, ResponderAmount) end,
          fun() -> check_not_channel(InitiatorPubKey, Nonce, ResponderPubKey, Trees) end],
     case aeu_validation:run(Checks) of
@@ -109,7 +112,8 @@ check(#channel_create_tx{initiator          = InitiatorPubKey,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#channel_create_tx{initiator          = InitiatorPubKey,
                            initiator_amount   = InitiatorAmount,
                            responder          = ResponderPubKey,

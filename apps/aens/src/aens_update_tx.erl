@@ -15,6 +15,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -30,7 +31,7 @@
 %% Getters
 -export([name_ttl/1,
          pointers/1,
-         ttl/1]).
+         client_ttl/1]).
 
 %%%===================================================================
 %%% Types
@@ -48,20 +49,22 @@
 %%%===================================================================
 
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{account   := AccountPubKey,
-      nonce     := Nonce,
-      name_hash := NameHash,
-      name_ttl  := NameTTL,
-      pointers  := Pointers,
-      ttl       := TTL,
-      fee       := Fee}) ->
-    Tx = #ns_update_tx{account   = AccountPubKey,
-                       nonce     = Nonce,
-                       name_hash = NameHash,
-                       name_ttl  = NameTTL,
-                       pointers  = Pointers,
-                       ttl       = TTL,
-                       fee       = Fee},
+new(#{account    := AccountPubKey,
+      nonce      := Nonce,
+      name_hash  := NameHash,
+      name_ttl   := NameTTL,
+      pointers   := Pointers,
+      client_ttl := ClientTTL,
+      fee        := Fee,
+      ttl        := TTL}) ->
+    Tx = #ns_update_tx{account    = AccountPubKey,
+                       nonce      = Nonce,
+                       name_hash  = NameHash,
+                       name_ttl   = NameTTL,
+                       pointers   = Pointers,
+                       client_ttl = ClientTTL,
+                       fee        = Fee,
+                       ttl        = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -72,6 +75,10 @@ type() ->
 fee(#ns_update_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#ns_update_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_update_tx{nonce = Nonce}) ->
     Nonce.
@@ -80,11 +87,12 @@ nonce(#ns_update_tx{nonce = Nonce}) ->
 origin(#ns_update_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
-                    fee = Fee, name_hash = NameHash, ttl = TTL}, _Context, Trees, _Height, _ConsensusVersion) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
+check(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee, name_hash = NameHash,
+                    name_ttl = NTTL}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
-        [fun() -> check_ttl(TTL) end,
+        [fun() -> check_ttl(NTTL) end,
          fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> aens_utils:check_name_claimed_and_owned(NameHash, AccountPubKey, Trees) end],
 
@@ -93,7 +101,8 @@ check(#ns_update_tx{account = AccountPubKey, nonce = Nonce,
         {error, Reason} -> {error, Reason}
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#ns_update_tx{account = AccountPubKey, nonce = Nonce, fee = Fee,
                       name_hash = NameHash} = UpdateTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -121,21 +130,23 @@ signers(#ns_update_tx{account = AccountPubKey}, _) ->
     {ok, [AccountPubKey]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
-serialize(#ns_update_tx{account   = AccountPubKey,
-                        nonce     = Nonce,
-                        name_hash = NameHash,
-                        name_ttl  = NameTTL,
-                        pointers  = Pointers,
-                        ttl       = TTL,
-                        fee       = Fee}) ->
+serialize(#ns_update_tx{account    = AccountPubKey,
+                        nonce      = Nonce,
+                        name_hash  = NameHash,
+                        name_ttl   = NameTTL,
+                        pointers   = Pointers,
+                        client_ttl = ClientTTL,
+                        fee        = Fee,
+                        ttl        = TTL}) ->
     {version(),
      [ {account, AccountPubKey}
      , {nonce, Nonce}
      , {hash, NameHash}
      , {name_ttl, NameTTL}
      , {pointers, jsx:encode(Pointers)} %% TODO: This might be ambigous
-     , {ttl, TTL}
+     , {client_ttl, ClientTTL}
      , {fee, Fee}
+     , {ttl, TTL}
      ]}.
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
@@ -145,15 +156,17 @@ deserialize(?NAME_UPDATE_TX_VSN,
             , {hash, NameHash}
             , {name_ttl, NameTTL}
             , {pointers, Pointers}
-            , {ttl, TTL}
-            , {fee, Fee}]) ->
-    #ns_update_tx{account   = AccountPubKey,
-                  nonce     = Nonce,
-                  name_hash = NameHash,
-                  name_ttl  = NameTTL,
-                  pointers  = jsx:decode(Pointers),
-                  ttl       = TTL,
-                  fee       = Fee}.
+            , {client_ttl, ClientTTL}
+            , {fee, Fee}
+            , {ttl, TTL}]) ->
+    #ns_update_tx{account    = AccountPubKey,
+                  nonce      = Nonce,
+                  name_hash  = NameHash,
+                  name_ttl   = NameTTL,
+                  pointers   = jsx:decode(Pointers),
+                  client_ttl = ClientTTL,
+                  fee        = Fee,
+                  ttl        = TTL}.
 
 serialization_template(?NAME_UPDATE_TX_VSN) ->
     [ {account, binary}
@@ -161,27 +174,30 @@ serialization_template(?NAME_UPDATE_TX_VSN) ->
     , {hash, binary}
     , {name_ttl, int}
     , {pointers, binary} %% TODO: This might be ambigous
-    , {ttl, int}
+    , {client_ttl, int}
     , {fee, int}
+    , {ttl, int}
     ].
 
 
 -spec for_client(tx()) -> map().
-for_client(#ns_update_tx{account   = AccountPubKey,
-                         nonce     = Nonce,
-                         name_hash = NameHash,
-                         name_ttl  = NameTTL,
-                         pointers  = Pointers,
-                         ttl       = TTL,
-                         fee       = Fee}) ->
-    #{<<"vsn">>       => version(),
-      <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
-      <<"nonce">>     => Nonce,
-      <<"name_hash">> => aec_base58c:encode(name, NameHash),
-      <<"name_ttl">>  => NameTTL,
-      <<"pointers">>  => Pointers,
-      <<"ttl">>       => TTL,
-      <<"fee">>       => Fee}.
+for_client(#ns_update_tx{account    = AccountPubKey,
+                         nonce      = Nonce,
+                         name_hash  = NameHash,
+                         name_ttl   = NameTTL,
+                         pointers   = Pointers,
+                         client_ttl = ClientTTL,
+                         fee        = Fee,
+                         ttl        = TTL}) ->
+    #{<<"vsn">>        => version(),
+      <<"account">>    => aec_base58c:encode(account_pubkey, AccountPubKey),
+      <<"nonce">>      => Nonce,
+      <<"name_hash">>  => aec_base58c:encode(name, NameHash),
+      <<"name_ttl">>   => NameTTL,
+      <<"pointers">>   => Pointers,
+      <<"client_ttl">> => ClientTTL,
+      <<"fee">>        => Fee,
+      <<"ttl">>        => TTL}.
 
 %%%===================================================================
 %%% Getters
@@ -195,9 +211,9 @@ name_ttl(#ns_update_tx{name_ttl = NameTTL}) ->
 pointers(#ns_update_tx{pointers = Pointers}) ->
     Pointers.
 
--spec ttl(tx()) -> non_neg_integer().
-ttl(#ns_update_tx{ttl = TTL}) ->
-    TTL.
+-spec client_ttl(tx()) -> non_neg_integer().
+client_ttl(#ns_update_tx{client_ttl = ClientTTL}) ->
+    ClientTTL.
 
 %%%===================================================================
 %%% Internal functions

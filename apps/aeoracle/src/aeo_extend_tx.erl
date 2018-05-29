@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -28,7 +29,7 @@
 
 %% Additional getters
 -export([oracle/1,
-         ttl/1]).
+         oracle_ttl/1]).
 
 -define(ORACLE_EXTEND_TX_VSN, 1).
 -define(ORACLE_EXTEND_TX_TYPE, oracle_extend_tx).
@@ -42,23 +43,29 @@
 oracle(#oracle_extend_tx{oracle = OraclePK}) ->
     OraclePK.
 
--spec ttl(tx()) -> aeo_oracles:relative_ttl().
-ttl(#oracle_extend_tx{ttl = TTL}) ->
-    TTL.
+-spec oracle_ttl(tx()) -> aeo_oracles:relative_ttl().
+oracle_ttl(#oracle_extend_tx{oracle_ttl = OTTL}) ->
+    OTTL.
 
 -spec fee(tx()) -> integer().
 fee(#oracle_extend_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#oracle_extend_tx{ttl = TTL}) ->
+    TTL.
+
 -spec new(map()) -> {ok, aetx:tx()}.
-new(#{oracle := OraclePK,
-      nonce  := Nonce,
-      ttl    := TTL,
-      fee    := Fee}) ->
-    Tx = #oracle_extend_tx{oracle = OraclePK,
-                           nonce  = Nonce,
-                           ttl    = TTL,
-                           fee    = Fee},
+new(#{oracle     := OraclePK,
+      nonce      := Nonce,
+      oracle_ttl := OracleTTL,
+      fee        := Fee,
+      ttl        := TTL}) ->
+    Tx = #oracle_extend_tx{oracle     = OraclePK,
+                           nonce      = Nonce,
+                           oracle_ttl = OracleTTL,
+                           fee        = Fee,
+                           ttl        = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -75,13 +82,14 @@ origin(#oracle_extend_tx{oracle = OraclePK}) ->
 
 %% Account should exist, and have enough funds for the fee
 %% Oracle should exist.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+    {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce,
-                        ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+                        oracle_ttl = OTTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(OraclePK, Trees, Nonce, Fee) end,
          fun() -> ensure_oracle(OraclePK, Trees) end,
-         fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_EXTEND_TX_FEE) end],
+         fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_EXTEND_TX_FEE) end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -96,8 +104,9 @@ accounts(#oracle_extend_tx{oracle = OraclePK}) ->
 signers(#oracle_extend_tx{oracle = OraclePK}, _) ->
     {ok, [OraclePK]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL},
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
+process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, oracle_ttl = OTTL},
         _Context, Trees0, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
@@ -107,7 +116,7 @@ process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL
     AccountsTree1 = aec_accounts_trees:enter(Account1, AccountsTree0),
 
     Oracle0 = aeo_state_tree:get_oracle(OraclePK, OraclesTree0),
-    NewExpires = aeo_utils:ttl_expiry(aeo_oracles:expires(Oracle0), TTL),
+    NewExpires = aeo_utils:ttl_expiry(aeo_oracles:expires(Oracle0), OTTL),
     Oracle1 = aeo_oracles:set_expires(NewExpires, Oracle0),
     OraclesTree1 = aeo_state_tree:enter_oracle(Oracle1, OraclesTree0),
 
@@ -116,51 +125,58 @@ process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL
 
     {ok, Trees2}.
 
-serialize(#oracle_extend_tx{oracle = OraclePK,
-                            nonce  = Nonce,
-                            ttl    = {?ttl_delta_atom, TTLValue},
-                            fee    = Fee}) ->
+serialize(#oracle_extend_tx{oracle     = OraclePK,
+                            nonce      = Nonce,
+                            oracle_ttl = {?ttl_delta_atom, TTLValue},
+                            fee        = Fee,
+                            ttl        = TTL}) ->
     {version(),
     [ {oracle, OraclePK}
     , {nonce, Nonce}
-    , {ttl_type, ?ttl_delta_int}
-    , {ttl_value, TTLValue}
+    , {oracle_ttl_type, ?ttl_delta_int}
+    , {oracle_ttl_value, TTLValue}
     , {fee, Fee}
+    , {ttl, TTL}
     ]}.
 
 deserialize(?ORACLE_EXTEND_TX_VSN,
            [ {oracle, OraclePK}
            , {nonce, Nonce}
-           , {ttl_type, ?ttl_delta_int}
-           , {ttl_value, TTLValue}
-           , {fee, Fee}]) ->
-    #oracle_extend_tx{oracle = OraclePK,
-                      nonce  = Nonce,
-                      ttl    = {?ttl_delta_atom, TTLValue},
-                      fee    = Fee}.
+           , {oracle_ttl_type, ?ttl_delta_int}
+           , {oracle_ttl_value, TTLValue}
+           , {fee, Fee}
+           , {ttl, TTL}]) ->
+    #oracle_extend_tx{oracle     = OraclePK,
+                      nonce      = Nonce,
+                      oracle_ttl = {?ttl_delta_atom, TTLValue},
+                      fee        = Fee,
+                      ttl        = TTL}.
 
 serialization_template(?ORACLE_EXTEND_TX_VSN) ->
     [ {oracle, binary}
     , {nonce, int}
-    , {ttl_type, int}
-    , {ttl_value, int}
+    , {oracle_ttl_type, int}
+    , {oracle_ttl_value, int}
     , {fee, int}
+    , {ttl, int}
     ].
 
 -spec version() -> non_neg_integer().
 version() ->
     ?ORACLE_EXTEND_TX_VSN.
 
-for_client(#oracle_extend_tx{ oracle = OraclePK,
-                              nonce  = Nonce,
-                              ttl    = {delta = TTLType, TTLValue},
-                              fee    = Fee}) ->
+for_client(#oracle_extend_tx{ oracle     = OraclePK,
+                              nonce      = Nonce,
+                              oracle_ttl = {delta = TTLType, TTLValue},
+                              fee        = Fee,
+                              ttl        = TTL}) ->
     #{<<"data_schema">> => <<"OracleExtendTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"account">> => aec_base58c:encode(account_pubkey, OraclePK),
       <<"nonce">> => Nonce,
-      <<"ttl">> => #{<<"type">> => TTLType, <<"value">> => TTLValue},
-      <<"fee">> => Fee}.
+      <<"oracle_ttl">> => #{<<"type">> => TTLType, <<"value">> => TTLValue},
+      <<"fee">> => Fee,
+      <<"ttl">> => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 
