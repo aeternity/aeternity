@@ -1,7 +1,6 @@
 -include("pow.hrl").
 
-%% TODO: Remember to bump everything that needs it and add release note
--define(PROTOCOL_VERSION, 15).
+-define(PROTOCOL_VERSION, 14).
 -define(GENESIS_VERSION, ?PROTOCOL_VERSION).
 -define(GENESIS_HEIGHT, 0).
 

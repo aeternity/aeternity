@@ -37,7 +37,7 @@ mine_block_test_() ->
                  % in order to find a proper nonce for your
                  % block uncomment the line below
                  %let_it_crash = generate_valid_test_data(TopBlock, 100000000000000),
-                 Nonce = 2824392020778025678,
+                 Nonce = 3650718748619880306,
 
                  {BlockCandidate, _} = aec_block_candidate:create_with_state(TopBlock, ?TEST_PUB,
                                                                              [], aec_trees:new()),
