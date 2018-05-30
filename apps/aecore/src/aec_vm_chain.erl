@@ -87,9 +87,9 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
     end.
 
 %%    Oracle
--spec oracle_register(pubkey(), binary(), non_neg_integer(),
+-spec oracle_register(aec_keys:pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), binary(), binary(), chain_state()) ->
-    {ok, pubkey(), chain_state()} | {error, term()}.
+    {ok, aec_keys:pubkey(), chain_state()} | {error, term()}.
 oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
                 State = #state{ trees   = Trees,
                                 height  = Height,
