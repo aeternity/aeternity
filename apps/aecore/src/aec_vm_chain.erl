@@ -15,15 +15,14 @@
           get_balance/2,
           get_store/1,
           set_store/2,
-          oracle_extend/4,
-          oracle_get_answer/2,
+          oracle_extend/5,
+          oracle_get_answer/3,
           oracle_get_question/3,
           oracle_query/6,
           oracle_query_fee/2,
-          oracle_query_oracle/2,
           oracle_query_spec/2,
           oracle_register/7,
-          oracle_respond/4,
+          oracle_respond/5,
           oracle_response_spec/2,
           spend/3
         ]).
@@ -91,7 +90,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 -spec oracle_register(pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), binary(), binary(), chain_state()) ->
     {ok, chain_state()} | {error, term()}.
-oracle_register(AccountKey, Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
+oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
                 State = #state{ trees   = Trees,
                                 height  = Height,
                                 account = ContractKey}) ->
@@ -150,72 +149,112 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
                            response_ttl  => {delta, RTTL},
                            fee           => 0}),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
-    case aeo_query_tx:check(Tx, aetx_contract, Trees, Height, ConsensusVersion) of
+    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
         {ok, Trees1} ->
             {ok, Trees2} =
-                aeo_query_tx:process(Tx, aetx_contract, Trees1, Height, ConsensusVersion),
+                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
             State1 = State#state{ trees = Trees2 },
-            Query = aeo_query:new(Tx, Height),
-            <<Oracle:256, QueryKey:256>> = aeo_query:id(Query),
+            {oracle_query_tx, OTx} = aetx:specialize_type(Tx),
+            Query = aeo_query:new(OTx, Height),
+            Id = aeo_query:id(Query),
 
-            {ok, QueryKey, State1};
+            {ok, Id, State1};
 
-        {error, _} = E ->
-            foo = E;
-        Other -> Other = foo
-
+        {error, _} = E -> E
     end.
 
-oracle_respond(<<Query:256>>, Sign, R, State) ->
-    io:format("oracle_respond(~p, ~p, ~p)\n", [Query, Sign, R]),
-    case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} = Queries ->
-            State1 = State#{ oracle_queries := Queries#{ Query := Q#{ answer => {some, R} } } },
+oracle_respond(Oracle, QueryId,_Sign, Response,
+               #state{ trees   = Trees,
+                       height  = Height,
+                       account = ContractKey} = State) ->
+    io:format("oracle_respond(~p, ~p, ~p, ~p)\n", [Oracle, QueryId,_Sign, Response]),
+    %% TODO: Check signature
+    AT = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
+    Nonce = aec_accounts:nonce(Account) + 1,
+
+    {ok, Tx} = aeo_response_tx:new(
+                 #{oracle   => Oracle,
+                   nonce    => Nonce,
+                   query_id => QueryId,
+                   response => aeso_data:to_binary(Response, 0),
+                   fee      => 0}),
+
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+
+    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
+        {ok, Trees1} ->
+            {ok, Trees2} = aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
+            State1 = State#state{ trees = Trees2 },
             {ok, State1};
-        _ -> {error, {no_such_query, Query}}
+        {error, _} = E -> foo = E
     end.
 
-oracle_extend(<<Oracle:256>>, Sign, TTL, State) ->
-    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle, Sign, TTL]),
-    case maps:get(oracles, State, #{}) of
-        #{Oracle := O} = Oracles ->
-            State1 = State#{ oracles := Oracles#{ Oracle := O#{ ttl => TTL } } },
+
+
+oracle_extend(Oracle,_Sign, Fee, TTL,
+              State = #state{ trees   = Trees,
+                              height  = Height,
+                              account = ContractKey} = State) ->
+    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle, _Sign, TTL]),
+    AT = aec_trees:accounts(Trees),
+    {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
+    Nonce = aec_accounts:nonce(Account) + 1,
+    {ok, Tx} =
+        aeo_query_tx:new(#{oracle => Oracle,
+                           nonce  => Nonce,
+                           ttl    => TTL,
+                           fee    => Fee}),
+    ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
+    case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
+        {ok, Trees1} ->
+            {ok, Trees2} =
+                aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
+            State1 = State#state{ trees = Trees2 },
             {ok, State1};
-        _ -> {error, {no_such_oracle, Oracle}}
+        {error, _} = E -> E
     end.
 
-oracle_get_answer(<<Query:256>>, State) ->
-    case maps:get(oracle_queries, State, #{}) of
-        #{Query := Q} ->
-            Answer = maps:get(answer, Q, none),
-            io:format("oracle_get_answer() -> ~p\n", [Answer]),
-            {ok, Answer};
-        _ -> {ok, none}
-    end.
-
-oracle_get_question(OracleId, QueryId,
-                    #state{ trees   = Trees,
-                            height  = Height,
-                            account = ContractKey} = State) ->
+oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
     case aeo_state_tree:lookup_query(OracleId, QueryId,
                                      aec_trees:oracles(Trees)) of
         {value, Query} ->
-            foo = Query,
+            case aeo_query:response(Query) of
+                undefined -> {ok, none};
+                Answer ->
+                    {value, Oracle} = aeo_state_tree:lookup_oracle(OracleId,
+                                                                   aec_trees:oracles(Trees)),
+                    ResponseFormat = aeo_oracles:response_format(Oracle),
+                    {ok, Type} = aeso_data:from_binary(typerep,  ResponseFormat),
+                    io:format("RespFormat ~p~nType ~p~n", [ResponseFormat, Type]),
+                    io:format("Answer ~p~n", [Answer]),
+                    {ok, Result} = aeso_data:from_binary(Type, Answer),
+                    {ok, {some, Result}}
+            end;
+        none ->
+            {ok, none}
+    end.
+
+oracle_get_question(OracleId, QueryId, #state{trees = Trees} = _State) ->
+    case aeo_state_tree:lookup_query(OracleId, QueryId,
+                                     aec_trees:oracles(Trees)) of
+        {value, Query} ->
             Question = aeo_query:query(Query),
             {ok, Question};
         none ->
             {ok, none}
     end.
 
-oracle_query_fee(<<Oracle:256>>, State) ->
-    case maps:get(oracles, State, []) of
-        #{ Oracle := #{query_fee := Fee} } -> {ok, Fee};
-        _ -> {error, {no_such_oracle, Oracle}}
+oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
+    case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
+        {Value, O} ->
+            Fee = aeo_oracles:query_fee(O),
+            {ok, Fee};
+        none  ->
+            {ok, none}
     end.
 
-oracle_query_spec(Oracle, State = #state{ trees   = Trees,
-                                                  height  = Height,
-                                                  account = ContractKey} = State) ->
+oracle_query_spec(Oracle, State = #state{ trees   = Trees} = _State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
         {Value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
@@ -232,16 +271,18 @@ oracle_query_spec(Oracle, State = #state{ trees   = Trees,
 
 
 
-oracle_response_spec(<<Oracle:256>>, State) ->
-    case maps:get(oracles, State, #{}) of
-        #{ Oracle := #{response_spec := Spec} } -> {ok, Spec};
-        _ -> {error, {no_such_oracle, Oracle}}
-    end.
-
-oracle_query_oracle(<<Query:256>>, State) ->
-    case maps:get(oracle_queries, State, #{}) of
-        #{ Query := #{oracle := Oracle} } -> {ok, <<Oracle:256>>};
-        _ -> {error, {no_such_oracle_query, Query}}
+oracle_response_spec(Oracle, State = #state{ trees   = Trees} =_State) ->
+    case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
+        {Value, O} ->
+            BinaryFormat = aeo_oracles:response_format(O),
+            try aeso_data:from_binary(0, typerep, BinaryFormat) of
+                {ok, Format} -> {ok, Format};
+                {error, _} = Error -> Error
+            catch
+                _:_ -> {error, bad_typerep}
+            end;
+        none ->
+            {error, no_such_oracle}
     end.
 
 

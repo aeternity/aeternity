@@ -165,18 +165,18 @@ ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
               [ast_body(Oracle), ast_body(Sign), ast_body(TTL)],
               [word, word, word], {tuple, []});
 
-ast_body(?qid_app(["Oracle", "respond"], [Query, Sign, R], [_, _, RType], _)) ->
+ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _)) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},
-              [ast_body(Query), ast_body(Sign), ast_body(R)],
-              [word, word, ast_type(RType)], {tuple, []});
+              [ast_body(Oracle), ast_body(Query), ast_body(Sign), ast_body(R)],
+              [word, word, word, ast_type(RType)], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "get_question"], [Oracle, Q], [_, ?query_t(QType, _)], _)) ->
     prim_call(?PRIM_CALL_ORACLE_GET_QUESTION, #integer{value = 0},
               [ast_body(Oracle), ast_body(Q)], [word, word], ast_type(QType));
 
-ast_body(?qid_app(["Oracle", "get_answer"], [Q], [?query_t(_, RType)], _)) ->
+ast_body(?qid_app(["Oracle", "get_answer"], [Oracle, Q], [_, ?query_t(_, RType)], _)) ->
     prim_call(?PRIM_CALL_ORACLE_GET_ANSWER, #integer{value = 0},
-              [ast_body(Q)], [word], {option, ast_type(RType)});
+              [ast_body(Oracle), ast_body(Q)], [word, word], {option, ast_type(RType)});
 
 ast_body({qid, _, ["Oracle", "register"]})     -> error({underapplied_primitive, 'Oracle.register'});
 ast_body({qid, _, ["Oracle", "query"]})        -> error({underapplied_primitive, 'Oracle.query'});

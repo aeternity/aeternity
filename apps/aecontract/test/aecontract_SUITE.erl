@@ -403,10 +403,9 @@ sophia_oracles(_Cfg) ->
     QId               = ?call(call_contract, Acc, Ct, createQuery, word, {Ct, Question, QueryFee, 5, 5}),
     Question          = ?call(call_contract, Acc, Ct, getQuestion, string, {CtId, QId}),
     QueryFee          = ?call(call_contract, Acc, Ct, queryFee, word, Ct),
-    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
-    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
-    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {QId, 0, 4001}),
-    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, QId),
+    none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
+    {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []}, {CtId, QId, 0, 4001}),
+    {some, 4001}      = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {CtId, QId}),
     {}                = ?call(call_contract, Acc, Ct, extendOracle, {tuple, []}, {Ct, 0, 10, TTL + 10}),
     ok.
 

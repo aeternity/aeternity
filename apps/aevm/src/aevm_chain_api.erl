@@ -58,7 +58,8 @@
                        ChainState :: chain_state()) ->
     {ok, QueryId :: pubkey(), chain_state()} | {error, term()}.
 
--callback oracle_respond(Query :: pubkey(),
+-callback oracle_respond(Oracle :: pubkey(),
+                         Query :: pubkey(),
                          Sign :: binary(),
                          Response :: term(),
                          ChainState :: chain_state()) ->
@@ -66,11 +67,13 @@
 
 -callback oracle_extend(Oracle :: pubkey(),
                         Sign :: binary(),
+                        Fee :: non_neg_integer(),
                         TTL :: non_neg_integer(),
                         ChainState :: chain_state()) ->
     {ok, chain_state()} | {error, term()}.
 
--callback oracle_get_answer(Query :: pubkey(),
+-callback oracle_get_answer(Oracle :: pubkey(),
+                            Query :: pubkey(),
                             ChainState :: chain_state()) ->
     {ok, none | {some, term()}} | {error, term()}.
 
@@ -97,10 +100,6 @@
 -callback oracle_query_fee(Oracle :: pubkey(),
                            ChainState :: chain_state()) ->
     {ok, non_neg_integer()} | {error, term()}.
-
--callback oracle_query_oracle(Query :: pubkey(),
-                              ChainState :: chain_state()) ->
-    {ok, pubkey()} | {error, term()}.
 
 %% Make a call to another contract.
 -callback call_contract(Contract  :: pubkey(),

@@ -54,9 +54,9 @@ global_env() ->
      {["Oracle", "query_fee"],    Fun([Oracle(Q, R)], Int)},
      {["Oracle", "query"],        Fun([Oracle(Q, R), Q, Fee, TTL, TTL], Query(Q, R))},
      {["Oracle", "get_question"], Fun([Oracle(Q, R), Query(Q, R)], Q)},
-     {["Oracle", "respond"],      Fun([Query(Q, R), Signature, R], Unit)},
+     {["Oracle", "respond"],      Fun([Oracle(Q, R), Query(Q, R), Signature, R], Unit)},
      {["Oracle", "extend"],       Fun([Oracle(Q, R), Signature, Fee, TTL], Unit)},
-     {["Oracle", "get_answer"],   Fun1(Query(Q, R), option_t(Ann, R))}
+     {["Oracle", "get_answer"],   Fun([Oracle(Q, R), Query(Q, R)], option_t(Ann, R))}
     ].
 
 option_t(As, T) -> {app_t, As, {id, As, "option"}, [T]}.

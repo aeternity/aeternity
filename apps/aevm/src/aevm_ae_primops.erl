@@ -129,33 +129,30 @@ oracle_call_query(Value, Data, State) ->
 
 
 oracle_call_respond(_Value, Data, State) ->
-    [Query] = get_args([word], Data),
-    QueryKey = <<Query:256>>,
-    case call_chain1(fun(API, ChainState) -> API:oracle_query_oracle(QueryKey, ChainState) end, State) of
-        {ok, Oracle} ->
-            case call_chain1(fun(API, ChainState) -> API:oracle_response_spec(Oracle, ChainState) end, State) of
-                {ok, RType} ->
-                    ArgumentTypes = [word, word, RType],
-                    [_, Sign, R] = get_args(ArgumentTypes, Data),
-                    Callback = fun(API, ChainState) -> API:oracle_respond(QueryKey, Sign, R, ChainState) end,
-                    call_chain(Callback, State);
-                {error, _} = Err -> Err
-            end;
+    [Oracle, Query] = get_args([word, word], Data),
+    OracleKey = <<Oracle:256>>,
+    case call_chain1(fun(API, ChainState) -> API:oracle_response_spec(OracleKey, ChainState) end, State) of
+        {ok, RType} ->
+            ArgumentTypes = [word, word, word, RType],
+            [_, _, Sign, R] = get_args(ArgumentTypes, Data),
+            QueryKey = <<Query:256>>,
+            Callback = fun(API, ChainState) -> API:oracle_respond(OracleKey, QueryKey, Sign, R, ChainState) end,
+            call_chain(Callback, State);
         {error, _} = Err -> Err
     end.
 
 
 oracle_call_extend(_Value, Data, State) ->
-    ArgumentTypes = [word, word, word],
-    [Oracle, Sign, TTL] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, TTL, ChainState) end,
+    ArgumentTypes = [word, word, word, word],
+    [Oracle, Sign, Fee, TTL] = get_args(ArgumentTypes, Data),
+    Callback = fun(API, ChainState) -> API:oracle_extend(<<Oracle:256>>, Sign, Fee, TTL, ChainState) end,
     call_chain(Callback, State).
 
 
 oracle_call_get_answer(_Value, Data, State) ->
-    ArgumentTypes = [word],
-    [Q] = get_args(ArgumentTypes, Data),
-    Callback = fun(API, ChainState) -> API:oracle_get_answer(<<Q:256>>, ChainState) end,
+    ArgumentTypes = [word, word],
+    [O, Q] = get_args(ArgumentTypes, Data),
+    Callback = fun(API, ChainState) -> API:oracle_get_answer(<<O:256>>, <<Q:256>>, ChainState) end,
     query_chain(Callback, State).
 
 
