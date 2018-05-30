@@ -239,9 +239,8 @@ handle_info({gproc_ps_event, candidate_block, _}, State = #state{ mining_state =
 handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) ->
     case State#state.block_candidate of
         undefined ->
-            case aec_block_generator:get_candidate() of
-                {ok, Block} ->
-                    Candidate = make_candidate(Block, State#state.seen_top_block_hash),
+            case try_fetch_and_make_candidate() of
+                {ok, Candidate} ->
                     State1 = State#state{ block_candidate = Candidate },
                     {noreply, start_mining(State1)};
                 {error, no_candidate} ->
@@ -281,6 +280,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+try_fetch_and_make_candidate() ->
+    case aec_block_generator:get_candidate() of
+        {ok, Block} ->
+            Candidate = make_candidate(Block, aec_blocks:prev_hash(Block)),
+            {ok, Candidate};
+        {error, no_candidate} = Err ->
+            Err
+    end.
+
 make_candidate(Block, TopBlockHash) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     LastNonce = aec_pow:pick_nonce(),
@@ -563,9 +571,8 @@ start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
     State#state{block_candidate = undefined};
 start_mining(#state{new_candidate_available = true} = State) ->
     State1 =
-        case aec_block_generator:get_candidate() of
-            {ok, Block} ->
-                Candidate = make_candidate(Block, aec_blocks:prev_hash(Block)),
+        case try_fetch_and_make_candidate() of
+            {ok, Candidate} ->
                 State#state{block_candidate = Candidate};
             {error, no_candidate} ->
                 State
