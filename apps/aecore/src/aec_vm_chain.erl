@@ -89,7 +89,7 @@ spend(Recipient, Amount, State = #state{ trees   = Trees,
 %%    Oracle
 -spec oracle_register(pubkey(), binary(), non_neg_integer(),
                       non_neg_integer(), binary(), binary(), chain_state()) ->
-    {ok, chain_state()} | {error, term()}.
+    {ok, pubkey(), chain_state()} | {error, term()}.
 oracle_register(AccountKey,_Sign, QueryFee, TTL, QuerySpec, ResponseSpec,
                 State = #state{ trees   = Trees,
                                 height  = Height,
@@ -187,10 +187,8 @@ oracle_respond(Oracle, QueryId,_Sign, Response,
             {ok, Trees2} = aetx:process_from_contract(Tx, Trees1, Height, ConsensusVersion),
             State1 = State#state{ trees = Trees2 },
             {ok, State1};
-        {error, _} = E -> foo = E
+        {error, _} = E -> E
     end.
-
-
 
 oracle_extend(Oracle,_Sign, Fee, TTL,
               State = #state{ trees   = Trees,
@@ -201,9 +199,9 @@ oracle_extend(Oracle,_Sign, Fee, TTL,
     {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
     Nonce = aec_accounts:nonce(Account) + 1,
     {ok, Tx} =
-        aeo_query_tx:new(#{oracle => Oracle,
+        aeo_extend_tx:new(#{oracle => Oracle,
                            nonce  => Nonce,
-                           ttl    => TTL,
+                           ttl    => {delta, TTL},
                            fee    => Fee}),
     ConsensusVersion = aec_hard_forks:protocol_effective_at_height(Height),
     case aetx:check_from_contract(Tx, Trees, Height, ConsensusVersion) of
@@ -247,16 +245,16 @@ oracle_get_question(OracleId, QueryId, #state{trees = Trees} = _State) ->
 
 oracle_query_fee(Oracle, #state{trees = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
-        {Value, O} ->
+        {value, O} ->
             Fee = aeo_oracles:query_fee(O),
             {ok, Fee};
         none  ->
             {ok, none}
     end.
 
-oracle_query_spec(Oracle, State = #state{ trees   = Trees} = _State) ->
+oracle_query_spec(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
-        {Value, O} ->
+        {value, O} ->
             BinaryFormat = aeo_oracles:query_format(O),
             try aeso_data:from_binary(0, typerep, BinaryFormat) of
                 {ok, Format} -> {ok, Format};
@@ -271,9 +269,9 @@ oracle_query_spec(Oracle, State = #state{ trees   = Trees} = _State) ->
 
 
 
-oracle_response_spec(Oracle, State = #state{ trees   = Trees} =_State) ->
+oracle_response_spec(Oracle, #state{ trees   = Trees} =_State) ->
     case aeo_state_tree:lookup_oracle(Oracle, aec_trees:oracles(Trees)) of
-        {Value, O} ->
+        {value, O} ->
             BinaryFormat = aeo_oracles:response_format(O),
             try aeso_data:from_binary(0, typerep, BinaryFormat) of
                 {ok, Format} -> {ok, Format};

@@ -161,9 +161,9 @@ ast_body(?qid_app(["Oracle", "query"], [Oracle, Q, Fee, QTTL, RTTL], [_, QType, 
               [word, ast_type(QType), word, word], word);
 
 ast_body(?qid_app(["Oracle", "extend"], [Oracle, Sign, Fee, TTL], _, _)) ->
-    prim_call(?PRIM_CALL_ORACLE_EXTEND, ast_body(Fee),
-              [ast_body(Oracle), ast_body(Sign), ast_body(TTL)],
-              [word, word, word], {tuple, []});
+    prim_call(?PRIM_CALL_ORACLE_EXTEND, #integer{value = 0},
+              [ast_body(Oracle), ast_body(Sign), ast_body(Fee), ast_body(TTL)],
+              [word, word, word, word], {tuple, []});
 
 ast_body(?qid_app(["Oracle", "respond"], [Oracle, Query, Sign, R], [_, _, _, RType], _)) ->
     prim_call(?PRIM_CALL_ORACLE_RESPOND, #integer{value = 0},

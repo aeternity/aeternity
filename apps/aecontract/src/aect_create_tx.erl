@@ -275,11 +275,11 @@ run_contract(#contract_create_tx{ owner      = Caller
 initialize_contract(#contract_create_tx{owner      = OwnerPubKey,
                                         nonce      = Nonce,
                                         vm_version = VmVersion,
-                                        amount     = _Amount,
-                                        gas        = _Gas,
+                                        amount     =_Amount,
+                                        gas        =_Gas,
                                         gas_price  = GasPrice,
                                         deposit    = Deposit,
-                                        fee        = _Fee},
+                                        fee   =_Fee},
                     ContractPubKey, Contract,
                     CallRes,  Context, Trees, Height, ConsensusVersion) ->
     %% Insert the call into the state tree for one block.
