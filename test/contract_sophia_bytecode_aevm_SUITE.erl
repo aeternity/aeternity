@@ -387,8 +387,6 @@ set_store(Data, State = #{ running := Contract, store := Store }) ->
     State#{ store => Store#{ Contract => Data } }.
 
 call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Caller}) ->
-    io:format("Calling contract ~p with args ~p\n",
-              [Contract, aeso_test_utils:dump_words(CallData)]),
     case maps:is_key(Contract, S) of
         true ->
             #{environment := Env0} = S,
@@ -396,7 +394,6 @@ call_contract(<<Contract:256>>, _Gas, Value, CallData, _, S = #{running := Calle
             Res = execute_call(Contract, CallData, S, Env),
             case Res of
                 {ok, Ret, #{ accounts := Accounts }} ->
-                    io:format("  result = ~p\n", [aeso_test_utils:dump_words(Ret)]),
                     {ok, aevm_chain_api:call_result(Ret, 0), S#{ accounts := Accounts }};
                 {error, out_of_gas, _} ->
                     io:format("  result = out_of_gas\n"),

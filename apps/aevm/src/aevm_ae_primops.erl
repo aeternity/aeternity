@@ -28,7 +28,6 @@ call(Value, Data, State) ->
         end
     catch _:Err ->
 	%% TODO: Better error for illegal call.
-        io:format("Illegal call\nData = ~p\n~p\n~p\n", [aeso_test_utils:dump_words(Data), Err, erlang:get_stacktrace()]),    %% tmp
         {error, out_of_gas}
     end.
 
