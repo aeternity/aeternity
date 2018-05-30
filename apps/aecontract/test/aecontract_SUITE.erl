@@ -101,16 +101,30 @@ create_contract_negative(_Cfg) ->
     aect_test_utils:assert_state_equal(S1Mined, MaybeS1Mined2),
     {error, account_nonce_too_high} = aetx:check(RTx3, Trees, CurrHeight, ?PROTOCOL_VERSION),
 
+    %% Test contract init failure
+    RTx4 = aect_test_utils:create_tx(PubKey, S1),
+    {ok, S4} = sign_and_apply_transaction(RTx4, PrivKey, S1, ?MINER_PUBKEY),
+    {none, _} = lookup_contract_by_id(aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(RTx4)), S4),
+
     ok.
 
 create_contract(_Cfg) ->
     {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
-    Tx           = aect_test_utils:create_tx(PubKey, #{}, S1),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
+    IdContract   = aect_test_utils:compile_contract("contracts/identity.aes"),
+    CallData     = aeso_abi:create_calldata(IdContract, "main", "42"),
+    Overrides    = #{ code => IdContract
+        , call_data => CallData
+        , gas => 10000
+    },
+    Tx           = aect_test_utils:create_tx(PubKey, Overrides, S1),
+
     %% Test that the create transaction is accepted
-    {ok, S2} = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
-    {PubKey, S2}.
+    {ok, S2}   = sign_and_apply_transaction(Tx, PrivKey, S1, ?MINER_PUBKEY),
+    {{value, _}, _} = lookup_contract_by_id(aect_contracts:compute_contract_pubkey(PubKey, aetx:nonce(Tx)), S2),
+
+    ok.
 
 sign_and_apply_transaction(Tx, PrivKey, S1, Miner) ->
     SignedTx = aetx_sign:sign(Tx, PrivKey),
@@ -242,6 +256,11 @@ get_contract(Contract0, S) ->
     Contracts   = aect_test_utils:contracts(S),
     Contract    = aect_state_tree:get_contract(ContractKey, Contracts),
     {Contract, S}.
+
+lookup_contract_by_id(ContractKey, S) ->
+    Contracts = aect_test_utils:contracts(S),
+    X         = aect_state_tree:lookup_contract(ContractKey, Contracts),
+    {X, S}.
 
 get_call(Contract0, Call0, S) ->
     CallId     = aect_call:id(Call0),
