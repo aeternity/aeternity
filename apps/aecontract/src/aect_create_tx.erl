@@ -191,13 +191,13 @@ process(#contract_create_tx{owner = OwnerPubKey,
         E ->
             lager:debug("Init call error ~w ~w~n",[E, CallRes]),
             %% Don't create the contract if 'init' fails!
-            %% Go back to Trees0 (Without contract or any account changes)
+            %% Go back to state trees without contract or any account changes
             %% Spend gas + fee
             %% (The VM will decide how much gas is used: 0, some, all.)
             GasCost = aect_call:gas_used(CallRes) * GasPrice,
             Trees5 =
                 spend(OwnerPubKey, ContractPubKey, 0, Fee+GasCost, Nonce,
-                      Context, Height, Trees1, ConsensusVersion),
+                      Context, Height, Trees0, ConsensusVersion),
             {ok, Trees5}
     end.
 
