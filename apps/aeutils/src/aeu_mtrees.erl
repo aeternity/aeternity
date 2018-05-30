@@ -29,6 +29,7 @@
 %% API - Merkle tree
 -export([root_hash/1,
          lookup_with_proof/2,
+         lookup_with_proof/3,
          verify_proof/4,
          commit_to_db/1,
          empty_with_backend/1
@@ -38,6 +39,7 @@
 -export([ proof_db_commit/2
         , proof_db_get/2
         , proof_db_put/3
+        , proof_db_fold/3
         ]).
 
 -export_type([iterator/0,
@@ -152,12 +154,18 @@ root_hash(Tree) ->
 
 -spec lookup_with_proof(key(), mtree()) -> none |
                                            {value_and_proof, value(), proof()}.
+
+%% Will use the built in dict proof db.
 lookup_with_proof(Key, Tree) when ?IS_KEY(Key) ->
+    lookup_with_proof(Key, Tree, new_proof_db()).
+
+-spec lookup_with_proof(key(), mtree(), proof()) -> none |
+                                                    {value_and_proof, value(), proof()}.
+lookup_with_proof(Key, Tree, ProofDB) when ?IS_KEY(Key) ->
     case lookup(Key, Tree) of
         none ->
             none;
         {value, Value} ->
-            ProofDB = new_proof_db(),
             {Value, Proof} = aeu_mp_trees:construct_proof(Key, ProofDB, Tree),
             {value_and_proof, Value, Proof}
     end.
@@ -181,6 +189,9 @@ commit_to_db(Tree) ->
 %%% Internal functions
 %%%===================================================================
 
+%% Note that this is only the default proof db, if the caller did not
+%% provide a proof db in the call.
+
 new_proof_db() ->
     aeu_mp_trees_db:new(proof_db_spec()).
 
@@ -200,3 +211,6 @@ proof_db_put(Key, Val, Proof) ->
 
 proof_db_commit(_Cache,_DB) ->
     error(no_commits_in_proof).
+
+proof_db_fold(Fun, Initial, Proof) ->
+    dict:fold(Fun, Initial, Proof).
