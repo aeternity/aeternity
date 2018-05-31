@@ -21,7 +21,7 @@
          mine_blocks/2,
          mine_blocks/3,
          spend/4,         %% (Node, FromPub, ToPub, Amount) -> ok
-         spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
+         spend/6,         %% (Node, FromPub, ToPub, Amount, Fee, TTL) -> ok
          forks/0,
          latest_fork_height/0]).
 
@@ -186,14 +186,15 @@ mine_blocks_loop(Blocks, BlocksToMine) ->
     end.
 
 spend(Node, FromPub, ToPub, Amount) ->
-    spend(Node, FromPub, ToPub, Amount, aec_governance:minimum_tx_fee()).
+    spend(Node, FromPub, ToPub, Amount, aec_governance:minimum_tx_fee(), 1000).
 
-spend(Node, FromPub, ToPub, Amount, Fee) ->
+spend(Node, FromPub, ToPub, Amount, Fee, TTL) ->
     {ok, Nonce} = rpc:call(Node, aec_next_nonce, pick_for_account, [FromPub]),
     Params = #{sender => FromPub,
                recipient => ToPub,
                amount => Amount,
                fee => Fee,
+               ttl => TTL,
                nonce => Nonce,
                payload => <<"foo">>},
     {ok, Tx} = rpc:call(Node, aec_spend_tx, new, [Params]),

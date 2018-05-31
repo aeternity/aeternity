@@ -2210,6 +2210,9 @@ definitions:
       fee:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
       sender:
         $ref: '#/definitions/EncodedHash'
       nonce:
@@ -2232,14 +2235,17 @@ definitions:
       query_fee:
         type: integer
         format: int64
-      fee:
-        type: integer
-        format: int64
-      ttl:
+      oracle_ttl:
         $ref: '#/definitions/TTL'
       account:
         $ref: '#/definitions/EncodedHash'
       nonce:
+        type: integer
+        format: int64
+      fee:
+        type: integer
+        format: int64
+      ttl:
         type: integer
         format: int64
     required:
@@ -2247,6 +2253,7 @@ definitions:
     - response_format
     - query_fee
     - fee
+    - oracle_ttl
     - ttl
   OracleRegisterResponse:
     type: object
@@ -2261,15 +2268,19 @@ definitions:
       fee:
         type: integer
         format: int64
-      ttl:
+      oracle_ttl:
         $ref: '#/definitions/TTL'
       oracle:
         $ref: '#/definitions/EncodedHash'
       nonce:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
     required:
     - fee
+    - oracle_ttl
     - ttl
   OracleQueryTx:
     type: object
@@ -2288,6 +2299,9 @@ definitions:
       fee:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
       sender:
         $ref: '#/definitions/EncodedHash'
       nonce:
@@ -2301,6 +2315,7 @@ definitions:
     - query_ttl
     - response_ttl
     - fee
+    - ttl
   OracleResponseTx:
     type: object
     properties:
@@ -2309,6 +2324,9 @@ definitions:
       response:
         type: string
       fee:
+        type: integer
+        format: int64
+      ttl:
         type: integer
         format: int64
       oracle:
@@ -2321,6 +2339,7 @@ definitions:
     - query_id
     - response
     - fee
+    - ttl
   OracleQueryResponse:
     type: object
     properties:
@@ -2368,6 +2387,9 @@ definitions:
       fee:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
       account:
         $ref: '#/definitions/EncodedHash'
       nonce:
@@ -2376,6 +2398,7 @@ definitions:
     required:
     - commitment
     - fee
+    - ttl
   NameClaimTx:
     type: object
     properties:
@@ -2387,6 +2410,9 @@ definitions:
       fee:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
       account:
         $ref: '#/definitions/EncodedHash'
       nonce:
@@ -2396,6 +2422,7 @@ definitions:
     - name
     - name_salt
     - fee
+    - ttl
   NameUpdateTx:
     type: object
     properties:
@@ -2406,10 +2433,13 @@ definitions:
         format: int64
       pointers:
         type: string
-      ttl:
+      client_ttl:
         type: integer
         format: int64
       fee:
+        type: integer
+        format: int64
+      ttl:
         type: integer
         format: int64
       account:
@@ -2420,6 +2450,7 @@ definitions:
     required:
     - name_hash
     - name_ttl
+    - client_ttl
     - pointers
     - ttl
     - fee
@@ -2433,6 +2464,9 @@ definitions:
       fee:
         type: integer
         format: int64
+      ttl:
+        type: integer
+        format: int64
       account:
         $ref: '#/definitions/EncodedHash'
       nonce:
@@ -2442,12 +2476,16 @@ definitions:
     - name_hash
     - recipient_pubkey
     - fee
+    - ttl
   NameRevokeTx:
     type: object
     properties:
       name_hash:
         type: string
       fee:
+        type: integer
+        format: int64
+      ttl:
         type: integer
         format: int64
       account:
@@ -2458,6 +2496,7 @@ definitions:
     required:
     - name_hash
     - fee
+    - ttl
   NameCommitmentHash:
     type: object
     properties:
@@ -3005,6 +3044,10 @@ definitions:
         description: Transaction fee
         type: integer
         minimum: 0
+      ttl:
+        description: Transaction TTL
+        type: integer
+        minimum: 0
       call_data:
         description: Contract call data
         type: string
@@ -3039,6 +3082,10 @@ definitions:
         description: Transaction fee
         type: integer
         minimum: 0
+      ttl:
+        description: Transaction TTL
+        type: integer
+        minimum: 0
       amount:
         description: Amount
         type: integer
@@ -3059,6 +3106,7 @@ definitions:
     - contract
     - vm_version
     - fee
+    - ttl
     - amount
     - gas
     - gas_price
@@ -3081,6 +3129,10 @@ definitions:
         minimum: 0
         maximum: 255
       fee:
+        description: Transaction fee
+        type: integer
+        minimum: 0
+      ttl:
         description: Transaction fee
         type: integer
         minimum: 0
@@ -3107,6 +3159,7 @@ definitions:
     - contract
     - vm_version
     - fee
+    - ttl
     - amount
     - gas
     - gas_price

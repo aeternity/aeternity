@@ -68,6 +68,7 @@ make_spend_tx(Sender) ->
                                         recipient => OtherPubkey,
                                         amount => 4,
                                         fee => 1,
+                                        ttl => 100,
                                         nonce => 1,
                                         payload => <<>>}).
 make_signed_mutual_close() ->

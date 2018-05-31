@@ -446,7 +446,7 @@ init_per_group(channel_websocket, Config) ->
     IStartAmt = 50,
     RStartAmt = 50,
     Fee = 1,
-    BlocksToMine = 10,
+    BlocksToMine = 1,
 
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), BlocksToMine),
 
@@ -610,6 +610,7 @@ contract_transactions(_Config) ->
                       gas => 30,
                       gas_price => 1,
                       fee => 1,
+                      ttl => 100,
                       call_data => EncodedCallData},
     ValidDecoded = maps:merge(ValidEncoded,
                               #{owner => MinerPubkey,
@@ -637,6 +638,7 @@ contract_transactions(_Config) ->
                              gas => 100,
                              gas_price => 1,
                              fee => 1,
+                             ttl => 100,
                              call_data => EncodedCallData},
 
     ContractCallDecoded = maps:merge(ContractCallEncoded,
@@ -681,6 +683,7 @@ contract_transactions(_Config) ->
                              gas => 100,
                              gas_price => 1,
                              fee => 1,
+                             ttl => 100,
                              function => Function,
                              arguments => Argument},
 
@@ -737,7 +740,7 @@ contract_transactions(_Config) ->
         get_contract_call(maps:put(caller, RandAddress, ContractCallEncoded)),
     %% contract not found
     {ok, 404, #{<<"reason">> := <<"Contract address for key contract not found">>}} =
-        get_contract_call(maps:put(contract, RandContractAddress, 
+        get_contract_call(maps:put(contract, RandContractAddress,
                                    ContractCallEncoded)),
     %% caller not found
     {ok, 404, #{<<"reason">> := <<"Account of caller not found">>}} =
@@ -789,12 +792,13 @@ oracle_transactions(_Config) ->
                    response_format => <<"something else">>,
                    query_fee => 1,
                    fee => 6,
-                   ttl => #{type => <<"block">>, value => 2000}},
+                   ttl => 100,
+                   oracle_ttl => #{type => <<"block">>, value => 2000}},
     RegDecoded = maps:merge(RegEncoded,
                             #{account => MinerPubkey,
                               query_spec => <<"something">>,
                               response_spec => <<"something else">>,
-                              ttl => {block, 2000}}),
+                              oracle_ttl => {block, 2000}}),
     unsigned_tx_positive_test(RegDecoded, RegEncoded,
                                fun get_oracle_register/1,
                                fun aeo_register_tx:new/1, MinerPubkey),
@@ -807,17 +811,18 @@ oracle_transactions(_Config) ->
 
     % mine blocks to include it
     ct:log("Before oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     ct:log("Oracle registered nonce is ~p", [rpc(aec_next_nonce, pick_for_account, [MinerPubkey])]),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
     ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
                    fee => 2,
-                   ttl => #{type => <<"delta">>, value => 500}},
+                   ttl => 100,
+                   oracle_ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
                             #{oracle => MinerPubkey,
-                              ttl => {delta, 500}}),
+                              oracle_ttl => {delta, 500}}),
     unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
                                fun get_oracle_extend/1,
                                fun aeo_extend_tx:new/1, MinerPubkey),
@@ -828,6 +833,7 @@ oracle_transactions(_Config) ->
                      query => <<"Hejsan Svejsan">>,
                      query_fee => 2,
                      fee => 30,
+                     ttl => 100,
                      query_ttl => #{type => <<"block">>, value => 20},
                      response_ttl => #{type => <<"delta">>, value => 20}},
     QueryDecoded = maps:merge(QueryEncoded,
@@ -850,14 +856,15 @@ oracle_transactions(_Config) ->
     sign_and_post_tx(MinerAddress, QueryTx),
 
     % mine blocks to include it
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     ResponseEncoded = #{oracle => OracleAddress,
                         query_id => aec_base58c:encode(oracle_query_id,
                                                        QueryId),
                         response => <<"Hejsan">>,
-                        fee => 3},
+                        fee => 3,
+                        ttl => 100},
     ResponseDecoded = maps:merge(ResponseEncoded,
                               #{oracle => MinerPubkey,
                                 query_id => QueryId}),
@@ -947,7 +954,8 @@ nameservice_transaction_preclaim(MinerAddress, MinerPubkey) ->
     Commitment = <<"abcd">>,
     Encoded = #{account => MinerAddress,
                 commitment => aec_base58c:encode(commitment, Commitment),
-                fee => 1},
+                fee => 1,
+                ttl => 100},
     Decoded = maps:merge(Encoded,
                         #{account => MinerPubkey,
                           commitment => Commitment}),
@@ -996,7 +1004,8 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account => MinerAddress,
                 name => aec_base58c:encode(name, Name),
                 name_salt => Salt,
-                fee => 1},
+                fee => 1,
+                ttl => 100},
     Decoded = maps:merge(Encoded,
                         #{account => MinerPubkey,
                           name => Name}),
@@ -1022,9 +1031,10 @@ nameservice_transaction_update(MinerAddress, MinerPubkey) ->
     Encoded = #{account => MinerAddress,
                 name_hash => aec_base58c:encode(name, NameHash),
                 name_ttl => 3,
-                ttl => 2,
+                client_ttl => 2,
                 pointers => jsx:encode(Pointers),
-                fee => 1},
+                fee => 1,
+                ttl => 100},
     Decoded = maps:merge(Encoded,
                         #{account => MinerPubkey,
                           pointers => Pointers,
@@ -1052,7 +1062,8 @@ nameservice_transaction_transfer(MinerAddress, MinerPubkey) ->
                 name_hash => aec_base58c:encode(name, NameHash),
                 recipient_pubkey => aec_base58c:encode(account_pubkey,
                                                        RandAddress),
-                fee => 1},
+                fee => 1,
+                ttl => 100},
     Decoded = maps:merge(Encoded,
                         #{account => MinerPubkey,
                           recipient_account => RandAddress,
@@ -1070,7 +1081,8 @@ nameservice_transaction_revoke(MinerAddress, MinerPubkey) ->
     NameHash = <<"name">>,
     Encoded = #{account => MinerAddress,
                 name_hash => aec_base58c:encode(name, NameHash),
-                fee => 1},
+                fee => 1,
+                ttl => 100},
     Decoded = maps:merge(Encoded,
                         #{account => MinerPubkey,
                           name_hash => NameHash}),
@@ -1254,6 +1266,7 @@ spend_transaction(_Config) ->
                                                        RandAddress),
                 amount => 2,
                 fee => 1,
+                ttl => 100,
                 payload => <<"hejsan svejsan">>},
     Decoded = maps:merge(Encoded,
                         #{sender => MinerPubkey,
@@ -1280,6 +1293,7 @@ unknown_atom_in_spend_tx(_Config) ->
                                                        RandAddress),
                 amount => 2,
                 fee => 1,
+                ttl => 100,
                 %% this tests relies on this being an atom unknown to the VM
                 %% if someone adds this atom in particular, please modify the
                 %% binary below accordingly
@@ -1360,6 +1374,7 @@ get_transaction(_Config) ->
                                                        RandAddress),
                 amount => 2,
                 fee => 1,
+                ttl => 100,
                 payload => <<"foo">>},
     {ok, 200, #{<<"tx">> := EncodedSpendTx}} = get_spend(Encoded),
     {ok, SpendTxBin} = aec_base58c:safe_decode(transaction, EncodedSpendTx),
@@ -1529,6 +1544,7 @@ post_correct_tx(_Config) ->
             recipient => random_hash(),
             amount => Amount,
             fee => Fee,
+            ttl => 100,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
@@ -1548,6 +1564,7 @@ post_broken_tx(_Config) ->
             recipient => random_hash(),
             amount => Amount,
             fee => Fee,
+            ttl => 100,
             nonce => Nonce,
             payload => <<"foo">>}),
     {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
@@ -1575,6 +1592,7 @@ post_broken_base58_tx(_Config) ->
                     recipient => random_hash(),
                     amount => Amount,
                     fee => Fee,
+                    ttl => 100,
                     nonce => Nonce,
                     payload => <<"foo">>}),
             {ok, SignedTx} = rpc(aec_keys, sign, [SpendTx]),
@@ -2478,15 +2496,15 @@ naming_system_manage_name(_Config) ->
     PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
     Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     NameSalt    = 12345,
-    NameTTL     = 60000,
+    NameTTL     = 20000,
     Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 2,
     MineReward  = rpc(aec_governance, block_mine_reward, []),
 
-    %% Mine 10 blocks to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+    %% Mine a block to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, 200, #{<<"balance">> := Balance}} = get_balance_at_top(),
 
     %% Check mempool empty
@@ -2528,9 +2546,10 @@ naming_system_manage_name(_Config) ->
 
     %% Check that name entry is present
     EncodedNHash = aec_base58c:encode(name, NHash),
+    ExpectedTTL1 = 3 + aec_governance:name_claim_max_expiration(),
     {ok, 200, #{<<"name">>      := Name,
                 <<"name_hash">> := EncodedNHash,
-                <<"name_ttl">>  := 0,
+                <<"name_ttl">>  := ExpectedTTL1,
                 <<"pointers">>  := <<"[]">>}} = get_name(Name),
 
     %% Submit name updated tx and check it is in mempool
@@ -2544,8 +2563,9 @@ naming_system_manage_name(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     %% Check that TTL and pointers got updated in name entry
+    ExpectedTTL2 = 4 + NameTTL,
     {ok, 200, #{<<"name">>     := Name,
-                <<"name_ttl">> := NameTTL,
+                <<"name_ttl">> := ExpectedTTL2,
                 <<"pointers">> := Pointers}} = get_name(Name),
 
     {ok, 200, #{<<"balance">> := Balance3}} = get_balance_at_top(),
@@ -2554,6 +2574,7 @@ naming_system_manage_name(_Config) ->
                                 #{recipient_pubkey => Name,
                                   amount           => 77,
                                   fee              => 50,
+                                  ttl              => 100,
                                   payload          => <<"foo">>}),
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -2624,8 +2645,8 @@ naming_system_broken_txs(_Config) ->
     ok.
 
 list_oracles(_Config) ->
-    %% Mine some blocks to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 5),
+    %% Mine a blocks to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     KeyPair = fun() ->
                   #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
@@ -2665,8 +2686,8 @@ list_oracles(_Config) ->
     ok.
 
 list_oracle_queries(_Config) ->
-    %% Mine some blocks to get some funds
-    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),
+    %% Mine a block to get some funds
+    aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     KeyPair = fun() ->
                   #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
@@ -2684,7 +2705,7 @@ list_oracle_queries(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 1),
 
     %% Now register both accounts as oracles...
-    [ register_oracle(11, PubKey, PrivKey, 1, 3, {delta, 50})
+    [ register_oracle(2, PubKey, PrivKey, 1, 3, {delta, 50})
       || {PubKey, PrivKey} <- OKeyPairs ],
 
     %% Mine a block to effect the registrations
@@ -2692,9 +2713,9 @@ list_oracle_queries(_Config) ->
 
     %% Query each oracle four times
     [{OPubKey1, _}, {OPubKey2, _}] = OKeyPairs,
-    [ query_oracle(12, APubKey, APrivKey, OPubKey1, N, <<"a query">>, {delta, 20}, 3)
+    [ query_oracle(3, APubKey, APrivKey, OPubKey1, N, <<"a query">>, {delta, 20}, 3)
       || N <- lists:seq(1, 4) ],
-    [ query_oracle(12, APubKey, APrivKey, OPubKey2, N, <<"a query">>, {delta, 20}, 3)
+    [ query_oracle(3, APubKey, APrivKey, OPubKey2, N, <<"a query">>, {delta, 20}, 3)
       || N <- lists:seq(5, 8) ],
 
     QueryIds = [ aeo_query:id(APubKey, N, OPubKey1) || N <- lists:seq(1, 4) ] ++
@@ -2733,7 +2754,8 @@ register_oracle(ChainHeight, PubKey, PrivKey, Nonce, QueryFee, TTL) ->
                                         query_spec    => <<"TODO">>,
                                         response_spec => <<"TODO">>,
                                         query_fee     => QueryFee,
-                                        ttl           => TTL,
+                                        oracle_ttl    => TTL,
+                                        ttl           => 1000,
                                         fee           => 4 + TTLFee}),
     SignedTx = aetx_sign:sign(RegTx, PrivKey),
     SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
@@ -2748,6 +2770,7 @@ query_oracle(ChainHeight, PubKey, PrivKey, Oracle, Nonce, Query, TTL, QueryFee) 
                                        query_fee     => QueryFee,
                                        query_ttl     => TTL,
                                        response_ttl  => {delta, 10},
+                                       ttl           => 1000,
                                        fee           => QueryFee + 2 + TTLFee }),
     SignedTx = aetx_sign:sign(QueryTx, PrivKey),
     SendTx = aec_base58c:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)),
@@ -2890,7 +2913,8 @@ ws_tx_on_chain(_Config) ->
            query_format => <<"the query spec">>,
            response_format => <<"the response spec">>,
            query_fee => 4,
-           ttl => #{ type => delta, value => 500 },
+           oracle_ttl => #{ type => delta, value => 500 },
+           ttl => 100,
            fee => 5 },
     #{<<"result">> := <<"ok">>,
       <<"tx_hash">> := TxHash } = ws_do_request(ConnPid, oracle, register, RegisterData),
@@ -2938,6 +2962,7 @@ ws_oracles(_Config) ->
            response_ttl => #{ type => delta, value => 10 },
            query => <<"How are you doing?">>,
            query_fee => 4,
+           ttl => 100,
            fee => 7 },
     #{<<"result">> := <<"ok">>,
       <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, query, QueryData),
@@ -2955,6 +2980,7 @@ ws_oracles(_Config) ->
     ResponseData = #{ type => 'OracleResponseTxObject',
                       query_id => QId,
                       response => <<"I am fine, thank you!">>,
+                      ttl => 100,
                       fee => 3 },
     #{<<"result">> := <<"ok">>,
       <<"query_id">> := QId } = ws_do_request(ConnPid, oracle, response, ResponseData),
@@ -2967,7 +2993,8 @@ ws_oracles(_Config) ->
     ExtendData =
         #{ type => 'OracleExtendTxObject',
            oracle => OId,
-           ttl => #{ type => delta, value => 50 },
+           oracle_ttl => #{ type => delta, value => 50 },
+           ttl => 100,
            fee => 2 },
     #{<<"result">> := <<"ok">>,
       <<"tx_hash">> := ExtendTxHash,
@@ -3091,7 +3118,7 @@ channel_create(Config, IConnPid, RConnPid) ->
 
     {ok, SSignedCrTx} = aec_base58c:safe_decode(transaction, EncodedSignedCrTx),
     SignedCrTx = aetx_sign:deserialize_from_binary(SSignedCrTx),
-    %% same transaction 
+    %% same transaction
     CrTx = aetx_sign:tx(SignedCrTx),
 
     {channel_create_tx, Tx} = aetx:specialize_type(CrTx),
@@ -3755,21 +3782,23 @@ get_tx(TxHash, TxEncoding) ->
     http_request(Host, get, "tx/" ++ binary_to_list(TxHash), Params).
 
 post_spend_tx(Recipient, Amount, Fee) ->
-    post_spend_tx(Recipient, Amount, Fee, <<"foo">>).
+    post_spend_tx(Recipient, Amount, Fee, <<"foo">>, 100).
 
-post_spend_tx(Recipient, Amount, Fee, Payload) ->
+post_spend_tx(Recipient, Amount, Fee, Payload, TTL) ->
     Host = internal_address(),
     http_request(Host, post, "spend-tx",
                  #{recipient_pubkey => aec_base58c:encode(
                                          account_pubkey, Recipient),
                    amount => Amount,
                    fee => Fee,
+                   ttl => TTL,
                    payload => Payload}).
 
 post_name_preclaim_tx(Commitment, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-preclaim-tx",
                  #{commitment => aec_base58c:encode(commitment, Commitment),
+                   ttl        => 100,
                    fee        => Fee}).
 
 post_name_claim_tx(Name, NameSalt, Fee) ->
@@ -3777,28 +3806,32 @@ post_name_claim_tx(Name, NameSalt, Fee) ->
     http_request(Host, post, "name-claim-tx",
                  #{name      => Name,
                    name_salt => NameSalt,
+                   ttl       => 100,
                    fee       => Fee}).
 
-post_name_update_tx(NameHash, NameTTL, Pointers, TTL, Fee) ->
+post_name_update_tx(NameHash, NameTTL, Pointers, ClientTTL, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-update-tx",
-                 #{name_hash => aec_base58c:encode(name, NameHash),
-                   name_ttl  => NameTTL,
-                   pointers  => Pointers,
-                   ttl       => TTL,
-                   fee       => Fee}).
+                 #{name_hash  => aec_base58c:encode(name, NameHash),
+                   client_ttl => ClientTTL,
+                   pointers   => Pointers,
+                   name_ttl   => NameTTL,
+                   ttl        => 100,
+                   fee        => Fee}).
 
 post_name_transfer_tx(NameHash, RecipientPubKey, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-transfer-tx",
                  #{name_hash        => aec_base58c:encode(name, NameHash),
                    recipient_pubkey => aec_base58c:encode(account_pubkey, RecipientPubKey),
+                   ttl              => 100,
                    fee              => Fee}).
 
 post_name_revoke_tx(NameHash, Fee) ->
     Host = internal_address(),
     http_request(Host, post, "name-revoke-tx",
                  #{name_hash => aec_base58c:encode(name, NameHash),
+                   ttl       => 100,
                    fee       => Fee}).
 
 get_commitment_hash(Name, Salt) ->

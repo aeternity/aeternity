@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          amount/1,
@@ -70,6 +71,10 @@ type() ->
 fee(#channel_deposit_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_deposit_tx{ttl = TTL}) ->
+    TTL.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_deposit_tx{nonce = Nonce}) ->
     Nonce.
@@ -82,17 +87,15 @@ origin(#channel_deposit_tx{from = FromPubKey}) ->
 amount(#channel_deposit_tx{amount = Amount}) ->
     Amount.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
-check(#channel_deposit_tx{channel_id   = ChannelId,
-                          from        = FromPubKey,
-                          amount      = Amount,
-                          ttl        = TTL,
-                          fee         = Fee,
-                          nonce        = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
+check(#channel_deposit_tx{channel_id = ChannelId,
+                          from       = FromPubKey,
+                          amount     = Amount,
+                          fee        = Fee,
+                          nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(FromPubKey, Trees, Nonce, Amount + Fee) end,
-         fun() -> aetx_utils:check_ttl(TTL, Height) end,
          fun() -> check_channel(ChannelId, FromPubKey, Trees) end],
     case aeu_validation:run(Checks) of
         ok ->
@@ -101,13 +104,13 @@ check(#channel_deposit_tx{channel_id   = ChannelId,
             Error
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#channel_deposit_tx{channel_id   = ChannelId,
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
+process(#channel_deposit_tx{channel_id = ChannelId,
                             from       = FromPubKey,
                             amount     = Amount,
                             fee        = Fee,
-                            nonce        = Nonce}, _Context, Trees, _Height,
-                                                  _ConsensusVersion) ->
+                            nonce      = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees),
     ChannelsTree0 = aec_trees:channels(Trees),
 

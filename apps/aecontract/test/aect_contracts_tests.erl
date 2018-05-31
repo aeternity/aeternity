@@ -55,6 +55,7 @@ create_tx(Override) ->
            , code       => <<"THIS IS NOT ACTUALLY PROPER BYTE CODE">>
            , vm_version => 1
            , fee        => 10
+           , ttl        => 100
            , deposit    => 100
            , amount     => 50
            , gas        => 100

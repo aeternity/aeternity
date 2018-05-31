@@ -9,15 +9,17 @@
           query_spec    = <<"string()">>              :: aeo_oracles:type_spec(),
           response_spec = <<"boolean() | integer()">> :: aeo_oracles:type_spec(),
           query_fee                                   :: integer(),
-          ttl                                         :: aeo_oracles:ttl(),
-          fee                                         :: integer()
+          oracle_ttl                                  :: aeo_oracles:ttl(),
+          fee                                         :: integer(),
+          ttl                                         :: aec_blocks:height()
           }).
 
 -record(oracle_extend_tx, {
-          oracle :: aec_keys:pubkey(),
-          nonce  :: integer(),
-          ttl    :: aeo_oracles:relative_ttl(),
-          fee    :: integer()
+          oracle     :: aec_keys:pubkey(),
+          nonce      :: integer(),
+          oracle_ttl :: aeo_oracles:relative_ttl(),
+          fee        :: integer(),
+          ttl        :: aec_blocks:height()
           }).
 
 -record(oracle_query_tx, {
@@ -28,7 +30,8 @@
           query_fee    :: integer(),
           query_ttl    :: aeo_oracles:ttl(),
           response_ttl :: aeo_oracles:relative_ttl(),
-          fee          :: integer()
+          fee          :: integer(),
+          ttl          :: aec_blocks:height()
           }).
 
 -record(oracle_response_tx, {
@@ -36,5 +39,6 @@
           nonce    :: integer(),
           query_id :: aeo_query:id(),
           response :: aeo_oracles:response(),
-          fee      :: integer()
+          fee      :: integer(),
+          ttl      :: aec_blocks:height()
           }).

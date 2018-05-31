@@ -102,6 +102,7 @@ create_tx(PubKey, Spec0, State) ->
              #contract_create_tx{ owner      = PubKey
                                 , nonce      = maps:get(nonce, Spec)
                                 , fee        = maps:get(fee, Spec)
+                                , ttl        = maps:get(ttl, Spec)
                                 , code       = maps:get(code, Spec)
                                 , vm_version = maps:get(vm_version, Spec)
                                 , deposit    = maps:get(deposit, Spec)
@@ -113,6 +114,7 @@ create_tx(PubKey, Spec0, State) ->
 
 create_tx_default_spec(PubKey, State) ->
     #{ fee        => 5
+     , ttl        => 100
      , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , code       => <<"NOT PROPER BYTE CODE">>
      , vm_version => 1
@@ -138,6 +140,7 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
                               , contract   = ContractKey
                               , vm_version = maps:get(vm_version, Spec)
                               , fee        = maps:get(fee, Spec)
+                              , ttl        = maps:get(ttl, Spec)
                               , amount     = maps:get(amount, Spec)
                               , gas        = maps:get(gas, Spec)
                               , gas_price  = maps:get(gas_price, Spec)
@@ -146,6 +149,7 @@ call_tx(PubKey, ContractKey, Spec0, State) ->
 
 call_tx_default_spec(PubKey, State) ->
     #{ fee         => 5
+     , ttl         => 100
      , nonce       => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , vm_version  => 1
      , amount      => 100

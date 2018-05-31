@@ -248,7 +248,8 @@ tx_first_pays_second_(Config, AmountFun) ->
     ok = new_tx(#{node1  => N1,
                   node2  => N2,
                   amount => AmountFun(Bal1),
-                  fee    => 1}),
+                  fee    => 1,
+                  ttl    => 100}),
     {ok, Pool12} = get_pool(N1),
     [NewTx] = Pool12 -- Pool11,
     true = ensure_new_tx(N2, NewTx).
@@ -510,7 +511,7 @@ get_balance(N) ->
 get_pool(N) ->
     rpc:call(N, aec_tx_pool, peek, [infinity], 5000).
 
-new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
+new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee, ttl := TTL} = _M) ->
     PK1 = ok(get_pubkey(N1)),
     PK2 = ok(get_pubkey(N2)),
     Port = rpc:call(N1, aeu_env, user_config_or_env,
@@ -520,6 +521,7 @@ new_tx(#{node1 := N1, node2 := N2, amount := Am, fee := Fee} = _M) ->
                recipient_pubkey => aec_base58c:encode(account_pubkey, PK2),
                amount => Am,
                fee => Fee,
+               ttl => TTL,
                payload => <<"foo">>},
     %% It's internal API so ext_addr is not included here.
     Cfg = [{int_http, "http://127.0.0.1:" ++ integer_to_list(Port)}],

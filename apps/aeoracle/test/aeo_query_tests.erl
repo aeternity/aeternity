@@ -82,6 +82,7 @@ query_tx(Override) ->
            , query_ttl     => {delta, 100}
            , response_ttl  => {delta, 100}
            , fee           => 100
+           , ttl           => 100
            },
     Map1 = maps:merge(Map, Override),
     {ok, Tx} = aeo_query_tx:new(Map1),

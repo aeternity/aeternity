@@ -89,7 +89,7 @@ get_name(Name, NSTree) ->
                         false ->
                             {ok, #{<<"name">>     => Name,
                                    <<"hash">>     => NameHash,
-                                   <<"name_ttl">> => aens_names:ttl(N),
+                                   <<"name_ttl">> => aens_names:expires(N),
                                    <<"pointers">> => aens_names:pointers(N)}}
                     end;
                 none ->

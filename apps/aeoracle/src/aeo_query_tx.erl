@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -75,7 +76,8 @@ new(#{sender        := SenderPubKey,
       query_fee     := QueryFee,
       query_ttl     := QueryTTL,
       response_ttl  := ResponseTTL,
-      fee           := Fee}) ->
+      fee           := Fee,
+      ttl           := TTL}) ->
     Tx = #oracle_query_tx{sender        = SenderPubKey,
                           nonce         = Nonce,
                           oracle        = Oracle,
@@ -83,7 +85,8 @@ new(#{sender        := SenderPubKey,
                           query_fee     = QueryFee,
                           query_ttl     = QueryTTL,
                           response_ttl  = ResponseTTL,
-                          fee           = Fee},
+                          fee           = Fee,
+                          ttl           = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -93,6 +96,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#oracle_query_tx{fee = F}) ->
     F.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#oracle_query_tx{ttl = TTL}) ->
+    TTL.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_query_tx{nonce = Nonce}) ->
@@ -105,15 +112,17 @@ origin(#oracle_query_tx{sender = SenderPubKey}) ->
 %% SenderAccount should exist, and have enough funds for the fee + the query_fee.
 %% Oracle should exist, and query_fee should be enough
 %% Fee should cover TTL
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce,
                        oracle = OraclePubKey, query_fee = QFee,
-                       query_ttl = TTL, response_ttl = RTTL, fee = Fee} = Q, _Context, Trees, Height, _ConsensusVersion) ->
+                       query_ttl = QTTL, response_ttl = RTTL,
+                       fee = Fee} = QTx, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(SenderPubKey, Trees, Nonce, Fee + QFee) end,
-         fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
-         fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, TTL, RTTL) end,
-         fun() -> check_query(Q, Trees, Height) end
+         fun() -> aeo_utils:check_ttl_fee(Height, QTTL, Fee - ?ORACLE_QUERY_TX_FEE) end,
+         fun() -> check_oracle(OraclePubKey, Trees, QFee, Height, QTTL, RTTL) end,
+         fun() -> check_query(QTx, Trees, Height) end
         ],
 
     case aeu_validation:run(Checks) of
@@ -130,7 +139,8 @@ accounts(#oracle_query_tx{sender = SenderPubKey,
 signers(#oracle_query_tx{sender = SenderPubKey}, _) ->
     {ok, [SenderPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#oracle_query_tx{sender = SenderPubKey, nonce = Nonce, fee = Fee,
                          query_fee = QueryFee} = QueryTx, _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
@@ -155,7 +165,8 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
                            query_fee     = QueryFee,
                            query_ttl     = {QueryTTLType0, QueryTTLValue},
                            response_ttl  = {?ttl_delta_atom, ResponseTTLValue},
-                           fee           = Fee}) ->
+                           fee           = Fee,
+                           ttl           = TTL}) ->
     QueryTTLType = case QueryTTLType0 of
                        ?ttl_delta_atom -> ?ttl_delta_int;
                        ?ttl_block_atom -> ?ttl_block_int
@@ -171,6 +182,7 @@ serialize(#oracle_query_tx{sender        = SenderPubKey,
      , {response_ttl_type, ?ttl_delta_int}
      , {response_ttl_value, ResponseTTLValue}
      , {fee, Fee}
+     , {ttl, TTL}
      ]}.
 
 deserialize(?ORACLE_QUERY_TX_VSN,
@@ -183,7 +195,8 @@ deserialize(?ORACLE_QUERY_TX_VSN,
             , {query_ttl_value, QueryTTLValue}
             , {response_ttl_type, ?ttl_delta_int}
             , {response_ttl_value, ResponseTTLValue}
-            , {fee, Fee}]) ->
+            , {fee, Fee}
+            , {ttl, TTL}]) ->
     QueryTTLType = case QueryTTLType0 of
                        ?ttl_delta_int -> ?ttl_delta_atom;
                        ?ttl_block_int -> ?ttl_block_atom
@@ -195,7 +208,8 @@ deserialize(?ORACLE_QUERY_TX_VSN,
                      query_fee     = QueryFee,
                      query_ttl     = {QueryTTLType, QueryTTLValue},
                      response_ttl  = {?ttl_delta_atom, ResponseTTLValue},
-                     fee           = Fee}.
+                     fee           = Fee,
+                     ttl           = TTL}.
 
 serialization_template(?ORACLE_QUERY_TX_VSN) ->
     [ {sender, binary}
@@ -208,6 +222,7 @@ serialization_template(?ORACLE_QUERY_TX_VSN) ->
     , {response_ttl_type, int}
     , {response_ttl_value, int}
     , {fee, int}
+    , {ttl, int}
     ].
 
 -spec version() -> non_neg_integer().
@@ -221,7 +236,8 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
                             query_fee     = QueryFee,
                             query_ttl     = {QueryTLLType, QueryTTLValue},
                             response_ttl  = {delta=ResponseTTLType, ResponseTTLValue},
-                            fee           = Fee}) ->
+                            fee           = Fee,
+                            ttl           = TTL}) ->
     #{<<"data_schema">> => <<"OracleQueryTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"sender">> => aec_base58c:encode(account_pubkey, SenderPubKey),
@@ -233,7 +249,8 @@ for_client(#oracle_query_tx{sender        = SenderPubKey,
                            <<"value">> => QueryTTLValue},
       <<"response_ttl">> => #{<<"type">> => ResponseTTLType,
                               <<"value">> => ResponseTTLValue},
-      <<"fee">> => Fee}.
+      <<"fee">> => Fee,
+      <<"ttl">> => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 

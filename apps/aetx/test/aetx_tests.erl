@@ -42,6 +42,7 @@ apply_signed_txs_test_() ->
                                    recipient => ?RECIPIENT_PUBKEY,
                                    amount => 40,
                                    fee => 9,
+                                   ttl => 100,
                                    nonce => 11,
                                    payload => <<"">>}),
                {ok, OverBalanceTx} = aec_spend_tx:new(
@@ -49,6 +50,7 @@ apply_signed_txs_test_() ->
                                          recipient => ?RECIPIENT_PUBKEY,
                                          amount => 30000,
                                          fee => 10,
+                                         ttl => 100,
                                          nonce => 13,
                                          payload => <<"">>}),
                {ok, SignedSpendTx} = aec_keys:sign(SpendTx),

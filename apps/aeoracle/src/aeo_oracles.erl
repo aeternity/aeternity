@@ -78,7 +78,7 @@ id(O) ->
 
 -spec new(aeo_register_tx:tx(), aec_blocks:height()) -> oracle().
 new(RTx, BlockHeight) ->
-    Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:ttl(RTx)),
+    Expires = aeo_utils:ttl_expiry(BlockHeight, aeo_register_tx:oracle_ttl(RTx)),
     O = #oracle{ owner = aeo_register_tx:account(RTx)
                , query_format = aeo_register_tx:query_spec(RTx)
                , response_format = aeo_register_tx:response_spec(RTx)

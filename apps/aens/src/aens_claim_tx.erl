@@ -15,6 +15,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -51,12 +52,14 @@ new(#{account   := AccountPubKey,
       nonce     := Nonce,
       name      := Name,
       name_salt := NameSalt,
-      fee       := Fee}) ->
+      fee       := Fee,
+      ttl       := TTL}) ->
     Tx = #ns_claim_tx{account   = AccountPubKey,
                       nonce     = Nonce,
                       name      = Name,
                       name_salt = NameSalt,
-                      fee       = Fee},
+                      fee       = Fee,
+                      ttl       = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -66,6 +69,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#ns_claim_tx{fee = Fee}) ->
     Fee.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#ns_claim_tx{ttl = TTL}) ->
+    TTL.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#ns_claim_tx{nonce = Nonce}) ->
@@ -135,13 +142,15 @@ serialize(#ns_claim_tx{account   = AccountPubKey,
                        nonce     = None,
                        name      = Name,
                        name_salt = NameSalt,
-                       fee       = Fee}) ->
+                       fee       = Fee,
+                       ttl       = TTL}) ->
     {version(),
      [ {account, AccountPubKey}
      , {nonce, None}
      , {name, Name}
      , {name_salt, NameSalt}
      , {fee, Fee}
+     , {ttl, TTL}
      ]}.
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
@@ -150,12 +159,14 @@ deserialize(?NAME_CLAIM_TX_VSN,
             , {nonce, Nonce}
             , {name, Name}
             , {name_salt, NameSalt}
-            , {fee, Fee}]) ->
+            , {fee, Fee}
+            , {ttl, TTL}]) ->
     #ns_claim_tx{account   = AccountPubKey,
                  nonce     = Nonce,
                  name      = Name,
                  name_salt = NameSalt,
-                 fee       = Fee}.
+                 fee       = Fee,
+                 ttl       = TTL}.
 
 serialization_template(?NAME_CLAIM_TX_VSN) ->
     [ {account, binary}
@@ -163,6 +174,7 @@ serialization_template(?NAME_CLAIM_TX_VSN) ->
     , {name, binary}
     , {name_salt, int}
     , {fee, int}
+    , {ttl, int}
     ].
 
 
@@ -171,13 +183,15 @@ for_client(#ns_claim_tx{account   = AccountPubKey,
                         nonce     = Nonce,
                         name      = Name,
                         name_salt = NameSalt,
-                        fee       = Fee}) ->
+                        fee       = Fee,
+                        ttl       = TTL}) ->
     #{<<"vsn">>       => version(),
       <<"account">>   => aec_base58c:encode(account_pubkey, AccountPubKey),
       <<"nonce">>     => Nonce,
       <<"name">>      => Name,
       <<"name_salt">> => NameSalt,
-      <<"fee">>       => Fee}.
+      <<"fee">>       => Fee,
+      <<"ttl">>       => TTL}.
 
 %%%===================================================================
 %%% Getters

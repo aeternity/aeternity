@@ -4,22 +4,22 @@
 
 -export([sender_and_hash/1]).
 
--export([ spend/4
+-export([ spend/5
        ]).
 
--export([ oracle_register/6
-        , oracle_extend/3
-        , oracle_query/7
-        , oracle_response/3
+-export([ oracle_register/7
+        , oracle_extend/4
+        , oracle_query/8
+        , oracle_response/4
         , get_oracles/2
         , get_oracle_questions/3
        ]).
 
--export([ name_preclaim/2
-        , name_claim/3
-        , name_update/5
-        , name_transfer/3
-        , name_revoke/2
+-export([ name_preclaim/3
+        , name_claim/4
+        , name_update/6
+        , name_transfer/4
+        , name_revoke/3
        ]).
 
 sender_and_hash(STx) ->
@@ -28,7 +28,7 @@ sender_and_hash(STx) ->
     TxHash = aetx_sign:hash(STx),
     {Sender, TxHash}.
 
-spend(EncodedRecipient, Amount, Fee, Payload) ->
+spend(EncodedRecipient, Amount, Fee, TTL, Payload) ->
     create_tx(
         fun(SenderPubkey, Nonce) ->
             case aec_chain:resolve_name(account_pubkey, EncodedRecipient) of
@@ -39,13 +39,14 @@ spend(EncodedRecipient, Amount, Fee, Payload) ->
                         amount    => Amount,
                         payload   => Payload,
                         fee       => Fee,
+                        ttl       => TTL,
                         nonce     => Nonce});
                 {error, _} ->
                     {error, invalid_key}
             end
         end).
 
-oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue) ->
+oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aeo_register_tx:new(
@@ -54,22 +55,24 @@ oracle_register(QueryFormat, ResponseFormat, QueryFee, Fee, TTLType, TTLValue) -
                 query_spec    => QueryFormat,
                 response_spec => ResponseFormat,
                 query_fee     => QueryFee,
-                ttl           => {TTLType, TTLValue},
-                fee           => Fee})
+                oracle_ttl    => {TTLType, TTLValue},
+                fee           => Fee,
+                ttl           => TTL})
           end).
 
-oracle_extend(Fee, TTLType, TTLValue) ->
+oracle_extend(Fee, TTLType, TTLValue, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aeo_extend_tx:new(
-              #{oracle => Pubkey,
-                nonce  => Nonce,
-                ttl    => {TTLType, TTLValue},
-                fee    => Fee})
+              #{oracle     => Pubkey,
+                nonce      => Nonce,
+                oracle_ttl => {TTLType, TTLValue},
+                fee        => Fee,
+                ttl        => TTL})
           end).
 
 oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
-             QueryTTLValue, ResponseTTLValue, Fee) ->
+             QueryTTLValue, ResponseTTLValue, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             case aec_chain:resolve_name(oracle_pubkey, EncodedOraclePubkey) of
@@ -83,14 +86,15 @@ oracle_query(EncodedOraclePubkey, Query, QueryFee, QueryTTLType,
                             query_fee    => QueryFee,
                             query_ttl    => {QueryTTLType, QueryTTLValue},
                             response_ttl => {delta, ResponseTTLValue},
-                            fee          => Fee}),
+                            fee          => Fee,
+                            ttl          => TTL}),
                     QId = aeo_query:id(Pubkey, Nonce, DecodedOraclePubkey),
                     {ok, Tx, QId};
                 {error, _} -> {error, invalid_key}
               end
           end).
 
-oracle_response(DecodedQueryId, Response, Fee) ->
+oracle_response(DecodedQueryId, Response, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aeo_response_tx:new(
@@ -98,7 +102,8 @@ oracle_response(DecodedQueryId, Response, Fee) ->
                 nonce    => Nonce,
                 query_id => DecodedQueryId,
                 response => Response,
-                fee      => Fee})
+                fee      => Fee,
+                ttl      => TTL})
           end).
 
 get_oracles(From, Max) ->
@@ -126,17 +131,18 @@ get_oracle_questions(OracleId, From, Max) ->
             Queries),
     {ok, FmtQueries}.
 
-name_preclaim(DecodedCommitment, Fee) ->
+name_preclaim(DecodedCommitment, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_preclaim_tx:new(
               #{account    => Pubkey,
                 nonce      => Nonce,
                 commitment => DecodedCommitment,
-                fee        => Fee})
+                fee        => Fee,
+                ttl        => TTL})
           end).
 
-name_claim(Name, NameSalt, Fee) ->
+name_claim(Name, NameSalt, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             case aens:get_name_hash(Name) of
@@ -147,26 +153,28 @@ name_claim(Name, NameSalt, Fee) ->
                             nonce     => Nonce,
                             name      => Name,
                             name_salt => NameSalt,
-                            fee       => Fee}),
+                            fee       => Fee,
+                            ttl       => TTL}),
                     {ok, Tx, NameHash};
                 {error, _Reason} = Err -> Err
             end
           end).
 
-name_update(DecodedNameHash, NameTTL, Pointers, TTL, Fee) ->
+name_update(DecodedNameHash, NameTTL, Pointers, ClientTTL, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_update_tx:new(
-              #{account   => Pubkey,
-                nonce     => Nonce,
-                name_hash => DecodedNameHash,
-                name_ttl  => NameTTL,
-                pointers  => jsx:decode(Pointers),
-                ttl       => TTL,
-                fee       => Fee})
+              #{account    => Pubkey,
+                nonce      => Nonce,
+                name_hash  => DecodedNameHash,
+                name_ttl   => NameTTL,
+                pointers   => jsx:decode(Pointers),
+                client_ttl => ClientTTL,
+                fee        => Fee,
+                ttl        => TTL})
           end).
 
-name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee) ->
+name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_transfer_tx:new(
@@ -174,17 +182,19 @@ name_transfer(DecodedNameHash, DecodedRecipientPubKey, Fee) ->
                 nonce             => Nonce,
                 name_hash         => DecodedNameHash,
                 recipient_account => DecodedRecipientPubKey,
-                fee               => Fee})
+                fee               => Fee,
+                ttl               => TTL})
           end).
 
-name_revoke(DecodedNameHash, Fee) ->
+name_revoke(DecodedNameHash, Fee, TTL) ->
     create_tx(
         fun(Pubkey, Nonce) ->
             aens_revoke_tx:new(
               #{account   => Pubkey,
                 nonce     => Nonce,
                 name_hash => DecodedNameHash,
-                fee       => Fee})
+                fee       => Fee,
+                ttl       => TTL})
           end).
 
 %% Internals

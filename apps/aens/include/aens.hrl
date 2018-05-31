@@ -15,9 +15,9 @@
 -type name_status() :: claimed | revoked.
 
 -record(name,
-        {hash          :: binary(),
-         owner         :: aec_keys:pubkey(),
-         expires       :: aec_blocks:height(),
-         status        :: name_status(),
-         ttl      = 0  :: integer(),
-         pointers = [] :: list()}).
+        {hash            :: binary(),
+         owner           :: aec_keys:pubkey(),
+         expires         :: aec_blocks:height(),
+         status          :: name_status(),
+         client_ttl = 0  :: integer(),
+         pointers   = [] :: list()}).

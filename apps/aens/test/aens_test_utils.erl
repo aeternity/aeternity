@@ -118,11 +118,13 @@ preclaim_tx_spec(PubKey, Commitment, Spec0, State) ->
     #{account    => PubKey,
       nonce      => maps:get(nonce, Spec),
       commitment => Commitment,
-      fee        => maps:get(fee, Spec)}.
+      fee        => maps:get(fee, Spec),
+      ttl        => maps:get(ttl, Spec)}.
 
 preclaim_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 3,
+      ttl   => 100}.
 
 %%%===================================================================
 %%% Claim tx
@@ -137,11 +139,13 @@ claim_tx_spec(PubKey, Name, NameSalt, Spec0, State) ->
       nonce     => maps:get(nonce, Spec),
       name      => Name,
       name_salt => NameSalt,
-      fee       => maps:get(fee, Spec)}.
+      fee       => maps:get(fee, Spec),
+      ttl       => maps:get(ttl, Spec)}.
 
 claim_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 3,
+      ttl   => 100}.
 
 %%%===================================================================
 %%% Update tx
@@ -152,20 +156,22 @@ update_tx_spec(PubKey, NameHash, State) ->
 
 update_tx_spec(PubKey, NameHash, Spec0, State) ->
     Spec = maps:merge(update_tx_default_spec(PubKey, State), Spec0),
-    #{account   => PubKey,
-      nonce     => maps:get(nonce, Spec),
-      name_hash => NameHash,
-      name_ttl  => maps:get(name_ttl, Spec),
-      pointers  => maps:get(pointers, Spec),
-      ttl       => maps:get(ttl, Spec),
-      fee       => maps:get(fee, Spec)}.
+    #{account    => PubKey,
+      nonce      => maps:get(nonce, Spec),
+      name_hash  => NameHash,
+      name_ttl   => maps:get(name_ttl, Spec),
+      pointers   => maps:get(pointers, Spec),
+      client_ttl => maps:get(client_ttl, Spec),
+      fee        => maps:get(fee, Spec),
+      ttl        => maps:get(ttl, Spec)}.
 
 update_tx_default_spec(PubKey, State) ->
-    #{nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      name_ttl => 600000,
-      pointers => [{<<"key">>, <<"val">>}],
-      ttl      => 15,
-      fee      => 3}.
+    #{nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end,
+      name_ttl   => 20000,
+      pointers   => [{<<"key">>, <<"val">>}],
+      client_ttl => 60000,
+      fee        => 3,
+      ttl        => 100}.
 
 %%%===================================================================
 %%% Transfer tx
@@ -180,11 +186,13 @@ transfer_tx_spec(PubKey, NameHash, RecipientAccount, Spec0, State) ->
       nonce             => maps:get(nonce, Spec),
       name_hash         => NameHash,
       recipient_account => RecipientAccount,
-      fee               => maps:get(fee, Spec)}.
+      fee               => maps:get(fee, Spec),
+      ttl               => maps:get(ttl, Spec)}.
 
 transfer_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 3,
+      ttl   => 100}.
 
 %%%===================================================================
 %%% Revoke tx
@@ -198,8 +206,10 @@ revoke_tx_spec(PubKey, NameHash, Spec0, State) ->
     #{account   => PubKey,
       nonce     => maps:get(nonce, Spec),
       name_hash => NameHash,
-      fee       => maps:get(fee, Spec)}.
+      fee       => maps:get(fee, Spec),
+      ttl       => maps:get(ttl, Spec)}.
 
 revoke_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 3}.
+      fee   => 3,
+      ttl   => 100}.

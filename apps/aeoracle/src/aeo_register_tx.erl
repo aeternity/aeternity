@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -31,7 +32,7 @@
          query_spec/1,
          query_fee/1,
          response_spec/1,
-         ttl/1]).
+         oracle_ttl/1]).
 
 -define(ORACLE_REGISTER_TX_VSN, 1).
 -define(ORACLE_REGISTER_TX_TYPE, oracle_register_tx).
@@ -57,13 +58,17 @@ response_spec(#oracle_register_tx{response_spec = ResponseSpec}) ->
 query_fee(#oracle_register_tx{query_fee = QueryFee}) ->
     QueryFee.
 
--spec ttl(tx()) -> aeo_oracles:ttl().
-ttl(#oracle_register_tx{ttl = TTL}) ->
+-spec oracle_ttl(tx()) -> aeo_oracles:ttl().
+oracle_ttl(#oracle_register_tx{oracle_ttl = TTL}) ->
     TTL.
 
 -spec fee(tx()) -> integer().
 fee(#oracle_register_tx{fee = Fee}) ->
     Fee.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#oracle_register_tx{ttl = TTL}) ->
+    TTL.
 
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{account       := AccountPubKey,
@@ -71,15 +76,17 @@ new(#{account       := AccountPubKey,
       query_spec    := QuerySpec,
       response_spec := ResponseSpec,
       query_fee     := QueryFee,
-      ttl           := TTL,
-      fee           := Fee}) ->
+      oracle_ttl    := OracleTTL,
+      fee           := Fee,
+      ttl           := TTL}) ->
     Tx = #oracle_register_tx{account       = AccountPubKey,
                              nonce         = Nonce,
                              query_spec    = QuerySpec,
                              response_spec = ResponseSpec,
                              query_fee     = QueryFee,
-                             ttl           = TTL,
-                             fee           = Fee},
+                             oracle_ttl    = OracleTTL,
+                             fee           = Fee,
+                             ttl           = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -95,13 +102,14 @@ origin(#oracle_register_tx{account = AccountPubKey}) ->
     AccountPubKey.
 
 %% Account should exist, and have enough funds for the fee.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_register_tx{account = AccountPubKey, nonce = Nonce,
-                          ttl = TTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
+                          oracle_ttl = OTTL, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     Checks =
         [fun() -> aetx_utils:check_account(AccountPubKey, Trees, Nonce, Fee) end,
          fun() -> ensure_not_oracle(AccountPubKey, Trees) end,
-         fun() -> aeo_utils:check_ttl_fee(Height, TTL, Fee - ?ORACLE_REGISTER_TX_FEE) end],
+         fun() -> aeo_utils:check_ttl_fee(Height, OTTL, Fee - ?ORACLE_REGISTER_TX_FEE) end],
 
     case aeu_validation:run(Checks) of
         ok              -> {ok, Trees};
@@ -116,10 +124,11 @@ accounts(#oracle_register_tx{account = AccountPubKey}) ->
 signers(#oracle_register_tx{account = AccountPubKey}, _) ->
     {ok, [AccountPubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#oracle_register_tx{account       = AccountPubKey,
-                            nonce         = Nonce,
-                            fee           = Fee} = RegisterTx, _Context, Trees0, Height, _ConsensusVersion) ->
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
+process(#oracle_register_tx{account = AccountPubKey,
+                            nonce   = Nonce,
+                            fee     = Fee} = RegisterTx, _Ctxt, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
 
@@ -140,8 +149,9 @@ serialize(#oracle_register_tx{account       = AccountPubKey,
                               query_spec    = QuerySpec,
                               response_spec = ResponseSpec,
                               query_fee     = QueryFee,
-                              ttl           = {TTLType0, TTLValue},
-                              fee           = Fee}) ->
+                              oracle_ttl    = {TTLType0, TTLValue},
+                              fee           = Fee,
+                              ttl           = TTL}) ->
     TTLType = case TTLType0 of
                   ?ttl_delta_atom -> ?ttl_delta_int;
                   ?ttl_block_atom -> ?ttl_block_int
@@ -155,6 +165,7 @@ serialize(#oracle_register_tx{account       = AccountPubKey,
     , {ttl_type, TTLType}
     , {ttl_value, TTLValue}
     , {fee, Fee}
+    , {ttl, TTL}
     ]}.
 
 deserialize(?ORACLE_REGISTER_TX_VSN,
@@ -165,7 +176,8 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
            , {query_fee, QueryFee}
            , {ttl_type, TTLType0}
            , {ttl_value, TTLValue}
-           , {fee, Fee}]) ->
+           , {fee, Fee}
+           , {ttl, TTL}]) ->
     TTLType = case TTLType0 of
                   ?ttl_delta_int -> ?ttl_delta_atom;
                   ?ttl_block_int -> ?ttl_block_atom
@@ -175,8 +187,9 @@ deserialize(?ORACLE_REGISTER_TX_VSN,
                         query_spec    = QuerySpec,
                         response_spec = ResponseSpec,
                         query_fee     = QueryFee,
-                        ttl           = {TTLType, TTLValue},
-                        fee           = Fee}.
+                        oracle_ttl    = {TTLType, TTLValue},
+                        fee           = Fee,
+                        ttl           = TTL}.
 
 serialization_template(?ORACLE_REGISTER_TX_VSN) ->
     [ {account, binary}
@@ -187,6 +200,7 @@ serialization_template(?ORACLE_REGISTER_TX_VSN) ->
     , {ttl_type, int}
     , {ttl_value, int}
     , {fee, int}
+    , {ttl, int}
     ].
 
 -spec version() -> non_neg_integer().
@@ -198,8 +212,9 @@ for_client(#oracle_register_tx{ account       = AccountPubKey,
                                 query_spec    = QuerySpec,
                                 response_spec = ResponseSpec,
                                 query_fee     = QueryFee,
-                                ttl           = {TTLType, TTLValue},
-                                fee           = Fee}) ->
+                                oracle_ttl    = {TTLType, TTLValue},
+                                fee           = Fee,
+                                ttl           = TTL}) ->
     #{<<"data_schema">> => <<"OracleRegisterTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"account">> => aec_base58c:encode(account_pubkey, AccountPubKey),
@@ -207,9 +222,10 @@ for_client(#oracle_register_tx{ account       = AccountPubKey,
       <<"query_spec">> => QuerySpec,
       <<"response_spec">> => ResponseSpec,
       <<"query_fee">> => QueryFee,
-      <<"ttl">> => #{<<"type">> => TTLType,
-                     <<"value">> => TTLValue},
-      <<"fee">> => Fee}.
+      <<"oracle_ttl">> => #{<<"type">> => TTLType,
+                            <<"value">> => TTLValue},
+      <<"fee">> => Fee,
+      <<"ttl">> => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 

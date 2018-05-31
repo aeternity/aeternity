@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -67,6 +68,10 @@ type() ->
 fee(#channel_close_mutual_tx{fee = Fee}) ->
     Fee.
 
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#channel_close_mutual_tx{ttl = Ttl}) ->
+    Ttl.
+
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#channel_close_mutual_tx{nonce = Nonce}) ->
     Nonce.
@@ -79,14 +84,13 @@ origin(#channel_close_mutual_tx{channel_id = ChannelId}) ->
         {error, not_found} -> undefined
     end.
 
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_close_mutual_tx{channel_id       = ChannelId,
                                initiator_amount = InitiatorAmount,
                                responder_amount = ResponderAmount,
-                               ttl              = TTL,
                                fee              = Fee,
-                               nonce            = Nonce}, _Context, Trees, Height,
-                                                _ConsensusVersion) ->
+                               nonce            = Nonce}, _Context, Trees, _Height, _ConsensusVersion) ->
     case aesc_state_tree:lookup(ChannelId, aec_trees:channels(Trees)) of
         none ->
             {error, channel_does_not_exist};
@@ -109,9 +113,6 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
                     ChannelAmt = aesc_channels:total_amount(Channel),
                     ok_or_error(ChannelAmt =:= InitiatorAmount + ResponderAmount + Fee,
                                 wrong_amounts)
-                end,
-                fun() -> % check TTL
-                    ok_or_error(TTL >= Height, ttl_expired)
                 end
                 ],
             case aeu_validation:run(Checks) of
@@ -122,7 +123,8 @@ check(#channel_close_mutual_tx{channel_id       = ChannelId,
             end
     end.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#channel_close_mutual_tx{channel_id       = ChannelId,
                                  initiator_amount = InitiatorAmount,
                                  responder_amount = ResponderAmount,

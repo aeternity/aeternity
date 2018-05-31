@@ -73,18 +73,20 @@ register_tx(PubKey, State) ->
 register_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(register_tx_default_spec(PubKey, State), Spec0),
     aetx:new(aeo_register_tx,
-             #oracle_register_tx{ account   = PubKey
-                                , nonce     = maps:get(nonce, Spec)
-                                , ttl       = maps:get(ttl, Spec)
-                                , fee       = maps:get(fee, Spec)
-                                , query_fee = maps:get(query_fee, Spec)
+             #oracle_register_tx{ account    = PubKey
+                                , nonce      = maps:get(nonce, Spec)
+                                , oracle_ttl = maps:get(oracle_ttl, Spec)
+                                , fee        = maps:get(fee, Spec)
+                                , ttl        = maps:get(ttl, Spec)
+                                , query_fee  = maps:get(query_fee, Spec)
                                 }).
 
 register_tx_default_spec(PubKey, State) ->
-    #{ ttl       => {delta, maps:get(oracle, ttl_defaults())}
-     , fee       => 5
-     , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
-     , query_fee => 5
+    #{ oracle_ttl => {delta, maps:get(oracle, ttl_defaults())}
+     , fee        => 5
+     , ttl        => 100
+     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
+     , query_fee  => 5
      }.
 
 %%%===================================================================
@@ -97,16 +99,18 @@ extend_tx(PubKey, State) ->
 extend_tx(PubKey, Spec0, State) ->
     Spec = maps:merge(extend_tx_default_spec(PubKey, State), Spec0),
     aetx:new(aeo_extend_tx,
-             #oracle_extend_tx{ oracle = PubKey
-                              , nonce  = maps:get(nonce, Spec)
-                              , ttl    = maps:get(ttl, Spec)
-                              , fee    = maps:get(fee, Spec)
+             #oracle_extend_tx{ oracle     = PubKey
+                              , nonce      = maps:get(nonce, Spec)
+                              , oracle_ttl = maps:get(oracle_ttl, Spec)
+                              , fee        = maps:get(fee, Spec)
+                              , ttl        = maps:get(ttl, Spec)
                               }).
 
 extend_tx_default_spec(PubKey, State) ->
-    #{ ttl       => {delta, maps:get(extend, ttl_defaults())}
-     , fee       => 5
-     , nonce     => try next_nonce(PubKey, State) catch _:_ -> 0 end
+    #{ oracle_ttl => {delta, maps:get(extend, ttl_defaults())}
+     , fee        => 5
+     , ttl        => 100
+     , nonce      => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
 %%%===================================================================
@@ -127,6 +131,7 @@ query_tx(PubKey, OracleKey, Spec0, State) ->
                              , query_ttl = maps:get(query_ttl, Spec)
                              , response_ttl = maps:get(response_ttl, Spec)
                              , fee = maps:get(fee, Spec)
+                             , ttl = maps:get(ttl, Spec)
                              }).
 
 query_tx_default_spec(PubKey, State) ->
@@ -135,6 +140,7 @@ query_tx_default_spec(PubKey, State) ->
      , query_ttl    => {delta, maps:get(query, ttl_defaults())}
      , response_ttl => {delta, maps:get(response, ttl_defaults())}
      , fee          => 5
+     , ttl          => 100
      , nonce        => try next_nonce(PubKey, State) catch _:_ -> 0 end
      }.
 
@@ -153,11 +159,13 @@ response_tx(PubKey, ID, Response, Spec0, State) ->
                                 , query_id = ID
                                 , response = Response
                                 , fee      = maps:get(fee, Spec)
+                                , ttl      = maps:get(ttl, Spec)
                                 }).
 
 response_tx_default_spec(PubKey, State) ->
     #{ nonce    => try next_nonce(PubKey, State) catch _:_ -> 0 end
      , fee      => 3
+     , ttl      => 100
      }.
 
 

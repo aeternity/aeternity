@@ -108,6 +108,7 @@ validate_test_malformed_txs_root_hash() ->
           #{recipient => <<1:32/unit:8>>,
             amount => 1,
             fee => 1,
+            ttl => 100,
             nonce => 1,
             payload => <<>>}),
 
@@ -115,6 +116,7 @@ validate_test_malformed_txs_root_hash() ->
                                      recipient => <<4242:32/unit:8>>,
                                      amount => 1,
                                      fee => 1,
+                                     ttl => 100,
                                      nonce => 1,
                                      payload => <<>>}),
     BadSignedSpend = aetx_sign:sign(Spend, <<0:64/unit:8>>),
@@ -142,6 +144,7 @@ validate_test_pass_validation() ->
           #{recipient => <<1:32/unit:8>>,
             amount => 1,
             fee => 1,
+            ttl => 100,
             nonce => 1,
             payload => <<>>}),
     Txs = [SignedSpend],

@@ -14,6 +14,7 @@
 -export([new/1,
          type/0,
          fee/1,
+         ttl/1,
          nonce/1,
          origin/1,
          check/5,
@@ -57,12 +58,14 @@ new(#{oracle   := Oracle,
       nonce    := Nonce,
       query_id := QId,
       response := Response,
-      fee      := Fee}) ->
+      fee      := Fee,
+      ttl      := TTL}) ->
     Tx = #oracle_response_tx{oracle   = Oracle,
                              nonce    = Nonce,
                              query_id = QId,
                              response = Response,
-                             fee      = Fee},
+                             fee      = Fee,
+                             ttl      = TTL},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().
@@ -72,6 +75,10 @@ type() ->
 -spec fee(tx()) -> integer().
 fee(#oracle_response_tx{fee = F}) ->
     F.
+
+-spec ttl(tx()) -> aec_blocks:height().
+ttl(#oracle_response_tx{ttl = TTL}) ->
+    TTL.
 
 -spec nonce(tx()) -> non_neg_integer().
 nonce(#oracle_response_tx{nonce = Nonce}) ->
@@ -83,7 +90,8 @@ origin(#oracle_response_tx{oracle = OraclePubKey}) ->
 
 %% Oracle should exist, and have enough funds for the fee.
 %% QueryId id should match oracle.
--spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()} | {error, term()}.
+-spec check(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()} | {error, term()}.
 check(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                           query_id = QId, fee = Fee}, _Context, Trees, Height, _ConsensusVersion) ->
     case fetch_query(OraclePubKey, QId, Trees) of
@@ -113,7 +121,8 @@ accounts(#oracle_response_tx{oracle = OraclePubKey}) ->
 signers(#oracle_response_tx{oracle = OraclePubKey}, _) ->
     {ok, [OraclePubKey]}.
 
--spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
+-spec process(tx(), aetx:tx_context(), aec_trees:trees(), aec_blocks:height(), non_neg_integer()) ->
+        {ok, aec_trees:trees()}.
 process(#oracle_response_tx{oracle = OraclePubKey, nonce = Nonce,
                             query_id = QId, response = Response,
                             fee = Fee}, _Context, Trees0, Height, _ConsensusVersion) ->
@@ -139,13 +148,15 @@ serialize(#oracle_response_tx{oracle   = OraclePubKey,
                               nonce    = Nonce,
                               query_id = QId,
                               response = Response,
-                              fee      = Fee}) ->
+                              fee      = Fee,
+                              ttl      = TTL}) ->
     {version(),
     [ {oracle, OraclePubKey}
     , {nonce, Nonce}
     , {query_id, QId}
     , {response, Response}
     , {fee, Fee}
+    , {ttl, TTL}
     ]}.
 
 deserialize(?ORACLE_RESPONSE_TX_VSN,
@@ -153,12 +164,14 @@ deserialize(?ORACLE_RESPONSE_TX_VSN,
             , {nonce, Nonce}
             , {query_id, QId}
             , {response, Response}
-            , {fee, Fee}]) ->
+            , {fee, Fee}
+            , {ttl, TTL}]) ->
     #oracle_response_tx{oracle   = OraclePubKey,
                         nonce    = Nonce,
                         query_id = QId,
                         response = Response,
-                        fee      = Fee}.
+                        fee      = Fee,
+                        ttl      = TTL}.
 
 serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
     [ {oracle, binary}
@@ -166,6 +179,7 @@ serialization_template(?ORACLE_RESPONSE_TX_VSN) ->
     , {query_id, binary}
     , {response, binary}
     , {fee, int}
+    , {ttl, int}
     ].
 
 -spec version() -> non_neg_integer().
@@ -176,14 +190,16 @@ for_client(#oracle_response_tx{ oracle   = OraclePubKey,
                                 nonce    = Nonce,
                                 query_id = QId,
                                 response = Response,
-                                fee      = Fee}) ->
+                                fee      = Fee,
+                                ttl      = TTL}) ->
     #{<<"data_schema">> => <<"OracleResponseTxJSON">>, % swagger schema name
       <<"vsn">> => version(),
       <<"oracle">> => aec_base58c:encode(oracle_pubkey, OraclePubKey),
       <<"nonce">> => Nonce,
       <<"query_id">> => aec_base58c:encode(oracle_query_id, QId),
       <<"response">> => Response,
-      <<"fee">> => Fee}.
+      <<"fee">> => Fee,
+      <<"ttl">> => TTL}.
 
 %% -- Local functions  -------------------------------------------------------
 
