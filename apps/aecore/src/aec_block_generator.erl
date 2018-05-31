@@ -162,7 +162,9 @@ stop_worker(S) ->
 
 finish_worker(S = #state{ worker = {_WPid, WRef} }) ->
     erlang:demonitor(WRef, [flush]),
-    S#state{ worker = undefined }.
+    S#state{ worker = undefined };
+finish_worker(S) ->
+    S.
 
 start_worker(S) ->
     case aec_chain:top_block() of
