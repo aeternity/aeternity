@@ -16,9 +16,10 @@
 
 -include("blocks.hrl").
 
--type event() :: block_created
-               | start_mining
-               | top_changed
+-type event() :: start_mining
+               | block_created %% We created (mined) a new block. It usually becomes the new top block, though not necessarily.
+               | top_synced %% We received a block, pulled from a network peer, that became the new top.
+               | top_changed %% We received a block, pushed by a network peer, that became the new top.
                | tx_created
                | tx_received
                | candidate_block

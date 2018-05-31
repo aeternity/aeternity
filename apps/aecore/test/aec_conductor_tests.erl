@@ -183,7 +183,8 @@ chain_test_() ->
      end,
      [
       {"Start mining add a block.", fun test_start_mining_add_block/0},
-      {"Test preemption of mining", fun test_preemption/0},
+      {"Test preemption of mining by block pushed by a network peer", fun test_preemption_pushed/0},
+      {"Test preemption of mining by block pulled from a network peer", fun test_preemption_pulled/0},
       {"Test chain genesis state" , fun test_chain_genesis_state/0},
       {timeout, 20, {"Test block publishing", fun test_block_publishing/0}}
      ]}.
@@ -201,7 +202,7 @@ test_start_mining_add_block() ->
       fun () -> aec_chain:top_header() end,
       BH2).
 
-test_preemption() ->
+test_preemption_pushed() ->
     %% Assert preconditions
     assert_stopped_and_genesis_at_top(),
 
@@ -233,6 +234,39 @@ test_preemption() ->
     wait_for_start_mining(Hash2),
 
     %% TODO: check the transaction pool
+    ok.
+
+test_preemption_pulled() ->
+    %% Assert preconditions
+    assert_stopped_and_genesis_at_top(),
+
+    %% Generate a chain
+    Chain = aec_test_utils:gen_blocks_only_chain(7),
+    {Chain1, Chain2} = lists:split(3, Chain),
+    Top1 = lists:last(Chain1),
+    Top2 = lists:last(Chain2),
+    Hash1 = block_hash(Top1),
+    Hash2 = block_hash(Top2),
+
+    %% Seed the server with the first part of the chain
+    [ok = ?TEST_MODULE:add_synced_block(B) || B <- Chain1],
+    wait_for_top_block_hash(Hash1),
+
+    %% Start mining and make sure we are starting
+    %% from the correct hash.
+    true = aec_events:subscribe(start_mining),
+    aec_conductor:start_mining(),
+
+    wait_for_start_mining(Hash1),
+
+    %% Sync the rest of the chain, which will take over.
+    [?TEST_MODULE:add_synced_block(B) || B <- Chain2],
+    wait_for_top_block_hash(Hash2),
+
+    %% The mining should now have been preempted
+    %% and started over with the new top block hash
+    wait_for_start_mining(Hash2),
+
     ok.
 
 -define(error_atom, {error, A} when is_atom(A)).

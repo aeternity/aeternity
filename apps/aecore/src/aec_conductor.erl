@@ -239,9 +239,8 @@ handle_info({gproc_ps_event, candidate_block, _}, State = #state{ mining_state =
 handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) ->
     case State#state.block_candidate of
         undefined ->
-            case aec_block_generator:get_candidate() of
-                {ok, Block} ->
-                    Candidate = make_candidate(Block, State#state.seen_top_block_hash),
+            case try_fetch_and_make_candidate() of
+                {ok, Candidate} ->
                     State1 = State#state{ block_candidate = Candidate },
                     {noreply, start_mining(State1)};
                 {error, no_candidate} ->
@@ -281,6 +280,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+try_fetch_and_make_candidate() ->
+    case aec_block_generator:get_candidate() of
+        {ok, Block} ->
+            Candidate = make_candidate(Block, aec_blocks:prev_hash(Block)),
+            {ok, Candidate};
+        {error, no_candidate} = Err ->
+            Err
+    end.
+
 make_candidate(Block, TopBlockHash) ->
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(Block)),
     LastNonce = aec_pow:pick_nonce(),
@@ -443,33 +451,38 @@ preempt_if_new_top(#state{seen_top_block_hash = OldHash} = State, Publish) ->
         NewHash ->
             ok = aec_tx_pool:top_change(OldHash, NewHash),
             maybe_publish_top(Publish, NewHash),
+            {ok, NewBlock} = aec_chain:get_block(NewHash),
+            aec_metrics:try_update([ae,epoch,aecore,chain,height],
+                                   aec_blocks:height(NewBlock)),
             State1 = State#state{seen_top_block_hash = NewHash},
             State2 = kill_all_workers_with_tag(mining, State1),
             {changed, State2#state{block_candidate = undefined}}
     end.
 
-maybe_publish_top(none,_TopHash) -> ok;
 maybe_publish_top(block_created,_TopHash) ->
     %% A new block we created is published unconditionally below.
     ok;
+maybe_publish_top(block_synced, TopHash) ->
+    %% We don't publish blocks pulled from network. Otherwise on
+    %% bootstrap the node would publish old blocks. Though preempt
+    %% block candidate generation.
+    aec_events:publish(top_synced, TopHash);
 maybe_publish_top(block_received, TopHash) ->
-    %% The received block changed the top. Publish the new top.
-    {ok, Block} = aec_chain:get_block(TopHash),
-    aec_events:publish(top_changed, TopHash),
-    update_chain_metrics(Block).
+    %% The received block pushed by a network peer changed the
+    %% top. Publish the new top.
+    aec_events:publish(top_changed, TopHash).
 
-maybe_publish_block(none,_Block) -> ok;
+maybe_publish_block(block_synced,_Block) ->
+    %% We don't publish blocks pulled from network. Otherwise on
+    %% bootstrap the node would publish old blocks.
+    ok;
 maybe_publish_block(block_received,_Block) ->
-    %% We don't publish all blocks, only if it changes the top.
+    %% We don't publish all blocks pushed by network peers, only if it
+    %% changes the top.
     ok;
 maybe_publish_block(block_created = T, Block) ->
     %% This is a block we created ourselves. Always publish.
-    aec_events:publish(T, Block),
-    update_chain_metrics(Block).
-
-update_chain_metrics(Block) ->
-    aec_metrics:try_update([ae,epoch,aecore,chain,height],
-                           aec_blocks:height(Block)).
+    aec_events:publish(T, Block).
 
 
 cleanup_after_worker(Info) ->
@@ -558,9 +571,8 @@ start_mining(#state{block_candidate = #candidate{top_hash = OldHash},
     State#state{block_candidate = undefined};
 start_mining(#state{new_candidate_available = true} = State) ->
     State1 =
-        case aec_block_generator:get_candidate() of
-            {ok, Block} ->
-                Candidate = make_candidate(Block, State#state.seen_top_block_hash),
+        case try_fetch_and_make_candidate() of
+            {ok, Candidate} ->
                 State#state{block_candidate = Candidate};
             {error, no_candidate} ->
                 State
@@ -634,7 +646,7 @@ bump_nonce(C = #candidate{ nonce = N }) ->
 
 handle_synced_block(Block, State) ->
     epoch_mining:info("sync_block: ~p", [Block]),
-    handle_add_block(Block, State, none).
+    handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->
     epoch_mining:info("post_block: ~p", [Block]),
