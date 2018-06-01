@@ -135,7 +135,6 @@ oracle_query(Oracle, Q, Value, QTTL, RTTL,
              State = #state{ trees   = Trees,
                              height  = Height,
                              account = ContractKey} = State) ->
-    io:format("oracle_query(~p, ~p, ~p, ~p, ~p)\n", [Oracle, Q, Value, QTTL, RTTL]),
     AT = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
     Nonce = aec_accounts:nonce(Account) + 1,
@@ -167,7 +166,6 @@ oracle_respond(Oracle, QueryId,_Sign, Response,
                #state{ trees   = Trees,
                        height  = Height,
                        account = ContractKey} = State) ->
-    io:format("oracle_respond(~p, ~p, ~p, ~p)\n", [Oracle, QueryId,_Sign, Response]),
     %% TODO: Check signature
     AT = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
@@ -194,7 +192,6 @@ oracle_extend(Oracle,_Sign, Fee, TTL,
               State = #state{ trees   = Trees,
                               height  = Height,
                               account = ContractKey} = State) ->
-    io:format("oracle_extend(~p, ~p, ~p)\n", [Oracle, _Sign, TTL]),
     AT = aec_trees:accounts(Trees),
     {value, Account} = aec_accounts_trees:lookup(ContractKey, AT),
     Nonce = aec_accounts:nonce(Account) + 1,
@@ -224,8 +221,6 @@ oracle_get_answer(OracleId, QueryId, #state{ trees = Trees } =_State) ->
                                                                    aec_trees:oracles(Trees)),
                     ResponseFormat = aeo_oracles:response_format(Oracle),
                     {ok, Type} = aeso_data:from_binary(typerep,  ResponseFormat),
-                    io:format("RespFormat ~p~nType ~p~n", [ResponseFormat, Type]),
-                    io:format("Answer ~p~n", [Answer]),
                     {ok, Result} = aeso_data:from_binary(Type, Answer),
                     {ok, {some, Result}}
             end;
